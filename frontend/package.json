@@ -1,0 +1,25 @@
+{
+  "name": "frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "format:eslint": "eslint --fix .",
+    "format:prettier": "prettier --write .",
+    "format": "conc -m 1 bun:format:eslint bun:format:prettier",
+    "test": "conc bun:test:type bun:test:unit",
+    "test:type": "tsc --noEmit",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "20.4.1",
+    "@fohte/eslint-config": "0.1.2",
+    "@tsconfig/bun": "1.0.10",
+    "@types/bun": "1.3.8",
+    "concurrently": "9.2.1",
+    "eslint": "9.39.2",
+    "prettier": "3.8.1",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  }
+}
