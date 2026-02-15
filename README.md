@@ -28,14 +28,30 @@ mise install
 # 環境変数の設定
 cp .env.example .env
 
-# 全サービスを起動 (db, backend, frontend)
-docker compose up
+# DB を起動 (初回のみ。全 worktree で共有される)
+docker compose -f docker-compose.infra.yml up -d
 
-# frontend のみ起動
-docker compose up frontend
+# アプリ (backend, frontend) を起動
+docker compose up
 ```
 
 起動後、http://localhost:5173 でフロントエンドにアクセスできる。
+
+### Git worktree で並列開発する場合
+
+DB は `docker-compose.infra.yml` で 1 つだけ起動し、全 worktree で共有する。各 worktree では `.env` でポートを変えてアプリのみ起動する。
+
+worktree 側の `.env` でポートを変更:
+
+```dotenv
+BACKEND_PORT=3001
+FRONTEND_PORT=5174
+```
+
+```bash
+# アプリのみ起動 (DB は既に起動済み)
+docker compose up
+```
 
 ## データベース
 
@@ -59,10 +75,10 @@ cargo sqlx migrate add <name>
 
 ```bash
 # テーブル一覧の確認
-docker compose exec db psql -U t_rader -d t_rader_development -c '\dt'
+docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development -c '\dt'
 
 # hypertable の確認
-docker compose exec db psql -U t_rader -d t_rader_development \
+docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development \
   -c "SELECT hypertable_name FROM timescaledb_information.hypertables;"
 ```
 
@@ -81,8 +97,9 @@ docker compose exec db psql -U t_rader -d t_rader_development \
 │   └── package.json
 ├── backend/           # Rust Axum サーバー
 │   └── migrations/    # sqlx マイグレーション (起動時に自動実行)
-├── docker-compose.yml
-└── .mise.toml         # ツールバージョン管理
+├── docker-compose.yml        # アプリ (backend, frontend) 定義
+├── docker-compose.infra.yml  # インフラ (DB) 定義。全 worktree で共有
+└── .mise.toml                # ツールバージョン管理
 ```
 
 ## npm スクリプト (frontend/)
