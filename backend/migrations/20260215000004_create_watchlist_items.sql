@@ -5,5 +5,3 @@ CREATE TABLE watchlist_items (
     added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (watchlist_id, instrument_id)
 );
-
-CREATE INDEX idx_watchlist_items_watchlist_id ON watchlist_items (watchlist_id);
