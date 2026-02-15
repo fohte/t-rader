@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-t_rader}
       POSTGRES_DB: ${POSTGRES_DB:-t_rader_development}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,8 +30,7 @@ services:
       - "${BACKEND_PORT:-3000}:3000"
     volumes:
       - ./backend:/app
-      - cargo_registry:/usr/local/cargo/registry
-      - cargo_git:/usr/local/cargo/git
+      - cargo_home:/usr/local/cargo
       - backend_target:/app/target
     depends_on:
       db:
@@ -42,7 +41,7 @@ services:
     working_dir: /app
     command: sh -c "bun install && bun run --bun vite --host"
     environment:
-      VITE_API_URL: http://backend:3000
+      VITE_API_URL: http://localhost:${BACKEND_PORT:-3000}
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
@@ -53,7 +52,6 @@ services:
 
 volumes:
   db_data:
-  cargo_registry:
-  cargo_git:
+  cargo_home:
   backend_target:
   frontend_node_modules:
