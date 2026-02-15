@@ -7,10 +7,7 @@ WORKDIR /app
 
 # bind マウントでソースを参照し、cache マウントでビルドキャッシュを永続化する。
 # キャッシュマウントは RUN 終了後にアンマウントされるため、同じ RUN 内で cp する。
-RUN --mount=type=bind,source=src,target=src \
-    --mount=type=bind,source=Cargo.toml,target=Cargo.toml \
-    --mount=type=bind,source=Cargo.lock,target=Cargo.lock \
-    --mount=type=bind,source=migrations,target=migrations \
+RUN --mount=type=bind,target=. \
     --mount=type=cache,target=/app/target/,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git/db,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/registry/,sharing=locked \
