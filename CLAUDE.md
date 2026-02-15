@@ -13,6 +13,12 @@ cd backend && cargo clippy -- -D warnings
 
 # マイグレーション追加
 cd backend && cargo sqlx migrate add <name>
+
+# フロントエンド
+cd frontend && nr dev             # Vite 開発サーバー
+cd frontend && nr test            # 型チェック + unit テスト
+cd frontend && nr storybook       # Storybook 開発サーバー (http://localhost:6006)
+cd frontend && nr storybook:build # Storybook 静的ビルド
 ```
 
 ## Core files
@@ -32,6 +38,12 @@ cd backend && cargo sqlx migrate add <name>
 - `backend/.env` は git 管理外。ローカル開発用の `DATABASE_URL` を含む
 - CI / Docker ビルドでは `SQLX_OFFLINE=true` が必要 (`sqlx::query!` マクロ使用時)
 - clippy で `unwrap_used`, `expect_used`, `panic` が deny。本番コードでは `?` と `map_err` を使うこと
+
+## Storybook
+
+- フロントエンドの UI コンポーネントを作成・変更した際は、対応する Story ファイル (`*.stories.tsx`) も作成・更新すること
+- Story ファイルはコンポーネントと同じディレクトリに配置する (例: `src/components/ui/button.stories.tsx`)
+- TanStack Router に依存するコンポーネントは `createMemoryHistory` + `createRouter` + `RouterProvider` でルーターコンテキストを提供する
 
 ## Test code rules
 
