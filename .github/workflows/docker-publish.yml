@@ -52,6 +52,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to: type=gha,mode=max,scope=${{ matrix.component }}
-          # private パッケージで attestation manifest の push 時に read_package エラーが発生するため無効化
+          # ghcr.io の private パッケージに push する際、provenance attestation の
+          # manifest push 時に permission_denied: read_package エラーが発生する既知の問題
+          # (ghcr.io 側の問題で、2026-02 時点で未修正) があるため無効化。
+          # 代替手段として actions/attest-build-provenance を別ステップで使う方法があるが、
+          # GitHub Enterprise Cloud プランが必要なため Free/Pro の private リポジトリでは利用不可。
           # ref: https://github.com/docker/build-push-action/issues/981
+          # ref: https://github.com/docker/build-push-action/issues/900
           provenance: false
