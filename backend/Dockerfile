@@ -6,13 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libs
 WORKDIR /app
 
 # bind マウントでソースを参照し、cache マウントでビルドキャッシュを永続化する。
+# bind マウントは read-only のため、target ディレクトリをその外に配置する。
 # キャッシュマウントは RUN 終了後にアンマウントされるため、同じ RUN 内で cp する。
 RUN --mount=type=bind,target=. \
-    --mount=type=cache,target=/app/target/,sharing=locked \
+    --mount=type=cache,target=/build/target/,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git/db,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/registry/,sharing=locked \
-    SQLX_OFFLINE=true cargo build --locked --release && \
-    cp ./target/release/backend /usr/local/bin/backend
+    CARGO_TARGET_DIR=/build/target SQLX_OFFLINE=true cargo build --locked --release && \
+    cp /build/target/release/backend /usr/local/bin/backend
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
