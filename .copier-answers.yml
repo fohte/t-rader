@@ -6,9 +6,9 @@ is_public: false
 node_package_manager: bun
 project_name: t-rader
 subpackages:
--   name: frontend
+  - name: frontend
     type: node
--   name: backend
+  - name: backend
     type: rust
 type: base
 use_coverage: true
