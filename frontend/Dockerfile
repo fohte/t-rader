@@ -5,8 +5,7 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
-# build スクリプトが未定義の場合は空の dist を作成
-RUN bun run build 2>/dev/null || mkdir -p dist
+RUN bun run build
 
 FROM nginx:stable-alpine AS runtime
 COPY --from=builder /app/dist /usr/share/nginx/html
