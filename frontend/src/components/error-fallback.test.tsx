@@ -11,8 +11,8 @@ describe('ErrorFallback', () => {
     const error = new Error('テストエラー')
     render(<ErrorFallback error={error} resetErrorBoundary={vi.fn()} />)
 
-    expect(screen.getByText('エラーが発生しました')).toBeDefined()
-    expect(screen.getByText('テストエラー')).toBeDefined()
+    expect(screen.getByText('エラーが発生しました')).toBeInTheDocument()
+    expect(screen.getByText('テストエラー')).toBeInTheDocument()
   })
 
   it('再試行ボタンをクリックすると resetErrorBoundary が呼ばれる', async () => {
