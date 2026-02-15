@@ -41,11 +41,14 @@ docker compose up
 
 DB は `docker-compose.infra.yml` で 1 つだけ起動し、全 worktree で共有する。各 worktree では `.env` でポートを変えてアプリのみ起動する。
 
-```bash
-# worktree 側の .env でポートを変更
+worktree 側の `.env` でポートを変更:
+
+```dotenv
 BACKEND_PORT=3001
 FRONTEND_PORT=5174
+```
 
+```bash
 # アプリのみ起動 (DB は既に起動済み)
 docker compose up
 ```
