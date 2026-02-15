@@ -1,0 +1,30 @@
+# インフラ (DB) 専用 Compose ファイル
+# 全 worktree で共有する。1 回だけ起動すればよい:
+#   docker compose -f docker-compose.infra.yml up -d
+name: t-rader-infra
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-t_rader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-t_rader}
+      POSTGRES_DB: ${POSTGRES_DB:-t_rader_development}
+    ports:
+      - '127.0.0.1:${DB_PORT:-5432}:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-t_rader}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - t-rader-net
+
+volumes:
+  db_data:
+
+networks:
+  t-rader-net:
+    name: t-rader-net
