@@ -1,5 +1,38 @@
 # CLAUDE.md
 
+## Bash commands
+
+```bash
+# DB 起動
+docker compose up db -d
+
+# バックエンド (ローカル)
+cd backend && cargo run    # DATABASE_URL は backend/.env から読み込まれる
+cd backend && cargo test
+cd backend && cargo clippy -- -D warnings
+
+# マイグレーション追加
+cd backend && cargo sqlx migrate add <name>
+```
+
+## Core files
+
+- `backend/migrations/` - sqlx マイグレーションファイル (起動時に自動実行)
+- `backend/src/main.rs` - Axum サーバーのエントリポイント、DB 接続プール初期化
+- `backend/src/error.rs` - AppError 型定義
+
+## Migrations
+
+- マイグレーションファイルは手動で作成しない。必ず `cargo sqlx migrate add <name>` でファイルを生成してから SQL を書くこと
+- タイムスタンプは sqlx-cli が自動付与する。連番や手動の日時を使わない
+- 初期スキーマなど論理的にまとまる変更は 1 ファイルにまとめる。不必要にファイルを分割しない
+
+## Warnings
+
+- `backend/.env` は git 管理外。ローカル開発用の `DATABASE_URL` を含む
+- CI / Docker ビルドでは `SQLX_OFFLINE=true` が必要 (`sqlx::query!` マクロ使用時)
+- clippy で `unwrap_used`, `expect_used`, `panic` が deny。本番コードでは `?` と `map_err` を使うこと
+
 ## Test code rules
 
 ### Parameterize similar test cases with rstest
