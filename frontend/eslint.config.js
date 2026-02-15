@@ -1,6 +1,7 @@
 import { mainConfig, typescriptConfig } from '@fohte/eslint-config'
 
 const config = [
+  { ignores: ['dist', 'vitest.config.ts'] },
   ...mainConfig,
   ...typescriptConfig,
   {

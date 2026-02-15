@@ -2,20 +2,40 @@
 
 個人向け日本株投資プラットフォーム
 
-## セットアップ
+## 技術スタック
+
+| レイヤー               | 技術                                                          |
+| ---------------------- | ------------------------------------------------------------- |
+| Frontend               | React 19, Vite 7, TanStack Router, shadcn/ui, Tailwind CSS v4 |
+| Backend                | Rust (Axum)                                                   |
+| DB                     | TimescaleDB (PostgreSQL 17)                                   |
+| パッケージマネージャー | Bun                                                           |
+| ツール管理             | mise                                                          |
+
+## 開発環境のセットアップ
+
+### 前提条件
+
+- [mise](https://mise.jdx.dev/) がインストールされていること
+- Docker 環境 (Docker Desktop または [Colima](https://github.com/abiosoft/colima)) + docker compose プラグイン
+
+### 起動
 
 ```bash
+# ツールのインストール
+mise install
+
+# 環境変数の設定
 cp .env.example .env
-# .env を環境に合わせて編集
-```
 
-## 開発環境の起動
-
-```bash
+# 全サービスを起動 (db, backend, frontend)
 docker compose up
+
+# frontend のみ起動
+docker compose up frontend
 ```
 
-DB (TimescaleDB), backend (Rust/Axum), frontend (Vite/React) が起動する。
+起動後、http://localhost:5173 でフロントエンドにアクセスできる。
 
 ## データベース
 
@@ -49,6 +69,31 @@ docker compose exec db psql -U t_rader -d t_rader_development \
 ## API
 
 - `GET /api/health` - ヘルスチェック (DB 接続確認含む)
+
+## プロジェクト構成
+
+```
+├── frontend/          # React SPA
+│   ├── src/
+│   │   ├── components/  # UI コンポーネント
+│   │   ├── routes/      # TanStack Router のファイルベースルーティング
+│   │   └── main.tsx     # エントリーポイント
+│   └── package.json
+├── backend/           # Rust Axum サーバー
+│   └── migrations/    # sqlx マイグレーション (起動時に自動実行)
+├── docker-compose.yml
+└── .mise.toml         # ツールバージョン管理
+```
+
+## npm スクリプト (frontend/)
+
+```bash
+bun run dev        # Vite 開発サーバー
+bun run build      # プロダクションビルド
+bun run test       # 型チェック + ユニットテスト
+bun run lint       # ESLint
+bun run format     # ESLint + Prettier によるフォーマット
+```
 
 ## 環境変数
 
