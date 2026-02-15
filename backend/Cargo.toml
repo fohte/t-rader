@@ -10,8 +10,8 @@ serde_json = "=1.0.149"
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-native-tls", "postgres", "uuid", "rust_decimal", "chrono", "migrate"] }
 thiserror = "=2.0.18"
 tokio = { version = "=1.45.1", features = ["full"] }
-tracing = "=0.1.41"
-tracing-subscriber = { version = "=0.3.20", features = ["env-filter"] }
+tracing = "=0.1.44"
+tracing-subscriber = { version = "=0.3.22", features = ["env-filter"] }
 
 [dev-dependencies]
 rstest = "=0.26.1"
