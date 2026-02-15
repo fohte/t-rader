@@ -16,14 +16,11 @@ services:
       retries: 5
 
   backend:
-    image: rust:1.92.0
+    build:
+      context: ./backend
+      target: chef
     working_dir: /app
-    # TODO: Dockerfile 作成後は cargo-watch をイメージビルド時にインストールし、ここでは cargo watch のみにする
-    command: >
-      sh -c "
-        cargo install cargo-watch &&
-        cargo watch -x run
-      "
+    command: cargo watch -x run
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-t_rader}:${POSTGRES_PASSWORD:-t_rader}@db:5432/${POSTGRES_DB:-t_rader_development}
       CARGO_HOME: /usr/local/cargo
