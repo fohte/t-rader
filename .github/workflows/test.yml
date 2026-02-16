@@ -153,6 +153,21 @@ jobs:
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+    services:
+      db:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: t_rader
+          POSTGRES_PASSWORD: t_rader
+          POSTGRES_DB: t_rader_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t_rader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v6
 
@@ -174,7 +189,7 @@ jobs:
       - name: Run tests with coverage
         working-directory: backend
         env:
-          SQLX_OFFLINE: 'true'
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
         run: cargo llvm-cov --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov

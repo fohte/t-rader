@@ -131,3 +131,6 @@ dist
 
 # TanStack Router generated route tree
 src/routeTree.gen.ts
+
+# Storybook
+storybook-static

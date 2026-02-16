@@ -7,7 +7,7 @@ use crate::models::{Bar, Instrument};
 
 /// データプロバイダーで発生しうるエラー
 #[derive(Debug, thiserror::Error)]
-pub enum DataProviderError {
+pub(crate) enum DataProviderError {
     /// 指定された銘柄が見つからない
     #[error("instrument not found: {0}")]
     NotFound(String),
@@ -15,7 +15,7 @@ pub enum DataProviderError {
 
 /// 日足データの取得期間を指定するパラメータ
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DateRange {
+pub(crate) struct DateRange {
     /// 取得開始日 (この日を含む)
     pub from: NaiveDate,
     /// 取得終了日 (この日を含む)
@@ -26,7 +26,7 @@ pub struct DateRange {
 ///
 /// 日足 OHLCV データや銘柄情報の取得元を差し替え可能にする。
 /// Axum のハンドラから使用するため Send + Sync を要求する。
-pub trait DataProvider: Send + Sync {
+pub(crate) trait DataProvider: Send + Sync {
     /// 指定銘柄・期間の日足バーデータを取得する
     ///
     /// 戻り値のバーはタイムスタンプ昇順でソートされる。

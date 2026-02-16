@@ -1,24 +1,9 @@
-#[cfg(test)]
-mod data_provider;
-mod error;
-#[cfg(test)]
-mod models;
-
 use std::net::SocketAddr;
 
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::routing::get;
-use axum::{Json, Router};
-use sqlx::PgPool;
+use backend::AppState;
+use backend::create_router;
+use backend::error::AppError;
 use sqlx::postgres::PgPoolOptions;
-
-use crate::error::AppError;
-
-#[derive(Clone)]
-struct AppState {
-    db: PgPool,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
@@ -44,9 +29,7 @@ async fn main() -> Result<(), AppError> {
 
     let state = AppState { db: pool };
 
-    let app = Router::new()
-        .route("/api/health", get(health_check))
-        .with_state(state);
+    let app = create_router(state);
 
     let port: u16 = std::env::var("BACKEND_PORT")
         .ok()
@@ -64,28 +47,4 @@ async fn main() -> Result<(), AppError> {
         .map_err(|e| AppError::Config(format!("server error: {e}")))?;
 
     Ok(())
-}
-
-async fn health_check(
-    State(state): State<AppState>,
-) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
-    // DB 接続の正常性を確認
-    sqlx::query("SELECT 1").execute(&state.db).await?;
-
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({
-            "status": "ok",
-        })),
-    ))
-}
-
-#[cfg(test)]
-mod tests {
-    use rstest::rstest;
-
-    #[rstest]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
 }
