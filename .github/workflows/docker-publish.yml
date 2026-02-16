@@ -19,8 +19,10 @@ jobs:
         include:
           - component: backend
             context: ./backend
+            cache-mode: min
           - component: frontend
             context: ./frontend
+            cache-mode: max
 
     steps:
       - uses: actions/checkout@v6
@@ -78,7 +80,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.component }}
-          cache-to: type=gha,mode=min,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=${{ matrix.cache-mode }},scope=${{ matrix.component }}
           # ghcr.io の private パッケージに push する際、provenance attestation の
           # manifest push 時に permission_denied: read_package エラーが発生する既知の問題
           # (ghcr.io 側の問題で、2026-02 時点で未修正) があるため無効化。
