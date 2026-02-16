@@ -7,6 +7,22 @@ use crate::AppState;
 use crate::error::AppError;
 use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest, Watchlist, WatchlistItem};
 
+/// ウォッチリストの存在を確認し、存在しない場合は 404 エラーを返す
+async fn ensure_watchlist_exists(db: &sqlx::PgPool, watchlist_id: Uuid) -> Result<(), AppError> {
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM watchlists WHERE id = $1)")
+        .bind(watchlist_id)
+        .fetch_one(db)
+        .await?;
+
+    if !exists {
+        return Err(AppError::NotFound(format!(
+            "watchlist {watchlist_id} not found"
+        )));
+    }
+
+    Ok(())
+}
+
 pub async fn create_watchlist(
     State(state): State<AppState>,
     Json(payload): Json<CreateWatchlistRequest>,
@@ -16,17 +32,11 @@ pub async fn create_watchlist(
         return Err(AppError::Validation("name must not be empty".to_string()));
     }
 
-    // sort_order は既存の最大値 + 1 にする
-    let max_sort: Option<i32> = sqlx::query_scalar("SELECT MAX(sort_order) FROM watchlists")
-        .fetch_one(&state.db)
-        .await?;
-    let sort_order = max_sort.map_or(0, |v| v + 1);
-
+    // sort_order をサブクエリで算出し、INSERT をアトミックに実行する
     let watchlist = sqlx::query_as::<_, Watchlist>(
-        "INSERT INTO watchlists (id, name, sort_order) VALUES (gen_random_uuid(), $1, $2) RETURNING id, name, sort_order, created_at",
+        "INSERT INTO watchlists (id, name, sort_order) VALUES (gen_random_uuid(), $1, COALESCE((SELECT MAX(sort_order) FROM watchlists), -1) + 1) RETURNING id, name, sort_order, created_at",
     )
     .bind(&name)
-    .bind(sort_order)
     .fetch_one(&state.db)
     .await?;
 
@@ -78,17 +88,7 @@ pub async fn add_watchlist_item(
         return Err(AppError::Validation("name must not be empty".to_string()));
     }
 
-    // ウォッチリストの存在確認
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM watchlists WHERE id = $1)")
-        .bind(watchlist_id)
-        .fetch_one(&state.db)
-        .await?;
-
-    if !exists {
-        return Err(AppError::NotFound(format!(
-            "watchlist {watchlist_id} not found"
-        )));
-    }
+    ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
     // 銘柄が存在しない場合は自動作成
     sqlx::query(
@@ -99,20 +99,12 @@ pub async fn add_watchlist_item(
     .execute(&state.db)
     .await?;
 
-    // sort_order は既存の最大値 + 1
-    let max_sort: Option<i32> =
-        sqlx::query_scalar("SELECT MAX(sort_order) FROM watchlist_items WHERE watchlist_id = $1")
-            .bind(watchlist_id)
-            .fetch_one(&state.db)
-            .await?;
-    let sort_order = max_sort.map_or(0, |v| v + 1);
-
+    // sort_order をサブクエリで算出し、INSERT をアトミックに実行する
     let item = sqlx::query_as::<_, WatchlistItem>(
-        "INSERT INTO watchlist_items (watchlist_id, instrument_id, sort_order) VALUES ($1, $2, $3) RETURNING watchlist_id, instrument_id, sort_order, added_at",
+        "INSERT INTO watchlist_items (watchlist_id, instrument_id, sort_order) VALUES ($1, $2, COALESCE((SELECT MAX(sort_order) FROM watchlist_items WHERE watchlist_id = $1), -1) + 1) RETURNING watchlist_id, instrument_id, sort_order, added_at",
     )
     .bind(watchlist_id)
     .bind(&instrument_id)
-    .bind(sort_order)
     .fetch_one(&state.db)
     .await
     .map_err(|e| match e {
@@ -131,17 +123,7 @@ pub async fn list_watchlist_items(
     State(state): State<AppState>,
     Path(watchlist_id): Path<Uuid>,
 ) -> Result<Json<Vec<WatchlistItem>>, AppError> {
-    // ウォッチリストの存在確認
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM watchlists WHERE id = $1)")
-        .bind(watchlist_id)
-        .fetch_one(&state.db)
-        .await?;
-
-    if !exists {
-        return Err(AppError::NotFound(format!(
-            "watchlist {watchlist_id} not found"
-        )));
-    }
+    ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
     let items = sqlx::query_as::<_, WatchlistItem>(
         "SELECT watchlist_id, instrument_id, sort_order, added_at FROM watchlist_items WHERE watchlist_id = $1 ORDER BY sort_order",
