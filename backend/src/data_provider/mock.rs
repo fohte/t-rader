@@ -50,13 +50,15 @@ impl DataProvider for MockDataProvider {
         }
 
         let from_dt = Utc.from_utc_datetime(&range.from.and_hms_opt(0, 0, 0).unwrap_or_default());
-        let to_dt = Utc.from_utc_datetime(&range.to.and_hms_opt(23, 59, 59).unwrap_or_default());
+        // to は inclusive なので、翌日の 00:00:00 を排他的上限として使う
+        let to_exclusive = range.to.succ_opt().unwrap_or(range.to);
+        let to_dt = Utc.from_utc_datetime(&to_exclusive.and_hms_opt(0, 0, 0).unwrap_or_default());
 
         let mut bars: Vec<Bar> = self
             .bars
             .iter()
             .filter(|b| {
-                b.instrument_id == instrument_id && b.timestamp >= from_dt && b.timestamp <= to_dt
+                b.instrument_id == instrument_id && b.timestamp >= from_dt && b.timestamp < to_dt
             })
             .cloned()
             .collect();
