@@ -15,6 +15,10 @@ RUN --mount=type=bind,target=. \
     CARGO_TARGET_DIR=/build/target SQLX_OFFLINE=true cargo build --locked --release && \
     cp /build/target/release/backend /usr/local/bin/backend
 
+# ローカル開発用ステージ (docker compose up backend で使用)
+FROM build AS dev
+RUN cargo install cargo-watch
+
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
