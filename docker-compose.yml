@@ -2,7 +2,7 @@ services:
   backend:
     build:
       context: ./backend
-      target: chef
+      target: dev
     working_dir: /app
     command: cargo watch -x run
     environment:

@@ -1,26 +1,28 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:1.93.0-slim AS chef
+FROM rust:1.93.0-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef cargo-watch
 WORKDIR /app
 
-FROM chef AS planner
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
+# bind マウントでソースを参照し、cache マウントでビルドキャッシュを永続化する。
+# bind マウントは read-only のため、target ディレクトリをその外に配置する。
+# キャッシュマウントは RUN 終了後にアンマウントされるため、同じ RUN 内で cp する。
+RUN --mount=type=bind,target=. \
+    --mount=type=cache,target=/build/target/,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git/db,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/registry/,sharing=locked \
+    CARGO_TARGET_DIR=/build/target SQLX_OFFLINE=true cargo build --locked --release && \
+    cp /build/target/release/backend /usr/local/bin/backend
 
-FROM chef AS builder
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
-COPY . .
-ENV SQLX_OFFLINE=true
-RUN cargo build --release
+# ローカル開発用ステージ (docker compose up backend で使用)
+FROM build AS dev
+RUN cargo install cargo-watch
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/backend /usr/local/bin/backend
+COPY --from=build /usr/local/bin/backend /usr/local/bin/backend
 ENTRYPOINT ["backend"]
 
 LABEL org.opencontainers.image.source=https://github.com/fohte/t-rader
