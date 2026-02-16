@@ -3,7 +3,8 @@ use std::net::SocketAddr;
 use backend::AppState;
 use backend::create_router;
 use backend::error::AppError;
-use sqlx::postgres::PgPoolOptions;
+use migration::{Migrator, MigratorTrait};
+use sea_orm::{ConnectOptions, Database};
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
@@ -18,16 +19,16 @@ async fn main() -> Result<(), AppError> {
         AppError::Config("DATABASE_URL environment variable is not set".to_string())
     })?;
 
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let mut opt = ConnectOptions::new(&database_url);
+    opt.max_connections(5);
+
+    let db = Database::connect(opt).await?;
 
     tracing::info!("running database migrations");
-    sqlx::migrate!().run(&pool).await?;
+    Migrator::up(&db, None).await?;
     tracing::info!("database migrations completed");
 
-    let state = AppState { db: pool };
+    let state = AppState { db };
 
     let app = create_router(state);
 

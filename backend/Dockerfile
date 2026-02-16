@@ -12,7 +12,7 @@ RUN --mount=type=bind,target=. \
     --mount=type=cache,target=/build/target/,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git/db,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/registry/,sharing=locked \
-    CARGO_TARGET_DIR=/build/target SQLX_OFFLINE=true cargo build --locked --release && \
+    CARGO_TARGET_DIR=/build/target cargo build --locked --release && \
     cp /build/target/release/backend /usr/local/bin/backend
 
 # ローカル開発用ステージ (docker compose up backend で使用)

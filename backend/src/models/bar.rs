@@ -3,10 +3,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 /// 時間足の種類
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Timeframe {
     /// 日足
-    #[sqlx(rename = "1d")]
+    #[serde(rename = "1d")]
     Daily,
 }
 
@@ -19,7 +19,7 @@ impl std::fmt::Display for Timeframe {
 }
 
 /// OHLCV バーデータ (bars テーブルに対応)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bar {
     /// 銘柄コード
     pub instrument_id: String,
