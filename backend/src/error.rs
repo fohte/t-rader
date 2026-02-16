@@ -11,21 +11,31 @@ pub enum AppError {
 
     #[error("configuration error: {0}")]
     Config(String),
+
+    #[error("not found: {0}")]
+    NotFound(String),
+
+    #[error("validation error: {0}")]
+    Validation(String),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status = match &self {
+        let (status, message) = match &self {
             AppError::Database(_) | AppError::Migration(_) | AppError::Config(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
+                // 内部エラーの詳細はログに記録し、クライアントには汎用メッセージのみ返す
+                tracing::error!("{self}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
             }
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
         };
 
-        // 内部エラーの詳細はログに記録し、クライアントには汎用メッセージのみ返す
-        tracing::error!("{self}");
-
         let body = serde_json::json!({
-            "error": "internal server error",
+            "error": message,
         });
 
         (status, axum::Json(body)).into_response()
