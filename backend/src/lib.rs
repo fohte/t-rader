@@ -1,3 +1,5 @@
+#[cfg(test)]
+pub(crate) mod data_provider;
 pub mod error;
 pub mod handlers;
 pub mod models;

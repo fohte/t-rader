@@ -17,14 +17,6 @@ pub struct CreateWatchlistRequest {
 }
 
 #[derive(Debug, Serialize, FromRow)]
-pub struct Instrument {
-    pub id: String,
-    pub name: String,
-    pub market: String,
-    pub sector: Option<String>,
-}
-
-#[derive(Debug, Serialize, FromRow)]
 pub struct WatchlistItem {
     pub watchlist_id: Uuid,
     pub instrument_id: String,
