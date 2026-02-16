@@ -19,14 +19,17 @@ jobs:
         include:
           - component: backend
             context: ./backend
+            cache-mode: min
           - component: frontend
             context: ./frontend
+            cache-mode: max
 
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        id: setup-buildx
 
       - name: Log in to ghcr.io
         if: github.event_name == 'push'
@@ -46,6 +49,29 @@ jobs:
             type=sha
             type=raw,value=latest
 
+      # backend: RUN --mount=type=cache のキャッシュを GHA キャッシュに永続化する。
+      # GHA 環境では BuildKit cache mount のデータが type=gha バックエンドに保存されないため、
+      # buildkit-cache-dance を使って actions/cache 経由で永続化する。
+      # ref: https://github.com/moby/buildkit/issues/3011
+      - name: Restore Cargo cache
+        if: matrix.component == 'backend'
+        uses: actions/cache@v4
+        id: cargo-cache
+        with:
+          path: cargo-cache
+          key: cargo-cache-${{ hashFiles('backend/Cargo.lock') }}
+          restore-keys: |
+            cargo-cache-
+
+      - name: Inject Cargo cache into Docker
+        if: matrix.component == 'backend'
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          builder: ${{ steps.setup-buildx.outputs.name }}
+          cache-dir: cargo-cache
+          dockerfile: backend/Dockerfile
+          skip-extraction: ${{ steps.cargo-cache.outputs.cache-hit }}
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -54,7 +80,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.component }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=${{ matrix.cache-mode }},scope=${{ matrix.component }}
           # ghcr.io の private パッケージに push する際、provenance attestation の
           # manifest push 時に permission_denied: read_package エラーが発生する既知の問題
           # (ghcr.io 側の問題で、2026-02 時点で未修正) があるため無効化。
