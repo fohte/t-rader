@@ -25,6 +25,10 @@ thiserror = "=2.0.18"
 tokio = { version = "=1.49.0", features = ["full"] }
 tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.22", features = ["env-filter"] }
+reqwest = { version = "=0.12.15", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
 utoipa = { version = "=5.4.0", features = [
     "chrono",
     "uuid",
@@ -36,6 +40,7 @@ utoipa-swagger-ui = { version = "=9.0.2", features = ["axum"] }
 uuid = { version = "=1.21.0", features = ["serde"] }
 
 [dev-dependencies]
+wiremock = "=0.6.5"
 axum-test = "=17.3.0"
 rstest = "=0.26.1"
 sqlx = { version = "=0.8.6", features = [

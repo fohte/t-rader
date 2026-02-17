@@ -1,5 +1,4 @@
-#[cfg(test)]
-pub(crate) mod data_provider;
+pub mod data_provider;
 pub mod entities;
 pub mod error;
 pub mod handlers;
