@@ -11,7 +11,9 @@
   "paths": {
     "/api/health": {
       "get": {
-        "tags": ["health"],
+        "tags": [
+          "health"
+        ],
         "summary": "ヘルスチェック",
         "operationId": "health_check",
         "responses": {
@@ -40,7 +42,9 @@
     },
     "/api/watchlists": {
       "get": {
-        "tags": ["watchlists"],
+        "tags": [
+          "watchlists"
+        ],
         "summary": "ウォッチリスト一覧を取得する",
         "operationId": "list_watchlists",
         "responses": {
@@ -70,7 +74,9 @@
         }
       },
       "post": {
-        "tags": ["watchlists"],
+        "tags": [
+          "watchlists"
+        ],
         "summary": "ウォッチリストを作成する",
         "operationId": "create_watchlist",
         "requestBody": {
@@ -119,7 +125,9 @@
     },
     "/api/watchlists/{id}": {
       "delete": {
-        "tags": ["watchlists"],
+        "tags": [
+          "watchlists"
+        ],
         "summary": "ウォッチリストを削除する",
         "operationId": "delete_watchlist",
         "parameters": [
@@ -163,7 +171,9 @@
     },
     "/api/watchlists/{id}/items": {
       "get": {
-        "tags": ["watchlist_items"],
+        "tags": [
+          "watchlist_items"
+        ],
         "summary": "ウォッチリスト内の銘柄一覧を取得する",
         "operationId": "list_watchlist_items",
         "parameters": [
@@ -215,7 +225,9 @@
         }
       },
       "post": {
-        "tags": ["watchlist_items"],
+        "tags": [
+          "watchlist_items"
+        ],
         "summary": "ウォッチリストに銘柄を追加する",
         "operationId": "add_watchlist_item",
         "parameters": [
@@ -286,7 +298,9 @@
     },
     "/api/watchlists/{id}/items/{instrument_id}": {
       "delete": {
-        "tags": ["watchlist_items"],
+        "tags": [
+          "watchlist_items"
+        ],
         "summary": "ウォッチリストから銘柄を削除する",
         "operationId": "delete_watchlist_item",
         "parameters": [
@@ -342,7 +356,10 @@
     "schemas": {
       "AddWatchlistItemRequest": {
         "type": "object",
-        "required": ["instrument_id", "name"],
+        "required": [
+          "instrument_id",
+          "name"
+        ],
         "properties": {
           "instrument_id": {
             "type": "string",
@@ -356,7 +373,9 @@
       },
       "CreateWatchlistRequest": {
         "type": "object",
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "properties": {
           "name": {
             "type": "string",
@@ -367,7 +386,9 @@
       "ErrorResponse": {
         "type": "object",
         "description": "API エラーレスポンスの JSON 構造",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "string",
@@ -378,7 +399,9 @@
       "HealthResponse": {
         "type": "object",
         "description": "ヘルスチェックレスポンス",
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "properties": {
           "status": {
             "type": "string",
@@ -388,7 +411,12 @@
       },
       "Watchlist": {
         "type": "object",
-        "required": ["id", "name", "sort_order", "created_at"],
+        "required": [
+          "id",
+          "name",
+          "sort_order",
+          "created_at"
+        ],
         "properties": {
           "created_at": {
             "type": "string",
@@ -409,7 +437,12 @@
       },
       "WatchlistItem": {
         "type": "object",
-        "required": ["watchlist_id", "instrument_id", "sort_order", "added_at"],
+        "required": [
+          "watchlist_id",
+          "instrument_id",
+          "sort_order",
+          "added_at"
+        ],
         "properties": {
           "added_at": {
             "type": "string",
