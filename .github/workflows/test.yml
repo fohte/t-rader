@@ -184,6 +184,7 @@ jobs:
     needs: detect-changes
     if: >-
       needs.detect-changes.outputs.frontend == 'true' ||
+      needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -202,6 +203,16 @@ jobs:
           restore-keys: ${{ runner.os }}-bun-
 
       - run: cd "frontend" && bun install --frozen-lockfile
+
+      - name: Check openapi types are in sync
+        working-directory: frontend
+        run: |
+          bun run generate:api
+          if ! git diff --exit-code src/lib/api/schema.gen.d.ts; then
+            echo "::error::OpenAPI TypeScript types are out of sync with backend/openapi.json."
+            echo "Run 'cd frontend && bun run generate:api' locally and commit the changes."
+            exit 1
+          fi
 
       - name: Run tests
         working-directory: frontend
