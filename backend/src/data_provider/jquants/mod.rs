@@ -161,10 +161,8 @@ impl DataProvider for JQuantsClient {
                 ("to", &to_str),
             ];
 
-            let pagination_key_value;
-            if let Some(ref key) = pagination_key {
-                pagination_key_value = key.clone();
-                params.push(("pagination_key", &pagination_key_value));
+            if let Some(key) = &pagination_key {
+                params.push(("pagination_key", key));
             }
 
             let url = self.build_url("/equities/bars/daily", &params)?;

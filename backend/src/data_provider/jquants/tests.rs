@@ -64,53 +64,32 @@ mod fetch_daily_bars {
     }
 
     #[rstest]
+    #[case::all_null(MockBar {
+        date: "2025-01-07",
+        code: "86970",
+        adj_open: None,
+        adj_high: None,
+        adj_low: None,
+        adj_close: None,
+        adj_volume: None,
+    })]
+    #[case::partial_null(MockBar {
+        date: "2025-01-07",
+        code: "86970",
+        adj_open: None,
+        adj_high: Some(110.0),
+        adj_low: Some(95.0),
+        adj_close: Some(100.0),
+        adj_volume: Some(1000.0),
+    })]
     #[tokio::test]
-    async fn test_skips_bars_with_null_prices() -> Result<(), DataProviderError> {
+    async fn test_skips_bars_with_null_prices(
+        #[case] null_bar: MockBar,
+    ) -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars()
             .code("86970")
-            .bars(vec![
-                sample_bar("2025-01-06", 105.0),
-                MockBar {
-                    date: "2025-01-07",
-                    code: "86970",
-                    adj_open: None,
-                    adj_high: None,
-                    adj_low: None,
-                    adj_close: None,
-                    adj_volume: None,
-                },
-            ])
-            .ok()
-            .await;
-
-        let client = mock.client()?;
-        let bars = client.fetch_daily_bars("86970", &default_range()).await?;
-
-        assert_eq!(bars.len(), 1);
-        assert_eq!(bars[0].close, dec(105.0));
-        Ok(())
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_skips_bars_with_partial_null_prices() -> Result<(), DataProviderError> {
-        let mock = JQuantsMockServer::start().await;
-        mock.daily_bars()
-            .code("86970")
-            .bars(vec![
-                sample_bar("2025-01-06", 105.0),
-                // adj_open のみ null → スキップされるべき
-                MockBar {
-                    date: "2025-01-07",
-                    code: "86970",
-                    adj_open: None,
-                    adj_high: Some(110.0),
-                    adj_low: Some(95.0),
-                    adj_close: Some(100.0),
-                    adj_volume: Some(1000.0),
-                },
-            ])
+            .bars(vec![sample_bar("2025-01-06", 105.0), null_bar])
             .ok()
             .await;
 
