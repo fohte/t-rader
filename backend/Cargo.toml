@@ -11,7 +11,7 @@ axum = "=0.8.8"
 chrono = { version = "=0.4.43", default-features = false, features = ["serde"] }
 migration = { path = "migration" }
 rust_decimal = { version = "=1.40.0", features = ["serde"] }
-sea-orm = { version = "~2.0.0-rc", features = [
+sea-orm = { version = "=2.0.0-rc.32", features = [
     "runtime-tokio-native-tls",
     "sqlx-postgres",
     "with-chrono",
@@ -30,7 +30,7 @@ uuid = { version = "=1.21.0", features = ["serde"] }
 [dev-dependencies]
 axum-test = "=17.3.0"
 rstest = "=0.26.1"
-sqlx = { version = "0.8", features = [
+sqlx = { version = "=0.8.6", features = [
     "runtime-tokio",
     "tls-native-tls",
     "postgres",
