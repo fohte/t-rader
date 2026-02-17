@@ -1,5 +1,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use serde::Serialize;
+use utoipa::ToSchema;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -14,6 +16,13 @@ pub enum AppError {
 
     #[error("validation error: {0}")]
     Validation(String),
+}
+
+/// API エラーレスポンスの JSON 構造
+#[derive(Serialize, ToSchema)]
+pub struct ErrorResponse {
+    /// エラーメッセージ
+    pub error: String,
 }
 
 impl IntoResponse for AppError {
@@ -31,9 +40,7 @@ impl IntoResponse for AppError {
             AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
         };
 
-        let body = serde_json::json!({
-            "error": message,
-        });
+        let body = ErrorResponse { error: message };
 
         (status, axum::Json(body)).into_response()
     }

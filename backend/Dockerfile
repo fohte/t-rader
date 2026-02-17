@@ -3,7 +3,7 @@
 FROM rust:1.93.0-slim AS build
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev
+    apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev curl
 WORKDIR /app
 
 # bind マウントでソースを参照し、cache マウントでビルドキャッシュを永続化する。
