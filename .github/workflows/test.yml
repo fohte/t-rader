@@ -73,7 +73,7 @@ jobs:
 
       - name: Regenerate openapi.json
         working-directory: backend
-        run: cargo run -- --dump-openapi 2>/dev/null > openapi.json
+        run: cargo run -- --dump-openapi 2>/dev/null > openapi.json.tmp && mv openapi.json.tmp openapi.json
 
       # lefthook-config's formatters run `git add` after formatting, which stages the changes.
       # https://github.com/fohte/lefthook-config/blob/v0.1.7/base.yml
