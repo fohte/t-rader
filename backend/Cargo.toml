@@ -41,7 +41,7 @@ uuid = { version = "=1.21.0", features = ["serde"] }
 
 [dev-dependencies]
 wiremock = "=0.6.5"
-axum-test = "=17.3.0"
+axum-test = "=18.7.0"
 rstest = "=0.26.1"
 sqlx = { version = "=0.8.6", features = [
     "runtime-tokio",
