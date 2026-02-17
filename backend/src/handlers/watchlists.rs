@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::entities::{instruments, watchlist_items, watchlists};
-use crate::error::AppError;
+use crate::error::{AppError, ErrorResponse};
 use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest};
 
 /// ウォッチリストの存在を確認し、存在しない場合は 404 エラーを返す
@@ -32,6 +32,18 @@ async fn ensure_watchlist_exists(
     Ok(())
 }
 
+/// ウォッチリストを作成する
+#[utoipa::path(
+    post,
+    path = "/api/watchlists",
+    tag = "watchlists",
+    request_body = CreateWatchlistRequest,
+    responses(
+        (status = 201, description = "ウォッチリストを作成した", body = watchlists::Model),
+        (status = 400, description = "バリデーションエラー", body = ErrorResponse),
+        (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
+    )
+)]
 pub async fn create_watchlist(
     State(state): State<AppState>,
     Json(payload): Json<CreateWatchlistRequest>,
@@ -57,6 +69,16 @@ pub async fn create_watchlist(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
+/// ウォッチリスト一覧を取得する
+#[utoipa::path(
+    get,
+    path = "/api/watchlists",
+    tag = "watchlists",
+    responses(
+        (status = 200, description = "ウォッチリスト一覧", body = Vec<watchlists::Model>),
+        (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
+    )
+)]
 pub async fn list_watchlists(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<watchlists::Model>>, AppError> {
@@ -68,6 +90,20 @@ pub async fn list_watchlists(
     Ok(Json(watchlists))
 }
 
+/// ウォッチリストを削除する
+#[utoipa::path(
+    delete,
+    path = "/api/watchlists/{id}",
+    tag = "watchlists",
+    params(
+        ("id" = Uuid, Path, description = "ウォッチリスト ID"),
+    ),
+    responses(
+        (status = 204, description = "削除成功"),
+        (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
+        (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
+    )
+)]
 pub async fn delete_watchlist(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -81,6 +117,22 @@ pub async fn delete_watchlist(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// ウォッチリストに銘柄を追加する
+#[utoipa::path(
+    post,
+    path = "/api/watchlists/{id}/items",
+    tag = "watchlist_items",
+    params(
+        ("id" = Uuid, Path, description = "ウォッチリスト ID"),
+    ),
+    request_body = AddWatchlistItemRequest,
+    responses(
+        (status = 201, description = "銘柄を追加した", body = watchlist_items::Model),
+        (status = 400, description = "バリデーションエラー", body = ErrorResponse),
+        (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
+        (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
+    )
+)]
 pub async fn add_watchlist_item(
     State(state): State<AppState>,
     Path(watchlist_id): Path<Uuid>,
@@ -144,6 +196,20 @@ pub async fn add_watchlist_item(
     }
 }
 
+/// ウォッチリスト内の銘柄一覧を取得する
+#[utoipa::path(
+    get,
+    path = "/api/watchlists/{id}/items",
+    tag = "watchlist_items",
+    params(
+        ("id" = Uuid, Path, description = "ウォッチリスト ID"),
+    ),
+    responses(
+        (status = 200, description = "銘柄一覧", body = Vec<watchlist_items::Model>),
+        (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
+        (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
+    )
+)]
 pub async fn list_watchlist_items(
     State(state): State<AppState>,
     Path(watchlist_id): Path<Uuid>,
@@ -159,6 +225,21 @@ pub async fn list_watchlist_items(
     Ok(Json(items))
 }
 
+/// ウォッチリストから銘柄を削除する
+#[utoipa::path(
+    delete,
+    path = "/api/watchlists/{id}/items/{instrument_id}",
+    tag = "watchlist_items",
+    params(
+        ("id" = Uuid, Path, description = "ウォッチリスト ID"),
+        ("instrument_id" = String, Path, description = "銘柄コード"),
+    ),
+    responses(
+        (status = 204, description = "削除成功"),
+        (status = 404, description = "銘柄が見つからない", body = ErrorResponse),
+        (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
+    )
+)]
 pub async fn delete_watchlist_item(
     State(state): State<AppState>,
     Path((watchlist_id, instrument_id)): Path<(Uuid, String)>,

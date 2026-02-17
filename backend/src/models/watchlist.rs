@@ -1,12 +1,16 @@
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWatchlistRequest {
+    /// ウォッチリスト名
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AddWatchlistItemRequest {
+    /// 銘柄コード (例: "7203")
     pub instrument_id: String,
+    /// 銘柄名 (例: "トヨタ自動車")
     pub name: String,
 }

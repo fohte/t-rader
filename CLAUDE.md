@@ -3,8 +3,8 @@
 ## Bash commands
 
 ```bash
-# DB 起動
-docker compose up db -d
+# DB 起動 (全 worktree 共有、1 回だけ起動すればよい)
+docker compose -f docker-compose.infra.yml up -d
 
 # バックエンド (ローカル)
 cd backend && cargo run    # DATABASE_URL は backend/.env から読み込まれる
@@ -48,9 +48,18 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
 - カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること
 
+## DB 接続
+
+- DB は `docker compose -f docker-compose.infra.yml up -d` で起動する (全 worktree 共有)
+- `backend/.env` は git 管理外かつ worktree には存在しない。テスト実行時は環境変数を直接指定すること
+- デフォルトの DATABASE_URL: `postgres://t_rader:t_rader@localhost:5432/t_rader_development`
+- テスト実行時に `DATABASE_URL` が未設定だと `#[sqlx::test]` が panic する。環境変数を直接指定して実行すること:
+  ```bash
+  DATABASE_URL=postgres://t_rader:t_rader@localhost:5432/t_rader_development cargo test
+  ```
+
 ## Warnings
 
-- `backend/.env` は git 管理外。ローカル開発用の `DATABASE_URL` を含む
 - SeaORM は実行時に SQL を構築するため、Docker ビルド時の DB 接続は不要 (旧 `SQLX_OFFLINE` は廃止済み)
 - clippy で `unwrap_used`, `expect_used`, `panic` が deny。本番コードでは `?` と `map_err` を使うこと
 

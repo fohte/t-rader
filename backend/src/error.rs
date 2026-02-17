@@ -1,5 +1,7 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::data_provider::DataProviderError;
 
@@ -19,6 +21,13 @@ pub enum AppError {
 
     #[error("data provider error: {0}")]
     DataProvider(#[from] DataProviderError),
+}
+
+/// API エラーレスポンスの JSON 構造
+#[derive(Serialize, ToSchema)]
+pub struct ErrorResponse {
+    /// エラーメッセージ
+    pub error: String,
 }
 
 impl IntoResponse for AppError {
@@ -53,9 +62,7 @@ impl IntoResponse for AppError {
             },
         };
 
-        let body = serde_json::json!({
-            "error": message,
-        });
+        let body = ErrorResponse { error: message };
 
         (status, axum::Json(body)).into_response()
     }
