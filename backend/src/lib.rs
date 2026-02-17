@@ -50,8 +50,9 @@ struct HealthResponse {
     status: String,
 }
 
-pub fn create_router(state: AppState) -> Router {
-    let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+/// OpenAPI ルート定義を構築する
+fn build_openapi_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(health_check))
         .routes(routes!(watchlists::create_watchlist))
         .routes(routes!(watchlists::list_watchlists))
@@ -59,8 +60,16 @@ pub fn create_router(state: AppState) -> Router {
         .routes(routes!(watchlists::add_watchlist_item))
         .routes(routes!(watchlists::list_watchlist_items))
         .routes(routes!(watchlists::delete_watchlist_item))
-        .with_state(state)
-        .split_for_parts();
+}
+
+/// OpenAPI スペックを生成する (DB 接続不要)
+pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
+    let mut router = build_openapi_router();
+    router.to_openapi()
+}
+
+pub fn create_router(state: AppState) -> Router {
+    let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
     router.merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
 }

@@ -8,6 +8,16 @@ use sea_orm::{ConnectOptions, Database};
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
+    // --dump-openapi: OpenAPI スペックを JSON で標準出力に出力して終了する
+    if std::env::args().any(|arg| arg == "--dump-openapi") {
+        let spec = backend::create_openapi_spec();
+        let json = spec
+            .to_pretty_json()
+            .map_err(|e| AppError::Config(format!("failed to serialize OpenAPI spec: {e}")))?;
+        println!("{json}");
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
