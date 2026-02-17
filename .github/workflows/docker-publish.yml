@@ -111,8 +111,10 @@ jobs:
           curl --fail -X POST \
             -H 'Content-Type: application/json' \
             -d '{"name": "ghcr.io/fohte/t-rader/backend", "tag": "latest"}' \
-            http://keel.keel.svc.cluster.local:9300/v1/webhooks/native
+            "$KEEL_WEBHOOK_URL"
           curl --fail -X POST \
             -H 'Content-Type: application/json' \
             -d '{"name": "ghcr.io/fohte/t-rader/frontend", "tag": "latest"}' \
-            http://keel.keel.svc.cluster.local:9300/v1/webhooks/native
+            "$KEEL_WEBHOOK_URL"
+        env:
+          KEEL_WEBHOOK_URL: ${{ vars.KEEL_WEBHOOK_URL }}
