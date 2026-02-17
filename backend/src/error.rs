@@ -1,6 +1,8 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
+use crate::data_provider::DataProviderError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("database error: {0}")]
@@ -14,6 +16,9 @@ pub enum AppError {
 
     #[error("validation error: {0}")]
     Validation(String),
+
+    #[error("data provider error: {0}")]
+    DataProvider(#[from] DataProviderError),
 }
 
 impl IntoResponse for AppError {
@@ -29,6 +34,23 @@ impl IntoResponse for AppError {
             }
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::DataProvider(e) => match e {
+                DataProviderError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+                DataProviderError::RateLimited { .. } => {
+                    tracing::error!("{self}");
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "service temporarily unavailable".to_string(),
+                    )
+                }
+                _ => {
+                    tracing::error!("{self}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "internal server error".to_string(),
+                    )
+                }
+            },
         };
 
         let body = serde_json::json!({
