@@ -9,7 +9,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{instrument, watchlist, watchlist_item};
+use crate::entities::{instruments, watchlist_items, watchlists};
 use crate::error::AppError;
 use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest};
 
@@ -18,7 +18,7 @@ async fn ensure_watchlist_exists(
     db: &sea_orm::DatabaseConnection,
     watchlist_id: Uuid,
 ) -> Result<(), AppError> {
-    let exists = watchlist::Entity::find_by_id(watchlist_id)
+    let exists = watchlists::Entity::find_by_id(watchlist_id)
         .one(db)
         .await?
         .is_some();
@@ -35,7 +35,7 @@ async fn ensure_watchlist_exists(
 pub async fn create_watchlist(
     State(state): State<AppState>,
     Json(payload): Json<CreateWatchlistRequest>,
-) -> Result<(StatusCode, Json<watchlist::Model>), AppError> {
+) -> Result<(StatusCode, Json<watchlists::Model>), AppError> {
     let name = payload.name.trim().to_string();
     if name.is_empty() {
         return Err(AppError::Validation("name must not be empty".to_string()));
@@ -52,16 +52,16 @@ pub async fn create_watchlist(
         .await?
         .ok_or_else(|| AppError::Database(DbErr::Custom("INSERT RETURNING returned no rows".to_string())))?;
 
-    let created = watchlist::Model::from_query_result(&result, "")?;
+    let created = watchlists::Model::from_query_result(&result, "")?;
 
     Ok((StatusCode::CREATED, Json(created)))
 }
 
 pub async fn list_watchlists(
     State(state): State<AppState>,
-) -> Result<Json<Vec<watchlist::Model>>, AppError> {
-    let watchlists = watchlist::Entity::find()
-        .order_by_asc(watchlist::Column::SortOrder)
+) -> Result<Json<Vec<watchlists::Model>>, AppError> {
+    let watchlists = watchlists::Entity::find()
+        .order_by_asc(watchlists::Column::SortOrder)
         .all(&state.db)
         .await?;
 
@@ -72,7 +72,7 @@ pub async fn delete_watchlist(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let result = watchlist::Entity::delete_by_id(id).exec(&state.db).await?;
+    let result = watchlists::Entity::delete_by_id(id).exec(&state.db).await?;
 
     if result.rows_affected == 0 {
         return Err(AppError::NotFound(format!("watchlist {id} not found")));
@@ -85,7 +85,7 @@ pub async fn add_watchlist_item(
     State(state): State<AppState>,
     Path(watchlist_id): Path<Uuid>,
     Json(payload): Json<AddWatchlistItemRequest>,
-) -> Result<(StatusCode, Json<watchlist_item::Model>), AppError> {
+) -> Result<(StatusCode, Json<watchlist_items::Model>), AppError> {
     let instrument_id = payload.instrument_id.trim().to_string();
     if instrument_id.is_empty() {
         return Err(AppError::Validation(
@@ -101,16 +101,16 @@ pub async fn add_watchlist_item(
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
     // 銘柄が存在しない場合は自動作成
-    let instrument_model = instrument::ActiveModel {
+    let instrument_model = instruments::ActiveModel {
         id: Set(instrument_id.clone()),
         name: Set(name),
         market: Set("TSE".to_string()),
         sector: Set(None),
     };
 
-    instrument::Entity::insert(instrument_model)
+    instruments::Entity::insert(instrument_model)
         .on_conflict(
-            OnConflict::column(instrument::Column::Id)
+            OnConflict::column(instruments::Column::Id)
                 .do_nothing()
                 .to_owned(),
         )
@@ -129,7 +129,7 @@ pub async fn add_watchlist_item(
 
     match item_result {
         Ok(Some(row)) => {
-            let item = watchlist_item::Model::from_query_result(&row, "")?;
+            let item = watchlist_items::Model::from_query_result(&row, "")?;
             Ok((StatusCode::CREATED, Json(item)))
         }
         Ok(None) => Err(AppError::Database(DbErr::Custom(
@@ -147,12 +147,12 @@ pub async fn add_watchlist_item(
 pub async fn list_watchlist_items(
     State(state): State<AppState>,
     Path(watchlist_id): Path<Uuid>,
-) -> Result<Json<Vec<watchlist_item::Model>>, AppError> {
+) -> Result<Json<Vec<watchlist_items::Model>>, AppError> {
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
-    let items = watchlist_item::Entity::find()
-        .filter(watchlist_item::Column::WatchlistId.eq(watchlist_id))
-        .order_by_asc(watchlist_item::Column::SortOrder)
+    let items = watchlist_items::Entity::find()
+        .filter(watchlist_items::Column::WatchlistId.eq(watchlist_id))
+        .order_by_asc(watchlist_items::Column::SortOrder)
         .all(&state.db)
         .await?;
 
@@ -163,9 +163,9 @@ pub async fn delete_watchlist_item(
     State(state): State<AppState>,
     Path((watchlist_id, instrument_id)): Path<(Uuid, String)>,
 ) -> Result<StatusCode, AppError> {
-    let result = watchlist_item::Entity::delete_many()
-        .filter(watchlist_item::Column::WatchlistId.eq(watchlist_id))
-        .filter(watchlist_item::Column::InstrumentId.eq(&instrument_id))
+    let result = watchlist_items::Entity::delete_many()
+        .filter(watchlist_items::Column::WatchlistId.eq(watchlist_id))
+        .filter(watchlist_items::Column::InstrumentId.eq(&instrument_id))
         .exec(&state.db)
         .await?;
 

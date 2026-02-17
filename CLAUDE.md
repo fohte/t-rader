@@ -15,6 +15,9 @@ cd backend && cargo clippy -- -D warnings
 cd backend/migration && cargo run -- generate <name>
 # 生成後、lib.rs の Migrator::migrations() にも登録すること
 
+# エンティティ再生成 (マイグレーション変更後に実行)
+DATABASE_URL=... bash backend/scripts/generate-entities.sh
+
 # フロントエンド
 cd frontend && nr dev             # Vite 開発サーバー
 cd frontend && nr test            # 型チェック + unit テスト
@@ -25,7 +28,8 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 ## Core files
 
 - `backend/migration/` - SeaORM マイグレーション crate (MigrationTrait で Rust ファイル、起動時に自動実行)
-- `backend/src/entities/` - SeaORM Entity 定義 (DeriveEntityModel)
+- `backend/src/entities/` - SeaORM Entity 定義 (`sea-orm-cli generate entity` で自動生成、手動編集禁止)
+- `backend/scripts/generate-entities.sh` - エンティティ生成スクリプト (CLI オプション一元管理)
 - `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
 
@@ -36,6 +40,13 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - 生成後、`backend/migration/src/lib.rs` の `Migrator::migrations()` に登録すること
 - SeaQuery DSL でテーブル操作を記述するが、TimescaleDB 固有の SQL は `execute_unprepared` で raw SQL を使う
 - 初期スキーマなど論理的にまとまる変更は 1 ファイルにまとめる。不必要にファイルを分割しない
+
+## Entities
+
+- `backend/src/entities/` 配下のファイルは `sea-orm-cli generate entity` で自動生成される。**手動編集禁止**
+- スキーマ変更後は `bash backend/scripts/generate-entities.sh` を実行して再生成し、差分をコミットすること
+- CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
+- カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること
 
 ## Warnings
 
