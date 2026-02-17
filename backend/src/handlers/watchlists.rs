@@ -1,18 +1,27 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DbErr, EntityTrait, FromQueryResult,
+    QueryFilter, QueryOrder, Set, SqlErr, Statement,
+};
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::entities::{instruments, watchlist_items, watchlists};
 use crate::error::AppError;
-use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest, Watchlist, WatchlistItem};
+use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest};
 
 /// ウォッチリストの存在を確認し、存在しない場合は 404 エラーを返す
-async fn ensure_watchlist_exists(db: &sqlx::PgPool, watchlist_id: Uuid) -> Result<(), AppError> {
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM watchlists WHERE id = $1)")
-        .bind(watchlist_id)
-        .fetch_one(db)
-        .await?;
+async fn ensure_watchlist_exists(
+    db: &sea_orm::DatabaseConnection,
+    watchlist_id: Uuid,
+) -> Result<(), AppError> {
+    let exists = watchlists::Entity::find_by_id(watchlist_id)
+        .one(db)
+        .await?
+        .is_some();
 
     if !exists {
         return Err(AppError::NotFound(format!(
@@ -26,31 +35,35 @@ async fn ensure_watchlist_exists(db: &sqlx::PgPool, watchlist_id: Uuid) -> Resul
 pub async fn create_watchlist(
     State(state): State<AppState>,
     Json(payload): Json<CreateWatchlistRequest>,
-) -> Result<(StatusCode, Json<Watchlist>), AppError> {
+) -> Result<(StatusCode, Json<watchlists::Model>), AppError> {
     let name = payload.name.trim().to_string();
     if name.is_empty() {
         return Err(AppError::Validation("name must not be empty".to_string()));
     }
 
     // sort_order をサブクエリで算出し、INSERT をアトミックに実行する
-    let watchlist = sqlx::query_as::<_, Watchlist>(
-        "INSERT INTO watchlists (id, name, sort_order) VALUES (gen_random_uuid(), $1, COALESCE((SELECT MAX(sort_order) FROM watchlists), -1) + 1) RETURNING id, name, sort_order, created_at",
-    )
-    .bind(&name)
-    .fetch_one(&state.db)
-    .await?;
+    let result = state
+        .db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO watchlists (id, name, sort_order) VALUES (gen_random_uuid(), $1, COALESCE((SELECT MAX(sort_order) FROM watchlists), -1) + 1) RETURNING id, name, sort_order, created_at",
+            [name.into()],
+        ))
+        .await?
+        .ok_or_else(|| AppError::Database(DbErr::Custom("INSERT RETURNING returned no rows".to_string())))?;
 
-    Ok((StatusCode::CREATED, Json(watchlist)))
+    let created = watchlists::Model::from_query_result(&result, "")?;
+
+    Ok((StatusCode::CREATED, Json(created)))
 }
 
 pub async fn list_watchlists(
     State(state): State<AppState>,
-) -> Result<Json<Vec<Watchlist>>, AppError> {
-    let watchlists = sqlx::query_as::<_, Watchlist>(
-        "SELECT id, name, sort_order, created_at FROM watchlists ORDER BY sort_order",
-    )
-    .fetch_all(&state.db)
-    .await?;
+) -> Result<Json<Vec<watchlists::Model>>, AppError> {
+    let watchlists = watchlists::Entity::find()
+        .order_by_asc(watchlists::Column::SortOrder)
+        .all(&state.db)
+        .await?;
 
     Ok(Json(watchlists))
 }
@@ -59,12 +72,9 @@ pub async fn delete_watchlist(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let result = sqlx::query("DELETE FROM watchlists WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
+    let result = watchlists::Entity::delete_by_id(id).exec(&state.db).await?;
 
-    if result.rows_affected() == 0 {
+    if result.rows_affected == 0 {
         return Err(AppError::NotFound(format!("watchlist {id} not found")));
     }
 
@@ -75,7 +85,7 @@ pub async fn add_watchlist_item(
     State(state): State<AppState>,
     Path(watchlist_id): Path<Uuid>,
     Json(payload): Json<AddWatchlistItemRequest>,
-) -> Result<(StatusCode, Json<WatchlistItem>), AppError> {
+) -> Result<(StatusCode, Json<watchlist_items::Model>), AppError> {
     let instrument_id = payload.instrument_id.trim().to_string();
     if instrument_id.is_empty() {
         return Err(AppError::Validation(
@@ -91,46 +101,60 @@ pub async fn add_watchlist_item(
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
     // 銘柄が存在しない場合は自動作成
-    sqlx::query(
-        "INSERT INTO instruments (id, name, market) VALUES ($1, $2, 'TSE') ON CONFLICT (id) DO NOTHING",
-    )
-    .bind(&instrument_id)
-    .bind(&name)
-    .execute(&state.db)
-    .await?;
+    let instrument_model = instruments::ActiveModel {
+        id: Set(instrument_id.clone()),
+        name: Set(name),
+        market: Set("TSE".to_string()),
+        sector: Set(None),
+    };
+
+    instruments::Entity::insert(instrument_model)
+        .on_conflict(
+            OnConflict::column(instruments::Column::Id)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(&state.db)
+        .await?;
 
     // sort_order をサブクエリで算出し、INSERT をアトミックに実行する
-    let item = sqlx::query_as::<_, WatchlistItem>(
-        "INSERT INTO watchlist_items (watchlist_id, instrument_id, sort_order) VALUES ($1, $2, COALESCE((SELECT MAX(sort_order) FROM watchlist_items WHERE watchlist_id = $1), -1) + 1) RETURNING watchlist_id, instrument_id, sort_order, added_at",
-    )
-    .bind(watchlist_id)
-    .bind(&instrument_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|e| match e {
-        sqlx::Error::Database(ref db_err) if db_err.is_unique_violation() => {
-            AppError::Validation(format!(
-                "instrument {instrument_id} is already in the watchlist"
-            ))
-        }
-        other => AppError::Database(other),
-    })?;
+    let item_result = state
+        .db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO watchlist_items (watchlist_id, instrument_id, sort_order) VALUES ($1, $2, COALESCE((SELECT MAX(sort_order) FROM watchlist_items WHERE watchlist_id = $1), -1) + 1) RETURNING watchlist_id, instrument_id, sort_order, added_at",
+            [watchlist_id.into(), instrument_id.clone().into()],
+        ))
+        .await;
 
-    Ok((StatusCode::CREATED, Json(item)))
+    match item_result {
+        Ok(Some(row)) => {
+            let item = watchlist_items::Model::from_query_result(&row, "")?;
+            Ok((StatusCode::CREATED, Json(item)))
+        }
+        Ok(None) => Err(AppError::Database(DbErr::Custom(
+            "INSERT RETURNING returned no rows".to_string(),
+        ))),
+        Err(e) if matches!(e.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) => {
+            Err(AppError::Validation(format!(
+                "instrument {instrument_id} is already in the watchlist"
+            )))
+        }
+        Err(e) => Err(AppError::Database(e)),
+    }
 }
 
 pub async fn list_watchlist_items(
     State(state): State<AppState>,
     Path(watchlist_id): Path<Uuid>,
-) -> Result<Json<Vec<WatchlistItem>>, AppError> {
+) -> Result<Json<Vec<watchlist_items::Model>>, AppError> {
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
-    let items = sqlx::query_as::<_, WatchlistItem>(
-        "SELECT watchlist_id, instrument_id, sort_order, added_at FROM watchlist_items WHERE watchlist_id = $1 ORDER BY sort_order",
-    )
-    .bind(watchlist_id)
-    .fetch_all(&state.db)
-    .await?;
+    let items = watchlist_items::Entity::find()
+        .filter(watchlist_items::Column::WatchlistId.eq(watchlist_id))
+        .order_by_asc(watchlist_items::Column::SortOrder)
+        .all(&state.db)
+        .await?;
 
     Ok(Json(items))
 }
@@ -139,14 +163,13 @@ pub async fn delete_watchlist_item(
     State(state): State<AppState>,
     Path((watchlist_id, instrument_id)): Path<(Uuid, String)>,
 ) -> Result<StatusCode, AppError> {
-    let result =
-        sqlx::query("DELETE FROM watchlist_items WHERE watchlist_id = $1 AND instrument_id = $2")
-            .bind(watchlist_id)
-            .bind(&instrument_id)
-            .execute(&state.db)
-            .await?;
+    let result = watchlist_items::Entity::delete_many()
+        .filter(watchlist_items::Column::WatchlistId.eq(watchlist_id))
+        .filter(watchlist_items::Column::InstrumentId.eq(&instrument_id))
+        .exec(&state.db)
+        .await?;
 
-    if result.rows_affected() == 0 {
+    if result.rows_affected == 0 {
         return Err(AppError::NotFound(format!(
             "item {instrument_id} not found in watchlist {watchlist_id}"
         )));
@@ -164,9 +187,9 @@ mod tests {
 
     // --- ウォッチリスト作成 ---
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn create_watchlist_returns_201(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let response = server
             .post("/api/watchlists")
@@ -180,9 +203,9 @@ mod tests {
         assert!(body["created_at"].is_string());
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn create_watchlist_with_empty_name_returns_400(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let response = server
             .post("/api/watchlists")
@@ -196,9 +219,9 @@ mod tests {
 
     // --- ウォッチリスト一覧 ---
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn list_watchlists_returns_empty_when_no_data(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let response = server.get("/api/watchlists").await;
 
@@ -207,9 +230,9 @@ mod tests {
         assert!(body.is_empty());
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn list_watchlists_contains_created_watchlist(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")
@@ -228,9 +251,9 @@ mod tests {
 
     // --- ウォッチリスト削除 ---
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn delete_watchlist_returns_204(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")
@@ -246,9 +269,9 @@ mod tests {
         response.assert_status(axum::http::StatusCode::NO_CONTENT);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn delete_watchlist_not_found_returns_404(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let response = server
             .delete("/api/watchlists/00000000-0000-0000-0000-000000000000")
@@ -259,9 +282,9 @@ mod tests {
 
     // --- ウォッチリスト項目追加 ---
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn add_watchlist_item_returns_201(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")
@@ -286,9 +309,9 @@ mod tests {
         assert_eq!(body["sort_order"], 0);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn add_watchlist_item_to_nonexistent_watchlist_returns_404(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let response = server
             .post("/api/watchlists/00000000-0000-0000-0000-000000000000/items")
@@ -301,9 +324,9 @@ mod tests {
         response.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn add_duplicate_watchlist_item_returns_400(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")
@@ -340,9 +363,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn add_watchlist_item_with_empty_instrument_id_returns_400(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")
@@ -366,9 +389,9 @@ mod tests {
 
     // --- ウォッチリスト項目一覧 ---
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn list_watchlist_items_returns_items(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")
@@ -405,9 +428,9 @@ mod tests {
         assert_eq!(body[1]["instrument_id"], "8316");
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn list_items_of_nonexistent_watchlist_returns_404(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let response = server
             .get("/api/watchlists/00000000-0000-0000-0000-000000000000/items")
@@ -418,9 +441,9 @@ mod tests {
 
     // --- ウォッチリスト項目削除 ---
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn delete_watchlist_item_returns_204(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")
@@ -453,9 +476,9 @@ mod tests {
         assert!(body.is_empty());
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = false)]
     async fn delete_nonexistent_watchlist_item_returns_404(pool: PgPool) {
-        let server = create_test_server(pool);
+        let server = create_test_server(pool).await;
 
         let create_response = server
             .post("/api/watchlists")

@@ -1,6 +1,7 @@
 [tools]
 lefthook = "2.1.0"
 "cargo:ast-grep" = "0.40.5"
+"cargo:sea-orm-cli" = "2.0.0-rc.32"
 
 # lefthook hooks
 actionlint = "1.7.10"

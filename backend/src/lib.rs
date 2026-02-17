@@ -1,5 +1,6 @@
 #[cfg(test)]
 pub(crate) mod data_provider;
+pub mod entities;
 pub mod error;
 pub mod handlers;
 pub mod models;
@@ -11,14 +12,14 @@ use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
-use sqlx::PgPool;
+use sea_orm::{ConnectionTrait, DatabaseConnection};
 
 use crate::error::AppError;
 use crate::handlers::watchlists;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: PgPool,
+    pub db: DatabaseConnection,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -46,7 +47,7 @@ async fn health_check(
     State(state): State<AppState>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     // DB 接続の正常性を確認
-    sqlx::query("SELECT 1").execute(&state.db).await?;
+    state.db.execute_unprepared("SELECT 1").await?;
 
     Ok((
         StatusCode::OK,

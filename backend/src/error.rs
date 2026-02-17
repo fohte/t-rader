@@ -4,10 +4,7 @@ use axum::response::{IntoResponse, Response};
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("database error: {0}")]
-    Database(#[from] sqlx::Error),
-
-    #[error("migration error: {0}")]
-    Migration(#[from] sqlx::migrate::MigrateError),
+    Database(#[from] sea_orm::DbErr),
 
     #[error("configuration error: {0}")]
     Config(String),
@@ -22,7 +19,7 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            AppError::Database(_) | AppError::Migration(_) | AppError::Config(_) => {
+            AppError::Database(_) | AppError::Config(_) => {
                 // 内部エラーの詳細はログに記録し、クライアントには汎用メッセージのみ返す
                 tracing::error!("{self}");
                 (

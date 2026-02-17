@@ -120,6 +120,62 @@ jobs:
         with:
           files: .github/workflows/test.yml
 
+  check-entity-sync:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: t_rader
+          POSTGRES_PASSWORD: t_rader
+          POSTGRES_DB: t_rader_entity_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t_rader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: rustup show
+
+      - uses: jdx/mise-action@v3
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |-
+            backend
+            backend/migration
+
+      - name: Run migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_entity_check
+        run: cargo run -p migration -- up
+
+      - name: Generate entities from database
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_entity_check
+        run: bash scripts/generate-entities.sh
+
+      - name: Check entity files are in sync
+        working-directory: backend
+        run: |
+          if ! git diff --exit-code src/entities; then
+            echo "::error::Entity files are out of sync with database schema."
+            echo "Run 'bash backend/scripts/generate-entities.sh' locally and commit the changes."
+            exit 1
+          fi
+
   unit-test-frontend:
     needs: detect-changes
     if: >-

@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 /// 株式市場の識別子
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Market {
     /// 東京証券取引所
-    #[sqlx(rename = "TSE")]
+    #[serde(rename = "TSE")]
     Tse,
 }
 
@@ -17,7 +17,7 @@ impl std::fmt::Display for Market {
 }
 
 /// 銘柄情報 (instruments テーブルに対応)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Instrument {
     /// 銘柄コード (例: "86970")
     pub id: String,

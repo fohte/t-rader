@@ -12,7 +12,11 @@ cd backend && cargo test
 cd backend && cargo clippy -- -D warnings
 
 # マイグレーション追加
-cd backend && cargo sqlx migrate add <name>
+cd backend/migration && cargo run -- generate <name>
+# 生成後、lib.rs の Migrator::migrations() にも登録すること
+
+# エンティティ再生成 (マイグレーション変更後に実行)
+DATABASE_URL=... bash backend/scripts/generate-entities.sh
 
 # フロントエンド
 cd frontend && nr dev             # Vite 開発サーバー
@@ -23,20 +27,31 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 
 ## Core files
 
-- `backend/migrations/` - sqlx マイグレーションファイル (起動時に自動実行)
-- `backend/src/main.rs` - Axum サーバーのエントリポイント、DB 接続プール初期化
+- `backend/migration/` - SeaORM マイグレーション crate (MigrationTrait で Rust ファイル、起動時に自動実行)
+- `backend/src/entities/` - SeaORM Entity 定義 (`sea-orm-cli generate entity` で自動生成、手動編集禁止)
+- `backend/scripts/generate-entities.sh` - エンティティ生成スクリプト (CLI オプション一元管理)
+- `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
 
 ## Migrations
 
-- マイグレーションファイルは手動で作成しない。必ず `cargo sqlx migrate add <name>` でファイルを生成してから SQL を書くこと
-- タイムスタンプは sqlx-cli が自動付与する。連番や手動の日時を使わない
+- マイグレーションファイルは手動で作成しない。必ず `cd backend/migration && cargo run -- generate <name>` でファイルを生成してから up/down を実装すること
+- ファイル名のタイムスタンプは CLI が自動付与する。`DeriveMigrationName` でファイル名からマイグレーション名を自動導出する
+- 生成後、`backend/migration/src/lib.rs` の `Migrator::migrations()` に登録すること
+- SeaQuery DSL でテーブル操作を記述するが、TimescaleDB 固有の SQL は `execute_unprepared` で raw SQL を使う
 - 初期スキーマなど論理的にまとまる変更は 1 ファイルにまとめる。不必要にファイルを分割しない
+
+## Entities
+
+- `backend/src/entities/` 配下のファイルは `sea-orm-cli generate entity` で自動生成される。**手動編集禁止**
+- スキーマ変更後は `bash backend/scripts/generate-entities.sh` を実行して再生成し、差分をコミットすること
+- CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
+- カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること
 
 ## Warnings
 
 - `backend/.env` は git 管理外。ローカル開発用の `DATABASE_URL` を含む
-- CI / Docker ビルドでは `SQLX_OFFLINE=true` が必要 (`sqlx::query!` マクロ使用時)
+- SeaORM は実行時に SQL を構築するため、Docker ビルド時の DB 接続は不要 (旧 `SQLX_OFFLINE` は廃止済み)
 - clippy で `unwrap_used`, `expect_used`, `panic` が deny。本番コードでは `?` と `map_err` を使うこと
 
 ## Storybook
