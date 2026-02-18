@@ -19,7 +19,7 @@
         "parameters": [
           {
             "name": "instrument_id",
-            "in": "path",
+            "in": "query",
             "description": "銘柄コード (必須)",
             "required": true,
             "schema": {
@@ -28,36 +28,30 @@
           },
           {
             "name": "timeframe",
-            "in": "path",
+            "in": "query",
             "description": "時間足 (デフォルト: \"1d\")",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "from",
-            "in": "path",
+            "in": "query",
             "description": "取得開始日 (YYYY-MM-DD, inclusive)",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
+              "type": "string",
               "format": "date"
             }
           },
           {
             "name": "to",
-            "in": "path",
+            "in": "query",
             "description": "取得終了日 (YYYY-MM-DD, inclusive)",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
+              "type": "string",
               "format": "date"
             }
           }
