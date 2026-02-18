@@ -7,6 +7,17 @@ remotes:
 
 pre-commit:
   commands:
+    dump-openapi:
+      priority: 1
+      glob: '*.rs'
+      root: 'backend/'
+      run: cargo run -- --dump-openapi 2>/dev/null > openapi.json.tmp && mv openapi.json.tmp openapi.json
+      stage_fixed: true
+    openapi-typescript:
+      priority: 2
+      glob: '*.rs'
+      run: cd frontend && bun run generate:api
+      stage_fixed: true
     ast-grep:
       glob: '*.rs'
       run: ast-grep scan {staged_files}
