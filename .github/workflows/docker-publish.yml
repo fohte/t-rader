@@ -117,4 +117,4 @@ jobs:
             -d '{"name": "ghcr.io/fohte/t-rader/frontend", "tag": "latest"}' \
             "$KEEL_WEBHOOK_URL"
         env:
-          KEEL_WEBHOOK_URL: ${{ vars.KEEL_WEBHOOK_URL }}
+          KEEL_WEBHOOK_URL: ${{ secrets.KEEL_WEBHOOK_URL }}
