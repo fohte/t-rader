@@ -1,12 +1,16 @@
 pub mod data_provider;
 pub mod entities;
 pub mod error;
+pub mod extractors;
 pub mod handlers;
+pub mod middleware;
 pub mod models;
 pub mod repositories;
 pub mod schemas;
 #[cfg(test)]
 pub mod testing;
+
+use std::sync::Arc;
 
 use axum::Json;
 use axum::Router;
@@ -20,12 +24,29 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
+use crate::data_provider::DataProviderKind;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{bars, watchlists};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseConnection,
+    /// 株価データプロバイダー (J-Quants API 等)
+    ///
+    /// `JQUANTS_API_KEY` 未設定時は None で起動する。
+    /// データ取得系のエンドポイントは利用時にエラーを返す。
+    pub data_provider: Option<Arc<DataProviderKind>>,
+}
+
+impl AppState {
+    /// DataProvider を取得する
+    ///
+    /// `JQUANTS_API_KEY` 未設定で起動した場合は 503 エラーを返す。
+    pub fn data_provider(&self) -> Result<&DataProviderKind, AppError> {
+        self.data_provider
+            .as_deref()
+            .ok_or_else(|| AppError::ServiceUnavailable("data provider is not configured".into()))
+    }
 }
 
 #[derive(OpenApi)]
@@ -43,6 +64,38 @@ pub struct AppState {
     ),
 )]
 struct ApiDoc;
+
+#[cfg(test)]
+mod app_state_tests {
+    use rstest::rstest;
+    use sea_orm::{DatabaseBackend, MockDatabase};
+
+    use super::*;
+
+    fn mock_db() -> sea_orm::DatabaseConnection {
+        MockDatabase::new(DatabaseBackend::Postgres).into_connection()
+    }
+
+    #[rstest]
+    fn test_data_provider_returns_provider_when_set() {
+        let client = crate::data_provider::jquants::JQuantsClient::new("test-key".into()).unwrap();
+        let state = AppState {
+            db: mock_db(),
+            data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
+        };
+        assert!(state.data_provider().is_ok());
+    }
+
+    #[rstest]
+    fn test_data_provider_returns_error_when_none() {
+        let state = AppState {
+            db: mock_db(),
+            data_provider: None,
+        };
+        let result = state.data_provider();
+        assert!(result.is_err());
+    }
+}
 
 /// ヘルスチェックレスポンス
 #[derive(Serialize, ToSchema)]
@@ -73,7 +126,9 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 pub fn create_router(state: AppState) -> Router {
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
-    router.merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
+    router
+        .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
+        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
 }
 
 /// ヘルスチェック

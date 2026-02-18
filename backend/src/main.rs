@@ -1,7 +1,10 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use backend::AppState;
 use backend::create_router;
+use backend::data_provider::DataProviderKind;
+use backend::data_provider::jquants::JQuantsClient;
 use backend::error::AppError;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
@@ -38,7 +41,20 @@ async fn main() -> Result<(), AppError> {
     Migrator::up(&db, None).await?;
     tracing::info!("database migrations completed");
 
-    let state = AppState { db };
+    // J-Quants API キーが設定されている場合のみ DataProvider を初期化する
+    let data_provider = match std::env::var("JQUANTS_API_KEY") {
+        Ok(api_key) if !api_key.is_empty() => {
+            let client = JQuantsClient::new(api_key)?;
+            tracing::info!("J-Quants DataProvider を初期化しました");
+            Some(Arc::new(DataProviderKind::JQuants(client)))
+        }
+        _ => {
+            tracing::warn!("JQUANTS_API_KEY が未設定のため、DataProvider なしで起動します");
+            None
+        }
+    };
+
+    let state = AppState { db, data_provider };
 
     let app = create_router(state);
 

@@ -5,6 +5,7 @@ mod mock;
 use chrono::NaiveDate;
 
 use crate::models::{Bar, Instrument};
+use jquants::JQuantsClient;
 
 /// データプロバイダーで発生しうるエラー
 #[derive(Debug, thiserror::Error)]
@@ -58,4 +59,32 @@ pub trait DataProvider: Send + Sync {
 
     /// 指定銘柄の情報を取得する
     async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError>;
+}
+
+/// DataProvider の具体的な実装を列挙する enum
+///
+/// async fn in trait は dyn 互換でないため、`Arc<dyn DataProvider>` の代わりに
+/// enum ディスパッチでポリモーフィズムを実現する。
+pub enum DataProviderKind {
+    JQuants(JQuantsClient),
+}
+
+impl DataProvider for DataProviderKind {
+    async fn fetch_daily_bars(
+        &self,
+        instrument_id: &str,
+        range: &DateRange,
+    ) -> Result<Vec<Bar>, DataProviderError> {
+        match self {
+            DataProviderKind::JQuants(client) => {
+                client.fetch_daily_bars(instrument_id, range).await
+            }
+        }
+    }
+
+    async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
+        match self {
+            DataProviderKind::JQuants(client) => client.fetch_instrument(instrument_id).await,
+        }
+    }
 }

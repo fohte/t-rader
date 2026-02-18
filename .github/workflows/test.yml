@@ -203,6 +203,80 @@ jobs:
         working-directory: frontend
         run: bun run test
 
+  api-fuzzing-backend:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: t_rader
+          POSTGRES_PASSWORD: t_rader
+          POSTGRES_DB: t_rader_api_fuzzing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t_rader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: rustup show
+
+      - uses: jdx/mise-action@v3
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Build backend
+        working-directory: backend
+        run: cargo build
+
+      - name: Run migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_api_fuzzing
+        run: cargo run -p migration -- up
+
+      - name: Start backend server
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_api_fuzzing
+          BACKEND_PORT: '3000'
+          RUST_LOG: info
+        run: |
+          ./target/debug/backend > /tmp/backend.log 2>&1 &
+          # サーバーが起動するまで待機
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "Backend server is ready"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::Backend server failed to start within 30 seconds"
+              cat /tmp/backend.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Run Schemathesis API fuzzing
+        uses: schemathesis/action@v2
+        with:
+          schema: http://localhost:3000/api-docs/openapi.json
+          checks: all
+          max-examples: 50
+          config-file: backend/schemathesis.toml
+          args: --workers 2
+
   unit-test-backend:
     needs: detect-changes
     if: >-

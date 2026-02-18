@@ -24,7 +24,10 @@ pub async fn create_test_db(pool: PgPool) -> DatabaseConnection {
 pub async fn create_test_server(pool: PgPool) -> TestServer {
     let db = create_test_db(pool).await;
 
-    let state = AppState { db };
+    let state = AppState {
+        db,
+        data_provider: None,
+    };
     let router = create_router(state);
     TestServer::new(router).expect("failed to create test server")
 }
