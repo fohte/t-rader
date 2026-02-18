@@ -45,6 +45,55 @@ impl PartialSchema for crate::entities::watchlists::Model {
     }
 }
 
+// --- bars::Model ---
+
+impl utoipa::ToSchema for crate::entities::bars::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Bar")
+    }
+}
+
+impl PartialSchema for crate::entities::bars::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property(
+                "instrument_id",
+                ObjectBuilder::new().schema_type(Type::String),
+            )
+            .required("instrument_id")
+            .property(
+                "timeframe",
+                ObjectBuilder::new()
+                    .schema_type(Type::String)
+                    .enum_values(Some(["1d"])),
+            )
+            .required("timeframe")
+            .property(
+                "timestamp",
+                ObjectBuilder::new()
+                    .schema_type(Type::String)
+                    .format(Some(SchemaFormat::KnownFormat(KnownFormat::DateTime))),
+            )
+            .required("timestamp")
+            .property("open", ObjectBuilder::new().schema_type(Type::String))
+            .required("open")
+            .property("high", ObjectBuilder::new().schema_type(Type::String))
+            .required("high")
+            .property("low", ObjectBuilder::new().schema_type(Type::String))
+            .required("low")
+            .property("close", ObjectBuilder::new().schema_type(Type::String))
+            .required("close")
+            .property(
+                "volume",
+                ObjectBuilder::new()
+                    .schema_type(Type::Integer)
+                    .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int64))),
+            )
+            .required("volume")
+            .into()
+    }
+}
+
 // --- watchlist_items::Model ---
 
 impl utoipa::ToSchema for crate::entities::watchlist_items::Model {
