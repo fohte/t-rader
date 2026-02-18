@@ -275,7 +275,7 @@ jobs:
           checks: all
           max-examples: 50
           config-file: backend/schemathesis.toml
-          args: --workers 2 --exclude-checks positive_data_acceptance,negative_data_rejection --suppress-health-check filter_too_much
+          args: --workers 2
 
   unit-test-backend:
     needs: detect-changes
