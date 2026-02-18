@@ -15,7 +15,8 @@ pre-commit:
     openapi-typescript:
       priority: 2
       glob: '*.rs'
-      run: cd frontend && bun run generate:api && git add src/lib/api/schema.gen.d.ts
+      root: 'frontend/'
+      run: bun run generate:api && git add src/lib/api/schema.gen.d.ts
     ast-grep:
       glob: '*.rs'
       run: ast-grep scan {staged_files}
