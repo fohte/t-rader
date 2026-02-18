@@ -11,8 +11,20 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::entities::{instruments, watchlist_items, watchlists};
 use crate::error::{AppError, ErrorResponse};
-use crate::extractors::JsonPath;
+use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest};
+
+/// 文字列に印字可能な非空白文字が含まれているかを検証する。
+/// OpenAPI スキーマの `pattern: "\S"` 制約をサーバー側で実施する。
+fn validate_non_blank(value: &str, field_name: &str) -> Result<String, AppError> {
+    let trimmed = value.trim().to_string();
+    if trimmed.is_empty() || !trimmed.chars().any(|c| !c.is_control()) {
+        return Err(AppError::Validation(format!(
+            "{field_name} must not be empty"
+        )));
+    }
+    Ok(trimmed)
+}
 
 /// ウォッチリストの存在を確認し、存在しない場合は 404 エラーを返す
 async fn ensure_watchlist_exists(
@@ -48,12 +60,9 @@ async fn ensure_watchlist_exists(
 )]
 pub async fn create_watchlist(
     State(state): State<AppState>,
-    Json(payload): Json<CreateWatchlistRequest>,
+    JsonBody(payload): JsonBody<CreateWatchlistRequest>,
 ) -> Result<(StatusCode, Json<watchlists::Model>), AppError> {
-    let name = payload.name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation("name must not be empty".to_string()));
-    }
+    let name = validate_non_blank(&payload.name, "name")?;
 
     // sort_order をサブクエリで算出し、INSERT をアトミックに実行する
     let result = state
@@ -140,7 +149,7 @@ pub async fn delete_watchlist(
 pub async fn add_watchlist_item(
     State(state): State<AppState>,
     JsonPath(watchlist_id): JsonPath<Uuid>,
-    Json(payload): Json<AddWatchlistItemRequest>,
+    JsonBody(payload): JsonBody<AddWatchlistItemRequest>,
 ) -> Result<(StatusCode, Json<watchlist_items::Model>), AppError> {
     let instrument_id = payload.instrument_id.trim().to_string();
     if instrument_id.is_empty() {
@@ -148,11 +157,17 @@ pub async fn add_watchlist_item(
             "instrument_id must not be empty".to_string(),
         ));
     }
-
-    let name = payload.name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation("name must not be empty".to_string()));
+    // 銘柄コードは英数字・ドット・ハイフン・アンダースコアのみ許可
+    if !instrument_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    {
+        return Err(AppError::Validation(
+            "instrument_id must contain only alphanumeric characters, dots, underscores, and hyphens".to_string(),
+        ));
     }
+
+    let name = validate_non_blank(&payload.name, "name")?;
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
     // 銘柄が存在しない場合は自動作成

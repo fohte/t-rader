@@ -415,7 +415,7 @@
             "type": "string",
             "description": "銘柄コード (例: \"7203\")",
             "minLength": 1,
-            "pattern": "\\S"
+            "pattern": "^[A-Za-z0-9._-]+$"
           },
           "name": {
             "type": "string",
@@ -423,7 +423,8 @@
             "minLength": 1,
             "pattern": "\\S"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateWatchlistRequest": {
         "type": "object",
@@ -437,7 +438,8 @@
             "minLength": 1,
             "pattern": "\\S"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "ErrorResponse": {
         "type": "object",
