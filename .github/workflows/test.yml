@@ -71,14 +71,6 @@ jobs:
         continue-on-error: true
         run: lefthook run pre-commit --all-files
 
-      - name: Regenerate openapi.json
-        working-directory: backend
-        run: cargo run -- --dump-openapi 2>/dev/null > openapi.json.tmp && mv openapi.json.tmp openapi.json
-
-      - name: Regenerate OpenAPI TypeScript types
-        working-directory: frontend
-        run: bun run generate:api
-
       # lefthook-config's formatters run `git add` after formatting, which stages the changes.
       # https://github.com/fohte/lefthook-config/blob/v0.1.7/base.yml
       # commit-action uses `git ls-files --modified` which only detects unstaged changes.
