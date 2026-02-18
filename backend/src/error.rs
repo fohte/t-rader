@@ -19,6 +19,9 @@ pub enum AppError {
     #[error("validation error: {0}")]
     Validation(String),
 
+    #[error("conflict: {0}")]
+    Conflict(String),
+
     #[error("data provider error: {0}")]
     DataProvider(#[from] DataProviderError),
 
@@ -46,6 +49,7 @@ impl IntoResponse for AppError {
             }
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
             AppError::DataProvider(e) => match e {
                 DataProviderError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),

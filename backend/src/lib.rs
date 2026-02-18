@@ -1,7 +1,9 @@
 pub mod data_provider;
 pub mod entities;
 pub mod error;
+pub mod extractors;
 pub mod handlers;
+pub mod middleware;
 pub mod models;
 pub mod schemas;
 #[cfg(test)]
@@ -121,7 +123,9 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 pub fn create_router(state: AppState) -> Router {
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
-    router.merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
+    router
+        .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
+        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
 }
 
 /// ヘルスチェック

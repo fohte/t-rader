@@ -110,6 +110,16 @@
               }
             }
           },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "内部サーバーエラー",
             "content": {
@@ -145,6 +155,16 @@
         "responses": {
           "204": {
             "description": "削除成功"
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "ウォッチリストが見つからない",
@@ -198,6 +218,16 @@
                   "items": {
                     "$ref": "#/components/schemas/WatchlistItem"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -283,6 +313,26 @@
               }
             }
           },
+          "409": {
+            "description": "銘柄が既にウォッチリストに存在する",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "内部サーバーエラー",
             "content": {
@@ -328,6 +378,16 @@
           "204": {
             "description": "削除成功"
           },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "銘柄が見つからない",
             "content": {
@@ -363,13 +423,18 @@
         "properties": {
           "instrument_id": {
             "type": "string",
-            "description": "銘柄コード (例: \"7203\")"
+            "description": "銘柄コード (例: \"7203\")",
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$"
           },
           "name": {
             "type": "string",
-            "description": "銘柄名 (例: \"トヨタ自動車\")"
+            "description": "銘柄名 (例: \"トヨタ自動車\")",
+            "minLength": 1,
+            "pattern": "\\S"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateWatchlistRequest": {
         "type": "object",
@@ -379,9 +444,12 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "ウォッチリスト名"
+            "description": "ウォッチリスト名",
+            "minLength": 1,
+            "pattern": "\\S"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "ErrorResponse": {
         "type": "object",

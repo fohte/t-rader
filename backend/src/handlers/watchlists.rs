@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
@@ -11,7 +11,20 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::entities::{instruments, watchlist_items, watchlists};
 use crate::error::{AppError, ErrorResponse};
+use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest};
+
+/// 文字列に印字可能な非空白文字が含まれているかを検証する。
+/// OpenAPI スキーマの `pattern: "\S"` 制約をサーバー側で実施する。
+fn validate_non_blank(value: &str, field_name: &str) -> Result<String, AppError> {
+    let trimmed = value.trim().to_string();
+    if trimmed.is_empty() || !trimmed.chars().any(|c| !c.is_control()) {
+        return Err(AppError::Validation(format!(
+            "{field_name} must not be empty"
+        )));
+    }
+    Ok(trimmed)
+}
 
 /// ウォッチリストの存在を確認し、存在しない場合は 404 エラーを返す
 async fn ensure_watchlist_exists(
@@ -41,17 +54,15 @@ async fn ensure_watchlist_exists(
     responses(
         (status = 201, description = "ウォッチリストを作成した", body = watchlists::Model),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
 )]
 pub async fn create_watchlist(
     State(state): State<AppState>,
-    Json(payload): Json<CreateWatchlistRequest>,
+    JsonBody(payload): JsonBody<CreateWatchlistRequest>,
 ) -> Result<(StatusCode, Json<watchlists::Model>), AppError> {
-    let name = payload.name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation("name must not be empty".to_string()));
-    }
+    let name = validate_non_blank(&payload.name, "name")?;
 
     // sort_order をサブクエリで算出し、INSERT をアトミックに実行する
     let result = state
@@ -100,13 +111,14 @@ pub async fn list_watchlists(
     ),
     responses(
         (status = 204, description = "削除成功"),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
 )]
 pub async fn delete_watchlist(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let result = watchlists::Entity::delete_by_id(id).exec(&state.db).await?;
 
@@ -130,13 +142,15 @@ pub async fn delete_watchlist(
         (status = 201, description = "銘柄を追加した", body = watchlist_items::Model),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
+        (status = 409, description = "銘柄が既にウォッチリストに存在する", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
 )]
 pub async fn add_watchlist_item(
     State(state): State<AppState>,
-    Path(watchlist_id): Path<Uuid>,
-    Json(payload): Json<AddWatchlistItemRequest>,
+    JsonPath(watchlist_id): JsonPath<Uuid>,
+    JsonBody(payload): JsonBody<AddWatchlistItemRequest>,
 ) -> Result<(StatusCode, Json<watchlist_items::Model>), AppError> {
     let instrument_id = payload.instrument_id.trim().to_string();
     if instrument_id.is_empty() {
@@ -144,12 +158,17 @@ pub async fn add_watchlist_item(
             "instrument_id must not be empty".to_string(),
         ));
     }
-
-    let name = payload.name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation("name must not be empty".to_string()));
+    // 銘柄コードは英数字・ドット・ハイフン・アンダースコアのみ許可
+    if !instrument_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    {
+        return Err(AppError::Validation(
+            "instrument_id must contain only alphanumeric characters, dots, underscores, and hyphens".to_string(),
+        ));
     }
 
+    let name = validate_non_blank(&payload.name, "name")?;
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
     // 銘柄が存在しない場合は自動作成
@@ -188,7 +207,7 @@ pub async fn add_watchlist_item(
             "INSERT RETURNING returned no rows".to_string(),
         ))),
         Err(e) if matches!(e.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) => {
-            Err(AppError::Validation(format!(
+            Err(AppError::Conflict(format!(
                 "instrument {instrument_id} is already in the watchlist"
             )))
         }
@@ -206,13 +225,14 @@ pub async fn add_watchlist_item(
     ),
     responses(
         (status = 200, description = "銘柄一覧", body = Vec<watchlist_items::Model>),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
 )]
 pub async fn list_watchlist_items(
     State(state): State<AppState>,
-    Path(watchlist_id): Path<Uuid>,
+    JsonPath(watchlist_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<watchlist_items::Model>>, AppError> {
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
@@ -236,13 +256,14 @@ pub async fn list_watchlist_items(
     ),
     responses(
         (status = 204, description = "削除成功"),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, description = "銘柄が見つからない", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
 )]
 pub async fn delete_watchlist_item(
     State(state): State<AppState>,
-    Path((watchlist_id, instrument_id)): Path<(Uuid, String)>,
+    JsonPath((watchlist_id, instrument_id)): JsonPath<(Uuid, String)>,
 ) -> Result<StatusCode, AppError> {
     let result = watchlist_items::Entity::delete_many()
         .filter(watchlist_items::Column::WatchlistId.eq(watchlist_id))
@@ -434,7 +455,7 @@ mod tests {
             }))
             .await;
 
-        response.assert_status(axum::http::StatusCode::BAD_REQUEST);
+        response.assert_status(axum::http::StatusCode::CONFLICT);
         let body: serde_json::Value = response.json();
         assert!(
             body["error"]

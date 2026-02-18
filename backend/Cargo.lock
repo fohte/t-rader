@@ -280,6 +280,7 @@ dependencies = [
  "axum-test",
  "chrono",
  "migration",
+ "percent-encoding",
  "reqwest",
  "rstest",
  "rust_decimal",
