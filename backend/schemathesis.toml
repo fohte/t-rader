@@ -11,3 +11,9 @@ allow-x00 = false
 # サーバーが正常応答を返し false positive になる。
 # ref: https://github.com/schemathesis/schemathesis/issues/2312
 negative_data_rejection.enabled = false
+
+# パスパラメータに含まれる UUID はランダム生成されるため、
+# 対応するリソースが存在せず 404 が返る。これはスキーマ準拠のデータが
+# 拒否されたのではなく、リソースが存在しないだけなので false positive になる。
+# stateful テストでは実際のリソース ID が使われるため正しく検証される。
+positive_data_acceptance.enabled = false
