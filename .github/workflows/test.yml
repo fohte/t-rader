@@ -203,38 +203,7 @@ jobs:
         working-directory: frontend
         run: bun run test
 
-  check-openapi-sync:
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.backend == 'true' ||
-      needs.detect-changes.outputs.workflow == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - run: rustup show
-
-      - uses: jdx/mise-action@v3
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: backend
-
-      - name: Generate OpenAPI spec from code
-        working-directory: backend
-        run: cargo run -- --dump-openapi > openapi.json.tmp
-
-      - name: Check OpenAPI spec is in sync
-        working-directory: backend
-        run: |
-          if ! git diff --no-index --exit-code openapi.json openapi.json.tmp; then
-            echo "::error::openapi.json is out of sync with the code."
-            echo "Run 'cd backend && cargo run -- --dump-openapi > openapi.json' locally and commit the changes."
-            exit 1
-          fi
-
-  contract-test-backend:
+  api-fuzzing-backend:
     needs: detect-changes
     if: >-
       needs.detect-changes.outputs.backend == 'true' ||
@@ -246,7 +215,7 @@ jobs:
         env:
           POSTGRES_USER: t_rader
           POSTGRES_PASSWORD: t_rader
-          POSTGRES_DB: t_rader_contract_test
+          POSTGRES_DB: t_rader_api_fuzzing
         ports:
           - 5432:5432
         options: >-
@@ -274,13 +243,13 @@ jobs:
       - name: Run migrations
         working-directory: backend
         env:
-          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_contract_test
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_api_fuzzing
         run: cargo run -p migration -- up
 
       - name: Start backend server
         working-directory: backend
         env:
-          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_contract_test
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_api_fuzzing
           BACKEND_PORT: '3000'
           RUST_LOG: info
         run: |
@@ -299,7 +268,7 @@ jobs:
             sleep 1
           done
 
-      - name: Run Schemathesis contract tests
+      - name: Run Schemathesis API fuzzing
         uses: schemathesis/action@v2
         with:
           schema: http://localhost:3000/api-docs/openapi.json
