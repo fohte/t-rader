@@ -53,7 +53,7 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - `.env` (git 管理) にローカル開発用のデフォルト値を定義している
 - `.env.local` (git 管理外) で個人の環境に合わせた上書きが可能
 - `.mise.toml` の `[env]` セクションで `.env` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)
-- `DATABASE_URL` のデフォルト値: `postgres://t_rader:t_rader@localhost:5432/t_rader_development`
+- `DATABASE_URL` のデフォルト値は `.env` ファイルに定義されている
 
 ## DB 接続
 
