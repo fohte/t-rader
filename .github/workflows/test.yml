@@ -203,6 +203,110 @@ jobs:
         working-directory: frontend
         run: bun run test
 
+  check-openapi-sync:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: rustup show
+
+      - uses: jdx/mise-action@v3
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Generate OpenAPI spec from code
+        working-directory: backend
+        run: cargo run -- --dump-openapi > openapi.json.tmp
+
+      - name: Check OpenAPI spec is in sync
+        working-directory: backend
+        run: |
+          if ! git diff --no-index --exit-code openapi.json openapi.json.tmp; then
+            echo "::error::openapi.json is out of sync with the code."
+            echo "Run 'cd backend && cargo run -- --dump-openapi > openapi.json' locally and commit the changes."
+            exit 1
+          fi
+
+  contract-test-backend:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: t_rader
+          POSTGRES_PASSWORD: t_rader
+          POSTGRES_DB: t_rader_contract_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t_rader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: rustup show
+
+      - uses: jdx/mise-action@v3
+
+      - name: Cache cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Build backend
+        working-directory: backend
+        run: cargo build
+
+      - name: Run migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_contract_test
+        run: cargo run -p migration -- up
+
+      - name: Start backend server
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_contract_test
+          BACKEND_PORT: '3000'
+          RUST_LOG: info
+        run: |
+          ./target/debug/backend > /tmp/backend.log 2>&1 &
+          # サーバーが起動するまで待機
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "Backend server is ready"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::Backend server failed to start within 30 seconds"
+              cat /tmp/backend.log || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Run Schemathesis contract tests
+        uses: schemathesis/action@v2
+        with:
+          schema: http://localhost:3000/api-docs/openapi.json
+          checks: all
+          max-examples: 50
+          args: --workers 2
+
   unit-test-backend:
     needs: detect-changes
     if: >-
