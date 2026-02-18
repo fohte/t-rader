@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::entities::{instruments, watchlist_items, watchlists};
 use crate::error::{AppError, ErrorResponse};
+use crate::extractors::JsonPath;
 use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest};
 
 /// ウォッチリストの存在を確認し、存在しない場合は 404 エラーを返す
@@ -108,7 +109,7 @@ pub async fn list_watchlists(
 )]
 pub async fn delete_watchlist(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let result = watchlists::Entity::delete_by_id(id).exec(&state.db).await?;
 
@@ -138,7 +139,7 @@ pub async fn delete_watchlist(
 )]
 pub async fn add_watchlist_item(
     State(state): State<AppState>,
-    Path(watchlist_id): Path<Uuid>,
+    JsonPath(watchlist_id): JsonPath<Uuid>,
     Json(payload): Json<AddWatchlistItemRequest>,
 ) -> Result<(StatusCode, Json<watchlist_items::Model>), AppError> {
     let instrument_id = payload.instrument_id.trim().to_string();
@@ -215,7 +216,7 @@ pub async fn add_watchlist_item(
 )]
 pub async fn list_watchlist_items(
     State(state): State<AppState>,
-    Path(watchlist_id): Path<Uuid>,
+    JsonPath(watchlist_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<watchlist_items::Model>>, AppError> {
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
@@ -246,7 +247,7 @@ pub async fn list_watchlist_items(
 )]
 pub async fn delete_watchlist_item(
     State(state): State<AppState>,
-    Path((watchlist_id, instrument_id)): Path<(Uuid, String)>,
+    JsonPath((watchlist_id, instrument_id)): JsonPath<(Uuid, String)>,
 ) -> Result<StatusCode, AppError> {
     let result = watchlist_items::Entity::delete_many()
         .filter(watchlist_items::Column::WatchlistId.eq(watchlist_id))

@@ -414,12 +414,14 @@
           "instrument_id": {
             "type": "string",
             "description": "銘柄コード (例: \"7203\")",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "\\S"
           },
           "name": {
             "type": "string",
             "description": "銘柄名 (例: \"トヨタ自動車\")",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "\\S"
           }
         }
       },
@@ -432,7 +434,8 @@
           "name": {
             "type": "string",
             "description": "ウォッチリスト名",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "\\S"
           }
         }
       },

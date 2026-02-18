@@ -1,6 +1,7 @@
 pub mod data_provider;
 pub mod entities;
 pub mod error;
+pub mod extractors;
 pub mod handlers;
 pub mod middleware;
 pub mod models;
