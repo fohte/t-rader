@@ -274,7 +274,8 @@ jobs:
           schema: http://localhost:3000/api-docs/openapi.json
           checks: all
           max-examples: 50
-          args: --workers 2 --config-file backend/schemathesis.toml
+          config-file: backend/schemathesis.toml
+          args: --workers 2
 
   unit-test-backend:
     needs: detect-changes
