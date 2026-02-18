@@ -37,6 +37,7 @@ utoipa = { version = "=5.4.0", features = [
 ] }
 utoipa-axum = "=0.2.0"
 utoipa-swagger-ui = { version = "=9.0.2", features = ["axum"] }
+percent-encoding = "=2.3.2"
 uuid = { version = "=1.21.0", features = ["serde"] }
 
 [dev-dependencies]

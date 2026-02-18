@@ -17,13 +17,29 @@ fn json_contains_null_byte(value: &serde_json::Value) -> bool {
     }
 }
 
-/// リクエストボディに null バイト (\0) が含まれている場合に 400 を返すミドルウェア。
+/// リクエストに null バイト (\0) が含まれている場合に 400 を返すミドルウェア。
 /// PostgreSQL の TEXT/VARCHAR カラムは null バイトを受け付けないため、
 /// ハンドラに到達する前に一括で拒否する。
 ///
-/// バイトレベルの 0x00 チェックに加えて、JSON ボディの場合はデシリアライズ後の
-/// 文字列値も検査する (JSON エスケープ `\u0000` はバイトレベルでは検出できないため)。
+/// 検査対象:
+/// - URL パス (パーセントデコード後の %00 を検出)
+/// - リクエストボディ (バイトレベルの 0x00 + JSON エスケープ `\u0000`)
 pub async fn reject_null_bytes(request: Request, next: Next) -> Response {
+    // URL パスにパーセントエンコードされた null バイト (%00) が含まれていないか検査する。
+    // Axum がパスパラメータをデコードする前にここで拒否することで、
+    // DB クエリに null バイトが到達するのを防ぐ。
+    if let Ok(decoded) = percent_encoding::percent_decode_str(request.uri().path()).decode_utf8()
+        && decoded.contains('\0')
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(ErrorResponse {
+                error: "request path must not contain null bytes".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     let (parts, body) = request.into_parts();
 
     let bytes = match axum::body::to_bytes(body, 1024 * 1024).await {
