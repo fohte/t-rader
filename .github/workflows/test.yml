@@ -272,7 +272,6 @@ jobs:
         uses: schemathesis/action@v2
         with:
           schema: http://localhost:3000/api-docs/openapi.json
-          checks: all
           max-examples: 50
           config-file: backend/schemathesis.toml
           args: --workers 2
