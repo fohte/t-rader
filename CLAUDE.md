@@ -7,7 +7,7 @@
 docker compose -f docker-compose.infra.yml up -d
 
 # バックエンド (ローカル)
-cd backend && cargo run    # DATABASE_URL は backend/.env から読み込まれる
+cd backend && cargo run
 cd backend && cargo test
 cd backend && cargo clippy -- -D warnings
 
@@ -48,15 +48,17 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
 - カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること
 
+## 環境変数
+
+- `.env` (git 管理) にローカル開発用のデフォルト値を定義している
+- `.env.local` (git 管理外) で個人の環境に合わせた上書きが可能
+- `.mise.toml` の `[env]` セクションで `.env` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)
+- `DATABASE_URL` のデフォルト値: `postgres://t_rader:t_rader@localhost:5432/t_rader_development`
+
 ## DB 接続
 
 - DB は `docker compose -f docker-compose.infra.yml up -d` で起動する (全 worktree 共有)
-- `backend/.env` は git 管理外かつ worktree には存在しない。テスト実行時は環境変数を直接指定すること
-- デフォルトの DATABASE_URL: `postgres://t_rader:t_rader@localhost:5432/t_rader_development`
-- テスト実行時に `DATABASE_URL` が未設定だと `#[sqlx::test]` が panic する。環境変数を直接指定して実行すること:
-  ```bash
-  DATABASE_URL=postgres://t_rader:t_rader@localhost:5432/t_rader_development cargo test
-  ```
+- `DATABASE_URL` は mise 経由で `.env` から自動的に読み込まれるため、手動設定は不要
 
 ## Warnings
 
