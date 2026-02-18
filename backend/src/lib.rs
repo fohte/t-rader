@@ -3,6 +3,7 @@ pub mod entities;
 pub mod error;
 pub mod handlers;
 pub mod models;
+pub mod repositories;
 pub mod schemas;
 #[cfg(test)]
 pub mod testing;
@@ -20,7 +21,7 @@ use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::error::{AppError, ErrorResponse};
-use crate::handlers::watchlists;
+use crate::handlers::{bars, watchlists};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,6 +32,7 @@ pub struct AppState {
 #[openapi(
     tags(
         (name = "health", description = "ヘルスチェック"),
+        (name = "bars", description = "バーデータ (OHLCV)"),
         (name = "watchlists", description = "ウォッチリスト管理"),
         (name = "watchlist_items", description = "ウォッチリスト内の銘柄管理"),
     ),
@@ -59,6 +61,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(watchlists::add_watchlist_item))
         .routes(routes!(watchlists::list_watchlist_items))
         .routes(routes!(watchlists::delete_watchlist_item))
+        .routes(routes!(bars::list_bars))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)

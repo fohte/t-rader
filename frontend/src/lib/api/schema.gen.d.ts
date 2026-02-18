@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  '/api/bars': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** バーデータを取得する */
+    get: operations['list_bars']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/health': {
     parameters: {
       query?: never
@@ -101,6 +118,19 @@ export interface components {
       /** @description 銘柄名 (例: "トヨタ自動車") */
       name: string
     }
+    Bar: {
+      close: string
+      high: string
+      instrument_id: string
+      low: string
+      open: string
+      /** @enum {string} */
+      timeframe: '1d'
+      /** Format: date-time */
+      timestamp: string
+      /** Format: int64 */
+      volume: number
+    }
     CreateWatchlistRequest: {
       /** @description ウォッチリスト名 */
       name: string
@@ -142,6 +172,53 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
+  list_bars: {
+    parameters: {
+      query: {
+        /** @description 銘柄コード (必須) */
+        instrument_id: string
+        /** @description 時間足 (デフォルト: "1d") */
+        timeframe?: string
+        /** @description 取得開始日 (YYYY-MM-DD, inclusive) */
+        from?: string | null
+        /** @description 取得終了日 (YYYY-MM-DD, inclusive) */
+        to?: string | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description バーデータ一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Bar'][]
+        }
+      }
+      /** @description バリデーションエラー */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   health_check: {
     parameters: {
       query?: never
