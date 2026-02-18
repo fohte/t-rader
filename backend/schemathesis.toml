@@ -5,9 +5,6 @@
 allow-x00 = false
 
 [checks]
-# 全チェックを有効化した上で、false positive になるチェックのみ個別に無効化する。
-enabled = "all"
-
 # GET/DELETE エンドポイントのパスパラメータは URL 文字列にシリアライズされるため、
 # Schemathesis が型をミューテートしても有効な文字列として送信される。
 # stateful テストで作成されたリソースの UUID が再利用されると、

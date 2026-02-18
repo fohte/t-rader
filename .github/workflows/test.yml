@@ -272,9 +272,10 @@ jobs:
         uses: schemathesis/action@v2
         with:
           schema: http://localhost:3000/api-docs/openapi.json
+          checks: all
           max-examples: 50
           config-file: backend/schemathesis.toml
-          args: --workers 2
+          args: --workers 2 --exclude-checks positive_data_acceptance,negative_data_rejection
 
   unit-test-backend:
     needs: detect-changes
