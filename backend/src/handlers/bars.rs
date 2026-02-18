@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use chrono::NaiveDate;
 use serde::Deserialize;
 use utoipa::IntoParams;
@@ -7,6 +7,7 @@ use utoipa::IntoParams;
 use crate::AppState;
 use crate::entities::bars;
 use crate::error::{AppError, ErrorResponse};
+use crate::extractors::JsonQuery;
 use crate::repositories;
 
 /// バーデータ取得のクエリパラメータ
@@ -41,7 +42,7 @@ fn default_timeframe() -> String {
 )]
 pub async fn list_bars(
     State(state): State<AppState>,
-    Query(params): Query<BarsQueryParams>,
+    JsonQuery(params): JsonQuery<BarsQueryParams>,
 ) -> Result<Json<Vec<bars::Model>>, AppError> {
     if params.instrument_id.trim().is_empty() {
         return Err(AppError::Validation(
