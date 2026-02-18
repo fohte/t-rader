@@ -15,7 +15,10 @@ pub async fn create_test_server(pool: PgPool) -> TestServer {
         .await
         .expect("failed to run migrations");
 
-    let state = AppState { db };
+    let state = AppState {
+        db,
+        data_provider: None,
+    };
     let router = create_router(state);
     TestServer::new(router).expect("failed to create test server")
 }

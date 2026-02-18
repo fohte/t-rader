@@ -43,6 +43,8 @@ uuid = { version = "=1.21.0", features = ["serde"] }
 wiremock = "=0.6.5"
 axum-test = "=17.3.0"
 rstest = "=0.26.1"
+sea-orm = { version = "=2.0.0-rc.32", features = ["mock"] }
+tokio = { version = "=1.49.0", features = ["test-util"] }
 sqlx = { version = "=0.8.6", features = [
     "runtime-tokio",
     "tls-native-tls",

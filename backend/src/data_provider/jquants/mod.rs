@@ -4,9 +4,12 @@ mod response;
 #[cfg(test)]
 mod tests;
 
+use std::collections::VecDeque;
+
 use chrono::{NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
+use tokio::sync::Mutex;
 
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
@@ -19,9 +22,70 @@ const INITIAL_BACKOFF_MS: u64 = 500;
 /// API サーバーのバグで同じ pagination_key が返り続けた場合の安全策
 const MAX_PAGES: u32 = 100;
 
+/// レートリミットのウィンドウ幅 (60 秒)
+const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+/// ウィンドウ内の最大リクエスト数 (J-Quants 無料プラン: 1 分間に 5 リクエスト)
+const RATE_LIMIT_MAX_REQUESTS: usize = 5;
+
+/// スライディングウィンドウ方式のレートリミッター
+///
+/// 直近 60 秒間のリクエスト送信時刻を記録し、上限に達している場合は
+/// 最も古いリクエストがウィンドウから外れるまで待機する。
+struct RateLimiter {
+    /// 直近のリクエスト送信時刻 (古い順)
+    timestamps: Mutex<VecDeque<tokio::time::Instant>>,
+}
+
+impl RateLimiter {
+    fn new() -> Self {
+        Self {
+            timestamps: Mutex::new(VecDeque::with_capacity(RATE_LIMIT_MAX_REQUESTS)),
+        }
+    }
+
+    /// リクエスト送信の許可を取得する
+    ///
+    /// ウィンドウ内のリクエスト数が上限に達している場合、最も古いリクエストが
+    /// ウィンドウから外れるまで待機する。
+    async fn acquire(&self) {
+        loop {
+            let now = tokio::time::Instant::now();
+
+            let mut timestamps = self.timestamps.lock().await;
+
+            // ウィンドウ外のタイムスタンプを削除
+            while let Some(&oldest) = timestamps.front() {
+                if now.duration_since(oldest) >= RATE_LIMIT_WINDOW {
+                    timestamps.pop_front();
+                } else {
+                    break;
+                }
+            }
+
+            if timestamps.len() < RATE_LIMIT_MAX_REQUESTS {
+                // 枠がある: タイムスタンプを記録して通過
+                timestamps.push_back(now);
+                return;
+            }
+
+            // 枠がない: 最も古いリクエストがウィンドウから外れるまで待つ
+            let oldest = timestamps[0];
+            let sleep_target = oldest + RATE_LIMIT_WINDOW;
+            drop(timestamps); // ロックを解放してから sleep
+
+            tracing::info!(
+                wait_ms = sleep_target.saturating_duration_since(now).as_millis() as u64,
+                "レートリミットに到達、待機中"
+            );
+            tokio::time::sleep_until(sleep_target).await;
+        }
+    }
+}
+
 /// J-Quants API V2 クライアント
 ///
 /// API Key 認証方式で J-Quants API V2 にアクセスする。
+/// アプリケーションレベルのレートリミッター (1 分間 5 リクエスト) を内蔵し、
 /// 429 (Rate Limited) と 5xx に対して指数バックオフでリトライする。
 ///
 /// Debug は意図的に derive しない (api_key の漏洩防止)
@@ -29,6 +93,7 @@ pub struct JQuantsClient {
     http: reqwest::Client,
     base_url: String,
     api_key: String,
+    rate_limiter: RateLimiter,
 }
 
 impl JQuantsClient {
@@ -42,6 +107,7 @@ impl JQuantsClient {
             http,
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key,
+            rate_limiter: RateLimiter::new(),
         })
     }
 
@@ -57,17 +123,22 @@ impl JQuantsClient {
             http,
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
+            rate_limiter: RateLimiter::new(),
         })
     }
 
     /// 指数バックオフ付き GET リクエスト
     ///
-    /// 429 と 5xx に対してリトライする。それ以外のエラーは即座に返す。
+    /// レートリミッターで送信間隔を制御した上で、429 と 5xx に対してリトライする。
+    /// それ以外のエラーは即座に返す。
     async fn get_with_retry(&self, url: &Url) -> Result<reqwest::Response, DataProviderError> {
         let mut last_error = None;
         let url_str = url.as_str();
 
         for attempt in 0..=MAX_RETRIES {
+            // 各リクエスト (リトライ含む) の前にレートリミッターの許可を取得
+            self.rate_limiter.acquire().await;
+
             if attempt > 0 {
                 let backoff =
                     std::time::Duration::from_millis(INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1));
