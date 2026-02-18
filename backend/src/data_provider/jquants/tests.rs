@@ -298,3 +298,91 @@ mod error_handling {
         Ok(())
     }
 }
+
+// === レートリミッター ===
+
+mod rate_limiter {
+    use super::super::{RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW, RateLimiter};
+    use rstest::rstest;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_allows_requests_within_limit() {
+        let limiter = RateLimiter::new();
+
+        // 上限以内のリクエストは即座に通過する
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            limiter.acquire().await;
+        }
+    }
+
+    #[rstest]
+    #[tokio::test(start_paused = true)]
+    async fn test_blocks_when_limit_exceeded() {
+        let limiter = RateLimiter::new();
+
+        // 上限まで消費
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            limiter.acquire().await;
+        }
+
+        // 次の acquire は待機するはず
+        let acquire_future = limiter.acquire();
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
+        assert!(result.is_err(), "上限超過時に acquire がブロックされるべき");
+
+        // ウィンドウを経過させると通過する
+        tokio::time::advance(RATE_LIMIT_WINDOW).await;
+        let acquire_future = limiter.acquire();
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
+        assert!(result.is_ok(), "ウィンドウ経過後に acquire が通過するべき");
+    }
+}
+
+// === DataProviderKind ===
+
+mod data_provider_kind {
+    use super::*;
+    use crate::data_provider::DataProviderKind;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_delegates_fetch_instrument_to_jquants() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.instrument()
+            .code("72030")
+            .company_name("トヨタ自動車")
+            .sector_name(Some("輸送用機器"))
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let kind = DataProviderKind::JQuants(client);
+        let instrument = kind.fetch_instrument("72030").await?;
+
+        assert_eq!(instrument.id, "72030");
+        assert_eq!(instrument.name, "トヨタ自動車");
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_delegates_fetch_daily_bars_to_jquants() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.daily_bars()
+            .code("86970")
+            .bars(vec![sample_bar("2025-01-06", 105.0)])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let kind = DataProviderKind::JQuants(client);
+        let bars = kind.fetch_daily_bars("86970", &default_range()).await?;
+
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].close, dec(105.0));
+        Ok(())
+    }
+}

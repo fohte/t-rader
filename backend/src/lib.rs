@@ -61,6 +61,38 @@ impl AppState {
 )]
 struct ApiDoc;
 
+#[cfg(test)]
+mod app_state_tests {
+    use rstest::rstest;
+    use sea_orm::{DatabaseBackend, MockDatabase};
+
+    use super::*;
+
+    fn mock_db() -> sea_orm::DatabaseConnection {
+        MockDatabase::new(DatabaseBackend::Postgres).into_connection()
+    }
+
+    #[rstest]
+    fn test_data_provider_returns_provider_when_set() {
+        let client = crate::data_provider::jquants::JQuantsClient::new("test-key".into()).unwrap();
+        let state = AppState {
+            db: mock_db(),
+            data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
+        };
+        assert!(state.data_provider().is_ok());
+    }
+
+    #[rstest]
+    fn test_data_provider_returns_error_when_none() {
+        let state = AppState {
+            db: mock_db(),
+            data_provider: None,
+        };
+        let result = state.data_provider();
+        assert!(result.is_err());
+    }
+}
+
 /// ヘルスチェックレスポンス
 #[derive(Serialize, ToSchema)]
 struct HealthResponse {

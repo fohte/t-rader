@@ -71,3 +71,16 @@ impl IntoResponse for AppError {
         (status, axum::Json(body)).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    fn test_service_unavailable_returns_503() {
+        let error = AppError::ServiceUnavailable("data provider is not configured".into());
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+}
