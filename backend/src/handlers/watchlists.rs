@@ -41,6 +41,7 @@ async fn ensure_watchlist_exists(
     responses(
         (status = 201, description = "ウォッチリストを作成した", body = watchlists::Model),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
 )]
@@ -100,6 +101,7 @@ pub async fn list_watchlists(
     ),
     responses(
         (status = 204, description = "削除成功"),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
@@ -130,6 +132,7 @@ pub async fn delete_watchlist(
         (status = 201, description = "銘柄を追加した", body = watchlist_items::Model),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
 )]
@@ -149,7 +152,6 @@ pub async fn add_watchlist_item(
     if name.is_empty() {
         return Err(AppError::Validation("name must not be empty".to_string()));
     }
-
     ensure_watchlist_exists(&state.db, watchlist_id).await?;
 
     // 銘柄が存在しない場合は自動作成
@@ -206,6 +208,7 @@ pub async fn add_watchlist_item(
     ),
     responses(
         (status = 200, description = "銘柄一覧", body = Vec<watchlist_items::Model>),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
@@ -236,6 +239,7 @@ pub async fn list_watchlist_items(
     ),
     responses(
         (status = 204, description = "削除成功"),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, description = "銘柄が見つからない", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
