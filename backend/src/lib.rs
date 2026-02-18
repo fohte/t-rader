@@ -7,6 +7,8 @@ pub mod schemas;
 #[cfg(test)]
 pub mod testing;
 
+use std::sync::Arc;
+
 use axum::Json;
 use axum::Router;
 use axum::extract::State;
@@ -19,12 +21,29 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
+use crate::data_provider::DataProviderKind;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::watchlists;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseConnection,
+    /// 株価データプロバイダー (J-Quants API 等)
+    ///
+    /// `JQUANTS_API_KEY` 未設定時は None で起動する。
+    /// データ取得系のエンドポイントは利用時にエラーを返す。
+    pub data_provider: Option<Arc<DataProviderKind>>,
+}
+
+impl AppState {
+    /// DataProvider を取得する
+    ///
+    /// `JQUANTS_API_KEY` 未設定で起動した場合は 503 エラーを返す。
+    pub fn data_provider(&self) -> Result<&DataProviderKind, AppError> {
+        self.data_provider
+            .as_deref()
+            .ok_or_else(|| AppError::ServiceUnavailable("data provider is not configured".into()))
+    }
 }
 
 #[derive(OpenApi)]

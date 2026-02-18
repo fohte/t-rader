@@ -21,6 +21,9 @@ pub enum AppError {
 
     #[error("data provider error: {0}")]
     DataProvider(#[from] DataProviderError),
+
+    #[error("service unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 /// API エラーレスポンスの JSON 構造
@@ -43,6 +46,7 @@ impl IntoResponse for AppError {
             }
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
             AppError::DataProvider(e) => match e {
                 DataProviderError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
                 DataProviderError::RateLimited { .. } => {
