@@ -24,6 +24,9 @@ pub enum AppError {
 
     #[error("data provider error: {0}")]
     DataProvider(#[from] DataProviderError),
+
+    #[error("service unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 /// API エラーレスポンスの JSON 構造
@@ -47,6 +50,7 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
+            AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
             AppError::DataProvider(e) => match e {
                 DataProviderError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
                 DataProviderError::RateLimited { .. } => {
@@ -69,5 +73,18 @@ impl IntoResponse for AppError {
         let body = ErrorResponse { error: message };
 
         (status, axum::Json(body)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    fn test_service_unavailable_returns_503() {
+        let error = AppError::ServiceUnavailable("data provider is not configured".into());
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
