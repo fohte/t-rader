@@ -12,6 +12,7 @@ use crate::repositories;
 
 /// バーデータ取得のクエリパラメータ
 #[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct BarsQueryParams {
     /// 銘柄コード (必須)
     pub instrument_id: String,
@@ -166,21 +167,22 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn list_bars_without_instrument_id_returns_400(pool: PgPool) {
+    async fn list_bars_with_invalid_params_returns_400(pool: PgPool) {
         let server = create_test_server(pool).await;
 
-        let response = server.get("/api/bars?instrument_id=").await;
-        response.assert_status(StatusCode::BAD_REQUEST);
-    }
+        let cases = [
+            ("empty_instrument_id", "?instrument_id="),
+            ("invalid_timeframe", "?instrument_id=7203&timeframe=5m"),
+        ];
 
-    #[sqlx::test(migrations = false)]
-    async fn list_bars_with_invalid_timeframe_returns_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
-
-        let response = server
-            .get("/api/bars?instrument_id=7203&timeframe=5m")
-            .await;
-        response.assert_status(StatusCode::BAD_REQUEST);
+        for (name, query) in cases {
+            let response = server.get(&format!("/api/bars{query}")).await;
+            response.assert_status(StatusCode::BAD_REQUEST);
+            assert!(
+                response.text().contains("error"),
+                "case '{name}' should return JSON error body"
+            );
+        }
     }
 
     #[sqlx::test(migrations = false)]
@@ -227,5 +229,7 @@ mod tests {
 
         let body: Vec<serde_json::Value> = response.json();
         assert_eq!(body.len(), 1);
+        assert_eq!(body[0]["instrument_id"], "7203");
+        assert_eq!(body[0]["close"], "105");
     }
 }
