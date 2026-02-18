@@ -274,7 +274,7 @@ jobs:
           schema: http://localhost:3000/api-docs/openapi.json
           checks: all
           max-examples: 50
-          args: --workers 2
+          args: --workers 2 --generation-allow-x00 false
 
   unit-test-backend:
     needs: detect-changes

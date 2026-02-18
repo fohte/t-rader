@@ -392,6 +392,15 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description 銘柄が既にウォッチリストに存在する */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       /** @description リクエストボディのパースに失敗 */
       422: {
         headers: {

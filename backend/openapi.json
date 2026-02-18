@@ -313,6 +313,16 @@
               }
             }
           },
+          "409": {
+            "description": "銘柄が既にウォッチリストに存在する",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "リクエストボディのパースに失敗",
             "content": {

@@ -142,6 +142,7 @@ pub async fn delete_watchlist(
         (status = 201, description = "銘柄を追加した", body = watchlist_items::Model),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
+        (status = 409, description = "銘柄が既にウォッチリストに存在する", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
@@ -206,7 +207,7 @@ pub async fn add_watchlist_item(
             "INSERT RETURNING returned no rows".to_string(),
         ))),
         Err(e) if matches!(e.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) => {
-            Err(AppError::Validation(format!(
+            Err(AppError::Conflict(format!(
                 "instrument {instrument_id} is already in the watchlist"
             )))
         }
@@ -454,7 +455,7 @@ mod tests {
             }))
             .await;
 
-        response.assert_status(axum::http::StatusCode::BAD_REQUEST);
+        response.assert_status(axum::http::StatusCode::CONFLICT);
         let body: serde_json::Value = response.json();
         assert!(
             body["error"]
