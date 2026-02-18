@@ -9,6 +9,90 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/bars": {
+      "get": {
+        "tags": [
+          "bars"
+        ],
+        "summary": "バーデータを取得する",
+        "operationId": "list_bars",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "description": "銘柄コード (必須)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timeframe",
+            "in": "query",
+            "description": "時間足 (デフォルト: \"1d\")",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "取得開始日 (YYYY-MM-DD, inclusive)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "取得終了日 (YYYY-MM-DD, inclusive)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "バーデータ一覧",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Bar"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "バリデーションエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部サーバーエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -436,6 +520,50 @@
         },
         "additionalProperties": false
       },
+      "Bar": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "timeframe",
+          "timestamp",
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume"
+        ],
+        "properties": {
+          "close": {
+            "type": "string"
+          },
+          "high": {
+            "type": "string"
+          },
+          "instrument_id": {
+            "type": "string"
+          },
+          "low": {
+            "type": "string"
+          },
+          "open": {
+            "type": "string"
+          },
+          "timeframe": {
+            "type": "string",
+            "enum": [
+              "1d"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "volume": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "CreateWatchlistRequest": {
         "type": "object",
         "required": [
@@ -535,6 +663,10 @@
     {
       "name": "health",
       "description": "ヘルスチェック"
+    },
+    {
+      "name": "bars",
+      "description": "バーデータ (OHLCV)"
     },
     {
       "name": "watchlists",

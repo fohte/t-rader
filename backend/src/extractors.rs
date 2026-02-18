@@ -1,5 +1,5 @@
 use axum::extract::FromRequestParts;
-use axum::extract::rejection::{JsonRejection, PathRejection};
+use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
 use serde::de::DeserializeOwned;
@@ -71,5 +71,39 @@ where
             .await
             .map(|axum::Json(v)| JsonBody(v))
             .map_err(JsonBodyRejection)
+    }
+}
+
+/// Axum の `Query` extractor のラッパー。
+/// クエリパラメータのデシリアライズに失敗した場合に、`text/plain` ではなく
+/// `application/json` でエラーレスポンスを返す。
+pub struct JsonQuery<T>(pub T);
+
+/// `JsonQuery` のパース失敗時に返す JSON エラー
+pub struct JsonQueryRejection(QueryRejection);
+
+impl IntoResponse for JsonQueryRejection {
+    fn into_response(self) -> Response {
+        let status = self.0.status();
+        let body = ErrorResponse {
+            error: self.0.body_text(),
+        };
+
+        (status, axum::Json(body)).into_response()
+    }
+}
+
+impl<S, T> FromRequestParts<S> for JsonQuery<T>
+where
+    T: DeserializeOwned + Send,
+    S: Send + Sync,
+{
+    type Rejection = JsonQueryRejection;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        axum::extract::Query::<T>::from_request_parts(parts, state)
+            .await
+            .map(|axum::extract::Query(v)| JsonQuery(v))
+            .map_err(JsonQueryRejection)
     }
 }
