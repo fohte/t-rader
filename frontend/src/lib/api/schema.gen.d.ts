@@ -174,18 +174,18 @@ export type $defs = Record<string, never>
 export interface operations {
   list_bars: {
     parameters: {
-      query: {
+      query?: never
+      header?: never
+      path: {
         /** @description 銘柄コード (必須) */
         instrument_id: string
         /** @description 時間足 (デフォルト: "1d") */
-        timeframe?: string
+        timeframe: string
         /** @description 取得開始日 (YYYY-MM-DD, inclusive) */
-        from?: string | null
+        from: string | null
         /** @description 取得終了日 (YYYY-MM-DD, inclusive) */
-        to?: string | null
+        to: string | null
       }
-      header?: never
-      path?: never
       cookie?: never
     }
     requestBody?: never
