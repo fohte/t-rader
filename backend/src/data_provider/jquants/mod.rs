@@ -70,14 +70,14 @@ impl RateLimiter {
 
             // 枠がない: 最も古いリクエストがウィンドウから外れるまで待つ
             let oldest = timestamps[0];
-            let wait_duration = RATE_LIMIT_WINDOW - now.duration_since(oldest);
+            let sleep_target = oldest + RATE_LIMIT_WINDOW;
             drop(timestamps); // ロックを解放してから sleep
 
             tracing::info!(
-                wait_ms = wait_duration.as_millis() as u64,
+                wait_ms = sleep_target.saturating_duration_since(now).as_millis() as u64,
                 "レートリミットに到達、待機中"
             );
-            tokio::time::sleep(wait_duration).await;
+            tokio::time::sleep_until(sleep_target).await;
         }
     }
 }
@@ -135,10 +135,10 @@ impl JQuantsClient {
         let mut last_error = None;
         let url_str = url.as_str();
 
-        // リクエスト送信前にレートリミッターの許可を取得
-        self.rate_limiter.acquire().await;
-
         for attempt in 0..=MAX_RETRIES {
+            // 各リクエスト (リトライ含む) の前にレートリミッターの許可を取得
+            self.rate_limiter.acquire().await;
+
             if attempt > 0 {
                 let backoff =
                     std::time::Duration::from_millis(INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1));
