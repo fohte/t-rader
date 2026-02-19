@@ -187,12 +187,13 @@ export function WatchlistSelector({
   })
 
   const deleteMutation = $api.useMutation('delete', '/api/watchlists/{id}', {
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
         queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
       })
-      // 削除後、残りの最初のウォッチリストを選択 (なければ null で解除)
-      const remaining = watchlists.filter((w) => w.id !== selectedId)
+      // variables から削除対象 ID を取得し、クロージャの stale 問題を回避
+      const deletedId = variables.params.path.id
+      const remaining = watchlists.filter((w) => w.id !== deletedId)
       onSelect(remaining[0]?.id ?? null)
     },
   })

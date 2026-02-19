@@ -73,11 +73,14 @@ export function AddInstrumentForm({
   const queryClient = useQueryClient()
 
   const addMutation = $api.useMutation('post', '/api/watchlists/{id}/items', {
-    onSuccess: () => {
-      onNameRegistered(instrumentId.trim(), name.trim())
+    onSuccess: (_data, variables) => {
+      // クロージャではなく variables から値を参照し、stale 問題を回避
+      const addedId = variables.params.path.id
+      const addedBody = variables.body
+      onNameRegistered(addedBody.instrument_id, addedBody.name)
       queryClient.invalidateQueries({
         queryKey: $api.queryOptions('get', '/api/watchlists/{id}/items', {
-          params: { path: { id: watchlistId } },
+          params: { path: { id: addedId } },
         }).queryKey,
       })
       setInstrumentId('')
