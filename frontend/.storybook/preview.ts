@@ -1,7 +1,7 @@
-import type { Preview, Renderer } from 'storybook'
-import { withThemeByClassName } from '@storybook/addon-themes'
-
 import '../src/index.css'
+
+import { withThemeByClassName } from '@storybook/addon-themes'
+import type { Preview, Renderer } from 'storybook'
 
 const preview: Preview = {
   decorators: [
