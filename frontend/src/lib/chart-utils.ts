@@ -1,13 +1,22 @@
-import type { CandlestickData, HistogramData } from 'lightweight-charts'
+import type {
+  CandlestickData,
+  HistogramData,
+  UTCTimestamp,
+} from 'lightweight-charts'
 
 import type { components } from '@/lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 
+/** ISO 8601 タイムスタンプを Unix タイムスタンプ (秒) に変換する */
+function toUTCTimestamp(isoTimestamp: string): UTCTimestamp {
+  return Math.floor(new Date(isoTimestamp).getTime() / 1000) as UTCTimestamp
+}
+
 /** API レスポンスの Bar をローソク足データに変換する */
 export function toCandlestickData(bars: Bar[]): CandlestickData[] {
   return bars.map((bar) => ({
-    time: bar.timestamp.slice(0, 10),
+    time: toUTCTimestamp(bar.timestamp),
     open: Number(bar.open),
     high: Number(bar.high),
     low: Number(bar.low),
@@ -21,7 +30,7 @@ export function toVolumeData(bars: Bar[]): HistogramData[] {
     const open = Number(bar.open)
     const close = Number(bar.close)
     return {
-      time: bar.timestamp.slice(0, 10),
+      time: toUTCTimestamp(bar.timestamp),
       value: bar.volume,
       // 陽線は緑系、陰線は赤系
       color:

@@ -4,6 +4,8 @@ import {
   createChart,
   HistogramSeries,
   type IChartApi,
+  type ISeriesApi,
+  type SeriesType,
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
 
@@ -17,36 +19,43 @@ interface CandlestickChartProps {
   className?: string
 }
 
+function getThemeColors(isDark: boolean) {
+  return {
+    background: isDark ? '#1a1a1a' : '#ffffff',
+    textColor: isDark ? '#d1d5db' : '#374151',
+    gridColor: isDark ? '#2d2d2d' : '#e5e7eb',
+    borderColor: isDark ? '#3f3f46' : '#d1d5db',
+  }
+}
+
 export function CandlestickChart({ bars, className }: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
+  const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
+  const isInitialDataRef = useRef(true)
 
+  // チャートの初期化 (マウント時のみ)
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const isDark = document.documentElement.classList.contains('dark')
+    const colors = getThemeColors(isDark)
 
     const chart = createChart(container, {
       layout: {
-        background: {
-          type: ColorType.Solid,
-          color: isDark ? '#1a1a1a' : '#ffffff',
-        },
-        textColor: isDark ? '#d1d5db' : '#374151',
+        background: { type: ColorType.Solid, color: colors.background },
+        textColor: colors.textColor,
       },
       grid: {
-        vertLines: { color: isDark ? '#2d2d2d' : '#e5e7eb' },
-        horzLines: { color: isDark ? '#2d2d2d' : '#e5e7eb' },
+        vertLines: { color: colors.gridColor },
+        horzLines: { color: colors.gridColor },
       },
       width: container.clientWidth,
       height: container.clientHeight,
-      timeScale: {
-        borderColor: isDark ? '#3f3f46' : '#d1d5db',
-      },
-      rightPriceScale: {
-        borderColor: isDark ? '#3f3f46' : '#d1d5db',
-      },
+      timeScale: { borderColor: colors.borderColor },
+      rightPriceScale: { borderColor: colors.borderColor },
     })
     chartRef.current = chart
 
@@ -62,7 +71,7 @@ export function CandlestickChart({ bars, className }: CandlestickChartProps) {
     candlestickSeries.priceScale().applyOptions({
       scaleMargins: { top: 0.05, bottom: 0.25 },
     })
-    candlestickSeries.setData(toCandlestickData(bars))
+    candlestickSeriesRef.current = candlestickSeries
 
     // 出来高ヒストグラム
     const volumeSeries = chart.addSeries(HistogramSeries, {
@@ -72,9 +81,9 @@ export function CandlestickChart({ bars, className }: CandlestickChartProps) {
     volumeSeries.priceScale().applyOptions({
       scaleMargins: { top: 0.8, bottom: 0 },
     })
-    volumeSeries.setData(toVolumeData(bars))
+    volumeSeriesRef.current = volumeSeries
 
-    chart.timeScale().fitContent()
+    isInitialDataRef.current = true
 
     // コンテナサイズ追従
     const resizeObserver = new ResizeObserver((entries) => {
@@ -85,10 +94,49 @@ export function CandlestickChart({ bars, className }: CandlestickChartProps) {
     })
     resizeObserver.observe(container)
 
+    // ダークモード追従: html 要素の class 変更を監視
+    const mutationObserver = new MutationObserver(() => {
+      const dark = document.documentElement.classList.contains('dark')
+      const c = getThemeColors(dark)
+      chart.applyOptions({
+        layout: {
+          background: { type: ColorType.Solid, color: c.background },
+          textColor: c.textColor,
+        },
+        grid: {
+          vertLines: { color: c.gridColor },
+          horzLines: { color: c.gridColor },
+        },
+        timeScale: { borderColor: c.borderColor },
+        rightPriceScale: { borderColor: c.borderColor },
+      })
+    })
+    mutationObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+
     return () => {
+      mutationObserver.disconnect()
       resizeObserver.disconnect()
       chart.remove()
       chartRef.current = null
+      candlestickSeriesRef.current = null
+      volumeSeriesRef.current = null
+    }
+  }, [])
+
+  // データ更新 (bars 変更時にシリーズのデータのみ差し替え)
+  useEffect(() => {
+    if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return
+
+    candlestickSeriesRef.current.setData(toCandlestickData(bars))
+    volumeSeriesRef.current.setData(toVolumeData(bars))
+
+    // 初回データ設定時のみ fitContent でコンテンツ全体を表示
+    if (isInitialDataRef.current) {
+      chartRef.current?.timeScale().fitContent()
+      isInitialDataRef.current = false
     }
   }, [bars])
 
