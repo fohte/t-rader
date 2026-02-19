@@ -7,6 +7,7 @@ pub mod middleware;
 pub mod models;
 pub mod repositories;
 pub mod schemas;
+pub mod services;
 #[cfg(test)]
 pub mod testing;
 
