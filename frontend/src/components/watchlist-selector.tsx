@@ -28,7 +28,7 @@ type Watchlist = components['schemas']['Watchlist']
 type WatchlistSelectorViewProps = {
   watchlists: Watchlist[]
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
   isCreating: boolean
   isDeleting: boolean
   onCreateSubmit: (name: string) => void
@@ -91,7 +91,10 @@ export function WatchlistSelectorView({
         </form>
       ) : (
         <>
-          <Select value={selectedId ?? undefined} onValueChange={onSelect}>
+          <Select
+            value={selectedId ?? undefined}
+            onValueChange={(value) => onSelect(value)}
+          >
             <SelectTrigger className="w-60">
               <SelectValue placeholder="ウォッチリストを選択" />
             </SelectTrigger>
@@ -164,7 +167,7 @@ export function WatchlistSelectorView({
 type WatchlistSelectorProps = {
   watchlists: Watchlist[]
   selectedId: string | null
-  onSelect: (id: string) => void
+  onSelect: (id: string | null) => void
 }
 
 export function WatchlistSelector({
@@ -188,12 +191,9 @@ export function WatchlistSelector({
       queryClient.invalidateQueries({
         queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
       })
-      // 削除後、残りの最初のウォッチリストを選択
+      // 削除後、残りの最初のウォッチリストを選択 (なければ null で解除)
       const remaining = watchlists.filter((w) => w.id !== selectedId)
-      const first = remaining[0]
-      if (first) {
-        onSelect(first.id)
-      }
+      onSelect(remaining[0]?.id ?? null)
     },
   })
 

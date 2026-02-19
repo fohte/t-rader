@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
@@ -20,6 +21,7 @@ function WatchlistPage() {
   )
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const { names, registerName } = useInstrumentNames()
+  const queryClient = useQueryClient()
 
   // デフォルトウォッチリスト自動作成の重複防止
   const isAutoCreatingRef = useRef(false)
@@ -34,12 +36,15 @@ function WatchlistPage() {
         { body: { name: 'デフォルト' } },
         {
           onSuccess: (data) => {
+            queryClient.invalidateQueries({
+              queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
+            })
             setSelectedId(data.id)
           },
         },
       )
     }
-  }, [watchlists, createMutation])
+  }, [watchlists, createMutation, queryClient])
 
   // ウォッチリスト読み込み後、最初のウォッチリストを選択
   useEffect(() => {
