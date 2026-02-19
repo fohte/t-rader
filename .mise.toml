@@ -1,5 +1,7 @@
 [env]
 _.file = ['.env', '.env.local']
+# Share target dir across worktrees to avoid full recompilation
+CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tools]
 lefthook = "2.1.0"

@@ -9,6 +9,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
 
     steps:
       - uses: actions/create-github-app-token@v2
@@ -42,6 +45,11 @@ jobs:
       # causing "could not rename downloaded file" errors.
       - run: rustup show
 
+      # Run sccache-action before mise-action so that sccache binary is
+      # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - uses: jdx/mise-action@v3
 
       - name: Cache bun dependencies
@@ -56,12 +64,6 @@ jobs:
 
       - name: Install bun dependencies (frontend)
         run: cd "frontend" && bun install --frozen-lockfile
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |-
-            backend
 
       - name: Fetch cargo dependencies (backend)
         run: cd "backend" && cargo fetch
@@ -92,7 +94,7 @@ jobs:
         run: exit 1
 
   detect-changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       frontend: ${{ steps.changes-frontend.outputs.any_changed }}
       backend: ${{ steps.changes-backend.outputs.any_changed }}
@@ -126,6 +128,9 @@ jobs:
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
     services:
       db:
         image: timescale/timescaledb:latest-pg17
@@ -146,14 +151,12 @@ jobs:
 
       - run: rustup show
 
-      - uses: jdx/mise-action@v3
+      # Run sccache-action before mise-action so that sccache binary is
+      # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |-
-            backend
-            backend/migration
+      - uses: jdx/mise-action@v3
 
       - name: Run migrations
         working-directory: backend
@@ -209,6 +212,9 @@ jobs:
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
     services:
       db:
         image: timescale/timescaledb:latest-pg17
@@ -229,12 +235,12 @@ jobs:
 
       - run: rustup show
 
-      - uses: jdx/mise-action@v3
+      # Run sccache-action before mise-action so that sccache binary is
+      # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: backend
+      - uses: jdx/mise-action@v3
 
       - name: Build backend
         working-directory: backend
@@ -253,7 +259,7 @@ jobs:
           BACKEND_PORT: '3000'
           RUST_LOG: info
         run: |
-          ./target/debug/backend > /tmp/backend.log 2>&1 &
+          cargo run > /tmp/backend.log 2>&1 &
           # サーバーが起動するまで待機
           for i in $(seq 1 30); do
             if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
@@ -283,6 +289,9 @@ jobs:
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
     services:
       db:
         image: timescale/timescaledb:latest-pg17
@@ -303,12 +312,12 @@ jobs:
 
       - run: rustup show
 
-      - uses: jdx/mise-action@v3
+      # Run sccache-action before mise-action so that sccache binary is
+      # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: backend
+      - uses: jdx/mise-action@v3
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
