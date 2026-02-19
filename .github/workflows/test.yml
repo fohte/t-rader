@@ -9,6 +9,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
 
     steps:
       - uses: actions/create-github-app-token@v2
@@ -42,6 +45,11 @@ jobs:
       # causing "could not rename downloaded file" errors.
       - run: rustup show
 
+      # Run sccache-action before mise-action so that sccache binary is
+      # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - uses: jdx/mise-action@v3
 
       - name: Cache bun dependencies
@@ -56,12 +64,6 @@ jobs:
 
       - name: Install bun dependencies (frontend)
         run: cd "frontend" && bun install --frozen-lockfile
-
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |-
-            backend
 
       - name: Fetch cargo dependencies (backend)
         run: cd "backend" && cargo fetch
@@ -92,7 +94,7 @@ jobs:
         run: exit 1
 
   detect-changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       frontend: ${{ steps.changes-frontend.outputs.any_changed }}
       backend: ${{ steps.changes-backend.outputs.any_changed }}
@@ -283,6 +285,7 @@ jobs:
       needs.detect-changes.outputs.backend == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+<<<<<<< before updating
     services:
       db:
         image: timescale/timescaledb:latest-pg17
@@ -298,17 +301,22 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+=======
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
+>>>>>>> after updating
     steps:
       - uses: actions/checkout@v6
 
       - run: rustup show
 
-      - uses: jdx/mise-action@v3
+      # Run sccache-action before mise-action so that sccache binary is
+      # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
-      - name: Cache cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: backend
+      - uses: jdx/mise-action@v3
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
