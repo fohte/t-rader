@@ -61,8 +61,7 @@ jobs:
       # Run rustup before mise-action to prevent race condition.
       # Multiple cargo: tools in mise.toml trigger parallel rustup component downloads,
       # causing "could not rename downloaded file" errors.
-      - if: steps.check-backend.outputs.has_backend == 'true'
-        run: rustup show
+      - run: rustup show
 
       # Run sccache-action before mise-action so that sccache binary is
       # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
