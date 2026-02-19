@@ -50,6 +50,14 @@ jobs:
             echo "has_backend=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # sccache がインストールされない場合、RUSTC_WRAPPER=sccache が残っていると
+      # mise の cargo ツールインストール時にビルドが失敗するため無効化する
+      - name: Disable sccache wrapper (frontend-only)
+        if: steps.check-backend.outputs.has_backend == 'false'
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
+
       # Run rustup before mise-action to prevent race condition.
       # Multiple cargo: tools in mise.toml trigger parallel rustup component downloads,
       # causing "could not rename downloaded file" errors.
