@@ -1,20 +1,19 @@
-use chrono::{Duration, NaiveDate, Utc};
+use chrono::{Duration, Utc};
 use sea_orm::DatabaseConnection;
 
 use crate::data_provider::{DataProvider, DateRange};
 use crate::models::Timeframe;
 use crate::repositories::bars::upsert_bars;
 
-// TODO: J-Quants API のサブスクリプション有効期間をハードコードしている。
-// 将来的には API からプラン情報を取得するか、設定ファイルで管理する。
-/// J-Quants プランの上限日
-const JQUANTS_PLAN_END_DATE: NaiveDate = match NaiveDate::from_ymd_opt(2025, 11, 29) {
-    Some(d) => d,
-    None => unreachable!(),
-};
+// J-Quants Free プランのデータ取得可能期間:
+// 12 週間前 ~ 2 年 12 週間前
+// https://jpx.gitbook.io/j-quants-ja/outline/data-spec
+const JQUANTS_FREE_PLAN_OFFSET_WEEKS: i64 = 12;
+const JQUANTS_FREE_PLAN_MAX_HISTORY_YEARS: i64 = 2;
 
-/// 指定銘柄の過去 1 年分の日足データを取得し DB に保存する
+/// 指定銘柄の日足データを J-Quants Free プランの取得可能期間分バックフィルする
 ///
+/// Free プランでは 12 週間前 ~ 2 年 12 週間前の範囲のみ取得可能。
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
     db: &DatabaseConnection,
@@ -22,9 +21,9 @@ pub async fn backfill_daily_bars(
     instrument_id: &str,
 ) {
     let today = Utc::now().date_naive();
-    // J-Quants API のサブスクリプション有効期間外をリクエストしないようクランプする
-    let to = today.min(JQUANTS_PLAN_END_DATE);
-    let from = to - Duration::days(365);
+    // J-Quants Free プランのデータ取得可能範囲にクランプする
+    let to = today - Duration::weeks(JQUANTS_FREE_PLAN_OFFSET_WEEKS);
+    let from = to - Duration::weeks(JQUANTS_FREE_PLAN_MAX_HISTORY_YEARS * 52);
 
     let range = DateRange { from, to };
 
@@ -211,9 +210,9 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
-        // backfill_daily_bars と同じクランプロジックで to を決定する
+        // backfill_daily_bars と同じロジックで日付範囲を決定する
         let today = Utc::now().date_naive();
-        let to = today.min(super::JQUANTS_PLAN_END_DATE);
+        let to = today - Duration::weeks(super::JQUANTS_FREE_PLAN_OFFSET_WEEKS);
         let bars = vec![
             make_bar("7203", to - Duration::days(2), 100),
             make_bar("7203", to - Duration::days(1), 105),
