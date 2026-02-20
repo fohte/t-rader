@@ -39,7 +39,7 @@ mod tests {
     #[rstest]
     #[case::migrate_only_and_skip_migration(&["t-rader", "--migrate-only", "--skip-migration"])]
     fn test_parse_conflicting_flags(#[case] args: &[&str]) {
-        let result = parse(args);
-        assert!(result.is_err());
+        let err = parse(args).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 }
