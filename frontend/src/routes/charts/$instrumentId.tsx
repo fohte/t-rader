@@ -1,6 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
 
 import { CandlestickChart } from '@/components/candlestick-chart'
+import {
+  TimeframeSelector,
+  type Timeframe,
+} from '@/components/timeframe-selector'
 import { Skeleton } from '@/components/ui/skeleton'
 import { $api } from '@/lib/api/client'
 
@@ -8,22 +13,39 @@ export const Route = createFileRoute('/charts/$instrumentId')({
   component: ChartPage,
 })
 
+/** タイムフレームに応じた取得期間 (日数) を返す */
+function getLookbackDays(timeframe: Timeframe): number {
+  switch (timeframe) {
+    case '5m':
+    case '15m':
+      return 7
+    case '1h':
+      return 30
+    case '4h':
+      return 90
+    case '1d':
+      return 365
+    case '1w':
+      return 365 * 3
+  }
+}
+
 function ChartPage() {
   const { instrumentId } = Route.useParams()
+  const [timeframe, setTimeframe] = useState<Timeframe>('1d')
 
-  // 過去 1 年分の日足データを取得
   const today = new Date()
-  const oneYearAgo = new Date(today)
-  oneYearAgo.setFullYear(today.getFullYear() - 1)
+  const fromDate = new Date(today)
+  fromDate.setDate(today.getDate() - getLookbackDays(timeframe))
 
-  const from = formatDate(oneYearAgo)
+  const from = formatDate(fromDate)
   const to = formatDate(today)
 
   const { data, isLoading, error } = $api.useQuery('get', '/api/bars', {
     params: {
       query: {
         instrument_id: instrumentId,
-        timeframe: '1d',
+        timeframe,
         from,
         to,
       },
@@ -33,7 +55,10 @@ function ChartPage() {
   if (isLoading) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <h1 className="text-2xl font-bold">チャート: {instrumentId}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">チャート: {instrumentId}</h1>
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        </div>
         <Skeleton className="h-[600px] w-full" />
       </div>
     )
@@ -42,7 +67,10 @@ function ChartPage() {
   if (error) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <h1 className="text-2xl font-bold">チャート: {instrumentId}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">チャート: {instrumentId}</h1>
+          <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+        </div>
         <p className="text-destructive">データの取得に失敗しました</p>
       </div>
     )
@@ -50,7 +78,10 @@ function ChartPage() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <h1 className="text-2xl font-bold">チャート: {instrumentId}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">チャート: {instrumentId}</h1>
+        <TimeframeSelector value={timeframe} onChange={setTimeframe} />
+      </div>
       <CandlestickChart bars={data ?? []} className="h-[600px] w-full" />
     </div>
   )
