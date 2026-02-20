@@ -44,17 +44,20 @@ mod fetch_daily_bars {
     #[tokio::test]
     async fn test_parses_single_bar() -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
+        // API クエリには引数の instrument_id (4 桁) を送り、
+        // レスポンスの Code は 5 桁で返る
         mock.daily_bars()
-            .code("86970")
+            .code("8697")
             .bars(vec![sample_bar("2025-01-06", 105.0)])
             .ok()
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("86970", &default_range()).await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 1);
-        assert_eq!(bars[0].instrument_id, "86970");
+        // レスポンスの Code (5 桁 "86970") ではなく引数の instrument_id (4 桁 "8697") が使われること
+        assert_eq!(bars[0].instrument_id, "8697");
         assert_eq!(bars[0].open, dec(100.0));
         assert_eq!(bars[0].high, dec(110.0));
         assert_eq!(bars[0].low, dec(95.0));
@@ -88,13 +91,13 @@ mod fetch_daily_bars {
     ) -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars()
-            .code("86970")
+            .code("8697")
             .bars(vec![sample_bar("2025-01-06", 105.0), null_bar])
             .ok()
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("86970", &default_range()).await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 1);
         assert_eq!(bars[0].close, dec(105.0));
@@ -105,10 +108,10 @@ mod fetch_daily_bars {
     #[tokio::test]
     async fn test_returns_empty_vec_when_no_data() -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
-        mock.daily_bars().code("86970").bars(vec![]).ok().await;
+        mock.daily_bars().code("8697").bars(vec![]).ok().await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("86970", &default_range()).await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert!(bars.is_empty());
         Ok(())
@@ -119,7 +122,7 @@ mod fetch_daily_bars {
     async fn test_bars_sorted_by_timestamp() -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars()
-            .code("86970")
+            .code("8697")
             .bars(vec![
                 sample_bar("2025-01-08", 103.0),
                 sample_bar("2025-01-06", 100.0),
@@ -129,7 +132,7 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("86970", &default_range()).await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 3);
         for pair in bars.windows(2) {
@@ -145,7 +148,7 @@ mod fetch_daily_bars {
 
         // 1 ページ目: pagination_key を含むレスポンス (1 回のみマッチ)
         mock.daily_bars()
-            .code("86970")
+            .code("8697")
             .bars(vec![sample_bar("2025-01-06", 100.0)])
             .pagination_key("page2")
             .up_to_n_times(1)
@@ -154,14 +157,14 @@ mod fetch_daily_bars {
 
         // 2 ページ目: pagination_key なし (最終ページ)
         mock.daily_bars()
-            .code("86970")
+            .code("8697")
             .bars(vec![sample_bar("2025-01-07", 102.0)])
             .with_pagination_key_param("page2")
             .ok()
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("86970", &default_range()).await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 2);
         assert_eq!(bars[0].close, dec(100.0));
@@ -372,14 +375,14 @@ mod data_provider_kind {
     async fn test_delegates_fetch_daily_bars_to_jquants() -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars()
-            .code("86970")
+            .code("8697")
             .bars(vec![sample_bar("2025-01-06", 105.0)])
             .ok()
             .await;
 
         let client = mock.client()?;
         let kind = DataProviderKind::JQuants(client);
-        let bars = kind.fetch_daily_bars("86970", &default_range()).await?;
+        let bars = kind.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 1);
         assert_eq!(bars[0].close, dec(105.0));

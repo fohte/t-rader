@@ -14,8 +14,9 @@ pub(crate) struct DailyBarsResponse {
 pub(crate) struct DailyBar {
     #[serde(rename = "Date")]
     pub date: String,
+    /// デシリアライズには必要だが、アプリ内部では fetch_daily_bars の引数 instrument_id を使う
     #[serde(rename = "Code")]
-    pub code: String,
+    pub _code: String,
     #[serde(rename = "AdjO")]
     pub adj_open: Option<f64>,
     #[serde(rename = "AdjH")]

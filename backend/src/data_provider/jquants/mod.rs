@@ -265,7 +265,8 @@ impl DataProvider for JQuantsClient {
                 );
 
                 all_bars.push(Bar {
-                    instrument_id: d.code,
+                    // API レスポンスの Code (5 桁) ではなく、引数の instrument_id (4 桁) を使う
+                    instrument_id: instrument_id.to_string(),
                     timeframe: Timeframe::Daily,
                     timestamp,
                     open: Self::to_decimal(adj_open)?,
