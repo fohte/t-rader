@@ -5,6 +5,9 @@ services:
       target: dev
     working_dir: /app
     command: cargo watch -x run
+    env_file:
+      - path: .env.local
+        required: false
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-t_rader}:${POSTGRES_PASSWORD:-t_rader}@db:5432/${POSTGRES_DB:-t_rader_development}
       CARGO_HOME: /usr/local/cargo
@@ -22,7 +25,7 @@ services:
     working_dir: /app
     command: sh -c "bun install && bun run --bun vite --host"
     environment:
-      VITE_API_URL: http://localhost:${BACKEND_PORT:-3000}
+      VITE_API_URL: http://backend:3000
     ports:
       - '127.0.0.1:${FRONTEND_PORT:-5173}:5173'
     volumes:
