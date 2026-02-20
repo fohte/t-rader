@@ -5,8 +5,15 @@ use crate::data_provider::{DataProvider, DateRange};
 use crate::models::Timeframe;
 use crate::repositories::bars::upsert_bars;
 
-/// 指定銘柄の過去 1 年分の日足データを取得し DB に保存する
+// J-Quants Free プランのデータ取得可能期間:
+// 12 週間前 ~ 2 年 12 週間前
+// https://jpx.gitbook.io/j-quants-ja/outline/data-spec
+const JQUANTS_FREE_PLAN_OFFSET_WEEKS: i64 = 12;
+const JQUANTS_FREE_PLAN_MAX_HISTORY_DAYS: i64 = 365 * 2;
+
+/// 指定銘柄の日足データを J-Quants Free プランの取得可能期間分バックフィルする
 ///
+/// Free プランでは 12 週間前 ~ 2 年 12 週間前の範囲のみ取得可能。
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
     db: &DatabaseConnection,
@@ -14,12 +21,11 @@ pub async fn backfill_daily_bars(
     instrument_id: &str,
 ) {
     let today = Utc::now().date_naive();
-    let one_year_ago = today - Duration::days(365);
+    // J-Quants Free プランのデータ取得可能範囲にクランプする
+    let to = today - Duration::weeks(JQUANTS_FREE_PLAN_OFFSET_WEEKS);
+    let from = to - Duration::days(JQUANTS_FREE_PLAN_MAX_HISTORY_DAYS);
 
-    let range = DateRange {
-        from: one_year_ago,
-        to: today,
-    };
+    let range = DateRange { from, to };
 
     let bars = match data_provider.fetch_daily_bars(instrument_id, &range).await {
         Ok(bars) => bars,
@@ -204,10 +210,12 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
+        // backfill_daily_bars と同じロジックで日付範囲を決定する
         let today = Utc::now().date_naive();
+        let to = today - Duration::weeks(super::JQUANTS_FREE_PLAN_OFFSET_WEEKS);
         let bars = vec![
-            make_bar("7203", today - Duration::days(2), 100),
-            make_bar("7203", today - Duration::days(1), 105),
+            make_bar("7203", to - Duration::days(2), 100),
+            make_bar("7203", to - Duration::days(1), 105),
         ];
 
         let provider = MockProvider::new()
