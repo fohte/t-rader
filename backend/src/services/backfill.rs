@@ -1,9 +1,17 @@
-use chrono::{Duration, Utc};
+use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::DatabaseConnection;
 
 use crate::data_provider::{DataProvider, DateRange};
 use crate::models::Timeframe;
 use crate::repositories::bars::upsert_bars;
+
+// TODO: J-Quants API のサブスクリプション有効期間をハードコードしている。
+// 将来的には API からプラン情報を取得するか、設定ファイルで管理する。
+/// J-Quants プランの上限日
+const JQUANTS_PLAN_END_DATE: NaiveDate = match NaiveDate::from_ymd_opt(2025, 11, 29) {
+    Some(d) => d,
+    None => unreachable!(),
+};
 
 /// 指定銘柄の過去 1 年分の日足データを取得し DB に保存する
 ///
@@ -14,12 +22,11 @@ pub async fn backfill_daily_bars(
     instrument_id: &str,
 ) {
     let today = Utc::now().date_naive();
-    let one_year_ago = today - Duration::days(365);
+    // J-Quants API のサブスクリプション有効期間外をリクエストしないようクランプする
+    let to = today.min(JQUANTS_PLAN_END_DATE);
+    let from = to - Duration::days(365);
 
-    let range = DateRange {
-        from: one_year_ago,
-        to: today,
-    };
+    let range = DateRange { from, to };
 
     let bars = match data_provider.fetch_daily_bars(instrument_id, &range).await {
         Ok(bars) => bars,
@@ -204,10 +211,12 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
+        // backfill_daily_bars と同じクランプロジックで to を決定する
         let today = Utc::now().date_naive();
+        let to = today.min(super::JQUANTS_PLAN_END_DATE);
         let bars = vec![
-            make_bar("7203", today - Duration::days(2), 100),
-            make_bar("7203", today - Duration::days(1), 105),
+            make_bar("7203", to - Duration::days(2), 100),
+            make_bar("7203", to - Duration::days(1), 105),
         ];
 
         let provider = MockProvider::new()
