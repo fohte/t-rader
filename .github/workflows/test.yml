@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   test:
+    needs: detect-changes
     runs-on: ubuntu-latest
     env:
       SCCACHE_GHA_ENABLED: 'true'
@@ -40,6 +41,23 @@ jobs:
             echo "skip_commit=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check if backend changes exist
+        id: check-backend
+        run: |
+          if [[ "${{ needs.detect-changes.outputs.backend }}" == "true" || "${{ needs.detect-changes.outputs.workflow }}" == "true" ]]; then
+            echo "has_backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_backend=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # sccache がインストールされない場合、RUSTC_WRAPPER=sccache が残っていると
+      # mise の cargo ツールインストール時にビルドが失敗するため無効化する
+      - name: Disable sccache wrapper (frontend-only)
+        if: steps.check-backend.outputs.has_backend == 'false'
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
+
       # Run rustup before mise-action to prevent race condition.
       # Multiple cargo: tools in mise.toml trigger parallel rustup component downloads,
       # causing "could not rename downloaded file" errors.
@@ -48,6 +66,7 @@ jobs:
       # Run sccache-action before mise-action so that sccache binary is
       # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
       - name: Run sccache-cache
+        if: steps.check-backend.outputs.has_backend == 'true'
         uses: mozilla-actions/sccache-action@v0.0.9
 
       - uses: jdx/mise-action@v3
@@ -66,11 +85,15 @@ jobs:
         run: cd "frontend" && bun install --frozen-lockfile
 
       - name: Fetch cargo dependencies (backend)
+        if: steps.check-backend.outputs.has_backend == 'true'
         run: cd "backend" && cargo fetch
 
       - name: Run lefthook
         id: lefthook
         continue-on-error: true
+        env:
+          # バックエンド変更がない場合、OpenAPI ダンプやバックエンド専用コマンドをスキップする
+          LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep' || '' }}
         run: lefthook run pre-commit --all-files
 
       # lefthook-config's formatters run `git add` after formatting, which stages the changes.

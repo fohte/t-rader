@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -13,6 +15,7 @@ use crate::entities::{instruments, watchlist_items, watchlists};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{AddWatchlistItemRequest, CreateWatchlistRequest};
+use crate::services::backfill;
 
 /// 文字列に印字可能な非空白文字が含まれているかを検証する。
 /// OpenAPI スキーマの `pattern: "\S"` 制約をサーバー側で実施する。
@@ -198,21 +201,34 @@ pub async fn add_watchlist_item(
         ))
         .await;
 
-    match item_result {
-        Ok(Some(row)) => {
-            let item = watchlist_items::Model::from_query_result(&row, "")?;
-            Ok((StatusCode::CREATED, Json(item)))
+    let item = match item_result {
+        Ok(Some(row)) => watchlist_items::Model::from_query_result(&row, "")?,
+        Ok(None) => {
+            return Err(AppError::Database(DbErr::Custom(
+                "INSERT RETURNING returned no rows".to_string(),
+            )));
         }
-        Ok(None) => Err(AppError::Database(DbErr::Custom(
-            "INSERT RETURNING returned no rows".to_string(),
-        ))),
         Err(e) if matches!(e.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) => {
-            Err(AppError::Conflict(format!(
+            return Err(AppError::Conflict(format!(
                 "instrument {instrument_id} is already in the watchlist"
-            )))
+            )));
         }
-        Err(e) => Err(AppError::Database(e)),
+        Err(e) => {
+            return Err(AppError::Database(e));
+        }
+    };
+
+    // バックグラウンドで日足データをバックフィルする
+    if let Some(provider) = &state.data_provider {
+        let db = state.db.clone();
+        let provider = Arc::clone(provider);
+        let instrument_id = instrument_id.clone();
+        tokio::spawn(async move {
+            backfill::backfill_daily_bars(&db, provider.as_ref(), &instrument_id).await;
+        });
     }
+
+    Ok((StatusCode::CREATED, Json(item)))
 }
 
 /// ウォッチリスト内の銘柄一覧を取得する
