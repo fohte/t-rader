@@ -9,6 +9,7 @@ edition = "2024"
 [dependencies]
 axum = "=0.8.8"
 chrono = { version = "=0.4.43", default-features = false, features = ["serde"] }
+clap = { version = "=4.5.37", features = ["derive"] }
 migration = { path = "migration" }
 rust_decimal = { version = "=1.40.0", features = ["serde"] }
 sea-orm = { version = "=2.0.0-rc.32", features = [
