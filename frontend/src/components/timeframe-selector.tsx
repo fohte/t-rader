@@ -1,3 +1,5 @@
+import { Fragment } from 'react'
+
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -44,7 +46,6 @@ export function TimeframeSelector({
 
           const button = (
             <Button
-              key={tf.value}
               variant={isSelected ? 'default' : 'outline'}
               size="xs"
               disabled={isDisabled}
@@ -60,23 +61,14 @@ export function TimeframeSelector({
               <Tooltip key={tf.value}>
                 <TooltipTrigger asChild>
                   {/* disabled なボタンはイベントを受け取れないため span でラップ */}
-                  <span>
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      disabled
-                      aria-pressed={false}
-                    >
-                      {tf.label}
-                    </Button>
-                  </span>
+                  <span>{button}</span>
                 </TooltipTrigger>
                 <TooltipContent>近日対応予定</TooltipContent>
               </Tooltip>
             )
           }
 
-          return button
+          return <Fragment key={tf.value}>{button}</Fragment>
         })}
       </div>
     </TooltipProvider>
