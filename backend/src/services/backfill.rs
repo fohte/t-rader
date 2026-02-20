@@ -9,7 +9,7 @@ use crate::repositories::bars::upsert_bars;
 // 12 週間前 ~ 2 年 12 週間前
 // https://jpx.gitbook.io/j-quants-ja/outline/data-spec
 const JQUANTS_FREE_PLAN_OFFSET_WEEKS: i64 = 12;
-const JQUANTS_FREE_PLAN_MAX_HISTORY_YEARS: i64 = 2;
+const JQUANTS_FREE_PLAN_MAX_HISTORY_DAYS: i64 = 365 * 2;
 
 /// 指定銘柄の日足データを J-Quants Free プランの取得可能期間分バックフィルする
 ///
@@ -23,7 +23,7 @@ pub async fn backfill_daily_bars(
     let today = Utc::now().date_naive();
     // J-Quants Free プランのデータ取得可能範囲にクランプする
     let to = today - Duration::weeks(JQUANTS_FREE_PLAN_OFFSET_WEEKS);
-    let from = to - Duration::weeks(JQUANTS_FREE_PLAN_MAX_HISTORY_YEARS * 52);
+    let from = to - Duration::days(JQUANTS_FREE_PLAN_MAX_HISTORY_DAYS);
 
     let range = DateRange { from, to };
 
