@@ -2,17 +2,21 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use backend::AppState;
+use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::DataProviderKind;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::error::AppError;
+use clap::Parser;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
+    let cli = Cli::parse();
+
     // --dump-openapi: OpenAPI スペックを JSON で標準出力に出力して終了する
-    if std::env::args().any(|arg| arg == "--dump-openapi") {
+    if cli.dump_openapi {
         let spec = backend::create_openapi_spec();
         let json = spec
             .to_pretty_json()
@@ -37,9 +41,20 @@ async fn main() -> Result<(), AppError> {
 
     let db = Database::connect(opt).await?;
 
-    tracing::info!("running database migrations");
-    Migrator::up(&db, None).await?;
-    tracing::info!("database migrations completed");
+    // --skip-migration が指定されていない場合のみマイグレーションを実行する
+    if !cli.skip_migration {
+        tracing::info!("running database migrations");
+        Migrator::up(&db, None).await?;
+        tracing::info!("database migrations completed");
+    } else {
+        tracing::info!("skipping database migrations (--skip-migration)");
+    }
+
+    // --migrate-only: マイグレーションのみ実行して終了する
+    if cli.migrate_only {
+        tracing::info!("migration completed, exiting (--migrate-only)");
+        return Ok(());
+    }
 
     // J-Quants API キーが設定されている場合のみ DataProvider を初期化する
     let data_provider = match std::env::var("JQUANTS_API_KEY") {

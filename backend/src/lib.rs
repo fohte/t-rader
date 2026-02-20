@@ -1,3 +1,4 @@
+pub mod cli;
 pub mod data_provider;
 pub mod entities;
 pub mod error;
