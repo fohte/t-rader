@@ -534,19 +534,19 @@
         ],
         "properties": {
           "close": {
-            "type": "string"
+            "type": "number"
           },
           "high": {
-            "type": "string"
+            "type": "number"
           },
           "instrument_id": {
             "type": "string"
           },
           "low": {
-            "type": "string"
+            "type": "number"
           },
           "open": {
-            "type": "string"
+            "type": "number"
           },
           "timeframe": {
             "type": "string",
