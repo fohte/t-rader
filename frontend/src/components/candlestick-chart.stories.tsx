@@ -24,10 +24,10 @@ function generateSampleBars(count: number): Bar[] {
       instrument_id: '7203',
       timeframe: '1d',
       timestamp: date.toISOString(),
-      open: open.toFixed(1),
-      high: high.toFixed(1),
-      low: low.toFixed(1),
-      close: close.toFixed(1),
+      open: Number(open.toFixed(1)),
+      high: Number(high.toFixed(1)),
+      low: Number(low.toFixed(1)),
+      close: Number(close.toFixed(1)),
       volume,
     })
 

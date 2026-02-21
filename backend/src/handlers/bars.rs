@@ -230,6 +230,6 @@ mod tests {
         let body: Vec<serde_json::Value> = response.json();
         assert_eq!(body.len(), 1);
         assert_eq!(body[0]["instrument_id"], "7203");
-        assert_eq!(body[0]["close"], "105");
+        assert_eq!(body[0]["close"], 105.0);
     }
 }

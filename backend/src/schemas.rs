@@ -75,13 +75,13 @@ impl PartialSchema for crate::entities::bars::Model {
                     .format(Some(SchemaFormat::KnownFormat(KnownFormat::DateTime))),
             )
             .required("timestamp")
-            .property("open", ObjectBuilder::new().schema_type(Type::String))
+            .property("open", ObjectBuilder::new().schema_type(Type::Number))
             .required("open")
-            .property("high", ObjectBuilder::new().schema_type(Type::String))
+            .property("high", ObjectBuilder::new().schema_type(Type::Number))
             .required("high")
-            .property("low", ObjectBuilder::new().schema_type(Type::String))
+            .property("low", ObjectBuilder::new().schema_type(Type::Number))
             .required("low")
-            .property("close", ObjectBuilder::new().schema_type(Type::String))
+            .property("close", ObjectBuilder::new().schema_type(Type::Number))
             .required("close")
             .property(
                 "volume",

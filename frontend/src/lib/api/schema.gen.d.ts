@@ -119,11 +119,11 @@ export interface components {
       name: string
     }
     Bar: {
-      close: string
-      high: string
+      close: number
+      high: number
       instrument_id: string
-      low: string
-      open: string
+      low: number
+      open: number
       /** @enum {string} */
       timeframe: '1d'
       /** Format: date-time */
