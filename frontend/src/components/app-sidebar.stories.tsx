@@ -31,9 +31,24 @@ function createStoryRouter(initialPath: string, content: React.ReactNode) {
     path: '/charts/$instrumentId',
     component: () => null,
   })
+  const tradesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/trades',
+    component: () => null,
+  })
+  const notesRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/notes',
+    component: () => null,
+  })
 
   return createRouter({
-    routeTree: rootRoute.addChildren([indexRoute, chartsRoute]),
+    routeTree: rootRoute.addChildren([
+      indexRoute,
+      chartsRoute,
+      tradesRoute,
+      notesRoute,
+    ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   })
 }
@@ -58,6 +73,20 @@ export const Default: Story = {
 export const OnWatchlistPage: Story = {
   render: () => {
     const router = createStoryRouter('/', 'ウォッチリストページ')
+    return <RouterProvider router={router} />
+  },
+}
+
+export const OnTradesPage: Story = {
+  render: () => {
+    const router = createStoryRouter('/trades', 'トレード履歴ページ')
+    return <RouterProvider router={router} />
+  },
+}
+
+export const OnNotesPage: Story = {
+  render: () => {
+    const router = createStoryRouter('/notes', 'ノートページ')
     return <RouterProvider router={router} />
   },
 }
