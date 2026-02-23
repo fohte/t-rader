@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sidebar'
 
 // ルートファイル追加後に自動的に型安全になるよう、登録済みパスと未登録パスの両方を許容する
-type NavPath = FileRouteTypes['to'] | '/trades' | '/notes'
+type NavPath = FileRouteTypes['to'] | '/trades'
 
 interface NavItem {
   title: string
