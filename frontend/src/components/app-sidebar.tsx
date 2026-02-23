@@ -1,5 +1,7 @@
+import type { LucideIcon } from 'lucide-react'
+
 import { Link, useMatchRoute } from '@tanstack/react-router'
-import { BarChart3, List } from 'lucide-react'
+import { BarChart3, FileText, History, List } from 'lucide-react'
 
 import {
   Sidebar,
@@ -13,11 +15,42 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 
-const navItems = [
+interface NavItem {
+  title: string
+  href: string
+  icon: LucideIcon
+}
+
+interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+const navGroups: NavGroup[] = [
   {
-    title: 'ウォッチリスト',
-    href: '/' as const,
-    icon: List,
+    label: 'マーケット',
+    items: [
+      {
+        title: 'ウォッチリスト',
+        href: '/',
+        icon: List,
+      },
+    ],
+  },
+  {
+    label: 'トレード',
+    items: [
+      {
+        title: 'トレード履歴',
+        href: '/trades',
+        icon: History,
+      },
+      {
+        title: 'ノート',
+        href: '/notes',
+        icon: FileText,
+      },
+    ],
   },
 ]
 
@@ -46,26 +79,28 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>メニュー</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={!!matchRoute({ to: item.href })}
-                  >
-                    <Link to={item.href}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {navGroups.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={!!matchRoute({ to: item.href })}
+                    >
+                      <Link to={item.href}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
     </Sidebar>
   )
