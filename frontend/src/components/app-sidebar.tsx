@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import { BarChart3, FileText, History, List } from 'lucide-react'
 
+import type { FileRouteTypes } from '@/routeTree.gen'
 import {
   Sidebar,
   SidebarContent,
@@ -15,9 +16,12 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 
+// ルートファイル追加後に自動的に型安全になるよう、登録済みパスと未登録パスの両方を許容する
+type NavPath = FileRouteTypes['to'] | '/trades' | '/notes'
+
 interface NavItem {
   title: string
-  href: string
+  href: NavPath
   icon: LucideIcon
 }
 
@@ -88,9 +92,13 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                       asChild
-                      isActive={!!matchRoute({ to: item.href })}
+                      isActive={
+                        !!matchRoute({
+                          to: item.href as FileRouteTypes['to'],
+                        })
+                      }
                     >
-                      <Link to={item.href}>
+                      <Link to={item.href as FileRouteTypes['to']}>
                         <item.icon />
                         <span>{item.title}</span>
                       </Link>
