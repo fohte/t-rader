@@ -70,3 +70,18 @@ export const WithLongContent: Story = {
     return <RouterProvider router={router} />
   },
 }
+
+export const WithChatSidebar: Story = {
+  render: () => {
+    const router = createStoryRouter(
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold">ウォッチリスト</h2>
+        <p className="text-muted-foreground">
+          右上の AI
+          チャットボタンをクリックして、サイドバーの開閉を確認できます。
+        </p>
+      </div>,
+    )
+    return <RouterProvider router={router} />
+  },
+}
