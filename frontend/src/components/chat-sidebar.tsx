@@ -13,8 +13,8 @@ export function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
     <aside
       data-testid="chat-sidebar"
       className={cn(
-        'border-l bg-background transition-all duration-300 ease-in-out',
-        isOpen ? 'w-80' : 'w-0',
+        'overflow-hidden bg-background transition-[width] duration-300 ease-in-out',
+        isOpen ? 'w-80 border-l' : 'w-0',
       )}
     >
       {isOpen && (
