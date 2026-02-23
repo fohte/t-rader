@@ -159,7 +159,6 @@ describe('ナビゲーション統合テスト', () => {
           screen.getByText('売買記録の一覧と振り返りができます'),
         ).toBeInTheDocument()
       })
-      expect(screen.getByText('この機能は開発中です')).toBeInTheDocument()
     })
 
     it('ノートメニューをクリックすると /notes に遷移する', async () => {
@@ -172,7 +171,6 @@ describe('ナビゲーション統合テスト', () => {
           screen.getByText('日次・週次の振り返りや分析メモを記録できます'),
         ).toBeInTheDocument()
       })
-      expect(screen.getByText('この機能は開発中です')).toBeInTheDocument()
     })
   })
 
