@@ -5,14 +5,14 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, reopened, synchronize, closed]
 
 concurrency:
   group: storybook-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
+  deployments: write
   pull-requests: write
 
 jobs:
@@ -35,9 +35,7 @@ jobs:
 
   deploy:
     needs: detect-changes
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      needs.detect-changes.outputs.frontend == 'true'
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -60,59 +58,23 @@ jobs:
       - name: Build Storybook
         run: cd frontend && bun run storybook:build
 
-      - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
         with:
-          branch: gh-pages
-          folder: frontend/storybook-static
-          clean: true
-          clean-exclude: pr-preview/
-          force: false
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/storybook-static --project-name=t-rader-storybook --branch=${{ github.head_ref || 'main' }}
 
-  preview:
-    needs: detect-changes
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: jdx/mise-action@v3
-        if: >-
-          github.event.action != 'closed' &&
-          needs.detect-changes.outputs.frontend == 'true'
-
-      - name: Cache bun dependencies
-        if: >-
-          github.event.action != 'closed' &&
-          needs.detect-changes.outputs.frontend == 'true'
-        uses: actions/cache@v5
+      - name: Comment preview URL on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
         with:
-          path: |
-            ~/.bun/install/cache
-            ~/.bun/install/global
-            frontend/node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock') }}
-          restore-keys: ${{ runner.os }}-bun-
+          header: storybook-preview
+          message: |
+            ## Storybook Preview
 
-      - name: Install bun dependencies
-        if: >-
-          github.event.action != 'closed' &&
-          needs.detect-changes.outputs.frontend == 'true'
-        run: cd frontend && bun install --frozen-lockfile
-
-      - name: Build Storybook
-        if: >-
-          github.event.action != 'closed' &&
-          needs.detect-changes.outputs.frontend == 'true'
-        run: cd frontend && bun run storybook:build
-
-      - name: Deploy PR preview
-        if: >-
-          github.event.action == 'closed' ||
-          needs.detect-changes.outputs.frontend == 'true'
-        uses: rossjrw/pr-preview-action@v1
-        with:
-          source-dir: frontend/storybook-static/
-          preview-branch: gh-pages
-          umbrella-dir: pr-preview
-          action: auto
+            | Name | URL |
+            |------|-----|
+            | Preview | ${{ steps.deploy.outputs.deployment-url }} |
+            | Branch | ${{ steps.deploy.outputs.pages-deployment-alias-url }} |
