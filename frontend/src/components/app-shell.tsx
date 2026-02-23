@@ -24,16 +24,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 !h-4" />
             <h1 className="text-lg font-semibold">T-Rader</h1>
-            <div className="ml-auto">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsChatOpen((prev) => !prev)}
-                aria-label="AI チャット"
-              >
-                <MessageSquare className="size-4" />
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto size-7"
+              onClick={() => setIsChatOpen((prev) => !prev)}
+              aria-label="AI チャット"
+              aria-expanded={isChatOpen}
+            >
+              <MessageSquare className="size-4" />
+            </Button>
           </header>
           <div className="flex-1 p-4">{children}</div>
         </SidebarInset>
