@@ -20,7 +20,7 @@ RUN --mount=type=bind,target=. \
 FROM build AS dev
 RUN cargo install cargo-watch
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /usr/local/bin/backend /usr/local/bin/backend
