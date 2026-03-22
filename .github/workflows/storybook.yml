@@ -58,13 +58,21 @@ jobs:
       - name: Build Storybook
         run: cd frontend && bun run storybook:build
 
+      - name: Create Cloudflare Pages project if not exists
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create t-rader-storybook --production-branch=main
+        continue-on-error: true
+
       - name: Deploy to Cloudflare Pages
         id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy frontend/storybook-static --project-name=t-rader-storybook --branch=${{ github.head_ref || 'main' }}
+          command: pages deploy frontend/storybook-static --project-name=t-rader-storybook --branch=${{ github.head_ref || 'main' }} --commit-dirty=true
 
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
