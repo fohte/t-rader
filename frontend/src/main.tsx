@@ -17,8 +17,6 @@ const queryClient = new QueryClient({
   },
 })
 
-// TanStack Router の createRouter は型推論が複雑なため、明示的な型注釈で安全性を担保
-
 const router = createRouter({ routeTree })
 
 declare module '@tanstack/react-router' {

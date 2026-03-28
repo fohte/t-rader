@@ -64,6 +64,19 @@ export function AddInstrumentFormView({
   )
 }
 
+/** unknown 型のエラーオブジェクトから error プロパティの文字列を安全に取得する */
+function extractErrorMessage(err: unknown): string | undefined {
+  if (err == null || typeof err !== 'object') {
+    return undefined
+  }
+  if (!('error' in err)) {
+    return undefined
+  }
+  // TypeScript 4.9+ の in ナローイングにより err は { error: unknown } に絞られる
+  const { error } = err
+  return typeof error === 'string' ? error : undefined
+}
+
 type AddInstrumentFormProps = {
   watchlistId: string
   onNameRegistered: (instrumentId: string, name: string) => void
@@ -93,11 +106,9 @@ export function AddInstrumentForm({
       setName('')
       setError(null)
     },
-    onError: (err) => {
-      // openapi-fetch のエラーから API のエラーメッセージを取得
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- openapi-fetch のエラー型を展開
-      const apiError = err as unknown as { error?: string }
-      const message = apiError.error ?? '銘柄の追加に失敗しました'
+    onError: (err: unknown) => {
+      // openapi-fetch のエラーから API のエラーメッセージを安全に取得
+      const message = extractErrorMessage(err) ?? '銘柄の追加に失敗しました'
       setError(message)
     },
   })
