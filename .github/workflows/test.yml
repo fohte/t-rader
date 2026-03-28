@@ -15,7 +15,7 @@ jobs:
       RUSTC_WRAPPER: 'sccache'
 
     steps:
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.APP_ID }}
@@ -106,7 +106,7 @@ jobs:
 
       - name: Commit formatted files
         if: ${{ !cancelled() && steps.check-prev.outputs.skip_commit != 'true' }}
-        uses: suzuki-shunsuke/commit-action@v0.1.0
+        uses: suzuki-shunsuke/commit-action@v0.1.1
         with:
           commit_message: 'style: auto-format'
           workflow: deny
