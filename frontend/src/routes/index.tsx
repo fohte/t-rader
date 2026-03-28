@@ -32,14 +32,17 @@ function WatchlistPage() {
   useEffect(() => {
     if (watchlists && watchlists.length === 0 && !isAutoCreatingRef.current) {
       isAutoCreatingRef.current = true
-      void createMutation
-        .mutateAsync({ body: { name: 'デフォルト' } })
-        .then((data) => {
-          void queryClient.invalidateQueries({
-            queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
-          })
-          setSelectedId(data.id)
-        })
+      createMutation.mutate(
+        { body: { name: 'デフォルト' } },
+        {
+          onSuccess: (data) => {
+            void queryClient.invalidateQueries({
+              queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
+            })
+            setSelectedId(data.id)
+          },
+        },
+      )
     }
   }, [watchlists, createMutation, queryClient])
 
