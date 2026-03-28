@@ -35,11 +35,4 @@ export default config(
       'no-restricted-imports': 'off',
     },
   },
-  // lightweight-charts の UTCTimestamp はブランド型で、公式が `as UTCTimestamp` を唯一の変換手段として案内している
-  {
-    files: ['src/lib/chart-utils.ts'],
-    rules: {
-      '@typescript-eslint/no-unsafe-type-assertion': 'off',
-    },
-  },
 )
