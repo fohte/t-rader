@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- Storybook preview は src 外にあるため相対パスが必要
 import '../src/index.css'
 
 import { withThemeByClassName } from '@storybook/addon-themes'

@@ -5,8 +5,8 @@ import { useState } from 'react'
 import { CandlestickChart } from '@/components/candlestick-chart'
 import { ChartMarketDepthPanel } from '@/components/chart-market-depth-panel'
 import {
-  TimeframeSelector,
   type Timeframe,
+  TimeframeSelector,
 } from '@/components/timeframe-selector'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -62,7 +62,9 @@ function ChartPage() {
     },
   })
 
-  const toggleMarketDepth = () => setIsMarketDepthOpen((prev) => !prev)
+  const toggleMarketDepth = () => {
+    setIsMarketDepthOpen((prev) => !prev)
+  }
 
   const toolbar = (
     <div className="flex items-center gap-2">
@@ -147,5 +149,5 @@ function formatDate(date: Date): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return `${String(y)}-${m}-${d}`
 }

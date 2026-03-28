@@ -4,14 +4,9 @@ _.file = ['.env', '.env.local']
 CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tools]
-<<<<<<< before updating
-lefthook = "2.1.0"
-"github:ast-grep/ast-grep" = "0.40.5"
-"cargo:sea-orm-cli" = "2.0.0-rc.32"
-=======
 lefthook = "2.1.4"
 "github:ast-grep/ast-grep" = "0.41.1"
->>>>>>> after updating
+"cargo:sea-orm-cli" = "2.0.0-rc.32"
 
 # lefthook hooks
 actionlint = "1.7.11"

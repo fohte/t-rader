@@ -32,24 +32,21 @@ function WatchlistPage() {
   useEffect(() => {
     if (watchlists && watchlists.length === 0 && !isAutoCreatingRef.current) {
       isAutoCreatingRef.current = true
-      createMutation.mutate(
-        { body: { name: 'デフォルト' } },
-        {
-          onSuccess: (data) => {
-            queryClient.invalidateQueries({
-              queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
-            })
-            setSelectedId(data.id)
-          },
-        },
-      )
+      void createMutation
+        .mutateAsync({ body: { name: 'デフォルト' } })
+        .then((data) => {
+          void queryClient.invalidateQueries({
+            queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
+          })
+          setSelectedId(data.id)
+        })
     }
   }, [watchlists, createMutation, queryClient])
 
   // ウォッチリスト読み込み後、最初のウォッチリストを選択
   useEffect(() => {
     const first = watchlists?.[0]
-    if (first && !selectedId) {
+    if (first != null && selectedId == null) {
       setSelectedId(first.id)
     }
   }, [watchlists, selectedId])
@@ -73,7 +70,7 @@ function WatchlistPage() {
         onSelect={setSelectedId}
       />
 
-      {selectedId && (
+      {selectedId != null && (
         <>
           <WatchlistItemList watchlistId={selectedId} instrumentNames={names} />
           <Separator />

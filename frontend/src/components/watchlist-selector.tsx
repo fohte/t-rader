@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type SyntheticEvent, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -48,7 +48,7 @@ export function WatchlistSelectorView({
   const [newName, setNewName] = useState('')
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
-  const handleCreateSubmit = (e: FormEvent) => {
+  const handleCreateSubmit = (e: SyntheticEvent) => {
     e.preventDefault()
     if (!newName.trim()) return
     onCreateSubmit(newName.trim())
@@ -65,7 +65,9 @@ export function WatchlistSelectorView({
           <Input
             placeholder="ウォッチリスト名"
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            onChange={(e) => {
+              setNewName(e.target.value)
+            }}
             disabled={isCreating}
             autoFocus
             className="max-w-60"
@@ -93,7 +95,9 @@ export function WatchlistSelectorView({
         <>
           <Select
             value={selectedId ?? undefined}
-            onValueChange={(value) => onSelect(value)}
+            onValueChange={(value) => {
+              onSelect(value)
+            }}
           >
             <SelectTrigger className="w-60">
               <SelectValue placeholder="ウォッチリストを選択" />
@@ -110,12 +114,14 @@ export function WatchlistSelectorView({
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setIsCreateMode(true)}
+            onClick={() => {
+              setIsCreateMode(true)
+            }}
           >
             <Plus className="size-4" />
           </Button>
 
-          {selectedId && (
+          {selectedId != null && (
             <Dialog
               open={isDeleteDialogOpen}
               onOpenChange={setIsDeleteDialogOpen}
@@ -136,7 +142,9 @@ export function WatchlistSelectorView({
                 <DialogFooter>
                   <Button
                     variant="outline"
-                    onClick={() => setIsDeleteDialogOpen(false)}
+                    onClick={() => {
+                      setIsDeleteDialogOpen(false)
+                    }}
                   >
                     キャンセル
                   </Button>
@@ -179,7 +187,7 @@ export function WatchlistSelector({
 
   const createMutation = $api.useMutation('post', '/api/watchlists', {
     onSuccess: (data) => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
       })
       onSelect(data.id)
@@ -188,7 +196,7 @@ export function WatchlistSelector({
 
   const deleteMutation = $api.useMutation('delete', '/api/watchlists/{id}', {
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
       })
       // variables から削除対象 ID を取得し、クロージャの stale 問題を回避
@@ -209,7 +217,7 @@ export function WatchlistSelector({
         createMutation.mutate({ body: { name } })
       }}
       onDelete={() => {
-        if (selectedId) {
+        if (selectedId != null) {
           deleteMutation.mutate({ params: { path: { id: selectedId } } })
         }
       }}

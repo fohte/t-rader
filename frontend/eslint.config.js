@@ -1,14 +1,17 @@
 import { config } from '@fohte/eslint-config'
 
-<<<<<<< before updating
-const config = [
-  { ignores: ['dist', 'vitest.config.ts'] },
-  ...mainConfig,
-  ...typescriptConfig,
-=======
 export default config(
   { typescript: { typeChecked: true } },
->>>>>>> after updating
+  {
+    files: ['**/*.ts{,x}'],
+    languageOptions: {
+      parserOptions: {
+        projectService: {
+          allowDefaultProject: ['.storybook/main.ts', '.storybook/preview.ts'],
+        },
+      },
+    },
+  },
   {
     rules: {
       'no-restricted-imports': [

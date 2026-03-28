@@ -1,9 +1,8 @@
-import type { LucideIcon } from 'lucide-react'
-
+/* eslint-disable @typescript-eslint/strict-boolean-expressions -- FileRouteTypes が error 型を生成するため */
 import { Link, useMatchRoute } from '@tanstack/react-router'
+import type { LucideIcon } from 'lucide-react'
 import { BarChart3, FileText, History, List } from 'lucide-react'
 
-import type { FileRouteTypes } from '@/routeTree.gen'
 import {
   Sidebar,
   SidebarContent,
@@ -15,8 +14,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import type { FileRouteTypes } from '@/routeTree.gen'
 
 // ルートファイル追加後に自動的に型安全になるよう、登録済みパスと未登録パスの両方を許容する
+// FileRouteTypes['to'] は routeTree.gen から自動生成される型で、型エラーが出る場合がある
+
 type NavPath = FileRouteTypes['to'] | '/trades'
 
 interface NavItem {

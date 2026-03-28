@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { type SyntheticEvent, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ type AddInstrumentFormViewProps = {
   name: string
   onInstrumentIdChange: (value: string) => void
   onNameChange: (value: string) => void
-  onSubmit: (e: FormEvent) => void
+  onSubmit: (e: SyntheticEvent) => void
   isSubmitting: boolean
   error: string | null
 }
@@ -31,14 +31,18 @@ export function AddInstrumentFormView({
         <Input
           placeholder="銘柄コード (例: 7203)"
           value={instrumentId}
-          onChange={(e) => onInstrumentIdChange(e.target.value)}
+          onChange={(e) => {
+            onInstrumentIdChange(e.target.value)
+          }}
           disabled={isSubmitting}
           className="max-w-40"
         />
         <Input
           placeholder="銘柄名 (例: トヨタ自動車)"
           value={name}
-          onChange={(e) => onNameChange(e.target.value)}
+          onChange={(e) => {
+            onNameChange(e.target.value)
+          }}
           disabled={isSubmitting}
         />
         <Button
@@ -53,7 +57,9 @@ export function AddInstrumentFormView({
           追加
         </Button>
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error != null && error !== '' && (
+        <p className="text-sm text-destructive">{error}</p>
+      )}
     </form>
   )
 }
@@ -78,7 +84,7 @@ export function AddInstrumentForm({
       const addedId = variables.params.path.id
       const addedBody = variables.body
       onNameRegistered(addedBody.instrument_id, addedBody.name)
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: $api.queryOptions('get', '/api/watchlists/{id}/items', {
           params: { path: { id: addedId } },
         }).queryKey,
@@ -89,14 +95,14 @@ export function AddInstrumentForm({
     },
     onError: (err) => {
       // openapi-fetch のエラーから API のエラーメッセージを取得
-      const message =
-        (err as unknown as { error?: string })?.error ??
-        '銘柄の追加に失敗しました'
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- openapi-fetch のエラー型を展開
+      const apiError = err as unknown as { error?: string }
+      const message = apiError.error ?? '銘柄の追加に失敗しました'
       setError(message)
     },
   })
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = (e: SyntheticEvent) => {
     e.preventDefault()
     setError(null)
     addMutation.mutate({

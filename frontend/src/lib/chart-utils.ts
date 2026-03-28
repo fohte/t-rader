@@ -10,6 +10,8 @@ type Bar = components['schemas']['Bar']
 
 /** ISO 8601 タイムスタンプを Unix タイムスタンプ (秒) に変換する */
 function toUTCTimestamp(isoTimestamp: string): UTCTimestamp {
+  // lightweight-charts の UTCTimestamp は number のブランド型
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- ブランド型への変換
   return Math.floor(new Date(isoTimestamp).getTime() / 1000) as UTCTimestamp
 }
 

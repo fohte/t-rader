@@ -29,7 +29,9 @@ export function WatchlistItemRowView({
         className="flex flex-1 items-center gap-3"
       >
         <span className="font-mono font-medium">{item.instrument_id}</span>
-        {name && <span className="text-sm text-muted-foreground">{name}</span>}
+        {name != null && name !== '' && (
+          <span className="text-sm text-muted-foreground">{name}</span>
+        )}
       </Link>
       <Button
         variant="ghost"
@@ -69,7 +71,7 @@ export function WatchlistItemRow({
     '/api/watchlists/{id}/items/{instrument_id}',
     {
       onSuccess: () => {
-        queryClient.invalidateQueries({
+        void queryClient.invalidateQueries({
           queryKey: $api.queryOptions('get', '/api/watchlists/{id}/items', {
             params: { path: { id: watchlistId } },
           }).queryKey,
