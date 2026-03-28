@@ -49,7 +49,9 @@ export function TimeframeSelector({
               variant={isSelected ? 'default' : 'outline'}
               size="xs"
               disabled={isDisabled}
-              onClick={() => onChange(tf.value)}
+              onClick={() => {
+                onChange(tf.value)
+              }}
               aria-pressed={isSelected}
             >
               {tf.label}

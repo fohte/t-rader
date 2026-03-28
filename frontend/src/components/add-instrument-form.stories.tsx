@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import type { FormEvent } from 'react'
+import type { SyntheticEvent } from 'react'
 
 import { AddInstrumentFormView } from '@/components/add-instrument-form'
 
@@ -17,7 +17,9 @@ export const Default: Story = {
     name: '',
     onInstrumentIdChange: () => {},
     onNameChange: () => {},
-    onSubmit: (e: FormEvent) => e.preventDefault(),
+    onSubmit: (e: SyntheticEvent) => {
+      e.preventDefault()
+    },
     isSubmitting: false,
     error: null,
   },
@@ -29,7 +31,9 @@ export const Filled: Story = {
     name: 'トヨタ自動車',
     onInstrumentIdChange: () => {},
     onNameChange: () => {},
-    onSubmit: (e: FormEvent) => e.preventDefault(),
+    onSubmit: (e: SyntheticEvent) => {
+      e.preventDefault()
+    },
     isSubmitting: false,
     error: null,
   },
@@ -41,7 +45,9 @@ export const Submitting: Story = {
     name: 'トヨタ自動車',
     onInstrumentIdChange: () => {},
     onNameChange: () => {},
-    onSubmit: (e: FormEvent) => e.preventDefault(),
+    onSubmit: (e: SyntheticEvent) => {
+      e.preventDefault()
+    },
     isSubmitting: true,
     error: null,
   },
@@ -53,7 +59,9 @@ export const WithError: Story = {
     name: 'トヨタ自動車',
     onInstrumentIdChange: () => {},
     onNameChange: () => {},
-    onSubmit: (e: FormEvent) => e.preventDefault(),
+    onSubmit: (e: SyntheticEvent) => {
+      e.preventDefault()
+    },
     isSubmitting: false,
     error: 'この銘柄は既にウォッチリストに追加されています',
   },

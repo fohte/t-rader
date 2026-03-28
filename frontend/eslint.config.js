@@ -1,9 +1,17 @@
-import { mainConfig, typescriptConfig } from '@fohte/eslint-config'
+import { config } from '@fohte/eslint-config'
 
-const config = [
-  { ignores: ['dist', 'vitest.config.ts'] },
-  ...mainConfig,
-  ...typescriptConfig,
+export default config(
+  { typescript: { typeChecked: true } },
+  {
+    files: ['**/*.ts{,x}'],
+    languageOptions: {
+      parserOptions: {
+        projectService: {
+          allowDefaultProject: ['.storybook/main.ts', '.storybook/preview.ts'],
+        },
+      },
+    },
+  },
   {
     rules: {
       'no-restricted-imports': [
@@ -20,6 +28,11 @@ const config = [
       ],
     },
   },
-]
-
-export default config
+  // .storybook/ と vitest.config.ts は src 外にあり @ エイリアスが使えないため相対インポートを許可
+  {
+    files: ['.storybook/**/*.ts', 'vitest.config.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
+)

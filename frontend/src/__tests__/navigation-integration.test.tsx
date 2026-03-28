@@ -1,25 +1,11 @@
 // jsdom には window.matchMedia が存在しないため、SidebarProvider (useIsMobile) 用にモックする
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: (query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  }),
-})
-
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
-  Outlet,
   createMemoryHistory,
   createRootRoute,
   createRoute,
   createRouter,
+  Outlet,
   RouterProvider,
 } from '@tanstack/react-router'
 import {
@@ -35,6 +21,20 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { AppShell } from '@/components/app-shell'
 import { PlaceholderPage } from '@/components/placeholder-page'
+
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }),
+})
 
 afterEach(cleanup)
 
@@ -124,8 +124,9 @@ function getNavSidebar() {
   // shadcn/ui の Sidebar は data-slot="sidebar" を持つ div 要素
   // その中に実際のコンテンツを持つ data-slot="sidebar-container" の div がある
   const sidebarEl = document.querySelector('[data-slot="sidebar"]')
-  if (!sidebarEl) throw new Error('sidebar element not found')
-  return sidebarEl as HTMLElement
+  if (!(sidebarEl instanceof HTMLElement))
+    throw new Error('sidebar element not found')
+  return sidebarEl
 }
 
 /** サイドバー内のメニューリンクを取得する (hidden 要素も検索対象に含める) */

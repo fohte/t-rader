@@ -28,7 +28,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               variant="ghost"
               size="icon"
               className="ml-auto size-7"
-              onClick={() => setIsChatOpen((prev) => !prev)}
+              onClick={() => {
+                setIsChatOpen((prev) => !prev)
+              }}
               aria-label="AI チャット"
               aria-expanded={isChatOpen}
             >
@@ -37,7 +39,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </header>
           <div className="flex-1 p-4">{children}</div>
         </SidebarInset>
-        <ChatSidebar isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+        <ChatSidebar
+          isOpen={isChatOpen}
+          onClose={() => {
+            setIsChatOpen(false)
+          }}
+        />
       </SidebarProvider>
     </TooltipProvider>
   )

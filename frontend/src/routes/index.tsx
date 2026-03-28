@@ -36,7 +36,7 @@ function WatchlistPage() {
         { body: { name: 'デフォルト' } },
         {
           onSuccess: (data) => {
-            queryClient.invalidateQueries({
+            void queryClient.invalidateQueries({
               queryKey: $api.queryOptions('get', '/api/watchlists').queryKey,
             })
             setSelectedId(data.id)
@@ -49,7 +49,7 @@ function WatchlistPage() {
   // ウォッチリスト読み込み後、最初のウォッチリストを選択
   useEffect(() => {
     const first = watchlists?.[0]
-    if (first && !selectedId) {
+    if (first != null && selectedId == null) {
       setSelectedId(first.id)
     }
   }, [watchlists, selectedId])
@@ -73,7 +73,7 @@ function WatchlistPage() {
         onSelect={setSelectedId}
       />
 
-      {selectedId && (
+      {selectedId != null && (
         <>
           <WatchlistItemList watchlistId={selectedId} instrumentNames={names} />
           <Separator />
