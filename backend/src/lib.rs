@@ -17,9 +17,10 @@ use std::sync::Arc;
 use axum::Json;
 use axum::Router;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use serde::Serialize;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use utoipa::OpenApi;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
@@ -125,12 +126,32 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
     router.to_openapi()
 }
 
-pub fn create_router(state: AppState) -> Router {
+/// CORS_ORIGIN 環境変数から CorsLayer を構築する。
+/// 未設定時は全オリジンを許可する (開発用)。
+fn build_cors_layer() -> Result<CorsLayer, AppError> {
+    let allow_origin = match std::env::var("CORS_ORIGIN") {
+        Ok(origin) => {
+            let header_value: HeaderValue = origin
+                .parse()
+                .map_err(|_| AppError::Config(format!("CORS_ORIGIN の値が不正です: {origin}")))?;
+            AllowOrigin::exact(header_value)
+        }
+        Err(_) => AllowOrigin::any(),
+    };
+
+    Ok(CorsLayer::new()
+        .allow_origin(allow_origin)
+        .allow_methods(Any)
+        .allow_headers(Any))
+}
+
+pub fn create_router(state: AppState) -> Result<Router, AppError> {
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
-    router
+    Ok(router
+        .layer(build_cors_layer()?)
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
-        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
+        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api)))
 }
 
 /// ヘルスチェック

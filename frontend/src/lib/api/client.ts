@@ -5,7 +5,7 @@ import type { paths } from '@/lib/api/schema.gen'
 
 // openapi-fetch クライアント (React 外でも利用可能)
 export const fetchClient = createFetchClient<paths>({
-  baseUrl: '/',
+  baseUrl: import.meta.env['VITE_API_URL'] ?? '/',
 })
 
 // openapi-react-query クライアント (React コンポーネント内で利用)
