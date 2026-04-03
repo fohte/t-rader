@@ -4,548 +4,548 @@
  */
 
 export interface paths {
-  '/api/bars': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** バーデータを取得する */
-    get: operations['list_bars']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/health': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** ヘルスチェック */
-    get: operations['health_check']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/watchlists': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** ウォッチリスト一覧を取得する */
-    get: operations['list_watchlists']
-    put?: never
-    /** ウォッチリストを作成する */
-    post: operations['create_watchlist']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/watchlists/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** ウォッチリストを削除する */
-    delete: operations['delete_watchlist']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/watchlists/{id}/items': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** ウォッチリスト内の銘柄一覧を取得する */
-    get: operations['list_watchlist_items']
-    put?: never
-    /** ウォッチリストに銘柄を追加する */
-    post: operations['add_watchlist_item']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/watchlists/{id}/items/{instrument_id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** ウォッチリストから銘柄を削除する */
-    delete: operations['delete_watchlist_item']
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
+    "/api/bars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** バーデータを取得する */
+        get: operations["list_bars"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ヘルスチェック */
+        get: operations["health_check"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watchlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ウォッチリスト一覧を取得する */
+        get: operations["list_watchlists"];
+        put?: never;
+        /** ウォッチリストを作成する */
+        post: operations["create_watchlist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watchlists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** ウォッチリストを削除する */
+        delete: operations["delete_watchlist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watchlists/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ウォッチリスト内の銘柄一覧を取得する */
+        get: operations["list_watchlist_items"];
+        put?: never;
+        /** ウォッチリストに銘柄を追加する */
+        post: operations["add_watchlist_item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watchlists/{id}/items/{instrument_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** ウォッチリストから銘柄を削除する */
+        delete: operations["delete_watchlist_item"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
-export type webhooks = Record<string, never>
+export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    AddWatchlistItemRequest: {
-      /** @description 銘柄コード (例: "7203") */
-      instrument_id: string
-      /** @description 銘柄名 (例: "トヨタ自動車") */
-      name: string
-    }
-    Bar: {
-      close: number
-      high: number
-      instrument_id: string
-      low: number
-      open: number
-      /** @enum {string} */
-      timeframe: '1d'
-      /** Format: date-time */
-      timestamp: string
-      /** Format: int64 */
-      volume: number
-    }
-    CreateWatchlistRequest: {
-      /** @description ウォッチリスト名 */
-      name: string
-    }
-    /** @description API エラーレスポンスの JSON 構造 */
-    ErrorResponse: {
-      /** @description エラーメッセージ */
-      error: string
-    }
-    /** @description ヘルスチェックレスポンス */
-    HealthResponse: {
-      /** @description サービスの状態 */
-      status: string
-    }
-    Watchlist: {
-      /** Format: date-time */
-      created_at: string
-      /** Format: uuid */
-      id: string
-      name: string
-      /** Format: int32 */
-      sort_order: number
-    }
-    WatchlistItem: {
-      /** Format: date-time */
-      added_at: string
-      instrument_id: string
-      /** Format: int32 */
-      sort_order: number
-      /** Format: uuid */
-      watchlist_id: string
-    }
-  }
-  responses: never
-  parameters: never
-  requestBodies: never
-  headers: never
-  pathItems: never
+    schemas: {
+        AddWatchlistItemRequest: {
+            /** @description 銘柄コード (例: "7203") */
+            instrument_id: string;
+            /** @description 銘柄名 (例: "トヨタ自動車") */
+            name: string;
+        };
+        Bar: {
+            close: number;
+            high: number;
+            instrument_id: string;
+            low: number;
+            open: number;
+            /** @enum {string} */
+            timeframe: "1d";
+            /** Format: date-time */
+            timestamp: string;
+            /** Format: int64 */
+            volume: number;
+        };
+        CreateWatchlistRequest: {
+            /** @description ウォッチリスト名 */
+            name: string;
+        };
+        /** @description API エラーレスポンスの JSON 構造 */
+        ErrorResponse: {
+            /** @description エラーメッセージ */
+            error: string;
+        };
+        /** @description ヘルスチェックレスポンス */
+        HealthResponse: {
+            /** @description サービスの状態 */
+            status: string;
+        };
+        Watchlist: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: int32 */
+            sort_order: number;
+        };
+        WatchlistItem: {
+            /** Format: date-time */
+            added_at: string;
+            instrument_id: string;
+            /** Format: int32 */
+            sort_order: number;
+            /** Format: uuid */
+            watchlist_id: string;
+        };
+    };
+    responses: never;
+    parameters: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
-export type $defs = Record<string, never>
+export type $defs = Record<string, never>;
 export interface operations {
-  list_bars: {
-    parameters: {
-      query: {
-        /** @description 銘柄コード (必須) */
-        instrument_id: string
-        /** @description 時間足 (デフォルト: "1d") */
-        timeframe?: string
-        /** @description 取得開始日 (YYYY-MM-DD, inclusive) */
-        from?: string
-        /** @description 取得終了日 (YYYY-MM-DD, inclusive) */
-        to?: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description バーデータ一覧 */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Bar'][]
-        }
-      }
-      /** @description バリデーションエラー */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  health_check: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description サービス正常 */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HealthResponse']
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  list_watchlists: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description ウォッチリスト一覧 */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Watchlist'][]
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  create_watchlist: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateWatchlistRequest']
-      }
-    }
-    responses: {
-      /** @description ウォッチリストを作成した */
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Watchlist']
-        }
-      }
-      /** @description バリデーションエラー */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description リクエストボディのパースに失敗 */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  delete_watchlist: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description ウォッチリスト ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description 削除成功 */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description パスパラメータが不正 */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description ウォッチリストが見つからない */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  list_watchlist_items: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description ウォッチリスト ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description 銘柄一覧 */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['WatchlistItem'][]
-        }
-      }
-      /** @description パスパラメータが不正 */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description ウォッチリストが見つからない */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  add_watchlist_item: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description ウォッチリスト ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AddWatchlistItemRequest']
-      }
-    }
-    responses: {
-      /** @description 銘柄を追加した */
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['WatchlistItem']
-        }
-      }
-      /** @description バリデーションエラー */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description ウォッチリストが見つからない */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 銘柄が既にウォッチリストに存在する */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description リクエストボディのパースに失敗 */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  delete_watchlist_item: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description ウォッチリスト ID */
-        id: string
-        /** @description 銘柄コード */
-        instrument_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description 削除成功 */
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description パスパラメータが不正 */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 銘柄が見つからない */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 内部サーバーエラー */
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
+    list_bars: {
+        parameters: {
+            query: {
+                /** @description 銘柄コード (必須) */
+                instrument_id: string;
+                /** @description 時間足 (デフォルト: "1d") */
+                timeframe?: string;
+                /** @description 取得開始日 (YYYY-MM-DD, inclusive) */
+                from?: string;
+                /** @description 取得終了日 (YYYY-MM-DD, inclusive) */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description バーデータ一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bar"][];
+                };
+            };
+            /** @description バリデーションエラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    health_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description サービス正常 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_watchlists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ウォッチリスト一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watchlist"][];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWatchlistRequest"];
+            };
+        };
+        responses: {
+            /** @description ウォッチリストを作成した */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watchlist"];
+                };
+            };
+            /** @description バリデーションエラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description リクエストボディのパースに失敗 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ウォッチリスト ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 削除成功 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description パスパラメータが不正 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ウォッチリストが見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_watchlist_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ウォッチリスト ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 銘柄一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistItem"][];
+                };
+            };
+            /** @description パスパラメータが不正 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ウォッチリストが見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_watchlist_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ウォッチリスト ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddWatchlistItemRequest"];
+            };
+        };
+        responses: {
+            /** @description 銘柄を追加した */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistItem"];
+                };
+            };
+            /** @description バリデーションエラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description ウォッチリストが見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 銘柄が既にウォッチリストに存在する */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description リクエストボディのパースに失敗 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_watchlist_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ウォッチリスト ID */
+                id: string;
+                /** @description 銘柄コード */
+                instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 削除成功 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description パスパラメータが不正 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 銘柄が見つからない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 内部サーバーエラー */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
 }
