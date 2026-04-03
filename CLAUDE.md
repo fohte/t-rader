@@ -54,9 +54,6 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - `.env.local` (git 管理外) で個人の環境に合わせた上書きが可能
 - `.mise.toml` の `[env]` セクションで `.env` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)
 - `DATABASE_URL` のデフォルト値は `.env` ファイルに定義されている
-- `CORS_ORIGIN`: backend の CORS 許可オリジン。`*` で全オリジン許可、カンマ区切りで複数指定可能。未設定時はエラー。`.env` のデフォルトは `*`
-- `VITE_API_URL`: frontend の API ベース URL。Docker ビルド時に `ARG` で焼き込まれる。未設定時は `/` (同一オリジン) にフォールバック
-- `API_PROXY_TARGET`: Vite 開発サーバーのプロキシ先 URL。`VITE_` プレフィックスなしのため `import.meta.env` には露出しない。`docker-compose.yml` で `http://backend:3000` に設定
 
 ## DB 接続
 
