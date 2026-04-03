@@ -71,7 +71,7 @@ async fn main() -> Result<(), AppError> {
 
     let state = AppState { db, data_provider };
 
-    let app = create_router(state)?;
+    let app = create_router(state);
 
     let port: u16 = std::env::var("BACKEND_PORT")
         .ok()
