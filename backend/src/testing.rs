@@ -28,6 +28,6 @@ pub async fn create_test_server(pool: PgPool) -> TestServer {
         db,
         data_provider: None,
     };
-    let router = create_router(state);
+    let router = create_router(state).expect("failed to create router");
     TestServer::new(router).expect("failed to create test server")
 }
