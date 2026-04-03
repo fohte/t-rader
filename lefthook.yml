@@ -10,15 +10,11 @@ pre-commit:
     dump-openapi:
       priority: 1
       glob: '*.rs'
-      root: 'backend/'
-      run: cargo run -- --dump-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json
-      stage_fixed: true
+      run: cd backend && cargo run -- --dump-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json && cd .. && git add backend/openapi.json
     openapi-typescript:
       priority: 2
       glob: '*.rs'
-      root: 'frontend/'
-      run: bun run generate:api
-      stage_fixed: true
+      run: cd frontend && bun run generate:api && cd .. && git add frontend/src/lib/api/schema.gen.d.ts
     ast-grep:
       glob: '*.rs'
       run: ast-grep scan {staged_files}
