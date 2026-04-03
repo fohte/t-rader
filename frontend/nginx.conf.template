@@ -4,7 +4,7 @@ server {
     index index.html;
 
     # API リクエストを backend にリバースプロキシ
-    location /api/ {
+    location /api {
         # Kubernetes 環境で DNS 名を動的に解決するため resolver が必要
         resolver ${NGINX_RESOLVER} valid=30s;
 
