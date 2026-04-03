@@ -127,16 +127,20 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 }
 
 /// CORS_ORIGIN 環境変数から CorsLayer を構築する。
-/// 未設定時は全オリジンを許可する (開発用)。
+/// `*` で全オリジン許可、カンマ区切りで複数オリジンを指定可能。
 fn build_cors_layer() -> Result<CorsLayer, AppError> {
-    let allow_origin = match std::env::var("CORS_ORIGIN") {
-        Ok(origin) => {
-            let header_value: HeaderValue = origin
-                .parse()
-                .map_err(|_| AppError::Config(format!("CORS_ORIGIN の値が不正です: {origin}")))?;
-            AllowOrigin::exact(header_value)
-        }
-        Err(_) => AllowOrigin::any(),
+    let origin_val = std::env::var("CORS_ORIGIN")
+        .map_err(|_| AppError::Config("CORS_ORIGIN environment variable is not set".to_string()))?;
+
+    let allow_origin = if origin_val == "*" {
+        AllowOrigin::any()
+    } else {
+        let origins = origin_val
+            .split(',')
+            .map(|s| s.trim().parse::<HeaderValue>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| AppError::Config(format!("CORS_ORIGIN の値が不正です: {origin_val}")))?;
+        AllowOrigin::list(origins)
     };
 
     Ok(CorsLayer::new()
@@ -149,9 +153,9 @@ pub fn create_router(state: AppState) -> Result<Router, AppError> {
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
     Ok(router
-        .layer(build_cors_layer()?)
+        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
-        .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api)))
+        .layer(build_cors_layer()?))
 }
 
 /// ヘルスチェック
