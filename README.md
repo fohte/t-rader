@@ -124,6 +124,6 @@ bun run format     # ESLint + Prettier によるフォーマット
 | `BACKEND_PORT`          | バックエンド公開ポート                                      | `3000`                  |
 | `FRONTEND_PORT`         | フロントエンド公開ポート                                    | `5173`                  |
 | `JQUANTS_REFRESH_TOKEN` | J-Quants API リフレッシュトークン                           | -                       |
-| `CORS_ORIGIN`           | CORS 許可オリジン (`*` で全許可、カンマ区切りで複数指定可)  | `*`                     |
+| `CORS_ORIGIN`           | CORS 許可オリジン (`*` で全許可、カンマ区切りで複数指定可)  | - (必須)                |
 | `VITE_API_URL`          | フロントエンドの API ベース URL (Docker ビルド時に焼き込み) | `/`                     |
 | `API_PROXY_TARGET`      | Vite 開発サーバーのプロキシ先 URL                           | `http://localhost:3000` |
