@@ -114,13 +114,16 @@ bun run format     # ESLint + Prettier によるフォーマット
 
 ## 環境変数
 
-| 変数                    | 説明                              | デフォルト            |
-| ----------------------- | --------------------------------- | --------------------- |
-| `DATABASE_URL`          | PostgreSQL 接続 URL               | -                     |
-| `POSTGRES_USER`         | DB ユーザー名                     | `t_rader`             |
-| `POSTGRES_PASSWORD`     | DB パスワード                     | `t_rader`             |
-| `POSTGRES_DB`           | DB 名                             | `t_rader_development` |
-| `DB_PORT`               | DB 公開ポート                     | `5432`                |
-| `BACKEND_PORT`          | バックエンド公開ポート            | `3000`                |
-| `FRONTEND_PORT`         | フロントエンド公開ポート          | `5173`                |
-| `JQUANTS_REFRESH_TOKEN` | J-Quants API リフレッシュトークン | -                     |
+| 変数                    | 説明                                                  | デフォルト              |
+| ----------------------- | ----------------------------------------------------- | ----------------------- |
+| `DATABASE_URL`          | PostgreSQL 接続 URL                                   | -                       |
+| `POSTGRES_USER`         | DB ユーザー名                                         | `t_rader`               |
+| `POSTGRES_PASSWORD`     | DB パスワード                                         | `t_rader`               |
+| `POSTGRES_DB`           | DB 名                                                 | `t_rader_development`   |
+| `DB_PORT`               | DB 公開ポート                                         | `5432`                  |
+| `BACKEND_PORT`          | バックエンド公開ポート                                | `3000`                  |
+| `FRONTEND_PORT`         | フロントエンド公開ポート                              | `5173`                  |
+| `JQUANTS_REFRESH_TOKEN` | J-Quants API リフレッシュトークン                     | -                       |
+| `VITE_API_URL`          | Vite 開発サーバーのプロキシ先 URL                     | `http://localhost:3000` |
+| `API_BACKEND_URL`       | nginx リバースプロキシの転送先 URL (本番用)           | `http://localhost:3000` |
+| `NGINX_RESOLVER`        | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス) | `127.0.0.11`            |

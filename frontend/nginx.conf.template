@@ -1,0 +1,29 @@
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # API リクエストを backend にリバースプロキシ
+    location /api {
+        # Kubernetes 環境で DNS 名を動的に解決するため resolver が必要
+        resolver ${NGINX_RESOLVER} valid=30s;
+
+        set $backend "${API_BACKEND_URL}";
+        proxy_pass $backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # SPA: すべてのルートを index.html にフォールバック
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 静的アセットのキャッシュ
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
