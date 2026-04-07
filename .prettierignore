@@ -1,9 +1,6 @@
 # Auto-generated files
 CHANGELOG.md
-<<<<<<< before updating
 backend/openapi.json
-=======
 
 # Lock files
 pnpm-lock.yaml
->>>>>>> after updating

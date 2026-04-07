@@ -185,7 +185,7 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
 
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
 
       - name: Run migrations
         working-directory: backend
@@ -274,7 +274,7 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
 
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
 
       - name: Build backend
         working-directory: backend

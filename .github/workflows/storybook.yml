@@ -40,23 +40,28 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@v4
 
-      - name: Cache bun dependencies
+      - run: corepack enable
+
+      - name: Get pnpm store directory
+        id: pnpm-store
+        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
         uses: actions/cache@v5
         with:
           path: |
-            ~/.bun/install/cache
-            ~/.bun/install/global
+            ${{ steps.pnpm-store.outputs.path }}
             frontend/node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock') }}
-          restore-keys: ${{ runner.os }}-bun-
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
 
-      - name: Install bun dependencies
-        run: cd frontend && bun install --frozen-lockfile
+      - name: Install pnpm dependencies
+        run: cd frontend && pnpm install --frozen-lockfile
 
       - name: Build Storybook
-        run: cd frontend && bun run storybook:build
+        run: cd frontend && pnpm run storybook:build
 
       - name: Create Cloudflare Pages project if not exists
         uses: cloudflare/wrangler-action@v3

@@ -5,12 +5,8 @@ CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tools]
 lefthook = "2.1.4"
-<<<<<<< before updating
-"github:ast-grep/ast-grep" = "0.41.1"
-"cargo:sea-orm-cli" = "2.0.0-rc.32"
-=======
 "github:ast-grep/ast-grep" = "0.42.0"
->>>>>>> after updating
+"cargo:sea-orm-cli" = "2.0.0-rc.32"
 
 # lefthook hooks
 actionlint = "1.7.11"
@@ -20,12 +16,3 @@ node = "24.14.0"
 "npm:prettier" = "3.8.1"
 shellcheck = "0.11.0"
 shfmt = "3.13.0"
-
-<<<<<<< before updating
-[settings]
-npm.bun = true
-=======
-[env]
-# Share target dir across worktrees to avoid full recompilation
-CARGO_TARGET_DIR = "{{config_root}}/target"
->>>>>>> after updating
