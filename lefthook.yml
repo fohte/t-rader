@@ -7,6 +7,7 @@ remotes:
 
 pre-commit:
   commands:
+<<<<<<< before updating
     dump-openapi:
       priority: 1
       glob: '*.rs'
@@ -15,6 +16,12 @@ pre-commit:
       priority: 2
       glob: '*.rs'
       run: cd frontend && bun run generate:api && cd .. && git add frontend/src/lib/api/schema.gen.d.ts
+=======
+    eslint-frontend:
+      glob: '*.{js,ts,jsx,tsx,mjs,cjs}'
+      root: 'frontend/'
+      run: pnpm exec eslint {staged_files}
+>>>>>>> after updating
     ast-grep:
       glob: '*.rs'
       run: ast-grep scan {staged_files}

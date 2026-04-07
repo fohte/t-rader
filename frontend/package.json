@@ -1,13 +1,19 @@
 {
   "name": "frontend",
   "private": true,
+  "packageManager": "pnpm@10.32.1",
   "type": "module",
   "scripts": {
     "lint": "eslint .",
     "format:eslint": "eslint --fix .",
     "format:prettier": "prettier --write .",
+<<<<<<< before updating
     "format": "conc -m 1 bun:format:eslint bun:format:prettier",
     "test": "tsr generate && conc bun:test:type bun:test:unit",
+=======
+    "format": "conc -m 1 pnpm:format:eslint pnpm:format:prettier",
+    "test": "conc pnpm:test:type pnpm:test:unit",
+>>>>>>> after updating
     "test:type": "tsc --noEmit",
     "test:unit": "vitest run",
     "dev": "vite",
@@ -17,9 +23,10 @@
     "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/schema.gen.d.ts"
   },
   "devDependencies": {
-    "@commitlint/cli": "20.4.4",
+    "@commitlint/cli": "20.5.0",
     "@eslint/eslintrc": "3.3.5",
     "@fohte/eslint-config": "0.3.1",
+<<<<<<< before updating
     "@storybook/addon-docs": "10.2.10",
     "@storybook/addon-themes": "10.2.10",
     "@storybook/react-vite": "10.2.10",
@@ -40,6 +47,13 @@
     "eslint": "10.0.3",
     "jsdom": "28.1.0",
     "openapi-typescript": "7.13.0",
+=======
+    "@tsconfig/node-lts": "24.0.0",
+    "@tsconfig/strictest": "2.0.8",
+    "@types/node": "24.12.0",
+    "concurrently": "9.2.1",
+    "eslint": "10.1.0",
+>>>>>>> after updating
     "prettier": "3.8.1",
     "shadcn": "3.8.5",
     "storybook": "10.2.10",
