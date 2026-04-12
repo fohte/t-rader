@@ -31,13 +31,16 @@ if command -v mise > /dev/null 2>&1; then
   mise install
 fi
 
+# Enable corepack so that pnpm version from package.json packageManager field is used
+corepack enable
+
 # Install git hooks via lefthook (skip for worktrees — they share the parent's .git/hooks)
 if [ "$worktree" = false ] && command -v lefthook > /dev/null 2>&1; then
   lefthook install
 fi
 
 # Install Node.js dependencies
-(cd frontend && bun install)
+(cd frontend && pnpm install)
 
 # Fetch Rust dependencies
 cargo fetch --manifest-path backend/Cargo.toml

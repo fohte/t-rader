@@ -6,5 +6,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-bunx openapi-typescript "${REPO_ROOT}/backend/openapi.json" \
+cd "${REPO_ROOT}/frontend"
+pnpm exec openapi-typescript "${REPO_ROOT}/backend/openapi.json" \
   -o "${REPO_ROOT}/frontend/src/lib/api/schema.gen.d.ts"

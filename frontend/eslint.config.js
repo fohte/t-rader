@@ -14,6 +14,8 @@ export default config(
   },
   {
     rules: {
+      // TanStack Router/Query の型定義が any を返すケースがあるため無効化
+      '@typescript-eslint/no-unsafe-assignment': 'off',
       'no-restricted-imports': [
         'error',
         {
