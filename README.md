@@ -9,7 +9,7 @@
 | Frontend               | React 19, Vite 7, TanStack Router, shadcn/ui, Tailwind CSS v4 |
 | Backend                | Rust (Axum)                                                   |
 | DB                     | TimescaleDB (PostgreSQL 17)                                   |
-| パッケージマネージャー | Bun                                                           |
+| パッケージマネージャー | pnpm                                                          |
 | ツール管理             | mise                                                          |
 
 ## 開発環境のセットアップ
