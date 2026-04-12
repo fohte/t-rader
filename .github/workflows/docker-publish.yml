@@ -22,14 +22,14 @@ jobs:
             context: ./frontend
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         id: setup-buildx
 
       - name: Log in to ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -37,7 +37,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository }}/${{ matrix.component }}
           tags: |
@@ -50,7 +50,7 @@ jobs:
       # ref: https://github.com/moby/buildkit/issues/3011
       - name: Restore Cargo cache
         if: matrix.component == 'backend'
-        uses: actions/cache@v5
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         id: cargo-cache
         with:
           path: cargo-cache
@@ -60,7 +60,7 @@ jobs:
 
       - name: Inject Cargo cache into Docker
         if: matrix.component == 'backend'
-        uses: reproducible-containers/buildkit-cache-dance@v3
+        uses: reproducible-containers/buildkit-cache-dance@1b8ab18fbda5ad3646e3fcc9ed9dd41ce2f297b4 # v3.3.2
         with:
           builder: ${{ steps.setup-buildx.outputs.name }}
           cache-dir: cargo-cache
@@ -68,7 +68,7 @@ jobs:
           skip-extraction: ${{ steps.cargo-cache.outputs.cache-hit }}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ${{ matrix.context }}
           push: true
@@ -96,7 +96,7 @@ jobs:
     needs: build
     steps:
       - name: Connect to Tailscale
-        uses: tailscale/github-action@v4.1.1
+        uses: tailscale/github-action@53acf823325fe9ca47f4cdaa951f90b4b0de5bb9 # v4.1.1
         with:
           oauth-client-id: ${{ secrets.TAILSCALE_CI_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TAILSCALE_CI_OAUTH_CLIENT_SECRET }}
