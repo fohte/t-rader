@@ -105,11 +105,11 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 ## npm スクリプト (frontend/)
 
 ```bash
-bun run dev        # Vite 開発サーバー
-bun run build      # プロダクションビルド
-bun run test       # 型チェック + ユニットテスト
-bun run lint       # ESLint
-bun run format     # ESLint + Prettier によるフォーマット
+pnpm run dev        # Vite 開発サーバー
+pnpm run build      # プロダクションビルド
+pnpm run test       # 型チェック + ユニットテスト
+pnpm run lint       # ESLint
+pnpm run format     # ESLint + Prettier によるフォーマット
 ```
 
 ## 環境変数
