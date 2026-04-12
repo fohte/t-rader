@@ -17,7 +17,5 @@ EXPOSE 80
 # NGINX_ENVSUBST_OUTPUT_DIR はデフォルトで /etc/nginx/conf.d。
 # nginx 変数 ($host, $uri 等) を壊さないよう、置換対象を明示的に指定する。
 ENV NGINX_ENVSUBST_FILTER=API_BACKEND_URL|NGINX_RESOLVER
-ENV API_BACKEND_URL=http://localhost:3000
-ENV NGINX_RESOLVER=127.0.0.11
 
 LABEL org.opencontainers.image.source=https://github.com/fohte/t-rader
