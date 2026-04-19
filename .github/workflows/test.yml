@@ -15,7 +15,11 @@ jobs:
       RUSTC_WRAPPER: 'sccache'
 
     steps:
+<<<<<<< before updating
       - uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+=======
+      - uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+>>>>>>> after updating
         id: app-token
         with:
           app-id: ${{ secrets.APP_ID }}
@@ -67,7 +71,10 @@ jobs:
       # Run sccache-action before mise-action so that sccache binary is
       # available when mise installs cargo tools (RUSTC_WRAPPER=sccache).
       - name: Run sccache-cache
+<<<<<<< before updating
         if: steps.check-backend.outputs.has_backend == 'true'
+=======
+>>>>>>> after updating
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
@@ -83,9 +90,13 @@ jobs:
         with:
           path: |
             ${{ steps.pnpm-store.outputs.path }}
+            node_modules
             frontend/node_modules
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml', 'frontend/pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-
+
+      - name: Install pnpm dependencies (root)
+        run: pnpm install --frozen-lockfile
 
       - name: Install pnpm dependencies (frontend)
         run: cd "frontend" && pnpm install --frozen-lockfile
@@ -102,8 +113,8 @@ jobs:
           LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep' || '' }}
         run: lefthook run pre-commit --all-files
 
-      # lefthook-config's formatters run `git add` after formatting, which stages the changes.
-      # https://github.com/fohte/lefthook-config/blob/v0.1.7/base.yml
+      # Formatters configured with `stage_fixed: true` run `git add` after formatting,
+      # which stages the changes.
       # commit-action uses `git ls-files --modified` which only detects unstaged changes.
       # https://github.com/suzuki-shunsuke/commit-action/blob/87b297f0ce551411b43d1880f4fb3cbc60381055/action.yaml#L57
       # We need to unstage the changes so commit-action can detect them.
@@ -134,19 +145,31 @@ jobs:
           fetch-depth: 2
 
       - name: Check for frontend changes
+<<<<<<< before updating
         uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+=======
+        uses: tj-actions/changed-files@22103cc46bda19c2b464ffe86db46df6922fd323 # v47.0.5
+>>>>>>> after updating
         id: changes-frontend
         with:
           files: frontend/**
 
       - name: Check for backend changes
+<<<<<<< before updating
         uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+=======
+        uses: tj-actions/changed-files@22103cc46bda19c2b464ffe86db46df6922fd323 # v47.0.5
+>>>>>>> after updating
         id: changes-backend
         with:
           files: backend/**
 
       - name: Check for workflow changes
+<<<<<<< before updating
         uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+=======
+        uses: tj-actions/changed-files@22103cc46bda19c2b464ffe86db46df6922fd323 # v47.0.5
+>>>>>>> after updating
         id: changes-workflow
         with:
           files: .github/workflows/test.yml
@@ -368,7 +391,11 @@ jobs:
         run: cargo llvm-cov --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
+<<<<<<< before updating
         uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5.5.4
+=======
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+>>>>>>> after updating
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: backend/lcov.info
