@@ -1,15 +1,15 @@
 pre-commit:
   commands:
-<<<<<<< before updating
     dump-openapi:
       priority: 1
       glob: '*.rs'
       run: cd backend && cargo run -- --dump-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json && cd .. && git add backend/openapi.json
+
     openapi-typescript:
       priority: 2
       glob: '*.rs'
       run: cd frontend && pnpm run generate:api && cd .. && git add frontend/src/lib/api/schema.gen.d.ts
-=======
+
     format:
       # Remove trailing whitespace and ensure final newline
       run: basefmt {staged_files}
@@ -66,7 +66,6 @@ pre-commit:
 
     # Non-workspace multi-package monorepo: each subpackage has its own
     # eslint.config.js and dependencies, so lint per package from its root.
->>>>>>> after updating
     eslint-frontend:
       glob: '*.{js,ts,jsx,tsx,mjs,cjs}'
       root: 'frontend/'
