@@ -1,10 +1,11 @@
 # Changes here will be overwritten by Copier
-_commit: v0.5.3
+_commit: v0.6.4
 _src_path: https://github.com/fohte/generic-boilerplate
 description: 個人向け日本株投資プラットフォーム
 is_public: true
 monorepo_node_workspace: false
 project_name: t-rader
+repo_language: ja
 subpackages:
   - name: frontend
     type: node

@@ -39,7 +39,9 @@ if [ "$worktree" = false ] && command -v lefthook > /dev/null 2>&1; then
   lefthook install
 fi
 
-# Install Node.js dependencies
+# Install shared dev tools (prettier, commitlint) at the repo root
+pnpm install
+# Install Node.js dependencies for each subpackage
 (cd frontend && pnpm install)
 
 # Fetch Rust dependencies
