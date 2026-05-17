@@ -89,28 +89,3 @@ jobs:
           # ref: https://github.com/docker/build-push-action/issues/981
           # ref: https://github.com/docker/build-push-action/issues/900
           provenance: false
-
-  # イメージ push 後に Keel webhook で Kubernetes のデプロイを更新する
-  notify-keel:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@53acf823325fe9ca47f4cdaa951f90b4b0de5bb9 # v4.1.1
-        with:
-          oauth-client-id: ${{ secrets.TAILSCALE_CI_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TAILSCALE_CI_OAUTH_CLIENT_SECRET }}
-          tags: tag:ci
-
-      - name: Notify Keel
-        run: |
-          curl --fail -X POST \
-            -H 'Content-Type: application/json' \
-            -d '{"name": "ghcr.io/fohte/t-rader/backend", "tag": "latest"}' \
-            "$KEEL_WEBHOOK_URL"
-          curl --fail -X POST \
-            -H 'Content-Type: application/json' \
-            -d '{"name": "ghcr.io/fohte/t-rader/frontend", "tag": "latest"}' \
-            "$KEEL_WEBHOOK_URL"
-        env:
-          KEEL_WEBHOOK_URL: ${{ secrets.KEEL_WEBHOOK_URL }}
