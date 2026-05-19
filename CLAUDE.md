@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 <<<<<<< before updating
+
 ## Bash commands
 
 ```bash
@@ -73,7 +74,9 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - TanStack Router に依存するコンポーネントは `createMemoryHistory` + `createRouter` + `RouterProvider` でルーターコンテキストを提供する
 
 =======
->>>>>>> after updating
+
+> > > > > > > after updating
+
 ## Test code rules
 
 ### Parameterize similar test cases with rstest
