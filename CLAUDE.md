@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-<<<<<<< before updating
-
 ## Bash commands
 
 ```bash
@@ -72,10 +70,6 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - フロントエンドの UI コンポーネントを作成・変更した際は、対応する Story ファイル (`*.stories.tsx`) も作成・更新すること
 - Story ファイルはコンポーネントと同じディレクトリに配置する (例: `src/components/ui/button.stories.tsx`)
 - TanStack Router に依存するコンポーネントは `createMemoryHistory` + `createRouter` + `RouterProvider` でルーターコンテキストを提供する
-
-=======
-
-> > > > > > > after updating
 
 ## Test code rules
 
