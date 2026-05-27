@@ -4,14 +4,27 @@ _.file = ['.env', '.env.local']
 CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tools]
+<<<<<<< before updating
 lefthook = "2.1.4"
 "github:ast-grep/ast-grep" = "0.42.0"
 "cargo:sea-orm-cli" = "2.0.0-rc.32"
+=======
+lefthook = "2.1.8"
+"github:ast-grep/ast-grep" = "0.42.3"
+>>>>>>> after updating
 
 # lefthook hooks
 actionlint = "1.7.12"
-node = "24.14.1"
-pinact = "3.9.0"
+node = "24.15.0"
+pinact = "3.10.1"
 "github:fohte/basefmt" = "0.1.0"
 shellcheck = "0.11.0"
+<<<<<<< before updating
 shfmt = "3.13.0"
+=======
+shfmt = "3.13.1"
+
+[env]
+# Share target dir across worktrees to avoid full recompilation
+CARGO_TARGET_DIR = "{{config_root}}/target"
+>>>>>>> after updating
