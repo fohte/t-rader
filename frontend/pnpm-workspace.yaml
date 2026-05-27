@@ -1,6 +1,7 @@
 allowBuilds:
   # required by vitest's transformer
   esbuild: true
-  msw: false
   # required by @fohte/eslint-config -> eslint-plugin-import-x for "@/*" resolution
   unrs-resolver: true
+  # shadcn の transitive dep。service worker は使わないため build script を実行しない
+  msw: false
