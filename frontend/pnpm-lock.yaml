@@ -48,8 +48,8 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(react@19.2.4)
       tailwind-merge:
-        specifier: 3.4.1
-        version: 3.4.1
+        specifier: 3.6.0
+        version: 3.6.0
     devDependencies:
       '@commitlint/cli':
         specifier: 21.0.1
@@ -4094,6 +4094,9 @@ packages:
 
   tailwind-merge@3.4.1:
     resolution: {integrity: sha512-2OA0rFqWOkITEAOFWSBSApYkDeH9t2B3XSJuI4YztKBzK3mX0737A2qtxDZ7xkw9Zfh0bWl+r34sF3HXV+Ig7Q==}
+
+  tailwind-merge@3.6.0:
+    resolution: {integrity: sha512-uxL7qAVQriqRQPAyK3pj66VqskWqoZ37PW94jwOTwNfq/z9oyu1V+eqrZqtR2+fCiXdYOZe/Modt8GtvqNzu+w==}
 
   tailwindcss@4.1.18:
     resolution: {integrity: sha512-4+Z+0yiYyEtUVCScyfHCxOYP06L5Ne+JiHhY2IjR2KWMIWhJOYZKLSGZaP5HkZ8+bY0cxfzwDE5uOmzFXyIwxw==}
@@ -8542,6 +8545,8 @@ snapshots:
   tagged-tag@1.0.0: {}
 
   tailwind-merge@3.4.1: {}
+
+  tailwind-merge@3.6.0: {}
 
   tailwindcss@4.1.18: {}
 
