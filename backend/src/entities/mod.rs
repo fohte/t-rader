@@ -2,7 +2,20 @@
 
 pub mod prelude;
 
+pub mod annotation;
 pub mod bars;
+pub mod change_history;
+pub mod comment;
+pub mod indicator;
 pub mod instruments;
+pub mod note;
+pub mod note_ref;
+pub mod portfolio_snapshot;
+pub mod sector;
+pub mod stock;
+pub mod strategy;
+pub mod strategy_interest;
+pub mod theme;
+pub mod trade;
 pub mod watchlist_items;
 pub mod watchlists;
