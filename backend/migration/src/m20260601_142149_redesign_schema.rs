@@ -3,11 +3,8 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-// 参照型 (一級型) 共通の kind 値
 const REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
-// アーティファクト共通の status 値
 const STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
-// 産出元 (人間か LLM か)
 const ORIGINS: [&str; 2] = ["human", "llm"];
 
 #[derive(DeriveIden)]
@@ -511,6 +508,15 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_annotation_linked_note_id")
+                    .table(Annotation::Table)
+                    .col(Annotation::LinkedNoteId)
+                    .to_owned(),
+            )
+            .await?;
 
         manager
             .create_table(
@@ -733,7 +739,6 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // 外部キー依存の逆順で削除
         for table in [
             PortfolioSnapshot::Table.into_iden(),
             Trade::Table.into_iden(),
