@@ -96,6 +96,12 @@ jobs:
       - name: Install pnpm dependencies (frontend)
         run: cd "frontend" && pnpm install --frozen-lockfile
 
+      # TanStack Router の routeTree.gen.ts は gitignore 対象。
+      # eslint の型ベースルール (no-unsafe-member-access 等) は route の generic 型に依存するため、
+      # lint 前に生成しておかないと CI のみ false-positive が出る。
+      - name: Generate frontend route tree
+        run: cd "frontend" && pnpm exec tsr generate
+
       - name: Fetch cargo dependencies (backend)
         if: steps.check-backend.outputs.has_backend == 'true'
         run: cd "backend" && cargo fetch
