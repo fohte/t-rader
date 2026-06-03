@@ -2,8 +2,8 @@ import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { ErrorBoundary } from 'react-error-boundary'
 
-import { AppShell } from '@/components/app-shell'
 import { ErrorFallback } from '@/components/error-fallback'
+import { StrategyShell } from '@/components/strategy-shell/strategy-shell'
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -22,9 +22,9 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <AppShell>
+      <StrategyShell>
         <Outlet />
-      </AppShell>
+      </StrategyShell>
       <TanStackRouterDevtools position="bottom-right" />
     </ErrorBoundary>
   )
