@@ -550,8 +550,8 @@ export interface components {
       /** Format: uuid */
       id: string
       /** Format: uuid */
-      linked_note_id?: string
-      price?: string
+      linked_note_id?: string | null
+      price?: number
       status: string
       /** Format: uuid */
       strategy_id: string
@@ -585,7 +585,7 @@ export interface components {
       /** Format: uuid */
       id: string
       op: string
-      summary?: string
+      summary?: string | null
       /** Format: uuid */
       target_id: string
       target_kind: string
@@ -603,7 +603,7 @@ export interface components {
       /** Format: uuid */
       id: string
       /** Format: uuid */
-      parent_id?: string
+      parent_id?: string | null
       /** Format: uuid */
       target_id: string
       target_kind: string
@@ -612,7 +612,8 @@ export interface components {
       created_by_kind?: string | null
       /** Format: uuid */
       linked_note_id?: string | null
-      price?: string | null
+      /** Format: double */
+      price?: number | null
       status?: string | null
       /** Format: uuid */
       strategy_id: string
@@ -639,7 +640,9 @@ export interface components {
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
       created_by_kind?: string | null
-      frontmatter_json?: unknown
+      frontmatter_json?: {
+        [key: string]: unknown
+      } | null
       /** @description 任意。デフォルトは "unread" */
       status?: string | null
       /** Format: uuid */
@@ -658,10 +661,13 @@ export interface components {
     CreateTradeRequest: {
       /** Format: date */
       date: string
-      fee?: string | null
+      /** Format: double */
+      fee?: number | null
       note?: string | null
-      price: string
-      qty: string
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
       /** @description "buy" | "sell" */
       side: string
       /** @description "manual" | "csv" | "api" */
@@ -701,16 +707,17 @@ export interface components {
       /** Format: uuid */
       strategy_id: string
       title: string
-      trigger?: string
-      trigger_label?: string
-      type_tag?: string
+      trigger?: string | null
+      trigger_label?: string | null
+      type_tag?: string | null
       /** Format: date-time */
       updated_at: string
     }
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
       positions: components['schemas']['PositionSummary'][]
-      realized_pnl: string
+      /** Format: double */
+      realized_pnl: number
       /** Format: uuid */
       strategy_id?: string | null
       /** Format: int64 */
@@ -718,14 +725,26 @@ export interface components {
     }
     /** @description 銘柄ごとの未決済ポジションと損益 */
     PositionSummary: {
-      /** @description 平均取得単価 (FIFO ベース) */
-      avg_cost: string
-      /** @description 取得簿価 (qty * avg_cost) */
-      cost_basis: string
-      /** @description 保有数量 (買い残 - 売り残) */
-      qty: string
-      /** @description 実現損益累計 */
-      realized_pnl: string
+      /**
+       * Format: double
+       * @description 平均取得単価 (FIFO ベース)
+       */
+      avg_cost: number
+      /**
+       * Format: double
+       * @description 取得簿価 (qty * avg_cost)
+       */
+      cost_basis: number
+      /**
+       * Format: double
+       * @description 保有数量 (買い残 - 売り残)
+       */
+      qty: number
+      /**
+       * Format: double
+       * @description 実現損益累計
+       */
+      realized_pnl: number
       symbol: string
     }
     /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
@@ -744,16 +763,16 @@ export interface components {
       /** Format: date-time */
       created_at: string
       id: string
-      market?: string
+      market?: string | null
       name: string
-      sector_id?: string
+      sector_id?: string | null
       /** Format: date-time */
       updated_at: string
     }
     Strategy: {
       /** Format: date-time */
       created_at: string
-      description?: string
+      description?: string | null
       /** Format: uuid */
       id: string
       name: string
@@ -763,7 +782,7 @@ export interface components {
       updated_at: string
     }
     Theme: {
-      description?: string
+      description?: string | null
       id: string
       name: string
     }
@@ -772,12 +791,12 @@ export interface components {
       created_at: string
       /** Format: date */
       date: string
-      fee: string
+      fee: number
       /** Format: uuid */
       id: string
-      note?: string
-      price: string
-      qty: string
+      note?: string | null
+      price: number
+      qty: number
       side: string
       source: string
       /** Format: uuid */
@@ -789,7 +808,8 @@ export interface components {
     UpdateAnnotationRequest: {
       /** Format: uuid */
       linked_note_id?: string | null
-      price?: string | null
+      /** Format: double */
+      price?: number | null
       target_kind?: string | null
       target_symbol?: string | null
       text?: string | null
@@ -798,7 +818,9 @@ export interface components {
     }
     UpdateNoteRequest: {
       body_md?: string | null
-      frontmatter_json?: unknown
+      frontmatter_json?: {
+        [key: string]: unknown
+      } | null
       title?: string | null
       trigger?: string | null
       trigger_label?: string | null
@@ -813,10 +835,13 @@ export interface components {
     UpdateTradeRequest: {
       /** Format: date */
       date?: string | null
-      fee?: string | null
+      /** Format: double */
+      fee?: number | null
       note?: string | null
-      price?: string | null
-      qty?: string | null
+      /** Format: double */
+      price?: number | null
+      /** Format: double */
+      qty?: number | null
       side?: string | null
       source?: string | null
       symbol?: string | null
@@ -868,6 +893,15 @@ export interface operations {
           'application/json': components['schemas']['Annotation'][]
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       500: {
         headers: {
           [name: string]: unknown
@@ -899,7 +933,17 @@ export interface operations {
           'application/json': components['schemas']['Annotation']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -937,6 +981,15 @@ export interface operations {
           'application/json': components['schemas']['Annotation']
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
         headers: {
           [name: string]: unknown
@@ -972,6 +1025,15 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
       }
       404: {
         headers: {
@@ -1015,6 +1077,7 @@ export interface operations {
           'application/json': components['schemas']['Annotation']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -1024,6 +1087,15 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -1108,6 +1180,7 @@ export interface operations {
           'application/json': components['schemas']['Comment'][]
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -1147,7 +1220,17 @@ export interface operations {
           'application/json': components['schemas']['Comment']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -1182,6 +1265,15 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
       }
       404: {
         headers: {
@@ -1252,6 +1344,15 @@ export interface operations {
           'application/json': components['schemas']['ChangeHistory'][]
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       500: {
         headers: {
           [name: string]: unknown
@@ -1280,6 +1381,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ChangeHistory']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       404: {
@@ -1321,6 +1431,15 @@ export interface operations {
           'application/json': components['schemas']['Note'][]
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       500: {
         headers: {
           [name: string]: unknown
@@ -1352,7 +1471,17 @@ export interface operations {
           'application/json': components['schemas']['Note']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -1390,6 +1519,15 @@ export interface operations {
           'application/json': components['schemas']['Note']
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
         headers: {
           [name: string]: unknown
@@ -1425,6 +1563,15 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
       }
       404: {
         headers: {
@@ -1468,6 +1615,7 @@ export interface operations {
           'application/json': components['schemas']['Note']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -1477,6 +1625,15 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -1518,7 +1675,25 @@ export interface operations {
           'application/json': components['schemas']['Note']
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -1560,7 +1735,25 @@ export interface operations {
           'application/json': components['schemas']['Note']
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -1937,7 +2130,17 @@ export interface operations {
           'application/json': components['schemas']['Strategy']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -1975,6 +2178,15 @@ export interface operations {
           'application/json': components['schemas']['Strategy']
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
         headers: {
           [name: string]: unknown
@@ -2010,6 +2222,15 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
       }
       404: {
         headers: {
@@ -2053,6 +2274,7 @@ export interface operations {
           'application/json': components['schemas']['Strategy']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -2062,6 +2284,15 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -2099,6 +2330,15 @@ export interface operations {
           'application/json': components['schemas']['Trade'][]
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       500: {
         headers: {
           [name: string]: unknown
@@ -2130,7 +2370,17 @@ export interface operations {
           'application/json': components['schemas']['Trade']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }
@@ -2168,6 +2418,15 @@ export interface operations {
           'application/json': components['schemas']['PerformanceSummary']
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       500: {
         headers: {
           [name: string]: unknown
@@ -2196,6 +2455,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['Trade']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       404: {
@@ -2233,6 +2501,15 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
       }
       404: {
         headers: {
@@ -2276,6 +2553,7 @@ export interface operations {
           'application/json': components['schemas']['Trade']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -2285,6 +2563,15 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }

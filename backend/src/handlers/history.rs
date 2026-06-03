@@ -27,6 +27,7 @@ pub struct ListHistoryQuery {
     params(ListHistoryQuery),
     responses(
         (status = 200, body = Vec<change_history::Model>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -53,6 +54,7 @@ pub async fn list_history(
     params(("id" = Uuid, Path, description = "変更履歴 ID")),
     responses(
         (status = 200, body = change_history::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

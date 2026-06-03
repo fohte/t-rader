@@ -4,7 +4,7 @@
 //! OpenAPI スキーマ定義はここで分離して管理する。
 
 use utoipa::PartialSchema;
-use utoipa::openapi::schema::{ObjectBuilder, SchemaFormat, Type};
+use utoipa::openapi::schema::{ObjectBuilder, SchemaFormat, SchemaType, Type};
 use utoipa::openapi::{KnownFormat, Object, RefOr, Schema};
 
 /// 文字列プロパティ
@@ -46,20 +46,23 @@ fn i32_prop() -> Object {
 
 /// nullable な文字列プロパティ
 fn nullable_str_prop() -> Object {
-    ObjectBuilder::new().schema_type(Type::String).build()
+    ObjectBuilder::new()
+        .schema_type(SchemaType::from_iter([Type::String, Type::Null]))
+        .build()
 }
 
 /// nullable な UUID 文字列プロパティ
 fn nullable_uuid_prop() -> Object {
     ObjectBuilder::new()
-        .schema_type(Type::String)
+        .schema_type(SchemaType::from_iter([Type::String, Type::Null]))
         .format(Some(SchemaFormat::KnownFormat(KnownFormat::Uuid)))
         .build()
 }
 
-/// 任意の数値 (rust_decimal::Decimal)。OpenAPI では文字列で表現
+/// 任意の数値 (rust_decimal::Decimal)。
+/// rust_decimal の `serde-float` で JSON 数値として出力されるため number 型にする
 fn decimal_prop() -> Object {
-    ObjectBuilder::new().schema_type(Type::String).build()
+    ObjectBuilder::new().schema_type(Type::Number).build()
 }
 
 /// 任意の JSON 値

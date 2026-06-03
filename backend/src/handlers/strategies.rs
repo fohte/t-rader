@@ -61,6 +61,7 @@ pub async fn list_strategies(
     params(("id" = Uuid, Path, description = "戦略 ID")),
     responses(
         (status = 200, body = strategy::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -81,7 +82,8 @@ pub async fn get_strategy(
     request_body = CreateStrategyRequest,
     responses(
         (status = 201, body = strategy::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -128,8 +130,9 @@ pub async fn create_strategy(
     request_body = UpdateStrategyRequest,
     responses(
         (status = 200, body = strategy::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -189,6 +192,7 @@ pub async fn update_strategy(
     params(("id" = Uuid, Path, description = "戦略 ID")),
     responses(
         (status = 204),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

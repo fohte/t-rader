@@ -12,9 +12,12 @@ pub struct CreateTradeRequest {
     pub symbol: String,
     /// "buy" | "sell"
     pub side: String,
+    #[schema(value_type = f64)]
     pub qty: Decimal,
+    #[schema(value_type = f64)]
     pub price: Decimal,
     #[serde(default)]
+    #[schema(value_type = Option<f64>)]
     pub fee: Option<Decimal>,
     pub date: NaiveDate,
     /// "manual" | "csv" | "api"
@@ -27,8 +30,11 @@ pub struct CreateTradeRequest {
 pub struct UpdateTradeRequest {
     pub symbol: Option<String>,
     pub side: Option<String>,
+    #[schema(value_type = Option<f64>)]
     pub qty: Option<Decimal>,
+    #[schema(value_type = Option<f64>)]
     pub price: Option<Decimal>,
+    #[schema(value_type = Option<f64>)]
     pub fee: Option<Decimal>,
     pub date: Option<NaiveDate>,
     pub source: Option<String>,
@@ -40,12 +46,16 @@ pub struct UpdateTradeRequest {
 pub struct PositionSummary {
     pub symbol: String,
     /// 保有数量 (買い残 - 売り残)
+    #[schema(value_type = f64)]
     pub qty: Decimal,
     /// 平均取得単価 (FIFO ベース)
+    #[schema(value_type = f64)]
     pub avg_cost: Decimal,
     /// 取得簿価 (qty * avg_cost)
+    #[schema(value_type = f64)]
     pub cost_basis: Decimal,
     /// 実現損益累計
+    #[schema(value_type = f64)]
     pub realized_pnl: Decimal,
 }
 
@@ -54,6 +64,7 @@ pub struct PositionSummary {
 pub struct PerformanceSummary {
     pub strategy_id: Option<Uuid>,
     pub trade_count: i64,
+    #[schema(value_type = f64)]
     pub realized_pnl: Decimal,
     pub positions: Vec<PositionSummary>,
 }
