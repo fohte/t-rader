@@ -155,21 +155,6 @@
   --radius-none: 0;
 }
 
-.light {
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #fafafa;
-  --color-bg-tertiary: #f4f4f4;
-  --color-text-primary: #18181b;
-  --color-text-secondary: #52525b;
-  --color-text-tertiary: #71717a;
-  --color-border-strategy: #e4e4e7;
-  --panel: #ffffff;
-  --panel-inset: #f4f4f4;
-  --hairline: #ececec;
-  --color-up: #d8443f;
-  --color-down: #1f6fb0;
-}
-
 @theme inline {
   --font-mono-ui: var(--font-mono-ui);
   --font-mono-body: var(--font-mono-body);

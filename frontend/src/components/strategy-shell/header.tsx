@@ -1,9 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { Settings as SettingsIcon, SunMoon } from 'lucide-react'
+import { Settings as SettingsIcon } from 'lucide-react'
 
 import { StrategySwitcher } from '@/components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '@/components/strategy-shell/use-current-strategy-id'
-import { useTheme } from '@/components/strategy-shell/use-theme'
 
 const NAV_BASE =
   'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-[12px]'
@@ -24,7 +23,6 @@ function NavLink({ to, label }: { to: string; label: string }) {
 }
 
 export function Header() {
-  const { theme, toggle } = useTheme()
   const strategyId = useCurrentStrategyId()
 
   return (
@@ -58,18 +56,6 @@ export function Header() {
             <SettingsIcon className="size-3.5" />
           </Link>
         )}
-        <button
-          type="button"
-          onClick={toggle}
-          className={NAV_INACTIVE}
-          title="テーマ切替"
-          aria-label="テーマ切替"
-        >
-          <SunMoon className="size-3.5" />
-          <span className="hidden md:inline">
-            {theme === 'dark' ? 'light' : 'dark'}
-          </span>
-        </button>
       </div>
     </header>
   )
