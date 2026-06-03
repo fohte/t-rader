@@ -49,6 +49,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -89,6 +99,16 @@
             }
           },
           "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -141,6 +161,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "",
             "content": {
@@ -184,6 +214,16 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "",
@@ -257,6 +297,16 @@
             }
           },
           "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -462,6 +512,16 @@
               }
             }
           },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -497,6 +557,16 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "",
@@ -603,6 +673,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -642,6 +722,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ChangeHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -717,6 +807,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -757,6 +857,16 @@
             }
           },
           "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -809,6 +919,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "",
             "content": {
@@ -852,6 +972,16 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "",
@@ -934,6 +1064,16 @@
               }
             }
           },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -987,7 +1127,27 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -1050,7 +1210,27 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -1587,6 +1767,16 @@
               }
             }
           },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -1626,6 +1816,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Strategy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1673,6 +1873,16 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "",
@@ -1755,6 +1965,16 @@
               }
             }
           },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -1808,6 +2028,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -1848,6 +2078,16 @@
             }
           },
           "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -1900,6 +2140,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {
@@ -1939,6 +2189,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Trade"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1986,6 +2246,16 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "",
@@ -2059,6 +2329,16 @@
             }
           },
           "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
             "description": "",
             "content": {
               "application/json": {
@@ -2504,11 +2784,14 @@
             "format": "uuid"
           },
           "linked_note_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "price": {
-            "type": "string"
+            "type": "number"
           },
           "status": {
             "type": "string"
@@ -2614,7 +2897,10 @@
             "type": "string"
           },
           "summary": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "target_id": {
             "type": "string",
@@ -2668,7 +2954,10 @@
             "format": "uuid"
           },
           "parent_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "target_id": {
@@ -2705,9 +2994,10 @@
           },
           "price": {
             "type": [
-              "string",
+              "number",
               "null"
-            ]
+            ],
+            "format": "double"
           },
           "status": {
             "type": [
@@ -2881,9 +3171,10 @@
           },
           "fee": {
             "type": [
-              "string",
+              "number",
               "null"
-            ]
+            ],
+            "format": "double"
           },
           "note": {
             "type": [
@@ -2892,10 +3183,12 @@
             ]
           },
           "price": {
-            "type": "string"
+            "type": "number",
+            "format": "double"
           },
           "qty": {
-            "type": "string"
+            "type": "number",
+            "format": "double"
           },
           "side": {
             "type": "string",
@@ -3018,13 +3311,22 @@
             "type": "string"
           },
           "trigger": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "trigger_label": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "type_tag": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "type": "string",
@@ -3048,7 +3350,8 @@
             }
           },
           "realized_pnl": {
-            "type": "string"
+            "type": "number",
+            "format": "double"
           },
           "strategy_id": {
             "type": [
@@ -3075,19 +3378,23 @@
         ],
         "properties": {
           "avg_cost": {
-            "type": "string",
+            "type": "number",
+            "format": "double",
             "description": "平均取得単価 (FIFO ベース)"
           },
           "cost_basis": {
-            "type": "string",
+            "type": "number",
+            "format": "double",
             "description": "取得簿価 (qty * avg_cost)"
           },
           "qty": {
-            "type": "string",
+            "type": "number",
+            "format": "double",
             "description": "保有数量 (買い残 - 売り残)"
           },
           "realized_pnl": {
-            "type": "string",
+            "type": "number",
+            "format": "double",
             "description": "実現損益累計"
           },
           "symbol": {
@@ -3151,13 +3458,19 @@
             "type": "string"
           },
           "market": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string"
           },
           "sector_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "type": "string",
@@ -3180,7 +3493,10 @@
             "format": "date-time"
           },
           "description": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string",
@@ -3207,7 +3523,10 @@
         ],
         "properties": {
           "description": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "type": "string"
@@ -3242,20 +3561,23 @@
             "format": "date"
           },
           "fee": {
-            "type": "string"
+            "type": "number"
           },
           "id": {
             "type": "string",
             "format": "uuid"
           },
           "note": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "price": {
-            "type": "string"
+            "type": "number"
           },
           "qty": {
-            "type": "string"
+            "type": "number"
           },
           "side": {
             "type": "string"
@@ -3288,9 +3610,10 @@
           },
           "price": {
             "type": [
-              "string",
+              "number",
               "null"
-            ]
+            ],
+            "format": "double"
           },
           "target_kind": {
             "type": [
@@ -3398,9 +3721,10 @@
           },
           "fee": {
             "type": [
-              "string",
+              "number",
               "null"
-            ]
+            ],
+            "format": "double"
           },
           "note": {
             "type": [
@@ -3410,15 +3734,17 @@
           },
           "price": {
             "type": [
-              "string",
+              "number",
               "null"
-            ]
+            ],
+            "format": "double"
           },
           "qty": {
             "type": [
-              "string",
+              "number",
               "null"
-            ]
+            ],
+            "format": "double"
           },
           "side": {
             "type": [

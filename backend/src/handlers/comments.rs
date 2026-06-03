@@ -65,6 +65,7 @@ pub async fn list_comments(
     responses(
         (status = 201, body = comment::Model),
         (status = 400, body = ErrorResponse),
+        (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -140,6 +141,7 @@ pub async fn create_comment(
     params(("id" = Uuid, Path, description = "コメント ID")),
     responses(
         (status = 204),
+        (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

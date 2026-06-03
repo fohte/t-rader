@@ -110,6 +110,7 @@ fn extract_refs(body: &str) -> Vec<(String, String)> {
     params(ListNotesQuery),
     responses(
         (status = 200, body = Vec<note::Model>),
+        (status = 400, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -139,6 +140,7 @@ pub async fn list_notes(
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
         (status = 200, body = note::Model),
+        (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -159,6 +161,7 @@ pub async fn get_note(
     responses(
         (status = 201, body = note::Model),
         (status = 400, body = ErrorResponse),
+        (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -169,6 +172,13 @@ pub async fn create_note(
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(AppError::Validation("title must not be empty".into()));
+    }
+    if let Some(fm) = payload.frontmatter_json.as_ref()
+        && !fm.is_object()
+    {
+        return Err(AppError::Validation(
+            "frontmatter_json must be a JSON object".into(),
+        ));
     }
     let status = payload.status.as_deref().unwrap_or("unread").to_string();
     if !ALLOWED_STATUSES.contains(&status.as_str()) {
@@ -236,6 +246,7 @@ pub async fn create_note(
         (status = 200, body = note::Model),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -269,6 +280,11 @@ pub async fn update_note(
         body_changed = Some(body);
     }
     if let Some(fm) = payload.frontmatter_json {
+        if !fm.is_object() {
+            return Err(AppError::Validation(
+                "frontmatter_json must be a JSON object".into(),
+            ));
+        }
         diff.insert(
             "frontmatter_json".into(),
             json!({ "from": current.frontmatter_json, "to": fm }),
@@ -327,6 +343,7 @@ pub async fn update_note(
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
         (status = 204),
+        (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -379,7 +396,9 @@ async fn change_note_status(
     request_body = ChangeStatusRequest,
     responses(
         (status = 200, body = note::Model),
+        (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -402,7 +421,9 @@ pub async fn approve_note(
     request_body = ChangeStatusRequest,
     responses(
         (status = 200, body = note::Model),
+        (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
