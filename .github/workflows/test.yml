@@ -22,10 +22,8 @@ jobs:
       RUSTC_WRAPPER: 'sccache'
 
     steps:
-      # octo-sts の trust policy が refs/heads/* のみ許可するため pull_request では token を取得できない
       - uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
         id: octo-sts
-        if: github.event_name != 'pull_request'
         with:
           scope: fohte
           identity: ${{ github.event.repository.name }}
@@ -124,9 +122,8 @@ jobs:
       - name: Unstage changes for commit-action
         run: git restore --staged .
 
-      # octo-sts token が pull_request では発行されないため commit を作れない
       - name: Commit formatted files
-        if: ${{ !cancelled() && steps.check-auto-format.outputs.skip_commit != 'true' && github.event_name != 'pull_request' }}
+        if: ${{ !cancelled() && steps.check-auto-format.outputs.skip_commit != 'true' }}
         uses: suzuki-shunsuke/commit-action@06e3b49d4706498d325d29bd85adc82ecf2f5d8f # v1.0.0
         with:
           commit_message: 'style: auto-format'
