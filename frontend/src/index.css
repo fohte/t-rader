@@ -114,6 +114,68 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ============================================================================
+   Strategy design tokens (t-rader redesign)
+   Near-monochrome surfaces + one accent red, mono for chrome/numbers.
+   ============================================================================ */
+:root {
+  --font-mono-ui:
+    'JetBrains Mono', 'IBM Plex Mono', 'SFMono-Regular', Consolas,
+    'Liberation Mono', Menlo, monospace;
+  --font-mono-body: var(--font-mono-ui);
+  --font-sans:
+    'Inter', 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN',
+    'Noto Sans JP', sans-serif;
+
+  /* Brand 3-stop surface ramp + panel/inset/hairline */
+  --color-bg-primary: #0a0a0a;
+  --color-bg-secondary: #0f0f0f;
+  --color-bg-tertiary: #1a1a1a;
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #71717a;
+  --color-border-strategy: #2a2a2a;
+  --color-accent-strategy: #ef4444;
+
+  --panel: #121212;
+  --panel-inset: #1a1a1a;
+  --hairline: #222222;
+
+  /* Price direction (JP convention by default) */
+  --color-up: #ef5350;
+  --color-up-dim: #5a2a2a;
+  --color-down: #3f9fe0;
+  --color-down-dim: #234152;
+
+  /* Review status */
+  --status-approved: #4ea1a1;
+  --status-unread: #ef4444;
+  --status-rejected: #71717a;
+
+  --radius-none: 0;
+}
+
+@theme inline {
+  --font-mono-ui: var(--font-mono-ui);
+  --font-mono-body: var(--font-mono-body);
+  --color-bg-primary: var(--color-bg-primary);
+  --color-bg-secondary: var(--color-bg-secondary);
+  --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-border-strategy: var(--color-border-strategy);
+  --color-accent-strategy: var(--color-accent-strategy);
+  --color-panel: var(--panel);
+  --color-panel-inset: var(--panel-inset);
+  --color-hairline: var(--hairline);
+  --color-up: var(--color-up);
+  --color-down: var(--color-down);
+  --color-status-approved: var(--status-approved);
+  --color-status-unread: var(--status-unread);
+  --color-status-rejected: var(--status-rejected);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
