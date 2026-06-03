@@ -1,2 +1,9 @@
+pub mod annotations;
 pub mod bars;
+pub mod comments;
+pub mod history;
+pub mod notes;
+pub mod refs;
+pub mod strategies;
+pub mod trades;
 pub mod watchlists;

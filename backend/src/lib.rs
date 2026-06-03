@@ -28,7 +28,9 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::data_provider::DataProviderKind;
 use crate::error::{AppError, ErrorResponse};
-use crate::handlers::{bars, watchlists};
+use crate::handlers::{
+    annotations, bars, comments, history, notes, refs, strategies, trades, watchlists,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -58,6 +60,13 @@ impl AppState {
         (name = "bars", description = "バーデータ (OHLCV)"),
         (name = "watchlists", description = "ウォッチリスト管理"),
         (name = "watchlist_items", description = "ウォッチリスト内の銘柄管理"),
+        (name = "strategies", description = "戦略 (ワークスペース)"),
+        (name = "refs", description = "一級参照型 (stock / indicator / sector / theme)"),
+        (name = "notes", description = "ノート"),
+        (name = "annotations", description = "アノテーション"),
+        (name = "comments", description = "コメントスレッド"),
+        (name = "history", description = "変更履歴"),
+        (name = "trades", description = "取引履歴と損益サマリ"),
     ),
     info(
         title = "T-Rader API",
@@ -117,6 +126,59 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(watchlists::list_watchlist_items))
         .routes(routes!(watchlists::delete_watchlist_item))
         .routes(routes!(bars::list_bars))
+        // strategies
+        .routes(routes!(
+            strategies::list_strategies,
+            strategies::create_strategy
+        ))
+        .routes(routes!(
+            strategies::get_strategy,
+            strategies::update_strategy,
+            strategies::delete_strategy
+        ))
+        // refs
+        .routes(routes!(refs::list_stocks))
+        .routes(routes!(refs::get_stock))
+        .routes(routes!(refs::list_indicators))
+        .routes(routes!(refs::get_indicator))
+        .routes(routes!(refs::list_sectors))
+        .routes(routes!(refs::get_sector))
+        .routes(routes!(refs::list_themes))
+        .routes(routes!(refs::get_theme))
+        .routes(routes!(refs::resolve_refs))
+        // notes
+        .routes(routes!(notes::list_notes, notes::create_note))
+        .routes(routes!(
+            notes::get_note,
+            notes::update_note,
+            notes::delete_note
+        ))
+        .routes(routes!(notes::approve_note))
+        .routes(routes!(notes::reject_note))
+        // annotations
+        .routes(routes!(
+            annotations::list_annotations,
+            annotations::create_annotation
+        ))
+        .routes(routes!(
+            annotations::get_annotation,
+            annotations::update_annotation,
+            annotations::delete_annotation
+        ))
+        // comments
+        .routes(routes!(comments::list_comments, comments::create_comment))
+        .routes(routes!(comments::delete_comment))
+        // history
+        .routes(routes!(history::list_history))
+        .routes(routes!(history::get_history))
+        // trades — summary before {id} to avoid path conflict
+        .routes(routes!(trades::trades_summary))
+        .routes(routes!(trades::list_trades, trades::create_trade))
+        .routes(routes!(
+            trades::get_trade,
+            trades::update_trade,
+            trades::delete_trade
+        ))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)

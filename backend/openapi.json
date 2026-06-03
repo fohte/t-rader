@@ -9,6 +9,276 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/annotations": {
+      "get": {
+        "tags": [
+          "annotations"
+        ],
+        "summary": "アノテーション一覧",
+        "operationId": "list_annotations",
+        "parameters": [
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "target_symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Annotation"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "annotations"
+        ],
+        "summary": "アノテーション作成",
+        "operationId": "create_annotation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAnnotationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Annotation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/annotations/{id}": {
+      "get": {
+        "tags": [
+          "annotations"
+        ],
+        "summary": "アノテーション取得",
+        "operationId": "get_annotation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "アノテーション ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Annotation"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "annotations"
+        ],
+        "summary": "アノテーション削除",
+        "operationId": "delete_annotation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "アノテーション ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "annotations"
+        ],
+        "summary": "アノテーション更新",
+        "operationId": "update_annotation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "アノテーション ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAnnotationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Annotation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/bars": {
       "get": {
         "tags": [
@@ -93,6 +363,164 @@
         }
       }
     },
+    "/api/comments": {
+      "get": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "コメント一覧。`target_kind` + `target_id` でフィルタ。スレッドは parent_id で表現する。",
+        "operationId": "list_comments",
+        "parameters": [
+          {
+            "name": "target_kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Comment"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "コメント投稿",
+        "operationId": "create_comment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/comments/{id}": {
+      "delete": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "コメント削除",
+        "operationId": "delete_comment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "コメント ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -113,6 +541,1535 @@
           },
           "500": {
             "description": "内部サーバーエラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/history": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "変更履歴一覧。target で絞らない場合は全体の最新を返す。",
+        "operationId": "list_history",
+        "parameters": [
+          {
+            "name": "target_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1〜500 (デフォルト 100)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChangeHistory"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/history/{id}": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "変更履歴詳細",
+        "operationId": "get_history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "変更履歴 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeHistory"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノート一覧",
+        "operationId": "list_notes",
+        "parameters": [
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type_tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Note"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノート作成",
+        "operationId": "create_note",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノート取得",
+        "operationId": "get_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノート削除",
+        "operationId": "delete_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノート更新",
+        "operationId": "update_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/approve": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートを approved に遷移",
+        "operationId": "approve_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/reject": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートを rejected に遷移",
+        "operationId": "reject_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/indicators": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "indicator 検索",
+        "operationId": "list_indicators",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "部分一致クエリ。空のときは先頭から最大 50 件返す",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Indicator"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/indicators/{id}": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "indicator 詳細",
+        "operationId": "get_indicator",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "指標 ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Indicator"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/resolve": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "`[[kind:id]]` の参照解決。リンクテキストから表示名を引く。",
+        "description": "`link=stock:7203,indicator:USDJPY` のようにカンマ区切りで複数渡せる。\n不一致のものは name = null で返す。",
+        "operationId": "resolve_refs",
+        "parameters": [
+          {
+            "name": "link",
+            "in": "query",
+            "description": "`[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RefResolution"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/sectors": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "sector 検索",
+        "operationId": "list_sectors",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "部分一致クエリ。空のときは先頭から最大 50 件返す",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Sector"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/sectors/{id}": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "sector 詳細",
+        "operationId": "get_sector",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "セクター ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sector"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/stocks": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "stock 検索",
+        "operationId": "list_stocks",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "部分一致クエリ。空のときは先頭から最大 50 件返す",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Stock"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/stocks/{id}": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "stock 詳細",
+        "operationId": "get_stock",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "銘柄コード",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stock"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/themes": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "theme 検索",
+        "operationId": "list_themes",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "部分一致クエリ。空のときは先頭から最大 50 件返す",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Theme"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/refs/themes/{id}": {
+      "get": {
+        "tags": [
+          "refs"
+        ],
+        "summary": "theme 詳細",
+        "operationId": "get_theme",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "テーマ ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Theme"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略一覧",
+        "operationId": "list_strategies",
+        "responses": {
+          "200": {
+            "description": "戦略一覧",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Strategy"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略作成",
+        "operationId": "create_strategy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Strategy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies/{id}": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略取得",
+        "operationId": "get_strategy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Strategy"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略削除",
+        "operationId": "delete_strategy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略更新",
+        "operationId": "update_strategy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Strategy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades": {
+      "get": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引履歴一覧",
+        "operationId": "list_trades",
+        "parameters": [
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Trade"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引作成",
+        "operationId": "create_trade",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTradeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trade"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/summary": {
+      "get": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "損益サマリ (FIFO ベース)。`strategy_id` 未指定なら全体ポートフォリオ。",
+        "operationId": "trades_summary",
+        "parameters": [
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "description": "指定すると戦略単位の集計、未指定だと全戦略横断 (ポートフォリオ全体)",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceSummary"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/{id}": {
+      "get": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引取得",
+        "operationId": "get_trade",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "取引 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trade"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引削除",
+        "operationId": "delete_trade",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "取引 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引更新",
+        "operationId": "update_trade",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "取引 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTradeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trade"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -520,6 +2477,65 @@
         },
         "additionalProperties": false
       },
+      "Annotation": {
+        "type": "object",
+        "required": [
+          "id",
+          "strategy_id",
+          "target_symbol",
+          "target_kind",
+          "timestamp",
+          "text",
+          "status",
+          "created_by_kind",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by_kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "linked_note_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "price": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_kind": {
+            "type": "string"
+          },
+          "target_symbol": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "Bar": {
         "type": "object",
         "required": [
@@ -564,6 +2580,342 @@
           }
         }
       },
+      "ChangeHistory": {
+        "type": "object",
+        "required": [
+          "id",
+          "target_kind",
+          "target_id",
+          "actor_kind",
+          "actor_label",
+          "op",
+          "diff_json",
+          "created_at"
+        ],
+        "properties": {
+          "actor_kind": {
+            "type": "string"
+          },
+          "actor_label": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "diff_json": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "op": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_kind": {
+            "type": "string"
+          }
+        }
+      },
+      "ChangeStatusRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "任意のラベル (例: 却下理由)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Comment": {
+        "type": "object",
+        "required": [
+          "id",
+          "target_kind",
+          "target_id",
+          "body",
+          "author_kind",
+          "author_label",
+          "created_at"
+        ],
+        "properties": {
+          "author_kind": {
+            "type": "string"
+          },
+          "author_label": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_kind": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateAnnotationRequest": {
+        "type": "object",
+        "required": [
+          "strategy_id",
+          "target_symbol",
+          "target_kind",
+          "timestamp",
+          "text"
+        ],
+        "properties": {
+          "created_by_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "linked_note_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "price": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_kind": {
+            "type": "string",
+            "description": "\"signal\" | \"level\" | \"observation\" | \"other\""
+          },
+          "target_symbol": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateCommentRequest": {
+        "type": "object",
+        "required": [
+          "target_kind",
+          "target_id",
+          "body"
+        ],
+        "properties": {
+          "author_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"human\" | \"llm\"。デフォルトは \"human\""
+          },
+          "author_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "target_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "target_kind": {
+            "type": "string",
+            "description": "\"note\" | \"annotation\""
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateNoteRequest": {
+        "type": "object",
+        "required": [
+          "strategy_id",
+          "title",
+          "body_md"
+        ],
+        "properties": {
+          "body_md": {
+            "type": "string"
+          },
+          "created_by_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "作成者種別 (\"human\" | \"llm\")。デフォルトは \"human\""
+          },
+          "frontmatter_json": {},
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "任意。デフォルトは \"unread\""
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "trigger": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type_tag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateStrategyRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "sort_order": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateTradeRequest": {
+        "type": "object",
+        "required": [
+          "strategy_id",
+          "symbol",
+          "side",
+          "qty",
+          "price",
+          "date",
+          "source"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "fee": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string",
+            "description": "\"buy\" | \"sell\""
+          },
+          "source": {
+            "type": "string",
+            "description": "\"manual\" | \"csv\" | \"api\""
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateWatchlistRequest": {
         "type": "object",
         "required": [
@@ -604,6 +2956,490 @@
             "description": "サービスの状態"
           }
         }
+      },
+      "Indicator": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Note": {
+        "type": "object",
+        "required": [
+          "id",
+          "strategy_id",
+          "title",
+          "body_md",
+          "frontmatter_json",
+          "status",
+          "created_by_kind",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "body_md": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by_kind": {
+            "type": "string"
+          },
+          "frontmatter_json": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "trigger_label": {
+            "type": "string"
+          },
+          "type_tag": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PerformanceSummary": {
+        "type": "object",
+        "description": "戦略単位もしくはポートフォリオ全体の損益サマリ",
+        "required": [
+          "trade_count",
+          "realized_pnl",
+          "positions"
+        ],
+        "properties": {
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PositionSummary"
+            }
+          },
+          "realized_pnl": {
+            "type": "string"
+          },
+          "strategy_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "trade_count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PositionSummary": {
+        "type": "object",
+        "description": "銘柄ごとの未決済ポジションと損益",
+        "required": [
+          "symbol",
+          "qty",
+          "avg_cost",
+          "cost_basis",
+          "realized_pnl"
+        ],
+        "properties": {
+          "avg_cost": {
+            "type": "string",
+            "description": "平均取得単価 (FIFO ベース)"
+          },
+          "cost_basis": {
+            "type": "string",
+            "description": "取得簿価 (qty * avg_cost)"
+          },
+          "qty": {
+            "type": "string",
+            "description": "保有数量 (買い残 - 売り残)"
+          },
+          "realized_pnl": {
+            "type": "string",
+            "description": "実現損益累計"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        }
+      },
+      "RefResolution": {
+        "type": "object",
+        "description": "`[[kind:id]]` のリンクテキストを解決した結果",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "\"stock\" | \"indicator\" | \"sector\" | \"theme\""
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "一致しなかった場合は None"
+          }
+        }
+      },
+      "Sector": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Stock": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sector_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Strategy": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "sort_order",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Theme": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Trade": {
+        "type": "object",
+        "required": [
+          "id",
+          "strategy_id",
+          "symbol",
+          "side",
+          "qty",
+          "price",
+          "fee",
+          "date",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "fee": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string"
+          },
+          "qty": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UpdateAnnotationRequest": {
+        "type": "object",
+        "properties": {
+          "linked_note_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "price": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_symbol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateNoteRequest": {
+        "type": "object",
+        "properties": {
+          "body_md": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frontmatter_json": {},
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "trigger": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type_tag": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateStrategyRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "sort_order": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateTradeRequest": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "fee": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "qty": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "side": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "Watchlist": {
         "type": "object",
@@ -675,6 +3511,34 @@
     {
       "name": "watchlist_items",
       "description": "ウォッチリスト内の銘柄管理"
+    },
+    {
+      "name": "strategies",
+      "description": "戦略 (ワークスペース)"
+    },
+    {
+      "name": "refs",
+      "description": "一級参照型 (stock / indicator / sector / theme)"
+    },
+    {
+      "name": "notes",
+      "description": "ノート"
+    },
+    {
+      "name": "annotations",
+      "description": "アノテーション"
+    },
+    {
+      "name": "comments",
+      "description": "コメントスレッド"
+    },
+    {
+      "name": "history",
+      "description": "変更履歴"
+    },
+    {
+      "name": "trades",
+      "description": "取引履歴と損益サマリ"
     }
   ]
 }

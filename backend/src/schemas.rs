@@ -5,7 +5,67 @@
 
 use utoipa::PartialSchema;
 use utoipa::openapi::schema::{ObjectBuilder, SchemaFormat, Type};
-use utoipa::openapi::{KnownFormat, RefOr, Schema};
+use utoipa::openapi::{KnownFormat, Object, RefOr, Schema};
+
+/// 文字列プロパティ
+fn str_prop() -> Object {
+    ObjectBuilder::new().schema_type(Type::String).build()
+}
+
+/// UUID 文字列プロパティ
+fn uuid_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(Type::String)
+        .format(Some(SchemaFormat::KnownFormat(KnownFormat::Uuid)))
+        .build()
+}
+
+/// date-time 文字列プロパティ
+fn datetime_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(Type::String)
+        .format(Some(SchemaFormat::KnownFormat(KnownFormat::DateTime)))
+        .build()
+}
+
+/// 日付文字列プロパティ
+fn date_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(Type::String)
+        .format(Some(SchemaFormat::KnownFormat(KnownFormat::Date)))
+        .build()
+}
+
+/// i32 プロパティ
+fn i32_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(Type::Integer)
+        .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int32)))
+        .build()
+}
+
+/// nullable な文字列プロパティ
+fn nullable_str_prop() -> Object {
+    ObjectBuilder::new().schema_type(Type::String).build()
+}
+
+/// nullable な UUID 文字列プロパティ
+fn nullable_uuid_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(Type::String)
+        .format(Some(SchemaFormat::KnownFormat(KnownFormat::Uuid)))
+        .build()
+}
+
+/// 任意の数値 (rust_decimal::Decimal)。OpenAPI では文字列で表現
+fn decimal_prop() -> Object {
+    ObjectBuilder::new().schema_type(Type::String).build()
+}
+
+/// 任意の JSON 値
+fn json_prop() -> Object {
+    ObjectBuilder::new().schema_type(Type::Object).build()
+}
 
 // --- watchlists::Model ---
 
@@ -131,6 +191,290 @@ impl PartialSchema for crate::entities::watchlist_items::Model {
                     .format(Some(SchemaFormat::KnownFormat(KnownFormat::DateTime))),
             )
             .required("added_at")
+            .into()
+    }
+}
+
+// --- strategy::Model ---
+
+impl utoipa::ToSchema for crate::entities::strategy::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Strategy")
+    }
+}
+
+impl PartialSchema for crate::entities::strategy::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", uuid_prop())
+            .required("id")
+            .property("name", str_prop())
+            .required("name")
+            .property("description", nullable_str_prop())
+            .property("sort_order", i32_prop())
+            .required("sort_order")
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
+            .into()
+    }
+}
+
+// --- stock::Model ---
+
+impl utoipa::ToSchema for crate::entities::stock::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Stock")
+    }
+}
+
+impl PartialSchema for crate::entities::stock::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", str_prop())
+            .required("id")
+            .property("name", str_prop())
+            .required("name")
+            .property("market", nullable_str_prop())
+            .property("sector_id", nullable_str_prop())
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
+            .into()
+    }
+}
+
+// --- indicator::Model ---
+
+impl utoipa::ToSchema for crate::entities::indicator::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Indicator")
+    }
+}
+
+impl PartialSchema for crate::entities::indicator::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", str_prop())
+            .required("id")
+            .property("name", str_prop())
+            .required("name")
+            .property("kind", str_prop())
+            .required("kind")
+            .into()
+    }
+}
+
+// --- sector::Model ---
+
+impl utoipa::ToSchema for crate::entities::sector::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Sector")
+    }
+}
+
+impl PartialSchema for crate::entities::sector::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", str_prop())
+            .required("id")
+            .property("name", str_prop())
+            .required("name")
+            .into()
+    }
+}
+
+// --- theme::Model ---
+
+impl utoipa::ToSchema for crate::entities::theme::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Theme")
+    }
+}
+
+impl PartialSchema for crate::entities::theme::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", str_prop())
+            .required("id")
+            .property("name", str_prop())
+            .required("name")
+            .property("description", nullable_str_prop())
+            .into()
+    }
+}
+
+// --- note::Model ---
+
+impl utoipa::ToSchema for crate::entities::note::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Note")
+    }
+}
+
+impl PartialSchema for crate::entities::note::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", uuid_prop())
+            .required("id")
+            .property("strategy_id", uuid_prop())
+            .required("strategy_id")
+            .property("title", str_prop())
+            .required("title")
+            .property("body_md", str_prop())
+            .required("body_md")
+            .property("frontmatter_json", json_prop())
+            .required("frontmatter_json")
+            .property("type_tag", nullable_str_prop())
+            .property("status", str_prop())
+            .required("status")
+            .property("trigger", nullable_str_prop())
+            .property("trigger_label", nullable_str_prop())
+            .property("created_by_kind", str_prop())
+            .required("created_by_kind")
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
+            .into()
+    }
+}
+
+// --- annotation::Model ---
+
+impl utoipa::ToSchema for crate::entities::annotation::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Annotation")
+    }
+}
+
+impl PartialSchema for crate::entities::annotation::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", uuid_prop())
+            .required("id")
+            .property("strategy_id", uuid_prop())
+            .required("strategy_id")
+            .property("target_symbol", str_prop())
+            .required("target_symbol")
+            .property("target_kind", str_prop())
+            .required("target_kind")
+            .property("timestamp", datetime_prop())
+            .required("timestamp")
+            .property("price", decimal_prop())
+            .property("text", str_prop())
+            .required("text")
+            .property("status", str_prop())
+            .required("status")
+            .property("linked_note_id", nullable_uuid_prop())
+            .property("created_by_kind", str_prop())
+            .required("created_by_kind")
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
+            .into()
+    }
+}
+
+// --- comment::Model ---
+
+impl utoipa::ToSchema for crate::entities::comment::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Comment")
+    }
+}
+
+impl PartialSchema for crate::entities::comment::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", uuid_prop())
+            .required("id")
+            .property("target_kind", str_prop())
+            .required("target_kind")
+            .property("target_id", uuid_prop())
+            .required("target_id")
+            .property("parent_id", nullable_uuid_prop())
+            .property("body", str_prop())
+            .required("body")
+            .property("author_kind", str_prop())
+            .required("author_kind")
+            .property("author_label", str_prop())
+            .required("author_label")
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .into()
+    }
+}
+
+// --- change_history::Model ---
+
+impl utoipa::ToSchema for crate::entities::change_history::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("ChangeHistory")
+    }
+}
+
+impl PartialSchema for crate::entities::change_history::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", uuid_prop())
+            .required("id")
+            .property("target_kind", str_prop())
+            .required("target_kind")
+            .property("target_id", uuid_prop())
+            .required("target_id")
+            .property("actor_kind", str_prop())
+            .required("actor_kind")
+            .property("actor_label", str_prop())
+            .required("actor_label")
+            .property("op", str_prop())
+            .required("op")
+            .property("diff_json", json_prop())
+            .required("diff_json")
+            .property("summary", nullable_str_prop())
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .into()
+    }
+}
+
+// --- trade::Model ---
+
+impl utoipa::ToSchema for crate::entities::trade::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Trade")
+    }
+}
+
+impl PartialSchema for crate::entities::trade::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", uuid_prop())
+            .required("id")
+            .property("strategy_id", uuid_prop())
+            .required("strategy_id")
+            .property("symbol", str_prop())
+            .required("symbol")
+            .property("side", str_prop())
+            .required("side")
+            .property("qty", decimal_prop())
+            .required("qty")
+            .property("price", decimal_prop())
+            .required("price")
+            .property("fee", decimal_prop())
+            .required("fee")
+            .property("date", date_prop())
+            .required("date")
+            .property("source", str_prop())
+            .required("source")
+            .property("note", nullable_str_prop())
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
             .into()
     }
 }
