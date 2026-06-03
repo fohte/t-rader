@@ -3088,7 +3088,16 @@
             ],
             "description": "作成者種別 (\"human\" | \"llm\")。デフォルトは \"human\""
           },
-          "frontmatter_json": {},
+          "frontmatter_json": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "status": {
             "type": [
               "string",
@@ -3652,7 +3661,16 @@
               "null"
             ]
           },
-          "frontmatter_json": {},
+          "frontmatter_json": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "title": {
             "type": [
               "string",

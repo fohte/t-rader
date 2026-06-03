@@ -10,6 +10,7 @@ pub struct CreateNoteRequest {
     pub title: String,
     pub body_md: String,
     #[serde(default)]
+    #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,
     pub type_tag: Option<String>,
     /// 任意。デフォルトは "unread"
@@ -27,6 +28,7 @@ pub struct UpdateNoteRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: Option<String>,
     pub body_md: Option<String>,
+    #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,
     pub type_tag: Option<String>,
     pub trigger: Option<String>,
