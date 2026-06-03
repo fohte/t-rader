@@ -96,7 +96,8 @@ pub async fn create_trade(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateTradeRequest>,
 ) -> Result<(StatusCode, Json<trade::Model>), AppError> {
-    if p.symbol.trim().is_empty() {
+    let symbol = p.symbol.trim().to_string();
+    if symbol.is_empty() {
         return Err(AppError::Validation("symbol must not be empty".into()));
     }
     if !ALLOWED_SIDE.contains(&p.side.as_str()) {
@@ -119,7 +120,7 @@ pub async fn create_trade(
     let model = trade::ActiveModel {
         id: Set(id),
         strategy_id: Set(p.strategy_id),
-        symbol: Set(p.symbol.clone()),
+        symbol: Set(symbol.clone()),
         side: Set(p.side.clone()),
         qty: Set(p.qty),
         price: Set(p.price),
@@ -142,7 +143,7 @@ pub async fn create_trade(
         Op::Create,
         json!({
             "strategy_id": p.strategy_id,
-            "symbol": p.symbol,
+            "symbol": symbol,
             "side": p.side,
             "qty": p.qty,
             "price": p.price,
@@ -182,8 +183,15 @@ pub async fn update_trade(
     let mut diff = serde_json::Map::new();
 
     if let Some(v) = p.symbol {
-        diff.insert("symbol".into(), json!({ "from": current.symbol, "to": v }));
-        active.symbol = Set(v);
+        let trimmed = v.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation("symbol must not be empty".into()));
+        }
+        diff.insert(
+            "symbol".into(),
+            json!({ "from": current.symbol, "to": trimmed }),
+        );
+        active.symbol = Set(trimmed);
     }
     if let Some(v) = p.side {
         if !ALLOWED_SIDE.contains(&v.as_str()) {

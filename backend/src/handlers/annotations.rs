@@ -93,7 +93,8 @@ pub async fn create_annotation(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateAnnotationRequest>,
 ) -> Result<(StatusCode, Json<annotation::Model>), AppError> {
-    if p.target_symbol.trim().is_empty() {
+    let target_symbol = p.target_symbol.trim().to_string();
+    if target_symbol.is_empty() {
         return Err(AppError::Validation(
             "target_symbol must not be empty".into(),
         ));
@@ -119,7 +120,7 @@ pub async fn create_annotation(
     let model = annotation::ActiveModel {
         id: Set(id),
         strategy_id: Set(p.strategy_id),
-        target_symbol: Set(p.target_symbol.clone()),
+        target_symbol: Set(target_symbol.clone()),
         target_kind: Set(p.target_kind.clone()),
         timestamp: Set(p.timestamp),
         price: Set(p.price),
@@ -139,7 +140,7 @@ pub async fn create_annotation(
         TargetKind::Annotation,
         id,
         Op::Create,
-        json!({ "strategy_id": p.strategy_id, "target_symbol": p.target_symbol }),
+        json!({ "strategy_id": p.strategy_id, "target_symbol": target_symbol }),
         None,
     )
     .await?;
@@ -175,11 +176,17 @@ pub async fn update_annotation(
     let mut diff = serde_json::Map::new();
 
     if let Some(v) = p.target_symbol {
+        let trimmed = v.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(AppError::Validation(
+                "target_symbol must not be empty".into(),
+            ));
+        }
         diff.insert(
             "target_symbol".into(),
-            json!({ "from": current.target_symbol, "to": v }),
+            json!({ "from": current.target_symbol, "to": trimmed }),
         );
-        active.target_symbol = Set(v);
+        active.target_symbol = Set(trimmed);
     }
     if let Some(v) = p.target_kind {
         if !ALLOWED_TARGET_KIND.contains(&v.as_str()) {

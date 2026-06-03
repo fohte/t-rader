@@ -46,19 +46,29 @@ async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     note_id: Uuid,
     body_md: &str,
 ) -> Result<(), AppError> {
-    let refs = extract_refs(body_md);
+    let mut refs = extract_refs(body_md);
+    refs.sort();
+    refs.dedup();
 
     note_ref::Entity::delete_many()
         .filter(note_ref::Column::NoteId.eq(note_id))
         .exec(db)
         .await?;
 
-    for (kind, id) in refs {
-        note_ref::Entity::insert(note_ref::ActiveModel {
+    if refs.is_empty() {
+        return Ok(());
+    }
+
+    let models: Vec<note_ref::ActiveModel> = refs
+        .into_iter()
+        .map(|(kind, id)| note_ref::ActiveModel {
             note_id: Set(note_id),
             ref_kind: Set(kind),
             ref_id: Set(id),
         })
+        .collect();
+
+    note_ref::Entity::insert_many(models)
         .on_conflict(
             sea_orm::sea_query::OnConflict::columns([
                 note_ref::Column::NoteId,
@@ -70,7 +80,6 @@ async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
         )
         .exec_without_returning(db)
         .await?;
-    }
     Ok(())
 }
 
