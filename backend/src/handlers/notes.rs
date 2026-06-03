@@ -22,6 +22,16 @@ const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
 const ALLOWED_REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
 
+fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), AppError> {
+    if fm.is_object() {
+        Ok(())
+    } else {
+        Err(AppError::Validation(
+            "frontmatter_json must be a JSON object".into(),
+        ))
+    }
+}
+
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ListNotesQuery {
@@ -110,6 +120,7 @@ fn extract_refs(body: &str) -> Vec<(String, String)> {
     params(ListNotesQuery),
     responses(
         (status = 200, body = Vec<note::Model>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -139,6 +150,7 @@ pub async fn list_notes(
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
         (status = 200, body = note::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -158,7 +170,8 @@ pub async fn get_note(
     request_body = CreateNoteRequest,
     responses(
         (status = 201, body = note::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -169,6 +182,9 @@ pub async fn create_note(
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(AppError::Validation("title must not be empty".into()));
+    }
+    if let Some(fm) = payload.frontmatter_json.as_ref() {
+        ensure_frontmatter_object(fm)?;
     }
     let status = payload.status.as_deref().unwrap_or("unread").to_string();
     if !ALLOWED_STATUSES.contains(&status.as_str()) {
@@ -234,8 +250,9 @@ pub async fn create_note(
     request_body = UpdateNoteRequest,
     responses(
         (status = 200, body = note::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -269,6 +286,7 @@ pub async fn update_note(
         body_changed = Some(body);
     }
     if let Some(fm) = payload.frontmatter_json {
+        ensure_frontmatter_object(&fm)?;
         diff.insert(
             "frontmatter_json".into(),
             json!({ "from": current.frontmatter_json, "to": fm }),
@@ -327,6 +345,7 @@ pub async fn update_note(
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
         (status = 204),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -379,7 +398,9 @@ async fn change_note_status(
     request_body = ChangeStatusRequest,
     responses(
         (status = 200, body = note::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -402,7 +423,9 @@ pub async fn approve_note(
     request_body = ChangeStatusRequest,
     responses(
         (status = 200, body = note::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
