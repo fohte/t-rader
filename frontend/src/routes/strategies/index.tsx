@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { RefChip } from '@/components/strategy-shell/ref-chip'
+import { UnreadBadge } from '@/components/strategy-shell/unread-badge'
 import { STRATEGIES_MOCK } from '@/lib/strategy-mock'
 
 export const Route = createFileRoute('/strategies/')({
@@ -39,11 +40,7 @@ function StrategyListPage() {
                   {s.horizon}
                 </div>
               </div>
-              {s.unread > 0 && (
-                <span className="inline-grid h-4 min-w-[18px] place-items-center bg-[color:var(--color-accent-strategy)] px-1 font-mono text-[10px] text-white">
-                  {s.unread}
-                </span>
-              )}
+              <UnreadBadge count={s.unread} className="min-w-[18px]" />
             </div>
             <p className="text-[13px] leading-relaxed text-[color:var(--color-text-secondary)]">
               {s.desc}

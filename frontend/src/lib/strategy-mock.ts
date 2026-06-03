@@ -1,6 +1,3 @@
-// Backend API が完成するまでの暫定 mock データ。
-// API 接続後にこのファイルは削除する。
-
 export type RefKind = 'stock' | 'indicator' | 'sector' | 'theme'
 
 export interface Strategy {
@@ -87,9 +84,6 @@ function isRefKind(s: string): s is RefKind {
   return s in REF_KIND_JP
 }
 
-// `[[stock:7203]]` 形式の token を resolve する。
-// prefix が無い / 未知の prefix の token は kind を 'stock' にフォールバック
-// して UI を落とさない (規約上 prefix は必須だが防御的に許容する)。
 export function resolveRef(token: string): RefEntity {
   const known = REF_LABELS[token]
   if (known) return known

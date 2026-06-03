@@ -6,7 +6,7 @@ import { useCurrentStrategyId } from '@/components/strategy-shell/use-current-st
 import { useTheme } from '@/components/strategy-shell/use-theme'
 
 const NAV_BASE =
-  'flex flex-shrink-0 items-center whitespace-nowrap border px-2.5 py-1 font-mono text-[12px]'
+  'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-[12px]'
 const NAV_INACTIVE = `${NAV_BASE} border-[color:var(--color-border-strategy)] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]`
 const NAV_ACTIVE = `${NAV_BASE} border-[color:var(--color-text-tertiary)] bg-[color:var(--panel-inset)] text-[color:var(--color-text-primary)]`
 
@@ -51,7 +51,7 @@ export function Header() {
           <Link
             to="/strategies/$id/settings"
             params={{ id: strategyId }}
-            className="inline-flex items-center gap-1.5 border border-[color:var(--color-border-strategy)] px-2 py-1 font-mono text-[12px] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+            className={NAV_INACTIVE}
             title="戦略設定"
             aria-label="戦略設定"
           >
@@ -61,7 +61,7 @@ export function Header() {
         <button
           type="button"
           onClick={toggle}
-          className="inline-flex items-center gap-1.5 border border-[color:var(--color-border-strategy)] px-2 py-1 font-mono text-[12px] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+          className={NAV_INACTIVE}
           title="テーマ切替"
           aria-label="テーマ切替"
         >

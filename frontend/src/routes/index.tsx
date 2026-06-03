@@ -2,8 +2,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({
   beforeLoad: () => {
-    // TanStack Router の慣習: `throw redirect(...)` でリダイレクトを表現する
-    // eslint-disable-next-line @typescript-eslint/only-throw-error
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- TanStack Router redirect API requires throw
     throw redirect({ to: '/strategies' })
   },
 })

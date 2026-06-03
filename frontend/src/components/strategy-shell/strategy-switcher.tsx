@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 
+import { UnreadBadge } from '@/components/strategy-shell/unread-badge'
 import { useCurrentStrategyId } from '@/components/strategy-shell/use-current-strategy-id'
 import { STRATEGIES_MOCK, type Strategy } from '@/lib/strategy-mock'
 
@@ -36,11 +37,7 @@ export function StrategySwitcher({
                 <span className="absolute inset-x-[-1px] top-[-1px] h-0.5 bg-[color:var(--color-accent-strategy)]" />
               )}
               {s.name}
-              {s.unread > 0 && (
-                <span className="inline-grid h-4 min-w-[16px] place-items-center bg-[color:var(--color-accent-strategy)] px-1 font-mono text-[10px] text-white">
-                  {s.unread}
-                </span>
-              )}
+              <UnreadBadge count={s.unread} />
             </Link>
           )
         })}
@@ -86,11 +83,7 @@ function MobileStrategyDropdown({
                 className="flex items-center justify-between gap-2 border-b border-[color:var(--color-hairline)] px-3 py-2 font-mono text-[13px] text-[color:var(--color-text-secondary)] last:border-b-0 hover:bg-[color:var(--panel-inset)] hover:text-[color:var(--color-text-primary)]"
               >
                 <span className="truncate">{s.name}</span>
-                {s.unread > 0 && (
-                  <span className="inline-grid h-4 min-w-[16px] place-items-center bg-[color:var(--color-accent-strategy)] px-1 text-[10px] text-white">
-                    {s.unread}
-                  </span>
-                )}
+                <UnreadBadge count={s.unread} />
               </Link>
             </li>
           ))}
