@@ -640,7 +640,9 @@ export interface components {
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
       created_by_kind?: string | null
-      frontmatter_json?: unknown
+      frontmatter_json?: {
+        [key: string]: unknown
+      } | null
       /** @description 任意。デフォルトは "unread" */
       status?: string | null
       /** Format: uuid */
@@ -816,7 +818,9 @@ export interface components {
     }
     UpdateNoteRequest: {
       body_md?: string | null
-      frontmatter_json?: unknown
+      frontmatter_json?: {
+        [key: string]: unknown
+      } | null
       title?: string | null
       trigger?: string | null
       trigger_label?: string | null
