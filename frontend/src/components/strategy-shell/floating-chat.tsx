@@ -1,8 +1,19 @@
 import { X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export function FloatingChat() {
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
 
   if (!open) {
     return (
@@ -53,6 +64,7 @@ export function FloatingChat() {
         </span>
         <input
           disabled
+          aria-label="メッセージ入力"
           placeholder="未接続"
           className="flex-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] px-2.5 py-2 font-mono text-[13px] text-[color:var(--color-text-primary)] outline-none"
         />

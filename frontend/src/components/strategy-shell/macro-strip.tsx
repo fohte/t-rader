@@ -17,10 +17,9 @@ export function MacroStrip({ ticks = MACRO_MOCK }: MacroStripProps) {
       {ticks.map((t) => {
         const isUp = t.pct >= 0
         return (
-          <button
+          <div
             key={t.name}
-            type="button"
-            className="flex flex-shrink-0 cursor-pointer items-baseline gap-2 border-r border-[color:var(--color-hairline)] px-4 py-1.5 hover:bg-[color:var(--color-panel-inset)]"
+            className="flex flex-shrink-0 items-baseline gap-2 border-r border-[color:var(--color-hairline)] px-4 py-1.5"
             title={t.name}
           >
             <span className="text-[11px] tracking-wide text-[color:var(--color-text-tertiary)]">
@@ -35,7 +34,7 @@ export function MacroStrip({ ticks = MACRO_MOCK }: MacroStripProps) {
               {isUp ? '+' : ''}
               {t.pct.toFixed(2)}%
             </span>
-          </button>
+          </div>
         )
       })}
     </div>

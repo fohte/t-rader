@@ -62,6 +62,8 @@ function MobileStrategyDropdown({
     <div className="relative">
       <button
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => {
           setOpen((v) => !v)
         }}
@@ -71,7 +73,10 @@ function MobileStrategyDropdown({
         <ChevronDown className="size-3.5 shrink-0 text-[color:var(--color-text-tertiary)]" />
       </button>
       {open && (
-        <ul className="absolute left-0 right-0 top-full z-30 mt-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)]">
+        <ul
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-30 mt-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)]"
+        >
           {strategies.map((s) => (
             <li key={s.id}>
               <Link
