@@ -6,43 +6,44 @@ use utoipa::ToSchema;
 
 use crate::data_provider::DataProviderError;
 
-// PostgreSQL SQLSTATE class 23 (integrity constraint violation) のうち
-// SeaORM の `SqlErr` ではカバーされない code を補完するために使う。
+// SeaORM の `SqlErr` で拾えない PostgreSQL SQLSTATE を補完する。
+// NOT NULL 違反 (23502) は handler 側の入力検証漏れまたは型不整合を示すサーバーバグなので
+// あえて含めず、デフォルトの 500 にフォールバックさせて顕在化させる。
 // ref: https://www.postgresql.org/docs/current/errcodes-appendix.html
 const PG_CHECK_VIOLATION: &str = "23514";
-const PG_NOT_NULL_VIOLATION: &str = "23502";
 
 /// DB 制約違反系エラーを HTTP ステータスにマップする。
 /// 該当しない場合は `None` を返し、呼び出し側で 500 にフォールバックさせる。
 fn classify_db_constraint(err: &DbErr) -> Option<(StatusCode, String)> {
-    match err.sql_err() {
-        Some(SqlErr::ForeignKeyConstraintViolation(_)) => {
-            return Some((
-                StatusCode::BAD_REQUEST,
-                "referenced resource does not exist".to_string(),
-            ));
+    if let Some(sql_err) = err.sql_err() {
+        match sql_err {
+            SqlErr::ForeignKeyConstraintViolation(_) => {
+                return Some((
+                    StatusCode::BAD_REQUEST,
+                    "referenced resource does not exist".to_string(),
+                ));
+            }
+            SqlErr::UniqueConstraintViolation(_) => {
+                return Some((StatusCode::CONFLICT, "resource already exists".to_string()));
+            }
+            _ => {}
         }
-        Some(SqlErr::UniqueConstraintViolation(_)) => {
-            return Some((StatusCode::CONFLICT, "resource already exists".to_string()));
-        }
-        None => {}
-        Some(_) => {}
     }
 
-    // check / not-null 違反は SeaORM の SqlErr では拾えないため、生の SQLSTATE を見る
+    // check 違反はビジネスルール (例: qty > 0) を DB で表現しているケースがあり、
+    // クライアントエラーとして 400 を返す。SqlErr の対象外なので生 SQLSTATE で判定する。
     let (DbErr::Exec(RuntimeErr::SqlxError(sqlx_err))
     | DbErr::Query(RuntimeErr::SqlxError(sqlx_err))) = err
     else {
         return None;
     };
     let code = sqlx_err.as_database_error()?.code()?;
-    match code.as_ref() {
-        PG_CHECK_VIOLATION | PG_NOT_NULL_VIOLATION => Some((
+    (code.as_ref() == PG_CHECK_VIOLATION).then(|| {
+        (
             StatusCode::BAD_REQUEST,
             "value violates database constraint".to_string(),
-        )),
-        _ => None,
-    }
+        )
+    })
 }
 
 #[derive(Debug, thiserror::Error)]

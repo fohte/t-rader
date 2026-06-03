@@ -38,7 +38,7 @@ pub struct ListTradesQuery {
     params(ListTradesQuery),
     responses(
         (status = 200, body = Vec<trade::Model>),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -66,7 +66,7 @@ pub async fn list_trades(
     params(("id" = Uuid, Path, description = "取引 ID")),
     responses(
         (status = 200, body = trade::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -90,8 +90,8 @@ pub async fn get_trade(
     request_body = CreateTradeRequest,
     responses(
         (status = 201, body = trade::Model),
-        (status = 400, body = ErrorResponse),
-        (status = 422, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -168,9 +168,9 @@ pub async fn create_trade(
     request_body = UpdateTradeRequest,
     responses(
         (status = 200, body = trade::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
-        (status = 422, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -261,7 +261,7 @@ pub async fn update_trade(
     params(("id" = Uuid, Path, description = "取引 ID")),
     responses(
         (status = 204),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -295,7 +295,7 @@ pub struct SummaryQuery {
     params(SummaryQuery),
     responses(
         (status = 200, body = PerformanceSummary),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]

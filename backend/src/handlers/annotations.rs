@@ -37,7 +37,7 @@ pub struct ListAnnotationsQuery {
     params(ListAnnotationsQuery),
     responses(
         (status = 200, body = Vec<annotation::Model>),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -63,7 +63,7 @@ pub async fn list_annotations(
     params(("id" = Uuid, Path, description = "アノテーション ID")),
     responses(
         (status = 200, body = annotation::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -87,8 +87,8 @@ pub async fn get_annotation(
     request_body = CreateAnnotationRequest,
     responses(
         (status = 201, body = annotation::Model),
-        (status = 400, body = ErrorResponse),
-        (status = 422, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -161,9 +161,9 @@ pub async fn create_annotation(
     request_body = UpdateAnnotationRequest,
     responses(
         (status = 200, body = annotation::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
-        (status = 422, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -254,7 +254,7 @@ pub async fn update_annotation(
     params(("id" = Uuid, Path, description = "アノテーション ID")),
     responses(
         (status = 204),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
