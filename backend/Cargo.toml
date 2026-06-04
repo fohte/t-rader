@@ -35,6 +35,8 @@ axum = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive"] }
 migration = { path = "migration" }
+percent-encoding = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls"] }
 rust_decimal = { workspace = true, features = ["serde-float"] }
 sea-orm = { workspace = true, features = [
     "runtime-tokio-native-tls",
@@ -50,7 +52,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-reqwest = { workspace = true, features = ["json", "rustls"] }
 utoipa = { workspace = true, features = [
     "chrono",
     "uuid",
@@ -59,21 +60,20 @@ utoipa = { workspace = true, features = [
 ] }
 utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true, features = ["axum"] }
-percent-encoding = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 
 [dev-dependencies]
-wiremock = { workspace = true }
 axum-test = { workspace = true }
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
-tokio = { workspace = true, features = ["test-util"] }
 sqlx = { workspace = true, features = [
     "runtime-tokio",
     "tls-native-tls",
     "postgres",
     "migrate",
 ] }
+tokio = { workspace = true, features = ["test-util"] }
+wiremock = { workspace = true }
 
 [lints.clippy]
 allow_attributes = "warn"
