@@ -4,7 +4,6 @@ interface Stat {
   label: string
   value: string
   cls?: string
-  sub?: string
 }
 
 export function TradeStats({
@@ -50,11 +49,6 @@ export function TradeStats({
           >
             {s.value}
           </span>
-          {s.sub != null && (
-            <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-              {s.sub}
-            </span>
-          )}
         </div>
       ))}
     </div>

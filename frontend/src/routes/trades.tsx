@@ -35,9 +35,13 @@ function TradesPage() {
   const { data: stocks = [] } = $api.useQuery('get', '/api/refs/stocks')
   const { data: summary } = $api.useQuery('get', '/api/trades/summary')
 
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const deleteMutation = $api.useMutation('delete', '/api/trades/{id}', {
     onSuccess: () => {
       invalidateTrades()
+    },
+    onError: () => {
+      setDeleteError('取引の削除に失敗しました')
     },
   })
 
@@ -73,6 +77,7 @@ function TradesPage() {
     ) {
       return
     }
+    setDeleteError(null)
     deleteMutation.mutate({ params: { path: { id: t.id } } })
   }
 
@@ -131,6 +136,12 @@ function TradesPage() {
         value={filter}
         onChange={setFilter}
       />
+
+      {deleteError != null && (
+        <p className="text-[12px] text-[color:var(--color-accent-strategy)]">
+          {deleteError}
+        </p>
+      )}
 
       {tradesPending ? (
         <Skeleton className="h-[200px] w-full" />

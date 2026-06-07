@@ -132,6 +132,8 @@ export function TradeFormDialog({
 
   const qtyNum = Number(form.qty)
   const priceNum = Number(form.price)
+  const feeNum = form.fee === '' ? 0 : Number(form.fee)
+  const feeValid = form.fee === '' || (Number.isFinite(feeNum) && feeNum >= 0)
   const valid =
     form.strategyId !== '' &&
     form.symbol !== '' &&
@@ -139,6 +141,7 @@ export function TradeFormDialog({
     qtyNum > 0 &&
     form.price !== '' &&
     priceNum > 0 &&
+    feeValid &&
     form.date !== ''
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
@@ -151,8 +154,6 @@ export function TradeFormDialog({
     e.preventDefault()
     if (!valid || submitting) return
     setError(null)
-    const rawFee = form.fee === '' ? 0 : Number(form.fee)
-    const feeNum = Number.isFinite(rawFee) && rawFee >= 0 ? rawFee : 0
     const noteVal = form.note.trim() === '' ? null : form.note.trim()
     if (initial == null) {
       createMutation.mutate({
