@@ -3,12 +3,14 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{EntityTrait, IntoActiveModel, QueryOrder, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
+};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::strategy;
+use crate::entities::{strategy, strategy_interest};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, UpdateStrategyRequest};
@@ -211,6 +213,33 @@ pub async fn delete_strategy(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// 戦略の関心 (シード + LLM 派生) 一覧
+#[utoipa::path(
+    get,
+    path = "/api/strategies/{id}/interests",
+    tag = "strategies",
+    params(("id" = Uuid, Path, description = "戦略 ID")),
+    responses(
+        (status = 200, body = Vec<strategy_interest::Model>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_strategy_interests(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+) -> Result<Json<Vec<strategy_interest::Model>>, AppError> {
+    find_strategy_or_404(&state.db, id).await?;
+    let items = strategy_interest::Entity::find()
+        .filter(strategy_interest::Column::StrategyId.eq(id))
+        .order_by_asc(strategy_interest::Column::Role)
+        .order_by_asc(strategy_interest::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+    Ok(Json(items))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -241,5 +270,33 @@ mod tests {
             .get("/api/strategies/00000000-0000-0000-0000-000000000000")
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_interests_of_nonexistent_strategy_returns_404(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let res = server
+            .get("/api/strategies/00000000-0000-0000-0000-000000000000/interests")
+            .await;
+        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_interests_of_existing_strategy_returns_empty(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let created = server
+            .post("/api/strategies")
+            .json(&json!({ "name": "test" }))
+            .await;
+        created.assert_status(axum::http::StatusCode::CREATED);
+        let id = created.json::<serde_json::Value>()["id"]
+            .as_str()
+            .map(str::to_string)
+            .expect("id");
+
+        let res = server.get(&format!("/api/strategies/{id}/interests")).await;
+        res.assert_status_ok();
+        let body: Vec<serde_json::Value> = res.json();
+        assert!(body.is_empty());
     }
 }

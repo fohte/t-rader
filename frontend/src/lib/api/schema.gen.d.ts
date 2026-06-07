@@ -409,6 +409,23 @@ export interface paths {
     patch: operations['update_strategy']
     trace?: never
   }
+  '/api/strategies/{id}/interests': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の関心 (シード + LLM 派生) 一覧 */
+    get: operations['list_strategy_interests']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/trades': {
     parameters: {
       query?: never
@@ -780,6 +797,16 @@ export interface components {
       sort_order: number
       /** Format: date-time */
       updated_at: string
+    }
+    StrategyInterest: {
+      /** Format: date-time */
+      created_at: string
+      origin: string
+      ref_id: string
+      ref_kind: string
+      role: string
+      /** Format: uuid */
+      strategy_id: string
     }
     Theme: {
       description?: string | null
@@ -2293,6 +2320,53 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_interests: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyInterest'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
         headers: {
           [name: string]: unknown
         }

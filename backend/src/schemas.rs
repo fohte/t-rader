@@ -481,3 +481,30 @@ impl PartialSchema for crate::entities::trade::Model {
             .into()
     }
 }
+
+// --- strategy_interest::Model ---
+
+impl utoipa::ToSchema for crate::entities::strategy_interest::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("StrategyInterest")
+    }
+}
+
+impl PartialSchema for crate::entities::strategy_interest::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("strategy_id", uuid_prop())
+            .required("strategy_id")
+            .property("ref_kind", str_prop())
+            .required("ref_kind")
+            .property("ref_id", str_prop())
+            .required("ref_id")
+            .property("role", str_prop())
+            .required("role")
+            .property("origin", str_prop())
+            .required("origin")
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .into()
+    }
+}
