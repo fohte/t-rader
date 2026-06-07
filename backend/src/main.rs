@@ -5,6 +5,7 @@ use backend::AppState;
 use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::DataProviderKind;
+use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::error::AppError;
 use clap::Parser;
@@ -56,16 +57,45 @@ async fn main() -> Result<(), AppError> {
         return Ok(());
     }
 
-    // J-Quants API キーが設定されている場合のみ DataProvider を初期化する
-    let data_provider = match std::env::var("JQUANTS_API_KEY") {
-        Ok(api_key) if !api_key.is_empty() => {
-            let client = JQuantsClient::new(api_key)?;
-            tracing::info!("J-Quants DataProvider を初期化しました");
-            Some(Arc::new(DataProviderKind::JQuants(client)))
-        }
-        _ => {
-            tracing::warn!("JQUANTS_API_KEY が未設定のため、DataProvider なしで起動します");
+    let provider_kind = std::env::var("DATA_PROVIDER")
+        .ok()
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|| "jquants".to_string());
+
+    let data_provider = match provider_kind.as_str() {
+        "none" => {
+            tracing::info!("DATA_PROVIDER=none: DataProvider を無効化して起動します");
             None
+        }
+        "ibkr" => {
+            let base_url = std::env::var("IBKR_BASE_URL")
+                .ok()
+                .filter(|s| !s.is_empty());
+            let session_token = std::env::var("IBKR_SESSION_TOKEN")
+                .ok()
+                .filter(|s| !s.is_empty());
+            let exchange = std::env::var("IBKR_EXCHANGE")
+                .ok()
+                .filter(|s| !s.is_empty());
+            let client = IbkrClient::new(base_url, session_token, exchange)?;
+            tracing::info!("IBKR DataProvider を初期化しました");
+            Some(Arc::new(DataProviderKind::Ibkr(client)))
+        }
+        "jquants" => match std::env::var("JQUANTS_API_KEY") {
+            Ok(api_key) if !api_key.is_empty() => {
+                let client = JQuantsClient::new(api_key)?;
+                tracing::info!("J-Quants DataProvider を初期化しました");
+                Some(Arc::new(DataProviderKind::JQuants(client)))
+            }
+            _ => {
+                tracing::warn!("JQUANTS_API_KEY が未設定のため、DataProvider なしで起動します");
+                None
+            }
+        },
+        other => {
+            return Err(AppError::Config(format!(
+                "unknown DATA_PROVIDER value: '{other}' (expected: jquants | ibkr | none)"
+            )));
         }
     };
 
