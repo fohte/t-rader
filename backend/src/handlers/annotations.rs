@@ -15,7 +15,7 @@ use crate::AppState;
 use crate::entities::annotation;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
-use crate::models::{CreateAnnotationRequest, UpdateAnnotationRequest};
+use crate::models::{ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 
 const ALLOWED_TARGET_KIND: [&str; 4] = ["signal", "level", "observation", "other"];
@@ -244,6 +244,87 @@ pub async fn update_annotation(
     }
     txn.commit().await?;
     Ok(Json(updated))
+}
+
+async fn change_annotation_status(
+    state: &AppState,
+    id: Uuid,
+    new_status: &str,
+    label: Option<String>,
+) -> Result<annotation::Model, AppError> {
+    let txn = state.db.begin().await?;
+    let current = annotation::Entity::find_by_id(id)
+        .one(&txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
+    if current.status == new_status {
+        return Ok(current);
+    }
+    let mut active = current.clone().into_active_model();
+    active.status = Set(new_status.to_string());
+    active.updated_at = Set(chrono::Utc::now().fixed_offset());
+    let updated = active.update(&txn).await?;
+    change_history::record(
+        &txn,
+        TargetKind::Annotation,
+        id,
+        Op::StatusChange,
+        json!({ "from": current.status, "to": new_status, "label": label }),
+        label,
+    )
+    .await?;
+    txn.commit().await?;
+    Ok(updated)
+}
+
+/// アノテーションを approved に遷移
+#[utoipa::path(
+    post,
+    path = "/api/annotations/{id}/approve",
+    tag = "annotations",
+    params(("id" = Uuid, Path, description = "アノテーション ID")),
+    request_body = ChangeStatusRequest,
+    responses(
+        (status = 200, body = annotation::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn approve_annotation(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+    JsonBody(payload): JsonBody<ChangeStatusRequest>,
+) -> Result<Json<annotation::Model>, AppError> {
+    Ok(Json(
+        change_annotation_status(&state, id, "approved", payload.label).await?,
+    ))
+}
+
+/// アノテーションを rejected に遷移
+#[utoipa::path(
+    post,
+    path = "/api/annotations/{id}/reject",
+    tag = "annotations",
+    params(("id" = Uuid, Path, description = "アノテーション ID")),
+    request_body = ChangeStatusRequest,
+    responses(
+        (status = 200, body = annotation::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn reject_annotation(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+    JsonBody(payload): JsonBody<ChangeStatusRequest>,
+) -> Result<Json<annotation::Model>, AppError> {
+    Ok(Json(
+        change_annotation_status(&state, id, "rejected", payload.label).await?,
+    ))
 }
 
 /// アノテーション削除

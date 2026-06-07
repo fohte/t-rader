@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { AnalysisCard } from '@/components/strategy-home/analysis-card'
 import { AnnotationList } from '@/components/strategy-home/annotation-list'
@@ -11,6 +11,7 @@ import { RelatedMacro } from '@/components/strategy-home/related-macro'
 import { useLastVisited } from '@/components/strategy-home/use-last-visited'
 import { RefChip } from '@/components/strategy-shell/ref-chip'
 import { Skeleton } from '@/components/ui/skeleton'
+import { buildNumberedAnnotations } from '@/lib/annotation-utils'
 import { $api } from '@/lib/api/client'
 import { resolveRef } from '@/lib/strategy-mock'
 
@@ -21,6 +22,10 @@ export const Route = createFileRoute('/strategies/$id/')({
 function StrategyHomePage() {
   const { id } = Route.useParams()
   const lastVisited = useLastVisited(id)
+  const [activeSymbol, setActiveSymbol] = useState<string | null>(null)
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<
+    string | null
+  >(null)
 
   const { data: strategy, isPending: strategyPending } = $api.useQuery(
     'get',
@@ -56,6 +61,11 @@ function StrategyHomePage() {
   const indicatorIds = useMemo(
     () => seeds.filter((i) => i.ref_kind === 'indicator').map((i) => i.ref_id),
     [seeds],
+  )
+
+  const numberedAnnotations = useMemo(
+    () => buildNumberedAnnotations(annotations ?? [], activeSymbol),
+    [annotations, activeSymbol],
   )
 
   const sortedNotes = useMemo(
@@ -126,9 +136,21 @@ function StrategyHomePage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-5">
-          <ChartPanel symbols={stockSymbols} />
+          <ChartPanel
+            symbols={stockSymbols}
+            numberedAnnotations={numberedAnnotations}
+            selectedAnnotationId={selectedAnnotationId}
+            onSelectAnnotation={setSelectedAnnotationId}
+            onSymbolChange={setActiveSymbol}
+          />
 
-          <AnnotationList strategyId={id} annotations={annotations ?? []} />
+          <AnnotationList
+            strategyId={id}
+            items={numberedAnnotations}
+            symbol={activeSymbol}
+            selectedAnnotationId={selectedAnnotationId}
+            onSelectAnnotation={setSelectedAnnotationId}
+          />
 
           <section>
             <div className="mb-2 flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
