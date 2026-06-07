@@ -118,6 +118,9 @@ jobs:
         env:
           # バックエンド変更がない場合、OpenAPI ダンプやバックエンド専用コマンドをスキップする
           LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep' || '' }}
+          # pinact's min-age check calls the GitHub API; without a token it hits
+          # the 60 req/h unauthenticated limit shared per IP and fails on CI.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: lefthook run pre-commit --all-files
 
       # Formatters configured with `stage_fixed: true` run `git add` after formatting,
@@ -372,7 +375,7 @@ jobs:
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@6ed6112eb9893c58dd600eebccdf6e77ab7bfa9c # v2.79.12
+        uses: taiki-e/install-action@50b4a718b59c718df4ef27a3b445f86cd57b9f00 # v2.80.0
         with:
           tool: cargo-llvm-cov
 
