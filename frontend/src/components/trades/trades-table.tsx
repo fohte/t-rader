@@ -1,4 +1,5 @@
 import { Pencil, Trash2 } from 'lucide-react'
+import { useMemo } from 'react'
 
 import { formatYen, SOURCE_LABEL } from '@/components/trades/format'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,19 @@ export function TradesTable({
   onEdit: (t: Trade) => void
   onDelete: (t: Trade) => void
 }) {
+  const stockById = useMemo(
+    () => new Map(stocks.map((s) => [s.id, s.name])),
+    [stocks],
+  )
+  const strategyById = useMemo(
+    () => new Map(strategies.map((s) => [s.id, s.name])),
+    [strategies],
+  )
+  const sorted = useMemo(
+    () => [...trades].sort((a, b) => b.date.localeCompare(a.date)),
+    [trades],
+  )
+
   if (trades.length === 0) {
     return (
       <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] px-4 py-8 text-center font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
@@ -30,10 +44,6 @@ export function TradesTable({
       </div>
     )
   }
-
-  const stockById = new Map(stocks.map((s) => [s.id, s.name]))
-  const strategyById = new Map(strategies.map((s) => [s.id, s.name]))
-  const sorted = [...trades].sort((a, b) => b.date.localeCompare(a.date))
 
   return (
     <div className="overflow-x-auto border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">

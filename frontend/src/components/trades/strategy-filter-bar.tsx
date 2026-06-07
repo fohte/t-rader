@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import type { components } from '@/lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
@@ -17,13 +19,13 @@ export function StrategyFilterBar({
   value: StrategyFilter
   onChange: (v: StrategyFilter) => void
 }) {
-  const countByStrategy = new Map<string, number>()
-  for (const t of trades) {
-    countByStrategy.set(
-      t.strategy_id,
-      (countByStrategy.get(t.strategy_id) ?? 0) + 1,
-    )
-  }
+  const countByStrategy = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of trades) {
+      m.set(t.strategy_id, (m.get(t.strategy_id) ?? 0) + 1)
+    }
+    return m
+  }, [trades])
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">

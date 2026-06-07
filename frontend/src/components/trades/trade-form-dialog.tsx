@@ -31,9 +31,16 @@ type FormState = {
   note: string
 }
 
+const todayFormatter = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
 function todayJst(): string {
-  // sv-SE ロケールは ISO 8601 互換の YYYY-MM-DD を返すため、JST 当日を <input type="date"> 用に整形できる
-  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
+  // <input type="date"> 用に JST 当日を YYYY-MM-DD で取得する
+  return todayFormatter.format(new Date()).replace(/\//g, '-')
 }
 
 function emptyForm(strategies: Strategy[], stocks: Stock[]): FormState {
@@ -111,6 +118,26 @@ export function TradeFormDialog({
     }
   }, [open, initial])
 
+  // 新規作成時にマスタデータが遅延ロードされた場合、未選択の項目だけ初期値を埋める。
+  // 入力途中の値は上書きしない (未選択 = 空文字 のときだけ反応する)。
+  useEffect(() => {
+    if (!open || initial != null) return
+    setForm((prev) => {
+      const firstStrategy = strategies[0]
+      const firstStock = stocks[0]
+      const next = { ...prev }
+      if (prev.strategyId === '' && firstStrategy != null) {
+        next.strategyId = defaultStrategyId ?? firstStrategy.id
+      }
+      if (prev.symbol === '' && firstStock != null) {
+        next.symbol = firstStock.id
+      }
+      return next.strategyId === prev.strategyId && next.symbol === prev.symbol
+        ? prev
+        : next
+    })
+  }, [open, initial, strategies, stocks, defaultStrategyId])
+
   const createMutation = $api.useMutation('post', '/api/trades', {
     onSuccess: () => {
       invalidateTrades()
@@ -187,7 +214,13 @@ export function TradeFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (submitting) return
+        onOpenChange(v)
+      }}
+    >
       <DialogContent className="sm:max-w-xl">
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
