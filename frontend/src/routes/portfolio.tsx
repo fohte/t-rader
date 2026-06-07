@@ -29,16 +29,12 @@ function PortfolioPage() {
   )
   const { data: stocks = [] } = $api.useQuery('get', '/api/refs/stocks')
 
-  const positions = summary?.positions ?? []
   const openPositions = useMemo(
-    () => positions.filter((p) => p.qty > 0),
-    [positions],
+    () => (summary?.positions ?? []).filter((p) => p.qty > 0),
+    [summary],
   )
 
-  const equity = useMemo(
-    () => openPositions.reduce((s, p) => s + p.cost_basis, 0),
-    [openPositions],
-  )
+  const equity = openPositions.reduce((s, p) => s + p.cost_basis, 0)
   const totalAssets = equity + cash
   const cashRatio = totalAssets > 0 ? (cash / totalAssets) * 100 : 0
   const investedRatio = totalAssets > 0 ? 100 - cashRatio : 0

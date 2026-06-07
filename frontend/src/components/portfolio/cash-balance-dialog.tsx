@@ -28,8 +28,9 @@ export function CashBalanceDialog({
     if (open) setValue(String(initial))
   }, [open, initial])
 
-  const numeric = Number(value)
-  const valid = value !== '' && Number.isFinite(numeric) && numeric >= 0
+  const trimmed = value.trim()
+  const numeric = Number(trimmed)
+  const valid = trimmed !== '' && Number.isFinite(numeric) && numeric >= 0
 
   const submit = () => {
     if (!valid) return

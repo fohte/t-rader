@@ -32,16 +32,12 @@ function StrategyPerformancePage() {
   const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
   const { data: stocks = [] } = $api.useQuery('get', '/api/refs/stocks')
 
-  const sells = useMemo(() => trades.filter((t) => t.side === 'sell'), [trades])
-  const feesTotal = useMemo(
-    () => trades.reduce((s, t) => s + t.fee, 0),
-    [trades],
-  )
+  const sellsCount = trades.filter((t) => t.side === 'sell').length
+  const feesTotal = trades.reduce((s, t) => s + t.fee, 0)
 
-  const positions = summary?.positions ?? []
   const openPositions = useMemo(
-    () => positions.filter((p) => p.qty > 0),
-    [positions],
+    () => (summary?.positions ?? []).filter((p) => p.qty > 0),
+    [summary],
   )
   const realizedPnl = summary?.realized_pnl ?? 0
 
@@ -60,7 +56,7 @@ function StrategyPerformancePage() {
       value: formatYen(feesTotal),
       cls: 'text-[color:var(--color-text-secondary)]',
     },
-    { label: '決済回数', value: sells.length.toLocaleString() },
+    { label: '決済回数', value: sellsCount.toLocaleString() },
     { label: 'トレード件数', value: trades.length.toLocaleString() },
     { label: '保有銘柄', value: openPositions.length.toLocaleString() },
   ]
