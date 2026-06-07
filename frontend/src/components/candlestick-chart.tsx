@@ -2,10 +2,15 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   HistogramSeries,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type SeriesType,
+  type Time,
+  type UTCTimestamp,
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
 
@@ -14,8 +19,22 @@ import { toCandlestickData, toVolumeData } from '@/lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
 
+export interface ChartAnnotation {
+  id: string
+  /** ピン番号 (A1, A2, ...) */
+  label: string
+  /** ISO 8601 timestamp */
+  timestamp: string
+  target_kind: string
+  status: string
+  text: string
+}
+
 interface CandlestickChartProps {
   bars: Bar[]
+  annotations?: ChartAnnotation[]
+  onSelectAnnotation?: (id: string) => void
+  selectedAnnotationId?: string | null
   className?: string
 }
 
@@ -28,12 +47,28 @@ function getThemeColors(isDark: boolean) {
   }
 }
 
-export function CandlestickChart({ bars, className }: CandlestickChartProps) {
+export function CandlestickChart({
+  bars,
+  annotations,
+  onSelectAnnotation,
+  selectedAnnotationId,
+  className,
+}: CandlestickChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candlestickSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
+  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const isInitialDataRef = useRef(true)
+  // 最新値を ref で持つ。click ハンドラ内で stale を避けるため。
+  const annotationsRef = useRef<ChartAnnotation[] | undefined>(annotations)
+  const onSelectRef = useRef(onSelectAnnotation)
+  useEffect(() => {
+    annotationsRef.current = annotations
+  }, [annotations])
+  useEffect(() => {
+    onSelectRef.current = onSelectAnnotation
+  }, [onSelectAnnotation])
 
   // チャートの初期化 (マウント時のみ)
   useEffect(() => {
@@ -83,6 +118,40 @@ export function CandlestickChart({ bars, className }: CandlestickChartProps) {
     })
     volumeSeriesRef.current = volumeSeries
 
+    markersPluginRef.current = createSeriesMarkers(candlestickSeries)
+
+    chart.subscribeClick((param) => {
+      const handler = onSelectRef.current
+      const list = annotationsRef.current
+      if (
+        handler == null ||
+        list == null ||
+        list.length === 0 ||
+        param.time == null
+      ) {
+        return
+      }
+      // Lightweight Charts の Time は UTC 秒の number または BusinessDay/string。
+      // ここでは number 形式 (UTCTimestamp) のみ扱う。
+      if (typeof param.time !== 'number') return
+      const t = param.time
+      let best: ChartAnnotation | null = null
+      let bestDiff = Infinity
+      for (const a of list) {
+        const at = Math.floor(new Date(a.timestamp).getTime() / 1000)
+        const diff = Math.abs(at - t)
+        if (diff < bestDiff) {
+          bestDiff = diff
+          best = a
+        }
+      }
+      // 日足前提のヒューリスティクス: 隣接ローソク 1 本 (1 日) では誤検出が多く、
+      // 週末や祝日を跨いだクリックも拾いたいので 3 日まで広げる。
+      if (best != null && bestDiff <= 60 * 60 * 24 * 3) {
+        handler(best.id)
+      }
+    })
+
     isInitialDataRef.current = true
 
     // コンテナサイズ追従
@@ -123,6 +192,7 @@ export function CandlestickChart({ bars, className }: CandlestickChartProps) {
       chartRef.current = null
       candlestickSeriesRef.current = null
       volumeSeriesRef.current = null
+      markersPluginRef.current = null
     }
   }, [])
 
@@ -139,6 +209,41 @@ export function CandlestickChart({ bars, className }: CandlestickChartProps) {
       isInitialDataRef.current = false
     }
   }, [bars])
+
+  useEffect(() => {
+    const plugin = markersPluginRef.current
+    if (plugin == null) return
+    const list = annotations ?? []
+    const markers: SeriesMarker<Time>[] = list
+      .map((a) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- UTCTimestamp はブランド型
+        const time = Math.floor(
+          new Date(a.timestamp).getTime() / 1000,
+        ) as UTCTimestamp
+        const isSelected = a.id === selectedAnnotationId
+        const color = isSelected
+          ? '#ef4444'
+          : a.status === 'approved'
+            ? '#71717a'
+            : '#ef4444'
+        return {
+          id: a.id,
+          time,
+          position:
+            a.target_kind === 'signal'
+              ? ('belowBar' as const)
+              : ('aboveBar' as const),
+          color,
+          shape:
+            a.target_kind === 'signal'
+              ? ('arrowUp' as const)
+              : ('circle' as const),
+          text: a.label,
+        }
+      })
+      .sort((x, y) => (x.time as number) - (y.time as number))
+    plugin.setMarkers(markers)
+  }, [annotations, selectedAnnotationId])
 
   return <div ref={containerRef} className={className} />
 }

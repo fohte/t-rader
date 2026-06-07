@@ -166,6 +166,8 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             annotations::update_annotation,
             annotations::delete_annotation
         ))
+        .routes(routes!(annotations::approve_annotation))
+        .routes(routes!(annotations::reject_annotation))
         // comments
         .routes(routes!(comments::list_comments, comments::create_comment))
         .routes(routes!(comments::delete_comment))
