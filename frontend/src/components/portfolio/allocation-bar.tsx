@@ -43,7 +43,8 @@ export function AllocationBar({ segments }: { segments: AllocationSegment[] }) {
       </div>
       <ul className="space-y-1 font-mono text-[12px]">
         {segments.map((seg, i) => {
-          const pct = (seg.value / total) * 100
+          const v = Math.max(seg.value, 0)
+          const pct = (v / total) * 100
           return (
             <li
               key={seg.key}
