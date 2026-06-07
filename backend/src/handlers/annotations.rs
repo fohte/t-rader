@@ -256,7 +256,6 @@ async fn change_annotation_status(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
-    // 同 status への遷移は no-op。履歴ノイズを避けるため現在の row をそのまま返す。
     if current.status == new_status {
         return Ok(current);
     }

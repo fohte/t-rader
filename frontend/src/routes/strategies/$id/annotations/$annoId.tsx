@@ -234,6 +234,11 @@ function AnnotationDetailPage() {
             ✕ 却下
           </button>
         </div>
+        {(approveMutation.error != null || rejectMutation.error != null) && (
+          <p className="mt-2 font-mono text-[11px] text-[color:var(--color-status-rejected)]">
+            操作に失敗しました。時間を置いて再試行してください。
+          </p>
+        )}
       </section>
 
       <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-5">
@@ -286,6 +291,11 @@ function AnnotationDetailPage() {
             送信
           </button>
         </form>
+        {createCommentMutation.error != null && (
+          <p className="mt-2 font-mono text-[11px] text-[color:var(--color-status-rejected)]">
+            送信に失敗しました。時間を置いて再試行してください。
+          </p>
+        )}
       </section>
 
       <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-5">

@@ -60,7 +60,6 @@ export function CandlestickChart({
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const isInitialDataRef = useRef(true)
-  // 最新値を ref で持つ。click ハンドラ内で stale を避けるため。
   const annotationsRef = useRef<ChartAnnotation[] | undefined>(annotations)
   const onSelectRef = useRef(onSelectAnnotation)
   useEffect(() => {
