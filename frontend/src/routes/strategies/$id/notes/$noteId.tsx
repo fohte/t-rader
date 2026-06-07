@@ -26,13 +26,6 @@ function NoteDetailPage() {
   }, [])
   const onQuoteSelection = useCallback((text: string) => {
     setPendingQuote(text)
-    // コメント入力欄にスクロールしてフォーカス
-    requestAnimationFrame(() => {
-      const input = document.querySelector<HTMLInputElement>(
-        'input[data-comments-input="true"]',
-      )
-      input?.focus()
-    })
   }, [])
 
   if (isPending) {

@@ -20,7 +20,6 @@ export type Block =
 
 const ANNO_RE = /^anno:([A-Za-z][\w-]*)$/
 
-// `[[kind:id]]` を anno/ref に振り分け、それ以外を **bold** / *italic* / `code` に分解する。
 export function parseInline(text: string): InlineToken[] {
   const tokens: InlineToken[] = []
   const linkRe = /\[\[([^\]]+)\]\]/g
@@ -86,7 +85,6 @@ export function parseMarkdown(src: string): Block[] {
       continue
     }
 
-    // code fence
     if (trimmed.startsWith('```')) {
       flushParagraph(paraBuf)
       const lang = trimmed.slice(3).trim() || null
@@ -147,7 +145,7 @@ export function parseMarkdown(src: string): Block[] {
         buf.push(m[1] ?? '')
         i += 1
       }
-      blocks.push({ kind: 'quote', inline: parseInline(buf.join(' ')) })
+      blocks.push({ kind: 'quote', inline: parseInline(buf.join('\n')) })
       continue
     }
 

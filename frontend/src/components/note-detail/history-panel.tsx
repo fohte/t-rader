@@ -14,7 +14,7 @@ const OP_LABEL: Record<string, string> = {
 }
 
 export function HistoryPanel({ noteId }: HistoryPanelProps) {
-  const { data: history } = $api.useQuery('get', '/api/history', {
+  const { data: history, isPending } = $api.useQuery('get', '/api/history', {
     params: { query: { target_kind: 'note', target_id: noteId, limit: 50 } },
   })
   const rows = history ?? []
@@ -26,7 +26,11 @@ export function HistoryPanel({ noteId }: HistoryPanelProps) {
           変更履歴
         </h3>
       </header>
-      {rows.length === 0 ? (
+      {isPending ? (
+        <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+          読み込み中…
+        </div>
+      ) : rows.length === 0 ? (
         <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
           —
         </div>

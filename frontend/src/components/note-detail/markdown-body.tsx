@@ -103,7 +103,7 @@ function BlockNode({ block, ctx }: { block: Block; ctx: Ctx }) {
       )
     case 'quote':
       return (
-        <blockquote className="my-3 border-l-2 border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] py-1.5 pl-3 text-[13.5px] text-[color:var(--color-text-secondary)]">
+        <blockquote className="my-3 whitespace-pre-line border-l-2 border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] py-1.5 pl-3 text-[13.5px] text-[color:var(--color-text-secondary)]">
           <Inline tokens={block.inline} ctx={ctx} />
         </blockquote>
       )

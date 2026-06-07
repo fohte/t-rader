@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { $api } from '@/lib/api/client'
 import type { components } from '@/lib/api/schema.gen'
@@ -20,11 +20,16 @@ export function CommentsPanel({
   onConsumeQuote,
 }: CommentsPanelProps) {
   const queryClient = useQueryClient()
-  const { data: comments } = $api.useQuery('get', '/api/comments', {
+  const { data: comments, isPending } = $api.useQuery('get', '/api/comments', {
     params: { query: { target_kind: 'note', target_id: noteId } },
   })
   const create = $api.useMutation('post', '/api/comments')
   const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (pendingQuote != null && pendingQuote !== '') inputRef.current?.focus()
+  }, [pendingQuote])
 
   const list = comments ?? []
   const topLevel = list.filter((c) => c.parent_id == null)
@@ -80,7 +85,11 @@ export function CommentsPanel({
         </span>
       </header>
       <div className="divide-y divide-[color:var(--color-hairline)]">
-        {topLevel.length === 0 ? (
+        {isPending ? (
+          <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+            読み込み中…
+          </div>
+        ) : topLevel.length === 0 ? (
           <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
             まだコメントはありません。
           </div>
@@ -118,7 +127,7 @@ export function CommentsPanel({
         )}
         <div className="flex gap-2">
           <input
-            data-comments-input="true"
+            ref={inputRef}
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value)
