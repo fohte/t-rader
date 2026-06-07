@@ -9,7 +9,7 @@
     "format:prettier": "prettier --write .",
     "format": "conc -m 1 pnpm:format:eslint pnpm:format:prettier",
     "test": "tsr generate && conc pnpm:test:type pnpm:test:unit",
-    "test:type": "tsc --noEmit",
+    "test:type": "tsr generate && tsc --noEmit",
     "test:unit": "vitest run",
     "dev": "vite",
     "build": "vite build",
