@@ -58,9 +58,9 @@ export function AnnotationList({
                 onClick={() => onSelectAnnotation?.(a.id)}
                 className="w-full cursor-pointer text-left"
               >
-                <p className="line-clamp-2 text-[13px] text-[color:var(--color-text-primary)]">
+                <span className="line-clamp-2 block text-[13px] text-[color:var(--color-text-primary)]">
                   {a.text}
-                </p>
+                </span>
               </button>
               <div className="mt-1 flex items-center gap-2 font-mono text-[11px]">
                 <span className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-1 text-[10px] uppercase text-[color:var(--color-text-secondary)]">

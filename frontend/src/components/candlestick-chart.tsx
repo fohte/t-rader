@@ -60,10 +60,17 @@ export function CandlestickChart({
   const volumeSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null)
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const isInitialDataRef = useRef(true)
-  const annotationsRef = useRef<ChartAnnotation[] | undefined>(annotations)
+  // クリックハンドラが annotations を見るたびに timestamp を parse すると毎クリック O(n) の Date 構築が走るので、
+  // annotations 変更時に 1 度だけ秒に換算して保持する。
+  const parsedAnnotationsRef = useRef<
+    (ChartAnnotation & { timeSec: number })[]
+  >([])
   const onSelectRef = useRef(onSelectAnnotation)
   useEffect(() => {
-    annotationsRef.current = annotations
+    parsedAnnotationsRef.current = (annotations ?? []).map((a) => ({
+      ...a,
+      timeSec: Math.floor(new Date(a.timestamp).getTime() / 1000),
+    }))
   }, [annotations])
   useEffect(() => {
     onSelectRef.current = onSelectAnnotation
@@ -121,24 +128,18 @@ export function CandlestickChart({
 
     chart.subscribeClick((param) => {
       const handler = onSelectRef.current
-      const list = annotationsRef.current
-      if (
-        handler == null ||
-        list == null ||
-        list.length === 0 ||
-        param.time == null
-      ) {
+      const list = parsedAnnotationsRef.current
+      if (handler == null || list.length === 0 || param.time == null) {
         return
       }
       // Lightweight Charts の Time は UTC 秒の number または BusinessDay/string。
       // ここでは number 形式 (UTCTimestamp) のみ扱う。
       if (typeof param.time !== 'number') return
       const t = param.time
-      let best: ChartAnnotation | null = null
+      let best: (ChartAnnotation & { timeSec: number }) | null = null
       let bestDiff = Infinity
       for (const a of list) {
-        const at = Math.floor(new Date(a.timestamp).getTime() / 1000)
-        const diff = Math.abs(at - t)
+        const diff = Math.abs(a.timeSec - t)
         if (diff < bestDiff) {
           bestDiff = diff
           best = a

@@ -20,7 +20,6 @@ export function buildNumberedAnnotations(
   if (symbol == null) return []
   return annotations
     .filter((a) => a.target_symbol === symbol)
-    .slice()
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
     .map((a, i) => ({ ...a, label: `A${String(i + 1)}` }))
 }

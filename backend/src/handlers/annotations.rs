@@ -252,8 +252,9 @@ async fn change_annotation_status(
     new_status: &str,
     label: Option<String>,
 ) -> Result<annotation::Model, AppError> {
+    let txn = state.db.begin().await?;
     let current = annotation::Entity::find_by_id(id)
-        .one(&state.db)
+        .one(&txn)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
     if current.status == new_status {
@@ -262,7 +263,6 @@ async fn change_annotation_status(
     let mut active = current.clone().into_active_model();
     active.status = Set(new_status.to_string());
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    let txn = state.db.begin().await?;
     let updated = active.update(&txn).await?;
     change_history::record(
         &txn,
