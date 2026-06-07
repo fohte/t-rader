@@ -55,15 +55,26 @@ impl IbkrClient {
             .build()
             .map_err(|e| DataProviderError::Network(e.to_string()))?;
 
+        let mut base_url = base_url
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+        // build_url の format!("{}{path}", ...) で二重スラッシュにならないよう末尾を落とす
+        if base_url.ends_with('/') {
+            base_url.pop();
+        }
+        Url::parse(&base_url)
+            .map_err(|e| DataProviderError::Parse(format!("invalid IBKR_BASE_URL: {e}")))?;
+
+        let exchange = exchange
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_uppercase())
+            .unwrap_or_else(|| DEFAULT_EXCHANGE.to_string());
+
         Ok(Self {
             http,
-            base_url: base_url
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
+            base_url,
             session_token,
-            exchange: exchange
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_EXCHANGE.to_string()),
+            exchange,
         })
     }
 
