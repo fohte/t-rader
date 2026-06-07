@@ -2366,6 +2366,14 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       500: {
         headers: {
           [name: string]: unknown

@@ -5,8 +5,6 @@ interface RelatedMacroProps {
   indicatorIds: string[]
 }
 
-// 戦略の関心 (indicator) を MACRO_MOCK の最新値と突き合わせて表示する。
-// 突合できなかった indicator は省略する (リアルタイム値の API は M9 以降)。
 export function RelatedMacro({ indicatorIds }: RelatedMacroProps) {
   const items = indicatorIds
     .map((id) => MACRO_MOCK.find((m) => normalize(m.name) === normalize(id)))

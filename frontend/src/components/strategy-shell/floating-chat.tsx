@@ -9,12 +9,20 @@ import {
 } from '@/components/strategy-shell/floating-chat-store'
 
 export function FloatingChat() {
-  const { open } = useFloatingChat()
+  const { open, seed: storeSeed } = useFloatingChat()
   const [seed, setSeed] = useState<string | null>(null)
+  const [input, setInput] = useState('')
+
+  // open 中に新しい seed が投げ込まれたら input を差し替える。
+  useEffect(() => {
+    if (!open || storeSeed == null) return
+    const s = consumeFloatingChatSeed()
+    setSeed(s)
+    setInput(s ?? '')
+  }, [open, storeSeed])
 
   useEffect(() => {
     if (!open) return
-    setSeed(consumeFloatingChatSeed())
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeFloatingChat()
     }
@@ -85,7 +93,10 @@ export function FloatingChat() {
         <input
           disabled
           aria-label="メッセージ入力"
-          defaultValue={seed ?? ''}
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value)
+          }}
           placeholder="未接続"
           className="flex-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] px-2.5 py-2 font-mono text-[13px] text-[color:var(--color-text-primary)] outline-none"
         />

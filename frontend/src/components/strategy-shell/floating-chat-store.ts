@@ -30,11 +30,14 @@ export function useFloatingChat(): ChatState {
 }
 
 export function openFloatingChat(seed?: string | null): void {
-  state = { open: true, seed: seed ?? null }
+  const next: ChatState = { open: true, seed: seed ?? null }
+  if (state.open === next.open && state.seed === next.seed) return
+  state = next
   emit()
 }
 
 export function closeFloatingChat(): void {
+  if (!state.open) return
   state = { ...state, open: false }
   emit()
 }

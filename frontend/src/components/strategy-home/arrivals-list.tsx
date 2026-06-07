@@ -88,7 +88,7 @@ export function ArrivalsList({
                   }
               : {
                   to: '/strategies/$id/notes/$noteId' as const,
-                  params: { id: strategyId, noteId: a.id },
+                  params: { id: strategyId, noteId: a.noteId ?? a.id },
                 }
           return (
             <Link
