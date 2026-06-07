@@ -925,6 +925,119 @@
         }
       }
     },
+    "/api/imports/sbi/commit": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "プレビュー結果を確認・割当した上で実 INSERT する。\n各行に対して重複検知 (同日・同銘柄・同売買・同数量・同単価) を行い skip カウントを返す。",
+        "operationId": "sbi_commit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SbiCommitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SbiCommitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/imports/sbi/preview": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "SBI 国内株式 CSV プレビュー。multipart は使わず raw body で受け取る。",
+        "operationId": "sbi_preview",
+        "requestBody": {
+          "description": "SBI 取引履歴 CSV (Shift_JIS or UTF-8)",
+          "content": {
+            "text/csv": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SbiPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes": {
       "get": {
         "tags": [
@@ -3667,6 +3780,178 @@
           }
         }
       },
+      "SbiCommitRequest": {
+        "type": "object",
+        "required": [
+          "rows"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SbiCommitRow"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SbiCommitResponse": {
+        "type": "object",
+        "required": [
+          "imported_count",
+          "skipped_count"
+        ],
+        "properties": {
+          "imported_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped_count": {
+            "type": "integer",
+            "description": "重複検知でスキップした件数",
+            "minimum": 0
+          }
+        }
+      },
+      "SbiCommitRow": {
+        "type": "object",
+        "description": "SBI commit リクエストの 1 行。preview を確認後、行ごとに戦略 ID を割り当てる。",
+        "required": [
+          "strategy_id",
+          "date",
+          "symbol",
+          "side",
+          "qty",
+          "price"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "fee": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "qty": {
+            "type": "number",
+            "format": "double"
+          },
+          "side": {
+            "type": "string"
+          },
+          "stock_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SbiPreviewIssue": {
+        "type": "object",
+        "required": [
+          "row_index",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "row_index": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SbiPreviewResponse": {
+        "type": "object",
+        "required": [
+          "rows",
+          "issues"
+        ],
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SbiPreviewIssue"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SbiPreviewRow"
+            }
+          }
+        }
+      },
+      "SbiPreviewRow": {
+        "type": "object",
+        "description": "SBI CSV preview の 1 行。",
+        "required": [
+          "row_index",
+          "date",
+          "symbol",
+          "stock_name",
+          "side",
+          "qty",
+          "price",
+          "fee",
+          "is_duplicate"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "fee": {
+            "type": "number",
+            "format": "double"
+          },
+          "is_duplicate": {
+            "type": "boolean",
+            "description": "同日・同銘柄・同売買・同数量・同単価で既存取引が見つかったか"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          },
+          "qty": {
+            "type": "number",
+            "format": "double"
+          },
+          "row_index": {
+            "type": "integer",
+            "description": "元 CSV 上の行番号 (0-based)",
+            "minimum": 0
+          },
+          "side": {
+            "type": "string",
+            "description": "\"buy\" | \"sell\""
+          },
+          "stock_name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        }
+      },
       "Sector": {
         "type": "object",
         "required": [
@@ -4148,6 +4433,10 @@
     {
       "name": "trades",
       "description": "取引履歴と損益サマリ"
+    },
+    {
+      "name": "imports",
+      "description": "外部ソースからの取込 (SBI CSV 等)"
     }
   ]
 }

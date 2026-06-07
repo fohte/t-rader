@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { ImportSbiDialog } from '@/components/trades/import-sbi-dialog'
 import {
   type StrategyFilter,
   StrategyFilterBar,
@@ -25,6 +26,7 @@ function TradesPage() {
   const invalidateTrades = useInvalidateTrades()
   const [filter, setFilter] = useState<StrategyFilter>('all')
   const [formOpen, setFormOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<Trade | null>(null)
 
   const { data: trades, isPending: tradesPending } = $api.useQuery(
@@ -106,8 +108,9 @@ function TradesPage() {
           <Button
             type="button"
             variant="outline"
-            disabled
-            title="MVP 後に対応予定"
+            onClick={() => {
+              setImportOpen(true)
+            }}
           >
             <Upload />
             SBI CSV 取込
@@ -157,9 +160,15 @@ function TradesPage() {
       )}
 
       <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-        # SBI 証券からの自動取込は MVP 後に対応予定。それまでは CSV 取込 /
-        手入力で記録します。
+        # SBI 証券は Web から CSV を DL → 「SBI CSV 取込」ボタンで取込。Selenium
+        等の自動 DL は MVP 後。
       </p>
+
+      <ImportSbiDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        strategies={strategies}
+      />
 
       <TradeFormDialog
         open={formOpen}
