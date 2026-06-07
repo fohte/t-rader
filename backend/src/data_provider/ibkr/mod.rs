@@ -39,7 +39,6 @@ pub struct IbkrClient {
     http: reqwest::Client,
     base_url: String,
     session_token: Option<String>,
-    /// 日本株を引く際に使う取引所コード (デフォルト: TSEJ)
     exchange: String,
 }
 
@@ -211,12 +210,13 @@ impl IbkrClient {
     }
 }
 
-/// `DateRange` から IBKR の `period` パラメータ (例: `30d`) と問い合わせ用 `endTime` を導出する。
+/// `DateRange` から IBKR の `period` パラメータ (例: `30d`) と `startTime` パラメータを導出する。
 ///
-/// `to` の翌日 00:00:00 UTC を終端として、`to - from + 1` 日分を遡って取得する。
-fn period_and_end(range: &DateRange) -> (String, String) {
+/// IBKR の `startTime` は「取得範囲の終端 (最新バーの時刻)」を意味し、そこから `period` 分過去に遡る。
+/// `to` の翌日 00:00:00 UTC を終端とし、`to - from + 1` 日分を要求する。
+fn period_and_start_time(range: &DateRange) -> (String, String) {
     let days = (range.to - range.from).num_days().max(0) + 1;
-    let end = Utc
+    let start_time = Utc
         .from_utc_datetime(
             &range
                 .to
@@ -227,7 +227,7 @@ fn period_and_end(range: &DateRange) -> (String, String) {
         )
         .format("%Y%m%d-%H:%M:%S")
         .to_string();
-    (format!("{days}d"), end)
+    (format!("{days}d"), start_time)
 }
 
 impl DataProvider for IbkrClient {
@@ -238,14 +238,14 @@ impl DataProvider for IbkrClient {
     ) -> Result<Vec<Bar>, DataProviderError> {
         let (conid, _) = self.lookup_stock(instrument_id).await?;
 
-        let (period, end_time) = period_and_end(range);
+        let (period, start_time) = period_and_start_time(range);
         let conid_str = conid.to_string();
         let params = [
             ("conid", conid_str.as_str()),
             ("period", period.as_str()),
             ("bar", "1d"),
             ("outsideRth", "false"),
-            ("startTime", end_time.as_str()),
+            ("startTime", start_time.as_str()),
         ];
         let url = self.build_url("/iserver/marketdata/history", &params)?;
 
@@ -328,16 +328,16 @@ mod period_tests {
     #[case::same_day(d(2025, 1, 6), d(2025, 1, 6), "1d", "20250107-00:00:00")]
     #[case::three_days(d(2025, 1, 6), d(2025, 1, 8), "3d", "20250109-00:00:00")]
     #[case::month(d(2025, 1, 1), d(2025, 1, 31), "31d", "20250201-00:00:00")]
-    fn test_period_and_end(
+    fn test_period_and_start_time(
         #[case] from: NaiveDate,
         #[case] to: NaiveDate,
         #[case] expected_period: &str,
-        #[case] expected_end: &str,
+        #[case] expected_start_time: &str,
     ) {
         let range = DateRange { from, to };
         assert_eq!(
-            period_and_end(&range),
-            (expected_period.to_string(), expected_end.to_string())
+            period_and_start_time(&range),
+            (expected_period.to_string(), expected_start_time.to_string())
         );
     }
 }

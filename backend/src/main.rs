@@ -60,6 +60,7 @@ async fn main() -> Result<(), AppError> {
     let provider_kind = std::env::var("DATA_PROVIDER")
         .ok()
         .map(|s| s.to_lowercase())
+        .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "jquants".to_string());
 
     let data_provider = match provider_kind.as_str() {
