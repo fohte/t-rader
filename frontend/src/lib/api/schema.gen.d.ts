@@ -207,7 +207,7 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** SBI 国内株式 CSV プレビュー。multipart は使わず raw body で受け取る。 */
+    /** SBI 国内株式 CSV プレビュー。 */
     post: operations['sbi_preview']
     delete?: never
     options?: never
@@ -862,7 +862,7 @@ export interface components {
       /** Format: double */
       qty: number
       side: string
-      stock_name?: string | null
+      stock_name?: string
       /** Format: uuid */
       strategy_id: string
       symbol: string

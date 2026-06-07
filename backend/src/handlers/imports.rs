@@ -29,7 +29,7 @@ use crate::services::import::sbi;
 
 const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
 
-/// SBI 国内株式 CSV プレビュー。multipart は使わず raw body で受け取る。
+/// SBI 国内株式 CSV プレビュー。
 #[utoipa::path(
     post,
     path = "/api/imports/sbi/preview",
@@ -104,14 +104,20 @@ pub async fn sbi_commit(
     let txn = state.db.begin().await?;
     let mut imported = 0usize;
     let mut skipped = 0usize;
+    // 同一 commit リクエスト内で重複行が来た場合、txn 内 SELECT は未 commit の先行 insert を
+    // 見れないので別の手段で弾く必要がある (SBI CSV は実際に同条件 2 約定が出現する)
+    let mut seen: HashSet<(NaiveDate, String, String, Decimal, Decimal)> = HashSet::new();
 
     for r in &p.rows {
-        if trade_exists(&txn, r.date, &r.symbol, &r.side, r.qty, r.price).await? {
+        let key = (r.date, r.symbol.clone(), r.side.clone(), r.qty, r.price);
+        if !seen.insert(key)
+            || trade_exists(&txn, r.date, &r.symbol, &r.side, r.qty, r.price).await?
+        {
             skipped += 1;
             continue;
         }
 
-        ensure_stock(&txn, &r.symbol, r.stock_name.as_deref()).await?;
+        ensure_stock(&txn, &r.symbol, &r.stock_name).await?;
 
         let id = Uuid::new_v4();
         let fee = r.fee.unwrap_or(Decimal::ZERO);
@@ -177,11 +183,11 @@ fn validate_commit_row(r: &SbiCommitRow) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 銘柄が stock テーブルになければ作成する。既存の場合は何もしない (name の更新もしない)。
+/// 既存 stock の name は更新しない (CSV の銘柄名は SBI 由来の表記で、マスタ側を上書きしたくない)。
 async fn ensure_stock<C: ConnectionTrait>(
     conn: &C,
     symbol: &str,
-    name: Option<&str>,
+    name: &str,
 ) -> Result<(), AppError> {
     if stock::Entity::find_by_id(symbol.to_string())
         .one(conn)
@@ -191,11 +197,8 @@ async fn ensure_stock<C: ConnectionTrait>(
         return Ok(());
     }
     // 空文字 / 空白のみは銘柄名として無意味なので symbol を fallback とする
-    let resolved_name = name
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or(symbol)
-        .to_string();
+    let trimmed = name.trim();
+    let resolved_name = if trimmed.is_empty() { symbol } else { trimmed }.to_string();
     let model = stock::ActiveModel {
         id: Set(symbol.to_string()),
         name: Set(resolved_name),
@@ -217,7 +220,7 @@ async fn ensure_stock<C: ConnectionTrait>(
     Ok(())
 }
 
-/// 同日・同銘柄・同売買・同数量・同単価の既存取引が存在するかを返す。重複検知の単一基準。
+/// 重複検知の単一基準: 同日・同銘柄・同売買・同数量・同単価。
 async fn trade_exists<C: ConnectionTrait>(
     conn: &C,
     date: NaiveDate,

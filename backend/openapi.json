@@ -991,7 +991,7 @@
         "tags": [
           "imports"
         ],
-        "summary": "SBI 国内株式 CSV プレビュー。multipart は使わず raw body で受け取る。",
+        "summary": "SBI 国内株式 CSV プレビュー。",
         "operationId": "sbi_preview",
         "requestBody": {
           "description": "SBI 取引履歴 CSV (Shift_JIS or UTF-8)",
@@ -3848,10 +3848,7 @@
             "type": "string"
           },
           "stock_name": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string"
           },
           "strategy_id": {
             "type": "string",

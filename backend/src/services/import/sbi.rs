@@ -71,9 +71,7 @@ pub fn parse_bytes(bytes: &[u8]) -> Result<SbiParseResult, SbiParseError> {
     parse_text(&text)
 }
 
-/// UTF-8 として valid (BOM 付き含む) なら UTF-8、そうでなければ Shift_JIS として decode する。
-/// SBI ダウンロードはデフォルト Shift_JIS だが、ユーザが Excel 経由で UTF-8 保存している場合
-/// にも対応するため UTF-8 を先に試す。両方失敗した場合は SHIFT_JIS の lossy 結果を返す。
+/// UTF-8 (BOM 許容) を先に試し、不正なら Shift_JIS lossy decode にフォールバックする。
 fn decode_csv(bytes: &[u8]) -> String {
     let without_bom = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
     if let Ok(s) = std::str::from_utf8(without_bom) {
@@ -260,46 +258,49 @@ mod tests {
         "2026/03/10","信用銘柄","9999","東証P","株式信用新規買","6ヶ月","特定","-","100","1,000","2026/3/12","99","9","100,000"
     "#};
 
+    fn expected_fixture_result() -> SbiParseResult {
+        SbiParseResult {
+            rows: vec![
+                SbiTradeRow {
+                    row_index: 3,
+                    date: d(2026, 1, 15),
+                    symbol: "7203".into(),
+                    stock_name: "トヨタ自動車".into(),
+                    side: "buy".into(),
+                    qty: Decimal::from(100),
+                    price: Decimal::from(2500),
+                    fee: Decimal::from(55),
+                },
+                SbiTradeRow {
+                    row_index: 4,
+                    date: d(2026, 2, 1),
+                    symbol: "6758".into(),
+                    stock_name: "ソニーグループ".into(),
+                    side: "sell".into(),
+                    qty: Decimal::from(50),
+                    price: Decimal::from(18200),
+                    fee: Decimal::from(275),
+                },
+            ],
+            issues: vec![],
+        }
+    }
+
     #[test]
     fn parse_text_handles_preamble_and_only_keeps_genbutsu() {
-        let result = parse_text(FIXTURE).expect("parse");
-        let expected_rows = vec![
-            SbiTradeRow {
-                row_index: 3,
-                date: d(2026, 1, 15),
-                symbol: "7203".into(),
-                stock_name: "トヨタ自動車".into(),
-                side: "buy".into(),
-                qty: Decimal::from(100),
-                price: Decimal::from(2500),
-                fee: Decimal::from(55),
-            },
-            SbiTradeRow {
-                row_index: 4,
-                date: d(2026, 2, 1),
-                symbol: "6758".into(),
-                stock_name: "ソニーグループ".into(),
-                side: "sell".into(),
-                qty: Decimal::from(50),
-                price: Decimal::from(18200),
-                fee: Decimal::from(275),
-            },
-        ];
         assert_eq!(
-            result,
-            SbiParseResult {
-                rows: expected_rows,
-                issues: vec![],
-            }
+            parse_text(FIXTURE).expect("parse"),
+            expected_fixture_result()
         );
     }
 
     #[test]
     fn parse_bytes_decodes_shift_jis() {
         let (encoded, _, _) = SHIFT_JIS.encode(FIXTURE);
-        let result = parse_bytes(&encoded).expect("parse");
-        assert_eq!(result.rows.len(), 2);
-        assert_eq!(result.rows[0].stock_name, "トヨタ自動車");
+        assert_eq!(
+            parse_bytes(&encoded).expect("parse"),
+            expected_fixture_result(),
+        );
     }
 
     #[test]

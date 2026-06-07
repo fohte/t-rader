@@ -44,7 +44,7 @@ pub struct SbiCommitRow {
     pub date: NaiveDate,
     pub symbol: String,
     #[serde(default)]
-    pub stock_name: Option<String>,
+    pub stock_name: String,
     pub side: String,
     #[schema(value_type = f64)]
     pub qty: Decimal,
