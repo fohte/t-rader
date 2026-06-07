@@ -3,7 +3,7 @@ export type ReviewStatus = string
 const STATUS_LABEL: Record<string, string> = {
   approved: '承認済み',
   unread: '未レビュー',
-  rejected: 'rejected',
+  rejected: '却下',
 }
 
 const STATUS_COLOR: Record<string, string> = {

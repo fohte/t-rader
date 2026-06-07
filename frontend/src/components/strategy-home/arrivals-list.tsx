@@ -50,8 +50,10 @@ function pickArrivals(
     }
   }
   items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  return items.slice(0, 6)
+  return items
 }
+
+const MAX_VISIBLE = 6
 
 export function ArrivalsList({
   strategyId,
@@ -74,7 +76,7 @@ export function ArrivalsList({
         </span>
       </div>
       <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-        {arrivals.map((a) => {
+        {arrivals.slice(0, MAX_VISIBLE).map((a) => {
           const target =
             a.kind === 'annotation'
               ? a.noteId != null
