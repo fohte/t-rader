@@ -51,7 +51,7 @@ export function ReviewPanel({ noteId, strategyId, status }: ReviewPanelProps) {
     status === 'approved'
       ? '承認済み'
       : status === 'rejected'
-        ? 'rejected'
+        ? '却下済み'
         : '未レビュー'
 
   return (
@@ -92,7 +92,7 @@ export function ReviewPanel({ noteId, strategyId, status }: ReviewPanelProps) {
                 : 'border-[color:var(--color-border-strategy)] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-accent-strategy)] hover:text-[color:var(--color-accent-strategy)]'
             } disabled:opacity-50`}
           >
-            ✕ reject
+            ✕ 却下
           </button>
         </div>
         {(approve.isError || reject.isError) && (

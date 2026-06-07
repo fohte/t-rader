@@ -133,7 +133,7 @@ export function CommentsPanel({
               setDraft(e.target.value)
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') submit()
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit()
             }}
             placeholder={
               pendingQuote != null && pendingQuote !== ''

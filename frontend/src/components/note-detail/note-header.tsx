@@ -55,7 +55,7 @@ export function NoteHeader({ note, strategyId }: NoteHeaderProps) {
           >
             &gt;
           </span>
-          {isLLM ? 'analyst が作成' : 'fohte が作成'}
+          {isLLM ? 'analyst が作成' : 'ユーザー が作成'}
         </span>
         <span>·</span>
         <TriggerTag trigger={note.trigger} label={note.trigger_label} />

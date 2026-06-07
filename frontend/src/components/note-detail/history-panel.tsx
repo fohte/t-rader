@@ -8,8 +8,8 @@ interface HistoryPanelProps {
 const OP_LABEL: Record<string, string> = {
   create: '作成',
   update: '更新',
-  approve: 'approve',
-  reject: 'reject',
+  approve: '承認',
+  reject: '却下',
   delete: '削除',
 }
 
