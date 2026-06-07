@@ -3,12 +3,14 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{EntityTrait, IntoActiveModel, QueryOrder, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
+};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::strategy;
+use crate::entities::{strategy, strategy_interest};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, UpdateStrategyRequest};
@@ -209,6 +211,31 @@ pub async fn delete_strategy(
     change_history::record(&txn, TargetKind::Strategy, id, Op::Delete, json!({}), None).await?;
     txn.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// 戦略の関心 (シード + LLM 派生) 一覧
+#[utoipa::path(
+    get,
+    path = "/api/strategies/{id}/interests",
+    tag = "strategies",
+    params(("id" = Uuid, Path, description = "戦略 ID")),
+    responses(
+        (status = 200, body = Vec<strategy_interest::Model>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_strategy_interests(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+) -> Result<Json<Vec<strategy_interest::Model>>, AppError> {
+    let items = strategy_interest::Entity::find()
+        .filter(strategy_interest::Column::StrategyId.eq(id))
+        .order_by_asc(strategy_interest::Column::Role)
+        .order_by_asc(strategy_interest::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+    Ok(Json(items))
 }
 
 #[cfg(test)]
