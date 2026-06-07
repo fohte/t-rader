@@ -1,4 +1,6 @@
-const REF_RE = /\[\[(stock|indicator|sector|theme):([^\]]+)\]\]/g
+const REF_KINDS_ALT = ['stock', 'indicator', 'sector', 'theme'].join('|')
+const REF_RE = new RegExp(`\\[\\[(${REF_KINDS_ALT}):([^\\]]+)\\]\\]`, 'g')
+export const REF_PREFIX_RE = new RegExp(`^(${REF_KINDS_ALT}):`)
 
 interface RefSource {
   frontmatter_json: unknown
