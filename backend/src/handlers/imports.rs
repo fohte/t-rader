@@ -4,7 +4,7 @@
 //! 1. `POST /api/imports/sbi/preview` — CSV を raw bytes で受け取り、パース結果と重複判定を返す
 //! 2. `POST /api/imports/sbi/commit`  — preview 結果をユーザが確認・戦略割当した上で実 INSERT
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use axum::Json;
 use axum::body::Bytes;
@@ -19,7 +19,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{stock, strategy, trade};
+use crate::entities::{stock, trade};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
@@ -28,6 +28,7 @@ use crate::models::{
 };
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::import::sbi;
+use crate::services::strategies::ensure_strategies_exist;
 
 const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
 
@@ -110,9 +111,9 @@ pub async fn sbi_commit(
     for r in &p.rows {
         validate_commit_row(r)?;
     }
-    ensure_strategies_exist(&state.db, &p.rows).await?;
 
     let txn = state.db.begin().await?;
+    ensure_strategies_exist(&txn, p.rows.iter().map(|r| r.strategy_id)).await?;
     let mut imported = 0usize;
     let mut skipped = 0usize;
     // CSV 内出現回数を DB の既存件数と比較して、N 件目までを重複扱いにする。
@@ -270,30 +271,4 @@ async fn count_trades<C: ConnectionTrait>(
         .count(conn)
         .await?;
     Ok(count as usize)
-}
-
-/// commit リクエスト中の strategy_id が全て DB に存在することを検証する。
-/// 存在しない UUID が混じった場合は FK 違反で 500 になる前に 400 で返す。
-async fn ensure_strategies_exist<C: ConnectionTrait>(
-    conn: &C,
-    rows: &[SbiCommitRow],
-) -> Result<(), AppError> {
-    let unique: HashSet<Uuid> = rows.iter().map(|r| r.strategy_id).collect();
-    if unique.is_empty() {
-        return Ok(());
-    }
-    let ids: Vec<Uuid> = unique.iter().copied().collect();
-    let found: HashSet<Uuid> = strategy::Entity::find()
-        .filter(strategy::Column::Id.is_in(ids))
-        .all(conn)
-        .await?
-        .into_iter()
-        .map(|s| s.id)
-        .collect();
-    if let Some(missing) = unique.difference(&found).next() {
-        return Err(AppError::Validation(format!(
-            "strategy {missing} does not exist"
-        )));
-    }
-    Ok(())
 }
