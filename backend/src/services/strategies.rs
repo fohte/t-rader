@@ -1,5 +1,3 @@
-//! ハンドラ冒頭で `strategy_id` の存在を事前検証するヘルパ。
-
 use std::collections::HashSet;
 
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
