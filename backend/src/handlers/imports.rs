@@ -111,9 +111,9 @@ pub async fn sbi_commit(
     for r in &p.rows {
         validate_commit_row(r)?;
     }
-    ensure_strategies_exist(&state.db, p.rows.iter().map(|r| r.strategy_id)).await?;
 
     let txn = state.db.begin().await?;
+    ensure_strategies_exist(&txn, p.rows.iter().map(|r| r.strategy_id)).await?;
     let mut imported = 0usize;
     let mut skipped = 0usize;
     // CSV 内出現回数を DB の既存件数と比較して、N 件目までを重複扱いにする。
