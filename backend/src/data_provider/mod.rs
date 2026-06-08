@@ -1,3 +1,4 @@
+pub mod ibkr;
 pub mod jquants;
 #[cfg(test)]
 mod mock;
@@ -5,6 +6,7 @@ mod mock;
 use chrono::NaiveDate;
 
 use crate::models::{Bar, Instrument};
+use ibkr::IbkrClient;
 use jquants::JQuantsClient;
 
 /// データプロバイダーで発生しうるエラー
@@ -67,6 +69,7 @@ pub trait DataProvider: Send + Sync {
 /// enum ディスパッチでポリモーフィズムを実現する。
 pub enum DataProviderKind {
     JQuants(JQuantsClient),
+    Ibkr(IbkrClient),
 }
 
 impl DataProvider for DataProviderKind {
@@ -79,12 +82,14 @@ impl DataProvider for DataProviderKind {
             DataProviderKind::JQuants(client) => {
                 client.fetch_daily_bars(instrument_id, range).await
             }
+            DataProviderKind::Ibkr(client) => client.fetch_daily_bars(instrument_id, range).await,
         }
     }
 
     async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
         match self {
             DataProviderKind::JQuants(client) => client.fetch_instrument(instrument_id).await,
+            DataProviderKind::Ibkr(client) => client.fetch_instrument(instrument_id).await,
         }
     }
 }
