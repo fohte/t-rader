@@ -17,6 +17,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest};
 use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::strategies::ensure_strategy_exists;
 
 const ALLOWED_TARGET_KIND: [&str; 4] = ["signal", "level", "observation", "other"];
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -119,6 +120,9 @@ pub async fn create_annotation(
         )));
     }
 
+    let txn = state.db.begin().await?;
+    ensure_strategy_exists(&txn, p.strategy_id).await?;
+
     let id = Uuid::new_v4();
     let model = annotation::ActiveModel {
         id: Set(id),
@@ -134,7 +138,6 @@ pub async fn create_annotation(
         created_at: NotSet,
         updated_at: NotSet,
     };
-    let txn = state.db.begin().await?;
     let created = annotation::Entity::insert(model)
         .exec_with_returning(&txn)
         .await?;

@@ -18,6 +18,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateTradeRequest, PerformanceSummary, UpdateTradeRequest};
 use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::strategies::ensure_strategy_exists;
 use crate::services::trades as trades_svc;
 
 const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
@@ -119,6 +120,9 @@ pub async fn create_trade(
         return Err(AppError::Validation("price must be non-negative".into()));
     }
 
+    let txn = state.db.begin().await?;
+    ensure_strategy_exists(&txn, p.strategy_id).await?;
+
     let id = Uuid::new_v4();
     let model = trade::ActiveModel {
         id: Set(id),
@@ -134,7 +138,6 @@ pub async fn create_trade(
         created_at: NotSet,
         updated_at: NotSet,
     };
-    let txn = state.db.begin().await?;
     let created = trade::Entity::insert(model)
         .exec_with_returning(&txn)
         .await?;

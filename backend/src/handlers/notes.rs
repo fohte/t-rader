@@ -17,6 +17,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::strategies::ensure_strategy_exists;
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
@@ -203,6 +204,7 @@ pub async fn create_note(
 
     let id = Uuid::new_v4();
     let txn = state.db.begin().await?;
+    ensure_strategy_exists(&txn, payload.strategy_id).await?;
 
     let model = note::ActiveModel {
         id: Set(id),
