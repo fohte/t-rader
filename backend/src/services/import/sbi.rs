@@ -84,30 +84,22 @@ fn decode_csv(bytes: &[u8]) -> String {
 fn parse_text(text: &str) -> Result<SbiParseResult, SbiParseError> {
     // SBI CSV は先頭にメタ行 (タイトル、空行等) が入ることがある。
     // 「約定日」を含む行を検出してそこからを CSV ヘッダとみなす。
-    let mut lines = text.lines().enumerate();
-    let mut header_line: Option<(usize, &str)> = None;
-    for (idx, line) in lines.by_ref() {
+    let mut header_match: Option<(usize, &str)> = None;
+    for (idx, line) in text.lines().enumerate() {
         if line.contains(HEADER_DATE) && line.contains(HEADER_CODE) {
-            header_line = Some((idx, line));
+            header_match = Some((idx, line));
             break;
         }
     }
-    let (header_idx, header_line) = header_line.ok_or(SbiParseError::HeaderNotFound)?;
+    let (header_idx, header_line) = header_match.ok_or(SbiParseError::HeaderNotFound)?;
+    // header_line は text のスライスなので、元 text の byte offset を取り出して
+    // そこから先をそのまま reader に流す (再アロケーション回避)
+    let header_offset = header_line.as_ptr() as usize - text.as_ptr() as usize;
 
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .flexible(true)
-        .from_reader(
-            // ヘッダ + 残り行を再結合して CSV reader に流す
-            std::io::Cursor::new(format!(
-                "{}\n{}",
-                header_line,
-                text.lines()
-                    .skip(header_idx + 1)
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            )),
-        );
+        .from_reader(std::io::Cursor::new(&text.as_bytes()[header_offset..]));
 
     let headers = reader
         .headers()

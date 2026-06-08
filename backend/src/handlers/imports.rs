@@ -4,7 +4,7 @@
 //! 1. `POST /api/imports/sbi/preview` — CSV を raw bytes で受け取り、パース結果と重複判定を返す
 //! 2. `POST /api/imports/sbi/commit`  — preview 結果をユーザが確認・戦略割当した上で実 INSERT
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use axum::Json;
 use axum::body::Bytes;
@@ -12,7 +12,9 @@ use axum::extract::State;
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -52,9 +54,18 @@ pub async fn sbi_preview(
     let parsed = sbi::parse_bytes(&body).map_err(|e| AppError::Validation(e.to_string()))?;
 
     let mut rows = Vec::with_capacity(parsed.rows.len());
+    let mut csv_seen: HashMap<TradeKey, usize> = HashMap::new();
     for r in parsed.rows {
-        let is_duplicate =
-            trade_exists(&state.db, r.date, &r.symbol, &r.side, r.qty, r.price).await?;
+        let key = trade_key(r.date, &r.symbol, &r.side, r.qty, r.price);
+        let csv_index = {
+            let count = csv_seen.entry(key.clone()).or_insert(0);
+            *count += 1;
+            *count
+        };
+        let db_count = count_trades(&state.db, r.date, &r.symbol, &r.side, r.qty, r.price).await?;
+        // CSV 内 N 件目の出現を、DB 既存 N 件と突合する。分割約定など同条件の取引が複数回
+        // 起こりうるので、単純な存在チェックだと正当な 2 件目以降が skip 扱いになる。
+        let is_duplicate = csv_index <= db_count;
         rows.push(SbiPreviewRow {
             row_index: r.row_index,
             date: r.date,
@@ -104,15 +115,27 @@ pub async fn sbi_commit(
     let txn = state.db.begin().await?;
     let mut imported = 0usize;
     let mut skipped = 0usize;
-    // 同一 commit リクエスト内で重複行が来た場合、txn 内 SELECT は未 commit の先行 insert を
-    // 見れないので別の手段で弾く必要がある (SBI CSV は実際に同条件 2 約定が出現する)
-    let mut seen: HashSet<(NaiveDate, String, String, Decimal, Decimal)> = HashSet::new();
+    // CSV 内出現回数を DB の既存件数と比較して、N 件目までを重複扱いにする。
+    // 分割約定など同条件の取引が正当に複数回起きるので、単純な存在チェックでは不足。
+    let mut csv_counts: HashMap<TradeKey, usize> = HashMap::new();
+    let mut db_counts: HashMap<TradeKey, usize> = HashMap::new();
 
     for r in &p.rows {
-        let key = (r.date, r.symbol.clone(), r.side.clone(), r.qty, r.price);
-        if !seen.insert(key)
-            || trade_exists(&txn, r.date, &r.symbol, &r.side, r.qty, r.price).await?
-        {
+        let key = trade_key(r.date, &r.symbol, &r.side, r.qty, r.price);
+        let csv_index = {
+            let count = csv_counts.entry(key.clone()).or_insert(0);
+            *count += 1;
+            *count
+        };
+        let db_count = match db_counts.get(&key) {
+            Some(&n) => n,
+            None => {
+                let n = count_trades(&txn, r.date, &r.symbol, &r.side, r.qty, r.price).await?;
+                db_counts.insert(key, n);
+                n
+            }
+        };
+        if csv_index <= db_count {
             skipped += 1;
             continue;
         }
@@ -180,6 +203,9 @@ fn validate_commit_row(r: &SbiCommitRow) -> Result<(), AppError> {
     if r.price < Decimal::ZERO {
         return Err(AppError::Validation("price must be non-negative".into()));
     }
+    if r.fee.is_some_and(|f| f < Decimal::ZERO) {
+        return Err(AppError::Validation("fee must be non-negative".into()));
+    }
     Ok(())
 }
 
@@ -220,24 +246,30 @@ async fn ensure_stock<C: ConnectionTrait>(
     Ok(())
 }
 
-/// 重複検知の単一基準: 同日・同銘柄・同売買・同数量・同単価。
-async fn trade_exists<C: ConnectionTrait>(
+type TradeKey = (NaiveDate, String, String, Decimal, Decimal);
+
+fn trade_key(date: NaiveDate, symbol: &str, side: &str, qty: Decimal, price: Decimal) -> TradeKey {
+    (date, symbol.to_string(), side.to_string(), qty, price)
+}
+
+/// 重複検知の単一基準: 同日・同銘柄・同売買・同数量・同単価の既存件数。
+async fn count_trades<C: ConnectionTrait>(
     conn: &C,
     date: NaiveDate,
     symbol: &str,
     side: &str,
     qty: Decimal,
     price: Decimal,
-) -> Result<bool, AppError> {
-    Ok(trade::Entity::find()
+) -> Result<usize, AppError> {
+    let count = trade::Entity::find()
         .filter(trade::Column::Date.eq(date))
         .filter(trade::Column::Symbol.eq(symbol))
         .filter(trade::Column::Side.eq(side))
         .filter(trade::Column::Qty.eq(qty))
         .filter(trade::Column::Price.eq(price))
-        .one(conn)
-        .await?
-        .is_some())
+        .count(conn)
+        .await?;
+    Ok(count as usize)
 }
 
 /// commit リクエスト中の strategy_id が全て DB に存在することを検証する。

@@ -135,6 +135,8 @@ export function ImportSbiDialog({
       },
     })
     if (res.data === undefined) {
+      // openapi-fetch の discriminated union により data===undefined の分岐では
+      // res.error が必ず ErrorResponse になる。fetch 失敗は throw されて catch される。
       setError(res.error.error)
       setPhase('review')
       return
