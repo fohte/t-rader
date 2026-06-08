@@ -2,6 +2,7 @@ pub mod annotations;
 pub mod bars;
 pub mod comments;
 pub mod history;
+pub mod imports;
 pub mod notes;
 pub mod refs;
 pub mod strategies;

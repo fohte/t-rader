@@ -29,7 +29,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::data_provider::DataProviderKind;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    annotations, bars, comments, history, notes, refs, strategies, trades, watchlists,
+    annotations, bars, comments, history, imports, notes, refs, strategies, trades, watchlists,
 };
 
 #[derive(Clone)]
@@ -67,6 +67,7 @@ impl AppState {
         (name = "comments", description = "コメントスレッド"),
         (name = "history", description = "変更履歴"),
         (name = "trades", description = "取引履歴と損益サマリ"),
+        (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
     ),
     info(
         title = "T-Rader API",
@@ -182,6 +183,9 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             trades::update_trade,
             trades::delete_trade
         ))
+        // imports
+        .routes(routes!(imports::sbi_preview))
+        .routes(routes!(imports::sbi_commit))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)

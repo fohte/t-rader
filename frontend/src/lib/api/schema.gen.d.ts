@@ -178,6 +178,43 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/imports/sbi/commit': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * プレビュー結果を確認・割当した上で実 INSERT する。
+     *     各行に対して重複検知 (同日・同銘柄・同売買・同数量・同単価) を行い skip カウントを返す。
+     */
+    post: operations['sbi_commit']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/imports/sbi/preview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** SBI 国内株式 CSV プレビュー。 */
+    post: operations['sbi_preview']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes': {
     parameters: {
       query?: never
@@ -805,6 +842,57 @@ export interface components {
       kind: string
       /** @description 一致しなかった場合は None */
       name?: string | null
+    }
+    SbiCommitRequest: {
+      rows: components['schemas']['SbiCommitRow'][]
+    }
+    SbiCommitResponse: {
+      imported_count: number
+      /** @description 重複検知でスキップした件数 */
+      skipped_count: number
+    }
+    /** @description SBI commit リクエストの 1 行。preview を確認後、行ごとに戦略 ID を割り当てる。 */
+    SbiCommitRow: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      fee?: number | null
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+      side: string
+      stock_name?: string
+      /** Format: uuid */
+      strategy_id: string
+      symbol: string
+    }
+    SbiPreviewIssue: {
+      message: string
+      row_index: number
+    }
+    SbiPreviewResponse: {
+      issues: components['schemas']['SbiPreviewIssue'][]
+      rows: components['schemas']['SbiPreviewRow'][]
+    }
+    /** @description SBI CSV preview の 1 行。 */
+    SbiPreviewRow: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      fee: number
+      /** @description 同日・同銘柄・同売買・同数量・同単価で既存取引が見つかったか */
+      is_duplicate: boolean
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+      /** @description 元 CSV 上の行番号 (0-based) */
+      row_index: number
+      /** @description "buy" | "sell" */
+      side: string
+      stock_name: string
+      symbol: string
     }
     Sector: {
       id: string
@@ -1574,6 +1662,93 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  sbi_commit: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SbiCommitRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SbiCommitResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  sbi_preview: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** @description SBI 取引履歴 CSV (Shift_JIS or UTF-8) */
+    requestBody: {
+      content: {
+        'text/csv': string
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SbiPreviewResponse']
+        }
+      }
+      400: {
         headers: {
           [name: string]: unknown
         }

@@ -1,6 +1,7 @@
 pub mod annotation;
 pub mod bar;
 pub mod comment;
+pub mod import;
 pub mod instrument;
 pub mod note;
 pub mod refs;
@@ -11,6 +12,10 @@ pub mod watchlist;
 pub use annotation::{CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar::{Bar, Timeframe};
 pub use comment::CreateCommentRequest;
+pub use import::{
+    SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
+    SbiPreviewRow,
+};
 pub use instrument::Instrument;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use refs::RefResolution;
