@@ -15,18 +15,7 @@ if command -v mise > /dev/null 2>&1; then
   mise install
 fi
 
-# Enable corepack so that pnpm version from package.json packageManager field is used
-corepack enable
-
 # Install git hooks via lefthook (hooks live in the common .git/hooks, shared across worktrees)
 if command -v lefthook > /dev/null 2>&1; then
   lefthook install
 fi
-
-# Install shared dev tools (prettier, commitlint) at the repo root
-pnpm install
-# Install Node.js dependencies for each subpackage
-(cd frontend && pnpm install)
-
-# Fetch Rust dependencies
-cargo fetch --manifest-path backend/Cargo.toml

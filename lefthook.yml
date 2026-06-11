@@ -17,7 +17,7 @@ pre-commit:
       stage_fixed: true
 
     prettier:
-      run: pnpm exec prettier --write --ignore-unknown --no-error-on-unmatched-pattern {staged_files}
+      run: mise x -- prettier --write --ignore-unknown --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
 
     shellcheck:
@@ -67,32 +67,7 @@ pre-commit:
           esac
         done
 
-    # Non-workspace multi-package monorepo: each subpackage has its own
-    # eslint.config.js and dependencies, so lint per package from its root.
-    eslint-frontend:
-      glob: '*.{js,ts,jsx,tsx,mjs,cjs}'
-      root: 'frontend/'
-      run: pnpm exec eslint {staged_files}
-
-    ast-grep:
-      glob: '*.rs'
-      run: ast-grep scan {staged_files}
-
-    # Using glob instead of file_types because text/x-rust is not supported
-    # by the mimetype library used by lefthook.
-    # See: https://github.com/gabriel-vasile/mimetype/blob/master/supported_mimes.md
-    cargo-fmt:
-      glob: '*.rs'
-      root: 'backend/'
-      run: cargo fmt
-      stage_fixed: true
-
-    cargo-clippy:
-      glob: '*.rs'
-      root: 'backend/'
-      run: cargo clippy --all-targets -- -D warnings
-
 commit-msg:
   commands:
     commitlint:
-      run: pnpm exec commitlint --edit {1}
+      run: mise x -- commitlint --edit {1}

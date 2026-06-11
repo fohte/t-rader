@@ -5,8 +5,11 @@ CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tools]
 lefthook = "2.1.9"
+<<<<<<< before updating
 "github:ast-grep/ast-grep" = "0.43.0"
 "cargo:sea-orm-cli" = "2.0.0-rc.32"
+=======
+>>>>>>> after updating
 
 # lefthook hooks
 actionlint = "1.7.12"
@@ -14,5 +17,7 @@ actionlint = "1.7.12"
 node = "24.16.0"
 pinact = "4.0.0"
 "github:fohte/basefmt" = "0.1.0"
+"npm:@commitlint/cli" = "21.0.2"
+"npm:prettier" = "3.8.3"
 shellcheck = "0.11.0"
 shfmt = "3.13.1"
