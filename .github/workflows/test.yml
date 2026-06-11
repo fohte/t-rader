@@ -17,6 +17,9 @@ jobs:
   test:
     needs: detect-changes
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
 
     steps:
       - uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
