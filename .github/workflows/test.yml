@@ -47,7 +47,6 @@ jobs:
             echo "skip_commit=false" >> "$GITHUB_OUTPUT"
           fi
 
-<<<<<<< before updating
       - name: Check if backend changes exist
         id: check-backend
         run: |
@@ -110,10 +109,6 @@ jobs:
         if: steps.check-backend.outputs.has_backend == 'true'
         run: cd "backend" && cargo fetch
 
-=======
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-
->>>>>>> after updating
       - name: Run lefthook
         id: lefthook
         continue-on-error: true
@@ -144,7 +139,6 @@ jobs:
       - name: Fail if lefthook failed
         if: steps.lefthook.outcome == 'failure'
         run: exit 1
-<<<<<<< before updating
 
   detect-changes:
     runs-on: ubuntu-slim
@@ -398,5 +392,3 @@ jobs:
           files: backend/lcov.info
           flags: backend
           fail_ci_if_error: false
-=======
->>>>>>> after updating
