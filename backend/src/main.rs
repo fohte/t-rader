@@ -100,6 +100,12 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
+    // 期限切れの MCP session を定期的に削除するバックグラウンドタスクを起動する。
+    backend::mcp::store::spawn_gc(
+        backend::mcp::PostgresSessionStore::new(db.clone()),
+        backend::mcp::store::DEFAULT_GC_INTERVAL,
+    );
+
     let state = AppState { db, data_provider };
 
     let app = create_router(state);
