@@ -17,12 +17,8 @@ use sea_orm::{
 
 use crate::entities::mcp_session_state;
 
-/// 期限切れ session を GC する際の保持期間。
-///
-/// 個人運用で in-flight tool call が再起動を跨ぐことは稀なので、保守的に 7 日。
 pub const DEFAULT_SESSION_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
-/// 期限切れ session を GC するバックグラウンドタスクの実行間隔。
 pub const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Clone)]
@@ -46,13 +42,16 @@ impl PostgresSessionStore {
 
     /// 保持期間を超えた session 行を削除する。
     pub async fn purge_expired(&self) -> Result<u64, sea_orm::DbErr> {
-        let ttl_secs = i64::try_from(self.ttl.as_secs()).unwrap_or(i64::MAX);
-        let threshold = Utc::now() - chrono::Duration::seconds(ttl_secs);
         let result = mcp_session_state::Entity::delete_many()
-            .filter(mcp_session_state::Column::UpdatedAt.lt(threshold))
+            .filter(mcp_session_state::Column::UpdatedAt.lt(self.expiration_threshold()))
             .exec(&self.db)
             .await?;
         Ok(result.rows_affected)
+    }
+
+    fn expiration_threshold(&self) -> chrono::DateTime<Utc> {
+        let ttl_secs = i64::try_from(self.ttl.as_secs()).unwrap_or(i64::MAX);
+        Utc::now() - chrono::Duration::seconds(ttl_secs)
     }
 }
 
@@ -68,14 +67,19 @@ impl SessionStore for PostgresSessionStore {
             return Ok(None);
         };
 
-        let ttl_secs = i64::try_from(self.ttl.as_secs()).unwrap_or(i64::MAX);
-        let threshold = Utc::now() - chrono::Duration::seconds(ttl_secs);
-        if row.updated_at < threshold {
-            // 期限切れは未知扱いし、行も即時 GC する。
-            mcp_session_state::Entity::delete_by_id(session_id.to_owned())
+        if row.updated_at < self.expiration_threshold() {
+            // inline GC は best-effort: 失敗しても session 解決 (Ok(None) で未知扱い) は継続させ、
+            // 後段の StreamableHttpService が新規 initialize を案内できるようにする。
+            if let Err(err) = mcp_session_state::Entity::delete_by_id(session_id.to_owned())
                 .exec(&self.db)
                 .await
-                .map_err(into_store_error)?;
+            {
+                tracing::warn!(
+                    error = %err,
+                    session_id,
+                    "failed to delete expired mcp session inline"
+                );
+            }
             return Ok(None);
         }
 

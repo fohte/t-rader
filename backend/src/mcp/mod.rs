@@ -44,13 +44,10 @@ impl ServerHandler for StrategyServer {
 
 /// MCP ルータを構築する。
 ///
-/// `db` を渡すと session の `initialize` パラメータを PostgreSQL に永続化し、
-/// バックエンド再起動を跨いだ `mcp-session-id` で来たリクエストを transparently
-/// に再開できる。`None` の場合は in-memory only (テスト用)。
-pub fn router(db: Option<DatabaseConnection>) -> Router {
-    let session_store: Option<Arc<dyn SessionStore>> = db
-        .map(PostgresSessionStore::new)
-        .map(|s| Arc::new(s) as Arc<dyn SessionStore>);
+/// session の `initialize` パラメータを PostgreSQL に永続化し、バックエンド再起動を
+/// 跨いだ `mcp-session-id` で来たリクエストを transparently に再開する。
+pub fn router(db: DatabaseConnection) -> Router {
+    let session_store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(db));
 
     let mgmt = StreamableHttpService::new(
         || Ok(MgmtServer),
@@ -68,9 +65,9 @@ pub fn router(db: Option<DatabaseConnection>) -> Router {
         .nest_service("/mcp/strategy", strategy)
 }
 
-fn config_with_store(store: Option<Arc<dyn SessionStore>>) -> StreamableHttpServerConfig {
+fn config_with_store(store: Arc<dyn SessionStore>) -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default();
-    config.session_store = store;
+    config.session_store = Some(store);
     config
 }
 
@@ -126,7 +123,11 @@ mod tests {
     #[case::strategy("/mcp/strategy", "t-rader-strategy")]
     #[tokio::test]
     async fn responds_to_initialize(#[case] path: &str, #[case] expected_name: &str) {
-        let server = TestServer::new(router(None)).expect("failed to build test server");
+        let Some(db) = maybe_db().await else {
+            eprintln!("TEST_DATABASE_URL not set; skipping");
+            return;
+        };
+        let server = TestServer::new(router(db)).expect("failed to build test server");
 
         let response = server
             .post(path)
@@ -167,8 +168,7 @@ mod tests {
         };
 
         let session_id = {
-            let server_a =
-                TestServer::new(router(Some(db.clone()))).expect("failed to build server A");
+            let server_a = TestServer::new(router(db.clone())).expect("failed to build server A");
             let resp = server_a
                 .post("/mcp/mgmt")
                 .add_header("accept", "application/json, text/event-stream")
@@ -180,7 +180,7 @@ mod tests {
 
         // server_a は drop されたので in-memory session も消えている。
         // 別 router (= 再起動後のプロセス) で同じ session_id が受け付けられるはず。
-        let server_b = TestServer::new(router(Some(db.clone()))).expect("failed to build server B");
+        let server_b = TestServer::new(router(db.clone())).expect("failed to build server B");
         let resume = server_b
             .get("/mcp/mgmt")
             .add_header("accept", "text/event-stream")
