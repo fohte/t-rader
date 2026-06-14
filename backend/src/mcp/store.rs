@@ -50,8 +50,11 @@ impl PostgresSessionStore {
     }
 
     fn expiration_threshold(&self) -> chrono::DateTime<Utc> {
-        let ttl_secs = i64::try_from(self.ttl.as_secs()).unwrap_or(i64::MAX);
-        Utc::now() - chrono::Duration::seconds(ttl_secs)
+        // 極端に大きい TTL でも `Utc::now() - ttl` がパニックしないよう
+        // 変換失敗時は 100 年にフォールバックする (実質「失効させない」相当)。
+        let ttl = chrono::Duration::from_std(self.ttl)
+            .unwrap_or_else(|_| chrono::Duration::days(365 * 100));
+        Utc::now() - ttl
     }
 }
 
@@ -133,6 +136,8 @@ where
 pub fn spawn_gc(store: PostgresSessionStore, interval: Duration) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
+        // 一時的な高負荷やスリープからの復帰後にクエリがバーストするのを避ける。
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         // 起動直後の即時実行を避ける。
         ticker.tick().await;
         loop {
