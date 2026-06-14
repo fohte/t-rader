@@ -33,9 +33,6 @@ impl ServerHandler for StrategyServer {
     }
 }
 
-/// MCP server 群を Axum router として返す
-///
-/// 上位の `create_router` がこれを merge して `/mcp/mgmt` と `/mcp/strategy` を露出する。
 pub fn router() -> Router {
     let mgmt = StreamableHttpService::new(
         || Ok(MgmtServer),
