@@ -4,6 +4,7 @@ pub mod entities;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
+pub mod mcp;
 pub mod middleware;
 pub mod models;
 pub mod repositories;
@@ -200,6 +201,7 @@ pub fn create_router(state: AppState) -> Router {
     router
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
+        .merge(mcp::router())
 }
 
 /// ヘルスチェック
