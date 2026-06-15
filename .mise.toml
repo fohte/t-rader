@@ -6,7 +6,7 @@ CARGO_TARGET_DIR = "{{config_root}}/target"
 [tools]
 lefthook = "2.1.9"
 "github:ast-grep/ast-grep" = "0.43.0"
-"cargo:sea-orm-cli" = "2.0.0-rc.32"
+"cargo:sea-orm-cli" = "2.0.0-rc.40"
 
 # lefthook hooks
 actionlint = "1.7.12"
