@@ -20,24 +20,29 @@ use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient, TaskPhase
 
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
 
+/// 行 insert 直後 — まだ Task CR が apiserver に登録されていない race window — で
+/// NotFound を Failed に確定させないための猶予期間。これ未満の経過時間で NotFound を
+/// 受け取った場合は次の tick まで判定を保留する。
+pub const NOT_FOUND_GRACE: chrono::Duration = chrono::Duration::seconds(60);
+
 /// 1 回分の polling を実行する。失敗した個別 task はログに残し、他の task の処理を継続する。
 ///
 /// 戻り値は phase 更新が走った task 数。
 pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) -> usize {
-    let in_flight = strategy_task::Entity::find()
+    let rows = match strategy_task::Entity::find()
         .filter(
             strategy_task::Column::Phase
                 .is_in([StrategyTaskPhase::Pending, StrategyTaskPhase::Running]),
         )
         .order_by_asc(strategy_task::Column::CreatedAt)
         .all(db)
-        .await;
-
-    let Ok(rows) = in_flight else {
-        if let Err(err) = in_flight {
+        .await
+    {
+        Ok(rows) => rows,
+        Err(err) => {
             tracing::warn!(error = %err, "failed to list in-flight strategy_task rows");
+            return 0;
         }
-        return 0;
     };
 
     let mut updated = 0usize;
@@ -60,8 +65,18 @@ pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) 
                 (phase, error)
             }
             Err(KubeopencodeError::NotFound(name)) => {
-                // CR が消えていれば監視ループに残し続けても無限に NotFound になるため
-                // failed で確定させる。誤検知時の安全策 (連続 N 回検出で確定 等) は将来検討。
+                // CR insert と create_task は別段階で実行されるため、insert 直後 ~ create 完了前の
+                // 窓で NotFound が返り得る。本物の消失と誤検知を区別するため、行が
+                // `NOT_FOUND_GRACE` 未満なら判定を保留する。
+                let age = Utc::now().fixed_offset() - row.created_at;
+                if age < NOT_FOUND_GRACE {
+                    tracing::debug!(
+                        task = %name,
+                        age_ms = age.num_milliseconds(),
+                        "task cr not found within grace period; will retry"
+                    );
+                    continue;
+                }
                 (
                     StrategyTaskPhase::Failed,
                     Some(format!("task cr {name} not found")),
@@ -156,7 +171,19 @@ mod tests {
     }
 
     async fn insert_pending_task(db: &DatabaseConnection, strategy_id: Uuid, name: &str) -> Uuid {
+        insert_pending_task_aged(db, strategy_id, name, chrono::Duration::seconds(0)).await
+    }
+
+    /// `aged` だけ過去に created_at を寄せた pending タスクを挿入する。grace period を
+    /// 跨いだ NotFound 判定のテスト用。
+    async fn insert_pending_task_aged(
+        db: &DatabaseConnection,
+        strategy_id: Uuid,
+        name: &str,
+        aged: chrono::Duration,
+    ) -> Uuid {
         let task_id = Uuid::new_v4();
+        let backdated = Utc::now().fixed_offset() - aged;
         strategy_task::ActiveModel {
             task_id: Set(task_id),
             strategy_id: Set(strategy_id),
@@ -165,8 +192,8 @@ mod tests {
             prompt: Set("hi".to_string()),
             phase: Set(StrategyTaskPhase::Pending),
             error_summary: Set(None),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
+            created_at: Set(backdated),
+            updated_at: Set(backdated),
         }
         .insert(db)
         .await
@@ -245,7 +272,13 @@ mod tests {
     async fn marks_missing_task_as_failed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
-        let _ = insert_pending_task(&db, strategy_id, "ghost").await;
+        let _ = insert_pending_task_aged(
+            &db,
+            strategy_id,
+            "ghost",
+            NOT_FOUND_GRACE + chrono::Duration::seconds(1),
+        )
+        .await;
         let fake: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
         let updated = run_once(&db, &fake).await;
@@ -261,5 +294,24 @@ mod tests {
             row.error_summary,
             Some("task cr ghost not found".to_string())
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn skips_recent_not_found_within_grace(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let _ = insert_pending_task(&db, strategy_id, "fresh").await;
+        let fake: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+
+        let updated = run_once(&db, &fake).await;
+        assert_eq!(updated, 0);
+
+        let row = strategy_task::Entity::find()
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.phase, StrategyTaskPhase::Pending);
+        assert_eq!(row.error_summary, None);
     }
 }

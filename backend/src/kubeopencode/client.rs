@@ -468,7 +468,7 @@ mod tests {
             description: "x".into(),
         };
         let err = client.create_task(&spec).await.expect_err("expected error");
-        assert!(matches!(err, KubeopencodeError::AlreadyExists(name) if name == "dup"));
+        assert_eq!(err.to_string(), "task already exists: dup");
     }
 
     #[tokio::test]
@@ -505,6 +505,6 @@ mod tests {
             .get_task_status("missing")
             .await
             .expect_err("expected error");
-        assert!(matches!(err, KubeopencodeError::NotFound(name) if name == "missing"));
+        assert_eq!(err.to_string(), "task not found: missing");
     }
 }

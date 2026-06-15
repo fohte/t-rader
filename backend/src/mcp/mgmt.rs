@@ -154,11 +154,17 @@ fn phase_to_string(phase: &StrategyTaskPhase) -> &'static str {
     }
 }
 
-/// kubeopencode_task_name を生成する: `t-rader-<strategy_id_short>-<random>`
-fn generate_task_name(strategy_id: Uuid) -> String {
-    let strategy_short = strategy_id.simple().to_string()[..8].to_string();
-    let random_short = Uuid::new_v4().simple().to_string()[..8].to_string();
+/// `t-rader-<strategy_id_short>-<random_short>` の文字列フォーマット部分。テスト容易性のため
+/// ランダム部分の生成と分離している。
+fn format_task_name(strategy_id: Uuid, random_short: &str) -> String {
+    let strategy_short = &strategy_id.simple().to_string()[..8];
     format!("t-rader-{strategy_short}-{random_short}")
+}
+
+/// kubeopencode_task_name を生成する。
+fn generate_task_name(strategy_id: Uuid) -> String {
+    let random_short = Uuid::new_v4().simple().to_string()[..8].to_string();
+    format_task_name(strategy_id, &random_short)
 }
 
 fn agent_name_for(strategy_id: Uuid) -> String {
@@ -414,21 +420,21 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[rstest]
-    fn task_name_follows_convention() {
+    #[test]
+    fn task_name_format() {
         let id = Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
-        let name = generate_task_name(id);
-        assert!(name.starts_with("t-rader-12345678-"));
-        // t-rader- (8) + 8 + - + 8 = 25
-        assert_eq!(name.len(), "t-rader-12345678-".len() + 8);
+        assert_eq!(
+            format_task_name(id, "deadbeef"),
+            "t-rader-12345678-deadbeef"
+        );
     }
 
-    #[rstest]
-    fn agent_name_follows_convention() {
+    #[test]
+    fn agent_name_format() {
         let id = Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
         assert_eq!(
             agent_name_for(id),
-            "strategy-12345678123456781234567812345678"
+            "strategy-12345678123456781234567812345678",
         );
     }
 
@@ -489,33 +495,71 @@ mod integration_tests {
             .await
             .expect("submit ok");
 
-        // Task name 規約: t-rader-<strategy_short>-<random>
-        let strategy_short = strategy_id.simple().to_string()[..8].to_string();
-        assert!(
-            result
-                .kubeopencode_task_name
-                .starts_with(&format!("t-rader-{strategy_short}-"))
-        );
+        let task_name = result.kubeopencode_task_name.clone();
+        let task_id = result.task_id;
 
-        // kubeopencode に渡された TaskCrSpec を確認
-        let created = fake.created.lock().await.clone();
-        assert_eq!(created.len(), 1);
-        assert_eq!(created[0].name, result.kubeopencode_task_name,);
-        assert_eq!(created[0].agent_name, agent_name_for(strategy_id));
-        assert_eq!(created[0].description, "inspect 7203");
-
-        // strategy_task 行が pending で 1 行作成されているか
-        let rows = strategy_task::Entity::find().all(&db).await.unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].strategy_id, strategy_id);
+        // kubeopencode に渡された TaskCrSpec の集合は、戻り値の task_name を採用したもの 1 件
+        let created: Vec<(String, String, String)> = fake
+            .created
+            .lock()
+            .await
+            .iter()
+            .map(|s| (s.name.clone(), s.agent_name.clone(), s.description.clone()))
+            .collect();
         assert_eq!(
-            rows[0].kubeopencode_task_name,
-            result.kubeopencode_task_name
+            created,
+            vec![(
+                task_name.clone(),
+                agent_name_for(strategy_id),
+                "inspect 7203".to_string(),
+            )],
         );
-        assert_eq!(rows[0].source, TASK_SOURCE);
-        assert_eq!(rows[0].prompt, "inspect 7203");
-        assert_eq!(rows[0].phase, StrategyTaskPhase::Pending);
-        assert!(rows[0].error_summary.is_none());
+
+        // strategy_task 行は pending で 1 件、戻り値と一致する内容を持つ
+        let rows: Vec<StrategyTaskRowSummary> = strategy_task::Entity::find()
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(StrategyTaskRowSummary::from_model)
+            .collect();
+        assert_eq!(
+            rows,
+            vec![StrategyTaskRowSummary {
+                task_id,
+                strategy_id,
+                kubeopencode_task_name: task_name,
+                source: TASK_SOURCE.to_string(),
+                prompt: "inspect 7203".to_string(),
+                phase: StrategyTaskPhase::Pending,
+                error_summary: None,
+            }],
+        );
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct StrategyTaskRowSummary {
+        task_id: Uuid,
+        strategy_id: Uuid,
+        kubeopencode_task_name: String,
+        source: String,
+        prompt: String,
+        phase: StrategyTaskPhase,
+        error_summary: Option<String>,
+    }
+
+    impl StrategyTaskRowSummary {
+        fn from_model(m: strategy_task::Model) -> Self {
+            Self {
+                task_id: m.task_id,
+                strategy_id: m.strategy_id,
+                kubeopencode_task_name: m.kubeopencode_task_name,
+                source: m.source,
+                prompt: m.prompt,
+                phase: m.phase,
+                error_summary: m.error_summary,
+            }
+        }
     }
 
     #[sqlx::test(migrations = false)]
