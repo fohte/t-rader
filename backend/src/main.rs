@@ -8,6 +8,9 @@ use backend::data_provider::DataProviderKind;
 use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::error::AppError;
+use backend::kubeopencode::{
+    HttpKubeopencodeClient, KubeopencodeClient, KubeopencodeConfig, SharedKubeopencodeClient,
+};
 use clap::Parser;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
@@ -112,7 +115,33 @@ async fn main() -> Result<(), AppError> {
         backend::mcp::store::DEFAULT_GC_INTERVAL,
     );
 
-    let state = AppState { db, data_provider };
+    let kubeopencode: SharedKubeopencodeClient = match KubeopencodeConfig::from_env() {
+        Some(config) => {
+            let client = HttpKubeopencodeClient::new(config).map_err(|e| {
+                AppError::Config(format!("failed to initialize kubeopencode client: {e}"))
+            })?;
+            tracing::info!("kubeopencode client initialized");
+            let arc: Arc<dyn KubeopencodeClient + Send + Sync> = Arc::new(client);
+            let _watcher = backend::mcp::watcher::spawn(
+                db.clone(),
+                arc.clone(),
+                backend::mcp::watcher::DEFAULT_INTERVAL,
+            );
+            arc
+        }
+        None => {
+            tracing::warn!(
+                "KUBEOPENCODE_API_URL が未設定のため、kubeopencode を無効化して起動します"
+            );
+            AppState::disabled_kubeopencode()
+        }
+    };
+
+    let state = AppState {
+        db,
+        data_provider,
+        kubeopencode,
+    };
 
     let app = create_router(state);
 

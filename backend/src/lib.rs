@@ -4,6 +4,7 @@ pub mod entities;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
+pub mod kubeopencode;
 pub mod mcp;
 pub mod middleware;
 pub mod models;
@@ -32,6 +33,9 @@ use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     annotations, bars, comments, history, imports, notes, refs, strategies, trades, watchlists,
 };
+use crate::kubeopencode::{
+    DisabledKubeopencodeClient, KubeopencodeClient, SharedKubeopencodeClient,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -41,6 +45,18 @@ pub struct AppState {
     /// `JQUANTS_API_KEY` 未設定時は None で起動する。
     /// データ取得系のエンドポイントは利用時にエラーを返す。
     pub data_provider: Option<Arc<DataProviderKind>>,
+    /// kubeopencode (Task CR) クライアント。`KUBEOPENCODE_API_URL` 未設定時は
+    /// `DisabledKubeopencodeClient` が入り、submit_strategy_task は MCP エラーを返す。
+    pub kubeopencode: SharedKubeopencodeClient,
+}
+
+impl AppState {
+    /// テスト・初期化以外で kubeopencode が未設定のケース向けのデフォルト
+    pub fn disabled_kubeopencode() -> SharedKubeopencodeClient {
+        let client: Arc<dyn KubeopencodeClient + Send + Sync> =
+            Arc::new(DisabledKubeopencodeClient);
+        client
+    }
 }
 
 impl AppState {
@@ -95,6 +111,7 @@ mod app_state_tests {
         let state = AppState {
             db: mock_db(),
             data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
+            kubeopencode: AppState::disabled_kubeopencode(),
         };
         assert!(state.data_provider().is_ok());
     }
@@ -104,6 +121,7 @@ mod app_state_tests {
         let state = AppState {
             db: mock_db(),
             data_provider: None,
+            kubeopencode: AppState::disabled_kubeopencode(),
         };
         let result = state.data_provider();
         assert!(result.is_err());
@@ -197,12 +215,13 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 
 pub fn create_router(state: AppState) -> Router {
     let db = state.db.clone();
+    let kube = state.kubeopencode.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
     router
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
-        .merge(mcp::router(db))
+        .merge(mcp::router(db, kube))
 }
 
 /// ヘルスチェック
