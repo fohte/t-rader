@@ -15,6 +15,7 @@ pub mod sector;
 pub mod stock;
 pub mod strategy;
 pub mod strategy_interest;
+pub mod strategy_task;
 pub mod theme;
 pub mod trade;
 pub mod watchlist_items;

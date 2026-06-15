@@ -13,6 +13,7 @@ pub use super::sector::Entity as Sector;
 pub use super::stock::Entity as Stock;
 pub use super::strategy::Entity as Strategy;
 pub use super::strategy_interest::Entity as StrategyInterest;
+pub use super::strategy_task::Entity as StrategyTask;
 pub use super::theme::Entity as Theme;
 pub use super::trade::Entity as Trade;
 pub use super::watchlist_items::Entity as WatchlistItems;
