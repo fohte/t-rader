@@ -100,6 +100,18 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
+    // 期限切れの MCP session を定期的に削除するバックグラウンドタスクを起動する。
+    // 戻り値は意図的に捨てる: 現状の axum::serve は graceful shutdown を取らず、
+    // ランタイム終了で task ごと止まる。graceful shutdown を導入する際は cancel token を渡す。
+    tracing::info!(
+        interval_secs = backend::mcp::store::DEFAULT_GC_INTERVAL.as_secs(),
+        "starting mcp session gc task"
+    );
+    let _gc_task = backend::mcp::store::spawn_gc(
+        backend::mcp::PostgresSessionStore::new(db.clone()),
+        backend::mcp::store::DEFAULT_GC_INTERVAL,
+    );
+
     let state = AppState { db, data_provider };
 
     let app = create_router(state);

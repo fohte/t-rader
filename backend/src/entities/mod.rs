@@ -8,6 +8,7 @@ pub mod change_history;
 pub mod comment;
 pub mod indicator;
 pub mod instruments;
+pub mod mcp_session_state;
 pub mod note;
 pub mod note_ref;
 pub mod portfolio_snapshot;

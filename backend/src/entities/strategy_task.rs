@@ -16,7 +16,6 @@ pub struct Model {
     pub source: String,
     #[sea_orm(column_type = "Text")]
     pub prompt: String,
-    #[sea_orm(column_type = "Text")]
     pub phase: StrategyTaskPhase,
     #[sea_orm(column_type = "Text", nullable)]
     pub error_summary: Option<String>,

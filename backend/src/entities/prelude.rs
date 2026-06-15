@@ -6,6 +6,7 @@ pub use super::change_history::Entity as ChangeHistory;
 pub use super::comment::Entity as Comment;
 pub use super::indicator::Entity as Indicator;
 pub use super::instruments::Entity as Instruments;
+pub use super::mcp_session_state::Entity as McpSessionState;
 pub use super::note::Entity as Note;
 pub use super::note_ref::Entity as NoteRef;
 pub use super::portfolio_snapshot::Entity as PortfolioSnapshot;
