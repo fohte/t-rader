@@ -1,9 +1,7 @@
-use sea_orm_migration::prelude::*;
+use sea_orm_migration::{prelude::*, sea_query::extension::postgres::Type};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
-
-const PHASES: [&str; 4] = ["pending", "running", "completed", "failed"];
 
 #[derive(DeriveIden)]
 enum Strategy {
@@ -25,9 +23,34 @@ enum StrategyTask {
     UpdatedAt,
 }
 
+#[derive(DeriveIden)]
+struct StrategyTaskPhase;
+
+#[derive(DeriveIden)]
+enum StrategyTaskPhaseVariant {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+}
+
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_type(
+                Type::create()
+                    .as_enum(StrategyTaskPhase)
+                    .values([
+                        StrategyTaskPhaseVariant::Pending,
+                        StrategyTaskPhaseVariant::Running,
+                        StrategyTaskPhaseVariant::Completed,
+                        StrategyTaskPhaseVariant::Failed,
+                    ])
+                    .to_owned(),
+            )
+            .await?;
+
         manager
             .create_table(
                 Table::create()
@@ -50,9 +73,9 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(StrategyTask::Prompt).text().not_null())
                     .col(
                         ColumnDef::new(StrategyTask::Phase)
-                            .text()
+                            .custom(StrategyTaskPhase)
                             .not_null()
-                            .default(PHASES[0]),
+                            .default(Expr::cust("'pending'::strategy_task_phase")),
                     )
                     .col(ColumnDef::new(StrategyTask::ErrorSummary).text())
                     .col(
@@ -73,7 +96,6 @@ impl MigrationTrait for Migration {
                             .to(Strategy::Table, Strategy::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .check(Expr::col(StrategyTask::Phase).is_in(PHASES))
                     .to_owned(),
             )
             .await?;
@@ -103,6 +125,9 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .drop_table(Table::drop().table(StrategyTask::Table).to_owned())
+            .await?;
+        manager
+            .drop_type(Type::drop().name(StrategyTaskPhase).to_owned())
             .await?;
         Ok(())
     }

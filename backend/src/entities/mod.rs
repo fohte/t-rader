@@ -11,6 +11,7 @@ pub mod instruments;
 pub mod note;
 pub mod note_ref;
 pub mod portfolio_snapshot;
+pub mod sea_orm_active_enums;
 pub mod sector;
 pub mod stock;
 pub mod strategy;
