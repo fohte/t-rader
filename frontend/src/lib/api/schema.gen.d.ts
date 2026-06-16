@@ -736,7 +736,7 @@ export interface components {
       /** Format: uuid */
       strategy_id: string
       title: string
-      trigger?: string | null
+      trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
       type_tag?: string | null
     }
@@ -801,6 +801,11 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    /**
+     * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
+     * @enum {string}
+     */
+    NoteTrigger: 'hook' | 'cron' | 'on-demand' | 'manual'
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
       positions: components['schemas']['PositionSummary'][]
@@ -971,7 +976,7 @@ export interface components {
         [key: string]: unknown
       } | null
       title?: string | null
-      trigger?: string | null
+      trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
       type_tag?: string | null
     }
