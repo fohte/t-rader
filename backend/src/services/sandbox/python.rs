@@ -225,11 +225,10 @@ pub async fn run_python(
     })
 }
 
-// nsjail の kafel 文法で危険な syscall を KILL に倒す blocklist。
-// 一般的なコンテナランタイム (Docker / podman) の default seccomp prof で blocked
-// になっている syscall のうち、ユーザー名前空間と非 root ユーザー前提でも
-// サンドボックス境界を破りうるもの (kernel attack surface 縮小・名前空間操作・
-// カーネル keyring・eBPF・モジュール・kexec・ptrace 系) を列挙する。
+// 危険な syscall を KILL に倒す blocklist。 nsjail に bundled された kafel の
+// syscall テーブルに含まれる名称のみで構成する (newer syscall は kafel が
+// 認識できず policy compile に失敗するため除外している)。 namespace 操作 /
+// kernel keyring / eBPF / モジュールロード / kexec / ptrace 系を中心に落とす。
 const SECCOMP_POLICY: &str = "KILL { \
     ptrace, \
     process_vm_readv, \
@@ -240,44 +239,24 @@ const SECCOMP_POLICY: &str = "KILL { \
     keyctl, \
     perf_event_open, \
     mount, \
-    umount2, \
     pivot_root, \
-    open_tree, \
-    move_mount, \
-    fsopen, \
-    fsmount, \
-    fsconfig, \
-    fspick, \
     init_module, \
     finit_module, \
     delete_module, \
-    setns, \
-    unshare, \
-    userfaultfd, \
     reboot, \
     kexec_load, \
-    kexec_file_load, \
     swapon, \
     swapoff, \
-    sysfs, \
-    quotactl, \
-    quotactl_fd, \
     nfsservctl, \
-    lookup_dcookie, \
     open_by_handle_at, \
     name_to_handle_at, \
     ioperm, \
     iopl, \
     kcmp, \
     personality, \
-    clock_settime, \
-    clock_adjtime, \
     settimeofday, \
     adjtimex, \
-    stime, \
     vhangup, \
-    vm86, \
-    vm86old, \
     modify_ldt \
 } DEFAULT ALLOW";
 
