@@ -3460,9 +3460,13 @@
             "pattern": "\\S"
           },
           "trigger": {
-            "type": [
-              "string",
-              "null"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NoteTrigger"
+              }
             ]
           },
           "trigger_label": {
@@ -3687,6 +3691,16 @@
             "format": "date-time"
           }
         }
+      },
+      "NoteTrigger": {
+        "type": "string",
+        "description": "ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる",
+        "enum": [
+          "hook",
+          "cron",
+          "on-demand",
+          "manual"
+        ]
       },
       "PerformanceSummary": {
         "type": "object",
@@ -4227,9 +4241,13 @@
             "pattern": "\\S"
           },
           "trigger": {
-            "type": [
-              "string",
-              "null"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NoteTrigger"
+              }
             ]
           },
           "trigger_label": {
