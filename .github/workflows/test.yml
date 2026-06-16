@@ -390,7 +390,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             python3 \
             autoconf bison flex gcc g++ git libprotobuf-dev libnl-route-3-dev libtool make pkg-config protobuf-compiler
-          git clone --depth=1 --branch 3.4 https://github.com/google/nsjail.git /tmp/nsjail
+          git clone --depth=1 --branch 3.4 --recurse-submodules --shallow-submodules https://github.com/google/nsjail.git /tmp/nsjail
           make -C /tmp/nsjail -j"$(nproc)"
           sudo install -m 755 /tmp/nsjail/nsjail /usr/local/bin/nsjail
           nsjail --help | head -1
