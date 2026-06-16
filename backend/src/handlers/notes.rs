@@ -217,7 +217,7 @@ pub async fn create_note(
             .unwrap_or_else(|| json!({}))),
         type_tag: Set(payload.type_tag.clone()),
         status: Set(status),
-        trigger: Set(payload.trigger.clone()),
+        trigger: Set(payload.trigger.map(|t| t.to_string())),
         trigger_label: Set(payload.trigger_label.clone()),
         created_by_kind: Set(created_by),
         created_at: NotSet,
@@ -303,6 +303,7 @@ pub async fn update_note(
         active.type_tag = Set(Some(tt));
     }
     if let Some(tr) = payload.trigger {
+        let tr = tr.to_string();
         diff.insert(
             "trigger".into(),
             json!({ "from": current.trigger, "to": tr }),
