@@ -383,11 +383,17 @@ jobs:
         run: rustup component add llvm-tools-preview
 
       # eval_python sandbox の unit テストで nsjail を spawn するためインストールする。
-      # 未インストールの場合テストは skip されるが、CI では実際に走らせて検証する
+      # Ubuntu noble の apt 上には nsjail が存在しないので公式 source からビルドする
       - name: Install nsjail and python3
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends nsjail python3
+          sudo apt-get install -y --no-install-recommends \
+            python3 \
+            autoconf bison flex gcc g++ git libprotobuf-dev libnl-route-3-dev libtool make pkg-config protobuf-compiler
+          git clone --depth=1 --branch 3.4 https://github.com/google/nsjail.git /tmp/nsjail
+          make -C /tmp/nsjail -j"$(nproc)"
+          sudo install -m 755 /tmp/nsjail/nsjail /usr/local/bin/nsjail
+          nsjail --help | head -1
 
       - name: Run tests with coverage
         working-directory: backend
