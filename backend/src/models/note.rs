@@ -96,4 +96,18 @@ mod tests {
     fn test_note_trigger_display(#[case] trigger: NoteTrigger, #[case] expected: &str) {
         assert_eq!(trigger.to_string(), expected);
     }
+
+    /// Display は DB に書く文字列、serde は API 受け渡しの文字列で、
+    /// 両者がずれると CHECK 制約違反や FE/BE 不一致が起きる。pin する
+    #[rstest]
+    #[case::hook(NoteTrigger::Hook)]
+    #[case::cron(NoteTrigger::Cron)]
+    #[case::on_demand(NoteTrigger::OnDemand)]
+    #[case::manual(NoteTrigger::Manual)]
+    fn test_note_trigger_display_matches_serde(#[case] trigger: NoteTrigger) {
+        assert_eq!(
+            serde_json::to_string(&trigger).unwrap(),
+            format!("\"{trigger}\""),
+        );
+    }
 }
