@@ -96,8 +96,19 @@ pub struct WriteNoteParams {
     pub note_id: Option<Uuid>,
     pub title: Option<String>,
     pub body_md: Option<String>,
-    pub type_tag: Option<String>,
+    /// `null` を明示すると既存タグを NULL に更新する。フィールド省略時は変更しない。
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub type_tag: Option<Option<String>>,
     pub frontmatter_json: Option<serde_json::Value>,
+}
+
+/// `Option<Option<T>>` を「フィールド未指定 (None)」と「null 指定 (Some(None))」に区別して受け取る
+fn deserialize_optional_field<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
@@ -212,7 +223,6 @@ fn clamp_limit(limit: Option<u32>) -> u64 {
     value.clamp(1, MAX_LIST_LIMIT)
 }
 
-/// `x-strategy-id` HTTP ヘッダを `HeaderMap` から取り出して Uuid に解釈する。
 fn strategy_id_from_headers(headers: &axum::http::HeaderMap) -> Result<Uuid, McpError> {
     let header = headers.get(STRATEGY_ID_HEADER).ok_or_else(|| {
         invalid_params(format!(
@@ -229,7 +239,6 @@ fn strategy_id_from_headers(headers: &axum::http::HeaderMap) -> Result<Uuid, Mcp
     })
 }
 
-/// 接続コンテキストから `x-strategy-id` ヘッダを取り出して Uuid に解釈する。
 fn strategy_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Uuid, McpError> {
     let parts = ctx
         .extensions
@@ -238,8 +247,6 @@ fn strategy_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Uuid, McpErr
     strategy_id_from_headers(&parts.headers)
 }
 
-/// 接続コンテキストの strategy_id と引数の strategy_id が一致することを検査する。
-/// 不一致は MCP エラー (forbidden) で拒否する。
 fn ensure_strategy_match(ctx_id: Uuid, arg_id: Uuid) -> Result<(), McpError> {
     if ctx_id == arg_id {
         Ok(())
@@ -250,7 +257,6 @@ fn ensure_strategy_match(ctx_id: Uuid, arg_id: Uuid) -> Result<(), McpError> {
     }
 }
 
-/// note を取得し、所有戦略が `expected` でなければ境界違反として弾く。
 async fn fetch_note_owned_by(
     db: &DatabaseConnection,
     note_id: Uuid,
@@ -269,7 +275,6 @@ async fn fetch_note_owned_by(
     Ok(row)
 }
 
-/// 戦略 id が strategy テーブルに存在することを確認する。
 async fn ensure_strategy_exists(db: &DatabaseConnection, id: Uuid) -> Result<(), McpError> {
     let exists = strategy::Entity::find_by_id(id)
         .one(db)
@@ -412,7 +417,7 @@ impl StrategyServer {
                 touched = true;
             }
             if let Some(tag) = params.type_tag {
-                active.type_tag = Set(Some(tag));
+                active.type_tag = Set(tag);
                 touched = true;
             }
             if let Some(fm) = params.frontmatter_json {
@@ -452,7 +457,7 @@ impl StrategyServer {
             title: Set(title),
             body_md: Set(body_md),
             frontmatter_json: Set(frontmatter_json),
-            type_tag: Set(params.type_tag),
+            type_tag: Set(params.type_tag.flatten()),
             status: Set(DEFAULT_NOTE_STATUS.to_string()),
             trigger: Set(None),
             trigger_label: Set(None),
@@ -832,7 +837,7 @@ mod integration_tests {
                     note_id: None,
                     title: Some("first note".into()),
                     body_md: Some("body".into()),
-                    type_tag: Some("observation".into()),
+                    type_tag: Some(Some("observation".into())),
                     frontmatter_json: None,
                 },
             )
@@ -935,6 +940,77 @@ mod integration_tests {
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
             },
+        );
+    }
+
+    /// `type_tag: Some(None)` (JSON で `"type_tag": null`) は既存タグの NULL クリアとして扱う
+    #[sqlx::test(migrations = false)]
+    async fn write_note_clears_type_tag_with_explicit_null(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        let server = build_server(db);
+
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("t".into()),
+                    body_md: None,
+                    type_tag: Some(Some("observation".into())),
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("create");
+
+        // タグを明示的に null へ更新
+        server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: None,
+                    type_tag: Some(None),
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("clear");
+
+        let read = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    strategy_id,
+                    note_id: created.note_id,
+                },
+            )
+            .await
+            .expect("read");
+        assert_eq!(read.type_tag, None);
+    }
+
+    /// `Option<Option<String>>` のシリアライズ意味論を pin する。
+    /// フィールド省略 → `None` (touch しない)、`null` 明示 → `Some(None)` (NULL クリア)、値あり → `Some(Some(v))`。
+    #[test]
+    fn write_note_params_type_tag_deserialization() {
+        fn parse(json: &str) -> Option<Option<String>> {
+            serde_json::from_str::<WriteNoteParams>(json)
+                .expect("parse")
+                .type_tag
+        }
+        let sid = r#""strategy_id":"00000000-0000-0000-0000-000000000000""#;
+        assert_eq!(
+            (
+                parse(&format!("{{{sid}}}")),
+                parse(&format!("{{{sid},\"type_tag\":null}}")),
+                parse(&format!("{{{sid},\"type_tag\":\"observation\"}}")),
+            ),
+            (None, Some(None), Some(Some("observation".into()))),
         );
     }
 
