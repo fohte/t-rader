@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
-use tokio::time::timeout;
 
 /// Python サンドボックス実行の設定
 #[derive(Debug, Clone)]
@@ -169,54 +168,60 @@ pub async fn run_python(
     let max_stdout = config.max_stdout_bytes;
     let max_stderr = config.max_stderr_bytes;
 
-    let out_handle = tokio::spawn(async move { read_capped(stdout, max_stdout).await });
-    let err_handle = tokio::spawn(async move { read_capped(stderr, max_stderr).await });
+    let mut out_handle = tokio::spawn(async move { read_capped(stdout, max_stdout).await });
+    let mut err_handle = tokio::spawn(async move { read_capped(stderr, max_stderr).await });
 
-    let wait_result = timeout(config.time_limit + Duration::from_secs(2), child.wait()).await;
+    let sleep = tokio::time::sleep(config.time_limit + Duration::from_secs(2));
+    tokio::pin!(sleep);
 
-    let status = match wait_result {
-        Ok(Ok(s)) => s,
-        Ok(Err(e)) => return Err(PythonSandboxError::Io(e)),
-        Err(_) => {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
-            let _ = out_handle.await;
-            let _ = err_handle.await;
-            return Err(PythonSandboxError::Timeout(config.time_limit));
+    let mut status = None;
+    let mut stdout_res: Option<CapResult> = None;
+    let mut stderr_res: Option<CapResult> = None;
+
+    // reader が cap 到達を検知した時点で即 kill する fail-fast loop。
+    // 子プロセスが write を止めて長時間 sleep するケースで、time_limit いっぱい
+    // 待たされる挙動を防ぐ
+    while status.is_none() || stdout_res.is_none() || stderr_res.is_none() {
+        tokio::select! {
+            res = child.wait(), if status.is_none() => {
+                status = Some(res.map_err(PythonSandboxError::Io)?);
+            }
+            res = &mut out_handle, if stdout_res.is_none() => {
+                let val = res
+                    .map_err(std::io::Error::other)
+                    .map_err(PythonSandboxError::Io)?
+                    .map_err(PythonSandboxError::Io)?;
+                if matches!(val, CapResult::Exceeded(_)) {
+                    let _ = child.start_kill();
+                    let _ = child.wait().await;
+                    return Err(PythonSandboxError::StdoutTooLarge(max_stdout));
+                }
+                stdout_res = Some(val);
+            }
+            res = &mut err_handle, if stderr_res.is_none() => {
+                let val = res
+                    .map_err(std::io::Error::other)
+                    .map_err(PythonSandboxError::Io)?
+                    .map_err(PythonSandboxError::Io)?;
+                if matches!(val, CapResult::Exceeded(_)) {
+                    let _ = child.start_kill();
+                    let _ = child.wait().await;
+                    return Err(PythonSandboxError::StderrTooLarge(max_stderr));
+                }
+                stderr_res = Some(val);
+            }
+            _ = &mut sleep => {
+                let _ = child.start_kill();
+                let _ = child.wait().await;
+                return Err(PythonSandboxError::Timeout(config.time_limit));
+            }
         }
-    };
-
-    let stdout_res = out_handle
-        .await
-        .map_err(std::io::Error::other)
-        .map_err(PythonSandboxError::Io)?
-        .map_err(PythonSandboxError::Io)?;
-    let stderr_res = err_handle
-        .await
-        .map_err(std::io::Error::other)
-        .map_err(PythonSandboxError::Io)?
-        .map_err(PythonSandboxError::Io)?;
-
-    let exceeded_stdout = matches!(stdout_res, CapResult::Exceeded(_));
-    let exceeded_stderr = matches!(stderr_res, CapResult::Exceeded(_));
-
-    // reader が cap 到達で pipe を閉じても、Python が write 以外で stall していると
-    // 子プロセスは time_limit まで生き続けるため、cap 超過を確認した時点で確実に
-    // kill する
-    if exceeded_stdout || exceeded_stderr {
-        let _ = child.start_kill();
-        let _ = child.wait().await;
-        return Err(if exceeded_stdout {
-            PythonSandboxError::StdoutTooLarge(max_stdout)
-        } else {
-            PythonSandboxError::StderrTooLarge(max_stderr)
-        });
     }
 
     Ok(PythonSandboxOutput {
-        stdout: stdout_res.into_bytes(),
-        stderr: stderr_res.into_bytes(),
-        exit_code: status.code(),
+        stdout: stdout_res.map(CapResult::into_bytes).unwrap_or_default(),
+        stderr: stderr_res.map(CapResult::into_bytes).unwrap_or_default(),
+        exit_code: status.and_then(|s| s.code()),
     })
 }
 
@@ -297,7 +302,7 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin>(
     let Some(reader) = reader else {
         return Ok(CapResult::Ok(Vec::new()));
     };
-    let mut limited = reader.take(cap + 1);
+    let mut limited = reader.take(cap.saturating_add(1));
     let mut buf = Vec::new();
     limited.read_to_end(&mut buf).await?;
     if (buf.len() as u64) > cap {
