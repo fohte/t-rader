@@ -139,7 +139,9 @@ pub async fn run_python(
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        // run_python が早期 return / panic / cancel しても nsjail プロセスを残さない
+        .kill_on_drop(true);
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -170,8 +172,6 @@ pub async fn run_python(
     let out_handle = tokio::spawn(async move { read_capped(stdout, max_stdout).await });
     let err_handle = tokio::spawn(async move { read_capped(stderr, max_stderr).await });
 
-    // nsjail 自体の time_limit を頼りに kill を任せるが、stuck したケースに備え
-    // 少し余裕を持たせた外側タイムアウトでも保険をかける
     let wait_result = timeout(config.time_limit + Duration::from_secs(2), child.wait()).await;
 
     let status = match wait_result {
@@ -180,18 +180,37 @@ pub async fn run_python(
         Err(_) => {
             let _ = child.start_kill();
             let _ = child.wait().await;
+            let _ = out_handle.await;
+            let _ = err_handle.await;
             return Err(PythonSandboxError::Timeout(config.time_limit));
         }
     };
 
-    let stdout_res = join_io(out_handle.await)??;
-    let stderr_res = join_io(err_handle.await)??;
+    let stdout_res = out_handle
+        .await
+        .map_err(std::io::Error::other)
+        .map_err(PythonSandboxError::Io)?
+        .map_err(PythonSandboxError::Io)?;
+    let stderr_res = err_handle
+        .await
+        .map_err(std::io::Error::other)
+        .map_err(PythonSandboxError::Io)?
+        .map_err(PythonSandboxError::Io)?;
 
-    if matches!(stdout_res, CapResult::Exceeded(_)) {
-        return Err(PythonSandboxError::StdoutTooLarge(max_stdout));
-    }
-    if matches!(stderr_res, CapResult::Exceeded(_)) {
-        return Err(PythonSandboxError::StderrTooLarge(max_stderr));
+    let exceeded_stdout = matches!(stdout_res, CapResult::Exceeded(_));
+    let exceeded_stderr = matches!(stderr_res, CapResult::Exceeded(_));
+
+    // reader が cap 到達で pipe を閉じても、Python が write 以外で stall していると
+    // 子プロセスは time_limit まで生き続けるため、cap 超過を確認した時点で確実に
+    // kill する
+    if exceeded_stdout || exceeded_stderr {
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+        return Err(if exceeded_stdout {
+            PythonSandboxError::StdoutTooLarge(max_stdout)
+        } else {
+            PythonSandboxError::StderrTooLarge(max_stderr)
+        });
     }
 
     Ok(PythonSandboxOutput {
@@ -287,10 +306,6 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin>(
     } else {
         Ok(CapResult::Ok(buf))
     }
-}
-
-fn join_io<T>(res: Result<T, tokio::task::JoinError>) -> std::io::Result<T> {
-    res.map_err(std::io::Error::other)
 }
 
 #[cfg(test)]
