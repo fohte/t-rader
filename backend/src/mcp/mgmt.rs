@@ -8,6 +8,8 @@
 //! - `list_recent_notes`
 //! - `list_recent_annotations`
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, FixedOffset};
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
@@ -17,8 +19,8 @@ use schemars::JsonSchema;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -171,6 +173,34 @@ fn agent_name_for(strategy_id: Uuid) -> String {
     format!("strategy-{}", strategy_id.simple())
 }
 
+/// 指定エンティティの `status='unread'` 件数を strategy_id ごとに集約して返す。
+/// `list_strategies` が note / annotation 双方に対し 1 クエリで未読件数を取るために使う。
+async fn unread_counts_by_strategy<E, C>(
+    db: &DatabaseConnection,
+    strategy_id_col: C,
+    status_col: C,
+    id_col: C,
+) -> Result<HashMap<Uuid, u64>, McpError>
+where
+    E: EntityTrait,
+    C: ColumnTrait,
+{
+    let rows: Vec<(Uuid, i64)> = E::find()
+        .select_only()
+        .column(strategy_id_col)
+        .column_as(id_col.count(), "unread_count")
+        .filter(status_col.eq("unread"))
+        .group_by(strategy_id_col)
+        .into_tuple()
+        .all(db)
+        .await
+        .map_err(db_error)?;
+    Ok(rows
+        .into_iter()
+        .map(|(sid, c)| (sid, c.max(0) as u64))
+        .collect())
+}
+
 #[tool_router]
 impl MgmtServer {
     /// 戦略一覧 (id / 名前 / 最終更新 / 未読カード数)
@@ -186,27 +216,35 @@ impl MgmtServer {
             .await
             .map_err(db_error)?;
 
-        let mut strategies = Vec::with_capacity(rows.len());
-        for row in rows {
-            let note_unread = note::Entity::find()
-                .filter(note::Column::StrategyId.eq(row.id))
-                .filter(note::Column::Status.eq("unread"))
-                .count(&self.db)
-                .await
-                .map_err(db_error)?;
-            let annotation_unread = annotation::Entity::find()
-                .filter(annotation::Column::StrategyId.eq(row.id))
-                .filter(annotation::Column::Status.eq("unread"))
-                .count(&self.db)
-                .await
-                .map_err(db_error)?;
-            strategies.push(StrategySummary {
-                strategy_id: row.id,
-                name: row.name,
-                updated_at: row.updated_at,
-                unread_card_count: note_unread + annotation_unread,
-            });
-        }
+        let note_counts = unread_counts_by_strategy::<note::Entity, note::Column>(
+            &self.db,
+            note::Column::StrategyId,
+            note::Column::Status,
+            note::Column::Id,
+        )
+        .await?;
+        let annotation_counts =
+            unread_counts_by_strategy::<annotation::Entity, annotation::Column>(
+                &self.db,
+                annotation::Column::StrategyId,
+                annotation::Column::Status,
+                annotation::Column::Id,
+            )
+            .await?;
+
+        let strategies = rows
+            .into_iter()
+            .map(|row| {
+                let note_unread = note_counts.get(&row.id).copied().unwrap_or(0);
+                let annotation_unread = annotation_counts.get(&row.id).copied().unwrap_or(0);
+                StrategySummary {
+                    strategy_id: row.id,
+                    name: row.name,
+                    updated_at: row.updated_at,
+                    unread_card_count: note_unread + annotation_unread,
+                }
+            })
+            .collect();
         Ok(Json(ListStrategiesResult { strategies }))
     }
 

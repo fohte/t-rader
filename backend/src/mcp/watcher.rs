@@ -6,13 +6,13 @@
 //! 監視期間中に Task CR 自体が消えた場合は、最後の phase / error_summary を「失敗 (lost)」
 //! として確定させ、以降の polling 対象から外す。
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use sea_orm::ActiveValue::Set;
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-};
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use tokio::sync::Semaphore;
 
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::strategy_task;
@@ -24,6 +24,11 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
 /// NotFound を Failed に確定させないための猶予期間。これ未満の経過時間で NotFound を
 /// 受け取った場合は次の tick まで判定を保留する。
 pub const NOT_FOUND_GRACE: chrono::Duration = chrono::Duration::seconds(60);
+
+/// 1 tick あたりに同時実行する kubeopencode API 問い合わせ数の上限。1 件の遅延・タイムアウトが
+/// 他の reconcile をブロックしないよう、行ごとに `get_task_status` を並列化する。kube-apiserver に
+/// 同時接続を投げすぎないよう上限を設ける。
+const MAX_CONCURRENT_STATUS_FETCHES: usize = 8;
 
 /// 1 回分の polling を実行する。失敗した個別 task はログに残し、他の task の処理を継続する。
 ///
@@ -45,64 +50,97 @@ pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) 
         }
     };
 
-    let mut updated = 0usize;
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_STATUS_FETCHES));
+    let mut handles = Vec::with_capacity(rows.len());
     for row in rows {
-        let (new_phase, new_error) = match kube.get_task_status(&row.kubeopencode_task_name).await {
-            Ok(status) => {
-                let phase = match status.phase {
-                    Some(TaskPhase::Pending) => StrategyTaskPhase::Pending,
-                    Some(TaskPhase::Running) => StrategyTaskPhase::Running,
-                    Some(TaskPhase::Completed) => StrategyTaskPhase::Completed,
-                    Some(TaskPhase::Failed) => StrategyTaskPhase::Failed,
-                    None => row.phase.clone(),
-                };
-                let error = match phase {
-                    StrategyTaskPhase::Failed => {
-                        Some(status.message.unwrap_or_else(|| "task failed".to_string()))
-                    }
-                    _ => row.error_summary.clone(),
-                };
-                (phase, error)
-            }
-            Err(KubeopencodeError::NotFound(name)) => {
-                // CR insert と create_task は別段階で実行されるため、insert 直後 ~ create 完了前の
-                // 窓で NotFound が返り得る。本物の消失と誤検知を区別するため、行が
-                // `NOT_FOUND_GRACE` 未満なら判定を保留する。
-                let age = Utc::now().fixed_offset() - row.created_at;
-                if age < NOT_FOUND_GRACE {
-                    tracing::debug!(
-                        task = %name,
-                        age_ms = age.num_milliseconds(),
-                        "task cr not found within grace period; will retry"
-                    );
-                    continue;
-                }
-                (
-                    StrategyTaskPhase::Failed,
-                    Some(format!("task cr {name} not found")),
-                )
-            }
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    task = %row.kubeopencode_task_name,
-                    "failed to fetch task status; will retry on next tick",
-                );
-                continue;
-            }
-        };
-        match apply_phase(db, row, new_phase, new_error).await {
+        let kube = kube.clone();
+        let db = db.clone();
+        let sem = semaphore.clone();
+        handles.push(tokio::spawn(async move {
+            // semaphore で kube-apiserver への同時接続数を制限する。
+            let _permit = match sem.acquire_owned().await {
+                Ok(permit) => permit,
+                Err(_) => return false,
+            };
+            reconcile_one(&db, &kube, row).await
+        }));
+    }
+
+    let mut updated = 0usize;
+    for handle in handles {
+        match handle.await {
             Ok(true) => updated += 1,
             Ok(false) => {}
             Err(err) => {
-                tracing::warn!(error = %err, "failed to update strategy_task phase");
+                tracing::warn!(error = %err, "strategy_task reconcile task panicked");
             }
         }
     }
     updated
 }
 
+/// 単一行の status 取得 → phase 反映を行う。更新が走った場合のみ `true` を返す。
+async fn reconcile_one(
+    db: &DatabaseConnection,
+    kube: &SharedKubeopencodeClient,
+    row: strategy_task::Model,
+) -> bool {
+    let (new_phase, new_error) = match kube.get_task_status(&row.kubeopencode_task_name).await {
+        Ok(status) => {
+            let phase = match status.phase {
+                Some(TaskPhase::Pending) => StrategyTaskPhase::Pending,
+                Some(TaskPhase::Running) => StrategyTaskPhase::Running,
+                Some(TaskPhase::Completed) => StrategyTaskPhase::Completed,
+                Some(TaskPhase::Failed) => StrategyTaskPhase::Failed,
+                None => row.phase.clone(),
+            };
+            let error = match phase {
+                StrategyTaskPhase::Failed => {
+                    Some(status.message.unwrap_or_else(|| "task failed".to_string()))
+                }
+                _ => row.error_summary.clone(),
+            };
+            (phase, error)
+        }
+        Err(KubeopencodeError::NotFound(name)) => {
+            // CR insert と create_task は別段階で実行されるため、insert 直後 ~ create 完了前の
+            // 窓で NotFound が返り得る。本物の消失と誤検知を区別するため、行が
+            // `NOT_FOUND_GRACE` 未満なら判定を保留する。
+            let age = Utc::now().fixed_offset() - row.created_at;
+            if age < NOT_FOUND_GRACE {
+                tracing::debug!(
+                    task = %name,
+                    age_ms = age.num_milliseconds(),
+                    "task cr not found within grace period; will retry"
+                );
+                return false;
+            }
+            (
+                StrategyTaskPhase::Failed,
+                Some(format!("task cr {name} not found")),
+            )
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                task = %row.kubeopencode_task_name,
+                "failed to fetch task status; will retry on next tick",
+            );
+            return false;
+        }
+    };
+    match apply_phase(db, row, new_phase, new_error).await {
+        Ok(updated) => updated,
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to update strategy_task phase");
+            false
+        }
+    }
+}
+
 /// 1 行ぶんの phase / error_summary 更新を適用する。差分が無ければ DB 書き込みをしない。
+/// 主キーと変更カラムのみを `Set` した ActiveModel で UPDATE することで、prompt 等の
+/// 長文カラムを毎回書き直すのを避ける。
 async fn apply_phase(
     db: &DatabaseConnection,
     row: strategy_task::Model,
@@ -112,10 +150,17 @@ async fn apply_phase(
     if new_phase == row.phase && new_error == row.error_summary {
         return Ok(false);
     }
-    let mut active = row.into_active_model();
-    active.phase = Set(new_phase);
-    active.error_summary = Set(new_error);
-    active.updated_at = Set(Utc::now().fixed_offset());
+    let active = strategy_task::ActiveModel {
+        task_id: sea_orm::ActiveValue::Unchanged(row.task_id),
+        phase: Set(new_phase),
+        error_summary: Set(new_error),
+        updated_at: Set(Utc::now().fixed_offset()),
+        strategy_id: NotSet,
+        kubeopencode_task_name: NotSet,
+        source: NotSet,
+        prompt: NotSet,
+        created_at: NotSet,
+    };
     strategy_task::Entity::update(active).exec(db).await?;
     Ok(true)
 }
