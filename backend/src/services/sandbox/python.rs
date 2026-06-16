@@ -260,7 +260,6 @@ const SECCOMP_POLICY: &str = "KILL { \
     swapon, \
     swapoff, \
     sysfs, \
-    _sysctl, \
     quotactl, \
     quotactl_fd, \
     nfsservctl, \
