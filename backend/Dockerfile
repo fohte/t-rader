@@ -21,7 +21,12 @@ FROM build AS dev
 RUN cargo install cargo-watch
 
 FROM debian:trixie-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+# nsjail と python3 は eval_python sandbox 用。標準ライブラリ範囲で完結するコードを
+# 実行する想定なので追加パッケージは入れない
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        nsjail \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /usr/local/bin/backend /usr/local/bin/backend
 ENTRYPOINT ["backend"]

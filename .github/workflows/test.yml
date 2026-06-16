@@ -382,6 +382,13 @@ jobs:
       - name: Install llvm-tools-preview
         run: rustup component add llvm-tools-preview
 
+      # eval_python sandbox の unit テストで nsjail を spawn するためインストールする。
+      # 未インストールの場合テストは skip されるが、CI では実際に走らせて検証する
+      - name: Install nsjail and python3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nsjail python3
+
       - name: Run tests with coverage
         working-directory: backend
         env:
