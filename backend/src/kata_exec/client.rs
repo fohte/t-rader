@@ -610,6 +610,14 @@ pub(crate) fn build_pod_manifest(
                     "readOnlyRootFilesystem": true,
                     "capabilities": { "drop": ["ALL"] },
                 },
+                "volumeMounts": [{
+                    "name": "tmp",
+                    "mountPath": "/tmp",
+                }],
+            }],
+            "volumes": [{
+                "name": "tmp",
+                "emptyDir": { "medium": "Memory", "sizeLimit": "16Mi" },
             }],
         },
     })
@@ -821,6 +829,14 @@ mod tests {
                             "readOnlyRootFilesystem": true,
                             "capabilities": { "drop": ["ALL"] },
                         },
+                        "volumeMounts": [{
+                            "name": "tmp",
+                            "mountPath": "/tmp",
+                        }],
+                    }],
+                    "volumes": [{
+                        "name": "tmp",
+                        "emptyDir": { "medium": "Memory", "sizeLimit": "16Mi" },
                     }],
                 },
             }),
