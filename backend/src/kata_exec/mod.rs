@@ -41,14 +41,6 @@
 //! NetworkPolicy で `t-rader-exec` namespace の egress を全 deny、PSA は
 //! `restricted` 相当を設定する。RuntimeClass `kata` は Talos の kata-containers
 //! extension を有効化したノードで登録される。
-//!
-//! # 後続スコープ
-//!
-//! - 入力データの transport を env から kube attach API 経由の stdin に切り替える
-//!   (env は Pod の `/proc/{pid}/environ` に露出するため、`stdin` の方が原則に合う)
-//! - subprocess / fork / clone3 を OS レベルで deny する localhost custom seccomp
-//!   profile (`seccompProfile.type: Localhost`) を infra 側でノードに配布する
-//! - 実行 image に同梱するライブラリのホワイトリスト管理 (numpy / pandas のみ)
 
 pub mod client;
 
