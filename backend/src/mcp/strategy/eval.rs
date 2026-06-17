@@ -1,9 +1,8 @@
 //! `eval_python` tool の inner method 実装。
 //!
 //! Python コードを Kata Containers 上の exec Pod で 1 回実行し、stdout/stderr/exit_code
-//! を返す。executor (`HttpKataExecutor`) 側でも Pod の `activeDeadlineSeconds` /
-//! `resources.limits` でガードしているが、MCP 層でも timeout / 出力サイズ / コードと
-//! stdin のバイト数を検査して、Pod 起動前に invalid_params で弾けるようにする。
+//! を返す。MCP 層では timeout / 出力サイズ / code / stdin のバイト数上限を Pod 起動前に
+//! 検査し、超過時は invalid_params を返す。
 
 use std::time::Duration;
 
@@ -192,7 +191,16 @@ mod tests {
             .eval_python_inner(session, params(other, "print(1)"))
             .await
             .expect_err("mismatch");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                format!(
+                    "forbidden: strategy_id boundary violation (session={session}, arg={other})"
+                )
+                .as_str(),
+            ),
+        );
         assert!(executor.requests.lock().await.is_empty());
     }
 
@@ -301,7 +309,13 @@ mod tests {
             .eval_python_inner(sid, params(sid, "while True: pass"))
             .await
             .expect_err("timeout");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                format!("execution timed out after {:?}", Duration::from_secs(5)).as_str(),
+            ),
+        );
     }
 
     #[tokio::test]
@@ -317,7 +331,13 @@ mod tests {
             .eval_python_inner(sid, params(sid, "print('x' * 10_000_000)"))
             .await
             .expect_err("too large");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "output exceeded 1024 bytes",
+            ),
+        );
     }
 
     /// sandbox 拒否は MCP エラーではなく ExecResult (exit_code != 0) として透過させる。
@@ -363,6 +383,12 @@ mod tests {
             .eval_python_inner(sid, params(sid, "print(1)"))
             .await
             .expect_err("not configured");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INTERNAL_ERROR,
+                "kata executor is not configured",
+            ),
+        );
     }
 }
