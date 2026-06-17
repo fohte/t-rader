@@ -5,49 +5,43 @@
 
 pub mod mgmt;
 pub mod store;
+pub mod strategy;
 pub mod watcher;
 
 use std::sync::Arc;
 
 use axum::Router;
-use rmcp::ServerHandler;
-use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::SessionStore;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 use sea_orm::DatabaseConnection;
 
+use crate::data_provider::DataProviderKind;
 use crate::kubeopencode::SharedKubeopencodeClient;
 pub use mgmt::MgmtServer;
 pub use store::PostgresSessionStore;
-
-/// 戦略実行 MCP: 個別戦略 Agent がノート / アノテーションを書き込むエントリポイント
-#[derive(Clone, Default)]
-pub struct StrategyServer;
-
-impl ServerHandler for StrategyServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
-            Implementation::new("t-rader-strategy", env!("CARGO_PKG_VERSION")),
-        )
-    }
-}
+pub use strategy::StrategyServer;
 
 /// MCP ルータを構築する。
 ///
 /// session の `initialize` パラメータを PostgreSQL に永続化し、バックエンド再起動を
 /// 跨いだ `mcp-session-id` で来たリクエストを transparently に再開する。
-pub fn router(db: DatabaseConnection, kube: SharedKubeopencodeClient) -> Router {
+pub fn router(
+    db: DatabaseConnection,
+    kube: SharedKubeopencodeClient,
+    data_provider: Option<Arc<DataProviderKind>>,
+) -> Router {
     let session_store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(db.clone()));
 
+    let mgmt_db = db.clone();
     let mgmt = StreamableHttpService::new(
-        move || Ok(MgmtServer::new(db.clone(), kube.clone())),
+        move || Ok(MgmtServer::new(mgmt_db.clone(), kube.clone())),
         LocalSessionManager::default().into(),
         config_with_store(session_store.clone()),
     );
     let strategy = StreamableHttpService::new(
-        || Ok(StrategyServer),
+        move || Ok(StrategyServer::new(db.clone(), data_provider.clone())),
         LocalSessionManager::default().into(),
         config_with_store(session_store),
     );
@@ -123,7 +117,8 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_kube())).expect("failed to build test server");
+        let server =
+            TestServer::new(router(db, test_kube(), None)).expect("failed to build test server");
 
         let response = server
             .post(path)
@@ -164,8 +159,8 @@ mod tests {
         };
 
         let session_id = {
-            let server_a =
-                TestServer::new(router(db.clone(), test_kube())).expect("failed to build server A");
+            let server_a = TestServer::new(router(db.clone(), test_kube(), None))
+                .expect("failed to build server A");
             let resp = server_a
                 .post("/mcp/mgmt")
                 .add_header("accept", "application/json, text/event-stream")
@@ -177,8 +172,8 @@ mod tests {
 
         // server_a は drop されたので in-memory session も消えている。
         // 別 router (= 再起動後のプロセス) で同じ session_id が受け付けられるはず。
-        let server_b =
-            TestServer::new(router(db.clone(), test_kube())).expect("failed to build server B");
+        let server_b = TestServer::new(router(db.clone(), test_kube(), None))
+            .expect("failed to build server B");
         let resume = server_b
             .get("/mcp/mgmt")
             .add_header("accept", "text/event-stream")

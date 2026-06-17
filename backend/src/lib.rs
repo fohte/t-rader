@@ -216,12 +216,13 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 pub fn create_router(state: AppState) -> Router {
     let db = state.db.clone();
     let kube = state.kubeopencode.clone();
+    let data_provider = state.data_provider.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
     router
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
-        .merge(mcp::router(db, kube))
+        .merge(mcp::router(db, kube, data_provider))
 }
 
 /// ヘルスチェック
