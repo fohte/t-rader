@@ -10,7 +10,7 @@
 # Pod 側で `runAsNonRoot: true`, `readOnlyRootFilesystem: true`,
 # `capabilities.drop: ["ALL"]` を強制しているので、container 側もそれを満たす状態にしておく。
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
