@@ -4,6 +4,7 @@ pub mod entities;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
+pub mod kata_exec;
 pub mod kubeopencode;
 pub mod mcp;
 pub mod middleware;
