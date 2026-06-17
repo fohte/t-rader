@@ -34,6 +34,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     annotations, bars, comments, history, imports, notes, refs, strategies, trades, watchlists,
 };
+use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
     DisabledKubeopencodeClient, KubeopencodeClient, SharedKubeopencodeClient,
 };
@@ -49,6 +50,9 @@ pub struct AppState {
     /// kubeopencode (Task CR) クライアント。`KUBEOPENCODE_API_URL` 未設定時は
     /// `DisabledKubeopencodeClient` が入り、submit_strategy_task は MCP エラーを返す。
     pub kubeopencode: SharedKubeopencodeClient,
+    /// Kata Containers exec Pod executor。`KATA_EXEC_API_URL` 未設定時は `None` で
+    /// 起動し、`eval_python` tool は MCP エラーを返す。
+    pub kata_executor: Option<SharedKataExecutor>,
 }
 
 impl AppState {
@@ -113,6 +117,7 @@ mod app_state_tests {
             db: mock_db(),
             data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
             kubeopencode: AppState::disabled_kubeopencode(),
+            kata_executor: None,
         };
         assert!(state.data_provider().is_ok());
     }
@@ -123,6 +128,7 @@ mod app_state_tests {
             db: mock_db(),
             data_provider: None,
             kubeopencode: AppState::disabled_kubeopencode(),
+            kata_executor: None,
         };
         let result = state.data_provider();
         assert!(result.is_err());
@@ -218,12 +224,13 @@ pub fn create_router(state: AppState) -> Router {
     let db = state.db.clone();
     let kube = state.kubeopencode.clone();
     let data_provider = state.data_provider.clone();
+    let kata_executor = state.kata_executor.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
     router
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
-        .merge(mcp::router(db, kube, data_provider))
+        .merge(mcp::router(db, kube, data_provider, kata_executor))
 }
 
 /// ヘルスチェック

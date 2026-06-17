@@ -139,3 +139,24 @@ pub struct ReadAnnotationsParams {
 pub struct ReadAnnotationsResult {
     pub annotations: Vec<AnnotationDto>,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EvalPythonParams {
+    pub strategy_id: Uuid,
+    /// 実行する Python コード本体 (utf-8)
+    pub code: String,
+    /// 実行中に Python の sys.stdin に流す入力
+    pub stdin: Option<String>,
+    /// wall-clock 上限。MCP 層の上限値を超える指定は invalid_params で拒否する。
+    pub timeout_secs: Option<u32>,
+    /// stdout + stderr の合計バイト数の上限。MCP 層の上限値を超える指定は
+    /// invalid_params で拒否する。
+    pub max_output_bytes: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct EvalPythonResult {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}

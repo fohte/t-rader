@@ -8,6 +8,7 @@ use backend::data_provider::DataProviderKind;
 use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::error::AppError;
+use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::kubeopencode::{
     HttpKubeopencodeClient, KubeopencodeClient, KubeopencodeConfig, SharedKubeopencodeClient,
 };
@@ -137,10 +138,32 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
+    let kata_executor: Option<SharedKataExecutor> = match KataExecutorConfig::from_env() {
+        Some(config) => match HttpKataExecutor::new(config) {
+            Ok(executor) => {
+                tracing::info!("kata executor initialized");
+                let arc: Arc<dyn KataExecutor + Send + Sync> = Arc::new(executor);
+                Some(arc)
+            }
+            Err(e) => {
+                return Err(AppError::Config(format!(
+                    "failed to initialize kata executor: {e}"
+                )));
+            }
+        },
+        None => {
+            tracing::warn!(
+                "KATA_EXEC_API_URL が未設定のため、kata executor を無効化して起動します"
+            );
+            None
+        }
+    };
+
     let state = AppState {
         db,
         data_provider,
         kubeopencode,
+        kata_executor,
     };
 
     let app = create_router(state);

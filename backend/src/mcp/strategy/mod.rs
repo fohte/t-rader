@@ -13,6 +13,7 @@
 //! - `list_notes`: ノート一覧を返す
 //! - `create_annotation`: アノテーションを作成する
 //! - `read_annotations`: アノテーション一覧を返す
+//! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -20,6 +21,7 @@
 //! - `notes`: ノート操作 (`write_note_inner` / `read_note_inner` / `list_notes_inner`)
 //! - `annotations`: アノテーション操作 (`create_annotation_inner` / `read_annotations_inner`)
 //! - `data`: 価格データ取得 (`query_data_inner`)
+//! - `eval`: Python 実行 (`eval_python_inner`)
 //!
 //! 本モジュールは tool wrapper (`#[tool_router]` / `#[tool_handler]`) と
 //! 戦略境界・エラー変換などドメイン横断のヘルパを担う。
@@ -27,6 +29,7 @@
 pub(super) mod annotations;
 pub(super) mod data;
 pub(super) mod dto;
+pub(super) mod eval;
 pub(super) mod notes;
 
 #[cfg(test)]
@@ -46,11 +49,12 @@ use uuid::Uuid;
 
 use crate::data_provider::{DataProviderError, DataProviderKind};
 use crate::entities::{note, strategy};
+use crate::kata_exec::SharedKataExecutor;
 
 use dto::{
-    CreateAnnotationParams, CreateAnnotationResult, ListNotesParams, ListNotesResult, NoteDto,
-    QueryDataParams, QueryDataResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadNoteParams,
-    WriteNoteParams, WriteNoteResult,
+    CreateAnnotationParams, CreateAnnotationResult, EvalPythonParams, EvalPythonResult,
+    ListNotesParams, ListNotesResult, NoteDto, QueryDataParams, QueryDataResult,
+    ReadAnnotationsParams, ReadAnnotationsResult, ReadNoteParams, WriteNoteParams, WriteNoteResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -70,11 +74,21 @@ pub(super) const ALLOWED_ANNOTATION_KINDS: [&str; 4] = ["signal", "level", "obse
 pub struct StrategyServer {
     db: DatabaseConnection,
     data_provider: Option<Arc<DataProviderKind>>,
+    pub(super) kata_executor: Option<SharedKataExecutor>,
 }
 
 impl StrategyServer {
     pub fn new(db: DatabaseConnection, data_provider: Option<Arc<DataProviderKind>>) -> Self {
-        Self { db, data_provider }
+        Self {
+            db,
+            data_provider,
+            kata_executor: None,
+        }
+    }
+
+    pub fn with_kata_executor(mut self, kata_executor: Option<SharedKataExecutor>) -> Self {
+        self.kata_executor = kata_executor;
+        self
     }
 }
 
@@ -267,6 +281,20 @@ impl StrategyServer {
     ) -> Result<Json<ReadAnnotationsResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.read_annotations_inner(sid, params).await.map(Json)
+    }
+
+    /// Python コードを exec Pod で実行する
+    #[tool(
+        name = "eval_python",
+        description = "Run a Python snippet inside an isolated Kata Containers exec Pod and return stdout/stderr/exit_code. Network, subprocess, and persistent filesystem are denied."
+    )]
+    async fn eval_python(
+        &self,
+        Parameters(params): Parameters<EvalPythonParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<EvalPythonResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.eval_python_inner(sid, params).await.map(Json)
     }
 }
 
