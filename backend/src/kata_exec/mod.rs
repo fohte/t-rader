@@ -42,12 +42,20 @@
 //! `restricted` 相当を設定する。RuntimeClass `kata` は Talos の kata-containers
 //! extension を有効化したノードで登録される。
 
-pub mod client;
-
-pub use client::{
-    DisabledKataExecutor, ExecRequest, ExecResult, HttpKataExecutor, KataExecError, KataExecutor,
-    KataExecutorConfig, PodResourceLimits, SharedKataExecutor,
-};
+mod config;
+mod error;
+mod executor;
+mod manifest;
+mod pod_api;
+mod types;
 
 #[cfg(test)]
-pub use client::FakeKataExecutor;
+mod fake;
+
+pub use config::{KataExecutorConfig, PodResourceLimits};
+pub use error::KataExecError;
+pub use executor::HttpKataExecutor;
+pub use types::{DisabledKataExecutor, ExecRequest, ExecResult, KataExecutor, SharedKataExecutor};
+
+#[cfg(test)]
+pub use fake::FakeKataExecutor;
