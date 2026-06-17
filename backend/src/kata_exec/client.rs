@@ -194,6 +194,63 @@ impl KataExecutorConfig {
     }
 }
 
+/// `run` の Future がキャンセル (ドロップ) された時に、tokio::spawn で
+/// fire-and-forget の DELETE を発行して Pod を回収するガード。
+/// 正常パスでは `disarm()` を呼び、同期 `delete_pod` 経由で結果を捕捉する。
+struct PodDeleteGuard {
+    http: reqwest::Client,
+    delete_url: String,
+    pod_name: String,
+    armed: bool,
+}
+
+impl PodDeleteGuard {
+    fn new(http: reqwest::Client, delete_url: String, pod_name: String) -> Self {
+        Self {
+            http,
+            delete_url,
+            pod_name,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for PodDeleteGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let http = self.http.clone();
+        let url = self.delete_url.clone();
+        let pod_name = std::mem::take(&mut self.pod_name);
+        tokio::spawn(async move {
+            match http.delete(&url).send().await {
+                Ok(res) => {
+                    let status = res.status();
+                    if !status.is_success() && status != StatusCode::NOT_FOUND {
+                        tracing::warn!(
+                            pod = %pod_name,
+                            %status,
+                            "kata exec pod delete on drop returned non-success",
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        pod = %pod_name,
+                        error = %e,
+                        "kata exec pod delete on drop failed",
+                    );
+                }
+            }
+        });
+    }
+}
+
 pub struct HttpKataExecutor {
     http: reqwest::Client,
     api_base_url: String,
@@ -337,9 +394,17 @@ impl HttpKataExecutor {
 
     async fn delete_pod(&self, name: &str) {
         let url = format!("{}?gracePeriodSeconds=0", self.pod_url(name));
-        let result = self.http.delete(&url).send().await;
-        if let Err(e) = result {
-            tracing::warn!(pod = name, error = %e, "failed to delete kata exec pod");
+        match self.http.delete(&url).send().await {
+            Ok(res) => {
+                let status = res.status();
+                // 404 = 既に削除済み (Drop guard と通常パスで二重削除されるケース) は正常扱い。
+                if !status.is_success() && status != StatusCode::NOT_FOUND {
+                    tracing::warn!(pod = name, %status, "kata exec pod delete returned non-success");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(pod = name, error = %e, "failed to delete kata exec pod");
+            }
         }
     }
 
@@ -386,11 +451,21 @@ impl KataExecutor for HttpKataExecutor {
             return Err(e);
         }
 
+        // 呼び出し元から run の Future がドロップされても Pod を確実に消すため、
+        // tokio::spawn による fire-and-forget の DELETE を Drop で発行する。
+        let mut guard = PodDeleteGuard::new(
+            self.http.clone(),
+            format!("{}?gracePeriodSeconds=0", self.pod_url(&pod_name)),
+            pod_name.clone(),
+        );
+
         let outcome = tokio::time::timeout(
             wall_clock_timeout,
             self.wait_for_terminal(&pod_name, max_output_bytes),
         )
         .await;
+        // 正常パスでは同期的に削除し、結果をログに残す。guard 側の fire-and-forget は冗長になる。
+        guard.disarm();
         self.delete_pod(&pod_name).await;
 
         match outcome {
@@ -920,6 +995,60 @@ mod tests {
         assert!(
             matches!(err, KataExecError::OutputTooLarge { limit: 1024 }),
             "got {err:?}",
+        );
+    }
+
+    #[tokio::test]
+    async fn run_future_drop_triggers_pod_delete() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let server = MockServer::start().await;
+        let delete_calls = Arc::new(AtomicUsize::new(0));
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/namespaces/t-rader-exec/pods"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({})))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_regex(r"^/api/v1/namespaces/t-rader-exec/pods/[^/]+$"))
+            // Pod がずっと Running を返すので、wait_for_terminal は終わらない。
+            .respond_with(ResponseTemplate::new(200).set_body_json(pod_status_body("Running")))
+            .mount(&server)
+            .await;
+
+        let counter = delete_calls.clone();
+        Mock::given(method("DELETE"))
+            .respond_with(move |_: &wiremock::Request| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                ResponseTemplate::new(200)
+            })
+            .mount(&server)
+            .await;
+
+        let exec = Arc::new(http_executor(&server, 1024));
+        let exec_for_task = exec.clone();
+        let mut req = ExecRequest::new("while True: pass");
+        req.timeout = Some(Duration::from_secs(10));
+
+        // 呼び出し側で future を tokio::time::timeout で打ち切ってドロップする。
+        // Drop guard が DELETE を spawn する経路を踏ませる。
+        let _ = tokio::time::timeout(Duration::from_millis(50), async move {
+            exec_for_task.run(req).await
+        })
+        .await;
+
+        // tokio::spawn された delete が走るまで少し待つ。
+        for _ in 0..50 {
+            if delete_calls.load(Ordering::SeqCst) > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(
+            delete_calls.load(Ordering::SeqCst) >= 1,
+            "DELETE was not invoked after run() future was dropped",
         );
     }
 }
