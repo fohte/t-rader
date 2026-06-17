@@ -24,10 +24,10 @@
 //! 本モジュールは tool wrapper (`#[tool_router]` / `#[tool_handler]`) と
 //! 戦略境界・エラー変換などドメイン横断のヘルパを担う。
 
-pub mod annotations;
-pub mod data;
-pub mod dto;
-pub mod notes;
+pub(super) mod annotations;
+pub(super) mod data;
+pub(super) mod dto;
+pub(super) mod notes;
 
 #[cfg(test)]
 mod tests_common;
@@ -58,7 +58,7 @@ const MAX_LIST_LIMIT: u64 = 200;
 
 /// 戦略 Agent からの書き込み時に記録する actor 種別。
 /// DB の CHECK 制約で `"human"` / `"llm"` のみ許容されているため `"llm"` を用いる。
-const STRATEGY_AGENT_ACTOR: &str = "llm";
+pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 
@@ -176,23 +176,11 @@ pub(super) async fn ensure_strategy_exists(
     }
 }
 
-pub(super) fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), McpError> {
-    if fm.is_object() {
-        Ok(())
-    } else {
-        Err(invalid_params("frontmatter_json must be a JSON object"))
-    }
-}
-
 pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
     d.to_f64().unwrap_or_else(|| {
         tracing::warn!(value = %d, "decimal value out of f64 range; coerced to 0.0");
         0.0
     })
-}
-
-pub(super) fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
-    Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
 }
 
 #[tool_router]

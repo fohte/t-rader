@@ -16,11 +16,18 @@ use super::dto::{
 };
 use super::{
     DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    ensure_frontmatter_object, ensure_strategy_exists, ensure_strategy_match, fetch_note_owned_by,
-    invalid_params,
+    ensure_strategy_exists, ensure_strategy_match, fetch_note_owned_by, invalid_params,
 };
 
-pub(super) fn note_to_dto(m: note::Model) -> NoteDto {
+fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), McpError> {
+    if fm.is_object() {
+        Ok(())
+    } else {
+        Err(invalid_params("frontmatter_json must be a JSON object"))
+    }
+}
+
+fn note_to_dto(m: note::Model) -> NoteDto {
     NoteDto {
         note_id: m.id,
         strategy_id: m.strategy_id,

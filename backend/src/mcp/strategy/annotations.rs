@@ -4,6 +4,7 @@
 //! [`super::fetch_note_owned_by`] が担う。
 
 use rmcp::ErrorData as McpError;
+use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
@@ -17,10 +18,14 @@ use super::dto::{
 use super::{
     ALLOWED_ANNOTATION_KINDS, DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer,
     clamp_limit, db_error, decimal_to_f64, ensure_strategy_exists, ensure_strategy_match,
-    f64_to_decimal, fetch_note_owned_by, invalid_params,
+    fetch_note_owned_by, invalid_params,
 };
 
-pub(super) fn annotation_to_dto(m: annotation::Model) -> AnnotationDto {
+fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
+    Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
+}
+
+fn annotation_to_dto(m: annotation::Model) -> AnnotationDto {
     AnnotationDto {
         annotation_id: m.id,
         strategy_id: m.strategy_id,
