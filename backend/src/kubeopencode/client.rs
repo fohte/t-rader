@@ -415,14 +415,10 @@ mod tests {
     }
 
     #[rstest]
-    fn from_env_missing_api_url_fails_fast() {
-        let result = KubeopencodeConfig::from_env_with(env_get(&[]));
-        assert!(matches!(result, Err(KubeopencodeConfigError::Missing)));
-    }
-
-    #[rstest]
-    fn from_env_empty_api_url_fails_fast() {
-        let result = KubeopencodeConfig::from_env_with(env_get(&[("KUBEOPENCODE_API_URL", "")]));
+    #[case::missing_env(&[])]
+    #[case::empty_env(&[("KUBEOPENCODE_API_URL", "")])]
+    fn from_env_invalid_api_url_fails_fast(#[case] env: &[(&str, &str)]) {
+        let result = KubeopencodeConfig::from_env_with(env_get(env));
         assert!(matches!(result, Err(KubeopencodeConfigError::Missing)));
     }
 
