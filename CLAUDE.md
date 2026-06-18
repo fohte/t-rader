@@ -114,16 +114,6 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 
 IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐させ、その HTTP エンドポイントを `IBKR_BASE_URL` に設定する (例: `https://ibkr-gateway:5000/v1/api`)。秘密鍵相当の API キーは存在せず、認証は Gateway 側の Web ログインで維持される。
 
-### MCP 許可ホスト
-
-`MCP_ALLOWED_HOSTS` (カンマ区切り) で MCP server (`/mcp/mgmt`, `/mcp/strategy`) が受理する `Host` header を追加する。
-rmcp の DNS rebinding 保護はデフォルトで `localhost` / `127.0.0.1` / `::1` のみを許可するため、in-cluster Service DNS (例: `t-rader-backend.t-rader.svc.cluster.local`) からアクセスする場合は追加が必要。
-port を含めず host 名だけを書けば任意 port を許容する。
-
-```
-MCP_ALLOWED_HOSTS=t-rader-backend.t-rader.svc.cluster.local
-```
-
 ## DB 接続
 
 - DB は `docker compose -f docker-compose.infra.yml up -d` で起動する (全 worktree 共有)
