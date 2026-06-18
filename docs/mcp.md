@@ -44,7 +44,7 @@ personal-bot 等から呼ばれる。tool 単位の認可は持たず、Tailscal
 | `read_note`         | `strategy_id`, `note_id`                        | ノート本文とメタデータ                                                              |
 | `list_notes`        | `strategy_id`, `limit`                          | ノート一覧 (デフォルト 50、最大 200)                                                |
 | `create_annotation` | `strategy_id`, `kind`, `target`, `body`, ...    | アノテーション作成。`kind` は `signal` / `level` / `observation` / `other`          |
-| `read_annotations`  | `strategy_id`, `limit`                          | アノテーション一覧                                                                  |
+| `read_annotations`  | `strategy_id`, `limit`, `target_symbol?`        | アノテーション一覧 (任意で `target_symbol` によるフィルタが可能)                    |
 | `eval_python`       | `strategy_id`, `code`, `stdin?`, `timeout?`     | Python コードを exec Pod (Kata Containers) 上で実行。stdout/stderr/exit code を返す |
 
 `eval_python` は入力値に対する純粋関数評価モデル。exec Pod は 1 container / 単一 Python プロセス / root filesystem read-only / subprocess 不可 / network 全 deny。入出力は stdin → stdout/stderr/exit code のみ。
