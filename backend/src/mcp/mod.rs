@@ -82,7 +82,7 @@ fn build_config(
     let mut config = StreamableHttpServerConfig::default();
     config.session_store = Some(store);
     for host in extra_allowed_hosts {
-        if !config.allowed_hosts.iter().any(|h| h == host) {
+        if !config.allowed_hosts.contains(host) {
             config.allowed_hosts.push(host.clone());
         }
     }
