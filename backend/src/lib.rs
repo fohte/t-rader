@@ -230,7 +230,13 @@ pub fn create_router(state: AppState) -> Router {
     router
         .layer(axum::middleware::from_fn(middleware::reject_null_bytes))
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
-        .merge(mcp::router(db, kube, data_provider, kata_executor))
+        .merge(mcp::router(
+            db,
+            kube,
+            data_provider,
+            kata_executor,
+            mcp::allowed_hosts_from_env(),
+        ))
 }
 
 /// ヘルスチェック

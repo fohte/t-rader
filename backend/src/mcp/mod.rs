@@ -33,6 +33,7 @@ pub fn router(
     kube: SharedKubeopencodeClient,
     data_provider: Option<Arc<DataProviderKind>>,
     kata_executor: Option<SharedKataExecutor>,
+    extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let session_store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(db.clone()));
 
@@ -40,7 +41,7 @@ pub fn router(
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_db.clone(), kube.clone())),
         LocalSessionManager::default().into(),
-        config_with_store(session_store.clone()),
+        build_config(session_store.clone(), &extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
         move || {
@@ -48,7 +49,7 @@ pub fn router(
                 .with_kata_executor(kata_executor.clone()))
         },
         LocalSessionManager::default().into(),
-        config_with_store(session_store),
+        build_config(session_store, &extra_allowed_hosts),
     );
 
     Router::new()
@@ -56,9 +57,40 @@ pub fn router(
         .nest_service("/mcp/strategy", strategy)
 }
 
-fn config_with_store(store: Arc<dyn SessionStore>) -> StreamableHttpServerConfig {
+/// `MCP_ALLOWED_HOSTS` (カンマ区切り) をパースする。未設定または空なら空 Vec。
+pub fn allowed_hosts_from_env() -> Vec<String> {
+    let hosts = std::env::var("MCP_ALLOWED_HOSTS")
+        .ok()
+        .map(|raw| parse_allowed_hosts(&raw))
+        .unwrap_or_default();
+    if !hosts.is_empty() {
+        tracing::info!(
+            extra_allowed_hosts = ?hosts,
+            "MCP allowed hosts extended from MCP_ALLOWED_HOSTS"
+        );
+    }
+    hosts
+}
+
+fn parse_allowed_hosts(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn build_config(
+    store: Arc<dyn SessionStore>,
+    extra_allowed_hosts: &[String],
+) -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default();
     config.session_store = Some(store);
+    for host in extra_allowed_hosts {
+        if !config.allowed_hosts.contains(host) {
+            config.allowed_hosts.push(host.clone());
+        }
+    }
     config
 }
 
@@ -122,7 +154,7 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_kube(), None, None))
+        let server = TestServer::new(router(db, test_kube(), None, None, Vec::new()))
             .expect("failed to build test server");
 
         let response = server
@@ -164,7 +196,7 @@ mod tests {
         };
 
         let session_id = {
-            let server_a = TestServer::new(router(db.clone(), test_kube(), None, None))
+            let server_a = TestServer::new(router(db.clone(), test_kube(), None, None, Vec::new()))
                 .expect("failed to build server A");
             let resp = server_a
                 .post("/mcp/mgmt")
@@ -177,7 +209,7 @@ mod tests {
 
         // server_a は drop されたので in-memory session も消えている。
         // 別 router (= 再起動後のプロセス) で同じ session_id が受け付けられるはず。
-        let server_b = TestServer::new(router(db.clone(), test_kube(), None, None))
+        let server_b = TestServer::new(router(db.clone(), test_kube(), None, None, Vec::new()))
             .expect("failed to build server B");
         let resume = server_b
             .get("/mcp/mgmt")
@@ -198,5 +230,83 @@ mod tests {
             .delete(&session_id)
             .await
             .expect("failed to clean up session row");
+    }
+
+    #[rstest]
+    #[case::empty("", Vec::<String>::new())]
+    #[case::single("example.com", vec!["example.com".to_string()])]
+    #[case::multi_with_port_and_whitespace(
+        "example.com, foo.svc.cluster.local:3000 ,bar",
+        vec![
+            "example.com".to_string(),
+            "foo.svc.cluster.local:3000".to_string(),
+            "bar".to_string(),
+        ],
+    )]
+    #[case::trailing_comma("a,,b,", vec!["a".to_string(), "b".to_string()])]
+    fn parses_env_allowed_hosts(#[case] raw: &str, #[case] expected: Vec<String>) {
+        assert_eq!(parse_allowed_hosts(raw), expected);
+    }
+
+    #[test]
+    fn build_config_keeps_rmcp_defaults_and_appends_extras_without_dup() {
+        let extra_host = "t-rader-backend.t-rader.svc.cluster.local".to_string();
+        let default_hosts = StreamableHttpServerConfig::default().allowed_hosts;
+        assert!(!default_hosts.is_empty());
+
+        let store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(
+            sea_orm::DatabaseConnection::default(),
+        ));
+        let config = build_config(store, &[extra_host.clone(), default_hosts[0].clone()]);
+
+        let mut expected = default_hosts;
+        expected.push(extra_host);
+        assert_eq!(config.allowed_hosts, expected);
+    }
+
+    /// rmcp の DNS rebinding 保護が in-cluster Service DNS を弾く挙動の回帰テスト。
+    #[tokio::test]
+    async fn rejects_in_cluster_host_header_without_extra_allowed_hosts() {
+        let Some(db) = maybe_db().await else {
+            eprintln!("TEST_DATABASE_URL not set; skipping");
+            return;
+        };
+        let server = TestServer::new(router(db, test_kube(), None, None, Vec::new()))
+            .expect("failed to build test server");
+
+        let response = server
+            .post("/mcp/mgmt")
+            .add_header("accept", "application/json, text/event-stream")
+            .add_header("host", "t-rader-backend.t-rader.svc.cluster.local:3000")
+            .json(&initialize_body())
+            .await;
+
+        assert_eq!(response.status_code(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    /// 環境変数経由で in-cluster Service DNS を許可した場合は initialize が通る。
+    #[tokio::test]
+    async fn accepts_in_cluster_host_header_when_configured() {
+        let Some(db) = maybe_db().await else {
+            eprintln!("TEST_DATABASE_URL not set; skipping");
+            return;
+        };
+        let server = TestServer::new(router(
+            db,
+            test_kube(),
+            None,
+            None,
+            vec!["t-rader-backend.t-rader.svc.cluster.local".to_string()],
+        ))
+        .expect("failed to build test server");
+
+        let response = server
+            .post("/mcp/mgmt")
+            .add_header("accept", "application/json, text/event-stream")
+            .add_header("host", "t-rader-backend.t-rader.svc.cluster.local:3000")
+            .json(&initialize_body())
+            .await;
+
+        response.assert_status_ok();
     }
 }
