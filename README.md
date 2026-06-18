@@ -129,3 +129,14 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 | `VITE_API_URL`          | Vite 開発サーバーのプロキシ先 URL                                       | `http://localhost:3000` |
 | `API_BACKEND_URL`       | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)           | -                       |
 | `NGINX_RESOLVER`        | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須) | -                       |
+| `MCP_ALLOWED_HOSTS`     | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)     | -                       |
+
+### `MCP_ALLOWED_HOSTS`
+
+rmcp の DNS rebinding 保護は既定で `localhost` / `127.0.0.1` / `::1` のみを許可する。
+in-cluster の Service DNS 経由 (例: `t-rader-backend.t-rader.svc.cluster.local`) でアクセスする場合は本変数で許可ホスト名を追加する必要がある。
+port を含めずホスト名だけを書けば任意 port を許容する。
+
+```
+MCP_ALLOWED_HOSTS=t-rader-backend.t-rader.svc.cluster.local
+```
