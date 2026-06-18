@@ -34,18 +34,17 @@ pub fn router(
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let session_store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(db.clone()));
-    let extra: Arc<[String]> = Arc::from(extra_allowed_hosts);
 
     let mgmt_db = db.clone();
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_db.clone(), kube.clone())),
         LocalSessionManager::default().into(),
-        build_config(session_store.clone(), &extra),
+        build_config(session_store.clone(), &extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
         move || Ok(StrategyServer::new(db.clone(), data_provider.clone())),
         LocalSessionManager::default().into(),
-        build_config(session_store, &extra),
+        build_config(session_store, &extra_allowed_hosts),
     );
 
     Router::new()
@@ -53,11 +52,7 @@ pub fn router(
         .nest_service("/mcp/strategy", strategy)
 }
 
-/// `MCP_ALLOWED_HOSTS` 環境変数をカンマ区切りでパースし、追加許可ホスト一覧を返す。
-///
-/// 値が未設定または空のときは空 Vec を返す。`localhost` 系の rmcp 既定値は
-/// [`build_config`] 側でマージされるため、本関数は in-cluster Service DNS の
-/// ような環境固有のホスト名のみを表現する。
+/// `MCP_ALLOWED_HOSTS` (カンマ区切り) をパースする。未設定または空なら空 Vec。
 pub fn allowed_hosts_from_env() -> Vec<String> {
     let hosts = std::env::var("MCP_ALLOWED_HOSTS")
         .ok()
@@ -86,8 +81,6 @@ fn build_config(
 ) -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default();
     config.session_store = Some(store);
-    // rmcp の既定値 (localhost / 127.0.0.1 / ::1) を残しつつ、env で追加された
-    // ホスト名 (in-cluster Service DNS 等) を append する。
     for host in extra_allowed_hosts {
         if !config.allowed_hosts.iter().any(|h| h == host) {
             config.allowed_hosts.push(host.clone());
@@ -254,28 +247,16 @@ mod tests {
     fn build_config_keeps_rmcp_defaults_and_appends_extras_without_dup() {
         let extra_host = "t-rader-backend.t-rader.svc.cluster.local".to_string();
         let default_hosts = StreamableHttpServerConfig::default().allowed_hosts;
-        // 既定値の存在自体は rmcp 側の仕様変更を許容したいので具体名は assert しない。
         assert!(!default_hosts.is_empty());
 
-        let store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(noop_db()));
-        let config = build_config(
-            store,
-            &[
-                extra_host.clone(),
-                // 既定値と重複する分は除外される
-                default_hosts[0].clone(),
-            ],
-        );
+        let store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(
+            sea_orm::DatabaseConnection::default(),
+        ));
+        let config = build_config(store, &[extra_host.clone(), default_hosts[0].clone()]);
 
         let mut expected = default_hosts;
         expected.push(extra_host);
         assert_eq!(config.allowed_hosts, expected);
-    }
-
-    /// `build_config` 単体テスト用の dummy `DatabaseConnection`。
-    /// 実際の DB 接続は行わない (disconnected な default を返す)。
-    fn noop_db() -> sea_orm::DatabaseConnection {
-        sea_orm::DatabaseConnection::default()
     }
 
     /// rmcp の DNS rebinding 保護が in-cluster Service DNS を弾く挙動の回帰テスト。

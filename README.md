@@ -138,5 +138,5 @@ in-cluster の Service DNS 経由 (例: `t-rader-backend.t-rader.svc.cluster.loc
 port を含めずホスト名だけを書けば任意 port を許容する。
 
 ```
-MCP_ALLOWED_HOSTS=t-rader-backend.t-rader.svc.cluster.local
+MCP_ALLOWED_HOSTS=t-rader-backend.t-rader.svc.cluster.local,other-host.example.com
 ```
