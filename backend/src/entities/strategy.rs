@@ -14,6 +14,14 @@ pub struct Model {
     pub sort_order: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "Text")]
+    pub agents_md: String,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub skills: Json,
+    #[sea_orm(column_type = "Text")]
+    pub agent_status: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub agent_error: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
