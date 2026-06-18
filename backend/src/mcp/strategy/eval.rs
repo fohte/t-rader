@@ -120,6 +120,7 @@ fn kata_exec_error(err: KataExecError, strategy_id: Uuid) -> McpError {
 mod tests {
     use std::sync::Arc;
 
+    use rstest::rstest;
     use sea_orm::{DatabaseBackend, MockDatabase};
     use uuid::Uuid;
 
@@ -204,48 +205,33 @@ mod tests {
         assert!(executor.requests.lock().await.is_empty());
     }
 
+    #[rstest]
+    #[case::empty_code("print(1)".to_string().replace("print(1)", ""), None, None, "code must not be empty".to_string())]
+    #[case::oversized_code(
+        "a".repeat(MAX_CODE_BYTES + 1),
+        None,
+        None,
+        format!("code exceeds {MAX_CODE_BYTES} bytes"),
+    )]
+    #[case::excessive_timeout(
+        "print(1)".into(),
+        Some(MAX_TIMEOUT_SECS + 1),
+        None,
+        format!("timeout_secs exceeds maximum of {MAX_TIMEOUT_SECS}"),
+    )]
+    #[case::excessive_output(
+        "print(1)".into(),
+        None,
+        Some(MAX_OUTPUT_BYTES + 1),
+        format!("max_output_bytes exceeds maximum of {MAX_OUTPUT_BYTES}"),
+    )]
     #[tokio::test]
-    async fn eval_python_rejects_empty_code() {
-        let executor = Arc::new(FakeKataExecutor::new());
-        let (server, _) = build_server(executor.clone());
-        let sid = Uuid::new_v4();
-
-        let err = server
-            .eval_python_inner(sid, params(sid, ""))
-            .await
-            .expect_err("empty");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                "code must not be empty"
-            ),
-        );
-    }
-
-    #[tokio::test]
-    async fn eval_python_rejects_oversized_code() {
-        let executor = Arc::new(FakeKataExecutor::new());
-        let (server, _) = build_server(executor.clone());
-        let sid = Uuid::new_v4();
-        let huge = "a".repeat(MAX_CODE_BYTES + 1);
-
-        let err = server
-            .eval_python_inner(sid, params(sid, &huge))
-            .await
-            .expect_err("oversized");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!("code exceeds {MAX_CODE_BYTES} bytes").as_str(),
-            ),
-        );
-        assert!(executor.requests.lock().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn eval_python_rejects_excessive_timeout() {
+    async fn eval_python_rejects_invalid_input(
+        #[case] code: String,
+        #[case] timeout_secs: Option<u32>,
+        #[case] max_output_bytes: Option<u32>,
+        #[case] expected_msg: String,
+    ) {
         let executor = Arc::new(FakeKataExecutor::new());
         let (server, _) = build_server(executor.clone());
         let sid = Uuid::new_v4();
@@ -254,88 +240,53 @@ mod tests {
             .eval_python_inner(
                 sid,
                 EvalPythonParams {
-                    timeout_secs: Some(MAX_TIMEOUT_SECS + 1),
-                    ..params(sid, "print(1)")
+                    strategy_id: sid,
+                    code,
+                    stdin: None,
+                    timeout_secs,
+                    max_output_bytes,
                 },
             )
             .await
-            .expect_err("excessive timeout");
+            .expect_err("expected validation error");
         assert_eq!(
             (err.code, err.message.as_ref()),
             (
                 rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!("timeout_secs exceeds maximum of {MAX_TIMEOUT_SECS}").as_str(),
+                expected_msg.as_str()
             ),
         );
         assert!(executor.requests.lock().await.is_empty());
     }
 
+    #[rstest]
+    #[case::timeout(
+        KataExecError::Timeout(Duration::from_secs(5)),
+        format!("execution timed out after {:?}", Duration::from_secs(5)),
+    )]
+    #[case::output_too_large(
+        KataExecError::OutputTooLarge { limit: 1024 },
+        "output exceeded 1024 bytes".to_string(),
+    )]
     #[tokio::test]
-    async fn eval_python_rejects_excessive_output_limit() {
+    async fn eval_python_maps_executor_error_to_invalid_params(
+        #[case] executor_error: KataExecError,
+        #[case] expected_msg: String,
+    ) {
         let executor = Arc::new(FakeKataExecutor::new());
+        executor.set_response(Err(executor_error)).await;
         let (server, _) = build_server(executor.clone());
         let sid = Uuid::new_v4();
 
         let err = server
-            .eval_python_inner(
-                sid,
-                EvalPythonParams {
-                    max_output_bytes: Some(MAX_OUTPUT_BYTES + 1),
-                    ..params(sid, "print(1)")
-                },
-            )
+            .eval_python_inner(sid, params(sid, "print(1)"))
             .await
-            .expect_err("excessive output");
+            .expect_err("expected mapped error");
         assert_eq!(
             (err.code, err.message.as_ref()),
             (
                 rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!("max_output_bytes exceeds maximum of {MAX_OUTPUT_BYTES}").as_str(),
-            ),
-        );
-        assert!(executor.requests.lock().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn eval_python_maps_timeout_to_invalid_params() {
-        let executor = Arc::new(FakeKataExecutor::new());
-        executor
-            .set_response(Err(KataExecError::Timeout(Duration::from_secs(5))))
-            .await;
-        let (server, _) = build_server(executor.clone());
-        let sid = Uuid::new_v4();
-
-        let err = server
-            .eval_python_inner(sid, params(sid, "while True: pass"))
-            .await
-            .expect_err("timeout");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!("execution timed out after {:?}", Duration::from_secs(5)).as_str(),
-            ),
-        );
-    }
-
-    #[tokio::test]
-    async fn eval_python_maps_output_too_large_to_invalid_params() {
-        let executor = Arc::new(FakeKataExecutor::new());
-        executor
-            .set_response(Err(KataExecError::OutputTooLarge { limit: 1024 }))
-            .await;
-        let (server, _) = build_server(executor.clone());
-        let sid = Uuid::new_v4();
-
-        let err = server
-            .eval_python_inner(sid, params(sid, "print('x' * 10_000_000)"))
-            .await
-            .expect_err("too large");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                "output exceeded 1024 bytes",
+                expected_msg.as_str()
             ),
         );
     }
