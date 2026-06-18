@@ -28,6 +28,7 @@ pub async fn create_test_server(pool: PgPool) -> TestServer {
         db,
         data_provider: None,
         kubeopencode: AppState::disabled_kubeopencode(),
+        kata_executor: None,
     };
     let router = create_router(state);
     TestServer::new(router).expect("failed to create test server")

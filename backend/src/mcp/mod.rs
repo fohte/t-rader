@@ -18,6 +18,7 @@ use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 use sea_orm::DatabaseConnection;
 
 use crate::data_provider::DataProviderKind;
+use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::SharedKubeopencodeClient;
 pub use mgmt::MgmtServer;
 pub use store::PostgresSessionStore;
@@ -31,6 +32,7 @@ pub fn router(
     db: DatabaseConnection,
     kube: SharedKubeopencodeClient,
     data_provider: Option<Arc<DataProviderKind>>,
+    kata_executor: Option<SharedKataExecutor>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let session_store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(db.clone()));
@@ -42,7 +44,10 @@ pub fn router(
         build_config(session_store.clone(), &extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
-        move || Ok(StrategyServer::new(db.clone(), data_provider.clone())),
+        move || {
+            Ok(StrategyServer::new(db.clone(), data_provider.clone())
+                .with_kata_executor(kata_executor.clone()))
+        },
         LocalSessionManager::default().into(),
         build_config(session_store, &extra_allowed_hosts),
     );
@@ -149,7 +154,7 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_kube(), None, Vec::new()))
+        let server = TestServer::new(router(db, test_kube(), None, None, Vec::new()))
             .expect("failed to build test server");
 
         let response = server
@@ -191,7 +196,7 @@ mod tests {
         };
 
         let session_id = {
-            let server_a = TestServer::new(router(db.clone(), test_kube(), None, Vec::new()))
+            let server_a = TestServer::new(router(db.clone(), test_kube(), None, None, Vec::new()))
                 .expect("failed to build server A");
             let resp = server_a
                 .post("/mcp/mgmt")
@@ -204,7 +209,7 @@ mod tests {
 
         // server_a は drop されたので in-memory session も消えている。
         // 別 router (= 再起動後のプロセス) で同じ session_id が受け付けられるはず。
-        let server_b = TestServer::new(router(db.clone(), test_kube(), None, Vec::new()))
+        let server_b = TestServer::new(router(db.clone(), test_kube(), None, None, Vec::new()))
             .expect("failed to build server B");
         let resume = server_b
             .get("/mcp/mgmt")
@@ -266,7 +271,7 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_kube(), None, Vec::new()))
+        let server = TestServer::new(router(db, test_kube(), None, None, Vec::new()))
             .expect("failed to build test server");
 
         let response = server
@@ -289,6 +294,7 @@ mod tests {
         let server = TestServer::new(router(
             db,
             test_kube(),
+            None,
             None,
             vec!["t-rader-backend.t-rader.svc.cluster.local".to_string()],
         ))
