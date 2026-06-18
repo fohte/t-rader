@@ -428,9 +428,11 @@ mod tests {
 
     #[rstest]
     fn from_env_disabled_sentinel_returns_disabled() {
-        let result =
-            KubeopencodeConfig::from_env_with(env_get(&[("KUBEOPENCODE_API_URL", "disabled")]))
-                .expect("disabled sentinel is accepted");
+        let result = KubeopencodeConfig::from_env_with(env_get(&[(
+            "KUBEOPENCODE_API_URL",
+            KUBEOPENCODE_DISABLED_SENTINEL,
+        )]))
+        .expect("disabled sentinel is accepted");
         assert!(matches!(result, KubeopencodeConfigSource::Disabled));
     }
 
