@@ -206,7 +206,12 @@ mod tests {
     }
 
     #[rstest]
-    #[case::empty_code("print(1)".to_string().replace("print(1)", ""), None, None, "code must not be empty".to_string())]
+    #[case::empty_code(
+        String::new(),
+        None,
+        None,
+        "code must not be empty".to_string(),
+    )]
     #[case::oversized_code(
         "a".repeat(MAX_CODE_BYTES + 1),
         None,
