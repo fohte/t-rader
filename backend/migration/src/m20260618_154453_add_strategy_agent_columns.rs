@@ -1,4 +1,4 @@
-use sea_orm_migration::prelude::*;
+use sea_orm_migration::{prelude::*, sea_query::extension::postgres::Type};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -12,9 +12,32 @@ enum Strategy {
     AgentError,
 }
 
+#[derive(DeriveIden)]
+struct StrategyAgentStatus;
+
+#[derive(DeriveIden)]
+enum StrategyAgentStatusVariant {
+    Pending,
+    Ready,
+    Failed,
+}
+
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_type(
+                Type::create()
+                    .as_enum(StrategyAgentStatus)
+                    .values([
+                        StrategyAgentStatusVariant::Pending,
+                        StrategyAgentStatusVariant::Ready,
+                        StrategyAgentStatusVariant::Failed,
+                    ])
+                    .to_owned(),
+            )
+            .await?;
+
         manager
             .alter_table(
                 Table::alter()
@@ -33,9 +56,9 @@ impl MigrationTrait for Migration {
                     )
                     .add_column_if_not_exists(
                         ColumnDef::new(Strategy::AgentStatus)
-                            .text()
+                            .custom(StrategyAgentStatus)
                             .not_null()
-                            .default("Pending"),
+                            .default(Expr::cust("'pending'::strategy_agent_status")),
                     )
                     .add_column_if_not_exists(ColumnDef::new(Strategy::AgentError).text())
                     .to_owned(),
@@ -56,6 +79,10 @@ impl MigrationTrait for Migration {
                     .drop_column(Strategy::AgentsMd)
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .drop_type(Type::drop().name(StrategyAgentStatus).to_owned())
             .await?;
 
         Ok(())
