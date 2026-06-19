@@ -112,33 +112,56 @@ pub struct KubeopencodeConfig {
     pub insecure_tls: bool,
 }
 
+/// `KUBEOPENCODE_API_URL` を opt-out 用に予約した特別値。dev 環境のみ想定。
+pub const KUBEOPENCODE_DISABLED_SENTINEL: &str = "disabled";
+
+/// `from_env` の戻り値。production では `Configured` 必須、dev のみ `Disabled` を許容する。
+#[derive(Debug)]
+pub enum KubeopencodeConfigSource {
+    Configured(KubeopencodeConfig),
+    Disabled,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum KubeopencodeConfigError {
+    #[error(
+        "KUBEOPENCODE_API_URL is not set. Set it to the kube-apiserver URL, or to '{}' for explicit opt-out (dev only).",
+        KUBEOPENCODE_DISABLED_SENTINEL
+    )]
+    Missing,
+}
+
 impl KubeopencodeConfig {
-    /// 環境変数から設定を読み出す。`KUBEOPENCODE_API_URL` が未設定なら `None`。
-    pub fn from_env() -> Option<Self> {
-        let api_base_url = std::env::var("KUBEOPENCODE_API_URL")
-            .ok()
-            .filter(|s| !s.is_empty())?;
-        let namespace = std::env::var("KUBEOPENCODE_NAMESPACE")
-            .ok()
+    /// 環境変数から設定を読み出す。`KUBEOPENCODE_API_URL=disabled` は dev 用 opt-out。
+    pub fn from_env() -> Result<KubeopencodeConfigSource, KubeopencodeConfigError> {
+        Self::from_env_with(|key| std::env::var(key).ok())
+    }
+
+    fn from_env_with<F>(get: F) -> Result<KubeopencodeConfigSource, KubeopencodeConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let api_base_url = get("KUBEOPENCODE_API_URL")
+            .filter(|s| !s.is_empty())
+            .ok_or(KubeopencodeConfigError::Missing)?;
+        if api_base_url == KUBEOPENCODE_DISABLED_SENTINEL {
+            return Ok(KubeopencodeConfigSource::Disabled);
+        }
+        let namespace = get("KUBEOPENCODE_NAMESPACE")
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| DEFAULT_NAMESPACE.to_string());
-        let bearer_token = std::env::var("KUBEOPENCODE_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty());
-        let ca_cert_path = std::env::var("KUBEOPENCODE_CA_CERT_PATH")
-            .ok()
-            .filter(|s| !s.is_empty());
-        let insecure_tls = std::env::var("KUBEOPENCODE_INSECURE_TLS")
-            .ok()
+        let bearer_token = get("KUBEOPENCODE_TOKEN").filter(|s| !s.is_empty());
+        let ca_cert_path = get("KUBEOPENCODE_CA_CERT_PATH").filter(|s| !s.is_empty());
+        let insecure_tls = get("KUBEOPENCODE_INSECURE_TLS")
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
             .unwrap_or(false);
-        Some(Self {
+        Ok(KubeopencodeConfigSource::Configured(Self {
             api_base_url,
             namespace,
             bearer_token,
             ca_cert_path,
             insecure_tls,
-        })
+        }))
     }
 }
 
@@ -374,6 +397,72 @@ mod tests {
     use serde_json::json;
     use wiremock::matchers::{body_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key: &str| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    fn expect_configured(source: KubeopencodeConfigSource) -> KubeopencodeConfig {
+        match source {
+            KubeopencodeConfigSource::Configured(c) => c,
+            KubeopencodeConfigSource::Disabled => panic!("expected Configured, got Disabled"),
+        }
+    }
+
+    #[rstest]
+    #[case::missing_env(&[])]
+    #[case::empty_env(&[("KUBEOPENCODE_API_URL", "")])]
+    fn from_env_invalid_api_url_fails_fast(#[case] env: &[(&str, &str)]) {
+        let result = KubeopencodeConfig::from_env_with(env_get(env));
+        assert!(matches!(result, Err(KubeopencodeConfigError::Missing)));
+    }
+
+    #[rstest]
+    fn from_env_disabled_sentinel_returns_disabled() {
+        let result = KubeopencodeConfig::from_env_with(env_get(&[(
+            "KUBEOPENCODE_API_URL",
+            KUBEOPENCODE_DISABLED_SENTINEL,
+        )]))
+        .expect("disabled sentinel is accepted");
+        assert!(matches!(result, KubeopencodeConfigSource::Disabled));
+    }
+
+    #[rstest]
+    fn from_env_with_url_returns_configured() {
+        let config = expect_configured(
+            KubeopencodeConfig::from_env_with(env_get(&[
+                ("KUBEOPENCODE_API_URL", "https://kube.example/api"),
+                ("KUBEOPENCODE_NAMESPACE", "custom-ns"),
+                ("KUBEOPENCODE_TOKEN", "tok"),
+                ("KUBEOPENCODE_INSECURE_TLS", "true"),
+            ]))
+            .expect("configured"),
+        );
+        assert_eq!(config.api_base_url, "https://kube.example/api");
+        assert_eq!(config.namespace, "custom-ns");
+        assert_eq!(config.bearer_token.as_deref(), Some("tok"));
+        assert_eq!(config.ca_cert_path, None);
+        assert!(config.insecure_tls);
+    }
+
+    #[rstest]
+    fn from_env_defaults_namespace_when_unset() {
+        let config = expect_configured(
+            KubeopencodeConfig::from_env_with(env_get(&[(
+                "KUBEOPENCODE_API_URL",
+                "https://kube.example/api",
+            )]))
+            .expect("configured"),
+        );
+        assert_eq!(config.namespace, DEFAULT_NAMESPACE);
+        assert!(!config.insecure_tls);
+        assert_eq!(config.bearer_token, None);
+    }
 
     #[rstest]
     #[case::pending("Pending", Some(TaskPhase::Pending))]

@@ -47,8 +47,8 @@ pub struct AppState {
     /// `JQUANTS_API_KEY` 未設定時は None で起動する。
     /// データ取得系のエンドポイントは利用時にエラーを返す。
     pub data_provider: Option<Arc<DataProviderKind>>,
-    /// kubeopencode (Task CR) クライアント。`KUBEOPENCODE_API_URL` 未設定時は
-    /// `DisabledKubeopencodeClient` が入り、submit_strategy_task は MCP エラーを返す。
+    /// kubeopencode (Task CR) クライアント。`KUBEOPENCODE_API_URL=disabled` (dev opt-out)
+    /// の場合は `DisabledKubeopencodeClient` が入り、submit_strategy_task は MCP エラーを返す。
     pub kubeopencode: SharedKubeopencodeClient,
     /// Kata Containers exec Pod executor。`KATA_EXEC_API_URL` 未設定時は `None` で
     /// 起動し、`eval_python` tool は MCP エラーを返す。

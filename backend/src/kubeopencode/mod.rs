@@ -7,7 +7,8 @@ pub mod client;
 
 pub use client::{
     DisabledKubeopencodeClient, HttpKubeopencodeClient, KubeopencodeClient, KubeopencodeConfig,
-    KubeopencodeError, SharedKubeopencodeClient, TaskCrSpec, TaskCrStatus, TaskPhase,
+    KubeopencodeConfigError, KubeopencodeConfigSource, KubeopencodeError, SharedKubeopencodeClient,
+    TaskCrSpec, TaskCrStatus, TaskPhase,
 };
 
 #[cfg(test)]
