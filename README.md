@@ -131,10 +131,8 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 | `NGINX_RESOLVER`    | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須) | -                       |
 | `MCP_ALLOWED_HOSTS` | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)     | -                       |
 
-## 本番運用と cross-repo 契約
+## Deployment と外部連携
 
-MCP server / kubeopencode 連携 / 配備時に必要な env と RBAC は `docs/` 配下にまとめている。infra (Helm chart) / personal-bot / kubeopencode operator との接点を変更する際は、本セクションの文書も併せて更新すること。
-
-- [`docs/mcp.md`](./docs/mcp.md) — `/mcp/mgmt` と `/mcp/strategy` の tool 一覧、session 永続化、`MCP_ALLOWED_HOSTS` の挙動
-- [`docs/deployment.md`](./docs/deployment.md) — 必須 env / RBAC / Service port
-- [`docs/kubeopencode-integration.md`](./docs/kubeopencode-integration.md) — Agent CR 命名規約と Task CR の責務境界
+- [`docs/mcp.md`](./docs/mcp.md): `/mcp/mgmt` と `/mcp/strategy` の tool 一覧、session 永続化、`MCP_ALLOWED_HOSTS` の挙動
+- [`docs/deployment.md`](./docs/deployment.md): 必須 env、backend が要求する権限、Service port
+- [`docs/kubeopencode-integration.md`](./docs/kubeopencode-integration.md): kubeopencode operator との連携で backend が依存する seam

@@ -1,17 +1,17 @@
 # Deployment
 
-t-rader-backend は home-k8s クラスタ上の `t-rader` namespace に Deployment + Service として配備される。LLM 実行は kubeopencode (別 namespace) に委譲し、backend 自体は Axum プロセスを 1 つだけ起動する。
+t-rader-backend は Kubernetes クラスタ上に Deployment + Service として配備される想定。backend 自体は Axum プロセスを 1 つだけ起動し、LLM 実行は kubeopencode operator (別 namespace) に委譲する。
+
+実際のクラスタ、namespace、Helm chart、外部公開経路は別途 infra リポジトリで管理する。
 
 ## Service と接続経路
 
 - backend は port `3000` を listen する (`BACKEND_PORT` で変更可)。
-- in-cluster からは `t-rader-backend.t-rader.svc.cluster.local:3000` で到達できる前提。frontend Pod 内 nginx は `/api` を同 Service にリバースプロキシし、SPA から見て同一オリジン構成にする。
-- 戦略 Agent (kubeopencode namespace) と personal-bot は in-cluster Service DNS 経由で MCP path (`/mcp/strategy`, `/mcp/mgmt`) を叩く。`MCP_ALLOWED_HOSTS` に Service DNS を追加しないと `rmcp` の DNS rebinding 保護で 403 になる ([`docs/mcp.md`](./mcp.md))。
-- 外部公開は frontend のみ。Cloudflare Tunnel → frontend Service → 同 Pod の nginx 経由で backend に到達する。backend Service を直接 Ingress しない。
+- frontend Pod 内 nginx が `/api` を backend Service にリバースプロキシし、SPA から見て同一オリジン構成にする想定。
+- MCP クライアント (戦略 Agent / 管理 MCP の外部コントロールプレーンクライアント) は in-cluster Service DNS で MCP path (`/mcp/strategy`, `/mcp/mgmt`) を叩く。`MCP_ALLOWED_HOSTS` に backend Service の DNS 名を追加しないと `rmcp` の DNS rebinding 保護で 403 になる ([`docs/mcp.md`](./mcp.md))。
+- backend Service を直接 Ingress しない。外部公開は frontend のみで、その経路は infra リポジトリ側で組む。
 
 ## 環境変数
-
-必須 (未設定なら起動失敗または production で機能不全) を上、条件付き必須を中、任意を下に置く。
 
 | 区分              | 変数                   | 意味                                                                            | 未設定時の挙動                                                                   |
 | ----------------- | ---------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -26,29 +26,25 @@ t-rader-backend は home-k8s クラスタ上の `t-rader` namespace に Deployme
 
 kubeopencode / kata-exec の追加の任意変数 (`KUBEOPENCODE_NAMESPACE`, `KATA_EXEC_NAMESPACE`, `KATA_EXEC_IMAGE`, `KATA_EXEC_TOKEN`, `KATA_EXEC_DEFAULT_TIMEOUT_SECS`, `KATA_EXEC_MAX_OUTPUT_BYTES` 等) は backend のソース (`backend/src/kubeopencode/`, `backend/src/kata_exec/`) を参照。in-cluster で動かす場合 token / CA は ServiceAccount のものを自動で読む。
 
-## 必須 RBAC
+## backend が要求する権限
 
-backend ServiceAccount に以下の権限を付与する (詳細な YAML は infra リポジトリで管理)。
+backend ServiceAccount が必要とする操作を、対象 namespace の役割ごとに列挙する。実際の RoleBinding / RBAC YAML は infra リポジトリで組み立てる。
 
-### `kubeopencode` namespace
+### 戦略 Agent ランタイム namespace (kubeopencode operator が動く namespace)
 
-戦略 Agent ライフサイクル (Agent CR / SA / ConfigMap / ExternalSecret の provisioning) と Task CR の投入・監視を backend が直接担う ([`docs/kubeopencode-integration.md`](./kubeopencode-integration.md))。
+戦略 Agent ライフサイクル (Agent CR と関連 ServiceAccount / ConfigMap / ExternalSecret の provisioning) と Task CR の投入・監視を backend が直接担う ([`docs/kubeopencode-integration.md`](./kubeopencode-integration.md))。必要な操作は以下を機能粒度で表す:
 
-- `kubeopencode.io/agents`: `create`, `get`, `list`, `watch`, `update`, `patch`, `delete`
-- `kubeopencode.io/tasks`: `create`, `get`, `list`, `watch`
-- `serviceaccounts`: `create`, `get`, `delete`
-- `configmaps`: `create`, `get`, `update`, `patch`, `delete`
-- `externalsecrets.external-secrets.io`: `create`, `get`, `delete`
+- Agent CR の CRUD と watch
+- Task CR の作成と read (watch を含む)
+- 戦略 Agent 用 ServiceAccount / ConfigMap / ExternalSecret の lifecycle 管理
 
-### `t-rader-exec` namespace
+具体的な resource 名 / API group / verb のセットは `backend/src/kubeopencode/` 配下の client 実装が SSOT。namespace 名は backend 側で `KUBEOPENCODE_NAMESPACE` で受け取る。
 
-`eval_python` tool が exec Pod を per-execution で起動するため、Pod 作成権限が必要。
+### exec Pod 用 namespace
 
-- `pods`: `create`, `get`, `delete`
-- `pods/log`: `get`
-- `pods/exec`: `create` (使う場合のみ)
+`eval_python` tool が exec Pod を per-execution で起動するため、Pod の lifecycle 管理 (作成、状態取得、削除) とログ取得の権限が必要。具体的な resource と verb は `backend/src/kata_exec/` の client 実装が SSOT。namespace 名は `KATA_EXEC_NAMESPACE` で受け取る。
 
-Pod は `runtimeClassName: kata` で microVM 隔離する。NetworkPolicy で egress / ingress を全 deny にすること。
+exec Pod は per-execution で起動し、1 Pod = 1 evaluation で完了後に削除する想定。runtime や NetworkPolicy などの隔離設定はクラスタ側で組み立てる。
 
 ## マイグレーション
 
