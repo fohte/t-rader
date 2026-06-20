@@ -116,27 +116,23 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 
 ## 環境変数
 
-| 変数                    | 説明                                                                    | デフォルト              |
-| ----------------------- | ----------------------------------------------------------------------- | ----------------------- |
-| `DATABASE_URL`          | PostgreSQL 接続 URL                                                     | -                       |
-| `POSTGRES_USER`         | DB ユーザー名                                                           | `t_rader`               |
-| `POSTGRES_PASSWORD`     | DB パスワード                                                           | `t_rader`               |
-| `POSTGRES_DB`           | DB 名                                                                   | `t_rader_development`   |
-| `DB_PORT`               | DB 公開ポート                                                           | `5432`                  |
-| `BACKEND_PORT`          | バックエンド公開ポート                                                  | `3000`                  |
-| `FRONTEND_PORT`         | フロントエンド公開ポート                                                | `5173`                  |
-| `JQUANTS_REFRESH_TOKEN` | J-Quants API リフレッシュトークン                                       | -                       |
-| `VITE_API_URL`          | Vite 開発サーバーのプロキシ先 URL                                       | `http://localhost:3000` |
-| `API_BACKEND_URL`       | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)           | -                       |
-| `NGINX_RESOLVER`        | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須) | -                       |
-| `MCP_ALLOWED_HOSTS`     | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)     | -                       |
+| 変数                | 説明                                                                    | デフォルト              |
+| ------------------- | ----------------------------------------------------------------------- | ----------------------- |
+| `DATABASE_URL`      | PostgreSQL 接続 URL                                                     | -                       |
+| `POSTGRES_USER`     | DB ユーザー名                                                           | `t_rader`               |
+| `POSTGRES_PASSWORD` | DB パスワード                                                           | `t_rader`               |
+| `POSTGRES_DB`       | DB 名                                                                   | `t_rader_development`   |
+| `DB_PORT`           | DB 公開ポート                                                           | `5432`                  |
+| `BACKEND_PORT`      | バックエンド公開ポート                                                  | `3000`                  |
+| `FRONTEND_PORT`     | フロントエンド公開ポート                                                | `5173`                  |
+| `JQUANTS_API_KEY`   | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                    | -                       |
+| `VITE_API_URL`      | Vite 開発サーバーのプロキシ先 URL                                       | `http://localhost:3000` |
+| `API_BACKEND_URL`   | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)           | -                       |
+| `NGINX_RESOLVER`    | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須) | -                       |
+| `MCP_ALLOWED_HOSTS` | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)     | -                       |
 
-### `MCP_ALLOWED_HOSTS`
+## Deployment と外部連携
 
-rmcp の DNS rebinding 保護は既定で `localhost` / `127.0.0.1` / `::1` のみを許可する。
-in-cluster の Service DNS 経由 (例: `t-rader-backend.t-rader.svc.cluster.local`) でアクセスする場合は本変数で許可ホスト名を追加する必要がある。
-port を含めずホスト名だけを書けば任意 port を許容する。
-
-```
-MCP_ALLOWED_HOSTS=t-rader-backend.t-rader.svc.cluster.local,other-host.example.com
-```
+- [`docs/mcp.md`](./docs/mcp.md): `/mcp/mgmt` と `/mcp/strategy` の tool 一覧、session 永続化、`MCP_ALLOWED_HOSTS` の挙動
+- [`docs/deployment.md`](./docs/deployment.md): 必須 env、backend が要求する権限、Service port
+- [`docs/kubeopencode-integration.md`](./docs/kubeopencode-integration.md): kubeopencode operator との連携で backend が依存する seam
