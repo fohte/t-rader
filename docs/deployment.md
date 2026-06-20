@@ -1,15 +1,13 @@
 # Deployment
 
-t-rader-backend は Kubernetes クラスタ上に Deployment + Service として配備される想定。backend 自体は Axum プロセスを 1 つだけ起動し、LLM 実行は kubeopencode operator (別 namespace) に委譲する。
-
-実際のクラスタ、namespace、Helm chart、外部公開経路は別途 infra リポジトリで管理する。
+t-rader-backend は Kubernetes クラスタ上に Deployment + Service として配備する。backend 自体は Axum プロセスを 1 つだけ起動し、LLM 実行は kubeopencode operator (別 namespace) に委譲する。本ドキュメントは backend を任意の Kubernetes クラスタで動かすために必要な要件を記述する。
 
 ## Service と接続経路
 
 - backend は port `3000` を listen する (`BACKEND_PORT` で変更可)。
-- frontend Pod 内 nginx が `/api` を backend Service にリバースプロキシし、SPA から見て同一オリジン構成にする想定。
+- frontend Pod 内 nginx が `/api` を backend Service にリバースプロキシし、SPA から見て同一オリジン構成にする (frontend の Dockerfile と `nginx.conf.template` 参照)。
 - MCP クライアント (戦略 Agent / 管理 MCP の外部コントロールプレーンクライアント) は in-cluster Service DNS で MCP path (`/mcp/strategy`, `/mcp/mgmt`) を叩く。`MCP_ALLOWED_HOSTS` に backend Service の DNS 名を追加しないと `rmcp` の DNS rebinding 保護で 403 になる ([`docs/mcp.md`](./mcp.md))。
-- backend Service を直接 Ingress しない。外部公開は frontend のみで、その経路は infra リポジトリ側で組む。
+- backend Service を直接 Ingress しない。外部公開は frontend のみで、Ingress や Tunnel など外部経路は環境に応じて構成する。
 
 ## 環境変数
 
@@ -28,23 +26,52 @@ kubeopencode / kata-exec の追加の任意変数 (`KUBEOPENCODE_NAMESPACE`, `KA
 
 ## backend が要求する権限
 
-backend ServiceAccount が必要とする操作を、対象 namespace の役割ごとに列挙する。実際の RoleBinding / RBAC YAML は infra リポジトリで組み立てる。
+backend ServiceAccount に以下の Role を付与する。namespace 名は backend 側で env (`KUBEOPENCODE_NAMESPACE` / `KATA_EXEC_NAMESPACE`) で受け取るため任意。
 
-### 戦略 Agent ランタイム namespace (kubeopencode operator が動く namespace)
+### 戦略 Agent ランタイム namespace
 
-戦略 Agent ライフサイクル (Agent CR と関連 ServiceAccount / ConfigMap / ExternalSecret の provisioning) と Task CR の投入・監視を backend が直接担う ([`docs/kubeopencode-integration.md`](./kubeopencode-integration.md))。必要な操作は以下を機能粒度で表す:
+`submit_strategy_task` から Task CR を作成し、watcher で status を取得するために以下が必要:
 
-- Agent CR の CRUD と watch
-- Task CR の作成と read (watch を含む)
-- 戦略 Agent 用 ServiceAccount / ConfigMap / ExternalSecret の lifecycle 管理
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: t-rader-kubeopencode
+  namespace: <KUBEOPENCODE_NAMESPACE>
+rules:
+  - apiGroups: ['kubeopencode.io']
+    resources: ['tasks']
+    verbs: ['create', 'get']
+```
 
-具体的な resource 名 / API group / verb のセットは `backend/src/kubeopencode/` 配下の client 実装が SSOT。namespace 名は backend 側で `KUBEOPENCODE_NAMESPACE` で受け取る。
+戦略 Agent CR と関連 ServiceAccount / ConfigMap / ExternalSecret は現状 backend からは reconcile しないため、それらの権限は不要 ([`docs/kubeopencode-integration.md`](./kubeopencode-integration.md))。
 
 ### exec Pod 用 namespace
 
-`eval_python` tool が exec Pod を per-execution で起動するため、Pod の lifecycle 管理 (作成、状態取得、削除) とログ取得の権限が必要。具体的な resource と verb は `backend/src/kata_exec/` の client 実装が SSOT。namespace 名は `KATA_EXEC_NAMESPACE` で受け取る。
+`eval_python` tool が exec Pod を per-execution で起動・回収するため以下が必要:
 
-exec Pod は per-execution で起動し、1 Pod = 1 evaluation で完了後に削除する想定。runtime や NetworkPolicy などの隔離設定はクラスタ側で組み立てる。
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: t-rader-kata-exec
+  namespace: <KATA_EXEC_NAMESPACE>
+rules:
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['create', 'get', 'list', 'watch', 'delete']
+  - apiGroups: ['']
+    resources: ['pods/log']
+    verbs: ['get']
+```
+
+exec Pod は untrusted な LLM 生成コードを実行するため、以下を namespace 側で構成すること:
+
+- `RuntimeClass` `kata` (microVM 等価の隔離 runtime) を当てる前提で backend が Pod spec を組み立てる。クラスタにこの RuntimeClass を登録すること
+- NetworkPolicy で `<KATA_EXEC_NAMESPACE>` の egress と ingress を全 deny にする
+- Pod Security Admission を `restricted` 相当に設定する
+
+Pod spec 側の不変条件 (`automountServiceAccountToken: false`、`runAsNonRoot`、`readOnlyRootFilesystem`、`capabilities.drop: [ALL]`、`activeDeadlineSeconds`、CPU / memory / ephemeral-storage の limits) は backend が build_pod_manifest で固定する。
 
 ## マイグレーション
 

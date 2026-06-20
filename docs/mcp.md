@@ -47,7 +47,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 | `read_annotations`  | `strategy_id`, `target_symbol?`, `limit?`                                                       | アノテーション一覧 (任意で `target_symbol` によるフィルタが可能)                    |
 | `eval_python`       | `strategy_id`, `code`, `stdin?`, `timeout_secs?`, `max_output_bytes?`                           | Python コードを exec Pod (Kata Containers) 上で実行。stdout/stderr/exit code を返す |
 
-`eval_python` は入力値に対する純粋関数評価モデルとして設計している。1 evaluation = 1 exec Pod で起動し、入出力は stdin → stdout/stderr/exit code のみ。実際の隔離設定 (filesystem の書き込み制限、subprocess の禁止、network egress / ingress の deny など) はクラスタ側で組み立てる ([`docs/deployment.md`](./deployment.md))。
+`eval_python` は入力値に対する純粋関数評価モデルとして設計している。1 evaluation = 1 exec Pod で起動し、入出力は stdin → stdout/stderr/exit code のみ。Pod spec 側の隔離 (read-only rootfs、non-root、capabilities drop、deadline 等) は backend が固定する。namespace 側の隔離 (RuntimeClass `kata`、NetworkPolicy 全 deny、Pod Security Admission) は [`docs/deployment.md`](./deployment.md) を参照。
 
 ## session 永続化
 

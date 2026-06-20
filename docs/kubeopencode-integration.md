@@ -38,7 +38,7 @@ backend が apply する Agent CR の spec は kubeopencode 側スキーマの s
 
 ### reconcile タイミング
 
-backend は Agent CR と関連リソース (SA、ConfigMap、ExternalSecret) の自動 reconcile を行わない。`submit_strategy_task` も Agent の ready 状態を pre-check せず Task CR の作成のみを行う。
+backend は現状 Agent CR の自動 reconcile を実装していない。戦略を増減するときは Agent CR と関連リソース (戦略 Agent 用 ServiceAccount、`AGENTS.md` / skills を載せた ConfigMap、`OPENCODE_API_KEY` を注入する ExternalSecret) をクラスタ管理者が手動で apply する。`submit_strategy_task` も Agent の ready 状態を pre-check せず Task CR の作成のみを行う。
 
 ## Task CR
 
