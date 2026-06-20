@@ -206,6 +206,10 @@ mod tests {
             name: Set("test".to_string()),
             description: Set(None),
             sort_order: Set(0),
+            agents_md: sea_orm::ActiveValue::NotSet,
+            skills: sea_orm::ActiveValue::NotSet,
+            agent_status: sea_orm::ActiveValue::NotSet,
+            agent_error: sea_orm::ActiveValue::NotSet,
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
         }

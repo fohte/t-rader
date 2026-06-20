@@ -18,6 +18,10 @@ pub(super) async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid
         name: Set(name.to_string()),
         description: Set(None),
         sort_order: Set(0),
+        agents_md: NotSet,
+        skills: NotSet,
+        agent_status: NotSet,
+        agent_error: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
     }

@@ -102,6 +102,10 @@ pub async fn create_strategy(
         name: Set(name.clone()),
         description: Set(payload.description.clone()),
         sort_order: Set(sort_order),
+        agents_md: NotSet,
+        skills: NotSet,
+        agent_status: NotSet,
+        agent_error: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
     };
