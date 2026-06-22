@@ -128,6 +128,11 @@ pub fn build_agent_manifest(
     settings: &StrategyAgentSettings,
     namespace: &str,
 ) -> Value {
+    // AGENTS.md / skills は subPath マウント: /workspace は persistence.sessions の PVC と共有で、
+    // ConfigMap を /workspace 直下にマウントすると PVC が隠れる (opencode 規約上 AGENTS.md は
+    // /workspace/AGENTS.md 固定で代替パス無し)。
+    // 副作用: subPath では ConfigMap 更新が Pod 内へ自動反映されない。reconcile で ConfigMap を
+    // 書き換えても次の Pod 起動 (standby.idleTimeout=30m) までは古い内容が見える前提。
     let mut mounts = vec![json!({
         "name": "workspace-context",
         "mountPath": "/workspace/AGENTS.md",

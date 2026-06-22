@@ -4,15 +4,33 @@
 //! `KubeopencodeClient::reconcile_strategy_agent` を実行し、結果を
 //! `strategy.agent_status` / `strategy.agent_error` に書き戻す。
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex as StdMutex};
 
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
 use crate::entities::strategy;
 use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient, StrategyAgentSpec};
+
+/// `strategy_id` ごとに 1 個の `tokio::Mutex` を発行するレジストリ。
+/// 同一戦略への reconcile を直列化し、古い SSA が新しい SSA を上書きする race を防ぐ。
+///
+/// 単一 backend replica 前提。multi-replica 化したら DB レベルの楽観ロック
+/// (`agent_spec_version` 等) に昇格させること。
+fn reconcile_lock_for(strategy_id: Uuid) -> Arc<Mutex<()>> {
+    static REGISTRY: std::sync::OnceLock<StdMutex<HashMap<Uuid, Arc<Mutex<()>>>>> =
+        std::sync::OnceLock::new();
+    let registry = REGISTRY.get_or_init(|| StdMutex::new(HashMap::new()));
+    let mut guard = registry.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .entry(strategy_id)
+        .or_insert_with(|| Arc::new(Mutex::new(())))
+        .clone()
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum StrategyAgentError {
@@ -53,6 +71,11 @@ pub async fn reconcile_and_persist(
     kube: &SharedKubeopencodeClient,
     strategy_id: Uuid,
 ) -> Result<(), StrategyAgentError> {
+    // 同一 strategy_id の reconcile を直列化する: 多重 spawn による古い SSA が新しい SSA を
+    // 上書きする race を抑える。読み出し → kube apply → DB 書き戻し全体をロック内で実行する。
+    let lock = reconcile_lock_for(strategy_id);
+    let _guard = lock.lock().await;
+
     let row = strategy::Entity::find_by_id(strategy_id)
         .one(db)
         .await?
@@ -255,6 +278,38 @@ mod tests {
         assert_eq!(
             (row.agent_status, row.agent_error),
             (StrategyAgentStatus::Pending, None),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn concurrent_reconciles_for_same_strategy_are_serialized(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedKubeopencodeClient = fake.clone();
+
+        // 同一 strategy_id に対して 4 並列で reconcile を走らせる
+        let mut handles = Vec::new();
+        for _ in 0..4 {
+            let db = db.clone();
+            let kube = kube.clone();
+            handles.push(tokio::spawn(async move {
+                reconcile_and_persist(&db, &kube, strategy_id).await
+            }));
+        }
+        for h in handles {
+            h.await.unwrap().unwrap();
+        }
+
+        // 全 reconcile が完走し、最終状態は Ready
+        let row = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (row.agent_status, fake.reconciled.lock().await.len()),
+            (StrategyAgentStatus::Ready, 4),
         );
     }
 
