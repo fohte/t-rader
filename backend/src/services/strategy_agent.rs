@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
 use crate::entities::strategy;
-use crate::kubeopencode::{SharedKubeopencodeClient, StrategyAgentSpec};
+use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient, StrategyAgentSpec};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StrategyAgentError {
@@ -60,6 +60,30 @@ pub async fn reconcile_and_persist(
 
     let spec = build_spec_from_model(&row);
     let outcome = kube.reconcile_strategy_agent(&spec).await;
+
+    // dev opt-out (KUBEOPENCODE_API_URL=disabled): apply 自体が走らないので状態を書き換えない
+    if matches!(outcome, Err(KubeopencodeError::NotConfigured)) {
+        return Ok(());
+    }
+
+    // reconcile 中に DELETE /api/strategies/{id} が走った race: row が消えていれば apply 済みの
+    // Agent CR を後追いで掃除し、状態書き戻しは諦める (孤児リソース防止)
+    let still_present = strategy::Entity::find_by_id(strategy_id)
+        .one(db)
+        .await?
+        .is_some();
+    if !still_present {
+        if outcome.is_ok()
+            && let Err(cleanup) = kube.delete_strategy_agent(&spec.agent_name).await
+        {
+            tracing::warn!(
+                error = %cleanup,
+                strategy_id = %strategy_id,
+                "failed to clean up orphaned agent after concurrent strategy delete",
+            );
+        }
+        return Ok(());
+    }
 
     let mut active = row.into_active_model();
     match outcome {
@@ -144,9 +168,6 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(row.agent_status, StrategyAgentStatus::Ready);
-        assert_eq!(row.agent_error, None);
-
         let reconciled: Vec<Uuid> = fake
             .reconciled
             .lock()
@@ -154,7 +175,10 @@ mod tests {
             .iter()
             .map(|s| s.strategy_id)
             .collect();
-        assert_eq!(reconciled, vec![strategy_id]);
+        assert_eq!(
+            (row.agent_status, row.agent_error, reconciled),
+            (StrategyAgentStatus::Ready, None, vec![strategy_id]),
+        );
     }
 
     #[sqlx::test(migrations = false)]
@@ -178,10 +202,12 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(row.agent_status, StrategyAgentStatus::Failed);
         assert_eq!(
-            row.agent_error.as_deref(),
-            Some("kubeopencode api error (status 500): boom"),
+            (row.agent_status, row.agent_error.as_deref()),
+            (
+                StrategyAgentStatus::Failed,
+                Some("kubeopencode api error (status 500): boom"),
+            ),
         );
     }
 
@@ -209,6 +235,30 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn reconcile_leaves_state_pending_when_kube_disabled(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        fake.set_reconcile_error(KubeopencodeError::NotConfigured)
+            .await;
+        let kube: SharedKubeopencodeClient = fake;
+
+        reconcile_and_persist(&db, &kube, strategy_id)
+            .await
+            .unwrap();
+
+        let row = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (row.agent_status, row.agent_error),
+            (StrategyAgentStatus::Pending, None),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn reconcile_returns_err_when_strategy_missing(pool: PgPool) {
         let db = create_test_db(pool).await;
         let fake: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
@@ -221,9 +271,12 @@ mod tests {
     #[test]
     fn parse_skills_filters_non_string_values() {
         let value = serde_json::json!({ "a": "body", "b": 42, "c": "x" });
-        let parsed = parse_skills(&value);
-        assert_eq!(parsed.len(), 2);
-        assert_eq!(parsed.get("a").map(String::as_str), Some("body"));
-        assert_eq!(parsed.get("c").map(String::as_str), Some("x"));
+        assert_eq!(
+            parse_skills(&value),
+            BTreeMap::from([
+                ("a".to_string(), "body".to_string()),
+                ("c".to_string(), "x".to_string()),
+            ]),
+        );
     }
 }
