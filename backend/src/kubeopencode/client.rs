@@ -6,6 +6,14 @@ use reqwest::{Certificate, StatusCode, header::HeaderMap, header::HeaderValue};
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::kubeopencode::manifest::{
+    AGENT_GROUP, AGENT_PLURAL, AGENT_VERSION, AgentOwnerRef, CONFIGMAP_PLURAL, DEFAULT_AGENT_MODEL,
+    DEFAULT_AGENT_SMALL_MODEL, DEFAULT_SSM_PARAMETER_TEMPLATE, EXTERNAL_SECRET_GROUP,
+    EXTERNAL_SECRET_PLURAL, EXTERNAL_SECRET_VERSION, FIELD_MANAGER, SA_PLURAL,
+    StrategyAgentSettings, StrategyAgentSpec, build_agent_manifest, build_external_secret_manifest,
+    build_service_account_manifest, build_workspace_configmap_manifest,
+};
+
 const TASK_CR_GROUP: &str = "kubeopencode.io";
 const TASK_CR_VERSION: &str = "v1alpha1";
 const TASK_CR_PLURAL: &str = "tasks";
@@ -82,6 +90,20 @@ pub trait KubeopencodeClient: Send + Sync {
     async fn create_task(&self, spec: &TaskCrSpec) -> Result<(), KubeopencodeError>;
 
     async fn get_task_status(&self, name: &str) -> Result<TaskCrStatus, KubeopencodeError>;
+
+    /// 戦略 Agent CR と関連リソース (ServiceAccount / ConfigMap / ExternalSecret) を冪等に apply する。
+    ///
+    /// 同じ spec で繰り返し呼ばれることを前提とし、Server-Side Apply で field manager
+    /// `t-rader-backend` の所有 field を毎回上書きする。SA / ConfigMap / ExternalSecret は
+    /// Agent CR を ownerReference に持ち、Agent 削除で cascade GC される。
+    async fn reconcile_strategy_agent(
+        &self,
+        spec: &StrategyAgentSpec,
+    ) -> Result<(), KubeopencodeError>;
+
+    /// 戦略 Agent CR を削除する。下流リソースは ownerReference 経由で operator が GC する。
+    /// 既に消えている場合は成功扱い。
+    async fn delete_strategy_agent(&self, agent_name: &str) -> Result<(), KubeopencodeError>;
 }
 
 /// 「無効化された」クライアント。すべての操作が `NotConfigured` を返す。
@@ -94,6 +116,17 @@ impl KubeopencodeClient for DisabledKubeopencodeClient {
     }
 
     async fn get_task_status(&self, _name: &str) -> Result<TaskCrStatus, KubeopencodeError> {
+        Err(KubeopencodeError::NotConfigured)
+    }
+
+    async fn reconcile_strategy_agent(
+        &self,
+        _spec: &StrategyAgentSpec,
+    ) -> Result<(), KubeopencodeError> {
+        Err(KubeopencodeError::NotConfigured)
+    }
+
+    async fn delete_strategy_agent(&self, _agent_name: &str) -> Result<(), KubeopencodeError> {
         Err(KubeopencodeError::NotConfigured)
     }
 }
@@ -110,6 +143,8 @@ pub struct KubeopencodeConfig {
     pub ca_cert_path: Option<String>,
     /// テスト用: TLS 検証をスキップする
     pub insecure_tls: bool,
+    /// 戦略 Agent reconcile 用の設定
+    pub strategy_agent: StrategyAgentSettings,
 }
 
 /// `KUBEOPENCODE_API_URL` を opt-out 用に予約した特別値。dev 環境のみ想定。
@@ -129,6 +164,10 @@ pub enum KubeopencodeConfigError {
         KUBEOPENCODE_DISABLED_SENTINEL
     )]
     Missing,
+    #[error(
+        "STRATEGY_MCP_URL is not set. Set it to the t-rader-backend strategy MCP endpoint (e.g. http://t-rader-backend.t-rader/mcp/strategy)."
+    )]
+    MissingStrategyMcpUrl,
 }
 
 impl KubeopencodeConfig {
@@ -155,12 +194,31 @@ impl KubeopencodeConfig {
         let insecure_tls = get("KUBEOPENCODE_INSECURE_TLS")
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
             .unwrap_or(false);
+        let mcp_url = get("STRATEGY_MCP_URL")
+            .filter(|s| !s.is_empty())
+            .ok_or(KubeopencodeConfigError::MissingStrategyMcpUrl)?;
+        let ssm_parameter_template = get("STRATEGY_AGENT_SSM_PARAMETER_TEMPLATE")
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| DEFAULT_SSM_PARAMETER_TEMPLATE.to_string());
+        let model = get("STRATEGY_AGENT_MODEL")
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_string());
+        let small_model = get("STRATEGY_AGENT_SMALL_MODEL")
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| DEFAULT_AGENT_SMALL_MODEL.to_string());
+        let strategy_agent = StrategyAgentSettings {
+            mcp_url,
+            ssm_parameter_template,
+            model,
+            small_model,
+        };
         Ok(KubeopencodeConfigSource::Configured(Self {
             api_base_url,
             namespace,
             bearer_token,
             ca_cert_path,
             insecure_tls,
+            strategy_agent,
         }))
     }
 }
@@ -169,6 +227,7 @@ pub struct HttpKubeopencodeClient {
     http: reqwest::Client,
     api_base_url: String,
     namespace: String,
+    strategy_agent: StrategyAgentSettings,
 }
 
 impl HttpKubeopencodeClient {
@@ -217,6 +276,7 @@ impl HttpKubeopencodeClient {
             http,
             api_base_url: config.api_base_url.trim_end_matches('/').to_string(),
             namespace: config.namespace,
+            strategy_agent: config.strategy_agent,
         })
     }
 
@@ -233,6 +293,99 @@ impl HttpKubeopencodeClient {
 
     fn item_url(&self, name: &str) -> String {
         format!("{}/{}", self.collection_url(), name)
+    }
+
+    /// Server-Side Apply 用の URL を組み立てる。
+    fn apply_url(&self, namespaced_path: &str, name: &str) -> String {
+        format!(
+            "{base}{path}/{name}?fieldManager={fm}&force=true",
+            base = self.api_base_url,
+            path = namespaced_path,
+            name = name,
+            fm = FIELD_MANAGER,
+        )
+    }
+
+    /// Agent CR の SSA URL
+    fn agent_apply_url(&self, name: &str) -> String {
+        let path = format!(
+            "/apis/{group}/{version}/namespaces/{ns}/{plural}",
+            group = AGENT_GROUP,
+            version = AGENT_VERSION,
+            ns = self.namespace,
+            plural = AGENT_PLURAL,
+        );
+        self.apply_url(&path, name)
+    }
+
+    fn agent_item_url(&self, name: &str) -> String {
+        format!(
+            "{base}/apis/{group}/{version}/namespaces/{ns}/{plural}/{name}",
+            base = self.api_base_url,
+            group = AGENT_GROUP,
+            version = AGENT_VERSION,
+            ns = self.namespace,
+            plural = AGENT_PLURAL,
+            name = name,
+        )
+    }
+
+    fn service_account_apply_url(&self, name: &str) -> String {
+        let path = format!(
+            "/api/v1/namespaces/{ns}/{plural}",
+            ns = self.namespace,
+            plural = SA_PLURAL,
+        );
+        self.apply_url(&path, name)
+    }
+
+    fn configmap_apply_url(&self, name: &str) -> String {
+        let path = format!(
+            "/api/v1/namespaces/{ns}/{plural}",
+            ns = self.namespace,
+            plural = CONFIGMAP_PLURAL,
+        );
+        self.apply_url(&path, name)
+    }
+
+    fn external_secret_apply_url(&self, name: &str) -> String {
+        let path = format!(
+            "/apis/{group}/{version}/namespaces/{ns}/{plural}",
+            group = EXTERNAL_SECRET_GROUP,
+            version = EXTERNAL_SECRET_VERSION,
+            ns = self.namespace,
+            plural = EXTERNAL_SECRET_PLURAL,
+        );
+        self.apply_url(&path, name)
+    }
+
+    /// 1 マニフェストを SSA で apply する。レスポンス本文 (生成済みの metadata を含む) を返す。
+    async fn apply_manifest(
+        &self,
+        url: &str,
+        manifest: &serde_json::Value,
+    ) -> Result<serde_json::Value, KubeopencodeError> {
+        let response = self
+            .http
+            .patch(url)
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/apply-patch+yaml",
+            )
+            .json(manifest)
+            .send()
+            .await
+            .map_err(|e| KubeopencodeError::Network(e.to_string()))?;
+
+        let status = response.status();
+        if status.is_success() {
+            return response
+                .json::<serde_json::Value>()
+                .await
+                .map_err(|e| KubeopencodeError::Parse(e.to_string()));
+        }
+        let text = response.text().await.unwrap_or_default();
+        Err(api_error(status, text))
     }
 }
 
@@ -317,6 +470,72 @@ impl KubeopencodeClient for HttpKubeopencodeClient {
         };
         Ok(TaskCrStatus { phase, message })
     }
+
+    async fn reconcile_strategy_agent(
+        &self,
+        spec: &StrategyAgentSpec,
+    ) -> Result<(), KubeopencodeError> {
+        // 1. Agent CR を SSA。レスポンスから UID を取り出し、子リソースに ownerReference を張る。
+        let agent_manifest = build_agent_manifest(spec, &self.strategy_agent, &self.namespace);
+        let agent_response = self
+            .apply_manifest(&self.agent_apply_url(&spec.agent_name), &agent_manifest)
+            .await?;
+        let uid = agent_response
+            .get("metadata")
+            .and_then(|m| m.get("uid"))
+            .and_then(|u| u.as_str())
+            .ok_or_else(|| {
+                KubeopencodeError::Parse("agent response missing metadata.uid".to_string())
+            })?
+            .to_string();
+        let owner = AgentOwnerRef {
+            name: spec.agent_name.clone(),
+            uid,
+        };
+
+        // 2. ServiceAccount
+        let sa_manifest =
+            build_service_account_manifest(&spec.agent_name, &self.namespace, Some(&owner));
+        self.apply_manifest(
+            &self.service_account_apply_url(&spec.agent_name),
+            &sa_manifest,
+        )
+        .await?;
+
+        // 3. workspace ConfigMap (AGENTS.md と skills)
+        let configmap_name = format!("{}-workspace", spec.agent_name);
+        let cm_manifest = build_workspace_configmap_manifest(spec, &self.namespace, Some(&owner));
+        self.apply_manifest(&self.configmap_apply_url(&configmap_name), &cm_manifest)
+            .await?;
+
+        // 4. ExternalSecret
+        let es_name = format!("{}-credentials", spec.agent_name);
+        let es_manifest = build_external_secret_manifest(
+            &spec.agent_name,
+            &self.strategy_agent,
+            &self.namespace,
+            Some(&owner),
+        );
+        self.apply_manifest(&self.external_secret_apply_url(&es_name), &es_manifest)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn delete_strategy_agent(&self, agent_name: &str) -> Result<(), KubeopencodeError> {
+        let response = self
+            .http
+            .delete(self.agent_item_url(agent_name))
+            .send()
+            .await
+            .map_err(|e| KubeopencodeError::Network(e.to_string()))?;
+        let status = response.status();
+        if status.is_success() || status == StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        let text = response.text().await.unwrap_or_default();
+        Err(api_error(status, text))
+    }
 }
 
 fn api_error(status: StatusCode, body: String) -> KubeopencodeError {
@@ -355,6 +574,10 @@ pub struct FakeKubeopencodeClient {
     pub created: tokio::sync::Mutex<Vec<TaskCrSpec>>,
     pub statuses: tokio::sync::Mutex<std::collections::HashMap<String, TaskCrStatus>>,
     pub create_error: tokio::sync::Mutex<Option<KubeopencodeError>>,
+    pub reconciled: tokio::sync::Mutex<Vec<StrategyAgentSpec>>,
+    pub deleted_agents: tokio::sync::Mutex<Vec<String>>,
+    pub reconcile_error: tokio::sync::Mutex<Option<KubeopencodeError>>,
+    pub delete_agent_error: tokio::sync::Mutex<Option<KubeopencodeError>>,
 }
 
 #[cfg(test)]
@@ -367,6 +590,9 @@ impl FakeKubeopencodeClient {
     }
     pub async fn set_create_error(&self, err: KubeopencodeError) {
         *self.create_error.lock().await = Some(err);
+    }
+    pub async fn set_reconcile_error(&self, err: KubeopencodeError) {
+        *self.reconcile_error.lock().await = Some(err);
     }
 }
 
@@ -387,6 +613,26 @@ impl KubeopencodeClient for FakeKubeopencodeClient {
             .get(name)
             .cloned()
             .ok_or_else(|| KubeopencodeError::NotFound(name.to_string()))
+    }
+    async fn reconcile_strategy_agent(
+        &self,
+        spec: &StrategyAgentSpec,
+    ) -> Result<(), KubeopencodeError> {
+        if let Some(err) = self.reconcile_error.lock().await.take() {
+            return Err(err);
+        }
+        self.reconciled.lock().await.push(spec.clone());
+        Ok(())
+    }
+    async fn delete_strategy_agent(&self, agent_name: &str) -> Result<(), KubeopencodeError> {
+        if let Some(err) = self.delete_agent_error.lock().await.take() {
+            return Err(err);
+        }
+        self.deleted_agents
+            .lock()
+            .await
+            .push(agent_name.to_string());
+        Ok(())
     }
 }
 
@@ -433,6 +679,18 @@ mod tests {
     }
 
     #[rstest]
+    fn from_env_missing_strategy_mcp_url_fails_fast() {
+        let result = KubeopencodeConfig::from_env_with(env_get(&[(
+            "KUBEOPENCODE_API_URL",
+            "https://kube.example/api",
+        )]));
+        assert!(matches!(
+            result,
+            Err(KubeopencodeConfigError::MissingStrategyMcpUrl)
+        ));
+    }
+
+    #[rstest]
     fn from_env_with_url_returns_configured() {
         let config = expect_configured(
             KubeopencodeConfig::from_env_with(env_get(&[
@@ -440,6 +698,8 @@ mod tests {
                 ("KUBEOPENCODE_NAMESPACE", "custom-ns"),
                 ("KUBEOPENCODE_TOKEN", "tok"),
                 ("KUBEOPENCODE_INSECURE_TLS", "true"),
+                ("STRATEGY_MCP_URL", "http://backend/mcp/strategy"),
+                ("STRATEGY_AGENT_MODEL", "m-x"),
             ]))
             .expect("configured"),
         );
@@ -448,15 +708,24 @@ mod tests {
         assert_eq!(config.bearer_token.as_deref(), Some("tok"));
         assert_eq!(config.ca_cert_path, None);
         assert!(config.insecure_tls);
+        assert_eq!(
+            config.strategy_agent,
+            StrategyAgentSettings {
+                mcp_url: "http://backend/mcp/strategy".into(),
+                ssm_parameter_template: DEFAULT_SSM_PARAMETER_TEMPLATE.into(),
+                model: "m-x".into(),
+                small_model: DEFAULT_AGENT_SMALL_MODEL.into(),
+            },
+        );
     }
 
     #[rstest]
     fn from_env_defaults_namespace_when_unset() {
         let config = expect_configured(
-            KubeopencodeConfig::from_env_with(env_get(&[(
-                "KUBEOPENCODE_API_URL",
-                "https://kube.example/api",
-            )]))
+            KubeopencodeConfig::from_env_with(env_get(&[
+                ("KUBEOPENCODE_API_URL", "https://kube.example/api"),
+                ("STRATEGY_MCP_URL", "http://backend/mcp/strategy"),
+            ]))
             .expect("configured"),
         );
         assert_eq!(config.namespace, DEFAULT_NAMESPACE);
@@ -506,6 +775,12 @@ mod tests {
             bearer_token: Some("test-token".into()),
             ca_cert_path: None,
             insecure_tls: true,
+            strategy_agent: StrategyAgentSettings {
+                mcp_url: "http://backend/mcp/strategy".into(),
+                ssm_parameter_template: DEFAULT_SSM_PARAMETER_TEMPLATE.into(),
+                model: DEFAULT_AGENT_MODEL.into(),
+                small_model: DEFAULT_AGENT_SMALL_MODEL.into(),
+            },
         })
         .expect("build client")
     }
@@ -580,6 +855,132 @@ mod tests {
                 message: Some("ok".into()),
             },
         );
+    }
+
+    #[tokio::test]
+    async fn reconcile_strategy_agent_applies_four_resources() {
+        use wiremock::matchers::query_param;
+        let server = MockServer::start().await;
+        let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
+        let agent_name = "strategy-12345678123456781234567812345678";
+
+        // Agent CR の SSA → uid を返す
+        Mock::given(method("PATCH"))
+            .and(path(format!(
+                "/apis/kubeopencode.io/v1alpha1/namespaces/kubeopencode/agents/{agent_name}"
+            )))
+            .and(query_param("fieldManager", FIELD_MANAGER))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "apiVersion": "kubeopencode.io/v1alpha1",
+                "kind": "Agent",
+                "metadata": { "name": agent_name, "namespace": "kubeopencode", "uid": "uid-1" },
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(format!(
+                "/api/v1/namespaces/kubeopencode/serviceaccounts/{agent_name}"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(format!(
+                "/api/v1/namespaces/kubeopencode/configmaps/{agent_name}-workspace"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(format!(
+                "/apis/external-secrets.io/v1/namespaces/kubeopencode/externalsecrets/{agent_name}-credentials"
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = http_client(&server);
+        let spec = StrategyAgentSpec::new(strategy_id, "body", Default::default());
+        let result = client.reconcile_strategy_agent(&spec).await;
+        assert_eq!(result.map_err(|e| e.to_string()), Ok(()));
+    }
+
+    #[tokio::test]
+    async fn reconcile_is_idempotent_on_repeated_calls() {
+        let server = MockServer::start().await;
+        let strategy_id = uuid::Uuid::new_v4();
+        // 4 resources × 2 calls = 8 PATCHes must reach the server
+        Mock::given(method("PATCH"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "metadata": { "uid": "uid-42" },
+            })))
+            .expect(8)
+            .mount(&server)
+            .await;
+        let client = http_client(&server);
+        let spec = StrategyAgentSpec::new(strategy_id, "body", Default::default());
+        client.reconcile_strategy_agent(&spec).await.expect("first");
+        client
+            .reconcile_strategy_agent(&spec)
+            .await
+            .expect("second");
+    }
+
+    #[tokio::test]
+    async fn reconcile_fails_when_agent_response_has_no_uid() {
+        let server = MockServer::start().await;
+        Mock::given(method("PATCH"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "metadata": { "name": "x" },
+            })))
+            .mount(&server)
+            .await;
+        let client = http_client(&server);
+        let spec = StrategyAgentSpec::new(uuid::Uuid::new_v4(), "", Default::default());
+        let err = client
+            .reconcile_strategy_agent(&spec)
+            .await
+            .expect_err("expected parse error");
+        assert!(matches!(err, KubeopencodeError::Parse(_)));
+    }
+
+    #[tokio::test]
+    async fn delete_strategy_agent_treats_not_found_as_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path(
+                "/apis/kubeopencode.io/v1alpha1/namespaces/kubeopencode/agents/strategy-x",
+            ))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = http_client(&server);
+        client
+            .delete_strategy_agent("strategy-x")
+            .await
+            .expect("not found should be Ok");
+    }
+
+    #[tokio::test]
+    async fn delete_strategy_agent_propagates_other_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+                "kind": "Status", "message": "boom",
+            })))
+            .mount(&server)
+            .await;
+        let client = http_client(&server);
+        let err = client
+            .delete_strategy_agent("strategy-x")
+            .await
+            .expect_err("err");
+        assert!(matches!(err, KubeopencodeError::Api { status: 500, .. }));
     }
 
     #[tokio::test]

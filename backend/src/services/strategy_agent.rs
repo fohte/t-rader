@@ -1,0 +1,229 @@
+//! 戦略 Agent reconcile の orchestration。
+//!
+//! handler / mgmt MCP / 起動時 sweep から呼ばれる。DB から戦略行を読み、
+//! `KubeopencodeClient::reconcile_strategy_agent` を実行し、結果を
+//! `strategy.agent_status` / `strategy.agent_error` に書き戻す。
+
+use std::collections::BTreeMap;
+
+use sea_orm::ActiveValue::Set;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel};
+use uuid::Uuid;
+
+use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
+use crate::entities::strategy;
+use crate::kubeopencode::{SharedKubeopencodeClient, StrategyAgentSpec};
+
+#[derive(Debug, thiserror::Error)]
+pub enum StrategyAgentError {
+    #[error("strategy {0} not found")]
+    NotFound(Uuid),
+    #[error("database error: {0}")]
+    Database(#[from] sea_orm::DbErr),
+}
+
+/// `strategy.skills` (jsonb) を `{name: body}` に正規化する。
+///
+/// 想定スキーマ: top-level object で値が文字列。型が違うエントリは warn して捨てる。
+fn parse_skills(value: &serde_json::Value) -> BTreeMap<String, String> {
+    let Some(map) = value.as_object() else {
+        return BTreeMap::new();
+    };
+    let mut out = BTreeMap::new();
+    for (name, v) in map {
+        if let Some(body) = v.as_str() {
+            out.insert(name.clone(), body.to_string());
+        } else {
+            tracing::warn!(skill = %name, "strategy.skills entry is not a string; skipped");
+        }
+    }
+    out
+}
+
+pub fn build_spec_from_model(row: &strategy::Model) -> StrategyAgentSpec {
+    StrategyAgentSpec::new(row.id, row.agents_md.clone(), parse_skills(&row.skills))
+}
+
+/// 1 戦略分の reconcile を同期実行し、結果を DB に書き戻す。
+///
+/// reconcile 失敗時は `agent_status=failed` + `agent_error` を保存して `Ok(())` を返す。
+/// `Err` は DB 自体のエラー (戦略 not found 等) のみ。
+pub async fn reconcile_and_persist(
+    db: &DatabaseConnection,
+    kube: &SharedKubeopencodeClient,
+    strategy_id: Uuid,
+) -> Result<(), StrategyAgentError> {
+    let row = strategy::Entity::find_by_id(strategy_id)
+        .one(db)
+        .await?
+        .ok_or(StrategyAgentError::NotFound(strategy_id))?;
+
+    let spec = build_spec_from_model(&row);
+    let outcome = kube.reconcile_strategy_agent(&spec).await;
+
+    let mut active = row.into_active_model();
+    match outcome {
+        Ok(()) => {
+            active.agent_status = Set(StrategyAgentStatus::Ready);
+            active.agent_error = Set(None);
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                strategy_id = %strategy_id,
+                "strategy agent reconcile failed",
+            );
+            active.agent_status = Set(StrategyAgentStatus::Failed);
+            active.agent_error = Set(Some(err.to_string()));
+        }
+    }
+    active.updated_at = Set(chrono::Utc::now().fixed_offset());
+    active.update(db).await?;
+    Ok(())
+}
+
+/// handler から fire-and-forget で呼ぶ用の wrapper。tokio::spawn して reconcile を回す。
+pub fn spawn_reconcile(db: DatabaseConnection, kube: SharedKubeopencodeClient, strategy_id: Uuid) {
+    tokio::spawn(async move {
+        if let Err(err) = reconcile_and_persist(&db, &kube, strategy_id).await {
+            tracing::warn!(
+                error = %err,
+                strategy_id = %strategy_id,
+                "strategy agent reconcile orchestration error",
+            );
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use sea_orm::ActiveValue::NotSet;
+    use sqlx::PgPool;
+
+    use crate::entities::strategy;
+    use crate::kubeopencode::{FakeKubeopencodeClient, KubeopencodeError};
+    use crate::testing::create_test_db;
+
+    use super::*;
+
+    async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+        let id = Uuid::new_v4();
+        strategy::ActiveModel {
+            id: Set(id),
+            name: Set(name.to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            agents_md: NotSet,
+            skills: NotSet,
+            agent_status: NotSet,
+            agent_error: NotSet,
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .unwrap();
+        id
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reconcile_marks_row_ready_on_success(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedKubeopencodeClient = fake.clone();
+
+        reconcile_and_persist(&db, &kube, strategy_id)
+            .await
+            .expect("ok");
+
+        let row = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.agent_status, StrategyAgentStatus::Ready);
+        assert_eq!(row.agent_error, None);
+
+        let reconciled: Vec<Uuid> = fake
+            .reconciled
+            .lock()
+            .await
+            .iter()
+            .map(|s| s.strategy_id)
+            .collect();
+        assert_eq!(reconciled, vec![strategy_id]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reconcile_marks_row_failed_with_error_message(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        fake.set_reconcile_error(KubeopencodeError::Api {
+            status: 500,
+            message: "boom".into(),
+        })
+        .await;
+        let kube: SharedKubeopencodeClient = fake;
+
+        reconcile_and_persist(&db, &kube, strategy_id)
+            .await
+            .expect("ok");
+
+        let row = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.agent_status, StrategyAgentStatus::Failed);
+        assert_eq!(
+            row.agent_error.as_deref(),
+            Some("kubeopencode api error (status 500): boom"),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reconcile_is_idempotent_across_calls(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedKubeopencodeClient = fake.clone();
+
+        reconcile_and_persist(&db, &kube, strategy_id)
+            .await
+            .unwrap();
+        reconcile_and_persist(&db, &kube, strategy_id)
+            .await
+            .unwrap();
+
+        assert_eq!(fake.reconciled.lock().await.len(), 2);
+        let row = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.agent_status, StrategyAgentStatus::Ready);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reconcile_returns_err_when_strategy_missing(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let fake: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let err = reconcile_and_persist(&db, &fake, Uuid::new_v4())
+            .await
+            .expect_err("missing strategy");
+        assert!(matches!(err, StrategyAgentError::NotFound(_)));
+    }
+
+    #[test]
+    fn parse_skills_filters_non_string_values() {
+        let value = serde_json::json!({ "a": "body", "b": 42, "c": "x" });
+        let parsed = parse_skills(&value);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed.get("a").map(String::as_str), Some("body"));
+        assert_eq!(parsed.get("c").map(String::as_str), Some("x"));
+    }
+}

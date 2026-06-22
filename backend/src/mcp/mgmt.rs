@@ -25,9 +25,11 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
+use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
 use crate::entities::{annotation, note, strategy, strategy_task};
-use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient, TaskCrSpec};
+use crate::kubeopencode::{
+    KubeopencodeError, SharedKubeopencodeClient, TaskCrSpec, agent_name_for,
+};
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
 const MAX_LIST_LIMIT: u64 = 100;
@@ -169,10 +171,6 @@ fn generate_task_name(strategy_id: Uuid) -> String {
     format_task_name(strategy_id, &random_short)
 }
 
-fn agent_name_for(strategy_id: Uuid) -> String {
-    format!("strategy-{}", strategy_id.simple())
-}
-
 /// 指定エンティティの `status='unread'` 件数を strategy_id ごとに集約して返す。
 /// `list_strategies` が note / annotation 双方に対し 1 クエリで未読件数を取るために使う。
 async fn unread_counts_by_strategy<E, C>(
@@ -266,13 +264,24 @@ impl MgmtServer {
             return Err(invalid_params("prompt must not be empty"));
         }
 
-        let strategy_exists = strategy::Entity::find_by_id(strategy_id)
+        let strategy_row = strategy::Entity::find_by_id(strategy_id)
             .one(&self.db)
             .await
             .map_err(db_error)?
-            .is_some();
-        if !strategy_exists {
-            return Err(invalid_params(format!("strategy {strategy_id} not found")));
+            .ok_or_else(|| invalid_params(format!("strategy {strategy_id} not found")))?;
+        match strategy_row.agent_status {
+            StrategyAgentStatus::Ready => {}
+            StrategyAgentStatus::Pending => {
+                return Err(invalid_params(
+                    "strategy agent not ready: status=pending (reconcile in progress)",
+                ));
+            }
+            StrategyAgentStatus::Failed => {
+                let reason = strategy_row.agent_error.unwrap_or_else(|| "unknown".into());
+                return Err(invalid_params(format!(
+                    "strategy agent not ready: status=failed: {reason}"
+                )));
+            }
         }
 
         let task_id = Uuid::new_v4();
@@ -467,15 +476,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn agent_name_format() {
-        let id = Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
-        assert_eq!(
-            agent_name_for(id),
-            "strategy-12345678123456781234567812345678",
-        );
-    }
-
     #[rstest]
     #[case::default(None, 20)]
     #[case::custom(Some(5), 5)]
@@ -499,6 +499,14 @@ mod integration_tests {
     use super::*;
 
     async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+        insert_strategy_with_status(db, name, StrategyAgentStatus::Ready).await
+    }
+
+    async fn insert_strategy_with_status(
+        db: &DatabaseConnection,
+        name: &str,
+        status: StrategyAgentStatus,
+    ) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),
@@ -507,7 +515,7 @@ mod integration_tests {
             sort_order: Set(0),
             agents_md: sea_orm::ActiveValue::NotSet,
             skills: sea_orm::ActiveValue::NotSet,
-            agent_status: sea_orm::ActiveValue::NotSet,
+            agent_status: Set(status),
             agent_error: sea_orm::ActiveValue::NotSet,
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
@@ -619,6 +627,60 @@ mod integration_tests {
             .err()
             .unwrap_or_else(|| panic!("expected error"));
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_strategy_task_rejects_pending_agent(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy_with_status(&db, "x", StrategyAgentStatus::Pending).await;
+        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let err = server
+            .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
+                strategy_id,
+                prompt: "x".into(),
+            }))
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("expected error"));
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "strategy agent not ready: status=pending (reconcile in progress)",
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_strategy_task_rejects_failed_agent(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy_with_status(&db, "x", StrategyAgentStatus::Failed).await;
+        // 失敗時の agent_error を反映できることを確認するため、別途 UPDATE する
+        let mut row = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .into_active_model();
+        row.agent_error = Set(Some("boom".into()));
+        row.update(&db).await.unwrap();
+
+        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let err = server
+            .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
+                strategy_id,
+                prompt: "x".into(),
+            }))
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("expected error"));
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "strategy agent not ready: status=failed: boom",
+            ),
+        );
     }
 
     #[sqlx::test(migrations = false)]
