@@ -137,7 +137,7 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 
 | 値        | 必要な追加変数                                                                                 | 用途                                                            |
 | --------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `jquants` | `JQUANTS_API_KEY`                                                                              | J-Quants API (無料枠は 12 週遅延あり)                           |
+| `jquants` | `JQUANTS_API_KEY` (未設定時は DataProvider なしで起動)                                         | J-Quants API (無料枠は 12 週遅延あり)                           |
 | `ibkr`    | `IBKR_BASE_URL` (任意), `IBKR_SESSION_TOKEN` (任意), `IBKR_EXCHANGE` (任意、デフォルト `TSEJ`) | IBKR Client Portal Web API。Gateway を別途常駐させて URL を指す |
 | `none`    | (なし)                                                                                         | DataProvider を無効化。データ取得系エンドポイントは 503 を返す  |
 
