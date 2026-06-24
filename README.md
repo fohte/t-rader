@@ -131,6 +131,19 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 | `NGINX_RESOLVER`    | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須) | -                       |
 | `MCP_ALLOWED_HOSTS` | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)     | -                       |
 
+### 戦略 Agent reconcile
+
+`KUBEOPENCODE_API_URL` が `disabled` でない (= 実 kube cluster に接続する) 場合、戦略 Agent の reconcile に以下が必要になる。
+
+| 変数                                    | 必須/任意 | 用途                                                                                                                       |
+| --------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `STRATEGY_MCP_URL`                      | 必須      | Agent CR の `spec.config.mcp.t-rader-strategy.url`。例: `http://t-rader-backend.t-rader/mcp/strategy`                      |
+| `STRATEGY_AGENT_SSM_PARAMETER_TEMPLATE` | 任意      | SSM パラメータ key の template。`{name}` が Agent 名で置換される。デフォルト `/infra/kubeopencode/{name}-opencode-api-key` |
+| `STRATEGY_AGENT_MODEL`                  | 任意      | 戦略 Agent の primary model。デフォルト `opencode-go/minimax-m3`                                                           |
+| `STRATEGY_AGENT_SMALL_MODEL`            | 任意      | 戦略 Agent の small model。デフォルト `opencode-go/deepseek-v4-flash`                                                      |
+
+dev では `KUBEOPENCODE_API_URL=disabled` を使えば上記は不要。
+
 ## Deployment と外部連携
 
 - [`docs/mcp.md`](./docs/mcp.md): `/mcp/mgmt` と `/mcp/strategy` の tool 一覧、session 永続化、`MCP_ALLOWED_HOSTS` の挙動

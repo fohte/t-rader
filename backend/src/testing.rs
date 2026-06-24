@@ -3,6 +3,7 @@ use migration::{Migrator, MigratorTrait};
 use sea_orm::{DatabaseConnection, SqlxPostgresConnector};
 use sqlx::PgPool;
 
+use crate::kubeopencode::SharedKubeopencodeClient;
 use crate::{AppState, create_router};
 
 /// `#[sqlx::test]` から注入された PgPool を SeaORM DatabaseConnection に変換する
@@ -28,6 +29,23 @@ pub async fn create_test_server(pool: PgPool) -> TestServer {
         db,
         data_provider: None,
         kubeopencode: AppState::disabled_kubeopencode(),
+        kata_executor: None,
+    };
+    let router = create_router(state);
+    TestServer::new(router).expect("failed to create test server")
+}
+
+/// kubeopencode クライアントを差し替えて TestServer を作成する
+pub async fn create_test_server_with_kube(
+    pool: PgPool,
+    kube: SharedKubeopencodeClient,
+) -> TestServer {
+    let db = create_test_db(pool).await;
+
+    let state = AppState {
+        db,
+        data_provider: None,
+        kubeopencode: kube,
         kata_executor: None,
     };
     let router = create_router(state);
