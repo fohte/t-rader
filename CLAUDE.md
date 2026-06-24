@@ -102,19 +102,6 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - `.mise.toml` の `[env]` セクションで `.env` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)
 - `DATABASE_URL` のデフォルト値は `.env` ファイルに定義されている
 
-### 戦略 Agent reconcile
-
-`KUBEOPENCODE_API_URL` が `disabled` でない (= 実 kube cluster に接続する) 場合、戦略 Agent の reconcile に以下が必要になる。
-
-| 変数                                    | 必須/任意 | 用途                                                                                                                       |
-| --------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `STRATEGY_MCP_URL`                      | 必須      | Agent CR の `spec.config.mcp.t-rader-strategy.url`。例: `http://t-rader-backend.t-rader/mcp/strategy`                      |
-| `STRATEGY_AGENT_SSM_PARAMETER_TEMPLATE` | 任意      | SSM パラメータ key の template。`{name}` が Agent 名で置換される。デフォルト `/infra/kubeopencode/{name}-opencode-api-key` |
-| `STRATEGY_AGENT_MODEL`                  | 任意      | 戦略 Agent の primary model。デフォルト `opencode-go/minimax-m3`                                                           |
-| `STRATEGY_AGENT_SMALL_MODEL`            | 任意      | 戦略 Agent の small model。デフォルト `opencode-go/deepseek-v4-flash`                                                      |
-
-dev では `KUBEOPENCODE_API_URL=disabled` を使えば上記は不要。
-
 ### DataProvider 切替
 
 `DATA_PROVIDER` 環境変数で価格データの取得元を選ぶ。デフォルト (未設定) は `jquants`。
