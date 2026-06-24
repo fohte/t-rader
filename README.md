@@ -131,6 +131,18 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 | `NGINX_RESOLVER`    | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須) | -                       |
 | `MCP_ALLOWED_HOSTS` | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)     | -                       |
 
+### DataProvider 切替
+
+`DATA_PROVIDER` 環境変数で価格データの取得元を選ぶ。デフォルト (未設定) は `jquants`。
+
+| 値        | 必要な追加変数                                                                                 | 用途                                                            |
+| --------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `jquants` | `JQUANTS_API_KEY` (未設定時は DataProvider なしで起動)                                         | J-Quants API (無料枠は 12 週遅延あり)                           |
+| `ibkr`    | `IBKR_BASE_URL` (任意), `IBKR_SESSION_TOKEN` (任意), `IBKR_EXCHANGE` (任意、デフォルト `TSEJ`) | IBKR Client Portal Web API。Gateway を別途常駐させて URL を指す |
+| `none`    | (なし)                                                                                         | DataProvider を無効化。データ取得系エンドポイントは 503 を返す  |
+
+IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐させ、その HTTP エンドポイントを `IBKR_BASE_URL` に設定する (例: `https://ibkr-gateway:5000/v1/api`)。秘密鍵相当の API キーは存在せず、認証は Gateway 側の Web ログインで維持される。
+
 ### 戦略 Agent reconcile
 
 `KUBEOPENCODE_API_URL` が `disabled` でない (= 実 kube cluster に接続する) 場合、戦略 Agent の reconcile に以下が必要になる。
