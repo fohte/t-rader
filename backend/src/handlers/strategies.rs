@@ -13,8 +13,10 @@ use crate::AppState;
 use crate::entities::{strategy, strategy_interest};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
+use crate::kubeopencode::{KubeopencodeError, agent_name_for};
 use crate::models::{CreateStrategyRequest, UpdateStrategyRequest};
 use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::strategy_agent;
 
 fn validate_name(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
@@ -124,6 +126,9 @@ pub async fn create_strategy(
     .await?;
     txn.commit().await?;
 
+    // commit 前に spawn すると rollback 時に Agent CR が孤立する
+    strategy_agent::spawn_reconcile(state.db.clone(), state.kubeopencode.clone(), id);
+
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -207,6 +212,22 @@ pub async fn delete_strategy(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
+    // 不在の id なら Kube API を叩く前に 404 を確定させる
+    find_strategy_or_404(&state.db, id).await?;
+
+    // Agent CR を先に消す: DB を先に消すと孤児 Agent が一時的に残り、in-flight Task の
+    // agentRef は解決できるが履歴 (strategy_task / change_history) との突き合わせが切れる
+    let agent_name = agent_name_for(id);
+    match state.kubeopencode.delete_strategy_agent(&agent_name).await {
+        Ok(()) | Err(KubeopencodeError::NotConfigured) => {}
+        Err(err) => {
+            tracing::error!(error = %err, strategy_id = %id, "failed to delete strategy agent");
+            return Err(AppError::Config(format!(
+                "failed to delete strategy agent: {err}"
+            )));
+        }
+    }
+
     let txn = state.db.begin().await?;
     let result = strategy::Entity::delete_by_id(id).exec(&txn).await?;
     if result.rows_affected == 0 {
@@ -246,10 +267,15 @@ pub async fn list_strategy_interests(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use serde_json::json;
     use sqlx::PgPool;
 
-    use crate::testing::create_test_server;
+    use uuid::Uuid;
+
+    use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
+    use crate::testing::{create_test_server, create_test_server_with_kube};
 
     #[sqlx::test(migrations = false)]
     async fn create_and_list_strategy(pool: PgPool) {
@@ -283,6 +309,33 @@ mod tests {
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/interests")
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn delete_strategy_calls_kube_delete(pool: PgPool) {
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedKubeopencodeClient = fake.clone();
+        let server = create_test_server_with_kube(pool, kube).await;
+
+        let created = server
+            .post("/api/strategies")
+            .json(&json!({ "name": "to-delete" }))
+            .await;
+        created.assert_status(axum::http::StatusCode::CREATED);
+        let id = created.json::<serde_json::Value>()["id"]
+            .as_str()
+            .map(str::to_string)
+            .expect("id");
+
+        let deleted = server.delete(&format!("/api/strategies/{id}")).await;
+        deleted.assert_status(axum::http::StatusCode::NO_CONTENT);
+
+        let uuid = Uuid::parse_str(&id).unwrap();
+        let expected_agent = crate::kubeopencode::agent_name_for(uuid);
+        assert_eq!(
+            fake.deleted_agents.lock().await.as_slice(),
+            &[expected_agent],
+        );
     }
 
     #[sqlx::test(migrations = false)]

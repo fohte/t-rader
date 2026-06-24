@@ -74,13 +74,13 @@ utoipa = { workspace = true, features = [
     "decimal",
     "axum_extras",
 ] }
+indoc = "=2.0.7"
 utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true, features = ["axum"] }
 uuid = { workspace = true, features = ["serde", "v4"] }
 
 [dev-dependencies]
 axum-test = { workspace = true }
-indoc = "=2.0.7"
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
 sqlx = { workspace = true, features = [
