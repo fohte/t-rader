@@ -159,11 +159,6 @@ function TradesPage() {
         />
       )}
 
-      <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-        # SBI 証券は Web から CSV を DL → 「SBI CSV 取込」ボタンで取込。Selenium
-        等の自動 DL は MVP 後。
-      </p>
-
       <ImportSbiDialog
         open={importOpen}
         onOpenChange={setImportOpen}
