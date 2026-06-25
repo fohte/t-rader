@@ -1,6 +1,7 @@
 pub mod annotations;
 pub mod bars;
 pub mod comments;
+pub mod custom_indicators;
 pub mod history;
 pub mod imports;
 pub mod notes;

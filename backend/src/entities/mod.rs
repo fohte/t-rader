@@ -6,6 +6,7 @@ pub mod annotation;
 pub mod bars;
 pub mod change_history;
 pub mod comment;
+pub mod custom_indicator;
 pub mod indicator;
 pub mod instruments;
 pub mod mcp_session_state;

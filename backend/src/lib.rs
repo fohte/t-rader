@@ -32,7 +32,8 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::data_provider::DataProviderKind;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    annotations, bars, comments, history, imports, notes, refs, strategies, trades, watchlists,
+    annotations, bars, comments, custom_indicators, history, imports, notes, refs, strategies,
+    trades, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
@@ -90,6 +91,7 @@ impl AppState {
         (name = "history", description = "変更履歴"),
         (name = "trades", description = "取引履歴と損益サマリ"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
+        (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
     ),
     info(
         title = "T-Rader API",
@@ -212,6 +214,21 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         // imports
         .routes(routes!(imports::sbi_preview))
         .routes(routes!(imports::sbi_commit))
+        // custom indicators
+        .routes(routes!(
+            custom_indicators::list_global_indicators,
+            custom_indicators::create_global_indicator
+        ))
+        .routes(routes!(
+            custom_indicators::get_indicator,
+            custom_indicators::update_indicator,
+            custom_indicators::delete_indicator
+        ))
+        .routes(routes!(
+            custom_indicators::list_strategy_indicators,
+            custom_indicators::create_strategy_indicator
+        ))
+        .routes(routes!(custom_indicators::get_strategy_indicator))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)
