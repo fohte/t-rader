@@ -552,6 +552,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/chat': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** フローティングチャットから戦略 Agent にタスクを投入する */
+    post: operations['submit_strategy_chat']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/indicators': {
     parameters: {
       query?: never
@@ -635,6 +652,23 @@ export interface paths {
     post?: never
     /** 戦略 Agent の単一 skill 削除 */
     delete: operations['delete_skill']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/tasks/{task_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 投入済み戦略タスクの phase / error_summary を取得する */
+    get: operations['get_strategy_task']
+    put?: never
+    post?: never
+    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -1133,6 +1167,16 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    /** @description フローティングチャットから戦略 Agent に投入する 1 メッセージ。 */
+    StrategyChatRequest: {
+      prompt: string
+    }
+    /** @description `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。 */
+    StrategyChatResponse: {
+      kubeopencode_task_name: string
+      /** Format: uuid */
+      task_id: string
+    }
     StrategyInterest: {
       /** Format: date-time */
       created_at: string
@@ -1142,6 +1186,21 @@ export interface components {
       role: string
       /** Format: uuid */
       strategy_id: string
+    }
+    /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
+    StrategyTaskStatusResponse: {
+      /** Format: date-time */
+      created_at: string
+      error_summary?: string | null
+      kubeopencode_task_name: string
+      phase: string
+      source: string
+      /** Format: uuid */
+      strategy_id: string
+      /** Format: uuid */
+      task_id: string
+      /** Format: date-time */
+      updated_at: string
     }
     Theme: {
       description?: string | null
@@ -3267,6 +3326,85 @@ export interface operations {
       }
     }
   }
+  submit_strategy_chat: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['StrategyChatRequest']
+      }
+    }
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyChatResponse']
+        }
+      }
+      /** @description prompt が空 (空白のみを含む) */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略が存在しない */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description kubeopencode タスクの名前衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略 Agent が ready ではない */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_strategy_indicators: {
     parameters: {
       query?: never
@@ -3662,6 +3800,55 @@ export interface operations {
         }
         content?: never
       }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_strategy_task: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyTaskStatusResponse']
+        }
+      }
+      /** @description パスパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
