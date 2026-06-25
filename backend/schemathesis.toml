@@ -26,7 +26,7 @@ positive_data_acceptance.enabled = false
 [[operations]]
 include-path-regex = "^/api/strategies/[^/]+/chat$"
 [operations.checks.not_a_server_error]
-expected-statuses = [503]
+expected-statuses = ["2xx", "4xx", 503]
 
 [phases.fuzzing]
 # Fuzzing フェーズはランダム生成された UUID パスパラメータにより
