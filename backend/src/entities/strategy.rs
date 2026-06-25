@@ -28,8 +28,6 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::annotation::Entity")]
     Annotation,
-    #[sea_orm(has_many = "super::custom_indicator::Entity")]
-    CustomIndicator,
     #[sea_orm(has_many = "super::note::Entity")]
     Note,
     #[sea_orm(has_many = "super::strategy_interest::Entity")]
@@ -45,12 +43,6 @@ pub enum Relation {
 impl Related<super::annotation::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Annotation.def()
-    }
-}
-
-impl Related<super::custom_indicator::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::CustomIndicator.def()
     }
 }
 

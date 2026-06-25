@@ -1,7 +1,6 @@
 pub mod annotation;
 pub mod bar;
 pub mod comment;
-pub mod custom_indicator;
 pub mod import;
 pub mod instrument;
 pub mod note;
@@ -14,7 +13,6 @@ pub mod watchlist;
 pub use annotation::{CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar::{Bar, Timeframe};
 pub use comment::CreateCommentRequest;
-pub use custom_indicator::{CreateCustomIndicatorRequest, UpdateCustomIndicatorRequest};
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
     SbiPreviewRow,

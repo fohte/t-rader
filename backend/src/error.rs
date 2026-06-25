@@ -10,7 +10,6 @@ use crate::data_provider::DataProviderError;
 // NOT NULL 違反 (23502) は handler 側の入力検証漏れまたは型不整合を示すサーバーバグなので
 // あえて含めず、デフォルトの 500 にフォールバックさせて顕在化させる。
 // ref: https://www.postgresql.org/docs/current/errcodes-appendix.html
-const PG_UNIQUE_VIOLATION: &str = "23505";
 const PG_CHECK_VIOLATION: &str = "23514";
 
 /// DB 制約違反系エラーを HTTP ステータスにマップする。
@@ -31,23 +30,20 @@ fn classify_db_constraint(err: &DbErr) -> Option<(StatusCode, String)> {
         }
     }
 
-    // SeaORM の `sql_err()` は partial unique index 由来の違反などを取りこぼすことがあるため、
-    // raw SQLSTATE でも判定する。check 違反 (例: qty > 0) は handler 側のビジネスルール表現として
-    // 400 にマップする。
+    // check 違反はビジネスルール (例: qty > 0) を DB で表現しているケースがあり、
+    // クライアントエラーとして 400 を返す。SqlErr の対象外なので生 SQLSTATE で判定する。
     let (DbErr::Exec(RuntimeErr::SqlxError(sqlx_err))
     | DbErr::Query(RuntimeErr::SqlxError(sqlx_err))) = err
     else {
         return None;
     };
     let code = sqlx_err.as_database_error()?.code()?;
-    match code.as_ref() {
-        PG_UNIQUE_VIOLATION => Some((StatusCode::CONFLICT, "resource already exists".to_string())),
-        PG_CHECK_VIOLATION => Some((
+    (code.as_ref() == PG_CHECK_VIOLATION).then(|| {
+        (
             StatusCode::BAD_REQUEST,
             "value violates database constraint".to_string(),
-        )),
-        _ => None,
-    }
+        )
+    })
 }
 
 #[derive(Debug, thiserror::Error)]

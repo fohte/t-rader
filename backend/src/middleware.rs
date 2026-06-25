@@ -12,9 +12,7 @@ fn json_contains_null_byte(value: &serde_json::Value) -> bool {
     match value {
         serde_json::Value::String(s) => s.contains('\0'),
         serde_json::Value::Array(arr) => arr.iter().any(json_contains_null_byte),
-        serde_json::Value::Object(obj) => obj
-            .iter()
-            .any(|(k, v)| k.contains('\0') || json_contains_null_byte(v)),
+        serde_json::Value::Object(obj) => obj.values().any(json_contains_null_byte),
         _ => false,
     }
 }

@@ -561,36 +561,3 @@ impl PartialSchema for crate::entities::trigger::Model {
             .into()
     }
 }
-
-// --- custom_indicator::Model ---
-
-impl utoipa::ToSchema for crate::entities::custom_indicator::Model {
-    fn name() -> std::borrow::Cow<'static, str> {
-        std::borrow::Cow::Borrowed("CustomIndicator")
-    }
-}
-
-impl PartialSchema for crate::entities::custom_indicator::Model {
-    fn schema() -> RefOr<Schema> {
-        ObjectBuilder::new()
-            .property("indicator_id", uuid_prop())
-            .required("indicator_id")
-            .property("name", str_prop())
-            .required("name")
-            .property("scope", str_prop())
-            .required("scope")
-            .property("strategy_id", nullable_uuid_prop())
-            .property("code", str_prop())
-            .required("code")
-            .property("input_schema", json_prop())
-            .required("input_schema")
-            .property("output_schema", json_prop())
-            .required("output_schema")
-            .property("description", nullable_str_prop())
-            .property("created_at", datetime_prop())
-            .required("created_at")
-            .property("updated_at", datetime_prop())
-            .required("updated_at")
-            .into()
-    }
-}

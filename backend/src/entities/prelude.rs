@@ -4,7 +4,6 @@ pub use super::annotation::Entity as Annotation;
 pub use super::bars::Entity as Bars;
 pub use super::change_history::Entity as ChangeHistory;
 pub use super::comment::Entity as Comment;
-pub use super::custom_indicator::Entity as CustomIndicator;
 pub use super::indicator::Entity as Indicator;
 pub use super::instruments::Entity as Instruments;
 pub use super::mcp_session_state::Entity as McpSessionState;
