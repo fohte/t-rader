@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "packageManager": "pnpm@11.5.2",
+  "packageManager": "pnpm@11.7.0",
   "type": "module",
   "scripts": {
     "lint": "eslint .",
@@ -34,6 +34,7 @@
     "@testing-library/user-event": "14.6.1",
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/strictest": "2.0.8",
+<<<<<<< before updating
     "@types/node": "25.2.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
@@ -66,5 +67,13 @@
     "react-dom": "19.2.7",
     "react-error-boundary": "6.1.2",
     "tailwind-merge": "3.4.1"
+=======
+    "@types/node": "24.13.2",
+    "concurrently": "10.0.3",
+    "eslint": "10.5.0",
+    "prettier": "3.8.4",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
+>>>>>>> after updating
   }
 }
