@@ -75,7 +75,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // scope の値域と strategy_id の nullability 整合性は SeaQuery DSL では表現できないため raw SQL
         manager
             .get_connection()
             .execute_unprepared(
@@ -95,7 +94,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 同一 scope 内でのみ name を unique にしたいので部分 unique index を使う
         manager
             .get_connection()
             .execute_unprepared(

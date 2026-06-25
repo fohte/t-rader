@@ -263,10 +263,14 @@ pub async fn delete_indicator(
     State(state): State<AppState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let _ = find_indicator_or_404(&state.db, indicator_id).await?;
-    custom_indicator::Entity::delete_by_id(indicator_id)
+    let res = custom_indicator::Entity::delete_by_id(indicator_id)
         .exec(&state.db)
         .await?;
+    if res.rows_affected == 0 {
+        return Err(AppError::NotFound(format!(
+            "indicator {indicator_id} not found"
+        )));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
