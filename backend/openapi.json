@@ -1038,6 +1038,37 @@
         }
       }
     },
+    "/api/macro/ticks": {
+      "get": {
+        "tags": [
+          "macro"
+        ],
+        "summary": "マクロ指標の現在値を取得する",
+        "operationId": "get_macro_ticks",
+        "responses": {
+          "200": {
+            "description": "現在値",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MacroTicksResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "macro provider 未設定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes": {
       "get": {
         "tags": [
@@ -3627,6 +3658,60 @@
           }
         }
       },
+      "MacroTick": {
+        "type": "object",
+        "description": "マクロ指標の現在値",
+        "required": [
+          "symbol",
+          "value",
+          "pct",
+          "fetched_at"
+        ],
+        "properties": {
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "このティックの取得時刻"
+          },
+          "pct": {
+            "type": "number",
+            "format": "double",
+            "description": "前日終値からの変化率 (%)"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "表示用シンボル名 (例: \"日経225\")"
+          },
+          "value": {
+            "type": "string",
+            "description": "現在値 (フォーマット済み文字列)"
+          }
+        }
+      },
+      "MacroTicksResponse": {
+        "type": "object",
+        "description": "マクロ指標ティック取得レスポンス",
+        "properties": {
+          "stale_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "直近の取得失敗が継続している場合、その失敗の開始時刻"
+          },
+          "ticks": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/MacroTick"
+            },
+            "description": "直近の取得値。一度も成功していない、または 24h 以上失敗が続いている場合は `null`"
+          }
+        }
+      },
       "Note": {
         "type": "object",
         "required": [
@@ -4452,6 +4537,10 @@
     {
       "name": "imports",
       "description": "外部ソースからの取込 (SBI CSV 等)"
+    },
+    {
+      "name": "macro",
+      "description": "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"
     }
   ]
 }

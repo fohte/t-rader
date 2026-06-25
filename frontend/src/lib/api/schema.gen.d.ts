@@ -215,6 +215,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/macro/ticks': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** マクロ指標の現在値を取得する */
+    get: operations['get_macro_ticks']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes': {
     parameters: {
       query?: never
@@ -782,6 +799,33 @@ export interface components {
       id: string
       kind: string
       name: string
+    }
+    /** @description マクロ指標の現在値 */
+    MacroTick: {
+      /**
+       * Format: date-time
+       * @description このティックの取得時刻
+       */
+      fetched_at: string
+      /**
+       * Format: double
+       * @description 前日終値からの変化率 (%)
+       */
+      pct: number
+      /** @description 表示用シンボル名 (例: "日経225") */
+      symbol: string
+      /** @description 現在値 (フォーマット済み文字列) */
+      value: string
+    }
+    /** @description マクロ指標ティック取得レスポンス */
+    MacroTicksResponse: {
+      /**
+       * Format: date-time
+       * @description 直近の取得失敗が継続している場合、その失敗の開始時刻
+       */
+      stale_since?: string | null
+      /** @description 直近の取得値。一度も成功していない、または 24h 以上失敗が続いている場合は `null` */
+      ticks?: components['schemas']['MacroTick'][] | null
     }
     Note: {
       body_md: string
@@ -1762,6 +1806,35 @@ export interface operations {
         }
       }
       500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_macro_ticks: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 現在値 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MacroTicksResponse']
+        }
+      }
+      /** @description macro provider 未設定 */
+      503: {
         headers: {
           [name: string]: unknown
         }

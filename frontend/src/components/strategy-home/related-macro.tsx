@@ -1,14 +1,37 @@
-import { MACRO_MOCK } from '@/lib/strategy-mock'
+import { type MacroTick, useMacroTicks } from '@/lib/use-macro-ticks'
 
 interface RelatedMacroProps {
   // 戦略の関心から抽出した indicator id 一覧
   indicatorIds: string[]
 }
 
+export interface RelatedMacroViewProps extends RelatedMacroProps {
+  ticks: MacroTick[] | null
+  staleSince: string | null
+}
+
 export function RelatedMacro({ indicatorIds }: RelatedMacroProps) {
-  const items = indicatorIds
-    .map((id) => MACRO_MOCK.find((m) => normalize(m.name) === normalize(id)))
-    .filter((m): m is (typeof MACRO_MOCK)[number] => m != null)
+  const { ticks, staleSince } = useMacroTicks()
+  return (
+    <RelatedMacroView
+      indicatorIds={indicatorIds}
+      ticks={ticks}
+      staleSince={staleSince}
+    />
+  )
+}
+
+export function RelatedMacroView({
+  indicatorIds,
+  ticks,
+  staleSince,
+}: RelatedMacroViewProps) {
+  const items =
+    ticks == null
+      ? []
+      : indicatorIds
+          .map((id) => ticks.find((m) => normalize(m.symbol) === normalize(id)))
+          .filter((m): m is MacroTick => m != null)
 
   return (
     <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
@@ -16,37 +39,56 @@ export function RelatedMacro({ indicatorIds }: RelatedMacroProps) {
         <h3 className="font-mono text-[12px] font-bold uppercase tracking-wider text-[color:var(--color-text-primary)]">
           戦略関連マクロ
         </h3>
+        {staleSince != null && ticks != null && (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+            stale
+          </span>
+        )}
       </div>
-      {items.length === 0 ? (
-        <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
-          —
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-px bg-[color:var(--color-hairline)]">
-          {items.map((m) => {
-            const isUp = m.pct >= 0
-            return (
-              <div
-                key={m.name}
-                className="flex flex-col gap-0.5 bg-[color:var(--panel)] px-3 py-2.5"
-              >
-                <div className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-                  {m.name}
-                </div>
-                <div className="font-mono text-[14px] tabular-nums text-[color:var(--color-text-primary)]">
-                  {m.value}
-                </div>
-                <div
-                  className={`font-mono text-[11px] tabular-nums ${isUp ? 'text-[color:var(--color-up)]' : 'text-[color:var(--color-down)]'}`}
-                >
-                  {isUp ? '▲' : '▼'} {Math.abs(m.pct).toFixed(2)}%
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {renderBody(items, ticks == null)}
     </section>
+  )
+}
+
+function renderBody(items: MacroTick[], unavailable: boolean) {
+  if (unavailable) {
+    return (
+      <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+        N/A
+      </div>
+    )
+  }
+  if (items.length === 0) {
+    return (
+      <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+        —
+      </div>
+    )
+  }
+  return (
+    <div className="grid grid-cols-2 gap-px bg-[color:var(--color-hairline)]">
+      {items.map((m) => {
+        const isUp = m.pct >= 0
+        return (
+          <div
+            key={m.symbol}
+            className="flex flex-col gap-0.5 bg-[color:var(--panel)] px-3 py-2.5"
+          >
+            <div className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+              {m.symbol}
+            </div>
+            <div className="font-mono text-[14px] tabular-nums text-[color:var(--color-text-primary)]">
+              {m.value}
+            </div>
+            <div
+              className={`font-mono text-[11px] tabular-nums ${isUp ? 'text-[color:var(--color-up)]' : 'text-[color:var(--color-down)]'}`}
+            >
+              {isUp ? '▲' : '▼'} {Math.abs(m.pct).toFixed(2)}%
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
