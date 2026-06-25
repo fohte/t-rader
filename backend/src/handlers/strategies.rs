@@ -288,9 +288,6 @@ fn map_submit_error(err: SubmitTaskError) -> AppError {
             }
             other => AppError::Config(format!("kubeopencode error: {other}")),
         },
-        SubmitTaskError::RowVanished => {
-            AppError::Config("strategy_task row vanished mid-submit".into())
-        }
     }
 }
 

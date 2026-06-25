@@ -8,7 +8,7 @@
 use chrono::{DateTime, FixedOffset};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait, IntoActiveModel};
+use sea_orm::{DatabaseConnection, EntityTrait};
 use uuid::Uuid;
 
 use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
@@ -49,8 +49,6 @@ pub enum SubmitTaskError {
     Database(#[from] sea_orm::DbErr),
     #[error(transparent)]
     Kubeopencode(#[from] KubeopencodeError),
-    #[error("strategy_task row vanished mid-submit")]
-    RowVanished,
 }
 
 #[derive(Debug, Clone)]
@@ -167,14 +165,13 @@ pub async fn submit_task(
             task = %task_name,
             "kubeopencode create_task failed",
         );
-        let mut failed = strategy_task::Entity::find_by_id(task_id)
-            .one(db)
-            .await?
-            .ok_or(SubmitTaskError::RowVanished)?
-            .into_active_model();
-        failed.phase = Set(StrategyTaskPhase::Failed);
-        failed.error_summary = Set(Some(format!("create_task failed: {err}")));
-        failed.updated_at = Set(chrono::Utc::now().fixed_offset());
+        let failed = strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            phase: Set(StrategyTaskPhase::Failed),
+            error_summary: Set(Some(format!("create_task failed: {err}"))),
+            updated_at: Set(chrono::Utc::now().fixed_offset()),
+            ..Default::default()
+        };
         if let Err(update_err) = failed.update(db).await {
             // 行は Pending のまま残り、polling 側からは「完了しない task」に見える。
             // sweep 機構が無いため、ログから手動 reconcile が必要。

@@ -347,7 +347,6 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
         }
         SubmitTaskError::Database(db_err) => db_error(db_err),
         SubmitTaskError::Kubeopencode(kube_err) => map_kube_error(&kube_err),
-        SubmitTaskError::RowVanished => internal_error("strategy_task row vanished mid-submit"),
     }
 }
 
