@@ -20,9 +20,7 @@ use crate::models::{
 };
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategy_agent;
-use crate::services::strategy_tasks::{
-    self, GetTaskError, SubmitTaskError, TaskSource, phase_to_string,
-};
+use crate::services::strategy_tasks::{self, GetTaskError, SubmitTaskError, TaskSource, phase_str};
 
 fn validate_name(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
@@ -305,7 +303,7 @@ fn map_submit_error(err: SubmitTaskError) -> AppError {
     request_body = StrategyChatRequest,
     responses(
         (status = 202, body = StrategyChatResponse),
-        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 400, description = "prompt が空 (空白のみを含む)", body = ErrorResponse),
         (status = 404, description = "戦略が存在しない", body = ErrorResponse),
         (status = 409, description = "kubeopencode タスクの名前衝突", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -372,7 +370,7 @@ pub async fn get_strategy_task(
         strategy_id: view.strategy_id,
         kubeopencode_task_name: view.kubeopencode_task_name,
         source: view.source,
-        phase: phase_to_string(&view.phase).to_string(),
+        phase: phase_str(&view.phase).to_string(),
         error_summary: view.error_summary,
         created_at: view.created_at,
         updated_at: view.updated_at,

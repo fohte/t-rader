@@ -23,7 +23,7 @@ use uuid::Uuid;
 use crate::entities::{annotation, note, strategy};
 use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient};
 use crate::services::strategy_tasks::{
-    self, SubmitTaskError, TaskSource, TaskStatusView, phase_to_string,
+    self, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -258,7 +258,7 @@ impl MgmtServer {
             task_id: view.task_id,
             strategy_id: view.strategy_id,
             kubeopencode_task_name: view.kubeopencode_task_name,
-            phase: phase_to_string(&view.phase).to_string(),
+            phase: phase_str(&view.phase).to_string(),
             error_summary: view.error_summary,
             updated_at: view.updated_at,
         }))

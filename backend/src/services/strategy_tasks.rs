@@ -71,6 +71,21 @@ pub struct TaskStatusView {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+impl From<strategy_task::Model> for TaskStatusView {
+    fn from(row: strategy_task::Model) -> Self {
+        Self {
+            task_id: row.task_id,
+            strategy_id: row.strategy_id,
+            kubeopencode_task_name: row.kubeopencode_task_name,
+            source: row.source,
+            phase: row.phase,
+            error_summary: row.error_summary,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum GetTaskError {
     #[error("strategy task {0} not found")]
@@ -93,9 +108,7 @@ fn generate_task_name(strategy_id: Uuid) -> String {
 
 /// 戦略 Agent にタスクを投入する。
 ///
-/// strategy_task 行を Pending で先に INSERT してから Task CR を作る。逆順にすると
-/// CR 作成成功後に DB 書き込みが失敗したケースで CR が孤児化する。CR 作成が失敗したら
-/// 同じ行を Failed に更新する。
+/// CR 孤児化を避けるため、Pending 行を先に INSERT してから Task CR を作成する。
 pub async fn submit_task(
     db: &DatabaseConnection,
     kube: &SharedKubeopencodeClient,
@@ -198,16 +211,7 @@ pub async fn get_task_for_strategy(
             strategy_id,
         });
     }
-    Ok(TaskStatusView {
-        task_id: row.task_id,
-        strategy_id: row.strategy_id,
-        kubeopencode_task_name: row.kubeopencode_task_name,
-        source: row.source,
-        phase: row.phase,
-        error_summary: row.error_summary,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    })
+    Ok(TaskStatusView::from(row))
 }
 
 /// kubeopencode_task_name で strategy_task 行を引く (管理 MCP `get_strategy_task_status` 互換)。
@@ -220,19 +224,10 @@ pub async fn get_task_by_name(
         .filter(strategy_task::Column::KubeopencodeTaskName.eq(kubeopencode_task_name))
         .one(db)
         .await?;
-    Ok(row.map(|row| TaskStatusView {
-        task_id: row.task_id,
-        strategy_id: row.strategy_id,
-        kubeopencode_task_name: row.kubeopencode_task_name,
-        source: row.source,
-        phase: row.phase,
-        error_summary: row.error_summary,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    }))
+    Ok(row.map(TaskStatusView::from))
 }
 
-pub fn phase_to_string(phase: &StrategyTaskPhase) -> &'static str {
+pub fn phase_str(phase: &StrategyTaskPhase) -> &'static str {
     match phase {
         StrategyTaskPhase::Pending => "pending",
         StrategyTaskPhase::Running => "running",

@@ -2308,7 +2308,7 @@
             }
           },
           "400": {
-            "description": "リクエストパラメータが不正",
+            "description": "prompt が空 (空白のみを含む)",
             "content": {
               "application/json": {
                 "schema": {

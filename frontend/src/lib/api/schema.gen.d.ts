@@ -2754,7 +2754,7 @@ export interface operations {
                     "application/json": components["schemas"]["StrategyChatResponse"];
                 };
             };
-            /** @description リクエストパラメータが不正 */
+            /** @description prompt が空 (空白のみを含む) */
             400: {
                 headers: {
                     [name: string]: unknown;
