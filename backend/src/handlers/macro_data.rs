@@ -40,10 +40,17 @@ pub async fn get_macro_ticks(
 
     let snapshot = cache.snapshot().await;
     let now = Utc::now();
+    // poll task が panic 等で silent に止まった場合 `stale_since` が更新されない。
+    // 個々の tick の `fetched_at` も 24h 越えで N/A 扱いにし、防御層を二重化する。
     let too_stale = snapshot
         .stale_since
         .map(|s| now.signed_duration_since(s) > STALE_CUTOFF)
-        .unwrap_or(false);
+        .unwrap_or(false)
+        || snapshot
+            .ticks
+            .first()
+            .map(|t| now.signed_duration_since(t.fetched_at) > STALE_CUTOFF)
+            .unwrap_or(false);
     // 起動直後の初回 poll 完了前 (ticks=[], stale_since=None) と、初回 poll 失敗後
     // (ticks=[], stale_since=Some) の両方を「まだ取得結果がない」状態として N/A 扱いにする。
     // frontend は `ticks: null` を loading / N/A 分岐に倒す。
@@ -84,16 +91,30 @@ mod tests {
         Decimal::from_str(s).expect("valid decimal")
     }
 
+    /// テストデータの `fetched_at` には `Utc::now()` を入れる。固定の未来日付を
+    /// 使うとその日が来たときに handler の 24h cutoff で挙動が変わり time-bomb
+    /// テストになるため。アサーションでは [`normalize_fetched_at`] で固定値に正規化する。
     fn sample_tick() -> MacroTick {
         MacroTick {
             symbol: "日経225".into(),
             value: "100.00".into(),
             pct: dec("0.50"),
-            fetched_at: Utc
-                .with_ymd_and_hms(2026, 6, 25, 6, 0, 0)
-                .single()
-                .expect("ok"),
+            fetched_at: Utc::now(),
         }
+    }
+
+    const NORMALIZED_FETCHED_AT: &str = "1970-01-01T00:00:00Z";
+
+    /// レスポンス JSON の `ticks[].fetched_at` を固定値に置き換える
+    fn normalize_fetched_at(mut json: Value) -> Value {
+        if let Some(ticks) = json.get_mut("ticks").and_then(|t| t.as_array_mut()) {
+            for tick in ticks {
+                if let Some(fetched_at) = tick.get_mut("fetched_at") {
+                    *fetched_at = json!(NORMALIZED_FETCHED_AT);
+                }
+            }
+        }
+        json
     }
 
     fn ymd_hms(year: i32, mon: u32, day: u32, h: u32, m: u32, s: u32) -> DateTime<Utc> {
@@ -102,11 +123,14 @@ mod tests {
             .expect("valid time")
     }
 
-    /// 4 ケース共通の cache 状態セットアップ
+    /// cache 状態のセットアップパターン
     enum CacheState {
         Fresh,
         StaleOver24h,
         FailedBeforeFirstSuccess,
+        /// poll task が silent に止まり stale_since 更新が来ない状態を模す
+        /// (record_success の tick だけが古いまま残る)
+        PollTaskDiedSilently,
     }
 
     async fn build_cache(state: CacheState) -> Arc<MacroCache> {
@@ -121,6 +145,14 @@ mod tests {
             }
             CacheState::FailedBeforeFirstSuccess => {
                 cache.record_failure(ymd_hms(2026, 6, 25, 5, 30, 0)).await;
+            }
+            CacheState::PollTaskDiedSilently => {
+                cache
+                    .record_success(vec![MacroTick {
+                        fetched_at: ymd_hms(2020, 1, 1, 0, 0, 0),
+                        ..sample_tick()
+                    }])
+                    .await;
             }
         }
         cache
@@ -146,7 +178,7 @@ mod tests {
                 "symbol": "日経225",
                 "value": "100.00",
                 "pct": 0.5,
-                "fetched_at": "2026-06-25T06:00:00Z",
+                "fetched_at": NORMALIZED_FETCHED_AT,
             }],
             "stale_since": null,
         }),
@@ -165,6 +197,13 @@ mod tests {
             "stale_since": "2026-06-25T05:30:00Z",
         }),
     )]
+    #[case::poll_task_died_silently(
+        CacheState::PollTaskDiedSilently,
+        json!({
+            "ticks": null,
+            "stale_since": null,
+        }),
+    )]
     #[tokio::test]
     async fn get_macro_ticks_response(#[case] state: CacheState, #[case] expected: Value) {
         let cache = build_cache(state).await;
@@ -172,7 +211,7 @@ mod tests {
 
         let response = server.get("/api/macro/ticks").await;
         response.assert_status_ok();
-        assert_eq!(response.json::<Value>(), expected);
+        assert_eq!(normalize_fetched_at(response.json::<Value>()), expected);
     }
 
     #[rstest]
