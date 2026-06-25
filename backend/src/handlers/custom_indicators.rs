@@ -85,6 +85,7 @@ pub async fn list_global_indicators(
     params(("id" = Uuid, Path, description = "戦略 ID")),
     responses(
         (status = 200, body = Vec<custom_indicator::Model>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -111,6 +112,7 @@ pub async fn list_strategy_indicators(
     params(("indicator_id" = Uuid, Path, description = "indicator ID")),
     responses(
         (status = 200, body = custom_indicator::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -130,8 +132,9 @@ pub async fn get_indicator(
     request_body = CreateCustomIndicatorRequest,
     responses(
         (status = 201, body = custom_indicator::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 409, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -152,9 +155,10 @@ pub async fn create_global_indicator(
     request_body = CreateCustomIndicatorRequest,
     responses(
         (status = 201, body = custom_indicator::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -210,9 +214,10 @@ async fn insert_indicator(
     request_body = UpdateCustomIndicatorRequest,
     responses(
         (status = 200, body = custom_indicator::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -255,6 +260,7 @@ pub async fn update_indicator(
     params(("indicator_id" = Uuid, Path, description = "indicator ID")),
     responses(
         (status = 204),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -285,6 +291,7 @@ pub async fn delete_indicator(
     ),
     responses(
         (status = 200, body = custom_indicator::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

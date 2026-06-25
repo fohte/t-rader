@@ -1099,7 +1099,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "リクエストパラメータが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -1110,6 +1110,16 @@
           },
           "409": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
             "content": {
               "application/json": {
                 "schema": {
@@ -1157,6 +1167,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CustomIndicator"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1223,7 +1243,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "リクエストパラメータが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -1244,6 +1264,16 @@
           },
           "409": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
             "content": {
               "application/json": {
                 "schema": {
@@ -1285,6 +1315,16 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "",
@@ -2571,6 +2611,16 @@
               }
             }
           },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "",
             "content": {
@@ -2633,7 +2683,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "リクエストパラメータが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -2654,6 +2704,16 @@
           },
           "409": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
             "content": {
               "application/json": {
                 "schema": {
@@ -2711,6 +2771,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CustomIndicator"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
