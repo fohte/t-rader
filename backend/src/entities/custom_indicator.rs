@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub indicator_id: Uuid,
-    #[sea_orm(column_type = "Text")]
+    #[sea_orm(column_type = "Text", unique)]
     pub name: String,
     #[sea_orm(column_type = "Text")]
     pub scope: String,
+    #[sea_orm(unique_key = "custom_indicator_strategy_name_idx")]
     pub strategy_id: Option<Uuid>,
     #[sea_orm(column_type = "Text")]
     pub code: String,
