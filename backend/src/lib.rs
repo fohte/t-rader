@@ -164,6 +164,12 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::delete_strategy
         ))
         .routes(routes!(strategies::list_strategy_interests))
+        .routes(routes!(
+            strategies::get_agents_md,
+            strategies::put_agents_md
+        ))
+        .routes(routes!(strategies::get_skills, strategies::put_skills))
+        .routes(routes!(strategies::put_skill, strategies::delete_skill))
         // refs
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))
