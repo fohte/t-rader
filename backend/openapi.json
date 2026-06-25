@@ -2753,6 +2753,109 @@
         }
       }
     },
+    "/api/strategies/{id}/chat": {
+      "post": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "フローティングチャットから戦略 Agent にタスクを投入する",
+        "operationId": "submit_strategy_chat",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategyChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "prompt が空 (空白のみを含む)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "戦略が存在しない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "kubeopencode タスクの名前衝突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "戦略 Agent が ready ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/indicators": {
       "get": {
         "tags": [
@@ -3317,6 +3420,79 @@
           },
           "400": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/strategies/{id}/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "投入済み戦略タスクの phase / error_summary を取得する",
+        "operationId": "get_strategy_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "戦略タスク ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyTaskStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスパラメータが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -5671,6 +5847,37 @@
           }
         }
       },
+      "StrategyChatRequest": {
+        "type": "object",
+        "description": "フローティングチャットから戦略 Agent に投入する 1 メッセージ。",
+        "required": [
+          "prompt"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "StrategyChatResponse": {
+        "type": "object",
+        "description": "`POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。",
+        "required": [
+          "task_id",
+          "kubeopencode_task_name"
+        ],
+        "properties": {
+          "kubeopencode_task_name": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "StrategyInterest": {
         "type": "object",
         "required": [
@@ -5701,6 +5908,52 @@
           "strategy_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "StrategyTaskStatusResponse": {
+        "type": "object",
+        "description": "`GET /api/strategies/:id/tasks/:task_id` の戻り値。",
+        "required": [
+          "task_id",
+          "strategy_id",
+          "kubeopencode_task_name",
+          "source",
+          "phase",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kubeopencode_task_name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

@@ -20,15 +20,14 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{annotation, note, strategy, strategy_task};
+use crate::entities::{annotation, note, strategy};
 use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient};
+use crate::services::strategy_tasks::{
+    self, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
+};
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
 const MAX_LIST_LIMIT: u64 = 100;
-
-/// 戦略タスクの起源を表す `strategy_task.source` の値
-const TASK_SOURCE: &str = "mgmt-mcp";
 
 #[derive(Clone)]
 pub struct MgmtServer {
@@ -142,15 +141,6 @@ fn clamp_limit(limit: Option<u32>) -> u64 {
     value.clamp(1, MAX_LIST_LIMIT)
 }
 
-fn phase_to_string(phase: &StrategyTaskPhase) -> &'static str {
-    match phase {
-        StrategyTaskPhase::Pending => "pending",
-        StrategyTaskPhase::Running => "running",
-        StrategyTaskPhase::Completed => "completed",
-        StrategyTaskPhase::Failed => "failed",
-    }
-}
-
 /// 指定エンティティの `status='unread'` 件数を strategy_id ごとに集約して返す。
 /// `list_strategies` が note / annotation 双方に対し 1 クエリで未読件数を取るために使う。
 async fn unread_counts_by_strategy<E, C>(
@@ -235,23 +225,18 @@ impl MgmtServer {
         &self,
         Parameters(params): Parameters<SubmitStrategyTaskParams>,
     ) -> Result<Json<SubmitStrategyTaskResult>, McpError> {
-        let SubmitStrategyTaskParams {
-            strategy_id,
-            prompt,
-        } = params;
-        let outcome = crate::services::strategy_tasks::submit_strategy_task(
+        let submitted = strategy_tasks::submit_task(
             &self.db,
             &self.kube,
-            strategy_id,
-            prompt,
-            TASK_SOURCE,
+            params.strategy_id,
+            &params.prompt,
+            TaskSource::MgmtMcp,
         )
         .await
         .map_err(map_submit_error)?;
-
         Ok(Json(SubmitStrategyTaskResult {
-            task_id: outcome.task_id,
-            kubeopencode_task_name: outcome.kubeopencode_task_name,
+            task_id: submitted.task_id,
+            kubeopencode_task_name: submitted.kubeopencode_task_name,
         }))
     }
 
@@ -264,19 +249,18 @@ impl MgmtServer {
         &self,
         Parameters(params): Parameters<GetStrategyTaskStatusParams>,
     ) -> Result<Json<GetStrategyTaskStatusResult>, McpError> {
-        let row = strategy_task::Entity::find()
-            .filter(strategy_task::Column::KubeopencodeTaskName.eq(params.kubeopencode_task_name))
-            .one(&self.db)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| McpError::resource_not_found("strategy task not found", None))?;
+        let view: TaskStatusView =
+            strategy_tasks::get_task_by_name(&self.db, &params.kubeopencode_task_name)
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| McpError::resource_not_found("strategy task not found", None))?;
         Ok(Json(GetStrategyTaskStatusResult {
-            task_id: row.task_id,
-            strategy_id: row.strategy_id,
-            kubeopencode_task_name: row.kubeopencode_task_name,
-            phase: phase_to_string(&row.phase).to_string(),
-            error_summary: row.error_summary,
-            updated_at: row.updated_at,
+            task_id: view.task_id,
+            strategy_id: view.strategy_id,
+            kubeopencode_task_name: view.kubeopencode_task_name,
+            phase: phase_str(&view.phase).to_string(),
+            error_summary: view.error_summary,
+            updated_at: view.updated_at,
         }))
     }
 
@@ -351,6 +335,21 @@ impl ServerHandler for MgmtServer {
     }
 }
 
+fn map_submit_error(err: SubmitTaskError) -> McpError {
+    match err {
+        SubmitTaskError::EmptyPrompt => invalid_params("prompt must not be empty"),
+        SubmitTaskError::StrategyNotFound(id) => invalid_params(format!("strategy {id} not found")),
+        SubmitTaskError::AgentPending => {
+            invalid_params("strategy agent not ready: status=pending (reconcile in progress)")
+        }
+        SubmitTaskError::AgentFailed(reason) => {
+            invalid_params(format!("strategy agent not ready: status=failed: {reason}"))
+        }
+        SubmitTaskError::Database(db_err) => db_error(db_err),
+        SubmitTaskError::Kubeopencode(kube_err) => map_kube_error(&kube_err),
+    }
+}
+
 fn map_kube_error(err: &KubeopencodeError) -> McpError {
     match err {
         KubeopencodeError::NotConfigured => internal_error("kubeopencode is not configured"),
@@ -368,17 +367,6 @@ fn map_kube_error(err: &KubeopencodeError) -> McpError {
         }
         KubeopencodeError::Parse(msg) => internal_error(format!("kubeopencode parse error: {msg}")),
         KubeopencodeError::Init(msg) => internal_error(format!("kubeopencode init error: {msg}")),
-    }
-}
-
-fn map_submit_error(err: crate::services::strategy_tasks::SubmitStrategyTaskError) -> McpError {
-    use crate::services::strategy_tasks::SubmitStrategyTaskError;
-    match err {
-        SubmitStrategyTaskError::Kube(e) => map_kube_error(&e),
-        SubmitStrategyTaskError::Database(e) => db_error(e),
-        // EmptyPrompt / StrategyNotFound / AgentPending / AgentFailed の文言は
-        // thiserror の `#[error(...)]` で一元管理し、ここでは Display にそのまま乗せる
-        other => invalid_params(other.to_string()),
     }
 }
 
@@ -406,11 +394,15 @@ mod integration_tests {
     use sea_orm::IntoActiveModel;
     use sqlx::PgPool;
 
-    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
+    use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
+    use crate::entities::strategy_task;
     use crate::kubeopencode::{FakeKubeopencodeClient, KubeopencodeError, agent_name_for};
     use crate::testing::create_test_db;
 
     use super::*;
+
+    /// 管理 MCP 経由で投入されたタスクの `strategy_task.source` 値。
+    const MGMT_TASK_SOURCE: &str = "mgmt-mcp";
 
     async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
         insert_strategy_with_status(db, name, StrategyAgentStatus::Ready).await
@@ -493,7 +485,7 @@ mod integration_tests {
                 task_id,
                 strategy_id,
                 kubeopencode_task_name: task_name,
-                source: TASK_SOURCE.to_string(),
+                source: MGMT_TASK_SOURCE.to_string(),
                 prompt: "inspect 7203".to_string(),
                 phase: StrategyTaskPhase::Pending,
                 error_summary: None,

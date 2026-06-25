@@ -13,25 +13,7 @@ use uuid::Uuid;
 
 use crate::entities::{strategy, trigger};
 use crate::kubeopencode::SharedKubeopencodeClient;
-use crate::services::strategy_tasks::{
-    SubmitStrategyTaskError, SubmitStrategyTaskOutcome, submit_strategy_task,
-};
-
-/// `strategy_task.source` に書き込む値の集合。fire 元を識別する。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TriggerSource {
-    Cron,
-    Hook,
-}
-
-impl TriggerSource {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            TriggerSource::Cron => "cron",
-            TriggerSource::Hook => "hook",
-        }
-    }
-}
+use crate::services::strategy_tasks::{SubmitTaskError, SubmittedTask, TaskSource, submit_task};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FireTriggerError {
@@ -40,7 +22,7 @@ pub enum FireTriggerError {
     #[error("trigger {0} is disabled")]
     Disabled(Uuid),
     #[error("submit strategy task failed: {0}")]
-    Submit(#[from] SubmitStrategyTaskError),
+    Submit(#[from] SubmitTaskError),
     #[error("database error: {0}")]
     Database(#[from] sea_orm::DbErr),
 }
@@ -54,8 +36,8 @@ pub async fn fire_trigger(
     kube: &SharedKubeopencodeClient,
     trigger_id: Uuid,
     payload: Value,
-    source: TriggerSource,
-) -> Result<SubmitStrategyTaskOutcome, FireTriggerError> {
+    source: TaskSource,
+) -> Result<SubmittedTask, FireTriggerError> {
     let trigger_row = trigger::Entity::find_by_id(trigger_id)
         .one(db)
         .await?
@@ -67,17 +49,16 @@ pub async fn fire_trigger(
     let strategy_row = strategy::Entity::find_by_id(trigger_row.strategy_id)
         .one(db)
         .await?
-        .ok_or(FireTriggerError::Submit(
-            SubmitStrategyTaskError::StrategyNotFound(trigger_row.strategy_id),
-        ))?;
+        .ok_or(FireTriggerError::Submit(SubmitTaskError::StrategyNotFound(
+            trigger_row.strategy_id,
+        )))?;
 
     // prompt 内 `{{now}}` と DB の `last_fired_at` を同一時点に揃えるため now を 1 度だけ取る
     let now = Utc::now();
     let context = build_standard_context(&strategy_row, now);
     let prompt = expand_template(&trigger_row.prompt_template, &payload, &context);
 
-    let outcome =
-        submit_strategy_task(db, kube, trigger_row.strategy_id, prompt, source.as_str()).await?;
+    let outcome = submit_task(db, kube, trigger_row.strategy_id, &prompt, source).await?;
 
     let now_fixed = now.fixed_offset();
     let mut active = trigger_row.into_active_model();
@@ -433,15 +414,9 @@ mod fire_tests {
         let tid = seed_hook_trigger(&db, sid, "tv", "alert {{payload.symbol}}").await;
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        let outcome = fire_trigger(
-            &db,
-            &kube,
-            tid,
-            json!({"symbol": "7203"}),
-            TriggerSource::Hook,
-        )
-        .await
-        .expect("fire ok");
+        let outcome = fire_trigger(&db, &kube, tid, json!({"symbol": "7203"}), TaskSource::Hook)
+            .await
+            .expect("fire ok");
 
         let task = strategy_task::Entity::find_by_id(outcome.task_id)
             .one(&db)
@@ -495,7 +470,7 @@ mod fire_tests {
         .unwrap();
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        fire_trigger(&db, &kube, id, json!({}), TriggerSource::Cron)
+        fire_trigger(&db, &kube, id, json!({}), TaskSource::Cron)
             .await
             .expect("ok");
 
@@ -538,7 +513,7 @@ mod fire_tests {
         .unwrap();
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        let err = fire_trigger(&db, &kube, id, json!({}), TriggerSource::Hook)
+        let err = fire_trigger(&db, &kube, id, json!({}), TaskSource::Hook)
             .await
             .expect_err("disabled");
         assert_eq!(err.to_string(), format!("trigger {id} is disabled"));
@@ -549,7 +524,7 @@ mod fire_tests {
         let db = create_test_db(pool).await;
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
         let missing = Uuid::new_v4();
-        let err = fire_trigger(&db, &kube, missing, json!({}), TriggerSource::Hook)
+        let err = fire_trigger(&db, &kube, missing, json!({}), TaskSource::Hook)
             .await
             .expect_err("not found");
         assert_eq!(err.to_string(), format!("trigger {missing} not found"));
@@ -578,7 +553,7 @@ mod fire_tests {
         let tid = seed_hook_trigger(&db, sid, "p", "x").await;
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        let err = fire_trigger(&db, &kube, tid, json!({}), TriggerSource::Hook)
+        let err = fire_trigger(&db, &kube, tid, json!({}), TaskSource::Hook)
             .await
             .expect_err("submit fails");
         let row = trigger::Entity::find_by_id(tid)
