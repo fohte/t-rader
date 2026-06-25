@@ -252,6 +252,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/macro/ticks': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** マクロ指標の現在値を取得する */
+    get: operations['get_macro_ticks']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes': {
     parameters: {
       query?: never
@@ -517,6 +534,24 @@ export interface paths {
     patch: operations['update_strategy']
     trace?: never
   }
+  '/api/strategies/{id}/agents-md': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略 Agent の AGENTS.md (方針 / 制約 markdown) を取得 */
+    get: operations['get_agents_md']
+    /** 戦略 Agent の AGENTS.md を上書き保存し、Agent reconcile を再発火 */
+    put: operations['put_agents_md']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/indicators': {
     parameters: {
       query?: never
@@ -564,6 +599,42 @@ export interface paths {
     put?: never
     post?: never
     delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/skills': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略 Agent の skills 全件取得 */
+    get: operations['get_skills']
+    /** 戦略 Agent の skills 全置換 */
+    put: operations['put_skills']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/skills/{name}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    /** 戦略 Agent の単一 skill 追加 / 更新 */
+    put: operations['put_skill']
+    post?: never
+    /** 戦略 Agent の単一 skill 削除 */
+    delete: operations['delete_skill']
     options?: never
     head?: never
     patch?: never
@@ -702,6 +773,9 @@ export interface components {
       instrument_id: string
       /** @description 銘柄名 (例: "トヨタ自動車") */
       name: string
+    }
+    AgentsMdBody: {
+      content: string
     }
     Annotation: {
       /** Format: date-time */
@@ -882,6 +956,33 @@ export interface components {
       kind: string
       name: string
     }
+    /** @description マクロ指標の現在値 */
+    MacroTick: {
+      /**
+       * Format: date-time
+       * @description このティックの取得時刻
+       */
+      fetched_at: string
+      /**
+       * Format: double
+       * @description 前日終値からの変化率 (%)
+       */
+      pct: number
+      /** @description 表示用シンボル名 (例: "日経225") */
+      symbol: string
+      /** @description 現在値 (フォーマット済み文字列) */
+      value: string
+    }
+    /** @description マクロ指標ティック取得レスポンス */
+    MacroTicksResponse: {
+      /**
+       * Format: date-time
+       * @description 直近の取得失敗が継続している場合、その失敗の開始時刻
+       */
+      stale_since?: string | null
+      /** @description 直近の取得値。一度も成功していない、または 24h 以上失敗が続いている場合は `null` */
+      ticks?: components['schemas']['MacroTick'][] | null
+    }
     Note: {
       body_md: string
       /** Format: date-time */
@@ -1001,6 +1102,14 @@ export interface components {
     Sector: {
       id: string
       name: string
+    }
+    SkillBody: {
+      content: string
+    }
+    SkillsBody: {
+      skills: {
+        [key: string]: string
+      }
     }
     Stock: {
       /** Format: date-time */
@@ -2125,6 +2234,35 @@ export interface operations {
       }
     }
   }
+  get_macro_ticks: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 現在値 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MacroTicksResponse']
+        }
+      }
+      /** @description macro provider 未設定 */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_notes: {
     parameters: {
       query?: {
@@ -3025,6 +3163,110 @@ export interface operations {
       }
     }
   }
+  get_agents_md: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentsMdBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_agents_md: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentsMdBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentsMdBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_strategy_indicators: {
     parameters: {
       query?: never
@@ -3210,6 +3452,216 @@ export interface operations {
         }
       }
       /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_skills: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillsBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_skills: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SkillsBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillsBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_skill: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description skill 名 (^[a-z0-9][a-z0-9_-]*$) */
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SkillBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_skill: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description skill 名 */
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
       400: {
         headers: {
           [name: string]: unknown

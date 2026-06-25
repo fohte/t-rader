@@ -4,6 +4,7 @@ pub mod comments;
 pub mod custom_indicators;
 pub mod history;
 pub mod imports;
+pub mod macro_data;
 pub mod notes;
 pub mod refs;
 pub mod strategies;

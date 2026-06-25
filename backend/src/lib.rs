@@ -30,10 +30,11 @@ use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::data_provider::DataProviderKind;
+use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    annotations, bars, comments, custom_indicators, history, imports, notes, refs, strategies,
-    trades, watchlists,
+    annotations, bars, comments, custom_indicators, history, imports, macro_data, notes, refs,
+    strategies, trades, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
@@ -54,6 +55,8 @@ pub struct AppState {
     /// Kata Containers exec Pod executor。`KATA_EXEC_API_URL` 未設定時は `None` で
     /// 起動し、`eval_python` tool は MCP エラーを返す。
     pub kata_executor: Option<SharedKataExecutor>,
+    /// マクロ指標の最新値 cache (Stooq 等の poll task が書き込み、handler が読む)
+    pub macro_cache: Option<Arc<MacroCache>>,
 }
 
 impl AppState {
@@ -92,6 +95,7 @@ impl AppState {
         (name = "trades", description = "取引履歴と損益サマリ"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
+        (name = "macro", description = "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"),
     ),
     info(
         title = "T-Rader API",
@@ -120,6 +124,7 @@ mod app_state_tests {
             data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
             kubeopencode: AppState::disabled_kubeopencode(),
             kata_executor: None,
+            macro_cache: None,
         };
         assert!(state.data_provider().is_ok());
     }
@@ -131,6 +136,7 @@ mod app_state_tests {
             data_provider: None,
             kubeopencode: AppState::disabled_kubeopencode(),
             kata_executor: None,
+            macro_cache: None,
         };
         let result = state.data_provider();
         assert!(result.is_err());
@@ -166,6 +172,12 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::delete_strategy
         ))
         .routes(routes!(strategies::list_strategy_interests))
+        .routes(routes!(
+            strategies::get_agents_md,
+            strategies::put_agents_md
+        ))
+        .routes(routes!(strategies::get_skills, strategies::put_skills))
+        .routes(routes!(strategies::put_skill, strategies::delete_skill))
         // refs
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))
@@ -229,6 +241,8 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             custom_indicators::create_strategy_indicator
         ))
         .routes(routes!(custom_indicators::get_strategy_indicator))
+        // macro
+        .routes(routes!(macro_data::get_macro_ticks))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)
