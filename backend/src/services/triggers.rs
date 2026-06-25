@@ -47,16 +47,8 @@ pub enum FireTriggerError {
 
 /// trigger を発火する。
 ///
-/// 1. trigger を取得
-/// 2. 戦略名を取得して標準 context (`now`, `strategy.name`) を構築
-/// 3. `prompt_template` を payload + context で展開
-/// 4. `submit_strategy_task` で `strategy_task` 行を作成
-/// 5. submit 成功後に `last_fired_at` を更新
-///
-/// submit と `last_fired_at` 更新は別トランザクションのため、submit 成功直後に DB が落ちると
-/// タスクが投入済みなのに `last_fired_at` が古いまま残る。次回 worker 走査で再発火する可能性
-/// があるので、`kubeopencode_task_name` の衝突回避はランダム部分に任せ、呼び出し側は重複発火
-/// を許容する前提で組むこと。
+/// 呼び出し側は重複発火を許容する前提で組むこと: submit 成功後に `last_fired_at` 更新が
+/// 失敗すると次回 worker 走査で再発火しうる。
 pub async fn fire_trigger(
     db: &DatabaseConnection,
     kube: &SharedKubeopencodeClient,
@@ -91,7 +83,16 @@ pub async fn fire_trigger(
     let mut active = trigger_row.into_active_model();
     active.last_fired_at = Set(Some(now_fixed));
     active.updated_at = Set(now_fixed);
-    active.update(db).await?;
+    if let Err(err) = active.update(db).await {
+        // 再発火追跡用のログ。task は投入済みなので呼び出し側のリトライで重複が走る可能性がある
+        tracing::warn!(
+            error = %err,
+            trigger_id = %trigger_id,
+            task_id = %outcome.task_id,
+            "trigger fired but last_fired_at update failed; may re-fire",
+        );
+        return Err(FireTriggerError::Database(err));
+    }
 
     Ok(outcome)
 }

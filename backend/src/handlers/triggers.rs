@@ -92,7 +92,7 @@ async fn find_trigger_or_404(
     tag = "triggers",
     params(
         ("id" = Uuid, Path, description = "戦略 ID"),
-        ("kind" = Option<String>, Query, description = "kind フィルタ (cron|hook)"),
+        ("kind" = Option<TriggerKind>, Query, description = "kind フィルタ"),
     ),
     responses(
         (status = 200, body = Vec<trigger::Model>),
@@ -139,9 +139,9 @@ pub async fn create_strategy_trigger(
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateTriggerRequest>,
 ) -> Result<(StatusCode, Json<trigger::Model>), AppError> {
-    find_strategy_or_404(&state.db, strategy_id).await?;
     validate_create(&payload)?;
     let prompt_template = validate_template(&payload.prompt_template)?;
+    find_strategy_or_404(&state.db, strategy_id).await?;
 
     let model = trigger::ActiveModel {
         trigger_id: Set(Uuid::new_v4()),

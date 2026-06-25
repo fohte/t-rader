@@ -52,8 +52,8 @@ pub fn generate_task_name(strategy_id: Uuid) -> String {
 
 /// 戦略タスクを投入する。
 ///
-/// 行を Pending で先に作っておくことで、`create_task` が成功したのに後続の DB 書き込みで
-/// 失敗して CR が孤児化するケースを潰す。`create_task` が失敗したら同じ行を Failed に更新する。
+/// invariant: `create_task` 呼び出し前に Pending 行を必ず挿入する。逆順だと create_task
+/// 成功後の DB 書き込み失敗で CR が孤児化する。
 pub async fn submit_strategy_task(
     db: &DatabaseConnection,
     kube: &SharedKubeopencodeClient,

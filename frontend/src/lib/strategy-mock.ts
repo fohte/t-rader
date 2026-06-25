@@ -9,12 +9,6 @@ export interface Strategy {
   unread: number
 }
 
-export interface MacroTick {
-  name: string
-  value: string
-  pct: number
-}
-
 export interface RefEntity {
   kind: RefKind
   name: string
@@ -46,15 +40,6 @@ export const STRATEGIES_MOCK: Strategy[] = [
     updatedAt: '3 日前',
     unread: 0,
   },
-]
-
-export const MACRO_MOCK: MacroTick[] = [
-  { name: '日経225', value: '38,420.55', pct: -0.62 },
-  { name: 'TOPIX', value: '2,711.30', pct: -0.41 },
-  { name: 'USD/JPY', value: '157.84', pct: 0.38 },
-  { name: 'VIX', value: '18.92', pct: 4.71 },
-  { name: 'S&P500 fut', value: '5,284.0', pct: -0.55 },
-  { name: 'US10Y', value: '4.482%', pct: 1.84 },
 ]
 
 export const REF_KIND_JP: Record<RefKind, string> = {
