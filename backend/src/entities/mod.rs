@@ -20,5 +20,6 @@ pub mod strategy_interest;
 pub mod strategy_task;
 pub mod theme;
 pub mod trade;
+pub mod trigger;
 pub mod watchlist_items;
 pub mod watchlists;

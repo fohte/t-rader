@@ -36,6 +36,8 @@ pub enum Relation {
     StrategyTask,
     #[sea_orm(has_many = "super::trade::Entity")]
     Trade,
+    #[sea_orm(has_many = "super::trigger::Entity")]
+    Trigger,
 }
 
 impl Related<super::annotation::Entity> for Entity {
@@ -65,6 +67,12 @@ impl Related<super::strategy_task::Entity> for Entity {
 impl Related<super::trade::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Trade.def()
+    }
+}
+
+impl Related<super::trigger::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Trigger.def()
     }
 }
 

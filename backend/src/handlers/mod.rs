@@ -7,4 +7,5 @@ pub mod notes;
 pub mod refs;
 pub mod strategies;
 pub mod trades;
+pub mod triggers;
 pub mod watchlists;

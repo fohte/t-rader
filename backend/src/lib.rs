@@ -32,7 +32,8 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::data_provider::DataProviderKind;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    annotations, bars, comments, history, imports, notes, refs, strategies, trades, watchlists,
+    annotations, bars, comments, history, imports, notes, refs, strategies, trades, triggers,
+    watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
@@ -89,6 +90,7 @@ impl AppState {
         (name = "comments", description = "コメントスレッド"),
         (name = "history", description = "変更履歴"),
         (name = "trades", description = "取引履歴と損益サマリ"),
+        (name = "triggers", description = "戦略 trigger (cron / hook)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
     ),
     info(
@@ -208,6 +210,16 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             trades::get_trade,
             trades::update_trade,
             trades::delete_trade
+        ))
+        // triggers
+        .routes(routes!(
+            triggers::list_strategy_triggers,
+            triggers::create_strategy_trigger
+        ))
+        .routes(routes!(
+            triggers::get_trigger,
+            triggers::update_trigger,
+            triggers::delete_trigger
         ))
         // imports
         .routes(routes!(imports::sbi_preview))

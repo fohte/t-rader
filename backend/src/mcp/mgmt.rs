@@ -16,20 +16,13 @@ use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use schemars::JsonSchema;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-    QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
+use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::{annotation, note, strategy, strategy_task};
-use crate::kubeopencode::{
-    KubeopencodeError, SharedKubeopencodeClient, TaskCrSpec, agent_name_for,
-};
+use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient};
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
 const MAX_LIST_LIMIT: u64 = 100;
@@ -158,19 +151,6 @@ fn phase_to_string(phase: &StrategyTaskPhase) -> &'static str {
     }
 }
 
-/// `t-rader-<strategy_id_short>-<random_short>` の文字列フォーマット部分。テスト容易性のため
-/// ランダム部分の生成と分離している。
-fn format_task_name(strategy_id: Uuid, random_short: &str) -> String {
-    let strategy_short = &strategy_id.simple().to_string()[..8];
-    format!("t-rader-{strategy_short}-{random_short}")
-}
-
-/// kubeopencode_task_name を生成する。
-fn generate_task_name(strategy_id: Uuid) -> String {
-    let random_short = Uuid::new_v4().simple().to_string()[..8].to_string();
-    format_task_name(strategy_id, &random_short)
-}
-
 /// 指定エンティティの `status='unread'` 件数を strategy_id ごとに集約して返す。
 /// `list_strategies` が note / annotation 双方に対し 1 クエリで未読件数を取るために使う。
 async fn unread_counts_by_strategy<E, C>(
@@ -259,90 +239,19 @@ impl MgmtServer {
             strategy_id,
             prompt,
         } = params;
-        let prompt = prompt.trim().to_string();
-        if prompt.is_empty() {
-            return Err(invalid_params("prompt must not be empty"));
-        }
-
-        let strategy_row = strategy::Entity::find_by_id(strategy_id)
-            .one(&self.db)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| invalid_params(format!("strategy {strategy_id} not found")))?;
-        match strategy_row.agent_status {
-            StrategyAgentStatus::Ready => {}
-            StrategyAgentStatus::Pending => {
-                return Err(invalid_params(
-                    "strategy agent not ready: status=pending (reconcile in progress)",
-                ));
-            }
-            StrategyAgentStatus::Failed => {
-                let reason = strategy_row.agent_error.unwrap_or_else(|| "unknown".into());
-                return Err(invalid_params(format!(
-                    "strategy agent not ready: status=failed: {reason}"
-                )));
-            }
-        }
-
-        let task_id = Uuid::new_v4();
-        let task_name = generate_task_name(strategy_id);
-        let agent_name = agent_name_for(strategy_id);
-
-        // 行を Pending で先に作っておくことで、create_task が成功したのに後続の DB 書き込みで
-        // 失敗して CR が孤児化するケースを潰す。create_task が失敗したら同じ行を Failed に更新する。
-        let pending = strategy_task::ActiveModel {
-            task_id: Set(task_id),
-            strategy_id: Set(strategy_id),
-            kubeopencode_task_name: Set(task_name.clone()),
-            source: Set(TASK_SOURCE.to_string()),
-            prompt: Set(prompt.clone()),
-            phase: Set(StrategyTaskPhase::Pending),
-            error_summary: Set(None),
-            created_at: NotSet,
-            updated_at: NotSet,
-        };
-        strategy_task::Entity::insert(pending)
-            .exec_without_returning(&self.db)
-            .await
-            .map_err(db_error)?;
-
-        if let Err(err) = self
-            .kube
-            .create_task(&TaskCrSpec {
-                name: task_name.clone(),
-                agent_name,
-                description: prompt,
-            })
-            .await
-        {
-            tracing::warn!(
-                error = %err,
-                strategy_id = %strategy_id,
-                task = %task_name,
-                "kubeopencode create_task failed",
-            );
-            let mut failed = strategy_task::Entity::find_by_id(task_id)
-                .one(&self.db)
-                .await
-                .map_err(db_error)?
-                .ok_or_else(|| internal_error("strategy_task row vanished mid-submit"))?
-                .into_active_model();
-            failed.phase = Set(StrategyTaskPhase::Failed);
-            failed.error_summary = Set(Some(format!("create_task failed: {err}")));
-            failed.updated_at = Set(chrono::Utc::now().fixed_offset());
-            if let Err(update_err) = failed.update(&self.db).await {
-                tracing::warn!(
-                    error = %update_err,
-                    task = %task_name,
-                    "failed to mark strategy_task as failed",
-                );
-            }
-            return Err(map_kube_error(&err));
-        }
+        let outcome = crate::services::strategy_tasks::submit_strategy_task(
+            &self.db,
+            &self.kube,
+            strategy_id,
+            prompt,
+            TASK_SOURCE,
+        )
+        .await
+        .map_err(map_submit_error)?;
 
         Ok(Json(SubmitStrategyTaskResult {
-            task_id,
-            kubeopencode_task_name: task_name,
+            task_id: outcome.task_id,
+            kubeopencode_task_name: outcome.kubeopencode_task_name,
         }))
     }
 
@@ -462,19 +371,21 @@ fn map_kube_error(err: &KubeopencodeError) -> McpError {
     }
 }
 
+fn map_submit_error(err: crate::services::strategy_tasks::SubmitStrategyTaskError) -> McpError {
+    use crate::services::strategy_tasks::SubmitStrategyTaskError;
+    match err {
+        SubmitStrategyTaskError::Kube(e) => map_kube_error(&e),
+        SubmitStrategyTaskError::Database(e) => db_error(e),
+        // EmptyPrompt / StrategyNotFound / AgentPending / AgentFailed の文言は
+        // thiserror の `#[error(...)]` で一元管理し、ここでは Display にそのまま乗せる
+        other => invalid_params(other.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    #[test]
-    fn task_name_format() {
-        let id = Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
-        assert_eq!(
-            format_task_name(id, "deadbeef"),
-            "t-rader-12345678-deadbeef"
-        );
-    }
 
     #[rstest]
     #[case::default(None, 20)]
@@ -491,9 +402,12 @@ mod integration_tests {
     use std::sync::Arc;
 
     use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
+    use sea_orm::IntoActiveModel;
     use sqlx::PgPool;
 
-    use crate::kubeopencode::{FakeKubeopencodeClient, KubeopencodeError};
+    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
+    use crate::kubeopencode::{FakeKubeopencodeClient, KubeopencodeError, agent_name_for};
     use crate::testing::create_test_db;
 
     use super::*;

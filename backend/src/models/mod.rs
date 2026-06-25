@@ -7,6 +7,7 @@ pub mod note;
 pub mod refs;
 pub mod strategy;
 pub mod trade;
+pub mod trigger;
 pub mod watchlist;
 
 pub use annotation::{CreateAnnotationRequest, UpdateAnnotationRequest};
@@ -21,4 +22,5 @@ pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use refs::RefResolution;
 pub use strategy::{CreateStrategyRequest, UpdateStrategyRequest};
 pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
+pub use trigger::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};
 pub use watchlist::{AddWatchlistItemRequest, CreateWatchlistRequest};
