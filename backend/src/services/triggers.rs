@@ -145,18 +145,15 @@ fn resolve_path(path: &str, payload: &Value, context: &Value) -> String {
     }
     let mut parts = path.split('.');
     let head = parts.next().unwrap_or("");
-    let rest: Vec<&str> = parts.collect();
     let root = match head {
         "payload" => payload,
         _ => context,
     };
     let target = if head == "payload" {
-        walk(root, &rest)
+        walk(root, parts)
     } else {
         // context root 直下の field 名を head として扱うため、head も含めて辿る
-        let mut full = vec![head];
-        full.extend(rest);
-        walk(root, &full)
+        walk(root, std::iter::once(head).chain(parts))
     };
     match target {
         Some(Value::String(s)) => s.clone(),
@@ -165,10 +162,14 @@ fn resolve_path(path: &str, payload: &Value, context: &Value) -> String {
     }
 }
 
-fn walk<'a>(root: &'a Value, parts: &[&str]) -> Option<&'a Value> {
+fn walk<I>(root: &Value, parts: I) -> Option<&Value>
+where
+    I: IntoIterator,
+    I::Item: AsRef<str>,
+{
     let mut current = root;
     for p in parts {
-        current = current.as_object()?.get(*p)?;
+        current = current.as_object()?.get(p.as_ref())?;
     }
     Some(current)
 }
@@ -186,8 +187,7 @@ pub fn evaluate_event_match(event_match: Option<&Value>, payload: &Value) -> boo
         return false;
     };
     for (path, cond) in map {
-        let parts: Vec<&str> = path.split('.').collect();
-        let actual = walk(payload, &parts);
+        let actual = walk(payload, path.split('.'));
         let Some(cond_map) = cond.as_object() else {
             return false;
         };

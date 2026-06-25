@@ -6,7 +6,7 @@
 
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait, IntoActiveModel};
+use sea_orm::{DatabaseConnection, EntityTrait};
 use uuid::Uuid;
 
 use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
@@ -113,18 +113,20 @@ pub async fn submit_strategy_task(
             "kubeopencode create_task failed",
         );
         // 行を Failed に更新する。更新自体が失敗しても元のエラーを優先して返す。
-        if let Some(row) = strategy_task::Entity::find_by_id(task_id).one(db).await? {
-            let mut failed = row.into_active_model();
-            failed.phase = Set(StrategyTaskPhase::Failed);
-            failed.error_summary = Set(Some(format!("create_task failed: {err}")));
-            failed.updated_at = Set(chrono::Utc::now().fixed_offset());
-            if let Err(update_err) = failed.update(db).await {
-                tracing::warn!(
-                    error = %update_err,
-                    task = %task_name,
-                    "failed to mark strategy_task as failed",
-                );
-            }
+        // 主キー + 更新カラムだけの ActiveModel を組み立てて SELECT を省く。
+        let failed = strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            phase: Set(StrategyTaskPhase::Failed),
+            error_summary: Set(Some(format!("create_task failed: {err}"))),
+            updated_at: Set(chrono::Utc::now().fixed_offset()),
+            ..Default::default()
+        };
+        if let Err(update_err) = failed.update(db).await {
+            tracing::warn!(
+                error = %update_err,
+                task = %task_name,
+                "failed to mark strategy_task as failed",
+            );
         }
         return Err(SubmitStrategyTaskError::Kube(err));
     }
