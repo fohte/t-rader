@@ -18,6 +18,15 @@ negative_data_rejection.enabled = false
 # stateful テストでは実際のリソース ID が使われるため正しく検証される。
 positive_data_acceptance.enabled = false
 
+# dev opt-out (`KUBEOPENCODE_API_URL=disabled`) で起動すると戦略 Agent の
+# reconcile が走らず agent_status が pending のまま残る。chat エンドポイントは
+# pending 戦略への task 投入を 503 で正しく拒否するので、これを server error と
+# 見なさない。本番では reconcile 完了後 ready に遷移するため発生しない。
+[[operations]]
+include-path-regex = "^/api/strategies/[^/]+/chat$"
+[operations.checks.not_a_server_error]
+expected-statuses = [503]
+
 [phases.fuzzing]
 # Fuzzing フェーズはランダム生成された UUID パスパラメータにより
 # 存在しないリソースへのリクエストが大量に発生し、4xx レスポンスが
