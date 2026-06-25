@@ -760,8 +760,8 @@ mod tests {
                 .await;
             put_map.assert_status(axum::http::StatusCode::BAD_REQUEST);
 
-            if name.is_empty() || name.contains('/') {
-                // 空文字 / スラッシュ入りはそもそも path として送れない
+            if name.is_empty() || name.contains('/') || name.contains(' ') {
+                // 空文字 / スラッシュ / 空白入りは URL path に乗らないので validation 経路をスキップ
                 continue;
             }
             let put_single = server
