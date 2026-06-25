@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -25,5 +25,16 @@ pub struct UpdateCustomIndicatorRequest {
     pub input_schema: Option<serde_json::Value>,
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub output_schema: Option<serde_json::Value>,
-    pub description: Option<String>,
+    // 未指定 (= 変更しない) と null 指定 (= clear) を区別するため double Option を使う
+    #[serde(default, deserialize_with = "deserialize_some")]
+    #[schema(value_type = Option<String>)]
+    pub description: Option<Option<String>>,
+}
+
+fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }

@@ -244,7 +244,7 @@ pub async fn update_indicator(
         active.output_schema = Set(output_schema);
     }
     if let Some(description) = payload.description {
-        active.description = Set(Some(description));
+        active.description = Set(description);
     }
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
 
