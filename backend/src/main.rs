@@ -7,6 +7,8 @@ use backend::create_router;
 use backend::data_provider::DataProviderKind;
 use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
+use backend::data_provider::macro_data::stooq::StooqClient;
+use backend::data_provider::macro_data::{MacroCache, MacroDataProvider, spawn_poll};
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::kubeopencode::{
@@ -162,11 +164,22 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
+    // Stooq から 5min 間隔で macro tick を取得する poll task を起動する
+    let macro_cache: Arc<MacroCache> = Arc::new(MacroCache::new());
+    let macro_provider: Arc<dyn MacroDataProvider> = Arc::new(StooqClient::new()?);
+    let _macro_poll = spawn_poll(
+        macro_provider,
+        macro_cache.clone(),
+        std::time::Duration::from_secs(300),
+    );
+    tracing::info!("macro data poll task started (Stooq, interval=5min)");
+
     let state = AppState {
         db,
         data_provider,
         kubeopencode,
         kata_executor,
+        macro_cache: Some(macro_cache),
     };
 
     let app = create_router(state);

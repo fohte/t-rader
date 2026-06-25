@@ -1,24 +1,63 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { MacroStrip } from '@/components/strategy-shell/macro-strip'
+import { MacroStripView } from '@/components/strategy-shell/macro-strip'
 
 const meta = {
   title: 'StrategyShell/MacroStrip',
-  component: MacroStrip,
+  component: MacroStripView,
   parameters: { layout: 'fullscreen' },
-} satisfies Meta<typeof MacroStrip>
+} satisfies Meta<typeof MacroStripView>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Default: Story = {}
+const sampleTicks = [
+  {
+    symbol: '日経225',
+    value: '38420.55',
+    pct: -0.62,
+    fetched_at: '2026-06-25T06:00:00Z',
+  },
+  {
+    symbol: 'TOPIX',
+    value: '2711.30',
+    pct: -0.41,
+    fetched_at: '2026-06-25T06:00:00Z',
+  },
+  {
+    symbol: 'USD/JPY',
+    value: '157.84',
+    pct: 0.38,
+    fetched_at: '2026-06-25T06:00:00Z',
+  },
+  {
+    symbol: 'VIX',
+    value: '18.92',
+    pct: 4.71,
+    fetched_at: '2026-06-25T06:00:00Z',
+  },
+]
 
-export const Custom: Story = {
+export const Fresh: Story = {
+  args: { ticks: sampleTicks, staleSince: null, isPending: false },
+}
+
+export const Loading: Story = {
+  args: { ticks: null, staleSince: null, isPending: true },
+}
+
+export const Stale: Story = {
   args: {
-    ticks: [
-      { name: 'BTC', value: '67,840', pct: 1.23 },
-      { name: 'ETH', value: '3,512', pct: -0.41 },
-      { name: 'GOLD', value: '2,381', pct: 0.07 },
-    ],
+    ticks: sampleTicks,
+    staleSince: '2026-06-25T01:00:00Z',
+    isPending: false,
+  },
+}
+
+export const NotAvailable: Story = {
+  args: {
+    ticks: null,
+    staleSince: '2026-06-23T00:00:00Z',
+    isPending: false,
   },
 }
