@@ -336,6 +336,13 @@ jobs:
           config-file: backend/schemathesis.toml
           args: --workers 2
 
+      - name: Dump backend log on failure
+        if: failure()
+        run: |
+          echo "::group::backend.log"
+          cat /tmp/backend.log || true
+          echo "::endgroup::"
+
   unit-test-backend:
     needs: detect-changes
     if: >-
