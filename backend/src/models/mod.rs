@@ -19,6 +19,9 @@ pub use import::{
 pub use instrument::Instrument;
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use refs::RefResolution;
-pub use strategy::{CreateStrategyRequest, UpdateStrategyRequest};
+pub use strategy::{
+    CreateStrategyRequest, StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse,
+    UpdateStrategyRequest,
+};
 pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
 pub use watchlist::{AddWatchlistItemRequest, CreateWatchlistRequest};

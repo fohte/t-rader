@@ -164,6 +164,8 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::delete_strategy
         ))
         .routes(routes!(strategies::list_strategy_interests))
+        .routes(routes!(strategies::submit_strategy_chat))
+        .routes(routes!(strategies::get_strategy_task))
         // refs
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))

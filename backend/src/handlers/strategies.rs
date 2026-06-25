@@ -14,9 +14,15 @@ use crate::entities::{strategy, strategy_interest};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::kubeopencode::{KubeopencodeError, agent_name_for};
-use crate::models::{CreateStrategyRequest, UpdateStrategyRequest};
+use crate::models::{
+    CreateStrategyRequest, StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse,
+    UpdateStrategyRequest,
+};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategy_agent;
+use crate::services::strategy_tasks::{
+    self, GetTaskError, SubmitTaskError, TaskSource, phase_to_string,
+};
 
 fn validate_name(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
@@ -265,17 +271,160 @@ pub async fn list_strategy_interests(
     Ok(Json(items))
 }
 
+fn map_submit_error(err: SubmitTaskError) -> AppError {
+    match err {
+        SubmitTaskError::EmptyPrompt => AppError::Validation("prompt must not be empty".into()),
+        SubmitTaskError::StrategyNotFound(id) => {
+            AppError::NotFound(format!("strategy {id} not found"))
+        }
+        SubmitTaskError::AgentPending => AppError::ServiceUnavailable(
+            "strategy agent not ready: status=pending (reconcile in progress)".into(),
+        ),
+        SubmitTaskError::AgentFailed(reason) => AppError::ServiceUnavailable(format!(
+            "strategy agent not ready: status=failed: {reason}"
+        )),
+        SubmitTaskError::Database(db_err) => AppError::Database(db_err),
+        SubmitTaskError::Kubeopencode(kube_err) => match kube_err {
+            KubeopencodeError::AlreadyExists(name) => {
+                AppError::Conflict(format!("kubeopencode task already exists: {name}"))
+            }
+            other => AppError::Config(format!("kubeopencode error: {other}")),
+        },
+        SubmitTaskError::RowVanished => {
+            AppError::Config("strategy_task row vanished mid-submit".into())
+        }
+    }
+}
+
+/// フローティングチャットから戦略 Agent にタスクを投入する
+#[utoipa::path(
+    post,
+    path = "/api/strategies/{id}/chat",
+    tag = "strategies",
+    params(("id" = Uuid, Path, description = "戦略 ID")),
+    request_body = StrategyChatRequest,
+    responses(
+        (status = 202, body = StrategyChatResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 404, description = "戦略が存在しない", body = ErrorResponse),
+        (status = 409, description = "kubeopencode タスクの名前衝突", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
+        (status = 503, description = "戦略 Agent が ready ではない", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn submit_strategy_chat(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+    JsonBody(payload): JsonBody<StrategyChatRequest>,
+) -> Result<(StatusCode, Json<StrategyChatResponse>), AppError> {
+    let submitted = strategy_tasks::submit_task(
+        &state.db,
+        &state.kubeopencode,
+        id,
+        &payload.prompt,
+        TaskSource::Frontend,
+    )
+    .await
+    .map_err(map_submit_error)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(StrategyChatResponse {
+            task_id: submitted.task_id,
+            kubeopencode_task_name: submitted.kubeopencode_task_name,
+        }),
+    ))
+}
+
+/// 投入済み戦略タスクの phase / error_summary を取得する
+#[utoipa::path(
+    get,
+    path = "/api/strategies/{id}/tasks/{task_id}",
+    tag = "strategies",
+    params(
+        ("id" = Uuid, Path, description = "戦略 ID"),
+        ("task_id" = Uuid, Path, description = "戦略タスク ID"),
+    ),
+    responses(
+        (status = 200, body = StrategyTaskStatusResponse),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_strategy_task(
+    State(state): State<AppState>,
+    JsonPath((strategy_id, task_id)): JsonPath<(Uuid, Uuid)>,
+) -> Result<Json<StrategyTaskStatusResponse>, AppError> {
+    let view = strategy_tasks::get_task_for_strategy(&state.db, strategy_id, task_id)
+        .await
+        .map_err(|err| match err {
+            GetTaskError::NotFound(id) => {
+                AppError::NotFound(format!("strategy task {id} not found"))
+            }
+            GetTaskError::StrategyMismatch { task_id, .. } => {
+                AppError::NotFound(format!("strategy task {task_id} not found"))
+            }
+            GetTaskError::Database(db_err) => AppError::Database(db_err),
+        })?;
+    Ok(Json(StrategyTaskStatusResponse {
+        task_id: view.task_id,
+        strategy_id: view.strategy_id,
+        kubeopencode_task_name: view.kubeopencode_task_name,
+        source: view.source,
+        phase: phase_to_string(&view.phase).to_string(),
+        error_summary: view.error_summary,
+        created_at: view.created_at,
+        updated_at: view.updated_at,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{DatabaseConnection, EntityTrait};
     use serde_json::json;
     use sqlx::PgPool;
 
     use uuid::Uuid;
 
+    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
+    use crate::entities::{strategy, strategy_task};
     use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
-    use crate::testing::{create_test_server, create_test_server_with_kube};
+    use crate::testing::{
+        create_test_server, create_test_server_with_db_and_kube, create_test_server_with_kube,
+    };
+
+    async fn insert_strategy_ready(db: &DatabaseConnection, name: &str) -> Uuid {
+        insert_strategy(db, name, StrategyAgentStatus::Ready).await
+    }
+
+    async fn insert_strategy(
+        db: &DatabaseConnection,
+        name: &str,
+        status: StrategyAgentStatus,
+    ) -> Uuid {
+        let id = Uuid::new_v4();
+        strategy::ActiveModel {
+            id: Set(id),
+            name: Set(name.to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            agents_md: NotSet,
+            skills: NotSet,
+            agent_status: Set(status),
+            agent_error: NotSet,
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("insert strategy");
+        id
+    }
 
     #[sqlx::test(migrations = false)]
     async fn create_and_list_strategy(pool: PgPool) {
@@ -336,6 +485,206 @@ mod tests {
             fake.deleted_agents.lock().await.as_slice(),
             &[expected_agent],
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_chat_creates_task_row_and_cr(pool: PgPool) {
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedKubeopencodeClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_kube(pool, kube).await;
+        let strategy_id = insert_strategy_ready(&db, "long").await;
+
+        let res = server
+            .post(&format!("/api/strategies/{strategy_id}/chat"))
+            .json(&json!({ "prompt": " inspect 7203 " }))
+            .await;
+        res.assert_status(axum::http::StatusCode::ACCEPTED);
+
+        let mut body: serde_json::Value = res.json();
+        let task_id = Uuid::parse_str(body["task_id"].as_str().expect("task_id")).expect("uuid");
+        let task_name = body["kubeopencode_task_name"]
+            .as_str()
+            .expect("task name")
+            .to_string();
+        body["task_id"] = json!("<uuid>");
+        body["kubeopencode_task_name"] = json!("<task-name>");
+        assert_eq!(
+            body,
+            json!({
+                "task_id": "<uuid>",
+                "kubeopencode_task_name": "<task-name>",
+            }),
+        );
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row");
+        let row_summary = (
+            row.task_id,
+            row.strategy_id,
+            row.kubeopencode_task_name,
+            row.source,
+            row.prompt,
+            row.phase,
+            row.error_summary,
+        );
+        assert_eq!(
+            row_summary,
+            (
+                task_id,
+                strategy_id,
+                task_name.clone(),
+                "frontend".to_string(),
+                "inspect 7203".to_string(),
+                crate::entities::sea_orm_active_enums::StrategyTaskPhase::Pending,
+                None,
+            ),
+        );
+
+        let created: Vec<(String, String, String)> = fake
+            .created
+            .lock()
+            .await
+            .iter()
+            .map(|s| (s.name.clone(), s.agent_name.clone(), s.description.clone()))
+            .collect();
+        assert_eq!(
+            created,
+            vec![(
+                task_name,
+                crate::kubeopencode::agent_name_for(strategy_id),
+                "inspect 7203".to_string(),
+            )],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_chat_unknown_strategy_returns_404(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let res = server
+            .post("/api/strategies/00000000-0000-0000-0000-000000000000/chat")
+            .json(&json!({ "prompt": "x" }))
+            .await;
+        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    async fn assert_submit_chat_not_ready_returns_503(pool: PgPool, status: StrategyAgentStatus) {
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let (db, server) =
+            create_test_server_with_db_and_kube(pool, fake as SharedKubeopencodeClient).await;
+        let strategy_id = insert_strategy(&db, "x", status).await;
+
+        let res = server
+            .post(&format!("/api/strategies/{strategy_id}/chat"))
+            .json(&json!({ "prompt": "x" }))
+            .await;
+        res.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_chat_pending_agent_returns_503(pool: PgPool) {
+        assert_submit_chat_not_ready_returns_503(pool, StrategyAgentStatus::Pending).await;
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_chat_failed_agent_returns_503(pool: PgPool) {
+        assert_submit_chat_not_ready_returns_503(pool, StrategyAgentStatus::Failed).await;
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_chat_empty_prompt_returns_400(pool: PgPool) {
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let (db, server) =
+            create_test_server_with_db_and_kube(pool, fake as SharedKubeopencodeClient).await;
+        let strategy_id = insert_strategy_ready(&db, "x").await;
+
+        let res = server
+            .post(&format!("/api/strategies/{strategy_id}/chat"))
+            .json(&json!({ "prompt": "   " }))
+            .await;
+        res.assert_status(axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_strategy_task_returns_phase(pool: PgPool) {
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let (db, server) = create_test_server_with_db_and_kube(pool, fake).await;
+        let strategy_id = insert_strategy_ready(&db, "x").await;
+
+        let submit = server
+            .post(&format!("/api/strategies/{strategy_id}/chat"))
+            .json(&json!({ "prompt": "p" }))
+            .await;
+        submit.assert_status(axum::http::StatusCode::ACCEPTED);
+        let task_id = submit.json::<serde_json::Value>()["task_id"]
+            .as_str()
+            .map(|s| Uuid::parse_str(s).unwrap())
+            .expect("task_id");
+        let task_name = submit.json::<serde_json::Value>()["kubeopencode_task_name"]
+            .as_str()
+            .expect("task name")
+            .to_string();
+
+        let res = server
+            .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))
+            .await;
+        res.assert_status_ok();
+        let body: serde_json::Value = res.json();
+        let mut normalized = body.clone();
+        let obj = normalized.as_object_mut().unwrap();
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            normalized,
+            json!({
+                "task_id": task_id,
+                "strategy_id": strategy_id,
+                "kubeopencode_task_name": task_name,
+                "source": "frontend",
+                "phase": "pending",
+                "error_summary": null,
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_strategy_task_unknown_returns_404(pool: PgPool) {
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let (db, server) =
+            create_test_server_with_db_and_kube(pool, fake as SharedKubeopencodeClient).await;
+        let strategy_id = insert_strategy_ready(&db, "x").await;
+
+        let res = server
+            .get(&format!(
+                "/api/strategies/{strategy_id}/tasks/00000000-0000-0000-0000-000000000000"
+            ))
+            .await;
+        res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_strategy_task_strategy_mismatch_returns_404(pool: PgPool) {
+        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let (db, server) = create_test_server_with_db_and_kube(pool, fake).await;
+        let strategy_a = insert_strategy_ready(&db, "a").await;
+        let strategy_b = insert_strategy_ready(&db, "b").await;
+
+        let submit = server
+            .post(&format!("/api/strategies/{strategy_a}/chat"))
+            .json(&json!({ "prompt": "p" }))
+            .await;
+        submit.assert_status(axum::http::StatusCode::ACCEPTED);
+        let task_id = submit.json::<serde_json::Value>()["task_id"]
+            .as_str()
+            .map(|s| Uuid::parse_str(s).unwrap())
+            .expect("task_id");
+
+        let res = server
+            .get(&format!("/api/strategies/{strategy_b}/tasks/{task_id}"))
+            .await;
+        res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
     #[sqlx::test(migrations = false)]

@@ -1,5 +1,7 @@
-use serde::Deserialize;
+use chrono::{DateTime, FixedOffset};
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -18,4 +20,32 @@ pub struct UpdateStrategyRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub sort_order: Option<i32>,
+}
+
+/// フローティングチャットから戦略 Agent に投入する 1 メッセージ。
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StrategyChatRequest {
+    #[schema(min_length = 1)]
+    pub prompt: String,
+}
+
+/// `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StrategyChatResponse {
+    pub task_id: Uuid,
+    pub kubeopencode_task_name: String,
+}
+
+/// `GET /api/strategies/:id/tasks/:task_id` の戻り値。
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StrategyTaskStatusResponse {
+    pub task_id: Uuid,
+    pub strategy_id: Uuid,
+    pub kubeopencode_task_name: String,
+    pub source: String,
+    pub phase: String,
+    pub error_summary: Option<String>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
 }
