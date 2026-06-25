@@ -310,11 +310,28 @@ async fn save_skills(
     state: &AppState,
     current: strategy::Model,
     skills: serde_json::Value,
+    op_desc: String,
 ) -> Result<strategy::Model, AppError> {
+    let id = current.id;
+    let prev_skills = current.skills.clone();
     let mut active = current.into_active_model();
-    active.skills = Set(skills);
+    active.skills = Set(skills.clone());
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    let updated = active.update(&state.db).await?;
+
+    let txn = state.db.begin().await?;
+    let updated = active.update(&txn).await?;
+    change_history::record(
+        &txn,
+        TargetKind::Strategy,
+        id,
+        Op::Update,
+        json!({ "skills": { "from": prev_skills, "to": skills } }),
+        Some(op_desc),
+    )
+    .await?;
+    txn.commit().await?;
+
+    // rollback 時に reconcile が走ると孤児 Agent CR が残る race を避けるため commit 後に spawn する
     strategy_agent::spawn_reconcile(state.db.clone(), state.kubeopencode.clone(), updated.id);
     Ok(updated)
 }
@@ -363,10 +380,25 @@ pub async fn put_agents_md(
     JsonBody(payload): JsonBody<AgentsMdBody>,
 ) -> Result<Json<AgentsMdBody>, AppError> {
     let current = find_strategy_or_404(&state.db, id).await?;
+    let prev = current.agents_md.clone();
     let mut active = current.into_active_model();
     active.agents_md = Set(payload.content.clone());
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    let updated = active.update(&state.db).await?;
+
+    let txn = state.db.begin().await?;
+    let updated = active.update(&txn).await?;
+    change_history::record(
+        &txn,
+        TargetKind::Strategy,
+        id,
+        Op::Update,
+        json!({ "agents_md": { "from": prev, "to": payload.content } }),
+        Some("updated agents_md".to_string()),
+    )
+    .await?;
+    txn.commit().await?;
+
+    // rollback 時に reconcile が走ると孤児 Agent CR が残る race を避けるため commit 後に spawn する
     strategy_agent::spawn_reconcile(state.db.clone(), state.kubeopencode.clone(), updated.id);
     Ok(Json(AgentsMdBody {
         content: updated.agents_md,
@@ -427,7 +459,13 @@ pub async fn put_skills(
     for (k, v) in &payload.skills {
         map.insert(k.clone(), serde_json::Value::String(v.clone()));
     }
-    let updated = save_skills(&state, current, serde_json::Value::Object(map)).await?;
+    let updated = save_skills(
+        &state,
+        current,
+        serde_json::Value::Object(map),
+        "replaced all skills".to_string(),
+    )
+    .await?;
     Ok(Json(SkillsBody {
         skills: skills_to_btree(&updated.skills),
     }))
@@ -463,7 +501,13 @@ pub async fn put_skill(
         name.clone(),
         serde_json::Value::String(payload.content.clone()),
     );
-    save_skills(&state, current, serde_json::Value::Object(map)).await?;
+    save_skills(
+        &state,
+        current,
+        serde_json::Value::Object(map),
+        format!("updated skill {name}"),
+    )
+    .await?;
     Ok(Json(SkillBody {
         content: payload.content,
     }))
@@ -495,7 +539,13 @@ pub async fn delete_skill(
     if map.remove(&name).is_none() {
         return Err(AppError::NotFound(format!("skill {name} not found")));
     }
-    save_skills(&state, current, serde_json::Value::Object(map)).await?;
+    save_skills(
+        &state,
+        current,
+        serde_json::Value::Object(map),
+        format!("deleted skill {name}"),
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
