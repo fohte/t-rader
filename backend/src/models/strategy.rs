@@ -1,4 +1,6 @@
-use serde::Deserialize;
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -18,4 +20,22 @@ pub struct UpdateStrategyRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentsMdBody {
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SkillBody {
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SkillsBody {
+    pub skills: BTreeMap<String, String>,
 }
