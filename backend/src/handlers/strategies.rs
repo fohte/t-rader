@@ -760,8 +760,13 @@ mod tests {
                 .await;
             put_map.assert_status(axum::http::StatusCode::BAD_REQUEST);
 
-            if name.is_empty() || name.contains('/') || name.contains(' ') {
-                // 空文字 / スラッシュ / 空白入りは URL path に乗らないので validation 経路をスキップ
+            if name.is_empty()
+                || name.contains('/')
+                || name.contains(' ')
+                || name == ".."
+                || name == "."
+            {
+                // URL path に乗らない / クライアント側で正規化されて route に届かないものはスキップ
                 continue;
             }
             let put_single = server
