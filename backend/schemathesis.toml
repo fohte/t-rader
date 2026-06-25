@@ -18,6 +18,16 @@ negative_data_rejection.enabled = false
 # stateful テストでは実際のリソース ID が使われるため正しく検証される。
 positive_data_acceptance.enabled = false
 
+# chat エンドポイントは Agent の reconcile 未完了時に 503 を返す (Retry-After 想定の
+# transient unavailability) 仕様で、OpenAPI にも 503 を documented response として
+# 宣言している。schemathesis は documented response でも 5xx を server error 扱い
+# するため、この endpoint に限り 503 を許容する。
+# ref: https://github.com/schemathesis/schemathesis/issues/2539
+[[operations]]
+include-path-regex = "^/api/strategies/[^/]+/chat$"
+[operations.checks.not_a_server_error]
+expected-statuses = [503]
+
 [phases.fuzzing]
 # Fuzzing フェーズはランダム生成された UUID パスパラメータにより
 # 存在しないリソースへのリクエストが大量に発生し、4xx レスポンスが
