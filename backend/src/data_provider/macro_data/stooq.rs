@@ -148,6 +148,15 @@ fn parse_csv(
         });
     }
 
+    // 全シンボルが N/D 等で skip された (= Stooq 側のデータ欠落) ケースは
+    // 「成功 (空)」ではなく fetch 失敗として扱う。`record_success(vec![])` で
+    // stale_since が消えてしまうと、handler が空配列のまま返してしまう。
+    if ticks.is_empty() {
+        return Err(DataProviderError::Parse(
+            "no symbols parsed from stooq response".into(),
+        ));
+    }
+
     Ok(ticks)
 }
 

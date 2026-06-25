@@ -44,10 +44,12 @@ pub async fn get_macro_ticks(
         .stale_since
         .map(|s| now.signed_duration_since(s) > STALE_CUTOFF)
         .unwrap_or(false);
-    // 一度も成功していない (起動直後の poll 失敗) ケースも N/A 扱いに揃える
-    let never_succeeded = snapshot.ticks.is_empty() && snapshot.stale_since.is_some();
+    // 起動直後の初回 poll 完了前 (ticks=[], stale_since=None) と、初回 poll 失敗後
+    // (ticks=[], stale_since=Some) の両方を「まだ取得結果がない」状態として N/A 扱いにする。
+    // frontend は `ticks: null` を loading / N/A 分岐に倒す。
+    let no_data_yet = snapshot.ticks.is_empty();
 
-    let ticks = if too_stale || never_succeeded {
+    let ticks = if too_stale || no_data_yet {
         None
     } else {
         Some(snapshot.ticks)
@@ -71,7 +73,7 @@ mod tests {
     use rstest::rstest;
     use rust_decimal::Decimal;
     use sea_orm::{DatabaseBackend, MockDatabase};
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::*;
     use crate::AppState;
@@ -94,6 +96,36 @@ mod tests {
         }
     }
 
+    fn ymd_hms(year: i32, mon: u32, day: u32, h: u32, m: u32, s: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, mon, day, h, m, s)
+            .single()
+            .expect("valid time")
+    }
+
+    /// 4 ケース共通の cache 状態セットアップ
+    enum CacheState {
+        Fresh,
+        StaleOver24h,
+        FailedBeforeFirstSuccess,
+    }
+
+    async fn build_cache(state: CacheState) -> Arc<MacroCache> {
+        let cache = Arc::new(MacroCache::new());
+        match state {
+            CacheState::Fresh => {
+                cache.record_success(vec![sample_tick()]).await;
+            }
+            CacheState::StaleOver24h => {
+                cache.record_success(vec![sample_tick()]).await;
+                cache.record_failure(ymd_hms(2020, 1, 1, 0, 0, 0)).await;
+            }
+            CacheState::FailedBeforeFirstSuccess => {
+                cache.record_failure(ymd_hms(2026, 6, 25, 5, 30, 0)).await;
+            }
+        }
+        cache
+    }
+
     fn build_router(macro_cache: Option<Arc<MacroCache>>) -> Router {
         let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
         let state = AppState {
@@ -107,71 +139,40 @@ mod tests {
     }
 
     #[rstest]
+    #[case::fresh(
+        CacheState::Fresh,
+        json!({
+            "ticks": [{
+                "symbol": "日経225",
+                "value": "100.00",
+                "pct": 0.5,
+                "fetched_at": "2026-06-25T06:00:00Z",
+            }],
+            "stale_since": null,
+        }),
+    )]
+    #[case::stale_over_24h(
+        CacheState::StaleOver24h,
+        json!({
+            "ticks": null,
+            "stale_since": "2020-01-01T00:00:00Z",
+        }),
+    )]
+    #[case::failed_before_first_success(
+        CacheState::FailedBeforeFirstSuccess,
+        json!({
+            "ticks": null,
+            "stale_since": "2026-06-25T05:30:00Z",
+        }),
+    )]
     #[tokio::test]
-    async fn returns_ticks_when_fresh() {
-        let cache = Arc::new(MacroCache::new());
-        cache.record_success(vec![sample_tick()]).await;
+    async fn get_macro_ticks_response(#[case] state: CacheState, #[case] expected: Value) {
+        let cache = build_cache(state).await;
         let server = TestServer::new(build_router(Some(cache))).expect("server");
 
         let response = server.get("/api/macro/ticks").await;
         response.assert_status_ok();
-        assert_eq!(
-            response.json::<serde_json::Value>(),
-            json!({
-                "ticks": [{
-                    "symbol": "日経225",
-                    "value": "100.00",
-                    "pct": 0.5,
-                    "fetched_at": "2026-06-25T06:00:00Z",
-                }],
-                "stale_since": null,
-            }),
-        );
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn returns_null_ticks_when_stale_over_24h() {
-        let cache = Arc::new(MacroCache::new());
-        cache.record_success(vec![sample_tick()]).await;
-        let stale_at = Utc
-            .with_ymd_and_hms(2020, 1, 1, 0, 0, 0)
-            .single()
-            .expect("ok");
-        cache.record_failure(stale_at).await;
-        let server = TestServer::new(build_router(Some(cache))).expect("server");
-
-        let response = server.get("/api/macro/ticks").await;
-        response.assert_status_ok();
-        assert_eq!(
-            response.json::<serde_json::Value>(),
-            json!({
-                "ticks": null,
-                "stale_since": "2020-01-01T00:00:00Z",
-            }),
-        );
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn returns_null_ticks_when_never_succeeded() {
-        let cache = Arc::new(MacroCache::new());
-        let failed_at = Utc
-            .with_ymd_and_hms(2026, 6, 25, 5, 30, 0)
-            .single()
-            .expect("ok");
-        cache.record_failure(failed_at).await;
-        let server = TestServer::new(build_router(Some(cache))).expect("server");
-
-        let response = server.get("/api/macro/ticks").await;
-        response.assert_status_ok();
-        assert_eq!(
-            response.json::<serde_json::Value>(),
-            json!({
-                "ticks": null,
-                "stale_since": "2026-06-25T05:30:00Z",
-            }),
-        );
+        assert_eq!(response.json::<Value>(), expected);
     }
 
     #[rstest]
@@ -179,6 +180,11 @@ mod tests {
     async fn returns_503_when_cache_not_configured() {
         let server = TestServer::new(build_router(None)).expect("server");
         let response = server.get("/api/macro/ticks").await;
+
         response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response.json::<Value>(),
+            json!({ "error": "macro provider is not configured" }),
+        );
     }
 }

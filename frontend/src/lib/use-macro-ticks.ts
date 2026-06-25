@@ -15,7 +15,7 @@ export interface UseMacroTicksResult {
 /**
  * `/api/macro/ticks` を 60s 間隔で polling する hook
  *
- * - `ticks === null`: 24h 以上更新失敗が続いており N/A 表示する
+ * - `ticks === null`: 一度も取得成功していない、または 24h 以上更新失敗が続いている (N/A 表示)
  * - `staleSince !== null && ticks !== null`: 値はあるが古い (バッジ表示)
  */
 export function useMacroTicks(): UseMacroTicksResult {
