@@ -674,6 +674,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/triggers': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の trigger 一覧 */
+    get: operations['list_strategy_triggers']
+    put?: never
+    /** trigger を作成 */
+    post: operations['create_strategy_trigger']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/trades': {
     parameters: {
       query?: never
@@ -726,6 +744,25 @@ export interface paths {
     head?: never
     /** 取引更新 */
     patch: operations['update_trade']
+    trace?: never
+  }
+  '/api/triggers/{trigger_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** trigger 詳細 */
+    get: operations['get_trigger']
+    /** trigger 更新 (kind / strategy_id は不変) */
+    put: operations['update_trigger']
+    post?: never
+    /** trigger 削除 */
+    delete: operations['delete_trigger']
+    options?: never
+    head?: never
+    patch?: never
     trace?: never
   }
   '/api/watchlists': {
@@ -954,6 +991,16 @@ export interface components {
       /** Format: uuid */
       strategy_id: string
       symbol: string
+    }
+    CreateTriggerRequest: {
+      enabled?: boolean | null
+      event_match?: unknown
+      /** @description kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子) */
+      hook_slug?: string | null
+      kind: components['schemas']['TriggerKind']
+      prompt_template: string
+      /** @description kind=cron 時に必須 (UTC の 5 フィールド cron 式) */
+      schedule?: string | null
     }
     CreateWatchlistRequest: {
       /** @description ウォッチリスト名 */
@@ -1226,6 +1273,26 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    Trigger: {
+      /** Format: date-time */
+      created_at: string
+      enabled: boolean
+      event_match?: Record<string, never> | null
+      hook_slug?: string | null
+      kind: string
+      /** Format: date-time */
+      last_fired_at?: string | null
+      prompt_template: string
+      schedule?: string | null
+      /** Format: uuid */
+      strategy_id: string
+      /** Format: uuid */
+      trigger_id: string
+      /** Format: date-time */
+      updated_at: string
+    }
+    /** @enum {string} */
+    TriggerKind: 'cron' | 'hook'
     UpdateAnnotationRequest: {
       /** Format: uuid */
       linked_note_id?: string | null
@@ -1277,6 +1344,13 @@ export interface components {
       side?: string | null
       source?: string | null
       symbol?: string | null
+    }
+    UpdateTriggerRequest: {
+      enabled?: boolean | null
+      event_match?: unknown
+      hook_slug?: string | null
+      prompt_template?: string | null
+      schedule?: string | null
     }
     Watchlist: {
       /** Format: date-time */
@@ -3875,6 +3949,125 @@ export interface operations {
       }
     }
   }
+  list_strategy_triggers: {
+    parameters: {
+      query?: {
+        /** @description kind フィルタ */
+        kind?: components['schemas']['TriggerKind']
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTriggerRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description hook_slug が他 trigger と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_trades: {
     parameters: {
       query?: {
@@ -4137,6 +4330,167 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description trigger ID */
+        trigger_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description trigger ID */
+        trigger_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateTriggerRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description hook_slug が他 trigger と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description trigger ID */
+        trigger_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
         headers: {
           [name: string]: unknown
         }

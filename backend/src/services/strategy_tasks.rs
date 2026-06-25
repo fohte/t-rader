@@ -24,6 +24,10 @@ pub enum TaskSource {
     MgmtMcp,
     /// フロントエンド (フローティングチャット)
     Frontend,
+    /// cron trigger 発火
+    Cron,
+    /// hook trigger 発火
+    Hook,
 }
 
 impl TaskSource {
@@ -31,6 +35,8 @@ impl TaskSource {
         match self {
             TaskSource::MgmtMcp => "mgmt-mcp",
             TaskSource::Frontend => "frontend",
+            TaskSource::Cron => "cron",
+            TaskSource::Hook => "hook",
         }
     }
 }

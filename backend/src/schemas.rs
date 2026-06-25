@@ -70,6 +70,26 @@ fn json_prop() -> Object {
     ObjectBuilder::new().schema_type(Type::Object).build()
 }
 
+/// bool プロパティ
+fn bool_prop() -> Object {
+    ObjectBuilder::new().schema_type(Type::Boolean).build()
+}
+
+/// nullable な date-time プロパティ
+fn nullable_datetime_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(SchemaType::from_iter([Type::String, Type::Null]))
+        .format(Some(SchemaFormat::KnownFormat(KnownFormat::DateTime)))
+        .build()
+}
+
+/// nullable な任意 JSON 値
+fn nullable_json_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(SchemaType::from_iter([Type::Object, Type::Null]))
+        .build()
+}
+
 // --- watchlists::Model ---
 
 impl utoipa::ToSchema for crate::entities::watchlists::Model {
@@ -505,6 +525,39 @@ impl PartialSchema for crate::entities::strategy_interest::Model {
             .required("origin")
             .property("created_at", datetime_prop())
             .required("created_at")
+            .into()
+    }
+}
+
+// --- trigger::Model ---
+
+impl utoipa::ToSchema for crate::entities::trigger::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Trigger")
+    }
+}
+
+impl PartialSchema for crate::entities::trigger::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("trigger_id", uuid_prop())
+            .required("trigger_id")
+            .property("strategy_id", uuid_prop())
+            .required("strategy_id")
+            .property("kind", str_prop())
+            .required("kind")
+            .property("schedule", nullable_str_prop())
+            .property("hook_slug", nullable_str_prop())
+            .property("event_match", nullable_json_prop())
+            .property("prompt_template", str_prop())
+            .required("prompt_template")
+            .property("enabled", bool_prop())
+            .required("enabled")
+            .property("last_fired_at", nullable_datetime_prop())
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
             .into()
     }
 }
