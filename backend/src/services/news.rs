@@ -64,7 +64,7 @@ fn db_err(e: sea_orm::DbErr) -> DataProviderError {
 }
 
 /// `news_item` テーブルに upsert し、対象行の Model 全件 (title / body_snippet 等を含む)
-/// を返す。後段の term マッチ用 haystack に直接利用するため、`Model` ごと返す必要がある
+/// を返す
 pub async fn upsert_news_items(
     db: &DatabaseConnection,
     items: &[NewsItem],
@@ -129,15 +129,16 @@ async fn load_ref_names(db: &DatabaseConnection) -> Result<RefNameLookup, sea_or
     })
 }
 
-/// 各 interest を id / 名前の両方で match 用語に展開する
+/// 各 interest を id / 名前の両方で match 用語に展開する。
+/// 名前を先に push することで、後段の `match_links` が name term を優先採用する
+/// (id 文字列がたまたま title に含まれるケースでも、ユーザーに見える `matched_term`
+/// は読める名前になる)。
 fn expand_interest_terms(
     interests: &[strategy_interest::Model],
     lookup: &RefNameLookup,
 ) -> Vec<InterestTerm> {
     let mut out = Vec::new();
     for i in interests {
-        // 銘柄コード / theme id / sector id 等そのものをまず term に
-        push_unique(&mut out, &i.strategy_id, &i.ref_kind, &i.ref_id, &i.ref_id);
         let name = match i.ref_kind.as_str() {
             "stock" => lookup.stock.get(&i.ref_id),
             "indicator" => lookup.indicator.get(&i.ref_id),
@@ -151,6 +152,7 @@ fn expand_interest_terms(
         {
             push_unique(&mut out, &i.strategy_id, &i.ref_kind, &i.ref_id, name);
         }
+        push_unique(&mut out, &i.strategy_id, &i.ref_kind, &i.ref_id, &i.ref_id);
     }
     out
 }
@@ -317,7 +319,7 @@ mod tests {
     }
 
     #[rstest]
-    fn expand_terms_includes_id_and_name() {
+    fn expand_terms_includes_name_then_id() {
         let interests = vec![interest(STRATEGY_A, "stock", "7203")];
         let lookup = lookup_with_stock("7203", "トヨタ自動車");
         assert_eq!(
@@ -327,13 +329,13 @@ mod tests {
                     strategy_id: STRATEGY_A,
                     ref_kind: "stock".into(),
                     ref_id: "7203".into(),
-                    term: "7203".into(),
+                    term: "トヨタ自動車".into(),
                 },
                 InterestTerm {
                     strategy_id: STRATEGY_A,
                     ref_kind: "stock".into(),
                     ref_id: "7203".into(),
-                    term: "トヨタ自動車".into(),
+                    term: "7203".into(),
                 },
             ],
         );
@@ -417,10 +419,26 @@ mod tests {
             ref_id: "semiconductor".into(),
             term: "半導体".into(),
         }];
-        let active = match_links(&news, &terms);
-        assert_eq!(active.len(), 1);
-        assert_eq!(active[0].strategy_id.clone().unwrap(), STRATEGY_A);
-        assert_eq!(active[0].matched_term.clone().unwrap(), "半導体");
+        let keys: Vec<(Uuid, String, String, String)> = match_links(&news, &terms)
+            .into_iter()
+            .map(|a| {
+                (
+                    a.strategy_id.unwrap(),
+                    a.ref_kind.unwrap(),
+                    a.ref_id.unwrap(),
+                    a.matched_term.unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            keys,
+            vec![(
+                STRATEGY_A,
+                "theme".into(),
+                "semiconductor".into(),
+                "半導体".into(),
+            )],
+        );
     }
 
     #[rstest]

@@ -1,4 +1,7 @@
 import { $api } from '@/lib/api/client'
+import type { components } from '@/lib/api/schema.gen'
+
+type NewsItem = components['schemas']['StrategyNewsItem']
 
 interface RelatedNewsProps {
   strategyId: string
@@ -19,20 +22,6 @@ export function RelatedNews({ strategyId }: RelatedNewsProps) {
 interface RelatedNewsViewProps {
   items: NewsItem[] | null
   isPending: boolean
-}
-
-interface NewsItem {
-  id: string
-  source: string
-  url: string
-  title: string
-  body_snippet?: string | null
-  published_at: string
-  matched_refs: {
-    ref_kind: string
-    ref_id: string
-    matched_term: string
-  }[]
 }
 
 export function RelatedNewsView({ items, isPending }: RelatedNewsViewProps) {

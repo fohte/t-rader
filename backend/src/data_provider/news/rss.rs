@@ -100,11 +100,9 @@ impl NewsAggregator for RssNewsAggregator {
         let mut seen: HashSet<String> = HashSet::new();
         all.retain(|item| seen.insert(item.url.clone()));
 
-        if all.is_empty() && !self.feeds.is_empty() {
-            return Err(DataProviderError::Parse(
-                "no items parsed from any rss feed".into(),
-            ));
-        }
+        // 個別フィードの fetch/parse 失敗は warn で握り潰す方針なので、合算結果が 0 件でも
+        // それは Parse エラーではない (祝日朝・全フィード一時的に空も合法な 0 件)。
+        // 本物の永続的問題は個別 fetch_feed の warn ログで検知する。
         Ok(all)
     }
 }
@@ -232,19 +230,90 @@ fn build_item(
         return None;
     }
     let published_at = parse_pub_date(pub_date)?;
+    // CDATA セクション内の HTML エンティティは quick_xml の Text decode を経由しないため
+    // ここで手動でデコードする。title 側も CDATA で来うる (Reuters JP 等) ので両方適用する。
+    let title = decode_html_entities(title);
     // description は HTML を含むことがある (Yahoo / Bloomberg / Reuters の RSS は <p>...</p>
     // を CDATA で入れてくる)。表示にも interest substring match にも生 HTML を残したくないので
     // タグを削ってから truncate する。
-    let cleaned = strip_html_tags(description);
+    let cleaned = decode_html_entities(&strip_html_tags(description));
     let trimmed = cleaned.trim();
     let snippet = (!trimmed.is_empty()).then(|| truncate_chars(trimmed, SNIPPET_MAX_CHARS));
     Some(NewsItem {
         source: source.to_string(),
         url: link.to_string(),
-        title: title.to_string(),
+        title: title.trim().to_string(),
         body_snippet: snippet,
         published_at,
     })
+}
+
+/// 最低限の HTML エンティティをデコードする (`&amp;` `&lt;` `&gt;` `&quot;` `&apos;` `&#NNN;` `&#xHHH;`)。
+/// 完全な HTML エンティティ仕様は実装しない — RSS で実用上現れるのはこの範囲。
+fn decode_html_entities(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut iter = s.chars().peekable();
+    while let Some(c) = iter.next() {
+        if c != '&' {
+            out.push(c);
+            continue;
+        }
+        let mut name = String::new();
+        let mut found_semi = false;
+        for nc in iter.by_ref() {
+            if nc == ';' {
+                found_semi = true;
+                break;
+            }
+            // & で始まり ; が現れる前に空白や別の & が来たらエンティティではない
+            if nc.is_whitespace() || nc == '&' {
+                out.push('&');
+                out.push_str(&name);
+                out.push(nc);
+                name.clear();
+                break;
+            }
+            name.push(nc);
+            if name.len() > 8 {
+                // RSS で見る named entity は最長 "&apos;" 程度。長すぎるならエンティティではない
+                out.push('&');
+                out.push_str(&name);
+                name.clear();
+                break;
+            }
+        }
+        if !found_semi {
+            continue;
+        }
+        let decoded: Option<String> = match name.as_str() {
+            "amp" => Some("&".into()),
+            "lt" => Some("<".into()),
+            "gt" => Some(">".into()),
+            "quot" => Some("\"".into()),
+            "apos" => Some("'".into()),
+            "nbsp" => Some(" ".into()),
+            other if other.starts_with("#x") || other.starts_with("#X") => {
+                u32::from_str_radix(&other[2..], 16)
+                    .ok()
+                    .and_then(char::from_u32)
+                    .map(|c| c.to_string())
+            }
+            other if other.starts_with('#') => other[1..]
+                .parse::<u32>()
+                .ok()
+                .and_then(char::from_u32)
+                .map(|c| c.to_string()),
+            _ => None,
+        };
+        if let Some(d) = decoded {
+            out.push_str(&d);
+        } else {
+            out.push('&');
+            out.push_str(&name);
+            out.push(';');
+        }
+    }
+    out
 }
 
 /// `<tag>` `<tag attr="x">` `</tag>` を全て削る簡易関数。連続する空白は 1 つに圧縮する。
@@ -408,10 +477,26 @@ mod tests {
     }
 
     #[rstest]
-    fn truncate_chars_caps_by_character_count() {
-        assert_eq!(truncate_chars("abcde", 3), "abc");
-        // multi-byte (Japanese)
-        assert_eq!(truncate_chars("あいうえお", 3), "あいう");
-        assert_eq!(truncate_chars("abc", 10), "abc");
+    #[case::ascii_truncated("abcde", 3, "abc")]
+    #[case::multibyte_truncated("あいうえお", 3, "あいう")]
+    #[case::under_max_unchanged("abc", 10, "abc")]
+    fn truncate_chars_caps_by_character_count(
+        #[case] input: &str,
+        #[case] max: usize,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(truncate_chars(input, max), expected);
+    }
+
+    #[rstest]
+    #[case::amp("AT&amp;T", "AT&T")]
+    #[case::quote("&quot;hello&quot;", "\"hello\"")]
+    #[case::numeric("&#39;25 通期", "'25 通期")]
+    #[case::hex("&#x27;25 通期", "'25 通期")]
+    #[case::unknown_kept_as_is("&unknown;", "&unknown;")]
+    #[case::no_semicolon("a & b", "a & b")]
+    #[case::mixed("&lt;p&gt;A&amp;B&lt;/p&gt;", "<p>A&B</p>")]
+    fn decode_html_entities_handles_common_cases(#[case] input: &str, #[case] expected: &str) {
+        assert_eq!(decode_html_entities(input), expected);
     }
 }
