@@ -41,16 +41,16 @@ fn parse_schedule(expr: &str) -> Result<Schedule, cron::error::Error> {
 ///
 /// `last_fired_at` 直後の次回発火時刻 (`schedule.after(last_fired_at).next()`) が `now` 以下なら
 /// 発火対象。`last_fired_at` が NULL の trigger は「現 tick の interval 直前」を起点に評価する。
-/// (定常運転中に 1 tick 取りこぼした分を最大 1 interval ぶん拾う)
+/// `interval` には worker の tick 間隔を渡す。
 fn should_fire(
     schedule: &Schedule,
     last_fired_at: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
+    interval: Duration,
 ) -> bool {
-    let after = match last_fired_at {
-        Some(t) => t,
-        None => now - chrono::Duration::seconds(DEFAULT_INTERVAL.as_secs() as i64),
-    };
+    let after = last_fired_at.unwrap_or_else(|| {
+        now - chrono::Duration::from_std(interval).unwrap_or(chrono::Duration::zero())
+    });
     schedule
         .after(&after)
         .next()
@@ -59,8 +59,12 @@ fn should_fire(
 
 /// 1 tick ぶんの発火判定 + 発火実行。
 ///
-/// 戻り値は発火を試みた件数 (成功 / 失敗を問わない)。
-pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) -> usize {
+/// 戻り値は発火を試みた件数 (成功 / 失敗を問わない)。`interval` には worker の tick 間隔を渡す。
+pub async fn run_once(
+    db: &DatabaseConnection,
+    kube: &SharedKubeopencodeClient,
+    interval: Duration,
+) -> usize {
     let rows = match trigger::Entity::find()
         .filter(trigger::Column::Kind.eq("cron"))
         .filter(trigger::Column::Enabled.eq(true))
@@ -87,7 +91,7 @@ pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) 
             match parse_schedule(expr) {
                 Ok(schedule) => {
                     let last = row.last_fired_at.map(|dt| dt.with_timezone(&Utc));
-                    should_fire(&schedule, last, now)
+                    should_fire(&schedule, last, now, interval)
                 }
                 Err(err) => {
                     tracing::warn!(
@@ -147,7 +151,7 @@ pub fn spawn(
         ticker.tick().await;
         loop {
             ticker.tick().await;
-            let attempts = run_once(&db, &kube).await;
+            let attempts = run_once(&db, &kube, interval).await;
             if attempts > 0 {
                 tracing::info!(attempts, "cron triggers evaluated");
             }
@@ -174,7 +178,7 @@ mod parse_tests {
         // 毎分 0 秒に発火する schedule。last_fired_at=None で「現在時刻ちょうど」なら発火する。
         let schedule = parse_schedule("* * * * *").unwrap();
         let now = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap();
-        assert!(should_fire(&schedule, None, now));
+        assert!(should_fire(&schedule, None, now, DEFAULT_INTERVAL));
     }
 
     #[test]
@@ -183,7 +187,7 @@ mod parse_tests {
         let schedule = parse_schedule("0 9 * * *").unwrap();
         let last = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap();
         let now = Utc.with_ymd_and_hms(2026, 1, 1, 9, 30, 0).unwrap();
-        assert!(!should_fire(&schedule, Some(last), now));
+        assert!(!should_fire(&schedule, Some(last), now, DEFAULT_INTERVAL));
     }
 
     #[test]
@@ -196,10 +200,26 @@ mod parse_tests {
         let after = Utc.with_ymd_and_hms(2026, 1, 1, 10, 30, 0).unwrap();
         assert_eq!(
             (
-                should_fire(&schedule, Some(last), before),
-                should_fire(&schedule, Some(last), after),
+                should_fire(&schedule, Some(last), before, DEFAULT_INTERVAL),
+                should_fire(&schedule, Some(last), after, DEFAULT_INTERVAL),
             ),
             (false, true),
+        );
+    }
+
+    #[test]
+    fn should_fire_first_time_window_respects_caller_interval() {
+        // interval を短くした場合、last_fired_at=None の起点も同じだけ前にずれる。
+        let schedule = parse_schedule("0 9 * * *").unwrap();
+        // now=9:00:30。default interval (60s) なら 8:59:30 起点で 9:00 を拾い発火するが、
+        // interval=10s なら 9:00:20 起点で 9:00 を拾えず発火しない。
+        let now = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 30).unwrap();
+        assert_eq!(
+            (
+                should_fire(&schedule, None, now, DEFAULT_INTERVAL),
+                should_fire(&schedule, None, now, Duration::from_secs(10)),
+            ),
+            (true, false),
         );
     }
 }
@@ -307,7 +327,7 @@ mod run_once_tests {
         .await;
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        let attempts = run_once(&db, &kube).await;
+        let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 1);
 
         let tasks = strategy_task::Entity::find()
@@ -345,7 +365,7 @@ mod run_once_tests {
         let _ = insert_cron_trigger(&db, sid, "* * * * *", false, Some(past), "x").await;
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        let attempts = run_once(&db, &kube).await;
+        let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 0);
 
         let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
@@ -362,7 +382,7 @@ mod run_once_tests {
         let _ = insert_cron_trigger(&db, sid, "0 9 * * *", true, Some(just_fired), "x").await;
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        let attempts = run_once(&db, &kube).await;
+        let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 0);
         let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
         assert!(tasks.is_empty());
@@ -392,7 +412,7 @@ mod run_once_tests {
         .unwrap();
         let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
 
-        let attempts = run_once(&db, &kube).await;
+        let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 0);
     }
 }

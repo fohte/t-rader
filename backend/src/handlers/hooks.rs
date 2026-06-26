@@ -61,8 +61,6 @@ pub async fn receive_hook(
         .ok_or_else(|| AppError::NotFound(format!("hook {hook_slug} not found")))?;
 
     if !evaluate_event_match(trigger_row.event_match.as_ref(), &payload) {
-        // 不一致は 200 OK で no-op。再送による DoS を避けるため
-        // (event_match 不一致を 4xx で返すと外部 webhook 側が無限再試行しがち)。
         tracing::info!(
             trigger_id = %trigger_row.trigger_id,
             hook_slug,
@@ -94,14 +92,10 @@ pub async fn receive_hook(
                 task_id: Some(outcome.task_id),
             }),
         )),
-        // SELECT と fire の間に削除 / 無効化された race。外部に trigger 存在の有無を漏らさないため
-        // どちらも 404 で扱う。
+        // SELECT と fire の間に削除 / 無効化された race。
         Err(FireTriggerError::TriggerNotFound(_) | FireTriggerError::Disabled(_)) => {
             Err(AppError::NotFound(format!("hook {hook_slug} not found")))
         }
-        // SubmitTaskError は種別ごとに status を分けるため、`/strategies/{id}/chat` 側と同じ
-        // mapping を共有する。EmptyPrompt を 503 に潰すと webhook 側で無限再試行されうるなど、
-        // 一律 503 化は副作用が大きいので避ける。
         Err(FireTriggerError::Submit(err)) => {
             Err(crate::handlers::strategies::map_submit_error(err))
         }
