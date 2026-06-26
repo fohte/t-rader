@@ -14,6 +14,7 @@
 //! - `create_annotation`: アノテーションを作成する
 //! - `read_annotations`: アノテーション一覧を返す
 //! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
+//! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -22,6 +23,7 @@
 //! - `annotations`: アノテーション操作 (`create_annotation_inner` / `read_annotations_inner`)
 //! - `data`: 価格データ取得 (`query_data_inner`)
 //! - `eval`: Python 実行 (`eval_python_inner`)
+//! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
 //!
 //! 本モジュールは tool wrapper (`#[tool_router]` / `#[tool_handler]`) と
 //! 戦略境界・エラー変換などドメイン横断のヘルパを担う。
@@ -30,6 +32,7 @@ pub(super) mod annotations;
 pub(super) mod data;
 pub(super) mod dto;
 pub(super) mod eval;
+pub(super) mod eval_indicator;
 pub(super) mod notes;
 
 #[cfg(test)]
@@ -52,9 +55,10 @@ use crate::entities::{note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 
 use dto::{
-    CreateAnnotationParams, CreateAnnotationResult, EvalPythonParams, EvalPythonResult,
-    ListNotesParams, ListNotesResult, NoteDto, QueryDataParams, QueryDataResult,
-    ReadAnnotationsParams, ReadAnnotationsResult, ReadNoteParams, WriteNoteParams, WriteNoteResult,
+    CreateAnnotationParams, CreateAnnotationResult, EvalIndicatorParams, EvalIndicatorResult,
+    EvalPythonParams, EvalPythonResult, ListNotesParams, ListNotesResult, NoteDto, QueryDataParams,
+    QueryDataResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadNoteParams, WriteNoteParams,
+    WriteNoteResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -69,6 +73,48 @@ const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";
 pub(super) const DEFAULT_ANNOTATION_STATUS: &str = "unread";
 pub(super) const ALLOWED_ANNOTATION_KINDS: [&str; 4] = ["signal", "level", "observation", "other"];
+
+/// exec Pod に Python コード / indicator を渡す tool 群で共通の制限値。
+/// 個別 tool で上書きしないこと。MCP 層と Pod 層の二重で適用される。
+pub(super) const EXEC_MAX_TIMEOUT_SECS: u32 = 60;
+pub(super) const EXEC_MAX_OUTPUT_BYTES: u32 = 1024 * 1024;
+pub(super) const EXEC_MAX_STDIN_BYTES: usize = 256 * 1024;
+
+/// `Option<u32>` の上限チェック。`0` も拒否する (executor 側で意味を持たないため)。
+pub(super) fn check_exec_upper_bound(
+    name: &str,
+    value: Option<u32>,
+    max: u32,
+) -> Result<(), McpError> {
+    let Some(v) = value else { return Ok(()) };
+    if v == 0 {
+        return Err(invalid_params(format!("{name} must be > 0")));
+    }
+    if v > max {
+        return Err(invalid_params(format!("{name} exceeds maximum of {max}")));
+    }
+    Ok(())
+}
+
+/// `KataExecError` の MCP エラー変換。tracing は呼び出し側で行うこと
+/// (tool 固有のコンテキストフィールドを残せるため)。
+pub(super) fn kata_exec_to_mcp_err(err: crate::kata_exec::KataExecError) -> McpError {
+    use crate::kata_exec::KataExecError;
+    match err {
+        KataExecError::NotConfigured => internal_error("kata executor is not configured"),
+        KataExecError::Timeout(d) => invalid_params(format!("execution timed out after {:?}", d)),
+        KataExecError::OutputTooLarge { limit } => {
+            invalid_params(format!("output exceeded {limit} bytes"))
+        }
+        KataExecError::PodFailed(msg) => internal_error(format!("exec pod failed: {msg}")),
+        KataExecError::Api { status, message } => {
+            internal_error(format!("kube api error (status {status}): {message}"))
+        }
+        KataExecError::Network(msg) => internal_error(format!("kube api network error: {msg}")),
+        KataExecError::Parse(msg) => internal_error(format!("kube api parse error: {msg}")),
+        KataExecError::Init(msg) => internal_error(format!("kata executor init error: {msg}")),
+    }
+}
 
 #[derive(Clone)]
 pub struct StrategyServer {
@@ -295,6 +341,20 @@ impl StrategyServer {
     ) -> Result<Json<EvalPythonResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.eval_python_inner(sid, params).await.map(Json)
+    }
+
+    /// 永続化された indicator (戦略 scope 優先) を exec Pod 上で評価する
+    #[tool(
+        name = "eval_indicator",
+        description = "Evaluate a stored indicator by name. Resolves strategy-scoped indicator first then global. Args are validated against the indicator's input_schema and stdout is validated against output_schema."
+    )]
+    async fn eval_indicator(
+        &self,
+        Parameters(params): Parameters<EvalIndicatorParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<EvalIndicatorResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.eval_indicator_inner(sid, params).await.map(Json)
     }
 }
 
