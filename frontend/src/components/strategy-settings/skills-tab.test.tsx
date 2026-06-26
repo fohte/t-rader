@@ -19,11 +19,6 @@ interface SkillStore {
   [name: string]: string
 }
 
-/**
- * /api/strategies/:id/skills* に対する HTTP を、メモリ上の SkillStore で完結させる。
- * 戦略境界 / kubeopencode reconcile は backend 側で検証されているので、
- * frontend テストでは API のレスポンス契約だけ満たせばよい。
- */
 function installMiddleware(initial: SkillStore = {}) {
   const store: SkillStore = { ...initial }
   const middleware: Middleware = {
@@ -124,6 +119,8 @@ describe('SkillsTab', () => {
       const list = screen.getByTestId('skill-list')
       expect(within(list).getByText('snapshot')).toBeInTheDocument()
     })
+    // 追加 skill の空 content で editor が開いていることを「選択状態」として確認する
+    expect(await screen.findByLabelText('source')).toHaveValue('')
   })
 
   it('skill 名が無効なら API は呼ばれずエラーメッセージが出る', async () => {

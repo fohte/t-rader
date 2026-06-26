@@ -20,7 +20,6 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
     { params: { path: { id: strategyId } } },
   )
 
-  // 「追加」と「インライン保存」の isPending を分けるため、同 endpoint だが別 mutation hook を使う
   const addSkill = $api.useMutation('put', '/api/strategies/{id}/skills/{name}')
   const saveSkill = $api.useMutation(
     'put',

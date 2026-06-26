@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button'
 interface MarkdownEditorProps {
   /** 永続化されている現在の内容 (保存ボタン押下時の diff 元) */
   initialValue: string
-  /** 保存ハンドラ。成功した場合に解決する Promise を返す想定 */
-  onSave: (next: string) => Promise<void> | void
+  /** 保存ハンドラ。エラー表示は呼び出し側で saveError prop 経由に倒す */
+  onSave: (next: string) => void
   isSaving?: boolean
   saveError?: string | null
   /** エディタ本体の最小高さ */
@@ -31,7 +31,6 @@ export function MarkdownEditor({
     setValue(initialValue)
   }, [initialValue, dirty])
 
-  // 未保存変更がある場合、ページ離脱時にブラウザの確認ダイアログを出す
   useEffect(() => {
     if (!dirty) return
     function handler(e: BeforeUnloadEvent) {
@@ -45,7 +44,7 @@ export function MarkdownEditor({
 
   function handleSave() {
     if (!dirty || isSaving) return
-    void onSave(value)
+    onSave(value)
   }
 
   return (
