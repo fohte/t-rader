@@ -69,4 +69,28 @@ describe('MarkdownEditor', () => {
     window.dispatchEvent(ev)
     expect(ev.defaultPrevented).toBe(false)
   })
+
+  it('編集していないときに親から initialValue が更新されたら追従し dirty 表示は出さない', () => {
+    const { rerender } = render(
+      <MarkdownEditor initialValue="A" onSave={() => {}} />,
+    )
+    expect(screen.getByLabelText('source')).toHaveValue('A')
+
+    rerender(<MarkdownEditor initialValue="B" onSave={() => {}} />)
+    expect(screen.getByLabelText('source')).toHaveValue('B')
+    expect(screen.queryByTestId('dirty-indicator')).toBeNull()
+  })
+
+  it('編集中に親から initialValue が更新されてもユーザーの draft を上書きしない', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <MarkdownEditor initialValue="A" onSave={() => {}} />,
+    )
+    const textarea = screen.getByLabelText('source')
+    await user.clear(textarea)
+    await user.type(textarea, 'draft')
+
+    rerender(<MarkdownEditor initialValue="B" onSave={() => {}} />)
+    expect(screen.getByLabelText('source')).toHaveValue('draft')
+  })
 })

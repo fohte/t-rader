@@ -123,6 +123,28 @@ describe('SkillsTab', () => {
     expect(await screen.findByLabelText('source')).toHaveValue('')
   })
 
+  it('既存 skill がある状態で新規追加しても、選択は先頭の skill に戻らず追加した skill になる', async () => {
+    const user = userEvent.setup()
+    setup({ alpha: 'A content', recap: 'R content' })
+
+    // 初期選択は先頭 (alpha)
+    const textarea = await screen.findByLabelText('source')
+    await waitFor(() => {
+      expect(textarea).toHaveValue('A content')
+    })
+
+    await user.type(screen.getByLabelText('新しい skill'), 'zeta')
+    await user.click(screen.getByRole('button', { name: '追加' }))
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId('skill-list')).getByText('zeta'),
+      ).toBeInTheDocument()
+    })
+    // 追加した zeta の空 content にエディタが切り替わっている (alpha に戻らない)
+    expect(screen.getByLabelText('source')).toHaveValue('')
+  })
+
   it('skill 名が無効なら API は呼ばれずエラーメッセージが出る', async () => {
     const user = userEvent.setup()
     setup({})

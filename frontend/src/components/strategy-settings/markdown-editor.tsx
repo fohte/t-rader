@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { MarkdownBody } from '@/components/note-detail/markdown-body'
 import { Button } from '@/components/ui/button'
@@ -22,14 +22,18 @@ export function MarkdownEditor({
   minHeight = 320,
 }: MarkdownEditorProps) {
   const [value, setValue] = useState(initialValue)
+  // 前回親から受け取った initialValue。これと value が一致していれば「ユーザー未編集」と判定できる。
+  // dirty (= value !== initialValue) で判定すると、initialValue 変化と同 render で dirty=true になり
+  // 「クリーンなのに追従しない」状態に陥るので別に保持する
+  const lastInitialValueRef = useRef(initialValue)
   const dirty = value !== initialValue
 
-  // refetch で initialValue が更新されたとき、ユーザーが編集中なら draft を守る。
-  // クリーン (dirty=false) のときだけ追従する
   useEffect(() => {
-    if (dirty) return
-    setValue(initialValue)
-  }, [initialValue, dirty])
+    if (value === lastInitialValueRef.current) {
+      setValue(initialValue)
+    }
+    lastInitialValueRef.current = initialValue
+  }, [initialValue, value])
 
   useEffect(() => {
     if (!dirty) return

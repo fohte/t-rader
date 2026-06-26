@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { MarkdownEditor } from '@/components/strategy-settings/markdown-editor'
 import { validateSkillName } from '@/components/strategy-settings/skill-name'
@@ -35,21 +35,14 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
   const [newNameError, setNewNameError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const skills = data?.skills ?? {}
-  const names = Object.keys(skills).sort()
+  const skills = useMemo(() => data?.skills ?? {}, [data?.skills])
+  const names = useMemo(() => Object.keys(skills).sort(), [skills])
 
   useEffect(() => {
     if (selected != null) return
     if (names.length === 0) return
     setSelected(names[0] ?? null)
   }, [selected, names])
-
-  useEffect(() => {
-    if (selected == null) return
-    if (!(selected in skills)) {
-      setSelected(names[0] ?? null)
-    }
-  }, [selected, skills, names])
 
   function invalidateSkills() {
     void queryClient.invalidateQueries({
@@ -97,6 +90,10 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
       {
         onSuccess: () => {
           invalidateSkills()
+          // useEffect の cleanup ロジックを使わず、削除元の場所で選択を解除する
+          if (selected === name) {
+            setSelected(null)
+          }
         },
         onError: () => {
           setSaveError('skill の削除に失敗しました')
