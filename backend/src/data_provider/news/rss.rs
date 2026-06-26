@@ -12,37 +12,14 @@ const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 /// snippet を本文先頭から切り出す最大長 (バイトではなく文字数)
 const SNIPPET_MAX_CHARS: usize = 280;
 
-/// 集約対象の RSS フィード一覧 (env 未指定時のデフォルト)。表示用ソース名と URL のペア。
-const DEFAULT_FEEDS: &[(&str, &str)] = &[
-    (
-        "Yahoo! Japan",
-        "https://news.yahoo.co.jp/rss/topics/business.xml",
-    ),
-    (
-        "Bloomberg JP",
-        "https://feeds.bloomberg.co.jp/rss/markets.xml",
-    ),
-    ("Reuters JP", "https://jp.reuters.com/rssfeed/businessNews"),
-];
-
-/// `NEWS_RSS_FEEDS` 環境変数の区切り文字。
-/// 形式: `name1|url1,name2|url2,...`
+/// `NEWS_RSS_FEEDS` 環境変数。形式: `name1|url1,name2|url2,...`
+/// dev のデフォルトは `.env` で、本番値は infra (External Secrets) で差し替える。
 const ENV_VAR: &str = "NEWS_RSS_FEEDS";
 
 #[derive(Debug)]
 pub struct RssFeed {
     pub source: String,
     pub url: String,
-}
-
-fn default_feeds() -> Vec<RssFeed> {
-    DEFAULT_FEEDS
-        .iter()
-        .map(|(s, u)| RssFeed {
-            source: (*s).to_string(),
-            url: (*u).to_string(),
-        })
-        .collect()
 }
 
 /// `name1|url1,name2|url2,...` 形式をパースする。空エントリはスキップ。
@@ -85,13 +62,15 @@ pub struct RssNewsAggregator {
 }
 
 impl RssNewsAggregator {
-    /// `NEWS_RSS_FEEDS` から feeds を読み込んで構築する。未設定なら `DEFAULT_FEEDS` にフォールバック。
+    /// `NEWS_RSS_FEEDS` から feeds を読み込んで構築する。
+    /// 未設定なら `Err` を返す (dev は `.env` で供給する)。
     pub fn from_env() -> Result<Self, DataProviderError> {
-        let feeds = match std::env::var(ENV_VAR) {
-            Ok(s) if !s.trim().is_empty() => parse_feed_env(&s)?,
-            _ => default_feeds(),
-        };
-        Self::with_feeds(feeds)
+        let raw = std::env::var(ENV_VAR)
+            .map_err(|_| DataProviderError::Parse(format!("{ENV_VAR} is not set")))?;
+        if raw.trim().is_empty() {
+            return Err(DataProviderError::Parse(format!("{ENV_VAR} is empty")));
+        }
+        Self::with_feeds(parse_feed_env(&raw)?)
     }
 
     pub fn with_feeds(feeds: Vec<RssFeed>) -> Result<Self, DataProviderError> {
