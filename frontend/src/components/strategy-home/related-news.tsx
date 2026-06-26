@@ -86,13 +86,16 @@ function renderBody(items: NewsItem[] | null, isPending: boolean) {
   )
 }
 
+// Intl.DateTimeFormat の生成は重いのでモジュールスコープで 1 度だけ確保する
+const DATE_FORMATTER = new Intl.DateTimeFormat('ja-JP', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
 function formatTime(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('ja-JP', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return DATE_FORMATTER.format(d)
 }

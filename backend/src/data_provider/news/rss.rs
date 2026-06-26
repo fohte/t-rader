@@ -144,7 +144,13 @@ pub fn parse_rss(source: &str, body: &str) -> Result<Vec<NewsItem>, DataProvider
 
     let mut items: Vec<NewsItem> = Vec::new();
     let mut in_item = false;
-    let mut current_tag: Option<Vec<u8>> = None;
+    // 興味のあるフィールドごとに on/off フラグを持つ。`<description><a>...</a></description>`
+    // のようにフィールド内側に未知タグがあっても、内側の End で誤って off にならない
+    // (内側タグは title/link/description/pubDate のどれにもマッチしないため)
+    let mut in_title = false;
+    let mut in_link = false;
+    let mut in_description = false;
+    let mut in_pub_date = false;
     let mut buf_title = String::new();
     let mut buf_link = String::new();
     let mut buf_description = String::new();
@@ -159,19 +165,32 @@ pub fn parse_rss(source: &str, body: &str) -> Result<Vec<NewsItem>, DataProvider
                 let name = e.name().as_ref().to_vec();
                 if name == b"item" {
                     in_item = true;
+                    in_title = false;
+                    in_link = false;
+                    in_description = false;
+                    in_pub_date = false;
                     buf_title.clear();
                     buf_link.clear();
                     buf_description.clear();
                     buf_pub_date.clear();
                 } else if in_item {
-                    current_tag = Some(name);
+                    match name.as_slice() {
+                        b"title" => in_title = true,
+                        b"link" => in_link = true,
+                        b"description" => in_description = true,
+                        b"pubDate" => in_pub_date = true,
+                        _ => {}
+                    }
                 }
             }
             Event::End(e) => {
                 let name = e.name().as_ref().to_vec();
                 if name == b"item" {
                     in_item = false;
-                    current_tag = None;
+                    in_title = false;
+                    in_link = false;
+                    in_description = false;
+                    in_pub_date = false;
                     if let Some(item) = build_item(
                         source,
                         buf_title.trim(),
@@ -181,21 +200,27 @@ pub fn parse_rss(source: &str, body: &str) -> Result<Vec<NewsItem>, DataProvider
                     ) {
                         items.push(item);
                     }
-                } else if current_tag.as_deref() == Some(name.as_slice()) {
-                    current_tag = None;
+                } else if in_item {
+                    match name.as_slice() {
+                        b"title" => in_title = false,
+                        b"link" => in_link = false,
+                        b"description" => in_description = false,
+                        b"pubDate" => in_pub_date = false,
+                        _ => {}
+                    }
                 }
             }
             Event::Text(t) => {
-                if let Some(tag) = current_tag.as_deref()
-                    && in_item
-                {
+                if in_item {
                     let text = t
                         .decode()
-                        .map_err(|e| DataProviderError::Parse(format!("text: {e}")))?
-                        .into_owned();
-                    append_field(
-                        tag,
-                        &text,
+                        .map_err(|e| DataProviderError::Parse(format!("text: {e}")))?;
+                    append_text(
+                        text.as_ref(),
+                        in_title,
+                        in_link,
+                        in_description,
+                        in_pub_date,
                         &mut buf_title,
                         &mut buf_link,
                         &mut buf_description,
@@ -204,14 +229,15 @@ pub fn parse_rss(source: &str, body: &str) -> Result<Vec<NewsItem>, DataProvider
                 }
             }
             Event::CData(c) => {
-                if let Some(tag) = current_tag.as_deref()
-                    && in_item
-                {
+                if in_item {
                     let text = String::from_utf8(c.into_inner().into_owned())
                         .map_err(|e| DataProviderError::Parse(format!("cdata: {e}")))?;
-                    append_field(
-                        tag,
+                    append_text(
                         &text,
+                        in_title,
+                        in_link,
+                        in_description,
+                        in_pub_date,
                         &mut buf_title,
                         &mut buf_link,
                         &mut buf_description,
@@ -227,20 +253,29 @@ pub fn parse_rss(source: &str, body: &str) -> Result<Vec<NewsItem>, DataProvider
     Ok(items)
 }
 
-fn append_field(
-    tag: &[u8],
+#[expect(
+    clippy::too_many_arguments,
+    reason = "RSS field buffers と flag を並べる関数"
+)]
+fn append_text(
     text: &str,
+    in_title: bool,
+    in_link: bool,
+    in_description: bool,
+    in_pub_date: bool,
     title: &mut String,
     link: &mut String,
     description: &mut String,
     pub_date: &mut String,
 ) {
-    match tag {
-        b"title" => title.push_str(text),
-        b"link" => link.push_str(text),
-        b"description" => description.push_str(text),
-        b"pubDate" => pub_date.push_str(text),
-        _ => {}
+    if in_title {
+        title.push_str(text);
+    } else if in_link {
+        link.push_str(text);
+    } else if in_description {
+        description.push_str(text);
+    } else if in_pub_date {
+        pub_date.push_str(text);
     }
 }
 
@@ -285,17 +320,19 @@ fn decode_html_entities(s: &str) -> String {
         }
         let mut name = String::new();
         let mut found_semi = false;
+        // 文字列終端まで `;` を見ずに抜けた場合に、それまで読み取った `&name` を消失させない
+        // (`&world` `&id=123` のような non-entity 文字列を想定)
+        let mut handled = false;
         for nc in iter.by_ref() {
             if nc == ';' {
                 found_semi = true;
                 break;
             }
-            // & で始まり ; が現れる前に空白や別の & が来たらエンティティではない
             if nc.is_whitespace() || nc == '&' {
                 out.push('&');
                 out.push_str(&name);
                 out.push(nc);
-                name.clear();
+                handled = true;
                 break;
             }
             name.push(nc);
@@ -303,11 +340,16 @@ fn decode_html_entities(s: &str) -> String {
                 // RSS で見る named entity は最長 "&apos;" 程度。長すぎるならエンティティではない
                 out.push('&');
                 out.push_str(&name);
-                name.clear();
+                handled = true;
                 break;
             }
         }
+        if handled {
+            continue;
+        }
         if !found_semi {
+            out.push('&');
+            out.push_str(&name);
             continue;
         }
         let decoded: Option<String> = match name.as_str() {
@@ -453,6 +495,36 @@ mod tests {
     }
 
     #[rstest]
+    fn parse_rss_keeps_text_across_nested_tags() {
+        // description の内部に <b> のような未知タグが入っても、内側の End で description
+        // フラグが落ちずに後続テキストを取りこぼさない
+        let xml = indoc! {r#"
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <title>テスト</title>
+                  <link>https://ex.com/n</link>
+                  <description>前<b>中</b>後</description>
+                  <pubDate>Thu, 25 Jun 2026 09:00:00 +0900</pubDate>
+                </item>
+              </channel>
+            </rss>
+        "#};
+
+        assert_eq!(
+            parse_rss("Test", xml).expect("parse ok"),
+            vec![NewsItem {
+                source: "Test".into(),
+                url: "https://ex.com/n".into(),
+                title: "テスト".into(),
+                body_snippet: Some("前中後".into()),
+                published_at: ymd_hms(2026, 6, 25, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
     fn parse_rss_skips_items_missing_required_fields() {
         let xml = indoc! {r#"
             <?xml version="1.0" encoding="UTF-8"?>
@@ -554,6 +626,9 @@ mod tests {
     #[case::unknown_kept_as_is("&unknown;", "&unknown;")]
     #[case::no_semicolon("a & b", "a & b")]
     #[case::mixed("&lt;p&gt;A&amp;B&lt;/p&gt;", "<p>A&B</p>")]
+    #[case::ampersand_then_word_no_semi("&world", "&world")]
+    #[case::trailing_ampersand("foo&", "foo&")]
+    #[case::url_query_no_entity("path?a=1&id=123", "path?a=1&id=123")]
     fn decode_html_entities_handles_common_cases(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(decode_html_entities(input), expected);
     }

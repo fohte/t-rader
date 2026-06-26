@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use axum::Json;
 use axum::extract::State;
 use chrono::{DateTime, Utc};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -13,6 +13,9 @@ use crate::AppState;
 use crate::entities::{news_item, news_strategy_link, strategy};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonPath;
+
+/// 1 戦略あたりの返却件数上限。蓄積が長期化しても応答が爆発しないように上限を切る。
+const MAX_NEWS_PER_STRATEGY: u64 = 50;
 
 /// 戦略ホームの「関連ニュース」セクション用 1 件
 #[derive(Debug, Serialize, ToSchema)]
@@ -62,23 +65,29 @@ pub async fn list_strategy_news(
         return Err(AppError::NotFound(format!("strategy {id} not found")));
     }
 
+    // 戦略 link が付いているニュースのうち、新しい順に最大 MAX_NEWS_PER_STRATEGY 件だけ取り出す。
+    // distinct を打って同一 news_id が複数 link に紐づくケースで件数を膨らませない。
+    let news_rows = news_item::Entity::find()
+        .inner_join(news_strategy_link::Entity)
+        .filter(news_strategy_link::Column::StrategyId.eq(id))
+        .order_by_desc(news_item::Column::PublishedAt)
+        .distinct()
+        .limit(MAX_NEWS_PER_STRATEGY)
+        .all(&state.db)
+        .await?;
+
+    if news_rows.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+
+    let news_ids: Vec<Uuid> = news_rows.iter().map(|n| n.id).collect();
     let links = news_strategy_link::Entity::find()
         .filter(news_strategy_link::Column::StrategyId.eq(id))
+        .filter(news_strategy_link::Column::NewsId.is_in(news_ids))
         // matched_refs の順序を deterministic にする (created_at 昇順 → 同時刻なら ref_kind / ref_id)
         .order_by_asc(news_strategy_link::Column::CreatedAt)
         .order_by_asc(news_strategy_link::Column::RefKind)
         .order_by_asc(news_strategy_link::Column::RefId)
-        .all(&state.db)
-        .await?;
-
-    if links.is_empty() {
-        return Ok(Json(Vec::new()));
-    }
-
-    let news_ids: HashSet<Uuid> = links.iter().map(|l| l.news_id).collect();
-    let news_rows = news_item::Entity::find()
-        .filter(news_item::Column::Id.is_in(news_ids.iter().copied().collect::<Vec<_>>()))
-        .order_by_desc(news_item::Column::PublishedAt)
         .all(&state.db)
         .await?;
 

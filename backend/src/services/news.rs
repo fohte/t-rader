@@ -40,8 +40,8 @@ pub async fn run_aggregation_cycle(
 ) -> Result<AggregationStats, DataProviderError> {
     let fetched = aggregator.fetch_news().await?;
     let news_rows = upsert_news_items(db, &fetched).await.map_err(db_err)?;
-    let lookup = load_ref_names(db).await.map_err(db_err)?;
     let interests = load_strategy_interests(db).await.map_err(db_err)?;
+    let lookup = load_ref_names(db, &interests).await.map_err(db_err)?;
     let terms = expand_interest_terms(&interests, &lookup);
     let link_count = link_news_to_strategies(db, &news_rows, &terms)
         .await
@@ -116,11 +116,59 @@ async fn load_strategy_interests(
     strategy_interest::Entity::find().all(db).await
 }
 
-async fn load_ref_names(db: &DatabaseConnection) -> Result<RefNameLookup, sea_orm::DbErr> {
-    let stocks = stock::Entity::find().all(db).await?;
-    let indicators = indicator::Entity::find().all(db).await?;
-    let sectors = sector::Entity::find().all(db).await?;
-    let themes = theme::Entity::find().all(db).await?;
+/// interest に登場する ref_id だけを対象に id → name を引いておく。
+/// stock / sector / theme は数千件規模になりうるので全件ロードは避ける。
+async fn load_ref_names(
+    db: &DatabaseConnection,
+    interests: &[strategy_interest::Model],
+) -> Result<RefNameLookup, sea_orm::DbErr> {
+    let mut stock_ids: Vec<String> = Vec::new();
+    let mut indicator_ids: Vec<String> = Vec::new();
+    let mut sector_ids: Vec<String> = Vec::new();
+    let mut theme_ids: Vec<String> = Vec::new();
+    for i in interests {
+        match i.ref_kind.as_str() {
+            "stock" => stock_ids.push(i.ref_id.clone()),
+            "indicator" => indicator_ids.push(i.ref_id.clone()),
+            "sector" => sector_ids.push(i.ref_id.clone()),
+            "theme" => theme_ids.push(i.ref_id.clone()),
+            _ => {}
+        }
+    }
+
+    let stocks = if stock_ids.is_empty() {
+        Vec::new()
+    } else {
+        stock::Entity::find()
+            .filter(stock::Column::Id.is_in(stock_ids))
+            .all(db)
+            .await?
+    };
+    let indicators = if indicator_ids.is_empty() {
+        Vec::new()
+    } else {
+        indicator::Entity::find()
+            .filter(indicator::Column::Id.is_in(indicator_ids))
+            .all(db)
+            .await?
+    };
+    let sectors = if sector_ids.is_empty() {
+        Vec::new()
+    } else {
+        sector::Entity::find()
+            .filter(sector::Column::Id.is_in(sector_ids))
+            .all(db)
+            .await?
+    };
+    let themes = if theme_ids.is_empty() {
+        Vec::new()
+    } else {
+        theme::Entity::find()
+            .filter(theme::Column::Id.is_in(theme_ids))
+            .all(db)
+            .await?
+    };
+
     Ok(RefNameLookup {
         stock: stocks.into_iter().map(|s| (s.id, s.name)).collect(),
         indicator: indicators.into_iter().map(|i| (i.id, i.name)).collect(),
