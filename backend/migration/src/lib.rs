@@ -7,6 +7,7 @@ mod m20260615_132751_strategy_task;
 mod m20260618_154453_add_strategy_agent_columns;
 mod m20260625_020801_trigger;
 mod m20260625_103524_custom_indicator;
+mod m20260626_131137_news_aggregation;
 
 pub struct Migrator;
 
@@ -20,6 +21,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260618_154453_add_strategy_agent_columns::Migration),
             Box::new(m20260625_020801_trigger::Migration),
             Box::new(m20260625_103524_custom_indicator::Migration),
+            Box::new(m20260626_131137_news_aggregation::Migration),
         ]
     }
 }

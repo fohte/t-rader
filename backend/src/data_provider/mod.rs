@@ -3,6 +3,7 @@ pub mod jquants;
 pub mod macro_data;
 #[cfg(test)]
 mod mock;
+pub mod news;
 
 use chrono::NaiveDate;
 
@@ -32,6 +33,10 @@ pub enum DataProviderError {
     /// レスポンスのパースに失敗
     #[error("failed to parse response: {0}")]
     Parse(String),
+
+    /// データプロバイダー内部の DB アクセスに失敗 (集約結果の永続化など)
+    #[error("database error: {0}")]
+    Database(String),
 }
 
 /// 日足データの取得期間を指定するパラメータ

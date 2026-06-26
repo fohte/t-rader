@@ -621,6 +621,27 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/news': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 戦略に関連付けられたニュース一覧を取得する
+     * @description `news_strategy_link` を介して `strategy_id` で絞り込み、`published_at` 降順で返す。
+     *     他戦略のニュースは含まれない (link 経由のためテーブル境界で隔離される)。
+     */
+    get: operations['list_strategy_news']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/skills': {
     parameters: {
       query?: never
@@ -1064,6 +1085,11 @@ export interface components {
       /** @description 直近の取得値。一度も成功していない、または 24h 以上失敗が続いている場合は `null` */
       ticks?: components['schemas']['MacroTick'][] | null
     }
+    MatchedRef: {
+      matched_term: string
+      ref_id: string
+      ref_kind: string
+    }
     Note: {
       body_md: string
       /** Format: date-time */
@@ -1233,6 +1259,19 @@ export interface components {
       role: string
       /** Format: uuid */
       strategy_id: string
+    }
+    /** @description 戦略ホームの「関連ニュース」セクション用 1 件 */
+    StrategyNewsItem: {
+      body_snippet?: string | null
+      /** Format: uuid */
+      id: string
+      /** @description この戦略の interest のうち、このニュースに紐付いたものの一覧 (ref_kind:ref_id) */
+      matched_refs: components['schemas']['MatchedRef'][]
+      /** Format: date-time */
+      published_at: string
+      source: string
+      title: string
+      url: string
     }
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
@@ -3670,6 +3709,45 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_news: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 関連ニュース */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyNewsItem'][]
         }
       }
       404: {
