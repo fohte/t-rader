@@ -15,6 +15,7 @@ use super::dto::{EvalPythonParams, EvalPythonResult};
 use super::{
     EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_STDIN_BYTES, EXEC_MAX_TIMEOUT_SECS, StrategyServer,
     check_exec_upper_bound, ensure_strategy_match, internal_error, invalid_params,
+    kata_exec_to_mcp_err,
 };
 
 /// MCP 層で許容する Python コード本体のサイズ上限 (バイト)。
@@ -86,20 +87,7 @@ fn kata_exec_error(err: KataExecError, strategy_id: Uuid) -> McpError {
         error = %err,
         "eval_python: kata exec error",
     );
-    match err {
-        KataExecError::NotConfigured => internal_error("kata executor is not configured"),
-        KataExecError::Timeout(d) => invalid_params(format!("execution timed out after {:?}", d)),
-        KataExecError::OutputTooLarge { limit } => {
-            invalid_params(format!("output exceeded {limit} bytes"))
-        }
-        KataExecError::PodFailed(msg) => internal_error(format!("exec pod failed: {msg}")),
-        KataExecError::Api { status, message } => {
-            internal_error(format!("kube api error (status {status}): {message}"))
-        }
-        KataExecError::Network(msg) => internal_error(format!("kube api network error: {msg}")),
-        KataExecError::Parse(msg) => internal_error(format!("kube api parse error: {msg}")),
-        KataExecError::Init(msg) => internal_error(format!("kata executor init error: {msg}")),
-    }
+    kata_exec_to_mcp_err(err)
 }
 
 #[cfg(test)]

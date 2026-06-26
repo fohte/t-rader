@@ -9,7 +9,6 @@
 
 use std::time::Duration;
 
-use jsonschema::Validator;
 use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
@@ -22,7 +21,17 @@ use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
 use super::{
     EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_STDIN_BYTES, EXEC_MAX_TIMEOUT_SECS, StrategyServer,
     check_exec_upper_bound, ensure_strategy_match, internal_error, invalid_params,
+    kata_exec_to_mcp_err,
 };
+
+/// JSON Schema validation の失敗種別。stored schema 自体の不正と instance の不一致を
+/// 呼び出し側で別の MCP error に振り分けるために区別する。
+enum SchemaCheckError {
+    /// schema 自体が JSON Schema として不正 (operator 側の保存ミス)。
+    BrokenSchema(String),
+    /// instance が schema に合致しない (caller 側の入力ミス、もしくは indicator 出力の問題)。
+    Mismatch(String),
+}
 
 impl StrategyServer {
     pub(crate) async fn eval_indicator_inner(
@@ -50,10 +59,13 @@ impl StrategyServer {
                 McpError::resource_not_found(format!("indicator '{name}' not found"), None)
             })?;
 
-        validate_with_schema(&indicator.input_schema, &params.args).map_err(|msg| {
-            invalid_params(format!(
+        validate_with_schema(&indicator.input_schema, &params.args).map_err(|err| match err {
+            SchemaCheckError::Mismatch(msg) => invalid_params(format!(
                 "args do not match input_schema of indicator '{name}': {msg}"
-            ))
+            )),
+            SchemaCheckError::BrokenSchema(msg) => internal_error(format!(
+                "indicator '{name}' has invalid input_schema in storage: {msg}"
+            )),
         })?;
 
         let executor = self
@@ -106,12 +118,9 @@ impl StrategyServer {
     }
 }
 
-fn build_validator(schema: &JsonValue) -> Result<Validator, String> {
-    jsonschema::validator_for(schema).map_err(|e| format!("invalid JSON Schema: {e}"))
-}
-
-fn validate_with_schema(schema: &JsonValue, instance: &JsonValue) -> Result<(), String> {
-    let validator = build_validator(schema)?;
+fn validate_with_schema(schema: &JsonValue, instance: &JsonValue) -> Result<(), SchemaCheckError> {
+    let validator = jsonschema::validator_for(schema)
+        .map_err(|e| SchemaCheckError::BrokenSchema(e.to_string()))?;
     let errors: Vec<String> = validator
         .iter_errors(instance)
         .map(|e| format!("{} at {}", e, e.instance_path()))
@@ -119,7 +128,7 @@ fn validate_with_schema(schema: &JsonValue, instance: &JsonValue) -> Result<(), 
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(errors.join("; "))
+        Err(SchemaCheckError::Mismatch(errors.join("; ")))
     }
 }
 
@@ -140,11 +149,15 @@ fn parse_and_validate_output(
             indicator.name
         ))
     })?;
-    validate_with_schema(&indicator.output_schema, &parsed).map_err(|msg| {
-        invalid_params(format!(
+    validate_with_schema(&indicator.output_schema, &parsed).map_err(|err| match err {
+        SchemaCheckError::Mismatch(msg) => invalid_params(format!(
             "output does not match output_schema of indicator '{}': {msg}",
             indicator.name
-        ))
+        )),
+        SchemaCheckError::BrokenSchema(msg) => internal_error(format!(
+            "indicator '{}' has invalid output_schema in storage: {msg}",
+            indicator.name
+        )),
     })?;
     Ok(parsed)
 }
@@ -160,20 +173,7 @@ fn kata_exec_error(
         error = %err,
         "eval_indicator: kata exec error",
     );
-    match err {
-        KataExecError::NotConfigured => internal_error("kata executor is not configured"),
-        KataExecError::Timeout(d) => invalid_params(format!("execution timed out after {:?}", d)),
-        KataExecError::OutputTooLarge { limit } => {
-            invalid_params(format!("output exceeded {limit} bytes"))
-        }
-        KataExecError::PodFailed(msg) => internal_error(format!("exec pod failed: {msg}")),
-        KataExecError::Api { status, message } => {
-            internal_error(format!("kube api error (status {status}): {message}"))
-        }
-        KataExecError::Network(msg) => internal_error(format!("kube api network error: {msg}")),
-        KataExecError::Parse(msg) => internal_error(format!("kube api parse error: {msg}")),
-        KataExecError::Init(msg) => internal_error(format!("kata executor init error: {msg}")),
-    }
+    kata_exec_to_mcp_err(err)
 }
 
 #[cfg(test)]
@@ -304,11 +304,14 @@ mod tests {
             }
         );
         let recorded = executor.requests.lock().await;
-        assert_eq!(recorded.len(), 1);
-        assert_eq!(recorded[0].code, "print('{\"value\": 42}')");
         assert_eq!(
-            recorded[0].stdin.as_deref(),
-            Some(r#"{"args":{"period":14}}"#)
+            recorded.as_slice(),
+            &[crate::kata_exec::ExecRequest {
+                code: "print('{\"value\": 42}')".into(),
+                stdin: Some(r#"{"args":{"period":14}}"#.into()),
+                timeout: None,
+                max_output_bytes: None,
+            }],
         );
     }
 
@@ -398,8 +401,6 @@ mod tests {
         assert!(executor.requests.lock().await.is_empty());
     }
 
-    /// session の strategy_id と arg の strategy_id が一致しない呼び出しは MCP 層で拒否する。
-    /// 検証は resolve 段より手前で行われるため DB 不要 (MockDatabase で十分)。
     #[tokio::test]
     async fn eval_indicator_rejects_strategy_mismatch() {
         let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
@@ -585,9 +586,44 @@ mod tests {
         );
     }
 
-    /// 引数 validation は resolve 段より手前で行うため DB アクセス不要。MockDatabase で
-    /// `tokio::test` + `#[rstest]` を組み合わせる (`sqlx::test` は `#[rstest]` と
-    /// 共存不可)。
+    /// indicator の input_schema が JSON Schema として壊れていた場合は operator 側の
+    /// 問題なので `invalid_params` ではなく `internal_error` を返す。caller (LLM) に
+    /// 「args が悪い」と誤認させない。
+    #[sqlx::test(migrations = false)]
+    async fn eval_indicator_reports_broken_input_schema_as_internal(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let sid = insert_strategy(&db, "s").await;
+        insert_indicator(
+            &db,
+            SCOPE_GLOBAL,
+            None,
+            "rsi",
+            "print('{}')",
+            json!({"type": "not-a-real-type"}),
+            json!({"type": "object"}),
+        )
+        .await;
+
+        let executor = Arc::new(FakeKataExecutor::new());
+        let (server, _shared) = build_server(db, executor.clone());
+
+        let err = server
+            .eval_indicator_inner(sid, params(sid, "rsi", json!({})))
+            .await
+            .expect_err("expected internal error");
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INTERNAL_ERROR,
+                "indicator 'rsi' has invalid input_schema in storage: \
+                    \"not-a-real-type\" is not valid under any of the schemas \
+                    listed in the 'anyOf' keyword",
+            ),
+        );
+        assert!(executor.requests.lock().await.is_empty());
+    }
+
+    /// `sqlx::test` は `#[rstest]` と共存できないため `MockDatabase` + `tokio::test`。
     #[rstest]
     #[case::empty_name("", None, None, "name must not be empty".to_string())]
     #[case::excessive_timeout(

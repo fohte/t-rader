@@ -96,6 +96,26 @@ pub(super) fn check_exec_upper_bound(
     Ok(())
 }
 
+/// `KataExecError` の MCP エラー変換。tracing は呼び出し側で行うこと
+/// (tool 固有のコンテキストフィールドを残せるため)。
+pub(super) fn kata_exec_to_mcp_err(err: crate::kata_exec::KataExecError) -> McpError {
+    use crate::kata_exec::KataExecError;
+    match err {
+        KataExecError::NotConfigured => internal_error("kata executor is not configured"),
+        KataExecError::Timeout(d) => invalid_params(format!("execution timed out after {:?}", d)),
+        KataExecError::OutputTooLarge { limit } => {
+            invalid_params(format!("output exceeded {limit} bytes"))
+        }
+        KataExecError::PodFailed(msg) => internal_error(format!("exec pod failed: {msg}")),
+        KataExecError::Api { status, message } => {
+            internal_error(format!("kube api error (status {status}): {message}"))
+        }
+        KataExecError::Network(msg) => internal_error(format!("kube api network error: {msg}")),
+        KataExecError::Parse(msg) => internal_error(format!("kube api parse error: {msg}")),
+        KataExecError::Init(msg) => internal_error(format!("kata executor init error: {msg}")),
+    }
+}
+
 #[derive(Clone)]
 pub struct StrategyServer {
     db: DatabaseConnection,
