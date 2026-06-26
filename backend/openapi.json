@@ -925,6 +925,87 @@
         }
       }
     },
+    "/api/hooks/{hook_slug}": {
+      "post": {
+        "tags": [
+          "triggers"
+        ],
+        "summary": "hook を受信する。",
+        "description": "- `hook_slug` に一致する有効な trigger が無ければ 404\n- trigger が `enabled=false` の場合も 404 (外部に存在を漏らさない)\n- `event_match` を満たさない payload は 200 OK の no-op\n- 満たした場合は共通 service 経由で `submit_strategy_task` を呼び、200 OK を返す",
+        "operationId": "receive_hook",
+        "parameters": [
+          {
+            "name": "hook_slug",
+            "in": "path",
+            "description": "hook 識別子",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HookResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "戦略 Agent が Ready ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/imports/sbi/commit": {
       "post": {
         "tags": [
@@ -5316,6 +5397,27 @@
           "status": {
             "type": "string",
             "description": "サービスの状態"
+          }
+        }
+      },
+      "HookResponse": {
+        "type": "object",
+        "description": "hook 受信レスポンス。\n\n`fired = true`: trigger に紐づく strategy_task が作成された。\n`fired = false`: payload が `event_match` を満たさなかったため no-op (200 OK)。",
+        "required": [
+          "fired"
+        ],
+        "properties": {
+          "fired": {
+            "type": "boolean",
+            "description": "発火したか"
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "発火時のみ。作成された strategy_task の UUID。"
           }
         }
       },
