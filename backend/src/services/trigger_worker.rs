@@ -162,7 +162,6 @@ pub fn spawn(
 #[cfg(test)]
 mod parse_tests {
     use super::*;
-    use chrono::TimeZone;
     use rstest::rstest;
 
     #[rstest]
@@ -173,54 +172,69 @@ mod parse_tests {
         assert!(parse_schedule(expr).is_ok());
     }
 
-    #[test]
-    fn should_fire_first_time_within_window() {
-        // 毎分 0 秒に発火する schedule。last_fired_at=None で「現在時刻ちょうど」なら発火する。
-        let schedule = parse_schedule("* * * * *").unwrap();
-        let now = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap();
-        assert!(should_fire(&schedule, None, now, DEFAULT_INTERVAL));
+    fn ts(s: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
     }
 
-    #[test]
-    fn should_not_fire_when_last_fired_after_latest_slot() {
-        // 9:00 のみ発火する schedule。最後の発火が 9:00 なら次の 10:00 まで発火しない。
-        let schedule = parse_schedule("0 9 * * *").unwrap();
-        let last = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap();
-        let now = Utc.with_ymd_and_hms(2026, 1, 1, 9, 30, 0).unwrap();
-        assert!(!should_fire(&schedule, Some(last), now, DEFAULT_INTERVAL));
-    }
-
-    #[test]
-    fn should_fire_when_schedule_slot_passed_after_last_fire() {
-        // 9:00 と 10:00 に発火する schedule。9:30 時点で last=9:00 なら次の発火 10:00 はまだ。
-        // 10:30 時点で last=9:00 なら 10:00 を過ぎているので発火する。
-        let schedule = parse_schedule("0 9,10 * * *").unwrap();
-        let last = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 0).unwrap();
-        let before = Utc.with_ymd_and_hms(2026, 1, 1, 9, 30, 0).unwrap();
-        let after = Utc.with_ymd_and_hms(2026, 1, 1, 10, 30, 0).unwrap();
-        assert_eq!(
-            (
-                should_fire(&schedule, Some(last), before, DEFAULT_INTERVAL),
-                should_fire(&schedule, Some(last), after, DEFAULT_INTERVAL),
-            ),
-            (false, true),
-        );
-    }
-
-    #[test]
-    fn should_fire_first_time_window_respects_caller_interval() {
-        // interval を短くした場合、last_fired_at=None の起点も同じだけ前にずれる。
-        let schedule = parse_schedule("0 9 * * *").unwrap();
-        // now=9:00:30。default interval (60s) なら 8:59:30 起点で 9:00 を拾い発火するが、
-        // interval=10s なら 9:00:20 起点で 9:00 を拾えず発火しない。
-        let now = Utc.with_ymd_and_hms(2026, 1, 1, 9, 0, 30).unwrap();
-        assert_eq!(
-            (
-                should_fire(&schedule, None, now, DEFAULT_INTERVAL),
-                should_fire(&schedule, None, now, Duration::from_secs(10)),
-            ),
-            (true, false),
-        );
+    #[rstest]
+    // last_fired_at=None で「現在時刻ちょうど」が schedule に乗っていれば発火する。
+    #[case::first_time_within_window(
+        "* * * * *",
+        None,
+        "2026-01-01T09:00:00Z",
+        DEFAULT_INTERVAL,
+        true
+    )]
+    // 9:00 のみ発火。最後の発火が 9:00 なら次の 10:00 まで発火しない。
+    #[case::last_fired_after_latest_slot(
+        "0 9 * * *",
+        Some("2026-01-01T09:00:00Z"),
+        "2026-01-01T09:30:00Z",
+        DEFAULT_INTERVAL,
+        false
+    )]
+    // 9:00 と 10:00 発火。9:30 時点で last=9:00 なら次の発火 10:00 はまだ。
+    #[case::schedule_slot_not_passed_yet(
+        "0 9,10 * * *",
+        Some("2026-01-01T09:00:00Z"),
+        "2026-01-01T09:30:00Z",
+        DEFAULT_INTERVAL,
+        false
+    )]
+    // 10:30 時点で last=9:00 なら 10:00 を過ぎているので発火する。
+    #[case::schedule_slot_passed(
+        "0 9,10 * * *",
+        Some("2026-01-01T09:00:00Z"),
+        "2026-01-01T10:30:00Z",
+        DEFAULT_INTERVAL,
+        true
+    )]
+    // now=9:00:30、default interval (60s) なら 8:59:30 起点で 9:00 を拾い発火する。
+    #[case::first_time_window_respects_default_interval(
+        "0 9 * * *",
+        None,
+        "2026-01-01T09:00:30Z",
+        DEFAULT_INTERVAL,
+        true
+    )]
+    // 同 now で interval=10s なら 9:00:20 起点で 9:00 を拾えず発火しない。
+    #[case::first_time_window_respects_short_interval(
+        "0 9 * * *",
+        None,
+        "2026-01-01T09:00:30Z",
+        Duration::from_secs(10),
+        false
+    )]
+    fn should_fire_cases(
+        #[case] expr: &str,
+        #[case] last_fired_at: Option<&str>,
+        #[case] now: &str,
+        #[case] interval: Duration,
+        #[case] expected: bool,
+    ) {
+        let schedule = parse_schedule(expr).unwrap();
+        let last = last_fired_at.map(ts);
+        assert_eq!(should_fire(&schedule, last, ts(now), interval), expected);
     }
 }
 
