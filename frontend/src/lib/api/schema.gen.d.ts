@@ -178,6 +178,29 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/hooks/{hook_slug}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * hook を受信する。
+     * @description - `hook_slug` に一致する有効な trigger が無ければ 404
+     *     - trigger が `enabled=false` の場合も 404 (外部に存在を漏らさない)
+     *     - `event_match` を満たさない payload は 200 OK の no-op
+     *     - 満たした場合は共通 service 経由で `submit_strategy_task` を呼び、200 OK を返す
+     */
+    post: operations['receive_hook']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/imports/sbi/commit': {
     parameters: {
       query?: never
@@ -1031,6 +1054,21 @@ export interface components {
     HealthResponse: {
       /** @description サービスの状態 */
       status: string
+    }
+    /**
+     * @description hook 受信レスポンス。
+     *
+     *     `fired = true`: trigger に紐づく strategy_task が作成された。
+     *     `fired = false`: payload が `event_match` を満たさなかったため no-op (200 OK)。
+     */
+    HookResponse: {
+      /** @description 発火したか */
+      fired: boolean
+      /**
+       * Format: uuid
+       * @description 発火時のみ。作成された strategy_task の UUID。
+       */
+      task_id?: string | null
     }
     Indicator: {
       id: string
@@ -2027,6 +2065,66 @@ export interface operations {
         }
       }
       500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  receive_hook: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description hook 識別子 */
+        hook_slug: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': unknown
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HookResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略 Agent が Ready ではない */
+      503: {
         headers: {
           [name: string]: unknown
         }

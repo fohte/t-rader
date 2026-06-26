@@ -269,7 +269,7 @@ pub async fn list_strategy_interests(
     Ok(Json(items))
 }
 
-fn map_submit_error(err: SubmitTaskError) -> AppError {
+pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
     match err {
         SubmitTaskError::EmptyPrompt => AppError::Validation("prompt must not be empty".into()),
         SubmitTaskError::StrategyNotFound(id) => {
