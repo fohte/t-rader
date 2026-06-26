@@ -160,3 +160,33 @@ pub struct EvalPythonResult {
     pub stderr: String,
     pub exit_code: i32,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EvalIndicatorParams {
+    pub strategy_id: Uuid,
+    /// 評価する indicator の name。戦略 scope に同名があれば優先、無ければ global を採用する。
+    pub name: String,
+    /// indicator の `input_schema` (JSON Schema) で validation される引数オブジェクト。
+    pub args: serde_json::Value,
+    /// wall-clock 上限 (秒)。MCP 層の上限値を超える指定は invalid_params で拒否する。
+    pub timeout_secs: Option<u32>,
+    /// stdout + stderr の合計バイト数の上限。MCP 層の上限値を超える指定は
+    /// invalid_params で拒否する。
+    pub max_output_bytes: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct EvalIndicatorResult {
+    /// 評価された indicator の id。
+    pub indicator_id: Uuid,
+    /// 解決された scope (`global` / `strategy`)。
+    pub scope: String,
+    /// stdout 最終行を JSON parse し output_schema で validation 済みの値。
+    /// exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を見ること)。
+    /// stdout 最終行が JSON として parse できない / output_schema に合致しない場合は
+    /// MCP エラー (invalid_params) で失敗するため、本フィールドには到達しない。
+    pub output: Option<serde_json::Value>,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}
