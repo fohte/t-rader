@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   closeFloatingChat,
@@ -105,7 +105,7 @@ export function FloatingChat(): React.ReactElement {
     },
   )
 
-  const generatedNotes: FloatingChatNote[] = (() => {
+  const generatedNotes = useMemo<FloatingChatNote[]>(() => {
     if (!isCompleted || currentTask == null) return []
     const cutoff = new Date(
       Date.parse(currentTask.submittedAt) - SUBMITTED_AT_SKEW_MS,
@@ -114,7 +114,7 @@ export function FloatingChat(): React.ReactElement {
       .filter((n) => n.created_at >= cutoff)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((n) => ({ id: n.id, title: n.title, updated_at: n.updated_at }))
-  })()
+  }, [isCompleted, currentTask, notesQuery.data])
 
   const status = computeStatus({
     submitting: submitMutation.isPending,
