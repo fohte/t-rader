@@ -12,7 +12,7 @@ const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 /// snippet を本文先頭から切り出す最大長 (バイトではなく文字数)
 const SNIPPET_MAX_CHARS: usize = 280;
 
-/// 集約対象の RSS フィード一覧。表示用ソース名と URL のペア。
+/// 集約対象の RSS フィード一覧 (env 未指定時のデフォルト)。表示用ソース名と URL のペア。
 const DEFAULT_FEEDS: &[(&str, &str)] = &[
     (
         "Yahoo! Japan",
@@ -25,9 +25,57 @@ const DEFAULT_FEEDS: &[(&str, &str)] = &[
     ("Reuters JP", "https://jp.reuters.com/rssfeed/businessNews"),
 ];
 
+/// `NEWS_RSS_FEEDS` 環境変数の区切り文字。
+/// 形式: `name1|url1,name2|url2,...`
+const ENV_VAR: &str = "NEWS_RSS_FEEDS";
+
+#[derive(Debug)]
 pub struct RssFeed {
     pub source: String,
     pub url: String,
+}
+
+fn default_feeds() -> Vec<RssFeed> {
+    DEFAULT_FEEDS
+        .iter()
+        .map(|(s, u)| RssFeed {
+            source: (*s).to_string(),
+            url: (*u).to_string(),
+        })
+        .collect()
+}
+
+/// `name1|url1,name2|url2,...` 形式をパースする。空エントリはスキップ。
+fn parse_feed_env(raw: &str) -> Result<Vec<RssFeed>, DataProviderError> {
+    let mut out = Vec::new();
+    for entry in raw.split(',') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let Some((name, url)) = entry.split_once('|') else {
+            return Err(DataProviderError::Parse(format!(
+                "{ENV_VAR}: entry '{entry}' is missing '|' separator (expected 'name|url')"
+            )));
+        };
+        let name = name.trim();
+        let url = url.trim();
+        if name.is_empty() || url.is_empty() {
+            return Err(DataProviderError::Parse(format!(
+                "{ENV_VAR}: entry '{entry}' has empty name or url"
+            )));
+        }
+        out.push(RssFeed {
+            source: name.to_string(),
+            url: url.to_string(),
+        });
+    }
+    if out.is_empty() {
+        return Err(DataProviderError::Parse(format!(
+            "{ENV_VAR} is set but contains no valid entries"
+        )));
+    }
+    Ok(out)
 }
 
 /// 公開 RSS 集約 NewsAggregator
@@ -37,14 +85,12 @@ pub struct RssNewsAggregator {
 }
 
 impl RssNewsAggregator {
-    pub fn new() -> Result<Self, DataProviderError> {
-        let feeds = DEFAULT_FEEDS
-            .iter()
-            .map(|(s, u)| RssFeed {
-                source: (*s).to_string(),
-                url: (*u).to_string(),
-            })
-            .collect();
+    /// `NEWS_RSS_FEEDS` から feeds を読み込んで構築する。未設定なら `DEFAULT_FEEDS` にフォールバック。
+    pub fn from_env() -> Result<Self, DataProviderError> {
+        let feeds = match std::env::var(ENV_VAR) {
+            Ok(s) if !s.trim().is_empty() => parse_feed_env(&s)?,
+            _ => default_feeds(),
+        };
         Self::with_feeds(feeds)
     }
 
@@ -486,6 +532,39 @@ mod tests {
         #[case] expected: &str,
     ) {
         assert_eq!(truncate_chars(input, max), expected);
+    }
+
+    #[rstest]
+    fn parse_feed_env_returns_entries() {
+        assert_eq!(
+            parse_feed_env("Yahoo|https://a,Bloomberg|https://b")
+                .expect("ok")
+                .into_iter()
+                .map(|f| (f.source, f.url))
+                .collect::<Vec<_>>(),
+            vec![
+                ("Yahoo".into(), "https://a".into()),
+                ("Bloomberg".into(), "https://b".into()),
+            ],
+        );
+    }
+
+    #[rstest]
+    #[case::missing_separator(
+        "only-name",
+        "failed to parse response: NEWS_RSS_FEEDS: entry 'only-name' is missing '|' separator (expected 'name|url')"
+    )]
+    #[case::empty_name(
+        "|https://x",
+        "failed to parse response: NEWS_RSS_FEEDS: entry '|https://x' has empty name or url"
+    )]
+    #[case::empty_url(
+        "name|",
+        "failed to parse response: NEWS_RSS_FEEDS: entry 'name|' has empty name or url"
+    )]
+    fn parse_feed_env_rejects_malformed(#[case] input: &str, #[case] expected_msg: &str) {
+        let err = parse_feed_env(input).expect_err("should fail");
+        assert_eq!(format!("{err}"), expected_msg);
     }
 
     #[rstest]
