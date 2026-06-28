@@ -386,6 +386,39 @@ describe('TriggersTab', () => {
     expect(activeMiddleware?.store.deleteCalls).toEqual(['t-cron'])
   })
 
+  it('選択中の trigger を削除すると、削除後の一覧の先頭がフォームに hydrate される', async () => {
+    const user = userEvent.setup()
+    setup([
+      makeTrigger({
+        trigger_id: 't-a',
+        kind: 'cron',
+        schedule: '0 9 * * 1-5',
+        prompt_template: 'A prompt',
+      }),
+      makeTrigger({
+        trigger_id: 't-b',
+        kind: 'cron',
+        schedule: '0 12 * * 1-5',
+        prompt_template: 'B prompt',
+      }),
+    ])
+
+    // 初期選択は先頭の A
+    const promptInput = await screen.findByLabelText('prompt_template')
+    await waitFor(() => {
+      expect(promptInput).toHaveValue('A prompt')
+    })
+
+    // A を削除すると、refetch 後に B が自動選択され form に B の内容が反映される
+    await user.click(
+      screen.getByRole('button', { name: 'trigger cron 0 9 * * 1-5 を削除' }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('prompt_template')).toHaveValue('B prompt')
+    })
+  })
+
   it('選択中の trigger を一覧側 toggle で切り替えるとフォーム側 checkbox も追従する', async () => {
     const user = userEvent.setup()
     setup([

@@ -130,7 +130,13 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
   // selectedTrigger の reference が変わるたびに setForm すると、編集中の入力が消える
   useEffect(() => {
     if (mode === 'create') return
-    if (selectedId != null) return
+    if (triggers.length === 0) {
+      setSelectedId(null)
+      setForm(EMPTY_FORM)
+      return
+    }
+    const exists = triggers.some((t) => t.trigger_id === selectedId)
+    if (selectedId != null && exists) return
     const first = triggers[0]
     if (first == null) return
     setSelectedId(first.trigger_id)
@@ -251,10 +257,6 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
         onSuccess: () => {
           invalidate()
           setListError(null)
-          if (selectedId === trigger.trigger_id) {
-            setSelectedId(null)
-            setForm(EMPTY_FORM)
-          }
         },
         onError: () => {
           setListError('trigger 削除に失敗しました')
