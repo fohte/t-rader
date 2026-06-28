@@ -20,8 +20,9 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::{annotation, note, strategy};
+use crate::entities::{annotation, note, rss_feed, strategy};
 use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient};
+use crate::services::rss_feed as rss_feed_svc;
 use crate::services::strategy_tasks::{
     self, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
 };
@@ -119,6 +120,69 @@ pub struct AnnotationMeta {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct ListRecentAnnotationsResult {
     pub annotations: Vec<AnnotationMeta>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListRssFeedsParams {
+    /// true なら enabled=true の行のみ返す
+    #[serde(default)]
+    pub enabled_only: Option<bool>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct RssFeedSummary {
+    pub id: Uuid,
+    pub source: String,
+    pub display_name: String,
+    pub url: String,
+    pub enabled: bool,
+}
+
+impl From<rss_feed::Model> for RssFeedSummary {
+    fn from(m: rss_feed::Model) -> Self {
+        Self {
+            id: m.id,
+            source: m.source,
+            display_name: m.display_name,
+            url: m.url,
+            enabled: m.enabled,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ListRssFeedsResult {
+    pub feeds: Vec<RssFeedSummary>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateRssFeedParams {
+    pub source: String,
+    pub display_name: String,
+    pub url: String,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateRssFeedParams {
+    pub id: Uuid,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteRssFeedParams {
+    pub id: Uuid,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DeleteRssFeedResult {
+    pub id: Uuid,
 }
 
 // === MCP error マッピング ===
@@ -294,6 +358,84 @@ impl MgmtServer {
         Ok(Json(ListRecentNotesResult { notes }))
     }
 
+    /// RSS フィード一覧
+    #[tool(
+        name = "list_rss_feeds",
+        description = "List RSS feed definitions used by the news aggregator. Pass enabled_only=true to return only feeds currently being polled."
+    )]
+    async fn list_rss_feeds(
+        &self,
+        Parameters(params): Parameters<ListRssFeedsParams>,
+    ) -> Result<Json<ListRssFeedsResult>, McpError> {
+        let rows = rss_feed_svc::list(&self.db, params.enabled_only.unwrap_or(false))
+            .await
+            .map_err(map_rss_feed_error)?;
+        Ok(Json(ListRssFeedsResult {
+            feeds: rows.into_iter().map(Into::into).collect(),
+        }))
+    }
+
+    /// RSS フィードを追加する
+    #[tool(
+        name = "create_rss_feed",
+        description = "Register a new RSS feed source. The 'source' is a machine slug ([a-z0-9_-]+); 'display_name' is shown to humans. 'url' must be http(s)."
+    )]
+    async fn create_rss_feed(
+        &self,
+        Parameters(params): Parameters<CreateRssFeedParams>,
+    ) -> Result<Json<RssFeedSummary>, McpError> {
+        let created = rss_feed_svc::create(
+            &self.db,
+            rss_feed_svc::CreateInput {
+                source: params.source,
+                display_name: params.display_name,
+                url: params.url,
+                enabled: params.enabled,
+            },
+        )
+        .await
+        .map_err(map_rss_feed_error)?;
+        Ok(Json(created.into()))
+    }
+
+    /// RSS フィードを部分更新する
+    #[tool(
+        name = "update_rss_feed",
+        description = "Update display_name / url / enabled of an existing RSS feed. The source slug is immutable."
+    )]
+    async fn update_rss_feed(
+        &self,
+        Parameters(params): Parameters<UpdateRssFeedParams>,
+    ) -> Result<Json<RssFeedSummary>, McpError> {
+        let updated = rss_feed_svc::update(
+            &self.db,
+            params.id,
+            rss_feed_svc::UpdatePatch {
+                display_name: params.display_name,
+                url: params.url,
+                enabled: params.enabled,
+            },
+        )
+        .await
+        .map_err(map_rss_feed_error)?;
+        Ok(Json(updated.into()))
+    }
+
+    /// RSS フィードを削除する (既存の news_item 行は残す)
+    #[tool(
+        name = "delete_rss_feed",
+        description = "Delete an RSS feed definition by id. Existing news_item rows are not removed."
+    )]
+    async fn delete_rss_feed(
+        &self,
+        Parameters(params): Parameters<DeleteRssFeedParams>,
+    ) -> Result<Json<DeleteRssFeedResult>, McpError> {
+        rss_feed_svc::delete(&self.db, params.id)
+            .await
+            .map_err(map_rss_feed_error)?;
+        Ok(Json(DeleteRssFeedResult { id: params.id }))
+    }
+
     /// 戦略 id + 件数で最新アノテーションメタを返す
     #[tool(
         name = "list_recent_annotations",
@@ -347,6 +489,19 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
         }
         SubmitTaskError::Database(db_err) => db_error(db_err),
         SubmitTaskError::Kubeopencode(kube_err) => map_kube_error(&kube_err),
+    }
+}
+
+fn map_rss_feed_error(err: rss_feed_svc::RssFeedError) -> McpError {
+    match err {
+        rss_feed_svc::RssFeedError::InvalidSource(_)
+        | rss_feed_svc::RssFeedError::InvalidUrl(_)
+        | rss_feed_svc::RssFeedError::EmptyDisplayName => invalid_params(err.to_string()),
+        rss_feed_svc::RssFeedError::DuplicateSource(_) => invalid_params(err.to_string()),
+        rss_feed_svc::RssFeedError::NotFound(_) => {
+            McpError::resource_not_found(err.to_string(), None)
+        }
+        rss_feed_svc::RssFeedError::Database(e) => db_error(e),
     }
 }
 
@@ -726,6 +881,68 @@ mod integration_tests {
         assert_eq!(result.strategies.len(), 1);
         assert_eq!(result.strategies[0].strategy_id, strategy_id);
         assert_eq!(result.strategies[0].unread_card_count, 3);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_rss_feed_inserts_and_lists(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db.clone(), Arc::new(FakeKubeopencodeClient::new()));
+
+        let Json(created) = server
+            .create_rss_feed(Parameters(CreateRssFeedParams {
+                source: "bloomberg-jp".into(),
+                display_name: "Bloomberg JP".into(),
+                url: "https://feeds.bloomberg.co.jp/markets.xml".into(),
+                enabled: None,
+            }))
+            .await
+            .expect("create ok");
+        let summary = |s: RssFeedSummary| RssFeedSummary {
+            id: Uuid::nil(),
+            ..s
+        };
+        let expected = RssFeedSummary {
+            id: Uuid::nil(),
+            source: "bloomberg-jp".into(),
+            display_name: "Bloomberg JP".into(),
+            url: "https://feeds.bloomberg.co.jp/markets.xml".into(),
+            enabled: true,
+        };
+        assert_eq!(
+            serde_json::to_value(summary(created)).unwrap(),
+            serde_json::to_value(&expected).unwrap(),
+        );
+
+        let Json(listed) = server
+            .list_rss_feeds(Parameters(ListRssFeedsParams { enabled_only: None }))
+            .await
+            .expect("list ok");
+        assert_eq!(
+            listed
+                .feeds
+                .into_iter()
+                .map(summary)
+                .map(|s| serde_json::to_value(s).unwrap())
+                .collect::<Vec<_>>(),
+            vec![serde_json::to_value(&expected).unwrap()],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_rss_feed_rejects_invalid_source(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let err = server
+            .create_rss_feed(Parameters(CreateRssFeedParams {
+                source: "Bad Source".into(),
+                display_name: "x".into(),
+                url: "https://example.com/a".into(),
+                enabled: None,
+            }))
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("expected error"));
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
     #[sqlx::test(migrations = false)]

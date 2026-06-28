@@ -2399,6 +2399,247 @@
         }
       }
     },
+    "/api/rss-feeds": {
+      "get": {
+        "tags": [
+          "rss_feeds"
+        ],
+        "summary": "RSS フィード一覧",
+        "operationId": "list_rss_feeds",
+        "parameters": [
+          {
+            "name": "enabled_only",
+            "in": "query",
+            "description": "true なら enabled=true のみ返す",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RssFeed"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rss_feeds"
+        ],
+        "summary": "RSS フィードを作成",
+        "operationId": "create_rss_feed",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRssFeedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RssFeed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "source が既存と衝突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rss-feeds/{id}": {
+      "delete": {
+        "tags": [
+          "rss_feeds"
+        ],
+        "summary": "RSS フィードを削除する。news_item 行は残す (履歴互換性)。",
+        "operationId": "delete_rss_feed",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "rss_feed ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "rss_feeds"
+        ],
+        "summary": "RSS フィードを部分更新する (`source` は変更不可)",
+        "operationId": "update_rss_feed",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "rss_feed ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRssFeedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RssFeed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies": {
       "get": {
         "tags": [
@@ -5249,6 +5490,35 @@
         },
         "additionalProperties": false
       },
+      "CreateRssFeedRequest": {
+        "type": "object",
+        "required": [
+          "source",
+          "display_name",
+          "url"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "UI 表示用名前"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "省略時は true"
+          },
+          "source": {
+            "type": "string",
+            "description": "machine key (slug, `^[a-z0-9_-]+$`). 内部処理・MCP の参照用"
+          },
+          "url": {
+            "type": "string",
+            "description": "RSS フィード URL (http / https のみ)"
+          }
+        }
+      },
       "CreateStrategyRequest": {
         "type": "object",
         "required": [
@@ -5744,6 +6014,44 @@
               "null"
             ],
             "description": "一致しなかった場合は None"
+          }
+        }
+      },
+      "RssFeed": {
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "display_name",
+          "url",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -6486,6 +6794,29 @@
         },
         "additionalProperties": false
       },
+      "UpdateRssFeedRequest": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateStrategyRequest": {
         "type": "object",
         "properties": {
@@ -6722,6 +7053,10 @@
     {
       "name": "news",
       "description": "ニュース (公開 RSS の集約結果と戦略への紐付け)"
+    },
+    {
+      "name": "rss_feeds",
+      "description": "ニュース集約対象の RSS フィード定義"
     }
   ]
 }

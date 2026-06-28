@@ -9,6 +9,7 @@ pub mod macro_data;
 pub mod news;
 pub mod notes;
 pub mod refs;
+pub mod rss_feeds;
 pub mod strategies;
 pub mod trades;
 pub mod triggers;
