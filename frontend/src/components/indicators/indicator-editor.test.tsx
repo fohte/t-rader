@@ -135,7 +135,7 @@ describe('IndicatorEditor', () => {
         preview={QUIET_PREVIEW}
       />,
     )
-    expect(screen.getByTestId('indicator-scope')).toHaveTextContent(
+    expect(screen.getByTestId('indicator-scope').textContent).toBe(
       'scope: global',
     )
     rerender(
@@ -147,7 +147,7 @@ describe('IndicatorEditor', () => {
         preview={QUIET_PREVIEW}
       />,
     )
-    expect(screen.getByTestId('indicator-scope')).toHaveTextContent(
+    expect(screen.getByTestId('indicator-scope').textContent).toBe(
       'scope: strategy',
     )
   })
@@ -217,7 +217,7 @@ describe('IndicatorEditor', () => {
         }}
       />,
     )
-    expect(screen.getByTestId('preview-error')).toHaveTextContent(
+    expect(screen.getByTestId('preview-error').textContent).toBe(
       'args が JSON として不正です',
     )
   })

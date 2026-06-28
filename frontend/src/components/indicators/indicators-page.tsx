@@ -240,40 +240,54 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
       return
     }
 
-    const { data, error } = await fetchClient.POST('/api/indicators/preview', {
-      body: {
-        code: args.code,
-        input_schema: inputSchema,
-        output_schema: outputSchema,
-        args: parsedArgs,
-      },
-    })
-
-    if (previewReqIdRef.current !== myReqId) return
-
-    if (error != null) {
+    try {
+      const { data, error } = await fetchClient.POST(
+        '/api/indicators/preview',
+        {
+          body: {
+            code: args.code,
+            input_schema: inputSchema,
+            output_schema: outputSchema,
+            args: parsedArgs,
+          },
+        },
+      )
+      if (previewReqIdRef.current !== myReqId) return
+      if (error != null) {
+        setPreview({ isRunning: false, error: error.error, result: null })
+        return
+      }
       setPreview({
         isRunning: false,
-        error: error.error,
+        error: null,
+        result: {
+          output: data.output ?? null,
+          stdout: data.stdout,
+          stderr: data.stderr,
+          exit_code: data.exit_code,
+        },
+      })
+    } catch (e) {
+      // fetch 自体の reject (ネットワーク断・CORS 失敗・abort 等) は
+      // openapi-fetch の { data, error } 経路に乗らず throw されるため、
+      // ここで拾わないと「実行中…」表示のまま固まる。
+      if (previewReqIdRef.current !== myReqId) return
+      setPreview({
+        isRunning: false,
+        error: e instanceof Error ? e.message : String(e),
         result: null,
       })
-      return
     }
-    setPreview({
-      isRunning: false,
-      error: null,
-      result: {
-        output: data.output ?? null,
-        stdout: data.stdout,
-        stderr: data.stderr,
-        exit_code: data.exit_code,
-      },
-    })
   }
 
-  // indicator 切替や新規作成押下時に in-flight な preview を無効化する
-  function discardInflightPreview() {
+  // indicator 選択を切り替える。in-flight な preview を無効化し
+  // (handlePreview の myReqId 検査で stale 結果が捨てられる)、表示状態をリセットする。
+  function selectIndicator(target: { id: string | null; creating: boolean }) {
+    setSelectedId(target.id)
+    setIsCreating(target.creating)
+    setSaveError(null)
     previewReqIdRef.current += 1
+    setPreview({ isRunning: false, error: null, result: null })
   }
 
   const isSaving =
@@ -302,11 +316,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
           <Button
             type="button"
             onClick={() => {
-              setIsCreating(true)
-              setSelectedId(null)
-              setSaveError(null)
-              discardInflightPreview()
-              setPreview({ isRunning: false, error: null, result: null })
+              selectIndicator({ id: null, creating: true })
             }}
             className="w-full justify-start gap-1.5"
           >
@@ -326,14 +336,9 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedId(i.indicator_id)
-                        setIsCreating(false)
-                        setSaveError(null)
-                        discardInflightPreview()
-                        setPreview({
-                          isRunning: false,
-                          error: null,
-                          result: null,
+                        selectIndicator({
+                          id: i.indicator_id,
+                          creating: false,
                         })
                       }}
                       data-active={active}
