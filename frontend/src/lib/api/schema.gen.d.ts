@@ -256,6 +256,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/indicators/preview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** indicator を保存せずに 1 回だけ実行してみる (Monaco エディタのプレビュー用) */
+    post: operations['preview_indicator']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/indicators/{indicator_id}': {
     parameters: {
       query?: never
@@ -1184,6 +1201,31 @@ export interface components {
        */
       realized_pnl: number
       symbol: string
+    }
+    PreviewIndicatorRequest: {
+      args: unknown
+      code: string
+      input_schema: {
+        [key: string]: unknown
+      }
+      /** Format: int32 */
+      max_output_bytes?: number | null
+      output_schema: {
+        [key: string]: unknown
+      }
+      /** Format: int32 */
+      timeout_secs?: number | null
+    }
+    PreviewIndicatorResponse: {
+      /** Format: int32 */
+      exit_code: number
+      /**
+       * @description stdout 最終行を JSON parse し output_schema で validation 済みの値。
+       *     exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を参照)。
+       */
+      output?: unknown
+      stderr: string
+      stdout: string
     }
     /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
     RefResolution: {
@@ -2335,6 +2377,64 @@ export interface operations {
         }
       }
       500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  preview_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PreviewIndicatorRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PreviewIndicatorResponse']
+        }
+      }
+      /** @description code / schema / args が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description indicator runtime が未設定または利用不可 */
+      503: {
         headers: {
           [name: string]: unknown
         }
