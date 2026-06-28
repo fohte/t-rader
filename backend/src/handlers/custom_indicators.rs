@@ -10,8 +10,11 @@ use crate::AppState;
 use crate::entities::custom_indicator;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::models::{CreateCustomIndicatorRequest, UpdateCustomIndicatorRequest};
-use crate::services::custom_indicators::{SCOPE_GLOBAL, SCOPE_STRATEGY};
+use crate::models::{
+    CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
+    UpdateCustomIndicatorRequest,
+};
+use crate::services::custom_indicators::{PreviewInput, SCOPE_GLOBAL, SCOPE_STRATEGY, run_preview};
 use crate::services::strategies::ensure_strategy_exists;
 
 fn validate_name(value: &str) -> Result<String, AppError> {
@@ -304,6 +307,52 @@ pub async fn get_strategy_indicator(
     Ok(Json(
         find_strategy_scoped_or_404(&state.db, strategy_id, indicator_id).await?,
     ))
+}
+
+/// indicator を保存せずに 1 回だけ実行してみる (Monaco エディタのプレビュー用)
+#[utoipa::path(
+    post,
+    path = "/api/indicators/preview",
+    tag = "custom_indicators",
+    request_body = PreviewIndicatorRequest,
+    responses(
+        (status = 200, body = PreviewIndicatorResponse),
+        (status = 400, description = "code / schema / args が不正", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
+        (status = 503, description = "indicator runtime が未設定または利用不可", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn preview_indicator(
+    State(state): State<AppState>,
+    JsonBody(payload): JsonBody<PreviewIndicatorRequest>,
+) -> Result<Json<PreviewIndicatorResponse>, AppError> {
+    ensure_json_object("input_schema", &payload.input_schema)?;
+    ensure_json_object("output_schema", &payload.output_schema)?;
+
+    let executor = state.kata_executor.as_ref().ok_or_else(|| {
+        AppError::ServiceUnavailable("indicator runtime is not configured".into())
+    })?;
+
+    let outcome = run_preview(
+        executor,
+        PreviewInput {
+            code: &payload.code,
+            input_schema: &payload.input_schema,
+            output_schema: &payload.output_schema,
+            args: &payload.args,
+            timeout_secs: payload.timeout_secs,
+            max_output_bytes: payload.max_output_bytes,
+        },
+    )
+    .await?;
+
+    Ok(Json(PreviewIndicatorResponse {
+        output: outcome.output,
+        stdout: outcome.stdout,
+        stderr: outcome.stderr,
+        exit_code: outcome.exit_code,
+    }))
 }
 
 #[cfg(test)]
@@ -649,5 +698,150 @@ mod tests {
             .await
             .unwrap();
         assert!(unresolved.is_none());
+    }
+
+    mod preview {
+        use super::*;
+        use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
+        use crate::testing::create_test_server_with_kata;
+        use std::sync::Arc;
+
+        fn preview_payload(code: &str) -> serde_json::Value {
+            json!({
+                "code": code,
+                "input_schema": {"type": "object"},
+                "output_schema": {"type": "object"},
+                "args": {},
+            })
+        }
+
+        #[sqlx::test(migrations = false)]
+        async fn preview_returns_validated_output(pool: PgPool) {
+            let executor = Arc::new(FakeKataExecutor::new());
+            executor
+                .set_response(Ok(ExecResult {
+                    stdout: "{\"value\": 42}\n".into(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }))
+                .await;
+            let shared: SharedKataExecutor = executor.clone();
+            let server = create_test_server_with_kata(pool, shared).await;
+
+            let res = server
+                .post("/api/indicators/preview")
+                .json(&json!({
+                    "code": "print('{\"value\": 42}')",
+                    "input_schema": {"type": "object", "properties": {"period": {"type": "integer"}}, "required": ["period"]},
+                    "output_schema": {"type": "object", "properties": {"value": {"type": "number"}}, "required": ["value"]},
+                    "args": {"period": 14},
+                }))
+                .await;
+            res.assert_status_ok();
+            assert_eq!(
+                res.json::<serde_json::Value>(),
+                json!({
+                    "output": {"value": 42},
+                    "stdout": "{\"value\": 42}\n",
+                    "stderr": "",
+                    "exit_code": 0,
+                }),
+            );
+
+            let recorded = executor.requests.lock().await;
+            assert_eq!(
+                recorded.as_slice(),
+                &[crate::kata_exec::ExecRequest {
+                    code: "print('{\"value\": 42}')".into(),
+                    stdin: Some(r#"{"args":{"period":14}}"#.into()),
+                    timeout: None,
+                    max_output_bytes: None,
+                }],
+            );
+        }
+
+        #[sqlx::test(migrations = false)]
+        async fn preview_returns_400_for_input_schema_mismatch(pool: PgPool) {
+            let executor = Arc::new(FakeKataExecutor::new());
+            let shared: SharedKataExecutor = executor.clone();
+            let server = create_test_server_with_kata(pool, shared).await;
+
+            let res = server
+                .post("/api/indicators/preview")
+                .json(&json!({
+                    "code": "print('{}')",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"period": {"type": "integer"}},
+                        "required": ["period"],
+                    },
+                    "output_schema": {"type": "object"},
+                    "args": {"period": "not-int"},
+                }))
+                .await;
+            res.assert_status(StatusCode::BAD_REQUEST);
+            assert!(executor.requests.lock().await.is_empty());
+        }
+
+        #[sqlx::test(migrations = false)]
+        async fn preview_passes_through_sandbox_rejection(pool: PgPool) {
+            let executor = Arc::new(FakeKataExecutor::new());
+            executor
+                .set_response(Ok(ExecResult {
+                    stdout: String::new(),
+                    stderr: "PermissionError: network access denied".into(),
+                    exit_code: 1,
+                }))
+                .await;
+            let shared: SharedKataExecutor = executor;
+            let server = create_test_server_with_kata(pool, shared).await;
+
+            let res = server
+                .post("/api/indicators/preview")
+                .json(&preview_payload(
+                    "import urllib.request; urllib.request.urlopen('http://x')",
+                ))
+                .await;
+            res.assert_status_ok();
+            assert_eq!(
+                res.json::<serde_json::Value>(),
+                json!({
+                    "output": null,
+                    "stdout": "",
+                    "stderr": "PermissionError: network access denied",
+                    "exit_code": 1,
+                }),
+            );
+        }
+
+        #[sqlx::test(migrations = false)]
+        async fn preview_returns_503_when_executor_disabled(pool: PgPool) {
+            let server = create_test_server(pool).await;
+            let res = server
+                .post("/api/indicators/preview")
+                .json(&preview_payload("print('{}')"))
+                .await;
+            res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+        }
+
+        #[sqlx::test(migrations = false)]
+        async fn preview_returns_400_for_invalid_output(pool: PgPool) {
+            let executor = Arc::new(FakeKataExecutor::new());
+            executor
+                .set_response(Ok(ExecResult {
+                    stdout: "not-json\n".into(),
+                    stderr: String::new(),
+                    exit_code: 0,
+                }))
+                .await;
+            let shared: SharedKataExecutor = executor;
+            let server = create_test_server_with_kata(pool, shared).await;
+
+            let res = server
+                .post("/api/indicators/preview")
+                .json(&preview_payload("print('not-json')"))
+                .await;
+            res.assert_status(StatusCode::BAD_REQUEST);
+        }
     }
 }

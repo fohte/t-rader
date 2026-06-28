@@ -1222,6 +1222,77 @@
         }
       }
     },
+    "/api/indicators/preview": {
+      "post": {
+        "tags": [
+          "custom_indicators"
+        ],
+        "summary": "indicator を保存せずに 1 回だけ実行してみる (Monaco エディタのプレビュー用)",
+        "operationId": "preview_indicator",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewIndicatorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewIndicatorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "code / schema / args が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "indicator runtime が未設定または利用不可",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/indicators/{indicator_id}": {
       "get": {
         "tags": [
@@ -5719,6 +5790,75 @@
             "description": "実現損益累計"
           },
           "symbol": {
+            "type": "string"
+          }
+        }
+      },
+      "PreviewIndicatorRequest": {
+        "type": "object",
+        "required": [
+          "code",
+          "input_schema",
+          "output_schema",
+          "args"
+        ],
+        "properties": {
+          "args": {},
+          "code": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "max_output_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "timeout_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "PreviewIndicatorResponse": {
+        "type": "object",
+        "required": [
+          "stdout",
+          "stderr",
+          "exit_code"
+        ],
+        "properties": {
+          "exit_code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "output": {
+            "description": "stdout 最終行を JSON parse し output_schema で validation 済みの値。\nexec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を参照)。"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "stdout": {
             "type": "string"
           }
         }

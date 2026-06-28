@@ -14,7 +14,10 @@ pub mod watchlist;
 pub use annotation::{CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar::{Bar, Timeframe};
 pub use comment::CreateCommentRequest;
-pub use custom_indicator::{CreateCustomIndicatorRequest, UpdateCustomIndicatorRequest};
+pub use custom_indicator::{
+    CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
+    UpdateCustomIndicatorRequest,
+};
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
     SbiPreviewRow,

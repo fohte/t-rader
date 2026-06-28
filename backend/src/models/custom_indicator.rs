@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -37,4 +37,31 @@ where
     D: Deserializer<'de>,
 {
     T::deserialize(deserializer).map(Some)
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PreviewIndicatorRequest {
+    pub code: String,
+    #[schema(value_type = std::collections::HashMap<String, serde_json::Value>)]
+    pub input_schema: serde_json::Value,
+    #[schema(value_type = std::collections::HashMap<String, serde_json::Value>)]
+    pub output_schema: serde_json::Value,
+    #[schema(value_type = serde_json::Value)]
+    pub args: serde_json::Value,
+    #[serde(default)]
+    pub timeout_secs: Option<u32>,
+    #[serde(default)]
+    pub max_output_bytes: Option<u32>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PreviewIndicatorResponse {
+    /// stdout 最終行を JSON parse し output_schema で validation 済みの値。
+    /// exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を参照)。
+    #[schema(value_type = Option<serde_json::Value>)]
+    pub output: Option<serde_json::Value>,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
 }
