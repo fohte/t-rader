@@ -22,7 +22,17 @@ fn validate_template(value: &str) -> Result<String, AppError> {
     Ok(trimmed)
 }
 
+fn validate_event_match(event_match: Option<&serde_json::Value>) -> Result<(), AppError> {
+    match event_match {
+        Some(v) if !v.is_object() && !v.is_null() => Err(AppError::Validation(
+            "event_match must be an object or null".into(),
+        )),
+        _ => Ok(()),
+    }
+}
+
 fn validate_create(payload: &CreateTriggerRequest) -> Result<(), AppError> {
+    validate_event_match(payload.event_match.as_ref())?;
     match payload.kind {
         TriggerKind::Cron => {
             if payload
@@ -232,6 +242,7 @@ pub async fn update_trigger(
         active.hook_slug = Set(Some(trimmed));
     }
     if let Some(event_match) = payload.event_match {
+        validate_event_match(Some(&event_match))?;
         active.event_match = Set(Some(event_match));
     }
     if let Some(prompt_template) = payload.prompt_template {
