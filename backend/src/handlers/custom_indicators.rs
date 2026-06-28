@@ -825,7 +825,9 @@ mod tests {
         }
 
         #[sqlx::test(migrations = false)]
-        async fn preview_returns_400_for_invalid_output(pool: PgPool) {
+        async fn preview_returns_200_with_validation_error_in_stderr_for_invalid_output(
+            pool: PgPool,
+        ) {
             let executor = Arc::new(FakeKataExecutor::new());
             executor
                 .set_response(Ok(ExecResult {
@@ -841,7 +843,23 @@ mod tests {
                 .post("/api/indicators/preview")
                 .json(&preview_payload("print('not-json')"))
                 .await;
-            res.assert_status(StatusCode::BAD_REQUEST);
+            res.assert_status_ok();
+            let mut body = res.json::<serde_json::Value>();
+            // stderr の本文は jsonschema の詳細メッセージに依存して変動するため、
+            // prefix が出ているかだけを spec として固定する。
+            let stderr_starts_correctly = body["stderr"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("Output validation error: "));
+            body["stderr"] = json!(stderr_starts_correctly);
+            assert_eq!(
+                body,
+                json!({
+                    "output": null,
+                    "stdout": "not-json\n",
+                    "stderr": true,
+                    "exit_code": 0,
+                }),
+            );
         }
     }
 }

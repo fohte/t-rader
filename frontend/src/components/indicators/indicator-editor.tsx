@@ -70,14 +70,27 @@ export function IndicatorEditor({
   const [argsJson, setArgsJson] = useState<string>('{}')
 
   const lastInitialRef = useRef<IndicatorEditorValue>(initial)
+  const lastIsSavingRef = useRef<boolean>(isSaving)
   const dirty = !valuesEqual(value, initial)
 
   useEffect(() => {
+    const wasSaving = lastIsSavingRef.current
+    lastIsSavingRef.current = isSaving
+
+    // 保存が `isSaving: true → false` に遷移し、かつエラーがなければ強制同期する。
+    // 通常パスでは dirty=true のため initial への追従はスキップされるが、保存直後は
+    // サーバー側で正規化された値 (updated_at 等) を反映したく、dirty 回避が必要。
+    if (wasSaving && !isSaving && saveError == null) {
+      setValue(initial)
+      lastInitialRef.current = initial
+      return
+    }
+
     if (valuesEqual(value, lastInitialRef.current)) {
       setValue(initial)
     }
     lastInitialRef.current = initial
-  }, [initial, value])
+  }, [initial, value, isSaving, saveError])
 
   useEffect(() => {
     if (!dirty) return

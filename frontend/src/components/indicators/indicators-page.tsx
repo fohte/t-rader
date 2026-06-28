@@ -22,11 +22,11 @@ interface IndicatorModel {
   indicator_id: string
   name: string
   scope: string
-  strategy_id: string | null
+  strategy_id?: string | null
   code: string
   input_schema: unknown
   output_schema: unknown
-  description: string | null
+  description?: string | null
 }
 
 const EMPTY_FORM: IndicatorEditorValue = {
@@ -63,10 +63,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
   )
 
   const list = scope === 'global' ? globalList : strategyList
-  // openapi が返す行は IndicatorModel と同形だが、型生成上は別物として扱われる。
-  // ここでは UI 側の単一型に揃えるため明示的に変換する。
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 同形 DTO の UI 用統合
-  const indicators = (list.data ?? []) as IndicatorModel[]
+  const indicators: IndicatorModel[] = list.data ?? []
   const isPending = list.isPending
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -179,7 +176,24 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
       description: next.description === '' ? null : next.description,
     }
 
-    const onSuccess = (created: { indicator_id: string }) => {
+    const onSuccess = (created: IndicatorModel) => {
+      // 楽観的に list キャッシュへ追加する。これをせずに invalidate のみだと、
+      // 再フェッチが完了するまでの間 `selected` が一時的に null になり、
+      // フォームが EMPTY_FORM にフラッシュする。
+      const listQueryKey =
+        scope === 'global'
+          ? $api.queryOptions('get', '/api/indicators').queryKey
+          : strategyId != null
+            ? $api.queryOptions('get', '/api/strategies/{id}/indicators', {
+                params: { path: { id: strategyId } },
+              }).queryKey
+            : null
+      if (listQueryKey != null) {
+        queryClient.setQueryData<IndicatorModel[]>(listQueryKey, (old) => [
+          ...(old ?? []),
+          created,
+        ])
+      }
       invalidateList()
       setIsCreating(false)
       setSelectedId(created.indicator_id)

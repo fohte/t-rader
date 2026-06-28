@@ -79,11 +79,22 @@ pub async fn run_preview(
 
     let result = executor.run(request).await.map_err(kata_to_app_err)?;
 
+    let mut stderr = result.stderr;
+    // 出力 validation 失敗は HTTP 400 にしない。preview 経路では「スクリプトは
+    // 動いたが output_schema に合っていない」状態を stdout/stderr 込みで返さないと
+    // ユーザーが何を直すべきか判断できなくなる。MCP 経路 (eval_indicator) は LLM 向けで
+    // 「コードを修正させる」ためにエラーで返すが、preview はユーザー向けの DX 優先。
     let output = if result.exit_code == 0 {
-        Some(parse_and_validate_output(
-            &result.stdout,
-            input.output_schema,
-        )?)
+        match parse_and_validate_output(&result.stdout, input.output_schema) {
+            Ok(val) => Some(val),
+            Err(e) => {
+                if !stderr.is_empty() {
+                    stderr.push('\n');
+                }
+                stderr.push_str(&format!("Output validation error: {e}"));
+                None
+            }
+        }
     } else {
         None
     };
@@ -91,7 +102,7 @@ pub async fn run_preview(
     Ok(PreviewOutcome {
         output,
         stdout: result.stdout,
-        stderr: result.stderr,
+        stderr,
         exit_code: result.exit_code,
     })
 }
