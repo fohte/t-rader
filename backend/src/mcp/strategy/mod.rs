@@ -33,6 +33,7 @@ pub(super) mod data;
 pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
+pub(super) mod interests;
 pub(super) mod notes;
 
 #[cfg(test)]
@@ -55,10 +56,10 @@ use crate::entities::{note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 
 use dto::{
-    CreateAnnotationParams, CreateAnnotationResult, EvalIndicatorParams, EvalIndicatorResult,
-    EvalPythonParams, EvalPythonResult, ListNotesParams, ListNotesResult, NoteDto, QueryDataParams,
-    QueryDataResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadNoteParams, WriteNoteParams,
-    WriteNoteResult,
+    AddInterestParams, AddInterestResult, CreateAnnotationParams, CreateAnnotationResult,
+    EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, ListNotesParams,
+    ListNotesResult, NoteDto, QueryDataParams, QueryDataResult, ReadAnnotationsParams,
+    ReadAnnotationsResult, ReadNoteParams, WriteNoteParams, WriteNoteResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -341,6 +342,20 @@ impl StrategyServer {
     ) -> Result<Json<EvalPythonResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.eval_python_inner(sid, params).await.map(Json)
+    }
+
+    /// 戦略 Agent が新しい関心 (derived / origin=llm 固定) を追加する
+    #[tool(
+        name = "add_interest",
+        description = "Add a derived interest (role=derived, origin=llm) to the current strategy. Idempotent: returns created=false if the same (ref_kind, ref_id) already exists for the strategy."
+    )]
+    async fn add_interest(
+        &self,
+        Parameters(params): Parameters<AddInterestParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<AddInterestResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.add_interest_inner(sid, params).await.map(Json)
     }
 
     /// 永続化された indicator (戦略 scope 優先) を exec Pod 上で評価する

@@ -36,6 +36,11 @@ pub async fn create_test_server(pool: PgPool) -> TestServer {
     TestServer::new(router).expect("failed to create test server")
 }
 
+/// `create_test_server` の `(db, server)` ペア版。kubeopencode は disabled。
+pub async fn create_test_server_with_db(pool: PgPool) -> (DatabaseConnection, TestServer) {
+    create_test_server_with_db_and_kube(pool, AppState::disabled_kubeopencode()).await
+}
+
 /// kubeopencode クライアントを差し替えて TestServer を作成する
 pub async fn create_test_server_with_kube(
     pool: PgPool,

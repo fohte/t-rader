@@ -141,6 +141,25 @@ pub struct ReadAnnotationsResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct AddInterestParams {
+    pub strategy_id: Uuid,
+    /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
+    pub ref_kind: String,
+    pub ref_id: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct AddInterestResult {
+    pub strategy_id: Uuid,
+    pub ref_kind: String,
+    pub ref_id: String,
+    pub role: String,
+    pub origin: String,
+    /// 既存と一致したため idempotent に成功した場合は false
+    pub created: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct EvalPythonParams {
     pub strategy_id: Uuid,
     /// 実行する Python コード本体 (utf-8)
