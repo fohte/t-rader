@@ -8,6 +8,7 @@ import { ChartPanel } from '@/components/strategy-home/chart-panel'
 import { InterestTree } from '@/components/strategy-home/interest-tree'
 import { NotesList } from '@/components/strategy-home/notes-list'
 import { RelatedMacro } from '@/components/strategy-home/related-macro'
+import { RelatedNews } from '@/components/strategy-home/related-news'
 import { useLastVisited } from '@/components/strategy-home/use-last-visited'
 import { RefChip } from '@/components/strategy-shell/ref-chip'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -182,6 +183,7 @@ function StrategyHomePage() {
 
         <aside className="space-y-5">
           <RelatedMacro indicatorIds={indicatorIds} />
+          <RelatedNews strategyId={id} />
           <NotesList strategyId={id} notes={sortedNotes} />
           <InterestTree interests={interests ?? []} />
         </aside>

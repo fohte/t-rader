@@ -3233,6 +3233,73 @@
         }
       }
     },
+    "/api/strategies/{id}/news": {
+      "get": {
+        "tags": [
+          "news"
+        ],
+        "summary": "戦略に関連付けられたニュース一覧を取得する",
+        "description": "`news_strategy_link` を介して `strategy_id` で絞り込み、`published_at` 降順で返す。\n他戦略のニュースは含まれない (link 経由のためテーブル境界で隔離される)。",
+        "operationId": "list_strategy_news",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "関連ニュース",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StrategyNewsItem"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/skills": {
       "get": {
         "tags": [
@@ -5494,6 +5561,25 @@
           }
         }
       },
+      "MatchedRef": {
+        "type": "object",
+        "required": [
+          "ref_kind",
+          "ref_id",
+          "matched_term"
+        ],
+        "properties": {
+          "matched_term": {
+            "type": "string"
+          },
+          "ref_id": {
+            "type": "string"
+          },
+          "ref_kind": {
+            "type": "string"
+          }
+        }
+      },
       "Note": {
         "type": "object",
         "required": [
@@ -6010,6 +6096,50 @@
           "strategy_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "StrategyNewsItem": {
+        "type": "object",
+        "description": "戦略ホームの「関連ニュース」セクション用 1 件",
+        "required": [
+          "id",
+          "source",
+          "url",
+          "title",
+          "published_at",
+          "matched_refs"
+        ],
+        "properties": {
+          "body_snippet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "matched_refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatchedRef"
+            },
+            "description": "この戦略の interest のうち、このニュースに紐付いたものの一覧 (ref_kind:ref_id)"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -6588,6 +6718,10 @@
     {
       "name": "macro",
       "description": "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"
+    },
+    {
+      "name": "news",
+      "description": "ニュース (公開 RSS の集約結果と戦略への紐付け)"
     }
   ]
 }

@@ -6,6 +6,7 @@ pub mod history;
 pub mod hooks;
 pub mod imports;
 pub mod macro_data;
+pub mod news;
 pub mod notes;
 pub mod refs;
 pub mod strategies;

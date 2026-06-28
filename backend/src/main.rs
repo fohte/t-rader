@@ -9,6 +9,8 @@ use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::macro_data::stooq::StooqClient;
 use backend::data_provider::macro_data::{MacroCache, MacroDataProvider, spawn_poll};
+use backend::data_provider::news::NewsAggregator;
+use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::kubeopencode::{
@@ -173,6 +175,16 @@ async fn main() -> Result<(), AppError> {
         std::time::Duration::from_secs(300),
     );
     tracing::info!("macro data poll task started (Stooq, interval=5min)");
+
+    // 公開 RSS から 1h 間隔でニュースを集約する poll task を起動する
+    // フィードは `NEWS_RSS_FEEDS` (`name1|url1,name2|url2,...`) で上書き可。未設定時はデフォルト集合
+    let news_aggregator: Arc<dyn NewsAggregator> = Arc::new(RssNewsAggregator::from_env()?);
+    let _news_poll = backend::services::news::spawn_poll(
+        db.clone(),
+        news_aggregator,
+        std::time::Duration::from_secs(3600),
+    );
+    tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
     // cron trigger を schedule どおりに発火させる worker を起動する。
     // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
