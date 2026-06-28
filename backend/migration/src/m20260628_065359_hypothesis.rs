@@ -49,8 +49,10 @@ impl MigrationTrait for Migration {
                             .default("unverified"),
                     )
                     // related_note_ids / related_interest_ids は spec で uuid[] として確定済み。
-                    // FK は張れない (note は単一テーブルだが strategy_interest は複合 PK のため
-                    // UUID 単独では参照できない) 点に注意。整合性はアプリ層で担保する。
+                    // FK は張れない: note 側は単一 PK だが配列カラムに FK を貼れないため
+                    // アプリ層 (handler) で同戦略境界を検証する。strategy_interest 側は複合 PK
+                    // (strategy_id, ref_kind, ref_id) のため UUID 単独では参照不能で、現状
+                    // related_interest_ids は opaque な値として保存するのみで検証しない。
                     .col(
                         ColumnDef::new(Hypothesis::RelatedNoteIds)
                             .array(ColumnType::Uuid)

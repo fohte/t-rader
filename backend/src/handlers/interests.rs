@@ -172,41 +172,17 @@ pub async fn delete_strategy_interest(
 #[cfg(test)]
 mod tests {
     use axum::http::StatusCode;
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait};
+    use sea_orm::EntityTrait;
     use serde_json::json;
     use sqlx::PgPool;
-    use uuid::Uuid;
 
-    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
-    use crate::entities::{strategy, strategy_interest};
-    use crate::testing::create_test_server_with_db;
-
-    async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
-        let id = Uuid::new_v4();
-        strategy::ActiveModel {
-            id: Set(id),
-            name: Set(name.into()),
-            description: Set(None),
-            sort_order: Set(0),
-            agents_md: NotSet,
-            skills: NotSet,
-            agent_status: Set(StrategyAgentStatus::Ready),
-            agent_error: NotSet,
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("insert strategy");
-        id
-    }
+    use crate::entities::strategy_interest;
+    use crate::testing::{create_test_server_with_db, insert_test_strategy};
 
     #[sqlx::test(migrations = false)]
     async fn create_then_list_interest_round_trips(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
 
         let created = server
             .post(&format!("/api/strategies/{sid}/interests"))
@@ -244,7 +220,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn create_with_explicit_role_origin(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
 
         let created = server
             .post(&format!("/api/strategies/{sid}/interests"))
@@ -273,19 +249,32 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn create_rejects_invalid_ref_kind_role_origin(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
 
-        for body in [
-            json!({"ref_kind": "bogus", "ref_id": "x"}),
-            json!({"ref_kind": "stock", "ref_id": ""}),
-            json!({"ref_kind": "stock", "ref_id": "7203", "role": "bogus"}),
-            json!({"ref_kind": "stock", "ref_id": "7203", "origin": "bogus"}),
+        for (label, body) in [
+            (
+                "invalid_ref_kind",
+                json!({"ref_kind": "bogus", "ref_id": "x"}),
+            ),
+            ("empty_ref_id", json!({"ref_kind": "stock", "ref_id": ""})),
+            (
+                "invalid_role",
+                json!({"ref_kind": "stock", "ref_id": "7203", "role": "bogus"}),
+            ),
+            (
+                "invalid_origin",
+                json!({"ref_kind": "stock", "ref_id": "7203", "origin": "bogus"}),
+            ),
         ] {
             let res = server
                 .post(&format!("/api/strategies/{sid}/interests"))
                 .json(&body)
                 .await;
-            res.assert_status(StatusCode::BAD_REQUEST);
+            assert_eq!(
+                res.status_code(),
+                StatusCode::BAD_REQUEST,
+                "case {label} did not return 400",
+            );
         }
     }
 
@@ -302,7 +291,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn duplicate_create_returns_409(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
 
         let body = json!({"ref_kind": "stock", "ref_id": "7203"});
         let first = server
@@ -320,7 +309,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn update_changes_role_and_origin(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         server
             .post(&format!("/api/strategies/{sid}/interests"))
             .json(&json!({"ref_kind": "stock", "ref_id": "7203"}))
@@ -349,7 +338,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn update_empty_body_rejected(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         server
             .post(&format!("/api/strategies/{sid}/interests"))
             .json(&json!({"ref_kind": "stock", "ref_id": "7203"}))
@@ -365,7 +354,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn update_unknown_returns_404(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         let res = server
             .patch(&format!("/api/strategies/{sid}/interests/stock/9999"))
             .json(&json!({"role": "derived"}))
@@ -376,7 +365,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn delete_existing_returns_204_then_404(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         server
             .post(&format!("/api/strategies/{sid}/interests"))
             .json(&json!({"ref_kind": "stock", "ref_id": "7203"}))
@@ -403,8 +392,8 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn interests_are_isolated_per_strategy(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let a = insert_strategy(&db, "a").await;
-        let b = insert_strategy(&db, "b").await;
+        let a = insert_test_strategy(&db, "a").await;
+        let b = insert_test_strategy(&db, "b").await;
         server
             .post(&format!("/api/strategies/{a}/interests"))
             .json(&json!({"ref_kind": "stock", "ref_id": "7203"}))

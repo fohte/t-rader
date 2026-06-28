@@ -4,12 +4,13 @@ use axum::http::StatusCode;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
+    ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::hypothesis;
+use crate::entities::{hypothesis, note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateHypothesisRequest, UpdateHypothesisRequest};
@@ -22,6 +23,29 @@ fn validate_text(field: &str, value: &str) -> Result<String, AppError> {
         return Err(AppError::Validation(format!("{field} must not be empty")));
     }
     Ok(v)
+}
+
+/// `related_note_ids` で渡された note がすべて当該戦略所属であることを検証する。
+/// FK を張れないため (migration の comment 参照) アプリ層で同戦略境界を担保する。
+async fn ensure_notes_belong_to_strategy<C: sea_orm::ConnectionTrait>(
+    conn: &C,
+    strategy_id: Uuid,
+    ids: &[Uuid],
+) -> Result<(), AppError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let count = note::Entity::find()
+        .filter(note::Column::Id.is_in(ids.iter().copied()))
+        .filter(note::Column::StrategyId.eq(strategy_id))
+        .count(conn)
+        .await?;
+    if count != ids.len() as u64 {
+        return Err(AppError::Validation(
+            "related_note_ids contains unknown or cross-strategy note".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn find_hypothesis_for_strategy(
@@ -85,8 +109,12 @@ pub async fn create_strategy_hypothesis(
     let status = p.status.unwrap_or_else(|| DEFAULT_STATUS.to_string());
     ensure_status(&status)?;
 
+    let related_note_ids = p.related_note_ids.unwrap_or_default();
+    let related_interest_ids = p.related_interest_ids.unwrap_or_default();
+
     let txn = state.db.begin().await?;
     ensure_strategy_exists(&txn, strategy_id).await?;
+    ensure_notes_belong_to_strategy(&txn, strategy_id, &related_note_ids).await?;
     let id = Uuid::new_v4();
     let model = hypothesis::ActiveModel {
         hypothesis_id: Set(id),
@@ -94,8 +122,8 @@ pub async fn create_strategy_hypothesis(
         title: Set(title),
         body: Set(body),
         status: Set(status),
-        related_note_ids: Set(p.related_note_ids.unwrap_or_default()),
-        related_interest_ids: Set(p.related_interest_ids.unwrap_or_default()),
+        related_note_ids: Set(related_note_ids),
+        related_interest_ids: Set(related_interest_ids),
         created_at: NotSet,
         updated_at: NotSet,
     };
@@ -171,6 +199,7 @@ pub async fn update_strategy_hypothesis(
         touched = true;
     }
     if let Some(ids) = p.related_note_ids {
+        ensure_notes_belong_to_strategy(&state.db, strategy_id, &ids).await?;
         active.related_note_ids = Set(ids);
         touched = true;
     }
@@ -231,27 +260,28 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
-    use crate::entities::strategy;
-    use crate::testing::create_test_server_with_db;
+    use crate::entities::note;
+    use crate::testing::{create_test_server_with_db, insert_test_strategy};
 
-    async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+    async fn seed_note(db: &DatabaseConnection, strategy_id: Uuid) -> Uuid {
         let id = Uuid::new_v4();
-        strategy::ActiveModel {
+        note::ActiveModel {
             id: Set(id),
-            name: Set(name.into()),
-            description: Set(None),
-            sort_order: Set(0),
-            agents_md: NotSet,
-            skills: NotSet,
-            agent_status: Set(StrategyAgentStatus::Ready),
-            agent_error: NotSet,
+            strategy_id: Set(strategy_id),
+            title: Set("t".into()),
+            body_md: Set("b".into()),
+            frontmatter_json: Set(json!({})),
+            type_tag: Set(None),
+            status: Set("unread".into()),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_by_kind: Set("human".into()),
             created_at: NotSet,
             updated_at: NotSet,
         }
         .insert(db)
         .await
-        .expect("insert");
+        .expect("insert note");
         id
     }
 
@@ -266,7 +296,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn create_then_list_get_round_trips(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
 
         let created = server
             .post(&format!("/api/strategies/{sid}/hypotheses"))
@@ -332,8 +362,8 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn create_with_status_and_related_ids(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
-        let n1 = Uuid::new_v4();
+        let sid = insert_test_strategy(&db, "s").await;
+        let n1 = seed_note(&db, sid).await;
         let i1 = Uuid::new_v4();
 
         let created = server
@@ -362,20 +392,61 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn create_rejects_unknown_related_note(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let sid = insert_test_strategy(&db, "s").await;
+        let res = server
+            .post(&format!("/api/strategies/{sid}/hypotheses"))
+            .json(&json!({
+                "title": "t",
+                "body": "b",
+                "related_note_ids": [Uuid::new_v4()],
+            }))
+            .await;
+        res.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_rejects_cross_strategy_related_note(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let a = insert_test_strategy(&db, "a").await;
+        let b = insert_test_strategy(&db, "b").await;
+        let n_b = seed_note(&db, b).await;
+        let res = server
+            .post(&format!("/api/strategies/{a}/hypotheses"))
+            .json(&json!({
+                "title": "t",
+                "body": "b",
+                "related_note_ids": [n_b],
+            }))
+            .await;
+        res.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    // 入力 validation の各 reject ケースを 1 関数にまとめる。
+    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難く、ケース数が少ないため for ループで列挙する。
+    #[sqlx::test(migrations = false)]
     async fn create_rejects_invalid_inputs(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
 
-        for b in [
-            json!({"title": "", "body": "b"}),
-            json!({"title": "t", "body": ""}),
-            json!({"title": "t", "body": "b", "status": "bogus"}),
+        for (label, body) in [
+            ("empty_title", json!({"title": "", "body": "b"})),
+            ("empty_body", json!({"title": "t", "body": ""})),
+            (
+                "invalid_status",
+                json!({"title": "t", "body": "b", "status": "bogus"}),
+            ),
         ] {
             let r = server
                 .post(&format!("/api/strategies/{sid}/hypotheses"))
-                .json(&b)
+                .json(&body)
                 .await;
-            r.assert_status(StatusCode::BAD_REQUEST);
+            assert_eq!(
+                r.status_code(),
+                StatusCode::BAD_REQUEST,
+                "case {label} did not return 400",
+            );
         }
     }
 
@@ -392,7 +463,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn update_changes_fields(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         let created = server
             .post(&format!("/api/strategies/{sid}/hypotheses"))
             .json(&json!({"title": "t", "body": "b"}))
@@ -427,7 +498,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn update_empty_body_rejected(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         let created = server
             .post(&format!("/api/strategies/{sid}/hypotheses"))
             .json(&json!({"title": "t", "body": "b"}))
@@ -448,8 +519,8 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn cross_strategy_get_update_delete_return_404(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let a = insert_strategy(&db, "a").await;
-        let b = insert_strategy(&db, "b").await;
+        let a = insert_test_strategy(&db, "a").await;
+        let b = insert_test_strategy(&db, "b").await;
         let created = server
             .post(&format!("/api/strategies/{a}/hypotheses"))
             .json(&json!({"title": "t", "body": "b"}))
@@ -478,7 +549,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn delete_existing_returns_204(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         let created = server
             .post(&format!("/api/strategies/{sid}/hypotheses"))
             .json(&json!({"title": "t", "body": "b"}))
@@ -503,7 +574,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn cascade_delete_when_strategy_deleted(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let sid = insert_strategy(&db, "s").await;
+        let sid = insert_test_strategy(&db, "s").await;
         let created = server
             .post(&format!("/api/strategies/{sid}/hypotheses"))
             .json(&json!({"title": "t", "body": "b"}))
@@ -516,7 +587,7 @@ mod tests {
         .unwrap();
 
         use sea_orm::EntityTrait;
-        strategy::Entity::delete_by_id(sid)
+        crate::entities::strategy::Entity::delete_by_id(sid)
             .exec(&db)
             .await
             .expect("delete strategy");

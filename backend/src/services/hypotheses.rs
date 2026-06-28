@@ -1,5 +1,5 @@
 //! 仮説 (hypothesis) の値域チェックを集約する。
-//! handler と (将来追加される) MCP tool の両方で同じ判定を使う。
+//! HTTP handler と MCP tool で共通利用する。
 
 use crate::error::AppError;
 

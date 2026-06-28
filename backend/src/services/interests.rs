@@ -1,5 +1,5 @@
 //! 関心 (strategy_interest) の値域チェックを集約する。
-//! HTTP handler と MCP tool の両方で同じ判定を使う。
+//! HTTP handler と MCP tool で共通利用する。
 
 use crate::error::AppError;
 
