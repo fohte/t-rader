@@ -48,6 +48,7 @@ pub struct MatchedRef {
     params(("id" = Uuid, Path, description = "戦略 ID")),
     responses(
         (status = 200, description = "関連ニュース", body = Vec<StrategyNewsItem>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
