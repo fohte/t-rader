@@ -7,4 +7,5 @@ pub mod strategies;
 pub mod strategy_agent;
 pub mod strategy_tasks;
 pub mod trades;
+pub mod trigger_worker;
 pub mod triggers;

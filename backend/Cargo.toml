@@ -4,12 +4,14 @@ members = [".", "migration"]
 [workspace.dependencies]
 async-trait = "=0.1.89"
 axum = "=0.8.9"
+cron = "=0.17.0"
 axum-test = "=18.7.0"
 base64 = "=0.22.1"
 chrono = { version = "=0.4.45", default-features = false }
 clap = "=4.5.60"
 csv = "=1.3.1"
 encoding_rs = "=0.8.35"
+jsonschema = { version = "=0.46.6", default-features = false }
 percent-encoding = "=2.3.2"
 quick-xml = "=0.40.1"
 reqwest = { version = "=0.13.4", default-features = false }
@@ -42,8 +44,10 @@ axum = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive"] }
+cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
+jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }
 quick-xml = { workspace = true }

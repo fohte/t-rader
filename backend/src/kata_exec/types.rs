@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use super::error::KataExecError;
 
 /// Python コードを 1 回実行するためのリクエスト
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecRequest {
     /// 実行する Python コード本体 (utf-8)
     pub code: String,

@@ -186,6 +186,18 @@ async fn main() -> Result<(), AppError> {
     );
     tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
+    // cron trigger を schedule どおりに発火させる worker を起動する。
+    // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
+    tracing::info!(
+        interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
+        "starting cron trigger worker",
+    );
+    let _trigger_worker = backend::services::trigger_worker::spawn(
+        db.clone(),
+        kubeopencode.clone(),
+        backend::services::trigger_worker::DEFAULT_INTERVAL,
+    );
+
     let state = AppState {
         db,
         data_provider,

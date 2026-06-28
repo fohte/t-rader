@@ -12,16 +12,14 @@ use uuid::Uuid;
 use crate::kata_exec::{ExecRequest, KataExecError};
 
 use super::dto::{EvalPythonParams, EvalPythonResult};
-use super::{StrategyServer, ensure_strategy_match, internal_error, invalid_params};
+use super::{
+    EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_STDIN_BYTES, EXEC_MAX_TIMEOUT_SECS, StrategyServer,
+    check_exec_upper_bound, ensure_strategy_match, internal_error, invalid_params,
+    kata_exec_to_mcp_err,
+};
 
-/// MCP 層で許容する wall-clock timeout の上限 (秒)。
-pub(super) const MAX_TIMEOUT_SECS: u32 = 60;
-/// MCP 層で許容する出力サイズ上限 (バイト)。executor 側のデフォルトと同じ 1 MiB。
-pub(super) const MAX_OUTPUT_BYTES: u32 = 1024 * 1024;
 /// MCP 層で許容する Python コード本体のサイズ上限 (バイト)。
 pub(super) const MAX_CODE_BYTES: usize = 64 * 1024;
-/// MCP 層で許容する stdin のサイズ上限 (バイト)。
-pub(super) const MAX_STDIN_BYTES: usize = 256 * 1024;
 
 impl StrategyServer {
     pub(crate) async fn eval_python_inner(
@@ -40,17 +38,17 @@ impl StrategyServer {
             )));
         }
         if let Some(stdin) = params.stdin.as_ref()
-            && stdin.len() > MAX_STDIN_BYTES
+            && stdin.len() > EXEC_MAX_STDIN_BYTES
         {
             return Err(invalid_params(format!(
-                "stdin exceeds {MAX_STDIN_BYTES} bytes"
+                "stdin exceeds {EXEC_MAX_STDIN_BYTES} bytes"
             )));
         }
-        check_upper_bound("timeout_secs", params.timeout_secs, MAX_TIMEOUT_SECS)?;
-        check_upper_bound(
+        check_exec_upper_bound("timeout_secs", params.timeout_secs, EXEC_MAX_TIMEOUT_SECS)?;
+        check_exec_upper_bound(
             "max_output_bytes",
             params.max_output_bytes,
-            MAX_OUTPUT_BYTES,
+            EXEC_MAX_OUTPUT_BYTES,
         )?;
 
         let executor = self
@@ -83,37 +81,13 @@ impl StrategyServer {
     }
 }
 
-fn check_upper_bound(name: &str, value: Option<u32>, max: u32) -> Result<(), McpError> {
-    let Some(v) = value else { return Ok(()) };
-    if v == 0 {
-        return Err(invalid_params(format!("{name} must be > 0")));
-    }
-    if v > max {
-        return Err(invalid_params(format!("{name} exceeds maximum of {max}")));
-    }
-    Ok(())
-}
-
 fn kata_exec_error(err: KataExecError, strategy_id: Uuid) -> McpError {
     tracing::warn!(
         strategy_id = %strategy_id,
         error = %err,
         "eval_python: kata exec error",
     );
-    match err {
-        KataExecError::NotConfigured => internal_error("kata executor is not configured"),
-        KataExecError::Timeout(d) => invalid_params(format!("execution timed out after {:?}", d)),
-        KataExecError::OutputTooLarge { limit } => {
-            invalid_params(format!("output exceeded {limit} bytes"))
-        }
-        KataExecError::PodFailed(msg) => internal_error(format!("exec pod failed: {msg}")),
-        KataExecError::Api { status, message } => {
-            internal_error(format!("kube api error (status {status}): {message}"))
-        }
-        KataExecError::Network(msg) => internal_error(format!("kube api network error: {msg}")),
-        KataExecError::Parse(msg) => internal_error(format!("kube api parse error: {msg}")),
-        KataExecError::Init(msg) => internal_error(format!("kata executor init error: {msg}")),
-    }
+    kata_exec_to_mcp_err(err)
 }
 
 #[cfg(test)]
@@ -220,15 +194,15 @@ mod tests {
     )]
     #[case::excessive_timeout(
         "print(1)".into(),
-        Some(MAX_TIMEOUT_SECS + 1),
+        Some(EXEC_MAX_TIMEOUT_SECS + 1),
         None,
-        format!("timeout_secs exceeds maximum of {MAX_TIMEOUT_SECS}"),
+        format!("timeout_secs exceeds maximum of {EXEC_MAX_TIMEOUT_SECS}"),
     )]
     #[case::excessive_output(
         "print(1)".into(),
         None,
-        Some(MAX_OUTPUT_BYTES + 1),
-        format!("max_output_bytes exceeds maximum of {MAX_OUTPUT_BYTES}"),
+        Some(EXEC_MAX_OUTPUT_BYTES + 1),
+        format!("max_output_bytes exceeds maximum of {EXEC_MAX_OUTPUT_BYTES}"),
     )]
     #[tokio::test]
     async fn eval_python_rejects_invalid_input(

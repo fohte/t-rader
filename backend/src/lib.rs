@@ -33,8 +33,8 @@ use crate::data_provider::DataProviderKind;
 use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    annotations, bars, comments, custom_indicators, history, imports, macro_data, news, notes,
-    refs, strategies, trades, triggers, watchlists,
+    annotations, bars, comments, custom_indicators, history, hooks, imports, macro_data, news,
+    notes, refs, strategies, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
@@ -237,6 +237,8 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             triggers::update_trigger,
             triggers::delete_trigger
         ))
+        // hooks (外部 webhook 受信)
+        .routes(routes!(hooks::receive_hook))
         // imports
         .routes(routes!(imports::sbi_preview))
         .routes(routes!(imports::sbi_commit))

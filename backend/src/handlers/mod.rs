@@ -3,6 +3,7 @@ pub mod bars;
 pub mod comments;
 pub mod custom_indicators;
 pub mod history;
+pub mod hooks;
 pub mod imports;
 pub mod macro_data;
 pub mod news;
