@@ -36,6 +36,12 @@ function parseKind(value: string): TriggerKind {
   return value === 'hook' ? 'hook' : 'cron'
 }
 
+function triggerLabel(trigger: Trigger): string {
+  return trigger.kind === 'cron'
+    ? (trigger.schedule ?? '')
+    : (trigger.hook_slug ?? '')
+}
+
 function toFormState(trigger: Trigger): FormState {
   return {
     kind: parseKind(trigger.kind),
@@ -94,7 +100,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
     '/api/strategies/{id}/triggers',
     { params: { path: { id: strategyId } } },
   )
-  const { data, isPending } = useQuery(listQueryOptions)
+  const { data, isPending, isError, error } = useQuery(listQueryOptions)
 
   const triggers = useMemo(() => data ?? [], [data])
 
@@ -267,6 +273,11 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
         onSuccess: () => {
           invalidate()
           setListError(null)
+          // 選択中の trigger を toggle した場合、フォーム側の enabled も追従させる。
+          // form は refetch で hydrate しないため、ここで反映しないと保存時に古い値が PUT される
+          if (selectedId === trigger.trigger_id && mode !== 'create') {
+            setForm((prev) => ({ ...prev, enabled: nextEnabled }))
+          }
         },
         onError: () => {
           setListError('enabled 切替に失敗しました')
@@ -277,6 +288,18 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
 
   if (isPending) {
     return <Skeleton className="h-[320px] w-full" />
+  }
+
+  if (isError) {
+    return (
+      <p
+        data-testid="trigger-list-error"
+        className="font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+      >
+        trigger 一覧の取得に失敗しました
+        {error instanceof Error ? `: ${error.message}` : ''}
+      </p>
+    )
   }
 
   const editing = mode === 'create' || selectedTrigger != null
@@ -307,53 +330,52 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
               trigger がまだありません
             </li>
           )}
-          {triggers.map((t) => (
-            <li
-              key={t.trigger_id}
-              className="flex items-center gap-1 border-b border-[color:var(--color-hairline)] px-1 last:border-b-0"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  selectTrigger(t.trigger_id)
-                }}
-                data-active={selectedId === t.trigger_id && !isCreate}
-                className="flex-1 truncate px-2 py-1.5 text-left font-mono text-[12px] hover:bg-[color:var(--panel-inset)] data-[active=true]:text-[color:var(--color-accent-strategy)]"
+          {triggers.map((t) => {
+            const label = triggerLabel(t)
+            return (
+              <li
+                key={t.trigger_id}
+                className="flex items-center gap-1 border-b border-[color:var(--color-hairline)] px-1 last:border-b-0"
               >
-                <span className="uppercase">{t.kind}</span>
-                <span className="ml-2 text-[color:var(--color-text-tertiary)]">
-                  {t.kind === 'cron' ? (t.schedule ?? '') : (t.hook_slug ?? '')}
-                </span>
-              </button>
-              <label
-                className="flex items-center px-1 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
-                title={t.enabled ? '有効' : '無効'}
-              >
-                <input
-                  type="checkbox"
-                  aria-label={`trigger ${t.kind} ${
-                    t.kind === 'cron' ? (t.schedule ?? '') : (t.hook_slug ?? '')
-                  } の有効化`}
-                  checked={t.enabled}
-                  onChange={(e) => {
-                    handleToggleEnabled(t, e.target.checked)
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectTrigger(t.trigger_id)
                   }}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => {
-                  handleDelete(t)
-                }}
-                aria-label={`trigger ${t.kind} ${
-                  t.kind === 'cron' ? (t.schedule ?? '') : (t.hook_slug ?? '')
-                } を削除`}
-                className="px-2 py-1 font-mono text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
-              >
-                削除
-              </button>
-            </li>
-          ))}
+                  data-active={selectedId === t.trigger_id && !isCreate}
+                  className="flex-1 truncate px-2 py-1.5 text-left font-mono text-[12px] hover:bg-[color:var(--panel-inset)] data-[active=true]:text-[color:var(--color-accent-strategy)]"
+                >
+                  <span className="uppercase">{t.kind}</span>
+                  <span className="ml-2 text-[color:var(--color-text-tertiary)]">
+                    {label}
+                  </span>
+                </button>
+                <label
+                  className="flex items-center px-1 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+                  title={t.enabled ? '有効' : '無効'}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`trigger ${t.kind} ${label} の有効化`}
+                    checked={t.enabled}
+                    onChange={(e) => {
+                      handleToggleEnabled(t, e.target.checked)
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDelete(t)
+                  }}
+                  aria-label={`trigger ${t.kind} ${label} を削除`}
+                  className="px-2 py-1 font-mono text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+                >
+                  削除
+                </button>
+              </li>
+            )
+          })}
         </ul>
       </aside>
 

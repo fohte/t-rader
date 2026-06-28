@@ -386,6 +386,33 @@ describe('TriggersTab', () => {
     expect(activeMiddleware?.store.deleteCalls).toEqual(['t-cron'])
   })
 
+  it('選択中の trigger を一覧側 toggle で切り替えるとフォーム側 checkbox も追従する', async () => {
+    const user = userEvent.setup()
+    setup([
+      makeTrigger({
+        trigger_id: 't-cron',
+        kind: 'cron',
+        schedule: '0 9 * * 1-5',
+        enabled: true,
+      }),
+    ])
+
+    const formCheckbox = await screen.findByLabelText('enabled')
+    await waitFor(() => {
+      expect(formCheckbox).toBeChecked()
+    })
+
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: 'trigger cron 0 9 * * 1-5 の有効化',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('enabled')).not.toBeChecked()
+    })
+  })
+
   it('enable トグルを切り替えると PUT { enabled } が送られる', async () => {
     const user = userEvent.setup()
     setup([
