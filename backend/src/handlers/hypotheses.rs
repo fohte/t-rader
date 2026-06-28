@@ -35,12 +35,16 @@ async fn ensure_notes_belong_to_strategy<C: sea_orm::ConnectionTrait>(
     if ids.is_empty() {
         return Ok(());
     }
+    // 重複 UUID で件数比較が偽陽性になるのを避けるため、unique 化してから比較する
+    let mut unique_ids: Vec<Uuid> = ids.to_vec();
+    unique_ids.sort_unstable();
+    unique_ids.dedup();
     let count = note::Entity::find()
-        .filter(note::Column::Id.is_in(ids.iter().copied()))
+        .filter(note::Column::Id.is_in(unique_ids.iter().copied()))
         .filter(note::Column::StrategyId.eq(strategy_id))
         .count(conn)
         .await?;
-    if count != ids.len() as u64 {
+    if count != unique_ids.len() as u64 {
         return Err(AppError::Validation(
             "related_note_ids contains unknown or cross-strategy note".into(),
         ));
@@ -389,6 +393,23 @@ mod tests {
                 "related_interest_ids": [i1],
             }),
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_accepts_duplicate_related_note_ids(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let sid = insert_test_strategy(&db, "s").await;
+        let n1 = seed_note(&db, sid).await;
+        // 同一 note を重複指定しても、unique 化後の存在チェックを通過する
+        let res = server
+            .post(&format!("/api/strategies/{sid}/hypotheses"))
+            .json(&json!({
+                "title": "t",
+                "body": "b",
+                "related_note_ids": [n1, n1],
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
     }
 
     #[sqlx::test(migrations = false)]
