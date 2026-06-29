@@ -67,6 +67,7 @@ fn map_err(err: svc::RssFeedError) -> AppError {
     ),
     responses(
         (status = 200, body = Vec<rss_feed::Model>),
+        (status = 400, description = "クエリパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -154,6 +155,7 @@ pub async fn update_rss_feed(
     params(("id" = Uuid, Path, description = "rss_feed ID")),
     responses(
         (status = 204),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
