@@ -42,6 +42,7 @@ pub struct HookResponse {
     request_body = serde_json::Value,
     responses(
         (status = 200, body = HookResponse),
+        (status = 400, description = "リクエストボディに null バイトが含まれる等の汎用エラー", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),

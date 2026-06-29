@@ -963,6 +963,16 @@
               }
             }
           },
+          "400": {
+            "description": "リクエストボディに null バイトが含まれる等の汎用エラー",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "",
             "content": {
