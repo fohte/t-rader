@@ -3,14 +3,16 @@ import { useState } from 'react'
 
 import { AgentsMdTab } from '@/components/strategy-settings/agents-md-tab'
 import { SkillsTab } from '@/components/strategy-settings/skills-tab'
+import { TriggersTab } from '@/components/strategy-settings/triggers-tab'
 import { Skeleton } from '@/components/ui/skeleton'
 import { $api } from '@/lib/api/client'
 
-type TabKey = 'agents-md' | 'skills'
+type TabKey = 'agents-md' | 'skills' | 'triggers'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'agents-md', label: 'AGENTS.md' },
   { key: 'skills', label: 'skills' },
+  { key: 'triggers', label: 'triggers' },
 ]
 
 export const Route = createFileRoute('/strategies/$id/settings')({
@@ -60,7 +62,8 @@ function StrategySettingsPage() {
           戦略設定 — {strategy.name}
         </h1>
         <p className="text-[13px] text-[color:var(--color-text-secondary)]">
-          戦略 Agent の初期コンテキスト (AGENTS.md / skills) を編集します。
+          戦略 Agent の初期コンテキスト (AGENTS.md / skills) や trigger
+          を編集します。
         </p>
       </header>
 
@@ -90,11 +93,9 @@ function StrategySettingsPage() {
       </div>
 
       <section role="tabpanel">
-        {tab === 'agents-md' ? (
-          <AgentsMdTab strategyId={id} />
-        ) : (
-          <SkillsTab strategyId={id} />
-        )}
+        {tab === 'agents-md' && <AgentsMdTab strategyId={id} />}
+        {tab === 'skills' && <SkillsTab strategyId={id} />}
+        {tab === 'triggers' && <TriggersTab strategyId={id} />}
       </section>
     </div>
   )
