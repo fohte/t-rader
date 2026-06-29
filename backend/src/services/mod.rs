@@ -3,6 +3,7 @@ pub mod change_history;
 pub mod custom_indicators;
 pub mod import;
 pub mod news;
+pub mod rss_feed;
 pub mod strategies;
 pub mod strategy_agent;
 pub mod strategy_tasks;

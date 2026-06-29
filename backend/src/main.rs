@@ -176,9 +176,11 @@ async fn main() -> Result<(), AppError> {
     );
     tracing::info!("macro data poll task started (Stooq, interval=5min)");
 
-    // 公開 RSS から 1h 間隔でニュースを集約する poll task を起動する
-    // フィードは `NEWS_RSS_FEEDS` (`name1|url1,name2|url2,...`) で上書き可。未設定時はデフォルト集合
-    let news_aggregator: Arc<dyn NewsAggregator> = Arc::new(RssNewsAggregator::from_env()?);
+    // 公開 RSS から 1h 間隔でニュースを集約する poll task を起動する。
+    // フィード一覧は `rss_feed` テーブルから tick ごとに読み直す (UI / MCP からの追加・無効化を
+    // 再起動なしで反映するため)。0 件運用も許容する。
+    let news_aggregator: Arc<dyn NewsAggregator> =
+        Arc::new(RssNewsAggregator::from_db(db.clone())?);
     let _news_poll = backend::services::news::spawn_poll(
         db.clone(),
         news_aggregator,

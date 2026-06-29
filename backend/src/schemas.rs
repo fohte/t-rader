@@ -562,6 +562,35 @@ impl PartialSchema for crate::entities::trigger::Model {
     }
 }
 
+// --- rss_feed::Model ---
+
+impl utoipa::ToSchema for crate::entities::rss_feed::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("RssFeed")
+    }
+}
+
+impl PartialSchema for crate::entities::rss_feed::Model {
+    fn schema() -> RefOr<Schema> {
+        ObjectBuilder::new()
+            .property("id", uuid_prop())
+            .required("id")
+            .property("source", str_prop())
+            .required("source")
+            .property("display_name", str_prop())
+            .required("display_name")
+            .property("url", str_prop())
+            .required("url")
+            .property("enabled", bool_prop())
+            .required("enabled")
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
+            .into()
+    }
+}
+
 // --- custom_indicator::Model ---
 
 impl utoipa::ToSchema for crate::entities::custom_indicator::Model {
