@@ -40,7 +40,7 @@ function RssFeedsSettingsPage() {
         onError: (err) => {
           invalidate()
           window.alert(
-            `${feed.display_name} の更新に失敗しました: ${err.error}`,
+            `${feed.display_name} の更新に失敗しました: ${err.error || '不明なエラー'}`,
           )
         },
       },
@@ -57,7 +57,7 @@ function RssFeedsSettingsPage() {
         onError: (err) => {
           invalidate()
           window.alert(
-            `${feed.display_name} の削除に失敗しました: ${err.error}`,
+            `${feed.display_name} の削除に失敗しました: ${err.error || '不明なエラー'}`,
           )
         },
       },

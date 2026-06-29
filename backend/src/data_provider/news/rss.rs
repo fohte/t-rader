@@ -49,6 +49,11 @@ impl RssNewsAggregator {
         Ok(rows
             .into_iter()
             .map(|row| RssFeed {
+                // `news_item.source` には PR #192 以前から human-readable な display_name
+                // (`Bloomberg JP` 等) が入っており、戦略 link も substring match に使う。
+                // slug に置き換えると既存行と新規行で source が混在して fragmentation するため、
+                // ここでは display_name を採用する。slug への移行は news_item.source の
+                // バックフィルとセットで別 PR で扱う。
                 source: row.display_name,
                 url: row.url,
             })
