@@ -3,6 +3,7 @@ use migration::{Migrator, MigratorTrait};
 use sea_orm::{DatabaseConnection, SqlxPostgresConnector};
 use sqlx::PgPool;
 
+use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::SharedKubeopencodeClient;
 use crate::{AppState, create_router};
 
@@ -43,6 +44,23 @@ pub async fn create_test_server_with_kube(
 ) -> TestServer {
     let (_, server) = create_test_server_with_db_and_kube(pool, kube).await;
     server
+}
+
+/// kata executor を差し替えて TestServer を作成する
+pub async fn create_test_server_with_kata(
+    pool: PgPool,
+    executor: SharedKataExecutor,
+) -> TestServer {
+    let db = create_test_db(pool).await;
+    let state = AppState {
+        db,
+        data_provider: None,
+        kubeopencode: AppState::disabled_kubeopencode(),
+        kata_executor: Some(executor),
+        macro_cache: None,
+    };
+    let router = create_router(state);
+    TestServer::new(router).expect("failed to create test server")
 }
 
 /// テスト中に SeaORM 経由で直接行を seed したい場合に、`DatabaseConnection` と

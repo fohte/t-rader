@@ -258,6 +258,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             custom_indicators::create_strategy_indicator
         ))
         .routes(routes!(custom_indicators::get_strategy_indicator))
+        .routes(routes!(custom_indicators::preview_indicator))
         // macro
         .routes(routes!(macro_data::get_macro_ticks))
         // news

@@ -28,6 +28,13 @@ include-path-regex = "^/api/strategies/[^/]+/chat$"
 [operations.checks.not_a_server_error]
 expected-statuses = ["2xx", "4xx", 503]
 
+# preview エンドポイントは Kata exec runtime 未設定時に 503 を返す仕様
+# (CI 環境では KATA_EXEC_API_URL を設定しないため必然的に 503 になる)。
+[[operations]]
+include-path-regex = "^/api/indicators/preview$"
+[operations.checks.not_a_server_error]
+expected-statuses = ["2xx", "4xx", 503]
+
 [phases.fuzzing]
 # Fuzzing フェーズはランダム生成された UUID パスパラメータにより
 # 存在しないリソースへのリクエストが大量に発生し、4xx レスポンスが
