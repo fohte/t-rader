@@ -256,6 +256,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/indicators/preview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** indicator を保存せずに 1 回だけ実行してみる (Monaco エディタのプレビュー用) */
+    post: operations['preview_indicator']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/indicators/{indicator_id}': {
     parameters: {
       query?: never
@@ -518,6 +535,42 @@ export interface paths {
     options?: never
     head?: never
     patch?: never
+    trace?: never
+  }
+  '/api/rss-feeds': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** RSS フィード一覧 */
+    get: operations['list_rss_feeds']
+    put?: never
+    /** RSS フィードを作成 */
+    post: operations['create_rss_feed']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/rss-feeds/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** RSS フィードを削除する。news_item 行は残す (履歴互換性)。 */
+    delete: operations['delete_rss_feed']
+    options?: never
+    head?: never
+    /** RSS フィードを部分更新する (`source` は変更不可) */
+    patch: operations['update_rss_feed']
     trace?: never
   }
   '/api/strategies': {
@@ -1088,6 +1141,16 @@ export interface components {
       trigger_label?: string | null
       type_tag?: string | null
     }
+    CreateRssFeedRequest: {
+      /** @description UI 表示用名前 */
+      display_name: string
+      /** @description 省略時は true */
+      enabled?: boolean | null
+      /** @description machine key (slug, `^[a-z0-9_-]+$`). 内部処理・MCP の参照用 */
+      source: string
+      /** @description RSS フィード URL (http / https のみ) */
+      url: string
+    }
     CreateStrategyRequest: {
       description?: string | null
       name: string
@@ -1276,6 +1339,31 @@ export interface components {
       realized_pnl: number
       symbol: string
     }
+    PreviewIndicatorRequest: {
+      args: unknown
+      code: string
+      input_schema: {
+        [key: string]: unknown
+      }
+      /** Format: int32 */
+      max_output_bytes?: number | null
+      output_schema: {
+        [key: string]: unknown
+      }
+      /** Format: int32 */
+      timeout_secs?: number | null
+    }
+    PreviewIndicatorResponse: {
+      /** Format: int32 */
+      exit_code: number
+      /**
+       * @description stdout 最終行を JSON parse し output_schema で validation 済みの値。
+       *     exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を参照)。
+       */
+      output?: unknown
+      stderr: string
+      stdout: string
+    }
     /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
     RefResolution: {
       id: string
@@ -1283,6 +1371,18 @@ export interface components {
       kind: string
       /** @description 一致しなかった場合は None */
       name?: string | null
+    }
+    RssFeed: {
+      /** Format: date-time */
+      created_at: string
+      display_name: string
+      enabled: boolean
+      /** Format: uuid */
+      id: string
+      source: string
+      /** Format: date-time */
+      updated_at: string
+      url: string
     }
     SbiCommitRequest: {
       rows: components['schemas']['SbiCommitRow'][]
@@ -1504,6 +1604,11 @@ export interface components {
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
       type_tag?: string | null
+    }
+    UpdateRssFeedRequest: {
+      display_name?: string | null
+      enabled?: boolean | null
+      url?: string | null
     }
     UpdateStrategyRequest: {
       description?: string | null
@@ -2240,6 +2345,15 @@ export interface operations {
           'application/json': components['schemas']['HookResponse']
         }
       }
+      /** @description リクエストボディに null バイトが含まれる等の汎用エラー */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
         headers: {
           [name: string]: unknown
@@ -2438,6 +2552,64 @@ export interface operations {
         }
       }
       500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  preview_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PreviewIndicatorRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PreviewIndicatorResponse']
+        }
+      }
+      /** @description code / schema / args が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description indicator runtime が未設定または利用不可 */
+      503: {
         headers: {
           [name: string]: unknown
         }
@@ -3290,6 +3462,208 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_rss_feeds: {
+    parameters: {
+      query?: {
+        /** @description true なら enabled=true のみ返す */
+        enabled_only?: boolean
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RssFeed'][]
+        }
+      }
+      /** @description クエリパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_rss_feed: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateRssFeedRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RssFeed']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description source が既存と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_rss_feed: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description rss_feed ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_rss_feed: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description rss_feed ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateRssFeedRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RssFeed']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }

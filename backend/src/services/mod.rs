@@ -5,6 +5,7 @@ pub mod hypotheses;
 pub mod import;
 pub mod interests;
 pub mod news;
+pub mod rss_feed;
 pub mod strategies;
 pub mod strategy_agent;
 pub mod strategy_tasks;

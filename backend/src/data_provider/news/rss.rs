@@ -4,17 +4,15 @@ use chrono::{DateTime, Utc};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use reqwest::Url;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 
 use crate::data_provider::DataProviderError;
 use crate::data_provider::news::{NewsAggregator, NewsItem};
+use crate::entities::rss_feed;
 
 const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 /// snippet を本文先頭から切り出す最大長 (バイトではなく文字数)
 const SNIPPET_MAX_CHARS: usize = 280;
-
-/// `NEWS_RSS_FEEDS` 環境変数。形式: `name1|url1,name2|url2,...`
-/// dev のデフォルトは `.env` で、本番値は infra (External Secrets) で差し替える。
-const ENV_VAR: &str = "NEWS_RSS_FEEDS";
 
 #[derive(Debug)]
 pub struct RssFeed {
@@ -22,64 +20,44 @@ pub struct RssFeed {
     pub url: String,
 }
 
-/// `name1|url1,name2|url2,...` 形式をパースする。空エントリはスキップ。
-fn parse_feed_env(raw: &str) -> Result<Vec<RssFeed>, DataProviderError> {
-    let mut out = Vec::new();
-    for entry in raw.split(',') {
-        let entry = entry.trim();
-        if entry.is_empty() {
-            continue;
-        }
-        let Some((name, url)) = entry.split_once('|') else {
-            return Err(DataProviderError::Parse(format!(
-                "{ENV_VAR}: entry '{entry}' is missing '|' separator (expected 'name|url')"
-            )));
-        };
-        let name = name.trim();
-        let url = url.trim();
-        if name.is_empty() || url.is_empty() {
-            return Err(DataProviderError::Parse(format!(
-                "{ENV_VAR}: entry '{entry}' has empty name or url"
-            )));
-        }
-        out.push(RssFeed {
-            source: name.to_string(),
-            url: url.to_string(),
-        });
-    }
-    if out.is_empty() {
-        return Err(DataProviderError::Parse(format!(
-            "{ENV_VAR} is set but contains no valid entries"
-        )));
-    }
-    Ok(out)
-}
-
 /// 公開 RSS 集約 NewsAggregator
+///
+/// フィード一覧は固定ではなく `rss_feed` テーブルから `fetch_news` 呼び出しごとに
+/// 再読込する。UI / MCP からの追加・無効化が次の tick で反映される。
 pub struct RssNewsAggregator {
     http: reqwest::Client,
-    feeds: Vec<RssFeed>,
+    db: DatabaseConnection,
 }
 
 impl RssNewsAggregator {
-    /// `NEWS_RSS_FEEDS` から feeds を読み込んで構築する。
-    /// 未設定なら `Err` を返す (dev は `.env` で供給する)。
-    pub fn from_env() -> Result<Self, DataProviderError> {
-        let raw = std::env::var(ENV_VAR)
-            .map_err(|_| DataProviderError::Parse(format!("{ENV_VAR} is not set")))?;
-        if raw.trim().is_empty() {
-            return Err(DataProviderError::Parse(format!("{ENV_VAR} is empty")));
-        }
-        Self::with_feeds(parse_feed_env(&raw)?)
-    }
-
-    pub fn with_feeds(feeds: Vec<RssFeed>) -> Result<Self, DataProviderError> {
+    pub fn from_db(db: DatabaseConnection) -> Result<Self, DataProviderError> {
         let http = reqwest::Client::builder()
             .timeout(HTTP_TIMEOUT)
             .user_agent("t-rader/0.1 (news aggregator)")
             .build()
             .map_err(|e| DataProviderError::Network(e.to_string()))?;
-        Ok(Self { http, feeds })
+        Ok(Self { http, db })
+    }
+
+    async fn load_feeds(&self) -> Result<Vec<RssFeed>, DataProviderError> {
+        let rows = rss_feed::Entity::find()
+            .filter(rss_feed::Column::Enabled.eq(true))
+            .order_by_asc(rss_feed::Column::DisplayName)
+            .all(&self.db)
+            .await
+            .map_err(|e| DataProviderError::Database(e.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| RssFeed {
+                // `news_item.source` には PR #192 以前から human-readable な display_name
+                // (`Bloomberg JP` 等) が入っており、戦略 link も substring match に使う。
+                // slug に置き換えると既存行と新規行で source が混在して fragmentation するため、
+                // ここでは display_name を採用する。slug への移行は news_item.source の
+                // バックフィルとセットで別 PR で扱う。
+                source: row.display_name,
+                url: row.url,
+            })
+            .collect())
     }
 
     async fn fetch_feed(&self, feed: &RssFeed) -> Result<Vec<NewsItem>, DataProviderError> {
@@ -110,9 +88,10 @@ impl RssNewsAggregator {
 #[async_trait::async_trait]
 impl NewsAggregator for RssNewsAggregator {
     async fn fetch_news(&self) -> Result<Vec<NewsItem>, DataProviderError> {
+        let feeds = self.load_feeds().await?;
         // 個別フィードの失敗で全体を倒さない。warn ログだけ残し、取れた分を返す
         let mut all: Vec<NewsItem> = Vec::new();
-        for feed in &self.feeds {
+        for feed in &feeds {
             match self.fetch_feed(feed).await {
                 Ok(items) => all.extend(items),
                 Err(err) => {
@@ -583,39 +562,6 @@ mod tests {
         #[case] expected: &str,
     ) {
         assert_eq!(truncate_chars(input, max), expected);
-    }
-
-    #[rstest]
-    fn parse_feed_env_returns_entries() {
-        assert_eq!(
-            parse_feed_env("Yahoo|https://a,Bloomberg|https://b")
-                .expect("ok")
-                .into_iter()
-                .map(|f| (f.source, f.url))
-                .collect::<Vec<_>>(),
-            vec![
-                ("Yahoo".into(), "https://a".into()),
-                ("Bloomberg".into(), "https://b".into()),
-            ],
-        );
-    }
-
-    #[rstest]
-    #[case::missing_separator(
-        "only-name",
-        "failed to parse response: NEWS_RSS_FEEDS: entry 'only-name' is missing '|' separator (expected 'name|url')"
-    )]
-    #[case::empty_name(
-        "|https://x",
-        "failed to parse response: NEWS_RSS_FEEDS: entry '|https://x' has empty name or url"
-    )]
-    #[case::empty_url(
-        "name|",
-        "failed to parse response: NEWS_RSS_FEEDS: entry 'name|' has empty name or url"
-    )]
-    fn parse_feed_env_rejects_malformed(#[case] input: &str, #[case] expected_msg: &str) {
-        let err = parse_feed_env(input).expect_err("should fail");
-        assert_eq!(format!("{err}"), expected_msg);
     }
 
     #[rstest]

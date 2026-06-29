@@ -45,6 +45,29 @@ export function Header() {
       <div className="flex flex-shrink-0 items-center gap-2">
         <NavLink to="/portfolio" label="ポートフォリオ" />
         <NavLink to="/trades" label="取引履歴" />
+        {strategyId != null ? (
+          <Link
+            to="/strategies/$id/indicators"
+            params={{ id: strategyId }}
+            activeOptions={{ exact: false }}
+            className={NAV_INACTIVE}
+            activeProps={{ className: NAV_ACTIVE }}
+          >
+            indicators
+          </Link>
+        ) : (
+          <NavLink to="/indicators" label="indicators" />
+        )}
+        <Link
+          to="/settings"
+          activeOptions={{ exact: false }}
+          className={NAV_INACTIVE}
+          activeProps={{ className: NAV_ACTIVE }}
+          title="設定"
+          aria-label="設定"
+        >
+          <SettingsIcon className="size-3.5" />
+        </Link>
         {strategyId != null && (
           <Link
             to="/strategies/$id/settings"
@@ -53,7 +76,7 @@ export function Header() {
             title="戦略設定"
             aria-label="戦略設定"
           >
-            <SettingsIcon className="size-3.5" />
+            戦略設定
           </Link>
         )}
       </div>

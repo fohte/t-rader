@@ -34,7 +34,7 @@ use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     annotations, bars, comments, custom_indicators, history, hooks, hypotheses, imports, interests,
-    macro_data, news, notes, refs, strategies, trades, triggers, watchlists,
+    macro_data, news, notes, refs, rss_feeds, strategies, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
@@ -98,6 +98,7 @@ impl AppState {
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
         (name = "macro", description = "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"),
         (name = "news", description = "ニュース (公開 RSS の集約結果と戦略への紐付け)"),
+        (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
     ),
     info(
         title = "T-Rader API",
@@ -274,10 +275,20 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             custom_indicators::create_strategy_indicator
         ))
         .routes(routes!(custom_indicators::get_strategy_indicator))
+        .routes(routes!(custom_indicators::preview_indicator))
         // macro
         .routes(routes!(macro_data::get_macro_ticks))
         // news
         .routes(routes!(news::list_strategy_news))
+        // rss feeds
+        .routes(routes!(
+            rss_feeds::list_rss_feeds,
+            rss_feeds::create_rss_feed
+        ))
+        .routes(routes!(
+            rss_feeds::update_rss_feed,
+            rss_feeds::delete_rss_feed
+        ))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)
