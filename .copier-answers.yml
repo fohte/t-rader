@@ -1,5 +1,5 @@
 # Changes here will be overwritten by Copier
-_commit: v0.8.9
+_commit: v0.8.11
 _src_path: https://github.com/fohte/generic-boilerplate
 description: 個人向け日本株投資プラットフォーム
 is_public: true
@@ -15,5 +15,3 @@ type: base
 use_coverage: true
 use_release_please: false
 use_storybook: true
-
-#copier updated
