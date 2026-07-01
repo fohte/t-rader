@@ -16,7 +16,7 @@
     "build": "vite build",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
-    "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/schema.gen.d.ts"
+    "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/schema.gen.d.ts && prettier --write src/lib/api/schema.gen.d.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "21.0.2",
