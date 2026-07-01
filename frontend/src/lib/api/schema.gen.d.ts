@@ -4,5884 +4,5884 @@
  */
 
 export interface paths {
-    "/api/annotations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** アノテーション一覧 */
-        get: operations["list_annotations"];
-        put?: never;
-        /** アノテーション作成 */
-        post: operations["create_annotation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/annotations/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** アノテーション取得 */
-        get: operations["get_annotation"];
-        put?: never;
-        post?: never;
-        /** アノテーション削除 */
-        delete: operations["delete_annotation"];
-        options?: never;
-        head?: never;
-        /** アノテーション更新 */
-        patch: operations["update_annotation"];
-        trace?: never;
-    };
-    "/api/annotations/{id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** アノテーションを approved に遷移 */
-        post: operations["approve_annotation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/annotations/{id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** アノテーションを rejected に遷移 */
-        post: operations["reject_annotation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/bars": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** バーデータを取得する */
-        get: operations["list_bars"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/comments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** コメント一覧。`target_kind` + `target_id` でフィルタ。スレッドは parent_id で表現する。 */
-        get: operations["list_comments"];
-        put?: never;
-        /** コメント投稿 */
-        post: operations["create_comment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/comments/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** コメント削除 */
-        delete: operations["delete_comment"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** ヘルスチェック */
-        get: operations["health_check"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 変更履歴一覧。target で絞らない場合は全体の最新を返す。 */
-        get: operations["list_history"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/history/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 変更履歴詳細 */
-        get: operations["get_history"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/hooks/{hook_slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * hook を受信する。
-         * @description - `hook_slug` に一致する有効な trigger が無ければ 404
-         *     - trigger が `enabled=false` の場合も 404 (外部に存在を漏らさない)
-         *     - `event_match` を満たさない payload は 200 OK の no-op
-         *     - 満たした場合は共通 service 経由で `submit_strategy_task` を呼び、200 OK を返す
-         */
-        post: operations["receive_hook"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/imports/sbi/commit": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * プレビュー結果を確認・割当した上で実 INSERT する。
-         *     各行に対して重複検知 (同日・同銘柄・同売買・同数量・同単価) を行い skip カウントを返す。
-         */
-        post: operations["sbi_commit"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/imports/sbi/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** SBI 国内株式 CSV プレビュー。 */
-        post: operations["sbi_preview"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/indicators": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** グローバル indicator 一覧 */
-        get: operations["list_global_indicators"];
-        put?: never;
-        /** グローバル indicator 作成 */
-        post: operations["create_global_indicator"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/indicators/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** indicator を保存せずに 1 回だけ実行してみる (Monaco エディタのプレビュー用) */
-        post: operations["preview_indicator"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/indicators/{indicator_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** indicator 詳細 */
-        get: operations["get_indicator"];
-        /** indicator 更新 */
-        put: operations["update_indicator"];
-        post?: never;
-        /** indicator 削除 */
-        delete: operations["delete_indicator"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/macro/ticks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** マクロ指標の現在値を取得する */
-        get: operations["get_macro_ticks"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** ノート一覧 */
-        get: operations["list_notes"];
-        put?: never;
-        /** ノート作成 */
-        post: operations["create_note"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** ノート取得 */
-        get: operations["get_note"];
-        put?: never;
-        post?: never;
-        /** ノート削除 */
-        delete: operations["delete_note"];
-        options?: never;
-        head?: never;
-        /** ノート更新 */
-        patch: operations["update_note"];
-        trace?: never;
-    };
-    "/api/notes/{id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** ノートを approved に遷移 */
-        post: operations["approve_note"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/notes/{id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** ノートを rejected に遷移 */
-        post: operations["reject_note"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/indicators": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** indicator 検索 */
-        get: operations["list_indicators"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/indicators/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** indicator 詳細 */
-        get: operations["get_indicator"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/resolve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
-         * @description `link=stock:7203,indicator:USDJPY` のようにカンマ区切りで複数渡せる。
-         *     不一致のものは name = null で返す。
-         */
-        get: operations["resolve_refs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/sectors": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** sector 検索 */
-        get: operations["list_sectors"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/sectors/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** sector 詳細 */
-        get: operations["get_sector"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/stocks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** stock 検索 */
-        get: operations["list_stocks"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/stocks/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** stock 詳細 */
-        get: operations["get_stock"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/themes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** theme 検索 */
-        get: operations["list_themes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/refs/themes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** theme 詳細 */
-        get: operations["get_theme"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/rss-feeds": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** RSS フィード一覧 */
-        get: operations["list_rss_feeds"];
-        put?: never;
-        /** RSS フィードを作成 */
-        post: operations["create_rss_feed"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/rss-feeds/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** RSS フィードを削除する。news_item 行は残す (履歴互換性)。 */
-        delete: operations["delete_rss_feed"];
-        options?: never;
-        head?: never;
-        /** RSS フィードを部分更新する (`source` は変更不可) */
-        patch: operations["update_rss_feed"];
-        trace?: never;
-    };
-    "/api/strategies": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略一覧 */
-        get: operations["list_strategies"];
-        put?: never;
-        /** 戦略作成 */
-        post: operations["create_strategy"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略取得 */
-        get: operations["get_strategy"];
-        put?: never;
-        post?: never;
-        /** 戦略削除 */
-        delete: operations["delete_strategy"];
-        options?: never;
-        head?: never;
-        /** 戦略更新 */
-        patch: operations["update_strategy"];
-        trace?: never;
-    };
-    "/api/strategies/{id}/agents-md": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略 Agent の AGENTS.md (方針 / 制約 markdown) を取得 */
-        get: operations["get_agents_md"];
-        /** 戦略 Agent の AGENTS.md を上書き保存し、Agent reconcile を再発火 */
-        put: operations["put_agents_md"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** フローティングチャットから戦略 Agent にタスクを投入する */
-        post: operations["submit_strategy_chat"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/hypotheses": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略の仮説一覧 (更新日時の降順) */
-        get: operations["list_strategy_hypotheses"];
-        put?: never;
-        /** 仮説を作成する */
-        post: operations["create_strategy_hypothesis"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/hypotheses/{hypothesis_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 仮説を取得する (戦略境界チェック付き) */
-        get: operations["get_strategy_hypothesis"];
-        put?: never;
-        post?: never;
-        /** 仮説を削除する */
-        delete: operations["delete_strategy_hypothesis"];
-        options?: never;
-        head?: never;
-        /** 仮説を更新する */
-        patch: operations["update_strategy_hypothesis"];
-        trace?: never;
-    };
-    "/api/strategies/{id}/indicators": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略 scope indicator 一覧 */
-        get: operations["list_strategy_indicators"];
-        put?: never;
-        /** 戦略 scope indicator 作成 */
-        post: operations["create_strategy_indicator"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/indicators/{indicator_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略 scope の指定 indicator 詳細 (境界外は 404) */
-        get: operations["get_strategy_indicator"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/interests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略の関心 (シード + LLM 派生) 一覧 */
-        get: operations["list_strategy_interests"];
-        put?: never;
-        /** 戦略の関心を追加する */
-        post: operations["create_strategy_interest"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/interests/{ref_kind}/{ref_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** 関心を削除する */
-        delete: operations["delete_strategy_interest"];
-        options?: never;
-        head?: never;
-        /** 既存の関心を更新する (role / origin のみ) */
-        patch: operations["update_strategy_interest"];
-        trace?: never;
-    };
-    "/api/strategies/{id}/news": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 戦略に関連付けられたニュース一覧を取得する
-         * @description `news_strategy_link` を介して `strategy_id` で絞り込み、`published_at` 降順で返す。
-         *     他戦略のニュースは含まれない (link 経由のためテーブル境界で隔離される)。
-         */
-        get: operations["list_strategy_news"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/skills": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略 Agent の skills 全件取得 */
-        get: operations["get_skills"];
-        /** 戦略 Agent の skills 全置換 */
-        put: operations["put_skills"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/skills/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** 戦略 Agent の単一 skill 追加 / 更新 */
-        put: operations["put_skill"];
-        post?: never;
-        /** 戦略 Agent の単一 skill 削除 */
-        delete: operations["delete_skill"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/tasks/{task_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 投入済み戦略タスクの phase / error_summary を取得する */
-        get: operations["get_strategy_task"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/strategies/{id}/triggers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 戦略の trigger 一覧 */
-        get: operations["list_strategy_triggers"];
-        put?: never;
-        /** trigger を作成 */
-        post: operations["create_strategy_trigger"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/trades": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 取引履歴一覧 */
-        get: operations["list_trades"];
-        put?: never;
-        /** 取引作成 */
-        post: operations["create_trade"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/trades/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 損益サマリ (FIFO ベース)。`strategy_id` 未指定なら全体ポートフォリオ。 */
-        get: operations["trades_summary"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/trades/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 取引取得 */
-        get: operations["get_trade"];
-        put?: never;
-        post?: never;
-        /** 取引削除 */
-        delete: operations["delete_trade"];
-        options?: never;
-        head?: never;
-        /** 取引更新 */
-        patch: operations["update_trade"];
-        trace?: never;
-    };
-    "/api/triggers/{trigger_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** trigger 詳細 */
-        get: operations["get_trigger"];
-        /** trigger 更新 (kind / strategy_id は不変) */
-        put: operations["update_trigger"];
-        post?: never;
-        /** trigger 削除 */
-        delete: operations["delete_trigger"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/watchlists": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** ウォッチリスト一覧を取得する */
-        get: operations["list_watchlists"];
-        put?: never;
-        /** ウォッチリストを作成する */
-        post: operations["create_watchlist"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/watchlists/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** ウォッチリストを削除する */
-        delete: operations["delete_watchlist"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/watchlists/{id}/items": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** ウォッチリスト内の銘柄一覧を取得する */
-        get: operations["list_watchlist_items"];
-        put?: never;
-        /** ウォッチリストに銘柄を追加する */
-        post: operations["add_watchlist_item"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/watchlists/{id}/items/{instrument_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** ウォッチリストから銘柄を削除する */
-        delete: operations["delete_watchlist_item"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
+  '/api/annotations': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** アノテーション一覧 */
+    get: operations['list_annotations']
+    put?: never
+    /** アノテーション作成 */
+    post: operations['create_annotation']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/annotations/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** アノテーション取得 */
+    get: operations['get_annotation']
+    put?: never
+    post?: never
+    /** アノテーション削除 */
+    delete: operations['delete_annotation']
+    options?: never
+    head?: never
+    /** アノテーション更新 */
+    patch: operations['update_annotation']
+    trace?: never
+  }
+  '/api/annotations/{id}/approve': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** アノテーションを approved に遷移 */
+    post: operations['approve_annotation']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/annotations/{id}/reject': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** アノテーションを rejected に遷移 */
+    post: operations['reject_annotation']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/bars': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** バーデータを取得する */
+    get: operations['list_bars']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/comments': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** コメント一覧。`target_kind` + `target_id` でフィルタ。スレッドは parent_id で表現する。 */
+    get: operations['list_comments']
+    put?: never
+    /** コメント投稿 */
+    post: operations['create_comment']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/comments/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** コメント削除 */
+    delete: operations['delete_comment']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/health': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ヘルスチェック */
+    get: operations['health_check']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/history': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 変更履歴一覧。target で絞らない場合は全体の最新を返す。 */
+    get: operations['list_history']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/history/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 変更履歴詳細 */
+    get: operations['get_history']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/hooks/{hook_slug}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * hook を受信する。
+     * @description - `hook_slug` に一致する有効な trigger が無ければ 404
+     *     - trigger が `enabled=false` の場合も 404 (外部に存在を漏らさない)
+     *     - `event_match` を満たさない payload は 200 OK の no-op
+     *     - 満たした場合は共通 service 経由で `submit_strategy_task` を呼び、200 OK を返す
+     */
+    post: operations['receive_hook']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/imports/sbi/commit': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * プレビュー結果を確認・割当した上で実 INSERT する。
+     *     各行に対して重複検知 (同日・同銘柄・同売買・同数量・同単価) を行い skip カウントを返す。
+     */
+    post: operations['sbi_commit']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/imports/sbi/preview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** SBI 国内株式 CSV プレビュー。 */
+    post: operations['sbi_preview']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/indicators': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** グローバル indicator 一覧 */
+    get: operations['list_global_indicators']
+    put?: never
+    /** グローバル indicator 作成 */
+    post: operations['create_global_indicator']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/indicators/preview': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** indicator を保存せずに 1 回だけ実行してみる (Monaco エディタのプレビュー用) */
+    post: operations['preview_indicator']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/indicators/{indicator_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** indicator 詳細 */
+    get: operations['get_indicator']
+    /** indicator 更新 */
+    put: operations['update_indicator']
+    post?: never
+    /** indicator 削除 */
+    delete: operations['delete_indicator']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/macro/ticks': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** マクロ指標の現在値を取得する */
+    get: operations['get_macro_ticks']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノート一覧 */
+    get: operations['list_notes']
+    put?: never
+    /** ノート作成 */
+    post: operations['create_note']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノート取得 */
+    get: operations['get_note']
+    put?: never
+    post?: never
+    /** ノート削除 */
+    delete: operations['delete_note']
+    options?: never
+    head?: never
+    /** ノート更新 */
+    patch: operations['update_note']
+    trace?: never
+  }
+  '/api/notes/{id}/approve': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** ノートを approved に遷移 */
+    post: operations['approve_note']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}/reject': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** ノートを rejected に遷移 */
+    post: operations['reject_note']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/indicators': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** indicator 検索 */
+    get: operations['list_indicators']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/indicators/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** indicator 詳細 */
+    get: operations['get_indicator']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/resolve': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
+     * @description `link=stock:7203,indicator:USDJPY` のようにカンマ区切りで複数渡せる。
+     *     不一致のものは name = null で返す。
+     */
+    get: operations['resolve_refs']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/sectors': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** sector 検索 */
+    get: operations['list_sectors']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/sectors/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** sector 詳細 */
+    get: operations['get_sector']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/stocks': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** stock 検索 */
+    get: operations['list_stocks']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/stocks/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** stock 詳細 */
+    get: operations['get_stock']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/themes': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** theme 検索 */
+    get: operations['list_themes']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/refs/themes/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** theme 詳細 */
+    get: operations['get_theme']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/rss-feeds': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** RSS フィード一覧 */
+    get: operations['list_rss_feeds']
+    put?: never
+    /** RSS フィードを作成 */
+    post: operations['create_rss_feed']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/rss-feeds/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** RSS フィードを削除する。news_item 行は残す (履歴互換性)。 */
+    delete: operations['delete_rss_feed']
+    options?: never
+    head?: never
+    /** RSS フィードを部分更新する (`source` は変更不可) */
+    patch: operations['update_rss_feed']
+    trace?: never
+  }
+  '/api/strategies': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略一覧 */
+    get: operations['list_strategies']
+    put?: never
+    /** 戦略作成 */
+    post: operations['create_strategy']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略取得 */
+    get: operations['get_strategy']
+    put?: never
+    post?: never
+    /** 戦略削除 */
+    delete: operations['delete_strategy']
+    options?: never
+    head?: never
+    /** 戦略更新 */
+    patch: operations['update_strategy']
+    trace?: never
+  }
+  '/api/strategies/{id}/agents-md': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略 Agent の AGENTS.md (方針 / 制約 markdown) を取得 */
+    get: operations['get_agents_md']
+    /** 戦略 Agent の AGENTS.md を上書き保存し、Agent reconcile を再発火 */
+    put: operations['put_agents_md']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/chat': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** フローティングチャットから戦略 Agent にタスクを投入する */
+    post: operations['submit_strategy_chat']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/hypotheses': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の仮説一覧 (更新日時の降順) */
+    get: operations['list_strategy_hypotheses']
+    put?: never
+    /** 仮説を作成する */
+    post: operations['create_strategy_hypothesis']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/hypotheses/{hypothesis_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 仮説を取得する (戦略境界チェック付き) */
+    get: operations['get_strategy_hypothesis']
+    put?: never
+    post?: never
+    /** 仮説を削除する */
+    delete: operations['delete_strategy_hypothesis']
+    options?: never
+    head?: never
+    /** 仮説を更新する */
+    patch: operations['update_strategy_hypothesis']
+    trace?: never
+  }
+  '/api/strategies/{id}/indicators': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略 scope indicator 一覧 */
+    get: operations['list_strategy_indicators']
+    put?: never
+    /** 戦略 scope indicator 作成 */
+    post: operations['create_strategy_indicator']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/indicators/{indicator_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略 scope の指定 indicator 詳細 (境界外は 404) */
+    get: operations['get_strategy_indicator']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/interests': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の関心 (シード + LLM 派生) 一覧 */
+    get: operations['list_strategy_interests']
+    put?: never
+    /** 戦略の関心を追加する */
+    post: operations['create_strategy_interest']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/interests/{ref_kind}/{ref_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** 関心を削除する */
+    delete: operations['delete_strategy_interest']
+    options?: never
+    head?: never
+    /** 既存の関心を更新する (role / origin のみ) */
+    patch: operations['update_strategy_interest']
+    trace?: never
+  }
+  '/api/strategies/{id}/news': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 戦略に関連付けられたニュース一覧を取得する
+     * @description `news_strategy_link` を介して `strategy_id` で絞り込み、`published_at` 降順で返す。
+     *     他戦略のニュースは含まれない (link 経由のためテーブル境界で隔離される)。
+     */
+    get: operations['list_strategy_news']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/skills': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略 Agent の skills 全件取得 */
+    get: operations['get_skills']
+    /** 戦略 Agent の skills 全置換 */
+    put: operations['put_skills']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/skills/{name}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    /** 戦略 Agent の単一 skill 追加 / 更新 */
+    put: operations['put_skill']
+    post?: never
+    /** 戦略 Agent の単一 skill 削除 */
+    delete: operations['delete_skill']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/tasks/{task_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 投入済み戦略タスクの phase / error_summary を取得する */
+    get: operations['get_strategy_task']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/triggers': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の trigger 一覧 */
+    get: operations['list_strategy_triggers']
+    put?: never
+    /** trigger を作成 */
+    post: operations['create_strategy_trigger']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/trades': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 取引履歴一覧 */
+    get: operations['list_trades']
+    put?: never
+    /** 取引作成 */
+    post: operations['create_trade']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/trades/summary': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 損益サマリ (FIFO ベース)。`strategy_id` 未指定なら全体ポートフォリオ。 */
+    get: operations['trades_summary']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/trades/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 取引取得 */
+    get: operations['get_trade']
+    put?: never
+    post?: never
+    /** 取引削除 */
+    delete: operations['delete_trade']
+    options?: never
+    head?: never
+    /** 取引更新 */
+    patch: operations['update_trade']
+    trace?: never
+  }
+  '/api/triggers/{trigger_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** trigger 詳細 */
+    get: operations['get_trigger']
+    /** trigger 更新 (kind / strategy_id は不変) */
+    put: operations['update_trigger']
+    post?: never
+    /** trigger 削除 */
+    delete: operations['delete_trigger']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/watchlists': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ウォッチリスト一覧を取得する */
+    get: operations['list_watchlists']
+    put?: never
+    /** ウォッチリストを作成する */
+    post: operations['create_watchlist']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/watchlists/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** ウォッチリストを削除する */
+    delete: operations['delete_watchlist']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/watchlists/{id}/items': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ウォッチリスト内の銘柄一覧を取得する */
+    get: operations['list_watchlist_items']
+    put?: never
+    /** ウォッチリストに銘柄を追加する */
+    post: operations['add_watchlist_item']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/watchlists/{id}/items/{instrument_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** ウォッチリストから銘柄を削除する */
+    delete: operations['delete_watchlist_item']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
 }
-export type webhooks = Record<string, never>;
+export type webhooks = Record<string, never>
 export interface components {
-    schemas: {
-        AddWatchlistItemRequest: {
-            /** @description 銘柄コード (例: "7203") */
-            instrument_id: string;
-            /** @description 銘柄名 (例: "トヨタ自動車") */
-            name: string;
-        };
-        AgentsMdBody: {
-            content: string;
-        };
-        Annotation: {
-            /** Format: date-time */
-            created_at: string;
-            created_by_kind: string;
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            linked_note_id?: string | null;
-            price?: number;
-            status: string;
-            /** Format: uuid */
-            strategy_id: string;
-            target_kind: string;
-            target_symbol: string;
-            text: string;
-            /** Format: date-time */
-            timestamp: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        Bar: {
-            close: number;
-            high: number;
-            instrument_id: string;
-            low: number;
-            open: number;
-            /** @enum {string} */
-            timeframe: "1d";
-            /** Format: date-time */
-            timestamp: string;
-            /** Format: int64 */
-            volume: number;
-        };
-        ChangeHistory: {
-            actor_kind: string;
-            actor_label: string;
-            /** Format: date-time */
-            created_at: string;
-            diff_json: Record<string, never>;
-            /** Format: uuid */
-            id: string;
-            op: string;
-            summary?: string | null;
-            /** Format: uuid */
-            target_id: string;
-            target_kind: string;
-        };
-        ChangeStatusRequest: {
-            /** @description 任意のラベル (例: 却下理由) */
-            label?: string | null;
-        };
-        Comment: {
-            author_kind: string;
-            author_label: string;
-            body: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            parent_id?: string | null;
-            /** Format: uuid */
-            target_id: string;
-            target_kind: string;
-        };
-        CreateAnnotationRequest: {
-            created_by_kind?: string | null;
-            /** Format: uuid */
-            linked_note_id?: string | null;
-            /** Format: double */
-            price?: number | null;
-            status?: string | null;
-            /** Format: uuid */
-            strategy_id: string;
-            /** @description "signal" | "level" | "observation" | "other" */
-            target_kind: string;
-            target_symbol: string;
-            text: string;
-            /** Format: date-time */
-            timestamp: string;
-        };
-        CreateCommentRequest: {
-            /** @description "human" | "llm"。デフォルトは "human" */
-            author_kind?: string | null;
-            author_label?: string | null;
-            body: string;
-            /** Format: uuid */
-            parent_id?: string | null;
-            /** Format: uuid */
-            target_id: string;
-            /** @description "note" | "annotation" */
-            target_kind: string;
-        };
-        CreateCustomIndicatorRequest: {
-            code: string;
-            description?: string | null;
-            input_schema: {
-                [key: string]: unknown;
-            };
-            name: string;
-            output_schema: {
-                [key: string]: unknown;
-            };
-        };
-        CreateHypothesisRequest: {
-            body: string;
-            related_interest_ids?: string[] | null;
-            related_note_ids?: string[] | null;
-            /** @description 省略時 `unverified` */
-            status?: string | null;
-            title: string;
-        };
-        /**
-         * @description 戦略の関心 (interest) を新規追加するリクエスト。
-         *
-         *     `ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。
-         *     `role` は省略時 `seed`、`origin` は省略時 `human`。
-         */
-        CreateInterestRequest: {
-            origin?: string | null;
-            ref_id: string;
-            ref_kind: string;
-            role?: string | null;
-        };
-        CreateNoteRequest: {
-            body_md: string;
-            /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
-            created_by_kind?: string | null;
-            frontmatter_json?: {
-                [key: string]: unknown;
-            } | null;
-            /** @description 任意。デフォルトは "unread" */
-            status?: string | null;
-            /** Format: uuid */
-            strategy_id: string;
-            title: string;
-            trigger?: null | components["schemas"]["NoteTrigger"];
-            trigger_label?: string | null;
-            type_tag?: string | null;
-        };
-        CreateRssFeedRequest: {
-            /** @description UI 表示用名前 */
-            display_name: string;
-            /** @description 省略時は true */
-            enabled?: boolean | null;
-            /** @description machine key (slug, `^[a-z0-9_-]+$`). 内部処理・MCP の参照用 */
-            source: string;
-            /** @description RSS フィード URL (http / https のみ) */
-            url: string;
-        };
-        CreateStrategyRequest: {
-            description?: string | null;
-            name: string;
-            /** Format: int32 */
-            sort_order?: number | null;
-        };
-        CreateTradeRequest: {
-            /** Format: date */
-            date: string;
-            /** Format: double */
-            fee?: number | null;
-            note?: string | null;
-            /** Format: double */
-            price: number;
-            /** Format: double */
-            qty: number;
-            /** @description "buy" | "sell" */
-            side: string;
-            /** @description "manual" | "csv" | "api" */
-            source: string;
-            /** Format: uuid */
-            strategy_id: string;
-            symbol: string;
-        };
-        CreateTriggerRequest: {
-            enabled?: boolean | null;
-            event_match?: unknown;
-            /** @description kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子) */
-            hook_slug?: string | null;
-            kind: components["schemas"]["TriggerKind"];
-            prompt_template: string;
-            /** @description kind=cron 時に必須 (UTC の 5 フィールド cron 式) */
-            schedule?: string | null;
-        };
-        CreateWatchlistRequest: {
-            /** @description ウォッチリスト名 */
-            name: string;
-        };
-        CustomIndicator: {
-            code: string;
-            /** Format: date-time */
-            created_at: string;
-            description?: string | null;
-            /** Format: uuid */
-            indicator_id: string;
-            input_schema: Record<string, never>;
-            name: string;
-            output_schema: Record<string, never>;
-            scope: string;
-            /** Format: uuid */
-            strategy_id?: string | null;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        /** @description API エラーレスポンスの JSON 構造 */
-        ErrorResponse: {
-            /** @description エラーメッセージ */
-            error: string;
-        };
-        /** @description ヘルスチェックレスポンス */
-        HealthResponse: {
-            /** @description サービスの状態 */
-            status: string;
-        };
-        /**
-         * @description hook 受信レスポンス。
-         *
-         *     `fired = true`: trigger に紐づく strategy_task が作成された。
-         *     `fired = false`: payload が `event_match` を満たさなかったため no-op (200 OK)。
-         */
-        HookResponse: {
-            /** @description 発火したか */
-            fired: boolean;
-            /**
-             * Format: uuid
-             * @description 発火時のみ。作成された strategy_task の UUID。
-             */
-            task_id?: string | null;
-        };
-        Hypothesis: {
-            body: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: uuid */
-            hypothesis_id: string;
-            related_interest_ids: string[];
-            related_note_ids: string[];
-            status: string;
-            /** Format: uuid */
-            strategy_id: string;
-            title: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        Indicator: {
-            id: string;
-            kind: string;
-            name: string;
-        };
-        /** @description マクロ指標の現在値 */
-        MacroTick: {
-            /**
-             * Format: date-time
-             * @description このティックの取得時刻
-             */
-            fetched_at: string;
-            /**
-             * Format: double
-             * @description 前日終値からの変化率 (%)
-             */
-            pct: number;
-            /** @description 表示用シンボル名 (例: "日経225") */
-            symbol: string;
-            /** @description 現在値 (フォーマット済み文字列) */
-            value: string;
-        };
-        /** @description マクロ指標ティック取得レスポンス */
-        MacroTicksResponse: {
-            /**
-             * Format: date-time
-             * @description 直近の取得失敗が継続している場合、その失敗の開始時刻
-             */
-            stale_since?: string | null;
-            /** @description 直近の取得値。一度も成功していない、または 24h 以上失敗が続いている場合は `null` */
-            ticks?: components["schemas"]["MacroTick"][] | null;
-        };
-        MatchedRef: {
-            matched_term: string;
-            ref_id: string;
-            ref_kind: string;
-        };
-        Note: {
-            body_md: string;
-            /** Format: date-time */
-            created_at: string;
-            created_by_kind: string;
-            frontmatter_json: Record<string, never>;
-            /** Format: uuid */
-            id: string;
-            status: string;
-            /** Format: uuid */
-            strategy_id: string;
-            title: string;
-            trigger?: string | null;
-            trigger_label?: string | null;
-            type_tag?: string | null;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        /**
-         * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
-         * @enum {string}
-         */
-        NoteTrigger: "hook" | "cron" | "on-demand" | "manual";
-        /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
-        PerformanceSummary: {
-            positions: components["schemas"]["PositionSummary"][];
-            /** Format: double */
-            realized_pnl: number;
-            /** Format: uuid */
-            strategy_id?: string | null;
-            /** Format: int64 */
-            trade_count: number;
-        };
-        /** @description 銘柄ごとの未決済ポジションと損益 */
-        PositionSummary: {
-            /**
-             * Format: double
-             * @description 平均取得単価 (FIFO ベース)
-             */
-            avg_cost: number;
-            /**
-             * Format: double
-             * @description 取得簿価 (qty * avg_cost)
-             */
-            cost_basis: number;
-            /**
-             * Format: double
-             * @description 保有数量 (買い残 - 売り残)
-             */
-            qty: number;
-            /**
-             * Format: double
-             * @description 実現損益累計
-             */
-            realized_pnl: number;
-            symbol: string;
-        };
-        PreviewIndicatorRequest: {
-            args: unknown;
-            code: string;
-            input_schema: {
-                [key: string]: unknown;
-            };
-            /** Format: int32 */
-            max_output_bytes?: number | null;
-            output_schema: {
-                [key: string]: unknown;
-            };
-            /** Format: int32 */
-            timeout_secs?: number | null;
-        };
-        PreviewIndicatorResponse: {
-            /** Format: int32 */
-            exit_code: number;
-            /**
-             * @description stdout 最終行を JSON parse し output_schema で validation 済みの値。
-             *     exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を参照)。
-             */
-            output?: unknown;
-            stderr: string;
-            stdout: string;
-        };
-        /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
-        RefResolution: {
-            id: string;
-            /** @description "stock" | "indicator" | "sector" | "theme" */
-            kind: string;
-            /** @description 一致しなかった場合は None */
-            name?: string | null;
-        };
-        RssFeed: {
-            /** Format: date-time */
-            created_at: string;
-            display_name: string;
-            enabled: boolean;
-            /** Format: uuid */
-            id: string;
-            source: string;
-            /** Format: date-time */
-            updated_at: string;
-            url: string;
-        };
-        SbiCommitRequest: {
-            rows: components["schemas"]["SbiCommitRow"][];
-        };
-        SbiCommitResponse: {
-            imported_count: number;
-            /** @description 重複検知でスキップした件数 */
-            skipped_count: number;
-        };
-        /** @description SBI commit リクエストの 1 行。preview を確認後、行ごとに戦略 ID を割り当てる。 */
-        SbiCommitRow: {
-            /** Format: date */
-            date: string;
-            /** Format: double */
-            fee?: number | null;
-            /** Format: double */
-            price: number;
-            /** Format: double */
-            qty: number;
-            side: string;
-            stock_name?: string;
-            /** Format: uuid */
-            strategy_id: string;
-            symbol: string;
-        };
-        SbiPreviewIssue: {
-            message: string;
-            row_index: number;
-        };
-        SbiPreviewResponse: {
-            issues: components["schemas"]["SbiPreviewIssue"][];
-            rows: components["schemas"]["SbiPreviewRow"][];
-        };
-        /** @description SBI CSV preview の 1 行。 */
-        SbiPreviewRow: {
-            /** Format: date */
-            date: string;
-            /** Format: double */
-            fee: number;
-            /** @description 同日・同銘柄・同売買・同数量・同単価で既存取引が見つかったか */
-            is_duplicate: boolean;
-            /** Format: double */
-            price: number;
-            /** Format: double */
-            qty: number;
-            /** @description 元 CSV 上の行番号 (0-based) */
-            row_index: number;
-            /** @description "buy" | "sell" */
-            side: string;
-            stock_name: string;
-            symbol: string;
-        };
-        Sector: {
-            id: string;
-            name: string;
-        };
-        SkillBody: {
-            content: string;
-        };
-        SkillsBody: {
-            skills: {
-                [key: string]: string;
-            };
-        };
-        Stock: {
-            /** Format: date-time */
-            created_at: string;
-            id: string;
-            market?: string | null;
-            name: string;
-            sector_id?: string | null;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        Strategy: {
-            /** Format: date-time */
-            created_at: string;
-            description?: string | null;
-            /** Format: uuid */
-            id: string;
-            name: string;
-            /** Format: int32 */
-            sort_order: number;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        /** @description フローティングチャットから戦略 Agent に投入する 1 メッセージ。 */
-        StrategyChatRequest: {
-            prompt: string;
-        };
-        /** @description `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。 */
-        StrategyChatResponse: {
-            kubeopencode_task_name: string;
-            /** Format: uuid */
-            task_id: string;
-        };
-        StrategyInterest: {
-            /** Format: date-time */
-            created_at: string;
-            origin: string;
-            ref_id: string;
-            ref_kind: string;
-            role: string;
-            /** Format: uuid */
-            strategy_id: string;
-        };
-        /** @description 戦略ホームの「関連ニュース」セクション用 1 件 */
-        StrategyNewsItem: {
-            body_snippet?: string | null;
-            /** Format: uuid */
-            id: string;
-            /** @description この戦略の interest のうち、このニュースに紐付いたものの一覧 (ref_kind:ref_id) */
-            matched_refs: components["schemas"]["MatchedRef"][];
-            /** Format: date-time */
-            published_at: string;
-            source: string;
-            title: string;
-            url: string;
-        };
-        /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
-        StrategyTaskStatusResponse: {
-            /** Format: date-time */
-            created_at: string;
-            error_summary?: string | null;
-            kubeopencode_task_name: string;
-            phase: string;
-            source: string;
-            /** Format: uuid */
-            strategy_id: string;
-            /** Format: uuid */
-            task_id: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        Theme: {
-            description?: string | null;
-            id: string;
-            name: string;
-        };
-        Trade: {
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date */
-            date: string;
-            fee: number;
-            /** Format: uuid */
-            id: string;
-            note?: string | null;
-            price: number;
-            qty: number;
-            side: string;
-            source: string;
-            /** Format: uuid */
-            strategy_id: string;
-            symbol: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        Trigger: {
-            /** Format: date-time */
-            created_at: string;
-            enabled: boolean;
-            event_match?: Record<string, never> | null;
-            hook_slug?: string | null;
-            kind: string;
-            /** Format: date-time */
-            last_fired_at?: string | null;
-            prompt_template: string;
-            schedule?: string | null;
-            /** Format: uuid */
-            strategy_id: string;
-            /** Format: uuid */
-            trigger_id: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        /** @enum {string} */
-        TriggerKind: "cron" | "hook";
-        UpdateAnnotationRequest: {
-            /** Format: uuid */
-            linked_note_id?: string | null;
-            /** Format: double */
-            price?: number | null;
-            target_kind?: string | null;
-            target_symbol?: string | null;
-            text?: string | null;
-            /** Format: date-time */
-            timestamp?: string | null;
-        };
-        UpdateCustomIndicatorRequest: {
-            code?: string | null;
-            description?: string | null;
-            input_schema?: {
-                [key: string]: unknown;
-            } | null;
-            name?: string | null;
-            output_schema?: {
-                [key: string]: unknown;
-            } | null;
-        };
-        UpdateHypothesisRequest: {
-            body?: string | null;
-            related_interest_ids?: string[] | null;
-            related_note_ids?: string[] | null;
-            status?: string | null;
-            title?: string | null;
-        };
-        /** @description 既存の関心の role / origin を更新するリクエスト。 */
-        UpdateInterestRequest: {
-            origin?: string | null;
-            role?: string | null;
-        };
-        UpdateNoteRequest: {
-            body_md?: string | null;
-            frontmatter_json?: {
-                [key: string]: unknown;
-            } | null;
-            title?: string | null;
-            trigger?: null | components["schemas"]["NoteTrigger"];
-            trigger_label?: string | null;
-            type_tag?: string | null;
-        };
-        UpdateRssFeedRequest: {
-            display_name?: string | null;
-            enabled?: boolean | null;
-            url?: string | null;
-        };
-        UpdateStrategyRequest: {
-            description?: string | null;
-            name?: string | null;
-            /** Format: int32 */
-            sort_order?: number | null;
-        };
-        UpdateTradeRequest: {
-            /** Format: date */
-            date?: string | null;
-            /** Format: double */
-            fee?: number | null;
-            note?: string | null;
-            /** Format: double */
-            price?: number | null;
-            /** Format: double */
-            qty?: number | null;
-            side?: string | null;
-            source?: string | null;
-            symbol?: string | null;
-        };
-        UpdateTriggerRequest: {
-            enabled?: boolean | null;
-            event_match?: unknown;
-            hook_slug?: string | null;
-            prompt_template?: string | null;
-            schedule?: string | null;
-        };
-        Watchlist: {
-            /** Format: date-time */
-            created_at: string;
-            /** Format: uuid */
-            id: string;
-            name: string;
-            /** Format: int32 */
-            sort_order: number;
-        };
-        WatchlistItem: {
-            /** Format: date-time */
-            added_at: string;
-            instrument_id: string;
-            /** Format: int32 */
-            sort_order: number;
-            /** Format: uuid */
-            watchlist_id: string;
-        };
-    };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+  schemas: {
+    AddWatchlistItemRequest: {
+      /** @description 銘柄コード (例: "7203") */
+      instrument_id: string
+      /** @description 銘柄名 (例: "トヨタ自動車") */
+      name: string
+    }
+    AgentsMdBody: {
+      content: string
+    }
+    Annotation: {
+      /** Format: date-time */
+      created_at: string
+      created_by_kind: string
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      linked_note_id?: string | null
+      price?: number
+      status: string
+      /** Format: uuid */
+      strategy_id: string
+      target_kind: string
+      target_symbol: string
+      text: string
+      /** Format: date-time */
+      timestamp: string
+      /** Format: date-time */
+      updated_at: string
+    }
+    Bar: {
+      close: number
+      high: number
+      instrument_id: string
+      low: number
+      open: number
+      /** @enum {string} */
+      timeframe: '1d'
+      /** Format: date-time */
+      timestamp: string
+      /** Format: int64 */
+      volume: number
+    }
+    ChangeHistory: {
+      actor_kind: string
+      actor_label: string
+      /** Format: date-time */
+      created_at: string
+      diff_json: Record<string, never>
+      /** Format: uuid */
+      id: string
+      op: string
+      summary?: string | null
+      /** Format: uuid */
+      target_id: string
+      target_kind: string
+    }
+    ChangeStatusRequest: {
+      /** @description 任意のラベル (例: 却下理由) */
+      label?: string | null
+    }
+    Comment: {
+      author_kind: string
+      author_label: string
+      body: string
+      /** Format: date-time */
+      created_at: string
+      /** Format: uuid */
+      id: string
+      /** Format: uuid */
+      parent_id?: string | null
+      /** Format: uuid */
+      target_id: string
+      target_kind: string
+    }
+    CreateAnnotationRequest: {
+      created_by_kind?: string | null
+      /** Format: uuid */
+      linked_note_id?: string | null
+      /** Format: double */
+      price?: number | null
+      status?: string | null
+      /** Format: uuid */
+      strategy_id: string
+      /** @description "signal" | "level" | "observation" | "other" */
+      target_kind: string
+      target_symbol: string
+      text: string
+      /** Format: date-time */
+      timestamp: string
+    }
+    CreateCommentRequest: {
+      /** @description "human" | "llm"。デフォルトは "human" */
+      author_kind?: string | null
+      author_label?: string | null
+      body: string
+      /** Format: uuid */
+      parent_id?: string | null
+      /** Format: uuid */
+      target_id: string
+      /** @description "note" | "annotation" */
+      target_kind: string
+    }
+    CreateCustomIndicatorRequest: {
+      code: string
+      description?: string | null
+      input_schema: {
+        [key: string]: unknown
+      }
+      name: string
+      output_schema: {
+        [key: string]: unknown
+      }
+    }
+    CreateHypothesisRequest: {
+      body: string
+      related_interest_ids?: string[] | null
+      related_note_ids?: string[] | null
+      /** @description 省略時 `unverified` */
+      status?: string | null
+      title: string
+    }
+    /**
+     * @description 戦略の関心 (interest) を新規追加するリクエスト。
+     *
+     *     `ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。
+     *     `role` は省略時 `seed`、`origin` は省略時 `human`。
+     */
+    CreateInterestRequest: {
+      origin?: string | null
+      ref_id: string
+      ref_kind: string
+      role?: string | null
+    }
+    CreateNoteRequest: {
+      body_md: string
+      /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
+      created_by_kind?: string | null
+      frontmatter_json?: {
+        [key: string]: unknown
+      } | null
+      /** @description 任意。デフォルトは "unread" */
+      status?: string | null
+      /** Format: uuid */
+      strategy_id: string
+      title: string
+      trigger?: null | components['schemas']['NoteTrigger']
+      trigger_label?: string | null
+      type_tag?: string | null
+    }
+    CreateRssFeedRequest: {
+      /** @description UI 表示用名前 */
+      display_name: string
+      /** @description 省略時は true */
+      enabled?: boolean | null
+      /** @description machine key (slug, `^[a-z0-9_-]+$`). 内部処理・MCP の参照用 */
+      source: string
+      /** @description RSS フィード URL (http / https のみ) */
+      url: string
+    }
+    CreateStrategyRequest: {
+      description?: string | null
+      name: string
+      /** Format: int32 */
+      sort_order?: number | null
+    }
+    CreateTradeRequest: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      fee?: number | null
+      note?: string | null
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+      /** @description "buy" | "sell" */
+      side: string
+      /** @description "manual" | "csv" | "api" */
+      source: string
+      /** Format: uuid */
+      strategy_id: string
+      symbol: string
+    }
+    CreateTriggerRequest: {
+      enabled?: boolean | null
+      event_match?: unknown
+      /** @description kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子) */
+      hook_slug?: string | null
+      kind: components['schemas']['TriggerKind']
+      prompt_template: string
+      /** @description kind=cron 時に必須 (UTC の 5 フィールド cron 式) */
+      schedule?: string | null
+    }
+    CreateWatchlistRequest: {
+      /** @description ウォッチリスト名 */
+      name: string
+    }
+    CustomIndicator: {
+      code: string
+      /** Format: date-time */
+      created_at: string
+      description?: string | null
+      /** Format: uuid */
+      indicator_id: string
+      input_schema: Record<string, never>
+      name: string
+      output_schema: Record<string, never>
+      scope: string
+      /** Format: uuid */
+      strategy_id?: string | null
+      /** Format: date-time */
+      updated_at: string
+    }
+    /** @description API エラーレスポンスの JSON 構造 */
+    ErrorResponse: {
+      /** @description エラーメッセージ */
+      error: string
+    }
+    /** @description ヘルスチェックレスポンス */
+    HealthResponse: {
+      /** @description サービスの状態 */
+      status: string
+    }
+    /**
+     * @description hook 受信レスポンス。
+     *
+     *     `fired = true`: trigger に紐づく strategy_task が作成された。
+     *     `fired = false`: payload が `event_match` を満たさなかったため no-op (200 OK)。
+     */
+    HookResponse: {
+      /** @description 発火したか */
+      fired: boolean
+      /**
+       * Format: uuid
+       * @description 発火時のみ。作成された strategy_task の UUID。
+       */
+      task_id?: string | null
+    }
+    Hypothesis: {
+      body: string
+      /** Format: date-time */
+      created_at: string
+      /** Format: uuid */
+      hypothesis_id: string
+      related_interest_ids: string[]
+      related_note_ids: string[]
+      status: string
+      /** Format: uuid */
+      strategy_id: string
+      title: string
+      /** Format: date-time */
+      updated_at: string
+    }
+    Indicator: {
+      id: string
+      kind: string
+      name: string
+    }
+    /** @description マクロ指標の現在値 */
+    MacroTick: {
+      /**
+       * Format: date-time
+       * @description このティックの取得時刻
+       */
+      fetched_at: string
+      /**
+       * Format: double
+       * @description 前日終値からの変化率 (%)
+       */
+      pct: number
+      /** @description 表示用シンボル名 (例: "日経225") */
+      symbol: string
+      /** @description 現在値 (フォーマット済み文字列) */
+      value: string
+    }
+    /** @description マクロ指標ティック取得レスポンス */
+    MacroTicksResponse: {
+      /**
+       * Format: date-time
+       * @description 直近の取得失敗が継続している場合、その失敗の開始時刻
+       */
+      stale_since?: string | null
+      /** @description 直近の取得値。一度も成功していない、または 24h 以上失敗が続いている場合は `null` */
+      ticks?: components['schemas']['MacroTick'][] | null
+    }
+    MatchedRef: {
+      matched_term: string
+      ref_id: string
+      ref_kind: string
+    }
+    Note: {
+      body_md: string
+      /** Format: date-time */
+      created_at: string
+      created_by_kind: string
+      frontmatter_json: Record<string, never>
+      /** Format: uuid */
+      id: string
+      status: string
+      /** Format: uuid */
+      strategy_id: string
+      title: string
+      trigger?: string | null
+      trigger_label?: string | null
+      type_tag?: string | null
+      /** Format: date-time */
+      updated_at: string
+    }
+    /**
+     * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
+     * @enum {string}
+     */
+    NoteTrigger: 'hook' | 'cron' | 'on-demand' | 'manual'
+    /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
+    PerformanceSummary: {
+      positions: components['schemas']['PositionSummary'][]
+      /** Format: double */
+      realized_pnl: number
+      /** Format: uuid */
+      strategy_id?: string | null
+      /** Format: int64 */
+      trade_count: number
+    }
+    /** @description 銘柄ごとの未決済ポジションと損益 */
+    PositionSummary: {
+      /**
+       * Format: double
+       * @description 平均取得単価 (FIFO ベース)
+       */
+      avg_cost: number
+      /**
+       * Format: double
+       * @description 取得簿価 (qty * avg_cost)
+       */
+      cost_basis: number
+      /**
+       * Format: double
+       * @description 保有数量 (買い残 - 売り残)
+       */
+      qty: number
+      /**
+       * Format: double
+       * @description 実現損益累計
+       */
+      realized_pnl: number
+      symbol: string
+    }
+    PreviewIndicatorRequest: {
+      args: unknown
+      code: string
+      input_schema: {
+        [key: string]: unknown
+      }
+      /** Format: int32 */
+      max_output_bytes?: number | null
+      output_schema: {
+        [key: string]: unknown
+      }
+      /** Format: int32 */
+      timeout_secs?: number | null
+    }
+    PreviewIndicatorResponse: {
+      /** Format: int32 */
+      exit_code: number
+      /**
+       * @description stdout 最終行を JSON parse し output_schema で validation 済みの値。
+       *     exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を参照)。
+       */
+      output?: unknown
+      stderr: string
+      stdout: string
+    }
+    /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
+    RefResolution: {
+      id: string
+      /** @description "stock" | "indicator" | "sector" | "theme" */
+      kind: string
+      /** @description 一致しなかった場合は None */
+      name?: string | null
+    }
+    RssFeed: {
+      /** Format: date-time */
+      created_at: string
+      display_name: string
+      enabled: boolean
+      /** Format: uuid */
+      id: string
+      source: string
+      /** Format: date-time */
+      updated_at: string
+      url: string
+    }
+    SbiCommitRequest: {
+      rows: components['schemas']['SbiCommitRow'][]
+    }
+    SbiCommitResponse: {
+      imported_count: number
+      /** @description 重複検知でスキップした件数 */
+      skipped_count: number
+    }
+    /** @description SBI commit リクエストの 1 行。preview を確認後、行ごとに戦略 ID を割り当てる。 */
+    SbiCommitRow: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      fee?: number | null
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+      side: string
+      stock_name?: string
+      /** Format: uuid */
+      strategy_id: string
+      symbol: string
+    }
+    SbiPreviewIssue: {
+      message: string
+      row_index: number
+    }
+    SbiPreviewResponse: {
+      issues: components['schemas']['SbiPreviewIssue'][]
+      rows: components['schemas']['SbiPreviewRow'][]
+    }
+    /** @description SBI CSV preview の 1 行。 */
+    SbiPreviewRow: {
+      /** Format: date */
+      date: string
+      /** Format: double */
+      fee: number
+      /** @description 同日・同銘柄・同売買・同数量・同単価で既存取引が見つかったか */
+      is_duplicate: boolean
+      /** Format: double */
+      price: number
+      /** Format: double */
+      qty: number
+      /** @description 元 CSV 上の行番号 (0-based) */
+      row_index: number
+      /** @description "buy" | "sell" */
+      side: string
+      stock_name: string
+      symbol: string
+    }
+    Sector: {
+      id: string
+      name: string
+    }
+    SkillBody: {
+      content: string
+    }
+    SkillsBody: {
+      skills: {
+        [key: string]: string
+      }
+    }
+    Stock: {
+      /** Format: date-time */
+      created_at: string
+      id: string
+      market?: string | null
+      name: string
+      sector_id?: string | null
+      /** Format: date-time */
+      updated_at: string
+    }
+    Strategy: {
+      /** Format: date-time */
+      created_at: string
+      description?: string | null
+      /** Format: uuid */
+      id: string
+      name: string
+      /** Format: int32 */
+      sort_order: number
+      /** Format: date-time */
+      updated_at: string
+    }
+    /** @description フローティングチャットから戦略 Agent に投入する 1 メッセージ。 */
+    StrategyChatRequest: {
+      prompt: string
+    }
+    /** @description `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。 */
+    StrategyChatResponse: {
+      kubeopencode_task_name: string
+      /** Format: uuid */
+      task_id: string
+    }
+    StrategyInterest: {
+      /** Format: date-time */
+      created_at: string
+      origin: string
+      ref_id: string
+      ref_kind: string
+      role: string
+      /** Format: uuid */
+      strategy_id: string
+    }
+    /** @description 戦略ホームの「関連ニュース」セクション用 1 件 */
+    StrategyNewsItem: {
+      body_snippet?: string | null
+      /** Format: uuid */
+      id: string
+      /** @description この戦略の interest のうち、このニュースに紐付いたものの一覧 (ref_kind:ref_id) */
+      matched_refs: components['schemas']['MatchedRef'][]
+      /** Format: date-time */
+      published_at: string
+      source: string
+      title: string
+      url: string
+    }
+    /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
+    StrategyTaskStatusResponse: {
+      /** Format: date-time */
+      created_at: string
+      error_summary?: string | null
+      kubeopencode_task_name: string
+      phase: string
+      source: string
+      /** Format: uuid */
+      strategy_id: string
+      /** Format: uuid */
+      task_id: string
+      /** Format: date-time */
+      updated_at: string
+    }
+    Theme: {
+      description?: string | null
+      id: string
+      name: string
+    }
+    Trade: {
+      /** Format: date-time */
+      created_at: string
+      /** Format: date */
+      date: string
+      fee: number
+      /** Format: uuid */
+      id: string
+      note?: string | null
+      price: number
+      qty: number
+      side: string
+      source: string
+      /** Format: uuid */
+      strategy_id: string
+      symbol: string
+      /** Format: date-time */
+      updated_at: string
+    }
+    Trigger: {
+      /** Format: date-time */
+      created_at: string
+      enabled: boolean
+      event_match?: Record<string, never> | null
+      hook_slug?: string | null
+      kind: string
+      /** Format: date-time */
+      last_fired_at?: string | null
+      prompt_template: string
+      schedule?: string | null
+      /** Format: uuid */
+      strategy_id: string
+      /** Format: uuid */
+      trigger_id: string
+      /** Format: date-time */
+      updated_at: string
+    }
+    /** @enum {string} */
+    TriggerKind: 'cron' | 'hook'
+    UpdateAnnotationRequest: {
+      /** Format: uuid */
+      linked_note_id?: string | null
+      /** Format: double */
+      price?: number | null
+      target_kind?: string | null
+      target_symbol?: string | null
+      text?: string | null
+      /** Format: date-time */
+      timestamp?: string | null
+    }
+    UpdateCustomIndicatorRequest: {
+      code?: string | null
+      description?: string | null
+      input_schema?: {
+        [key: string]: unknown
+      } | null
+      name?: string | null
+      output_schema?: {
+        [key: string]: unknown
+      } | null
+    }
+    UpdateHypothesisRequest: {
+      body?: string | null
+      related_interest_ids?: string[] | null
+      related_note_ids?: string[] | null
+      status?: string | null
+      title?: string | null
+    }
+    /** @description 既存の関心の role / origin を更新するリクエスト。 */
+    UpdateInterestRequest: {
+      origin?: string | null
+      role?: string | null
+    }
+    UpdateNoteRequest: {
+      body_md?: string | null
+      frontmatter_json?: {
+        [key: string]: unknown
+      } | null
+      title?: string | null
+      trigger?: null | components['schemas']['NoteTrigger']
+      trigger_label?: string | null
+      type_tag?: string | null
+    }
+    UpdateRssFeedRequest: {
+      display_name?: string | null
+      enabled?: boolean | null
+      url?: string | null
+    }
+    UpdateStrategyRequest: {
+      description?: string | null
+      name?: string | null
+      /** Format: int32 */
+      sort_order?: number | null
+    }
+    UpdateTradeRequest: {
+      /** Format: date */
+      date?: string | null
+      /** Format: double */
+      fee?: number | null
+      note?: string | null
+      /** Format: double */
+      price?: number | null
+      /** Format: double */
+      qty?: number | null
+      side?: string | null
+      source?: string | null
+      symbol?: string | null
+    }
+    UpdateTriggerRequest: {
+      enabled?: boolean | null
+      event_match?: unknown
+      hook_slug?: string | null
+      prompt_template?: string | null
+      schedule?: string | null
+    }
+    Watchlist: {
+      /** Format: date-time */
+      created_at: string
+      /** Format: uuid */
+      id: string
+      name: string
+      /** Format: int32 */
+      sort_order: number
+    }
+    WatchlistItem: {
+      /** Format: date-time */
+      added_at: string
+      instrument_id: string
+      /** Format: int32 */
+      sort_order: number
+      /** Format: uuid */
+      watchlist_id: string
+    }
+  }
+  responses: never
+  parameters: never
+  requestBodies: never
+  headers: never
+  pathItems: never
 }
-export type $defs = Record<string, never>;
+export type $defs = Record<string, never>
 export interface operations {
-    list_annotations: {
-        parameters: {
-            query?: {
-                strategy_id?: string;
-                target_symbol?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Annotation"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_annotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateAnnotationRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Annotation"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_annotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description アノテーション ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Annotation"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_annotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description アノテーション ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_annotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description アノテーション ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateAnnotationRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Annotation"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    approve_annotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description アノテーション ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChangeStatusRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Annotation"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    reject_annotation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description アノテーション ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChangeStatusRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Annotation"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_bars: {
-        parameters: {
-            query: {
-                /** @description 銘柄コード (必須) */
-                instrument_id: string;
-                /** @description 時間足 (デフォルト: "1d") */
-                timeframe?: string;
-                /** @description 取得開始日 (YYYY-MM-DD, inclusive) */
-                from?: string;
-                /** @description 取得終了日 (YYYY-MM-DD, inclusive) */
-                to?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description バーデータ一覧 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Bar"][];
-                };
-            };
-            /** @description バリデーションエラー */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_comments: {
-        parameters: {
-            query: {
-                target_kind: string;
-                target_id: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Comment"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_comment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCommentRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Comment"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_comment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description コメント ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    health_check: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description サービス正常 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_history: {
-        parameters: {
-            query?: {
-                target_kind?: string;
-                target_id?: string;
-                /** @description 1〜500 (デフォルト 100) */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChangeHistory"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_history: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 変更履歴 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChangeHistory"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    receive_hook: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description hook 識別子 */
-                hook_slug: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": unknown;
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HookResponse"];
-                };
-            };
-            /** @description リクエストボディに null バイトが含まれる等の汎用エラー */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 戦略 Agent が Ready ではない */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    sbi_commit: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SbiCommitRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SbiCommitResponse"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    sbi_preview: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @description SBI 取引履歴 CSV (Shift_JIS or UTF-8) */
-        requestBody: {
-            content: {
-                "text/csv": string;
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SbiPreviewResponse"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_global_indicators: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CustomIndicator"][];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_global_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCustomIndicatorRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CustomIndicator"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    preview_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PreviewIndicatorRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PreviewIndicatorResponse"];
-                };
-            };
-            /** @description code / schema / args が不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description indicator runtime が未設定または利用不可 */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description indicator ID */
-                indicator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CustomIndicator"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description indicator ID */
-                indicator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateCustomIndicatorRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CustomIndicator"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description indicator ID */
-                indicator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_macro_ticks: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 現在値 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MacroTicksResponse"];
-                };
-            };
-            /** @description macro provider 未設定 */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_notes: {
-        parameters: {
-            query?: {
-                strategy_id?: string;
-                status?: string;
-                type_tag?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Note"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_note: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateNoteRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Note"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_note: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ノート ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Note"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_note: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ノート ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_note: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ノート ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateNoteRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Note"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    approve_note: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ノート ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChangeStatusRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Note"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    reject_note: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ノート ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChangeStatusRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Note"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_indicators: {
-        parameters: {
-            query?: {
-                /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Indicator"][];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 指標 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Indicator"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    resolve_refs: {
-        parameters: {
-            query: {
-                /** @description `[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定 */
-                link: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefResolution"][];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_sectors: {
-        parameters: {
-            query?: {
-                /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Sector"][];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_sector: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description セクター ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Sector"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_stocks: {
-        parameters: {
-            query?: {
-                /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Stock"][];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_stock: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 銘柄コード */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Stock"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_themes: {
-        parameters: {
-            query?: {
-                /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Theme"][];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_theme: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description テーマ ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Theme"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_rss_feeds: {
-        parameters: {
-            query?: {
-                /** @description true なら enabled=true のみ返す */
-                enabled_only?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RssFeed"][];
-                };
-            };
-            /** @description クエリパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_rss_feed: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateRssFeedRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RssFeed"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description source が既存と衝突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_rss_feed: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description rss_feed ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description パスパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_rss_feed: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description rss_feed ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateRssFeedRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RssFeed"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_strategies: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 戦略一覧 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Strategy"][];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_strategy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateStrategyRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Strategy"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_strategy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Strategy"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_strategy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_strategy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateStrategyRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Strategy"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_agents_md: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentsMdBody"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    put_agents_md: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentsMdBody"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentsMdBody"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    submit_strategy_chat: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StrategyChatRequest"];
-            };
-        };
-        responses: {
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyChatResponse"];
-                };
-            };
-            /** @description prompt が空 (空白のみを含む) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 戦略が存在しない */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description kubeopencode タスクの名前衝突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 戦略 Agent が ready ではない */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_strategy_hypotheses: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Hypothesis"][];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_strategy_hypothesis: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateHypothesisRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Hypothesis"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_strategy_hypothesis: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description 仮説 ID */
-                hypothesis_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Hypothesis"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_strategy_hypothesis: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description 仮説 ID */
-                hypothesis_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_strategy_hypothesis: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description 仮説 ID */
-                hypothesis_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateHypothesisRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Hypothesis"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_strategy_indicators: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CustomIndicator"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_strategy_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateCustomIndicatorRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CustomIndicator"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_strategy_indicator: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description indicator ID */
-                indicator_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CustomIndicator"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_strategy_interests: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyInterest"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_strategy_interest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateInterestRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyInterest"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_strategy_interest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description 参照型 */
-                ref_kind: string;
-                /** @description 参照 ID */
-                ref_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_strategy_interest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description 参照型 (stock / indicator / sector / theme) */
-                ref_kind: string;
-                /** @description 参照 ID */
-                ref_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateInterestRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyInterest"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_strategy_news: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 関連ニュース */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyNewsItem"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_skills: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillsBody"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    put_skills: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SkillsBody"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillsBody"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    put_skill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description skill 名 (^[a-z0-9][a-z0-9_-]*$) */
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SkillBody"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillBody"];
-                };
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_skill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description skill 名 */
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_strategy_task: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-                /** @description 戦略タスク ID */
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StrategyTaskStatusResponse"];
-                };
-            };
-            /** @description パスパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_strategy_triggers: {
-        parameters: {
-            query?: {
-                /** @description kind フィルタ */
-                kind?: components["schemas"]["TriggerKind"];
-            };
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trigger"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_strategy_trigger: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 戦略 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTriggerRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trigger"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description hook_slug が他 trigger と衝突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_trades: {
-        parameters: {
-            query?: {
-                strategy_id?: string;
-                symbol?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trade"][];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_trade: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTradeRequest"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trade"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    trades_summary: {
-        parameters: {
-            query?: {
-                /** @description 指定すると戦略単位の集計、未指定だと全戦略横断 (ポートフォリオ全体) */
-                strategy_id?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PerformanceSummary"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_trade: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 取引 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trade"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_trade: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 取引 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_trade: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 取引 ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTradeRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trade"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_trigger: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description trigger ID */
-                trigger_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trigger"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    update_trigger: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description trigger ID */
-                trigger_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTriggerRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Trigger"];
-                };
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description hook_slug が他 trigger と衝突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_trigger: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description trigger ID */
-                trigger_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description リクエストパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_watchlists: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description ウォッチリスト一覧 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Watchlist"][];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    create_watchlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWatchlistRequest"];
-            };
-        };
-        responses: {
-            /** @description ウォッチリストを作成した */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Watchlist"];
-                };
-            };
-            /** @description バリデーションエラー */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_watchlist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ウォッチリスト ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 削除成功 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description パスパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description ウォッチリストが見つからない */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_watchlist_items: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ウォッチリスト ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 銘柄一覧 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WatchlistItem"][];
-                };
-            };
-            /** @description パスパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description ウォッチリストが見つからない */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    add_watchlist_item: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ウォッチリスト ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AddWatchlistItemRequest"];
-            };
-        };
-        responses: {
-            /** @description 銘柄を追加した */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WatchlistItem"];
-                };
-            };
-            /** @description バリデーションエラー */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description ウォッチリストが見つからない */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 銘柄が既にウォッチリストに存在する */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description リクエストボディのパースに失敗 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_watchlist_item: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description ウォッチリスト ID */
-                id: string;
-                /** @description 銘柄コード */
-                instrument_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 削除成功 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description パスパラメータが不正 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 銘柄が見つからない */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 内部サーバーエラー */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
+  list_annotations: {
+    parameters: {
+      query?: {
+        strategy_id?: string
+        target_symbol?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Annotation'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_annotation: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateAnnotationRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Annotation']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_annotation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description アノテーション ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Annotation']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_annotation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description アノテーション ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_annotation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description アノテーション ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateAnnotationRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Annotation']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  approve_annotation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description アノテーション ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ChangeStatusRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Annotation']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  reject_annotation: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description アノテーション ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ChangeStatusRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Annotation']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_bars: {
+    parameters: {
+      query: {
+        /** @description 銘柄コード (必須) */
+        instrument_id: string
+        /** @description 時間足 (デフォルト: "1d") */
+        timeframe?: string
+        /** @description 取得開始日 (YYYY-MM-DD, inclusive) */
+        from?: string
+        /** @description 取得終了日 (YYYY-MM-DD, inclusive) */
+        to?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description バーデータ一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Bar'][]
+        }
+      }
+      /** @description バリデーションエラー */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_comments: {
+    parameters: {
+      query: {
+        target_kind: string
+        target_id: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Comment'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_comment: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateCommentRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Comment']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_comment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description コメント ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  health_check: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description サービス正常 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HealthResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_history: {
+    parameters: {
+      query?: {
+        target_kind?: string
+        target_id?: string
+        /** @description 1〜500 (デフォルト 100) */
+        limit?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ChangeHistory'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_history: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 変更履歴 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ChangeHistory']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  receive_hook: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description hook 識別子 */
+        hook_slug: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': unknown
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HookResponse']
+        }
+      }
+      /** @description リクエストボディに null バイトが含まれる等の汎用エラー */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略 Agent が Ready ではない */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  sbi_commit: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SbiCommitRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SbiCommitResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  sbi_preview: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** @description SBI 取引履歴 CSV (Shift_JIS or UTF-8) */
+    requestBody: {
+      content: {
+        'text/csv': string
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SbiPreviewResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_global_indicators: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicator'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_global_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateCustomIndicatorRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicator']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  preview_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PreviewIndicatorRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PreviewIndicatorResponse']
+        }
+      }
+      /** @description code / schema / args が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description indicator runtime が未設定または利用不可 */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description indicator ID */
+        indicator_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicator']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description indicator ID */
+        indicator_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateCustomIndicatorRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicator']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description indicator ID */
+        indicator_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_macro_ticks: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 現在値 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['MacroTicksResponse']
+        }
+      }
+      /** @description macro provider 未設定 */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_notes: {
+    parameters: {
+      query?: {
+        strategy_id?: string
+        status?: string
+        type_tag?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateNoteRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateNoteRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  approve_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ChangeStatusRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  reject_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ChangeStatusRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_indicators: {
+    parameters: {
+      query?: {
+        /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
+        q?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Indicator'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 指標 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Indicator']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  resolve_refs: {
+    parameters: {
+      query: {
+        /** @description `[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定 */
+        link: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RefResolution'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_sectors: {
+    parameters: {
+      query?: {
+        /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
+        q?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Sector'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_sector: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description セクター ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Sector']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_stocks: {
+    parameters: {
+      query?: {
+        /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
+        q?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Stock'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_stock: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 銘柄コード */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Stock']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_themes: {
+    parameters: {
+      query?: {
+        /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
+        q?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Theme'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_theme: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description テーマ ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Theme']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_rss_feeds: {
+    parameters: {
+      query?: {
+        /** @description true なら enabled=true のみ返す */
+        enabled_only?: boolean
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RssFeed'][]
+        }
+      }
+      /** @description クエリパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_rss_feed: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateRssFeedRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RssFeed']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description source が既存と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_rss_feed: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description rss_feed ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_rss_feed: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description rss_feed ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateRssFeedRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RssFeed']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategies: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 戦略一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Strategy'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateStrategyRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Strategy']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_strategy: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Strategy']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_strategy: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_strategy: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateStrategyRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Strategy']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_agents_md: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentsMdBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_agents_md: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentsMdBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentsMdBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  submit_strategy_chat: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['StrategyChatRequest']
+      }
+    }
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyChatResponse']
+        }
+      }
+      /** @description prompt が空 (空白のみを含む) */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略が存在しない */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description kubeopencode タスクの名前衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略 Agent が ready ではない */
+      503: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_hypotheses: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateHypothesisRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 仮説 ID */
+        hypothesis_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 仮説 ID */
+        hypothesis_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 仮説 ID */
+        hypothesis_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateHypothesisRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_indicators: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicator'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateCustomIndicatorRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicator']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_strategy_indicator: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description indicator ID */
+        indicator_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['CustomIndicator']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_interests: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyInterest'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy_interest: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateInterestRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyInterest']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_strategy_interest: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 参照型 */
+        ref_kind: string
+        /** @description 参照 ID */
+        ref_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_strategy_interest: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 参照型 (stock / indicator / sector / theme) */
+        ref_kind: string
+        /** @description 参照 ID */
+        ref_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateInterestRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyInterest']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_news: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 関連ニュース */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyNewsItem'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_skills: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillsBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_skills: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SkillsBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillsBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_skill: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description skill 名 (^[a-z0-9][a-z0-9_-]*$) */
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SkillBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_skill: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description skill 名 */
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_strategy_task: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 戦略タスク ID */
+        task_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyTaskStatusResponse']
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_triggers: {
+    parameters: {
+      query?: {
+        /** @description kind フィルタ */
+        kind?: components['schemas']['TriggerKind']
+      }
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTriggerRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description hook_slug が他 trigger と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_trades: {
+    parameters: {
+      query?: {
+        strategy_id?: string
+        symbol?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trade'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_trade: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTradeRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trade']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  trades_summary: {
+    parameters: {
+      query?: {
+        /** @description 指定すると戦略単位の集計、未指定だと全戦略横断 (ポートフォリオ全体) */
+        strategy_id?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['PerformanceSummary']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_trade: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 取引 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trade']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_trade: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 取引 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_trade: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 取引 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateTradeRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trade']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description trigger ID */
+        trigger_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description trigger ID */
+        trigger_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateTriggerRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Trigger']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description hook_slug が他 trigger と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_trigger: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description trigger ID */
+        trigger_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_watchlists: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description ウォッチリスト一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Watchlist'][]
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_watchlist: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateWatchlistRequest']
+      }
+    }
+    responses: {
+      /** @description ウォッチリストを作成した */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Watchlist']
+        }
+      }
+      /** @description バリデーションエラー */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_watchlist: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ウォッチリスト ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 削除成功 */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description ウォッチリストが見つからない */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_watchlist_items: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ウォッチリスト ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 銘柄一覧 */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['WatchlistItem'][]
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description ウォッチリストが見つからない */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  add_watchlist_item: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ウォッチリスト ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AddWatchlistItemRequest']
+      }
+    }
+    responses: {
+      /** @description 銘柄を追加した */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['WatchlistItem']
+        }
+      }
+      /** @description バリデーションエラー */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description ウォッチリストが見つからない */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 銘柄が既にウォッチリストに存在する */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_watchlist_item: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ウォッチリスト ID */
+        id: string
+        /** @description 銘柄コード */
+        instrument_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description 削除成功 */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 銘柄が見つからない */
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 内部サーバーエラー */
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
 }
