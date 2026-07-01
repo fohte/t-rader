@@ -645,6 +645,43 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/hypotheses': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の仮説一覧 (更新日時の降順) */
+    get: operations['list_strategy_hypotheses']
+    put?: never
+    /** 仮説を作成する */
+    post: operations['create_strategy_hypothesis']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/hypotheses/{hypothesis_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 仮説を取得する (戦略境界チェック付き) */
+    get: operations['get_strategy_hypothesis']
+    put?: never
+    post?: never
+    /** 仮説を削除する */
+    delete: operations['delete_strategy_hypothesis']
+    options?: never
+    head?: never
+    /** 仮説を更新する */
+    patch: operations['update_strategy_hypothesis']
+    trace?: never
+  }
   '/api/strategies/{id}/indicators': {
     parameters: {
       query?: never
@@ -690,11 +727,30 @@ export interface paths {
     /** 戦略の関心 (シード + LLM 派生) 一覧 */
     get: operations['list_strategy_interests']
     put?: never
-    post?: never
+    /** 戦略の関心を追加する */
+    post: operations['create_strategy_interest']
     delete?: never
     options?: never
     head?: never
     patch?: never
+    trace?: never
+  }
+  '/api/strategies/{id}/interests/{ref_kind}/{ref_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** 関心を削除する */
+    delete: operations['delete_strategy_interest']
+    options?: never
+    head?: never
+    /** 既存の関心を更新する (role / origin のみ) */
+    patch: operations['update_strategy_interest']
     trace?: never
   }
   '/api/strategies/{id}/news': {
@@ -1049,6 +1105,26 @@ export interface components {
         [key: string]: unknown
       }
     }
+    CreateHypothesisRequest: {
+      body: string
+      related_interest_ids?: string[] | null
+      related_note_ids?: string[] | null
+      /** @description 省略時 `unverified` */
+      status?: string | null
+      title: string
+    }
+    /**
+     * @description 戦略の関心 (interest) を新規追加するリクエスト。
+     *
+     *     `ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。
+     *     `role` は省略時 `seed`、`origin` は省略時 `human`。
+     */
+    CreateInterestRequest: {
+      origin?: string | null
+      ref_id: string
+      ref_kind: string
+      role?: string | null
+    }
     CreateNoteRequest: {
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
@@ -1153,6 +1229,21 @@ export interface components {
        * @description 発火時のみ。作成された strategy_task の UUID。
        */
       task_id?: string | null
+    }
+    Hypothesis: {
+      body: string
+      /** Format: date-time */
+      created_at: string
+      /** Format: uuid */
+      hypothesis_id: string
+      related_interest_ids: string[]
+      related_note_ids: string[]
+      status: string
+      /** Format: uuid */
+      strategy_id: string
+      title: string
+      /** Format: date-time */
+      updated_at: string
     }
     Indicator: {
       id: string
@@ -1491,6 +1582,18 @@ export interface components {
       output_schema?: {
         [key: string]: unknown
       } | null
+    }
+    UpdateHypothesisRequest: {
+      body?: string | null
+      related_interest_ids?: string[] | null
+      related_note_ids?: string[] | null
+      status?: string | null
+      title?: string | null
+    }
+    /** @description 既存の関心の role / origin を更新するリクエスト。 */
+    UpdateInterestRequest: {
+      origin?: string | null
+      role?: string | null
     }
     UpdateNoteRequest: {
       body_md?: string | null
@@ -3990,6 +4093,250 @@ export interface operations {
       }
     }
   }
+  list_strategy_hypotheses: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateHypothesisRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 仮説 ID */
+        hypothesis_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 仮説 ID */
+        hypothesis_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_strategy_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 仮説 ID */
+        hypothesis_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateHypothesisRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Hypothesis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_strategy_indicators: {
     parameters: {
       query?: never
@@ -4184,6 +4531,176 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_strategy_interest: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateInterestRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyInterest']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_strategy_interest: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 参照型 */
+        ref_kind: string
+        /** @description 参照 ID */
+        ref_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_strategy_interest: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+        /** @description 参照型 (stock / indicator / sector / theme) */
+        ref_kind: string
+        /** @description 参照 ID */
+        ref_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateInterestRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyInterest']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }

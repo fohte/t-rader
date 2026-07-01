@@ -33,8 +33,8 @@ use crate::data_provider::DataProviderKind;
 use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    annotations, bars, comments, custom_indicators, history, hooks, imports, macro_data, news,
-    notes, refs, rss_feeds, strategies, trades, triggers, watchlists,
+    annotations, bars, comments, custom_indicators, history, hooks, hypotheses, imports, interests,
+    macro_data, news, notes, refs, rss_feeds, strategies, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
@@ -174,7 +174,24 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::update_strategy,
             strategies::delete_strategy
         ))
-        .routes(routes!(strategies::list_strategy_interests))
+        .routes(routes!(
+            strategies::list_strategy_interests,
+            interests::create_strategy_interest
+        ))
+        .routes(routes!(
+            interests::update_strategy_interest,
+            interests::delete_strategy_interest
+        ))
+        // hypotheses
+        .routes(routes!(
+            hypotheses::list_strategy_hypotheses,
+            hypotheses::create_strategy_hypothesis
+        ))
+        .routes(routes!(
+            hypotheses::get_strategy_hypothesis,
+            hypotheses::update_strategy_hypothesis,
+            hypotheses::delete_strategy_hypothesis
+        ))
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
         .routes(routes!(

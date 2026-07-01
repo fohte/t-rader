@@ -4,7 +4,7 @@
 //! OpenAPI スキーマ定義はここで分離して管理する。
 
 use utoipa::PartialSchema;
-use utoipa::openapi::schema::{ObjectBuilder, SchemaFormat, SchemaType, Type};
+use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, SchemaFormat, SchemaType, Type};
 use utoipa::openapi::{KnownFormat, Object, RefOr, Schema};
 
 /// 文字列プロパティ
@@ -554,6 +554,40 @@ impl PartialSchema for crate::entities::trigger::Model {
             .property("enabled", bool_prop())
             .required("enabled")
             .property("last_fired_at", nullable_datetime_prop())
+            .property("created_at", datetime_prop())
+            .required("created_at")
+            .property("updated_at", datetime_prop())
+            .required("updated_at")
+            .into()
+    }
+}
+
+// --- hypothesis::Model ---
+
+impl utoipa::ToSchema for crate::entities::hypothesis::Model {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Hypothesis")
+    }
+}
+
+impl PartialSchema for crate::entities::hypothesis::Model {
+    fn schema() -> RefOr<Schema> {
+        let uuid_array = ArrayBuilder::new().items(uuid_prop()).build();
+        ObjectBuilder::new()
+            .property("hypothesis_id", uuid_prop())
+            .required("hypothesis_id")
+            .property("strategy_id", uuid_prop())
+            .required("strategy_id")
+            .property("title", str_prop())
+            .required("title")
+            .property("body", str_prop())
+            .required("body")
+            .property("status", str_prop())
+            .required("status")
+            .property("related_note_ids", uuid_array.clone())
+            .required("related_note_ids")
+            .property("related_interest_ids", uuid_array)
+            .required("related_interest_ids")
             .property("created_at", datetime_prop())
             .required("created_at")
             .property("updated_at", datetime_prop())

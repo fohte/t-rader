@@ -1,7 +1,9 @@
 pub mod backfill;
 pub mod change_history;
 pub mod custom_indicators;
+pub mod hypotheses;
 pub mod import;
+pub mod interests;
 pub mod news;
 pub mod rss_feed;
 pub mod strategies;

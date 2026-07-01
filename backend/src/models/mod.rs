@@ -2,8 +2,10 @@ pub mod annotation;
 pub mod bar;
 pub mod comment;
 pub mod custom_indicator;
+pub mod hypothesis;
 pub mod import;
 pub mod instrument;
+pub mod interest;
 pub mod note;
 pub mod refs;
 pub mod strategy;
@@ -18,11 +20,13 @@ pub use custom_indicator::{
     CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
     UpdateCustomIndicatorRequest,
 };
+pub use hypothesis::{CreateHypothesisRequest, UpdateHypothesisRequest};
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
     SbiPreviewRow,
 };
 pub use instrument::Instrument;
+pub use interest::{CreateInterestRequest, UpdateInterestRequest};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use refs::RefResolution;
 pub use strategy::{
