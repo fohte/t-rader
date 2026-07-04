@@ -1,24 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { MarkdownBody } from '@/components/note-detail/markdown-body'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-interface Draft {
-  title: string
-  body: string
-}
-
 interface HypothesisEditorProps {
   initialTitle: string
   initialBody: string
-  onSave: (next: Draft) => void
+  onSave: (next: { title: string; body: string }) => void
   isSaving?: boolean
   saveError?: string | null
-}
-
-function draftsEqual(a: Draft, b: Draft): boolean {
-  return a.title === b.title && a.body === b.body
 }
 
 export function HypothesisEditor({
@@ -28,30 +19,39 @@ export function HypothesisEditor({
   isSaving = false,
   saveError = null,
 }: HypothesisEditorProps) {
-  const initial: Draft = { title: initialTitle, body: initialBody }
-  const [draft, setDraft] = useState<Draft>(initial)
+  const [title, setTitle] = useState(initialTitle)
+  const [body, setBody] = useState(initialBody)
   const [validationError, setValidationError] = useState<string | null>(null)
-  // 「直前に親から受け取った初期値」を保持し、未編集 (前回の初期値のまま) の場合のみ
-  // 外部更新を追従させる。編集中に別の PATCH (status 切替等) が detail を再取得しても、
-  // この場合はドラフトを消さない
-  const lastInitialRef = useRef<Draft>(initial)
-  const dirty = !draftsEqual(draft, initial)
 
-  useEffect(() => {
-    if (draftsEqual(draft, lastInitialRef.current)) {
-      setDraft(initial)
+  // レンダー中に prop の変化を検知し、未編集 (前回の初期値のまま) の場合のみ同期する。
+  // useEffect にすると、新規オブジェクトを毎レンダー生成して依存配列に積む形になり、
+  // draft を初期値へ同期するたびに参照が変わって再レンダー→同期→再レンダー…と
+  // 無限ループするため、prop の文字列そのものを ref と比較してレンダー中に同期する
+  const prevInitialTitleRef = useRef(initialTitle)
+  const prevInitialBodyRef = useRef(initialBody)
+  if (prevInitialTitleRef.current !== initialTitle) {
+    if (title === prevInitialTitleRef.current) {
+      setTitle(initialTitle)
     }
-    lastInitialRef.current = initial
-  }, [initial, draft])
+    prevInitialTitleRef.current = initialTitle
+  }
+  if (prevInitialBodyRef.current !== initialBody) {
+    if (body === prevInitialBodyRef.current) {
+      setBody(initialBody)
+    }
+    prevInitialBodyRef.current = initialBody
+  }
+
+  const dirty = title !== initialTitle || body !== initialBody
 
   function handleSave() {
     if (!dirty || isSaving) return
-    if (draft.title.trim() === '' || draft.body.trim() === '') {
+    if (title.trim() === '' || body.trim() === '') {
       setValidationError('title と body は必須です')
       return
     }
     setValidationError(null)
-    onSave(draft)
+    onSave({ title, body })
   }
 
   return (
@@ -65,9 +65,9 @@ export function HypothesisEditor({
         </label>
         <Input
           id="hypothesis-title-input"
-          value={draft.title}
+          value={title}
           onChange={(e) => {
-            setDraft({ ...draft, title: e.target.value })
+            setTitle(e.target.value)
           }}
         />
       </div>
@@ -81,9 +81,9 @@ export function HypothesisEditor({
           </label>
           <textarea
             id="hypothesis-body-source"
-            value={draft.body}
+            value={body}
             onChange={(e) => {
-              setDraft({ ...draft, body: e.target.value })
+              setBody(e.target.value)
             }}
             rows={10}
             className="w-full resize-y border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-3 font-mono text-[12.5px] leading-relaxed text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
@@ -98,7 +98,7 @@ export function HypothesisEditor({
             style={{ minHeight: '240px' }}
             className="overflow-auto border border-[color:var(--color-hairline)] bg-[color:var(--color-bg-secondary)] px-4 py-2"
           >
-            <MarkdownBody source={draft.body} />
+            <MarkdownBody source={body} />
           </div>
         </div>
       </div>

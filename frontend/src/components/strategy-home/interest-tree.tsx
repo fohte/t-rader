@@ -40,6 +40,7 @@ export function InterestTree({ strategyId }: InterestTreeProps) {
   const derived = interests.filter((i) => i.role === 'derived')
 
   function handleDelete(interest: StrategyInterest) {
+    if (deleteMutation.isPending) return
     if (
       !window.confirm(
         `関心 ${interest.ref_kind}:${interest.ref_id} を削除しますか?`,
