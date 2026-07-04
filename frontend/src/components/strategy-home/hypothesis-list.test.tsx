@@ -139,6 +139,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+async function expectEmptyState() {
+  await waitFor(() => {
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+}
+
 describe('HypothesisList', () => {
   it('既存の仮説を一覧表示する', async () => {
     await renderInRouter([
@@ -148,23 +154,21 @@ describe('HypothesisList', () => {
     await waitFor(() => {
       expect(screen.getByText('USD/JPY 押し目買い')).toBeInTheDocument()
     })
-    expect(screen.getByText('支持')).toBeInTheDocument()
+    expect(screen.getByTestId('hypothesis-status-pill')).toHaveTextContent(
+      '支持',
+    )
   })
 
   it('仮説が無ければ空状態を表示する', async () => {
     await renderInRouter([])
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await expectEmptyState()
   })
 
   it('+ 追加 から仮説を作成すると一覧に反映され、API に正しい body が送られる', async () => {
     const user = userEvent.setup()
     await renderInRouter([])
 
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await expectEmptyState()
     await user.click(screen.getByRole('button', { name: '+ 追加' }))
 
     await user.type(screen.getByLabelText('title *'), '新しい仮説')
@@ -186,9 +190,7 @@ describe('HypothesisList', () => {
     const user = userEvent.setup()
     await renderInRouter([])
 
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await expectEmptyState()
     await user.click(screen.getByRole('button', { name: '+ 追加' }))
     await user.type(screen.getByLabelText('body (Markdown) *'), '根拠本文')
     await user.click(screen.getByRole('button', { name: '作成' }))

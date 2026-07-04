@@ -12,7 +12,7 @@ interface HypothesisListProps {
 
 export function HypothesisList({ strategyId }: HypothesisListProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const { data, isPending } = $api.useQuery(
+  const { data, isPending, isError } = $api.useQuery(
     'get',
     '/api/strategies/{id}/hypotheses',
     { params: { path: { id: strategyId } } },
@@ -38,6 +38,13 @@ export function HypothesisList({ strategyId }: HypothesisListProps) {
       {isPending ? (
         <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
           loading...
+        </div>
+      ) : isError ? (
+        <div
+          data-testid="hypothesis-list-error"
+          className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+        >
+          仮説一覧の取得に失敗しました
         </div>
       ) : hypotheses.length === 0 ? (
         <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">

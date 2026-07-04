@@ -1,9 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { HypothesisEditor } from '@/components/hypothesis-detail/hypothesis-editor'
 import { HypothesisStatusPanel } from '@/components/hypothesis-detail/hypothesis-status-panel'
+import { useInvalidateHypothesis } from '@/components/hypothesis-detail/use-invalidate-hypothesis'
 import { Skeleton } from '@/components/ui/skeleton'
 import { $api } from '@/lib/api/client'
 
@@ -16,12 +16,14 @@ export function HypothesisDetailPage({
   strategyId,
   hypothesisId,
 }: HypothesisDetailPageProps) {
-  const queryClient = useQueryClient()
-  const { data: hypothesis, isPending } = $api.useQuery(
-    'get',
-    '/api/strategies/{id}/hypotheses/{hypothesis_id}',
-    { params: { path: { id: strategyId, hypothesis_id: hypothesisId } } },
-  )
+  const {
+    data: hypothesis,
+    isPending,
+    isError,
+  } = $api.useQuery('get', '/api/strategies/{id}/hypotheses/{hypothesis_id}', {
+    params: { path: { id: strategyId, hypothesis_id: hypothesisId } },
+  })
+  const invalidate = useInvalidateHypothesis(strategyId, hypothesisId)
   const updateMutation = $api.useMutation(
     'patch',
     '/api/strategies/{id}/hypotheses/{hypothesis_id}',
@@ -36,26 +38,7 @@ export function HypothesisDetailPage({
         body: next,
       },
       {
-        onSuccess: () => {
-          void queryClient.invalidateQueries({
-            queryKey: $api.queryOptions(
-              'get',
-              '/api/strategies/{id}/hypotheses/{hypothesis_id}',
-              {
-                params: {
-                  path: { id: strategyId, hypothesis_id: hypothesisId },
-                },
-              },
-            ).queryKey,
-          })
-          void queryClient.invalidateQueries({
-            queryKey: $api.queryOptions(
-              'get',
-              '/api/strategies/{id}/hypotheses',
-              { params: { path: { id: strategyId } } },
-            ).queryKey,
-          })
-        },
+        onSuccess: invalidate,
         onError: () => {
           setSaveError('保存に失敗しました')
         },
@@ -73,10 +56,13 @@ export function HypothesisDetailPage({
     )
   }
 
-  if (hypothesis == null) {
+  if (isError) {
     return (
-      <div className="font-mono text-[13px] text-[color:var(--color-text-tertiary)]">
-        仮説が見つかりませんでした。
+      <div
+        data-testid="hypothesis-detail-error"
+        className="font-mono text-[13px] text-[color:var(--color-accent-strategy)]"
+      >
+        仮説が見つからないか、取得に失敗しました。
       </div>
     )
   }

@@ -191,5 +191,54 @@ describe('HypothesisDetailPage', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('status')).toHaveValue('supported')
     })
+    await waitFor(() => {
+      expect(screen.getByTestId('hypothesis-status-pill')).toHaveTextContent(
+        '支持',
+      )
+    })
+  })
+
+  it('title/body が空だと validation エラーになり PATCH は呼ばれない', async () => {
+    const user = userEvent.setup()
+    await renderInRouter(makeHypothesis({ title: 'old', body: 'old body' }))
+
+    const titleInput = await screen.findByLabelText('title')
+    await waitFor(() => {
+      expect(titleInput).toHaveValue('old')
+    })
+
+    await user.clear(titleInput)
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(screen.getByTestId('hypothesis-editor-error').textContent).toBe(
+      'title と body は必須です',
+    )
+    expect(activeMiddleware?.store.updateCalls).toEqual([])
+  })
+
+  it('title を編集中に status 変更で detail が再取得されても、未保存のドラフトは消えない', async () => {
+    const user = userEvent.setup()
+    await renderInRouter(makeHypothesis({ title: 'old', status: 'unverified' }))
+
+    const titleInput = await screen.findByLabelText('title')
+    await waitFor(() => {
+      expect(titleInput).toHaveValue('old')
+    })
+
+    // title を編集するが保存はしない
+    await user.clear(titleInput)
+    await user.type(titleInput, 'draft in progress')
+
+    // status 変更が detail の refetch を引き起こす (title/body は変化しない)
+    const statusSelect = await screen.findByLabelText('status')
+    await user.selectOptions(statusSelect, 'supported')
+    await waitFor(() => {
+      expect(activeMiddleware?.store.updateCalls).toEqual([
+        { hypothesisId: 'hyp-1', body: { status: 'supported' } },
+      ])
+    })
+
+    // refetch 後も未保存の title ドラフトが保持されている
+    expect(screen.getByLabelText('title')).toHaveValue('draft in progress')
   })
 })

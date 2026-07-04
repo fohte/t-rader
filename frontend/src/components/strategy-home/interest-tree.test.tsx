@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
@@ -145,10 +151,44 @@ beforeEach(() => {
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
+async function expectEmptyState() {
+  await waitFor(() => {
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+}
+
 describe('InterestTree', () => {
-  it('関心を role ごとに分けて表示し、origin を可視化する', async () => {
+  it('関心を role ごとに seed / derived セクションへ分けて表示する', async () => {
     setup([
       makeInterest({ ref_kind: 'stock', ref_id: '7203', role: 'seed' }),
+      makeInterest({
+        ref_kind: 'indicator',
+        ref_id: 'USDJPY',
+        role: 'derived',
+      }),
+    ])
+
+    const seedRow = await screen.findByTestId('interest-row-stock-7203')
+    const derivedRow = await screen.findByTestId(
+      'interest-row-indicator-USDJPY',
+    )
+    // Section の見出し (title) は行を包む <ul> の直前の兄弟要素として描画される
+    expect(seedRow.closest('ul')?.previousElementSibling).toHaveTextContent(
+      'seed',
+    )
+    expect(derivedRow.closest('ul')?.previousElementSibling).toHaveTextContent(
+      'derived',
+    )
+  })
+
+  it('各関心の origin を人力/LLM の別で可視化する', async () => {
+    setup([
+      makeInterest({
+        ref_kind: 'stock',
+        ref_id: '7203',
+        role: 'seed',
+        origin: 'human',
+      }),
       makeInterest({
         ref_kind: 'indicator',
         ref_id: 'USDJPY',
@@ -157,28 +197,22 @@ describe('InterestTree', () => {
       }),
     ])
 
-    await waitFor(() => {
-      expect(screen.getByText('seed')).toBeInTheDocument()
-    })
-    expect(screen.getByText('derived')).toBeInTheDocument()
-    expect(screen.getAllByText('人力')).toHaveLength(1)
-    expect(screen.getAllByText('LLM')).toHaveLength(1)
+    const humanRow = await screen.findByTestId('interest-row-stock-7203')
+    const llmRow = await screen.findByTestId('interest-row-indicator-USDJPY')
+    expect(within(humanRow).getByText('人力')).toBeInTheDocument()
+    expect(within(llmRow).getByText('LLM')).toBeInTheDocument()
   })
 
   it('関心が無ければ空状態を表示する', async () => {
     setup([])
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await expectEmptyState()
   })
 
   it('関心を追加すると一覧に反映され、API に正しい body が送られる', async () => {
     const user = userEvent.setup()
     setup([])
 
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await expectEmptyState()
     await user.click(screen.getByRole('button', { name: '+ 追加' }))
 
     await user.selectOptions(screen.getByLabelText('ref_kind'), 'indicator')
@@ -188,7 +222,9 @@ describe('InterestTree', () => {
     await user.click(screen.getByRole('button', { name: '追加' }))
 
     await waitFor(() => {
-      expect(screen.getByText('derived')).toBeInTheDocument()
+      expect(
+        screen.getByTestId('interest-row-indicator-USDJPY'),
+      ).toBeInTheDocument()
     })
     expect(activeMiddleware?.store.createCalls).toEqual([
       {
@@ -207,13 +243,11 @@ describe('InterestTree', () => {
     const user = userEvent.setup()
     setup([])
 
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await expectEmptyState()
     await user.click(screen.getByRole('button', { name: '+ 追加' }))
     await user.click(screen.getByRole('button', { name: '追加' }))
 
-    expect(screen.getByTestId('interest-form-error').textContent).toBe(
+    expect(screen.getByTestId('create-interest-error').textContent).toBe(
       'ref_id は必須です',
     )
     expect(activeMiddleware?.store.createCalls).toEqual([])
@@ -223,16 +257,12 @@ describe('InterestTree', () => {
     const user = userEvent.setup()
     setup([makeInterest({ ref_kind: 'stock', ref_id: '7203', role: 'seed' })])
 
-    await waitFor(() => {
-      expect(screen.getByText('seed')).toBeInTheDocument()
-    })
+    await screen.findByTestId('interest-row-stock-7203')
     await user.click(
       screen.getByRole('button', { name: '関心 stock:7203 を削除' }),
     )
 
-    await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
-    })
+    await expectEmptyState()
     expect(activeMiddleware?.store.deleteCalls).toEqual([
       { strategyId: 'strat-1', refKind: 'stock', refId: '7203' },
     ])

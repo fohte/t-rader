@@ -41,6 +41,7 @@ export function CreateHypothesisDialog({
 
   function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
+    if (createMutation.isPending) return
     const trimmedTitle = title.trim()
     const trimmedBody = body.trim()
     if (trimmedTitle === '') {
