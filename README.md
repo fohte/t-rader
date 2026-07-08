@@ -41,7 +41,8 @@ docker compose up
 
 ### Git worktree で並列開発する場合
 
-DB は `docker-compose.infra.yml` で 1 つだけ起動し、全 worktree で共有する。backend / frontend のホストポートは `docker compose up` のたびにランダム割り当てされるため、worktree 間の衝突を気にせずそのまま起動できる。
+DB は `docker-compose.infra.yml` で 1 つだけ起動し、全 worktree で共有する。
+backend / frontend のホストポートは `docker compose up` のたびにランダム割り当てされるため、worktree 間の衝突を気にせずそのまま起動できる。
 
 ```bash
 # アプリのみ起動 (DB は既に起動済み)
