@@ -48,7 +48,7 @@ backend / frontend のホストポートは `docker compose up` のたびにラ�
 # アプリのみ起動 (DB は既に起動済み)
 docker compose up
 
-# 割り当てられたポートを確認
+# 割り当てられたポートを確認 (起動中の全コンテナを一覧するなら docker compose ps)
 docker compose port backend 3000
 docker compose port frontend 5173
 ```
