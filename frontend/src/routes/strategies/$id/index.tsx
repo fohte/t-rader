@@ -5,6 +5,7 @@ import { AnalysisCard } from '@/components/strategy-home/analysis-card'
 import { AnnotationList } from '@/components/strategy-home/annotation-list'
 import { ArrivalsList } from '@/components/strategy-home/arrivals-list'
 import { ChartPanel } from '@/components/strategy-home/chart-panel'
+import { HypothesisList } from '@/components/strategy-home/hypothesis-list'
 import { InterestTree } from '@/components/strategy-home/interest-tree'
 import { NotesList } from '@/components/strategy-home/notes-list'
 import { RelatedMacro } from '@/components/strategy-home/related-macro'
@@ -185,7 +186,8 @@ function StrategyHomePage() {
           <RelatedMacro indicatorIds={indicatorIds} />
           <RelatedNews strategyId={id} />
           <NotesList strategyId={id} notes={sortedNotes} />
-          <InterestTree interests={interests ?? []} />
+          <HypothesisList strategyId={id} />
+          <InterestTree strategyId={id} />
         </aside>
       </div>
     </div>
