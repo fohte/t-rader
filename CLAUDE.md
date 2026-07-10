@@ -105,7 +105,8 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 ## DB 接続
 
 - DB は `docker compose -f docker-compose.infra.yml up -d` で起動する (全 worktree 共有)
-- `DATABASE_URL` は mise 経由で `.env` から自動的に読み込まれるため、手動設定は不要
+- db のホストポートはランダム割り当てのため、`.env` の `DATABASE_URL` デフォルト値 (`localhost:5432`) は実際のポートと一致しない場合がある
+- `cargo run` でローカル直接起動する場合は `docker compose -f docker-compose.infra.yml port db 5432` で実ポートを確認し、`.env.local` で `DATABASE_URL` を上書きすること
 
 ## Warnings
 

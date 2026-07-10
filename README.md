@@ -37,22 +37,20 @@ docker compose -f docker-compose.infra.yml up -d
 docker compose up
 ```
 
-起動後、http://localhost:5173 でフロントエンドにアクセスできる。
+起動後、`docker compose port frontend 5173` で確認したポートでフロントエンドにアクセスできる。
 
 ### Git worktree で並列開発する場合
 
-DB は `docker-compose.infra.yml` で 1 つだけ起動し、全 worktree で共有する。各 worktree では `.env` でポートを変えてアプリのみ起動する。
-
-worktree 側の `.env` でポートを変更:
-
-```dotenv
-BACKEND_PORT=3001
-FRONTEND_PORT=5174
-```
+DB は `docker-compose.infra.yml` で 1 つだけ起動し、全 worktree で共有する。
+backend / frontend のホストポートは `docker compose up` のたびにランダム割り当てされるため、worktree 間の衝突を気にせずそのまま起動できる。
 
 ```bash
 # アプリのみ起動 (DB は既に起動済み)
 docker compose up
+
+# 割り当てられたポートを確認 (起動中の全コンテナを一覧するなら docker compose ps)
+docker compose port backend 3000
+docker compose port frontend 5173
 ```
 
 ## データベース
@@ -116,20 +114,18 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 
 ## 環境変数
 
-| 変数                | 説明                                                                    | デフォルト              |
-| ------------------- | ----------------------------------------------------------------------- | ----------------------- |
-| `DATABASE_URL`      | PostgreSQL 接続 URL                                                     | -                       |
-| `POSTGRES_USER`     | DB ユーザー名                                                           | `t_rader`               |
-| `POSTGRES_PASSWORD` | DB パスワード                                                           | `t_rader`               |
-| `POSTGRES_DB`       | DB 名                                                                   | `t_rader_development`   |
-| `DB_PORT`           | DB 公開ポート                                                           | `5432`                  |
-| `BACKEND_PORT`      | バックエンド公開ポート                                                  | `3000`                  |
-| `FRONTEND_PORT`     | フロントエンド公開ポート                                                | `5173`                  |
-| `JQUANTS_API_KEY`   | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                    | -                       |
-| `VITE_API_URL`      | Vite 開発サーバーのプロキシ先 URL                                       | `http://localhost:3000` |
-| `API_BACKEND_URL`   | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)           | -                       |
-| `NGINX_RESOLVER`    | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須) | -                       |
-| `MCP_ALLOWED_HOSTS` | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)     | -                       |
+| 変数                | 説明                                                                                                                                     | デフォルト              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `DATABASE_URL`      | PostgreSQL 接続 URL                                                                                                                      | -                       |
+| `POSTGRES_USER`     | DB ユーザー名                                                                                                                            | `t_rader`               |
+| `POSTGRES_PASSWORD` | DB パスワード                                                                                                                            | `t_rader`               |
+| `POSTGRES_DB`       | DB 名                                                                                                                                    | `t_rader_development`   |
+| `BACKEND_PORT`      | backend プロセスのリッスンポート (`cargo run` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係) | `3000`                  |
+| `JQUANTS_API_KEY`   | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                     | -                       |
+| `VITE_API_URL`      | Vite 開発サーバーのプロキシ先 URL                                                                                                        | `http://localhost:3000` |
+| `API_BACKEND_URL`   | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                            | -                       |
+| `NGINX_RESOLVER`    | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                  | -                       |
+| `MCP_ALLOWED_HOSTS` | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                      | -                       |
 
 ### DataProvider 切替
 
