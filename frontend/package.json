@@ -21,8 +21,7 @@
   "devDependencies": {
     "@commitlint/cli": "21.1.0",
     "@eslint/eslintrc": "3.3.5",
-<<<<<<< before updating
-    "@fohte/eslint-config": "0.3.2",
+    "@fohte/eslint-config": "0.3.4",
     "@storybook/addon-docs": "10.2.10",
     "@storybook/addon-themes": "10.2.10",
     "@storybook/react-vite": "10.2.10",
@@ -33,11 +32,6 @@
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
-||||||| last update
-    "@fohte/eslint-config": "0.3.4",
-=======
-    "@fohte/eslint-config": "0.3.5",
->>>>>>> after updating
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "25.2.3",
