@@ -82,8 +82,7 @@ export function ImportSbiDialog({
         setPhase('select')
         return
       }
-      // 自前 API でスキーマ一致を信頼するため、unknown→具象型は narrow 検証なしで通す
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 自前 API でスキーマ一致を信頼するため、unknown→具象型は narrow 検証なしで通す
       const data = (await httpRes.json()) as SbiPreviewResponse
       const defaultStrategy = strategies[0]?.id ?? ''
       setRows(

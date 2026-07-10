@@ -42,7 +42,7 @@ function installMiddleware(initial: SkillStore = {}) {
             })
         }
         if (method === 'DELETE') {
-          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- テスト用モックストアのキー削除
           delete store[name]
           return new Response(null, { status: 204 })
         }

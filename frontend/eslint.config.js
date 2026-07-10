@@ -2,6 +2,8 @@ import { config } from '@fohte/eslint-config'
 
 export default config(
   { typescript: { typeChecked: true } },
+  // TanStack Router の自動生成ファイル
+  { ignores: ['src/routeTree.gen.ts'] },
   {
     files: ['**/*.ts{,x}'],
     languageOptions: {
