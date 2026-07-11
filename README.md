@@ -10,7 +10,7 @@ fohte 個人用の日本株投資プラットフォーム。
 | ---------------------- | ------------------------------------------------------------- |
 | Frontend               | React 19, Vite 7, TanStack Router, shadcn/ui, Tailwind CSS v4 |
 | Backend                | Rust (Axum)                                                   |
-| Agent                  | Node.js/TypeScript (Hono, A2A server, LangGraph)              |
+| Agent                  | Node.js/TypeScript (Hono, A2A server)                         |
 | DB                     | TimescaleDB (PostgreSQL 17)                                   |
 | パッケージマネージャー | pnpm                                                          |
 | ツール管理             | mise                                                          |
@@ -90,9 +90,9 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 
 ## Agent サービス
 
-`agent/` は戦略 Agent (LangGraph JS) を実行する独立した Node/TS サービス。A2A (Agent-to-Agent) プロトコルのサーバーとして動作し、backend からは internal API (bearer token 認証) 経由で呼び出される。
+`agent/` は kubeopencode (下記「戦略 Agent reconcile」) を置き換える予定の、A2A (Agent-to-Agent) プロトコルサーバー。現時点では A2A server 基盤・internal API・observability の scaffold のみで、戦略実行ロジック (LangGraph agent 構成、MCP tool 接続) は未実装 (`runStrategyAgent` はプレースホルダの結果を返す)。backend からの呼び出しも未接続。
 
-- DB は backend とは別の論理 DB (`t_rader_agent_development` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ (`docker-compose.infra.yml` の initdb スクリプトで作成)
+- DB は backend とは別の論理 DB (`t_rader_agent_development` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ (`docker-compose.infra.yml` の initdb スクリプトで作成)。initdb は Postgres の data ディレクトリが空の初回起動時にしか実行されないため、既存の共有 `db_data` ボリュームを使っている場合は `docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development -c 'CREATE DATABASE t_rader_agent_development'` 等で手動作成すること (test 用 DB も同様)
 - マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
 - internal API: `POST /internal/tasks` (`{strategy_id, prompt}` -> `{task_id}`) / `GET /internal/tasks/{task_id}` (-> `{task_id, state, result_text?, error_kind?}`)
 
@@ -100,7 +100,7 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 # agent 単体でテスト実行 (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
 cd agent && pnpm test
 
-# DB 統合テストを含めて実行する場合
+# DB 統合テストを含めて実行する場合。ポートは `docker compose -f docker-compose.infra.yml port db 5432` で確認する
 cd agent && TEST_DATABASE_URL=postgres://t_rader:t_rader@localhost:<port>/t_rader_agent_test pnpm test
 ```
 
@@ -166,6 +166,8 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐させ、その HTTP エンドポイントを `IBKR_BASE_URL` に設定する (例: `https://ibkr-gateway:5000/v1/api`)。秘密鍵相当の API キーは存在せず、認証は Gateway 側の Web ログインで維持される。
 
 ### 戦略 Agent reconcile
+
+kubeopencode operator (Agent CR / Task CR) ベースの戦略実行機構。将来的に上記の `agent/` (LangGraph JS ベース) へ移行予定だが、移行が完了するまではこちらが本番の実行経路。
 
 `KUBEOPENCODE_API_URL` が `disabled` でない (= 実 kube cluster に接続する) 場合、戦略 Agent の reconcile に以下が必要になる。
 
