@@ -186,7 +186,7 @@ describe('IndicatorEditor', () => {
       />,
     )
     const result = screen.getByTestId('preview-result')
-    expect({
+    const actual = {
       exitCode: result.querySelector('[data-testid="preview-exit-code"]')
         ?.textContent,
       output: result.querySelector('[data-testid="preview-output"]')
@@ -195,7 +195,8 @@ describe('IndicatorEditor', () => {
         ?.textContent,
       stderr: result.querySelector('[data-testid="preview-stderr"]')
         ?.textContent,
-    }).toEqual({
+    }
+    expect(actual).toEqual({
       exitCode: '0',
       output: '{\n  "value": 42\n}',
       stdout: '{"value": 42}',

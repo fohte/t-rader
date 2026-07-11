@@ -242,14 +242,15 @@ describe('IndicatorsPage', () => {
       expect(screen.getByTestId('preview-result')).toBeInTheDocument()
     })
     const result = screen.getByTestId('preview-result')
-    expect({
+    const actual = {
       exitCode: result.querySelector('[data-testid="preview-exit-code"]')
         ?.textContent,
       output: result.querySelector('[data-testid="preview-output"]')
         ?.textContent,
       stdout: result.querySelector('[data-testid="preview-stdout"]')
         ?.textContent,
-    }).toEqual({
+    }
+    expect(actual).toEqual({
       exitCode: '0',
       output: '{\n  "value": 42\n}',
       stdout: '{"value": 42}\n',
