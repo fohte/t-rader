@@ -419,6 +419,21 @@ jobs:
       needs.detect-changes.outputs.agent == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
+    services:
+      db:
+        image: timescale/timescaledb:latest-pg17
+        env:
+          POSTGRES_USER: t_rader
+          POSTGRES_PASSWORD: t_rader
+          POSTGRES_DB: t_rader_agent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U t_rader"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
@@ -444,6 +459,8 @@ jobs:
 
       - name: Run tests
         working-directory: agent
+        env:
+          TEST_DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_agent_test
         run: pnpm run test
 
   # Aggregation gate for the per-package unit-test jobs. The dynamic per-package
