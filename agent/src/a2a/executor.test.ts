@@ -73,23 +73,21 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
-    expect({
-      finished: eventBus.finishedCalled,
-      events: eventBus.events.map((e) =>
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(
+      eventBus.events.map((e) =>
         'kind' in e && e.kind === 'task'
-          ? { kind: 'task', state: (e as Task).status.state }
+          ? { kind: 'task', state: e.status.state }
           : {
               kind: (e as { kind: string }).kind,
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- `final` only exists on some AgentExecutionEvent variants; test only inspects it when present
               final: (e as { final?: boolean }).final,
             },
       ),
-    }).toEqual({
-      finished: true,
-      events: [
-        { kind: 'task', state: 'rejected' },
-        { kind: 'status-update', final: true },
-      ],
-    })
+    ).toEqual([
+      { kind: 'task', state: 'rejected' },
+      { kind: 'status-update', final: true },
+    ])
   })
 
   it('rejects the task when strategy_id is not a valid UUID', async () => {
@@ -100,6 +98,7 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status.state` field common to every AgentExecutionEvent variant
     const finalEvent = eventBus.events[1] as { status: { state: string } }
     expect(finalEvent.status.state).toBe('rejected')
   })
@@ -114,26 +113,19 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
     const [task, working, completed] = eventBus.events as [
       Task,
       { status: { state: string } },
       { status: { state: string; message?: Message } },
     ]
-    expect({
-      finished: eventBus.finishedCalled,
-      taskState: task.status.state,
-      workingState: working.status.state,
-      completedState: completed.status.state,
-      completedMessageText: completed.status.message?.parts[0],
-    }).toEqual({
-      finished: true,
-      taskState: 'submitted',
-      workingState: 'working',
-      completedState: 'completed',
-      completedMessageText: {
-        kind: 'text',
-        text: 'strategy agent execution is not implemented yet',
-      },
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(task.status.state).toBe('submitted')
+    expect(working.status.state).toBe('working')
+    expect(completed.status.state).toBe('completed')
+    expect(completed.status.message?.parts[0]).toEqual({
+      kind: 'text',
+      text: 'strategy agent execution is not implemented yet',
     })
   })
 
@@ -153,22 +145,19 @@ describe('TraderAgentExecutor', () => {
 
     await executor.cancelTask('task-4', eventBus)
 
-    expect({
-      finished: eventBus.finishedCalled,
-      event: eventBus.events[0],
-    }).toEqual({
-      finished: true,
-      event: {
-        kind: 'status-update',
-        taskId: 'task-4',
-        contextId: 'ctx-4',
-        final: true,
-        status: {
-          state: 'canceled',
-          timestamp: (eventBus.events[0] as { status: { timestamp: string } })
-            .status.timestamp,
-        },
-      },
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status.timestamp` field common to every AgentExecutionEvent variant
+    const statusUpdateEvent = eventBus.events[0] as {
+      status: { timestamp: string }
+    }
+    const { timestamp } = statusUpdateEvent.status
+    expect(Number.isNaN(new Date(timestamp).getTime())).toBe(false)
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(eventBus.events[0]).toEqual({
+      kind: 'status-update',
+      taskId: 'task-4',
+      contextId: 'ctx-4',
+      final: true,
+      status: { state: 'canceled', timestamp },
     })
   })
 })
