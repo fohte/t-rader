@@ -61,8 +61,8 @@ importers:
         specifier: 3.3.5
         version: 3.3.5(supports-color@10.2.2)
       '@fohte/eslint-config':
-        specifier: 0.3.5
-        version: 0.3.5(d7a4a9fef4e6103e9444aaa692429950)
+        specifier: 0.3.6
+        version: 0.3.6(d7a4a9fef4e6103e9444aaa692429950)
       '@storybook/addon-docs':
         specifier: 10.2.10
         version: 10.2.10(@types/react@19.2.17)(esbuild@0.27.7)(rollup@4.62.2)(storybook@10.2.10(@testing-library/dom@10.4.1)(prettier@3.9.4)(react@19.2.7))(vite@7.3.5(@types/node@25.2.3)(jiti@2.7.0)(lightningcss@1.32.0))
@@ -680,8 +680,8 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
-  '@fohte/eslint-config@0.3.5':
-    resolution: {integrity: sha512-NlTGII39ongoVKC/6lN5xtuljc2O12BeL+05Ey/f6yAhJi3i1dqAOwwliIUEFFZcdRMoCZhlqs0hQZOLAwlpag==}
+  '@fohte/eslint-config@0.3.6':
+    resolution: {integrity: sha512-artqgPAhZy2Xxmkz7/teRYmbXPwAYXsRC5+Bl+rXmHxhMxM6MlJB5TGzjHCKqq9JLHEfWWNcZLQ3PWeuNW1/FA==}
     engines: {node: '>=20.19.0 || >=22.13.0'}
     peerDependencies:
       '@eslint-community/eslint-plugin-eslint-comments': ^4.0.0
@@ -5226,7 +5226,7 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
-  '@fohte/eslint-config@0.3.5(d7a4a9fef4e6103e9444aaa692429950)':
+  '@fohte/eslint-config@0.3.6(d7a4a9fef4e6103e9444aaa692429950)':
     dependencies:
       '@eslint-community/eslint-plugin-eslint-comments': 4.7.2(eslint@10.6.0(jiti@2.7.0)(supports-color@10.2.2))
       '@typescript-eslint/eslint-plugin': 8.62.1(@typescript-eslint/parser@8.62.1(eslint@10.6.0(jiti@2.7.0)(supports-color@10.2.2))(typescript@6.0.3))(eslint@10.6.0(jiti@2.7.0)(supports-color@10.2.2))(typescript@6.0.3)
