@@ -60,17 +60,6 @@ function fixedRow(overrides: Partial<IndicatorRow>): IndicatorRow {
   }
 }
 
-function readPreviewResultFields(container: HTMLElement) {
-  return {
-    exitCode: container.querySelector('[data-testid="preview-exit-code"]')
-      ?.textContent,
-    output: container.querySelector('[data-testid="preview-output"]')
-      ?.textContent,
-    stdout: container.querySelector('[data-testid="preview-stdout"]')
-      ?.textContent,
-  }
-}
-
 function installMiddleware(initial: Partial<Store>) {
   const store: Store = {
     global: initial.global ?? [],
@@ -253,11 +242,15 @@ describe('IndicatorsPage', () => {
       expect(screen.getByTestId('preview-result')).toBeInTheDocument()
     })
     const result = screen.getByTestId('preview-result')
-    expect(readPreviewResultFields(result)).toEqual({
-      exitCode: '0',
-      output: '{\n  "value": 42\n}',
-      stdout: '{"value": 42}\n',
-    })
+    expect(
+      result.querySelector('[data-testid="preview-exit-code"]')?.textContent,
+    ).toBe('0')
+    expect(
+      result.querySelector('[data-testid="preview-output"]')?.textContent,
+    ).toBe('{\n  "value": 42\n}')
+    expect(
+      result.querySelector('[data-testid="preview-stdout"]')?.textContent,
+    ).toBe('{"value": 42}\n')
 
     expect(active?.store.previewRequests).toEqual([
       {
