@@ -11,9 +11,6 @@ subpackages:
     type: node
   - name: backend
     type: rust
-  - name: agent
-    type: node
-    web_app: true
 type: base
 use_coverage: true
 use_release_please: false
