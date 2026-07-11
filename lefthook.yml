@@ -74,6 +74,13 @@ pre-commit:
       root: 'frontend/'
       run: pnpm exec eslint {staged_files}
 
+    # Non-workspace multi-package monorepo: each subpackage has its own
+    # eslint.config.js and dependencies, so lint per package from its root.
+    eslint-agent:
+      glob: '*.{js,ts,jsx,tsx,mjs,cjs}'
+      root: 'agent/'
+      run: pnpm exec eslint {staged_files}
+
     ast-grep:
       glob: '*.rs'
       run: ast-grep scan {staged_files}

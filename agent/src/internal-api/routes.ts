@@ -6,8 +6,8 @@ import type {
   PushNotificationConfig,
   Task,
 } from '@a2a-js/sdk'
-import { A2AError } from '@a2a-js/sdk/server'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
+import { A2AError } from '@a2a-js/sdk/server'
 import type { Hono } from 'hono'
 import { z } from 'zod'
 

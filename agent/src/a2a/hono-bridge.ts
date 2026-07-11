@@ -20,9 +20,7 @@ export interface A2aHonoBridgeOptions {
 const isAsyncGenerator = (
   value: JSONRPCResponse | AsyncGenerator<JSONRPCResponse, void, undefined>,
 ): value is AsyncGenerator<JSONRPCResponse, void, undefined> =>
-  typeof (value as AsyncGenerator<JSONRPCResponse, void, undefined>)[
-    Symbol.asyncIterator
-  ] === 'function'
+  Symbol.asyncIterator in value
 
 export const mountA2aRoutes = (
   app: Hono,

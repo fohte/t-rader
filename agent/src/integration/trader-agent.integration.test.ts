@@ -45,6 +45,7 @@ const pollUntilTerminal = async (
     const res = await app.request(`/internal/tasks/${taskId}`, {
       headers: { authorization: 'Bearer test-token' },
     })
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads our own internal API's documented JSON response shape
     const body = (await res.json()) as TaskResponse
     if (TERMINAL_STATES.has(body.state)) return body
     await sleep(10)
@@ -100,18 +101,17 @@ describeIfDb('t-rader-agent internal API integration', () => {
         prompt: 'do the thing',
       }),
     })
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads our own internal API's documented JSON response shape
     const { task_id: taskId } = (await submitRes.json()) as { task_id: string }
 
     const finalState = await pollUntilTerminal(app, taskId)
     await settlePushNotification()
 
-    expect({ submitStatus: submitRes.status, finalState }).toEqual({
-      submitStatus: 201,
-      finalState: {
-        task_id: taskId,
-        state: 'completed',
-        result_text: 'strategy agent execution is not implemented yet',
-      },
+    expect(submitRes.status).toBe(201)
+    expect(finalState).toEqual({
+      task_id: taskId,
+      state: 'completed',
+      result_text: 'strategy agent execution is not implemented yet',
     })
   })
 
@@ -129,6 +129,7 @@ describeIfDb('t-rader-agent internal API integration', () => {
         prompt: 'do the thing',
       }),
     })
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads our own internal API's documented JSON response shape
     const { task_id: taskId } = (await submitRes.json()) as { task_id: string }
 
     const finalState = await pollUntilTerminal(app, taskId)

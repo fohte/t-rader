@@ -4,8 +4,6 @@ import type {
   MessageSendParams,
   Task,
   TaskArtifactUpdateEvent,
-  TaskIdParams,
-  TaskQueryParams,
   TaskStatusUpdateEvent,
 } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
@@ -55,8 +53,8 @@ const buildStubHandler = (
   getAuthenticatedExtendedAgentCard: () => Promise.resolve(buildAgentCard()),
   sendMessage: overrides.sendMessage ?? notImplemented,
   sendMessageStream: overrides.sendMessageStream ?? notImplemented,
-  getTask: (_params: TaskQueryParams) => notImplemented(),
-  cancelTask: (_params: TaskIdParams) => notImplemented(),
+  getTask: () => notImplemented(),
+  cancelTask: () => notImplemented(),
   setTaskPushNotificationConfig: notImplemented,
   getTaskPushNotificationConfig: notImplemented,
   listTaskPushNotificationConfigs: notImplemented,
@@ -82,10 +80,8 @@ describe('mountA2aRoutes', () => {
     const app = buildApp(buildStubHandler(), 'secret')
     const res = await app.request('/.well-known/agent-card.json')
 
-    expect({ status: res.status, body: await res.json() }).toEqual({
-      status: 200,
-      body: buildAgentCard(),
-    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(buildAgentCard())
   })
 
   it('forwards message/send to the request handler and returns its result', async () => {
@@ -165,6 +161,7 @@ describe('mountA2aRoutes', () => {
 
   it('streams message/stream results over SSE', async () => {
     const task = buildTask('task-3')
+    // eslint-disable-next-line @typescript-eslint/require-await -- must be an async generator to satisfy AsyncGenerator, even though it never awaits
     async function* stream(): AsyncGenerator<Task, void, undefined> {
       yield task
     }
@@ -193,12 +190,9 @@ describe('mountA2aRoutes', () => {
     })
 
     const text = await res.text()
-    expect({
-      contentType: res.headers.get('content-type'),
-      body: text,
-    }).toEqual({
-      contentType: 'text/event-stream',
-      body: `data: ${JSON.stringify({ jsonrpc: '2.0', id: 3, result: task })}\n\n`,
-    })
+    expect(res.headers.get('content-type')).toBe('text/event-stream')
+    expect(text).toBe(
+      `data: ${JSON.stringify({ jsonrpc: '2.0', id: 3, result: task })}\n\n`,
+    )
   })
 })

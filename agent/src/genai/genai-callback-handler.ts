@@ -45,7 +45,7 @@ const contentToText = (content: BaseMessage['content']): string =>
   typeof content === 'string' ? content : JSON.stringify(content)
 
 const messageToGenAiMessage = (message: BaseMessage): GenAiMessage => ({
-  role: message.getType(),
+  role: message.type,
   parts: [{ type: 'text', content: contentToText(message.content) }],
 })
 
@@ -89,6 +89,7 @@ export class GenAiCallbackHandler extends BaseCallbackHandler {
     _parentRunId?: string,
     extraParams?: Record<string, unknown>,
   ): void {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- extraParams is an untyped bag; narrowed immediately below via typeof
     const invocationParams = extraParams?.['invocation_params'] as
       Record<string, unknown> | undefined
     const model =
@@ -128,14 +129,15 @@ export class GenAiCallbackHandler extends BaseCallbackHandler {
     try {
       const generation = output.generations[0]?.[0]
       const generationInfo = generation?.generationInfo
-      const modelName = generationInfo?.['model_name']
+      const modelName: unknown = generationInfo?.['model_name']
       if (typeof modelName === 'string') {
         span.setAttribute(ATTR_GEN_AI_RESPONSE_MODEL, modelName)
       }
-      const finishReason = generationInfo?.['finish_reason']
+      const finishReason: unknown = generationInfo?.['finish_reason']
       if (typeof finishReason === 'string') {
         span.setAttribute(ATTR_GEN_AI_RESPONSE_FINISH_REASONS, [finishReason])
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- llmOutput is an untyped bag; narrowed immediately below via typeof
       const tokenUsage = output.llmOutput?.['tokenUsage'] as
         TokenUsage | undefined
       if (typeof tokenUsage?.promptTokens === 'number') {
@@ -155,6 +157,7 @@ export class GenAiCallbackHandler extends BaseCallbackHandler {
         generation !== undefined &&
         'message' in generation
       ) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the `'message' in generation` check above confirms this is a ChatGeneration, but TS cannot narrow a non-discriminated interface
         const chatGeneration = generation as ChatGeneration
         span.setAttribute(
           ATTR_GEN_AI_OUTPUT_MESSAGES,

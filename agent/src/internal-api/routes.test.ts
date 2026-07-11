@@ -4,8 +4,8 @@ import type {
   Task,
   TaskQueryParams,
 } from '@a2a-js/sdk'
-import { A2AError } from '@a2a-js/sdk/server'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
+import { A2AError } from '@a2a-js/sdk/server'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 
@@ -70,19 +70,16 @@ describe('POST /internal/tasks', () => {
       }),
     })
 
-    expect({
-      status: res.status,
-      body: await res.json(),
-      sentMetadata: capturedParams?.message.metadata,
-      sentText: capturedParams?.message.parts[0],
-      blocking: capturedParams?.configuration?.blocking,
-    }).toEqual({
-      status: 201,
-      body: { task_id: 'task-1' },
-      sentMetadata: { strategy_id: '11111111-1111-1111-1111-111111111111' },
-      sentText: { kind: 'text', text: 'do the thing' },
-      blocking: false,
+    expect(res.status).toBe(201)
+    expect(await res.json()).toEqual({ task_id: 'task-1' })
+    expect(capturedParams?.message.metadata).toEqual({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
     })
+    expect(capturedParams?.message.parts[0]).toEqual({
+      kind: 'text',
+      text: 'do the thing',
+    })
+    expect(capturedParams?.configuration?.blocking).toBe(false)
   })
 
   it('returns 400 for a malformed JSON body', async () => {
@@ -135,10 +132,8 @@ describe('GET /internal/tasks/:taskId', () => {
       }),
     )
     const res = await app.request('/internal/tasks/task-2')
-    expect({ status: res.status, body: await res.json() }).toEqual({
-      status: 200,
-      body: { task_id: 'task-2', state: 'working' },
-    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ task_id: 'task-2', state: 'working' })
   })
 
   it('includes result_text for a completed task', async () => {
@@ -207,9 +202,7 @@ describe('GET /internal/tasks/:taskId', () => {
       }),
     )
     const res = await app.request('/internal/tasks/missing-task')
-    expect({ status: res.status, body: await res.json() }).toEqual({
-      status: 404,
-      body: { error: 'task not found' },
-    })
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'task not found' })
   })
 })
