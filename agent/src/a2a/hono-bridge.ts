@@ -20,7 +20,8 @@ export interface A2aHonoBridgeOptions {
 const isAsyncGenerator = (
   value: JSONRPCResponse | AsyncGenerator<JSONRPCResponse, void, undefined>,
 ): value is AsyncGenerator<JSONRPCResponse, void, undefined> =>
-  Symbol.asyncIterator in value
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- defends against a runtime value that doesn't match its declared type (e.g. an SDK returning something unexpected)
+  typeof value === 'object' && value !== null && Symbol.asyncIterator in value
 
 export const mountA2aRoutes = (
   app: Hono,

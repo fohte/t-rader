@@ -124,9 +124,9 @@ export class TraderAgentExecutor implements AgentExecutor {
   }
 
   private runStrategyAgent(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- placeholder signature for the LangGraph agent execution to be implemented in a follow-up task
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- placeholder body below does not reference these
     _strategyId: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- placeholder signature for the LangGraph agent execution to be implemented in a follow-up task
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- placeholder body below does not reference these
     _userMessage: Message,
   ): Promise<string> {
     return Promise.resolve('strategy agent execution is not implemented yet')
