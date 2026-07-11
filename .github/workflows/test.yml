@@ -102,14 +102,11 @@ jobs:
       # TanStack Router の routeTree.gen.ts は gitignore 対象。
       # eslint の型ベースルール (no-unsafe-member-access 等) は route の generic 型に依存するため、
       # lint 前に生成しておかないと CI のみ false-positive が出る。
-<<<<<<< before updating
       - name: Generate frontend route tree
         run: cd "frontend" && pnpm exec tsr generate
-||||||| last update
-=======
+
       - name: Check peer dependencies (frontend)
         run: cd "frontend" && pnpm peers check
->>>>>>> after updating
 
       - name: Fetch cargo dependencies (backend)
         if: steps.check-backend.outputs.has_backend == 'true'

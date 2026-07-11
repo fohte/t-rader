@@ -1,6 +1,5 @@
 # CLAUDE.md
 
-<<<<<<< before updating
 ## Product
 
 fohte 個人用の日本株投資プラットフォーム。
@@ -120,8 +119,6 @@ cd frontend && nr storybook:build # Storybook 静的ビルド
 - Story ファイルはコンポーネントと同じディレクトリに配置する (例: `src/components/ui/button.stories.tsx`)
 - TanStack Router に依存するコンポーネントは `createMemoryHistory` + `createRouter` + `RouterProvider` でルーターコンテキストを提供する
 
-||||||| last update
-=======
 ## Code organization rules
 
 ### Split files before they grow past ~500 lines of production code
@@ -130,7 +127,6 @@ When a change would push a file's non-test code past ~500 lines, split it along 
 
 Prefer creating a new focused file over appending to the largest existing one.
 
->>>>>>> after updating
 ## Test code rules
 
 ### Assert on the whole output with a single equality check
