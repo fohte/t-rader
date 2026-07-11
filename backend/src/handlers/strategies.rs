@@ -656,7 +656,8 @@ pub async fn delete_skill(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// モデル設定は DB ではなく env 由来。kubeopencode reconcile と同じ変数名 / デフォルトを使う。
+/// モデル設定は DB ではなく env 由来。kubeopencode reconcile と同じ変数名 / デフォルトを使うが、
+/// kubeopencode 撤去後もこの API が単独で残せるよう、あえてロジックは共有しない。
 fn agent_model_settings() -> (String, String) {
     agent_model_settings_with(|key| std::env::var(key).ok())
 }
@@ -1079,6 +1080,10 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn get_agent_config_returns_agents_md_skills_and_model(pool: PgPool) {
+        let agents_md = indoc::indoc! {"
+            # 方針
+            慎重に運用する"};
+
         let (db, server) = create_test_server_with_db(pool).await;
         let id = Uuid::new_v4();
         strategy::ActiveModel {
@@ -1086,7 +1091,7 @@ mod tests {
             name: Set("s".to_string()),
             description: Set(None),
             sort_order: Set(0),
-            agents_md: Set("# 方針\n慎重に運用する".to_string()),
+            agents_md: Set(agents_md.to_string()),
             skills: Set(json!({ "scout": "scout body", "review": "review body" })),
             agent_status: Set(StrategyAgentStatus::Ready),
             agent_error: NotSet,
@@ -1104,7 +1109,7 @@ mod tests {
         assert_eq!(
             res.json::<serde_json::Value>(),
             json!({
-                "agents_md": "# 方針\n慎重に運用する",
+                "agents_md": agents_md,
                 "skills": { "scout": "scout body", "review": "review body" },
                 "model": crate::kubeopencode::DEFAULT_AGENT_MODEL,
                 "small_model": crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL,
