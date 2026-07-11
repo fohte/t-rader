@@ -610,6 +610,26 @@ export interface paths {
     patch: operations['update_strategy']
     trace?: never
   }
+  '/api/strategies/{id}/agent-config': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
+     *     t-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。
+     */
+    get: operations['get_agent_config']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/agents-md': {
     parameters: {
       query?: never
@@ -997,6 +1017,15 @@ export interface components {
       instrument_id: string
       /** @description 銘柄名 (例: "トヨタ自動車") */
       name: string
+    }
+    /** @description t-rader-agent がタスク実行時に取得する agent 設定一式。 */
+    AgentConfigResponse: {
+      agents_md: string
+      model: string
+      skills: {
+        [key: string]: string
+      }
+      small_model: string
     }
     AgentsMdBody: {
       content: string
@@ -3893,6 +3922,52 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_agent_config: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentConfigResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
         headers: {
           [name: string]: unknown
         }

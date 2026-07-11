@@ -15,8 +15,8 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::kubeopencode::{KubeopencodeError, agent_name_for};
 use crate::models::{
-    AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody, StrategyChatRequest,
-    StrategyChatResponse, StrategyTaskStatusResponse, UpdateStrategyRequest,
+    AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
+    StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, UpdateStrategyRequest,
 };
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategy_agent;
@@ -656,10 +656,57 @@ pub async fn delete_skill(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// モデル設定は DB ではなく env 由来。kubeopencode reconcile と同じ変数名 / デフォルトを使う。
+fn agent_model_settings() -> (String, String) {
+    agent_model_settings_with(|key| std::env::var(key).ok())
+}
+
+fn agent_model_settings_with<F>(get: F) -> (String, String)
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let model = get("STRATEGY_AGENT_MODEL")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| crate::kubeopencode::DEFAULT_AGENT_MODEL.to_string());
+    let small_model = get("STRATEGY_AGENT_SMALL_MODEL")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL.to_string());
+    (model, small_model)
+}
+
+/// 戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
+/// t-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。
+#[utoipa::path(
+    get,
+    path = "/api/strategies/{id}/agent-config",
+    tag = "strategies",
+    params(("id" = Uuid, Path, description = "戦略 ID")),
+    responses(
+        (status = 200, body = AgentConfigResponse),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_agent_config(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+) -> Result<Json<AgentConfigResponse>, AppError> {
+    let row = find_strategy_or_404(&state.db, id).await?;
+    let (model, small_model) = agent_model_settings();
+    Ok(Json(AgentConfigResponse {
+        agents_md: row.agents_md,
+        skills: skills_to_btree(&row.skills),
+        model,
+        small_model,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
+    use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{DatabaseConnection, EntityTrait};
@@ -668,11 +715,13 @@ mod tests {
 
     use uuid::Uuid;
 
+    use super::agent_model_settings_with;
     use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
     use crate::entities::{strategy, strategy_task};
     use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
     use crate::testing::{
-        create_test_server, create_test_server_with_db_and_kube, create_test_server_with_kube,
+        create_test_server, create_test_server_with_db, create_test_server_with_db_and_kube,
+        create_test_server_with_kube,
     };
 
     async fn insert_strategy_ready(db: &DatabaseConnection, name: &str) -> Uuid {
@@ -997,6 +1046,79 @@ mod tests {
             .json(&json!({ "content": "x" }))
             .await;
         put_md.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key: &str| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    #[rstest]
+    #[case::unset(&[], (crate::kubeopencode::DEFAULT_AGENT_MODEL, crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL))]
+    #[case::empty(
+        &[("STRATEGY_AGENT_MODEL", ""), ("STRATEGY_AGENT_SMALL_MODEL", "")],
+        (crate::kubeopencode::DEFAULT_AGENT_MODEL, crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL)
+    )]
+    #[case::overridden(
+        &[("STRATEGY_AGENT_MODEL", "m-x"), ("STRATEGY_AGENT_SMALL_MODEL", "m-y")],
+        ("m-x", "m-y")
+    )]
+    fn agent_model_settings_with_resolves_env(
+        #[case] env: &[(&str, &str)],
+        #[case] expected: (&str, &str),
+    ) {
+        assert_eq!(
+            agent_model_settings_with(env_get(env)),
+            (expected.0.to_string(), expected.1.to_string()),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_agent_config_returns_agents_md_skills_and_model(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let id = Uuid::new_v4();
+        strategy::ActiveModel {
+            id: Set(id),
+            name: Set("s".to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            agents_md: Set("# 方針\n慎重に運用する".to_string()),
+            skills: Set(json!({ "scout": "scout body", "review": "review body" })),
+            agent_status: Set(StrategyAgentStatus::Ready),
+            agent_error: NotSet,
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert strategy");
+
+        let res = server
+            .get(&format!("/api/strategies/{id}/agent-config"))
+            .await;
+        res.assert_status_ok();
+        assert_eq!(
+            res.json::<serde_json::Value>(),
+            json!({
+                "agents_md": "# 方針\n慎重に運用する",
+                "skills": { "scout": "scout body", "review": "review body" },
+                "model": crate::kubeopencode::DEFAULT_AGENT_MODEL,
+                "small_model": crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL,
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn agent_config_get_404_for_unknown_strategy(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let res = server
+            .get("/api/strategies/00000000-0000-0000-0000-000000000000/agent-config")
+            .await;
+        res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
     #[sqlx::test(migrations = false)]

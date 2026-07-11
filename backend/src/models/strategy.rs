@@ -69,3 +69,12 @@ pub struct SkillBody {
 pub struct SkillsBody {
     pub skills: BTreeMap<String, String>,
 }
+
+/// t-rader-agent がタスク実行時に取得する agent 設定一式。
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AgentConfigResponse {
+    pub agents_md: String,
+    pub skills: BTreeMap<String, String>,
+    pub model: String,
+    pub small_model: String,
+}

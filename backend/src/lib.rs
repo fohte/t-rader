@@ -200,6 +200,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(strategies::get_skills, strategies::put_skills))
         .routes(routes!(strategies::put_skill, strategies::delete_skill))
+        .routes(routes!(strategies::get_agent_config))
         // refs
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))
