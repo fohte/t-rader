@@ -29,6 +29,19 @@ const QUIET_PREVIEW: PreviewState = {
   result: null,
 }
 
+function readPreviewResultFields(container: HTMLElement) {
+  return {
+    exitCode: container.querySelector('[data-testid="preview-exit-code"]')
+      ?.textContent,
+    output: container.querySelector('[data-testid="preview-output"]')
+      ?.textContent,
+    stdout: container.querySelector('[data-testid="preview-stdout"]')
+      ?.textContent,
+    stderr: container.querySelector('[data-testid="preview-stderr"]')
+      ?.textContent,
+  }
+}
+
 describe('IndicatorEditor', () => {
   it('initial と一致する間は保存ボタンが disabled で dirty 表示も出ない', () => {
     render(
@@ -186,17 +199,7 @@ describe('IndicatorEditor', () => {
       />,
     )
     const result = screen.getByTestId('preview-result')
-    const actual = {
-      exitCode: result.querySelector('[data-testid="preview-exit-code"]')
-        ?.textContent,
-      output: result.querySelector('[data-testid="preview-output"]')
-        ?.textContent,
-      stdout: result.querySelector('[data-testid="preview-stdout"]')
-        ?.textContent,
-      stderr: result.querySelector('[data-testid="preview-stderr"]')
-        ?.textContent,
-    }
-    expect(actual).toEqual({
+    expect(readPreviewResultFields(result)).toEqual({
       exitCode: '0',
       output: '{\n  "value": 42\n}',
       stdout: '{"value": 42}',
