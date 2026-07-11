@@ -656,8 +656,7 @@ pub async fn delete_skill(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// モデル設定は DB ではなく env 由来。kubeopencode reconcile と同じ変数名 / デフォルトを使うが、
-/// kubeopencode 撤去後もこの API が単独で残せるよう、あえてロジックは共有しない。
+/// モデル設定は DB ではなく env 由来。kubeopencode reconcile と同じ変数名 / デフォルトを使う。
 fn agent_model_settings() -> (String, String) {
     agent_model_settings_with(|key| std::env::var(key).ok())
 }
