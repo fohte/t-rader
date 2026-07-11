@@ -186,21 +186,18 @@ describe('IndicatorEditor', () => {
       />,
     )
     const result = screen.getByTestId('preview-result')
-    expect({
-      exitCode: result.querySelector('[data-testid="preview-exit-code"]')
-        ?.textContent,
-      output: result.querySelector('[data-testid="preview-output"]')
-        ?.textContent,
-      stdout: result.querySelector('[data-testid="preview-stdout"]')
-        ?.textContent,
-      stderr: result.querySelector('[data-testid="preview-stderr"]')
-        ?.textContent,
-    }).toEqual({
-      exitCode: '0',
-      output: '{\n  "value": 42\n}',
-      stdout: '{"value": 42}',
-      stderr: 'note',
-    })
+    expect(
+      result.querySelector('[data-testid="preview-exit-code"]')?.textContent,
+    ).toBe('0')
+    expect(
+      result.querySelector('[data-testid="preview-output"]')?.textContent,
+    ).toBe('{\n  "value": 42\n}')
+    expect(
+      result.querySelector('[data-testid="preview-stdout"]')?.textContent,
+    ).toBe('{"value": 42}')
+    expect(
+      result.querySelector('[data-testid="preview-stderr"]')?.textContent,
+    ).toBe('note')
   })
 
   it('プレビューエラーを表示する', () => {
