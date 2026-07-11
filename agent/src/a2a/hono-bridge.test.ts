@@ -80,8 +80,8 @@ describe('mountA2aRoutes', () => {
     const app = buildApp(buildStubHandler(), 'secret')
     const res = await app.request('/.well-known/agent-card.json')
 
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual(buildAgentCard())
+    const actual = { status: res.status, body: await res.json() }
+    expect(actual).toEqual({ status: 200, body: buildAgentCard() })
   })
 
   it('forwards message/send to the request handler and returns its result', async () => {
@@ -189,10 +189,13 @@ describe('mountA2aRoutes', () => {
       }),
     })
 
-    const text = await res.text()
-    expect(res.headers.get('content-type')).toBe('text/event-stream')
-    expect(text).toBe(
-      `data: ${JSON.stringify({ jsonrpc: '2.0', id: 3, result: task })}\n\n`,
-    )
+    const actual = {
+      contentType: res.headers.get('content-type'),
+      body: await res.text(),
+    }
+    expect(actual).toEqual({
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ jsonrpc: '2.0', id: 3, result: task })}\n\n`,
+    })
   })
 })

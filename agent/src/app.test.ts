@@ -68,18 +68,21 @@ describe('createApp', () => {
     })
 
     const res = await buildTestApp(sql).request('/health')
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ status: 'ok' })
-    expect(queries).toEqual([['SELECT 1']])
+    const actual = { status: res.status, body: await res.json(), queries }
+    expect(actual).toEqual({
+      status: 200,
+      body: { status: 'ok' },
+      queries: [['SELECT 1']],
+    })
   })
 
   it('returns 503 on /health when the DB ping fails', async () => {
     const sql = fakeSql(() => Promise.reject(new Error('connection refused')))
     const res = await buildTestApp(sql).request('/health')
-    expect(res.status).toBe(503)
-    expect(await res.json()).toEqual({
-      status: 'error',
-      error: 'connection refused',
+    const actual = { status: res.status, body: await res.json() }
+    expect(actual).toEqual({
+      status: 503,
+      body: { status: 'error', error: 'connection refused' },
     })
   })
 
@@ -112,8 +115,8 @@ describe('createApp', () => {
         prompt: 'hi',
       }),
     })
-    expect(res.status).toBe(201)
-    expect(await res.json()).toEqual({ task_id: 'task-1' })
+    const actual = { status: res.status, body: await res.json() }
+    expect(actual).toEqual({ status: 201, body: { task_id: 'task-1' } })
   })
 
   it('forwards A2A JSON-RPC requests to the request handler', async () => {

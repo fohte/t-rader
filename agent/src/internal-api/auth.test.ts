@@ -16,15 +16,15 @@ describe('bearerAuth', () => {
     const res = await app.request('/ping', {
       headers: { authorization: 'Bearer secret' },
     })
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ ok: true })
+    const actual = { status: res.status, body: await res.json() }
+    expect(actual).toEqual({ status: 200, body: { ok: true } })
   })
 
   it('rejects a request with no authorization header', async () => {
     const app = buildApp('secret')
     const res = await app.request('/ping')
-    expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'unauthorized' })
+    const actual = { status: res.status, body: await res.json() }
+    expect(actual).toEqual({ status: 401, body: { error: 'unauthorized' } })
   })
 
   it('rejects a request with a mismatched token', async () => {

@@ -52,11 +52,16 @@ describe('runWatchdogSweep', () => {
       now,
     )
 
-    expect(result).toEqual(stale)
-    expect(notified).toEqual(stale)
-    expect(store.failStaleWorkingTasksCalls).toEqual([
-      new Date('2026-01-01T00:05:00.000Z'),
-    ])
+    const actual = {
+      result,
+      notified,
+      thresholdArg: store.failStaleWorkingTasksCalls,
+    }
+    expect(actual).toEqual({
+      result: stale,
+      notified: stale,
+      thresholdArg: [new Date('2026-01-01T00:05:00.000Z')],
+    })
   })
 })
 
@@ -67,10 +72,14 @@ describe('runRetentionSweep', () => {
 
     const deletedCount = await runRetentionSweep(store, 7, now)
 
-    expect(deletedCount).toBe(3)
-    expect(store.deleteSettledOlderThanCalls).toEqual([
-      new Date('2026-01-03T00:00:00.000Z'),
-    ])
+    const actual = {
+      deletedCount,
+      thresholdArg: store.deleteSettledOlderThanCalls,
+    }
+    expect(actual).toEqual({
+      deletedCount: 3,
+      thresholdArg: [new Date('2026-01-03T00:00:00.000Z')],
+    })
   })
 })
 
