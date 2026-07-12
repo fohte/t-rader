@@ -57,29 +57,43 @@ export const startTaskLifecycleJobs = (
 ): TaskLifecycleJobs => {
   const sweepIntervalMs = options.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS
   const now = options.now ?? (() => new Date())
+  let timer: NodeJS.Timeout | undefined
+  let stopped = false
 
-  const tick = (): void => {
-    void runWatchdogSweep(
-      store,
-      options.workingTimeoutMs,
-      options.onExpire,
-      now,
-    ).catch((err: unknown) => {
-      console.error('a2a watchdog sweep failed:', err)
-    })
-    void runRetentionSweep(store, options.retentionDays, now).catch(
-      (err: unknown) => {
-        console.error('a2a retention sweep failed:', err)
-      },
-    )
+  // Recursive setTimeout (not setInterval) so the next sweep is only
+  // scheduled once the previous one has fully settled, preventing
+  // overlapping sweeps if a sweep ever takes longer than sweepIntervalMs.
+  const tick = async (): Promise<void> => {
+    await Promise.all([
+      runWatchdogSweep(
+        store,
+        options.workingTimeoutMs,
+        options.onExpire,
+        now,
+      ).catch((err: unknown) => {
+        console.error('a2a watchdog sweep failed:', err)
+      }),
+      runRetentionSweep(store, options.retentionDays, now).catch(
+        (err: unknown) => {
+          console.error('a2a retention sweep failed:', err)
+        },
+      ),
+    ])
+    if (!stopped) {
+      timer = setTimeout(() => {
+        void tick()
+      }, sweepIntervalMs)
+    }
   }
 
-  tick()
-  const interval = setInterval(tick, sweepIntervalMs)
+  void tick()
 
   return {
     stop: () => {
-      clearInterval(interval)
+      stopped = true
+      if (timer !== undefined) {
+        clearTimeout(timer)
+      }
       return Promise.resolve()
     },
   }

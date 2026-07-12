@@ -15,6 +15,11 @@ import { createSql, pingDb } from '@/db'
 import { runMigrations } from '@/db/migrations'
 import { loadEnv } from '@/env'
 
+// Upper bound on graceful shutdown: server.close()'s callback only fires once
+// every open connection ends, so a client holding a keep-alive connection
+// open would otherwise hang the process indefinitely.
+const SHUTDOWN_FORCE_EXIT_MS = 10_000
+
 export const main = async (): Promise<void> => {
   const env = loadEnv()
   const sql = createSql(env.DATABASE_URL)
@@ -65,7 +70,13 @@ export const main = async (): Promise<void> => {
 
   const shutdown = (signal: NodeJS.Signals): void => {
     console.log(`received ${signal}, shutting down`)
+    const forceExit = setTimeout(() => {
+      console.error('shutdown timed out, forcing exit')
+      process.exit(1)
+    }, SHUTDOWN_FORCE_EXIT_MS)
+
     server.close((closeErr) => {
+      clearTimeout(forceExit)
       void Promise.allSettled([
         lifecycleJobs.stop(),
         sql.end({ timeout: 5 }),
