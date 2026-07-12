@@ -113,9 +113,9 @@ describeIfDb('PostgresTaskStore', () => {
         Number.isNaN(new Date(expired[0]?.status.timestamp ?? '').getTime()),
       ).toBe(false)
 
-      expect(expired.map((t) => t.id).sort()).toEqual(['stale'])
-      expect(expired.map((t) => t.status.state)).toEqual(['failed'])
-      expect(await store.load('stale')).toEqual({
+      expect.soft(expired.map((t) => t.id).sort()).toEqual(['stale'])
+      expect.soft(expired.map((t) => t.status.state)).toEqual(['failed'])
+      expect.soft(await store.load('stale')).toEqual({
         id: 'stale',
         contextId: 'ctx-stale',
         kind: 'task',
@@ -124,14 +124,14 @@ describeIfDb('PostgresTaskStore', () => {
           timestamp: expired[0]?.status.timestamp,
         },
       })
-      expect(await store.load('fresh')).toEqual(
+      expect.soft(await store.load('fresh')).toEqual(
         buildTask({
           id: 'fresh',
           state: 'working',
           timestamp: '2026-01-01T00:09:00.000Z',
         }),
       )
-      expect(await store.load('already-done')).toEqual(
+      expect.soft(await store.load('already-done')).toEqual(
         buildTask({
           id: 'already-done',
           state: 'completed',
@@ -186,27 +186,29 @@ describeIfDb('PostgresTaskStore', () => {
         new Date('2026-01-05T00:00:00.000Z'),
       )
 
-      expect(deletedCount).toEqual(2)
-      expect(await store.load('old-completed')).toEqual(undefined)
-      expect(await store.load('old-input-required')).toEqual(undefined)
-      expect(await store.load('recent-completed')).toEqual(
+      expect.soft(deletedCount).toEqual(2)
+      expect.soft(await store.load('old-completed')).toEqual(undefined)
+      expect.soft(await store.load('old-input-required')).toEqual(undefined)
+      expect.soft(await store.load('recent-completed')).toEqual(
         buildTask({
           id: 'recent-completed',
           state: 'completed',
           timestamp: '2026-01-10T00:00:00.000Z',
         }),
       )
-      expect(await store.load('still-working')).toEqual(
+      expect.soft(await store.load('still-working')).toEqual(
         buildTask({
           id: 'still-working',
           state: 'working',
           timestamp: '2026-01-01T00:00:00.000Z',
         }),
       )
-      expect(await pushStore.load('old-completed')).toEqual([])
-      expect(await pushStore.load('recent-completed')).toEqual([
-        { id: 'recent-completed', url: 'https://example.com/recent' },
-      ])
+      expect.soft(await pushStore.load('old-completed')).toEqual([])
+      expect
+        .soft(await pushStore.load('recent-completed'))
+        .toEqual([
+          { id: 'recent-completed', url: 'https://example.com/recent' },
+        ])
     })
   })
 })

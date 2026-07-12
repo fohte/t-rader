@@ -70,16 +70,16 @@ describe('POST /internal/tasks', () => {
       }),
     })
 
-    expect(res.status).toBe(201)
-    expect(await res.json()).toEqual({ task_id: 'task-1' })
-    expect(capturedParams?.message.metadata).toEqual({
+    expect.soft(res.status).toBe(201)
+    expect.soft(await res.json()).toEqual({ task_id: 'task-1' })
+    expect.soft(capturedParams?.message.metadata).toEqual({
       strategy_id: '11111111-1111-1111-1111-111111111111',
     })
-    expect(capturedParams?.message.parts[0]).toEqual({
+    expect.soft(capturedParams?.message.parts[0]).toEqual({
       kind: 'text',
       text: 'do the thing',
     })
-    expect(capturedParams?.configuration?.blocking).toBe(false)
+    expect.soft(capturedParams?.configuration?.blocking).toBe(false)
   })
 
   it('returns 400 for a malformed JSON body', async () => {

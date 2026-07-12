@@ -119,11 +119,11 @@ describe('TraderAgentExecutor', () => {
       { status: { state: string } },
       { status: { state: string; message?: Message } },
     ]
-    expect(eventBus.finishedCalled).toBe(true)
-    expect(task.status.state).toBe('submitted')
-    expect(working.status.state).toBe('working')
-    expect(completed.status.state).toBe('completed')
-    expect(completed.status.message?.parts[0]).toEqual({
+    expect.soft(eventBus.finishedCalled).toBe(true)
+    expect.soft(task.status.state).toBe('submitted')
+    expect.soft(working.status.state).toBe('working')
+    expect.soft(completed.status.state).toBe('completed')
+    expect.soft(completed.status.message?.parts[0]).toEqual({
       kind: 'text',
       text: 'strategy agent execution is not implemented yet',
     })
