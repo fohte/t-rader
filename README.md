@@ -10,6 +10,7 @@ fohte 個人用の日本株投資プラットフォーム。
 | ---------------------- | ------------------------------------------------------------- |
 | Frontend               | React 19, Vite 7, TanStack Router, shadcn/ui, Tailwind CSS v4 |
 | Backend                | Rust (Axum)                                                   |
+| Agent                  | Node.js/TypeScript (Hono, A2A server)                         |
 | DB                     | TimescaleDB (PostgreSQL 17)                                   |
 | パッケージマネージャー | pnpm                                                          |
 | ツール管理             | mise                                                          |
@@ -33,7 +34,7 @@ cp .env.example .env
 # DB を起動 (初回のみ。全 worktree で共有される)
 docker compose -f docker-compose.infra.yml up -d
 
-# アプリ (backend, frontend) を起動
+# アプリ (backend, frontend, agent) を起動
 docker compose up
 ```
 
@@ -51,6 +52,7 @@ docker compose up
 # 割り当てられたポートを確認 (起動中の全コンテナを一覧するなら docker compose ps)
 docker compose port backend 3000
 docker compose port frontend 5173
+docker compose port agent 8080
 ```
 
 ## データベース
@@ -86,6 +88,22 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 
 - `GET /api/health` - ヘルスチェック (DB 接続確認含む)
 
+## Agent サービス
+
+`agent/` は kubeopencode (下記「戦略 Agent reconcile」) を置き換える予定の、A2A (Agent-to-Agent) プロトコルサーバー。現時点では A2A server 基盤・internal API・observability の scaffold のみで、戦略実行ロジック (LangGraph agent 構成、MCP tool 接続) は未実装 (`runStrategyAgent` はプレースホルダの結果を返す)。backend からの呼び出しも未接続。
+
+- DB は backend とは別の論理 DB (`t_rader_agent_development` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ (`docker-compose.infra.yml` の initdb スクリプトで作成)。initdb は Postgres の data ディレクトリが空の初回起動時にしか実行されないため、既存の共有 `db_data` ボリュームを使っている場合は `docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development -c 'CREATE DATABASE t_rader_agent_development'` 等で手動作成すること (test 用 DB も同様)
+- マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
+- internal API: `POST /internal/tasks` (`{strategy_id, prompt}` -> `{task_id}`) / `GET /internal/tasks/{task_id}` (-> `{task_id, state, result_text?, error_kind?}`)
+
+```bash
+# agent 単体でテスト実行 (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
+cd agent && pnpm test
+
+# DB 統合テストを含めて実行する場合。ポートは `docker compose -f docker-compose.infra.yml port db 5432` で確認する
+cd agent && TEST_DATABASE_URL=postgres://t_rader:t_rader@localhost:<port>/t_rader_agent_test pnpm test
+```
+
 ## プロジェクト構成
 
 ```
@@ -97,15 +115,18 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 │   └── package.json
 ├── backend/           # Rust Axum サーバー
 │   └── migrations/    # sqlx マイグレーション (起動時に自動実行)
-├── docker-compose.yml        # アプリ (backend, frontend) 定義
+├── agent/             # Node/TS 戦略 Agent サービス (A2A server)
+│   ├── src/
+│   └── drizzle/       # drizzle-orm マイグレーション (起動時に自動実行)
+├── docker-compose.yml        # アプリ (backend, frontend, agent) 定義
 ├── docker-compose.infra.yml  # インフラ (DB) 定義。全 worktree で共有
 └── .mise.toml                # ツールバージョン管理
 ```
 
-## npm スクリプト (frontend/)
+## npm スクリプト (frontend/, agent/)
 
 ```bash
-pnpm run dev        # Vite 開発サーバー
+pnpm run dev        # 開発サーバー
 pnpm run build      # プロダクションビルド
 pnpm run test       # 型チェック + ユニットテスト
 pnpm run lint       # ESLint
@@ -114,18 +135,23 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 
 ## 環境変数
 
-| 変数                | 説明                                                                                                                                     | デフォルト              |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `DATABASE_URL`      | PostgreSQL 接続 URL                                                                                                                      | -                       |
-| `POSTGRES_USER`     | DB ユーザー名                                                                                                                            | `t_rader`               |
-| `POSTGRES_PASSWORD` | DB パスワード                                                                                                                            | `t_rader`               |
-| `POSTGRES_DB`       | DB 名                                                                                                                                    | `t_rader_development`   |
-| `BACKEND_PORT`      | backend プロセスのリッスンポート (`cargo run` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係) | `3000`                  |
-| `JQUANTS_API_KEY`   | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                     | -                       |
-| `VITE_API_URL`      | Vite 開発サーバーのプロキシ先 URL                                                                                                        | `http://localhost:3000` |
-| `API_BACKEND_URL`   | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                            | -                       |
-| `NGINX_RESOLVER`    | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                  | -                       |
-| `MCP_ALLOWED_HOSTS` | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                      | -                       |
+| 変数                    | 説明                                                                                                                                     | デフォルト              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `DATABASE_URL`          | PostgreSQL 接続 URL                                                                                                                      | -                       |
+| `POSTGRES_USER`         | DB ユーザー名                                                                                                                            | `t_rader`               |
+| `POSTGRES_PASSWORD`     | DB パスワード                                                                                                                            | `t_rader`               |
+| `POSTGRES_DB`           | DB 名                                                                                                                                    | `t_rader_development`   |
+| `BACKEND_PORT`          | backend プロセスのリッスンポート (`cargo run` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係) | `3000`                  |
+| `TRADER_AGENT_PORT`     | agent プロセスのリッスンポート (`pnpm dev` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)    | `8080`                  |
+| `TRADER_AGENT_URL`      | agent が自身の A2A Agent Card に載せる URL                                                                                               | -                       |
+| `INTERNAL_API_TOKEN`    | backend -> agent の internal API 呼び出しを認証する bearer token                                                                         | -                       |
+| `BACKEND_WEBHOOK_URL`   | agent -> backend の push notification 送信先 URL                                                                                         | -                       |
+| `BACKEND_WEBHOOK_TOKEN` | agent -> backend の push notification 送信を認証する bearer token                                                                        | -                       |
+| `JQUANTS_API_KEY`       | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                     | -                       |
+| `VITE_API_URL`          | Vite 開発サーバーのプロキシ先 URL                                                                                                        | `http://localhost:3000` |
+| `API_BACKEND_URL`       | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                            | -                       |
+| `NGINX_RESOLVER`        | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                  | -                       |
+| `MCP_ALLOWED_HOSTS`     | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                      | -                       |
 
 ### DataProvider 切替
 
@@ -140,6 +166,8 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐させ、その HTTP エンドポイントを `IBKR_BASE_URL` に設定する (例: `https://ibkr-gateway:5000/v1/api`)。秘密鍵相当の API キーは存在せず、認証は Gateway 側の Web ログインで維持される。
 
 ### 戦略 Agent reconcile
+
+kubeopencode operator (Agent CR / Task CR) ベースの戦略実行機構。将来的に上記の `agent/` (LangGraph JS ベース) へ移行予定だが、移行が完了するまではこちらが本番の実行経路。
 
 `KUBEOPENCODE_API_URL` が `disabled` でない (= 実 kube cluster に接続する) 場合、戦略 Agent の reconcile に以下が必要になる。
 

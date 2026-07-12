@@ -109,13 +109,18 @@ describeIfDb('PostgresTaskStore', () => {
         new Date('2026-01-01T00:05:00.000Z'),
       )
 
-      expect({
+      expect(
+        Number.isNaN(new Date(expired[0]?.status.timestamp ?? '').getTime()),
+      ).toBe(false)
+
+      const actual = {
         expiredIds: expired.map((t) => t.id).sort(),
         expiredStates: expired.map((t) => t.status.state),
         stale: await store.load('stale'),
         fresh: await store.load('fresh'),
         alreadyDone: await store.load('already-done'),
-      }).toEqual({
+      }
+      expect(actual).toEqual({
         expiredIds: ['stale'],
         expiredStates: ['failed'],
         stale: {
@@ -124,7 +129,7 @@ describeIfDb('PostgresTaskStore', () => {
           kind: 'task',
           status: {
             state: 'failed',
-            timestamp: expired[0]?.status.timestamp ?? '',
+            timestamp: expired[0]?.status.timestamp,
           },
         },
         fresh: buildTask({
@@ -186,7 +191,7 @@ describeIfDb('PostgresTaskStore', () => {
         new Date('2026-01-05T00:00:00.000Z'),
       )
 
-      expect({
+      const actual = {
         deletedCount,
         oldCompleted: await store.load('old-completed'),
         oldInputRequired: await store.load('old-input-required'),
@@ -194,7 +199,8 @@ describeIfDb('PostgresTaskStore', () => {
         stillWorking: await store.load('still-working'),
         oldCompletedPushConfigs: await pushStore.load('old-completed'),
         recentCompletedPushConfigs: await pushStore.load('recent-completed'),
-      }).toEqual({
+      }
+      expect(actual).toEqual({
         deletedCount: 2,
         oldCompleted: undefined,
         oldInputRequired: undefined,

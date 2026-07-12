@@ -14,6 +14,7 @@ services:
       - '127.0.0.1::5432'
     volumes:
       - db_data:/var/lib/postgresql/data
+      - ./docker/postgres-initdb.d:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-t_rader}']
       interval: 5s

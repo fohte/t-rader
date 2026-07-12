@@ -17,9 +17,10 @@ const constantTimeEquals = (a: string, b: string): boolean => {
 export const bearerAuth = (token: string): MiddlewareHandler => {
   return async (c, next) => {
     const header = c.req.header('authorization')
-    const presented = header?.startsWith(BEARER_PREFIX)
-      ? header.slice(BEARER_PREFIX.length)
-      : undefined
+    const presented =
+      header !== undefined && header.startsWith(BEARER_PREFIX)
+        ? header.slice(BEARER_PREFIX.length)
+        : undefined
     if (presented === undefined || !constantTimeEquals(presented, token)) {
       return c.json({ error: 'unauthorized' }, 401)
     }

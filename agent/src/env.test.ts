@@ -45,13 +45,15 @@ describe('loadEnv', () => {
     } = fullSource
     void _timeout
     void _retention
-    const env = loadEnv(rest)
-    expect({
-      watchdogTimeoutMs: env.A2A_WATCHDOG_TIMEOUT_MS,
-      retentionDays: env.A2A_RETENTION_DAYS,
-    }).toEqual({
-      watchdogTimeoutMs: 10 * 60 * 1000,
-      retentionDays: 30,
+    expect(loadEnv(rest)).toEqual({
+      DATABASE_URL: 'postgres://localhost/t_rader_agent',
+      TRADER_AGENT_PORT: 8080,
+      TRADER_AGENT_URL: 'http://t-rader-agent:8080/',
+      INTERNAL_API_TOKEN: 'internal-token',
+      BACKEND_WEBHOOK_URL: 'http://backend/api/agent-tasks/notifications',
+      BACKEND_WEBHOOK_TOKEN: 'webhook-token',
+      A2A_WATCHDOG_TIMEOUT_MS: 10 * 60 * 1000,
+      A2A_RETENTION_DAYS: 30,
     })
   })
 

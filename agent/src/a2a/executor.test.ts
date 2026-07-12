@@ -73,17 +73,19 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
-    expect({
+    const actual = {
       finished: eventBus.finishedCalled,
       events: eventBus.events.map((e) =>
         'kind' in e && e.kind === 'task'
-          ? { kind: 'task', state: (e as Task).status.state }
+          ? { kind: 'task', state: e.status.state }
           : {
               kind: (e as { kind: string }).kind,
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- `final` only exists on some AgentExecutionEvent variants; test only inspects it when present
               final: (e as { final?: boolean }).final,
             },
       ),
-    }).toEqual({
+    }
+    expect(actual).toEqual({
       finished: true,
       events: [
         { kind: 'task', state: 'rejected' },
@@ -100,6 +102,7 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status.state` field common to every AgentExecutionEvent variant
     const finalEvent = eventBus.events[1] as { status: { state: string } }
     expect(finalEvent.status.state).toBe('rejected')
   })
@@ -114,18 +117,20 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
     const [task, working, completed] = eventBus.events as [
       Task,
       { status: { state: string } },
       { status: { state: string; message?: Message } },
     ]
-    expect({
+    const actual = {
       finished: eventBus.finishedCalled,
       taskState: task.status.state,
       workingState: working.status.state,
       completedState: completed.status.state,
       completedMessageText: completed.status.message?.parts[0],
-    }).toEqual({
+    }
+    expect(actual).toEqual({
       finished: true,
       taskState: 'submitted',
       workingState: 'working',
@@ -153,21 +158,25 @@ describe('TraderAgentExecutor', () => {
 
     await executor.cancelTask('task-4', eventBus)
 
-    expect({
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status.timestamp` field common to every AgentExecutionEvent variant
+    const statusUpdateEvent = eventBus.events[0] as {
+      status: { timestamp: string }
+    }
+    const { timestamp } = statusUpdateEvent.status
+    expect(Number.isNaN(new Date(timestamp).getTime())).toBe(false)
+
+    const actual = {
       finished: eventBus.finishedCalled,
       event: eventBus.events[0],
-    }).toEqual({
+    }
+    expect(actual).toEqual({
       finished: true,
       event: {
         kind: 'status-update',
         taskId: 'task-4',
         contextId: 'ctx-4',
         final: true,
-        status: {
-          state: 'canceled',
-          timestamp: (eventBus.events[0] as { status: { timestamp: string } })
-            .status.timestamp,
-        },
+        status: { state: 'canceled', timestamp },
       },
     })
   })

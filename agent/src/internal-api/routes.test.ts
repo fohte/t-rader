@@ -4,8 +4,8 @@ import type {
   Task,
   TaskQueryParams,
 } from '@a2a-js/sdk'
-import { A2AError } from '@a2a-js/sdk/server'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
+import { A2AError } from '@a2a-js/sdk/server'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 
@@ -70,13 +70,14 @@ describe('POST /internal/tasks', () => {
       }),
     })
 
-    expect({
+    const actual = {
       status: res.status,
       body: await res.json(),
       sentMetadata: capturedParams?.message.metadata,
       sentText: capturedParams?.message.parts[0],
       blocking: capturedParams?.configuration?.blocking,
-    }).toEqual({
+    }
+    expect(actual).toEqual({
       status: 201,
       body: { task_id: 'task-1' },
       sentMetadata: { strategy_id: '11111111-1111-1111-1111-111111111111' },
@@ -135,7 +136,8 @@ describe('GET /internal/tasks/:taskId', () => {
       }),
     )
     const res = await app.request('/internal/tasks/task-2')
-    expect({ status: res.status, body: await res.json() }).toEqual({
+    const actual = { status: res.status, body: await res.json() }
+    expect(actual).toEqual({
       status: 200,
       body: { task_id: 'task-2', state: 'working' },
     })
@@ -207,9 +209,7 @@ describe('GET /internal/tasks/:taskId', () => {
       }),
     )
     const res = await app.request('/internal/tasks/missing-task')
-    expect({ status: res.status, body: await res.json() }).toEqual({
-      status: 404,
-      body: { error: 'task not found' },
-    })
+    const actual = { status: res.status, body: await res.json() }
+    expect(actual).toEqual({ status: 404, body: { error: 'task not found' } })
   })
 })

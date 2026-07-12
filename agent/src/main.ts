@@ -1,8 +1,8 @@
-import { serve } from '@hono/node-server'
 import {
   DefaultPushNotificationSender,
   DefaultRequestHandler,
 } from '@a2a-js/sdk/server'
+import { serve } from '@hono/node-server'
 
 import { buildAgentCard } from '@/a2a/agent-card'
 import { TraderAgentExecutor } from '@/a2a/executor'

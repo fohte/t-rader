@@ -147,12 +147,16 @@ describe('GenAiCallbackHandler', () => {
     handler.handleLLMEnd(buildLlmResult({ content: 'hello' }), 'run-2')
 
     const [span] = exporter.getFinishedSpans()
-    expect({
+    const actual = {
       hasInputMessages:
         span?.attributes[ATTR_GEN_AI_INPUT_MESSAGES] !== undefined,
       hasOutputMessages:
         span?.attributes[ATTR_GEN_AI_OUTPUT_MESSAGES] !== undefined,
-    }).toEqual({ hasInputMessages: false, hasOutputMessages: false })
+    }
+    expect(actual).toEqual({
+      hasInputMessages: false,
+      hasOutputMessages: false,
+    })
   })
 
   it('captures gen_ai.input.messages / gen_ai.output.messages when captureMessageContent is enabled', () => {
@@ -171,14 +175,15 @@ describe('GenAiCallbackHandler', () => {
     handler.handleLLMEnd(buildLlmResult({ content: 'hello there' }), 'run-3')
 
     const [span] = exporter.getFinishedSpans()
-    expect({
+    const actual = {
       inputMessages: JSON.parse(
         String(span?.attributes[ATTR_GEN_AI_INPUT_MESSAGES]),
       ) as unknown,
       outputMessages: JSON.parse(
         String(span?.attributes[ATTR_GEN_AI_OUTPUT_MESSAGES]),
       ) as unknown,
-    }).toEqual({
+    }
+    expect(actual).toEqual({
       inputMessages: [
         { role: 'system', parts: [{ type: 'text', content: 'be terse' }] },
         { role: 'human', parts: [{ type: 'text', content: 'hi' }] },
