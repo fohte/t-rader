@@ -25,7 +25,11 @@ const errorMessage = (err: unknown): string =>
 export const createApp = (deps: AppDeps): Hono => {
   const app = new Hono()
 
-  app.get('/health', async (c) => {
+  // shallow health check: プロセスの生存確認のみ (liveness/startup probe 用)
+  app.get('/health', (c) => c.json({ status: 'ok' }))
+
+  // deep health check: DB 疎通まで検証する (readiness probe 用)
+  app.get('/health/ready', async (c) => {
     try {
       await pingDb(deps.sql)
       return c.json({ status: 'ok' })
