@@ -13,9 +13,8 @@ import { createAgentConfigFetcher } from '@/strategy-agent/agent-config-client'
 import { buildSystemPrompt } from '@/strategy-agent/system-prompt'
 import { isUsageLimitError } from '@/strategy-agent/usage-limit'
 
-// OpenCode Go's OpenAI-compatible endpoint (same default as slack-bot's
-// createOpenCodeGoChatModel).
-export const DEFAULT_OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
+// OpenCode Go's OpenAI-compatible endpoint.
+const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 
@@ -64,7 +63,6 @@ export interface StrategyAgentConfig {
   readonly backendApiBaseUrl: string
   readonly strategyMcpUrl: string
   readonly openCodeApiKey: string
-  readonly openCodeBaseUrl?: string | undefined
   readonly genAiCallbackHandler: BaseCallbackHandler
 }
 
@@ -106,9 +104,7 @@ export const createStrategyAgentDeps = (
     new ChatOpenAI({
       apiKey: config.openCodeApiKey,
       model,
-      configuration: {
-        baseURL: config.openCodeBaseUrl ?? DEFAULT_OPENCODE_GO_BASE_URL,
-      },
+      configuration: { baseURL: OPENCODE_GO_BASE_URL },
     }),
   buildAgent: defaultBuildAgent,
   genAiCallbackHandler: config.genAiCallbackHandler,
@@ -162,6 +158,7 @@ export const runStrategyAgent = async (
       errorKind: 'agent_error',
     }
   } catch (error) {
+    console.error('strategy agent execution failed:', error)
     if (isUsageLimitError(error)) {
       return {
         status: 'failed',
@@ -175,6 +172,11 @@ export const runStrategyAgent = async (
       errorKind: 'agent_error',
     }
   } finally {
-    await mcpClient.close()
+    // A close failure must not override the result/error already
+    // determined above by discarding it in favor of this finally block's
+    // own rejection.
+    await mcpClient.close().catch((closeError: unknown) => {
+      console.error('failed to close MCP client:', closeError)
+    })
   }
 }

@@ -29,8 +29,7 @@ describe('isUsageLimitError', () => {
   })
 
   it('returns false for non-object values', () => {
-    expect(isUsageLimitError('boom')).toBe(false)
-    expect(isUsageLimitError(null)).toBe(false)
-    expect(isUsageLimitError(undefined)).toBe(false)
+    const actual = ['boom', null, undefined].map(isUsageLimitError)
+    expect(actual).toEqual([false, false, false])
   })
 })

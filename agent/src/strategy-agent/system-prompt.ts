@@ -1,8 +1,7 @@
 import type { AgentConfig } from '@/strategy-agent/agent-config-client'
 
-// AGENTS.md and skills are both fetched from the backend and, per the
-// product's design, folded together into one system prompt rather than
-// exposed as separately loadable resources.
+// AGENTS.md and skills are both fetched from the backend and folded
+// together into one system prompt.
 export const buildSystemPrompt = (
   config: Pick<AgentConfig, 'agentsMd' | 'skills'>,
 ): string => {

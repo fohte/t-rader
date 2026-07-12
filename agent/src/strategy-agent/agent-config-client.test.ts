@@ -9,11 +9,9 @@ afterEach(() => {
 describe('createAgentConfigFetcher', () => {
   it('fetches and maps the backend agent-config response to camelCase', async () => {
     const fetchMock = vi.fn(
-      (input: string | URL | Request): Promise<Response> => {
-        expect(input).toBe(
-          'http://backend/api/strategies/strategy-1/agent-config',
-        )
-        return Promise.resolve(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- typed only so fetchMock.mock.calls[0][0] below is typed, the response body doesn't depend on it
+      (_input: string | URL | Request): Promise<Response> =>
+        Promise.resolve(
           new Response(
             JSON.stringify({
               agents_md: '# AGENTS',
@@ -23,19 +21,22 @@ describe('createAgentConfigFetcher', () => {
             }),
             { status: 200 },
           ),
-        )
-      },
+        ),
     )
     vi.stubGlobal('fetch', fetchMock)
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const actual = await fetchAgentConfig('strategy-1')
+    const config = await fetchAgentConfig('strategy-1')
 
+    const actual = { config, requestedUrl: fetchMock.mock.calls[0]?.[0] }
     expect(actual).toEqual({
-      agentsMd: '# AGENTS',
-      skills: { 'ja-stock': 'skill body' },
-      model: 'opencode-go/minimax-m3',
-      smallModel: 'opencode-go/deepseek-v4-flash',
+      config: {
+        agentsMd: '# AGENTS',
+        skills: { 'ja-stock': 'skill body' },
+        model: 'opencode-go/minimax-m3',
+        smallModel: 'opencode-go/deepseek-v4-flash',
+      },
+      requestedUrl: 'http://backend/api/strategies/strategy-1/agent-config',
     })
   })
 

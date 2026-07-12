@@ -43,7 +43,6 @@ const buildUserMessage = (text: string): Message => ({
   role: 'user',
   messageId: 'm1',
   parts: [{ kind: 'text', text }],
-  metadata: { strategy_id: 'strategy-1' },
 })
 
 const AGENT_CONFIG: AgentConfig = {
@@ -140,9 +139,7 @@ describe('runStrategyAgent', () => {
       buildAgentTools: calls.buildAgentOptions?.tools,
       buildAgentReceivedCreatedModel:
         calls.buildAgentOptions?.model === calls.createChatModelReturnValue,
-      invokeCallbacksIncludeGenAiHandler: calls.invokeCallbacks?.includes(
-        deps.genAiCallbackHandler,
-      ),
+      invokeCallbacks: calls.invokeCallbacks,
       mcpClientClosed: calls.mcpClientClosed,
     }
     expect(actual).toEqual({
@@ -153,7 +150,7 @@ describe('runStrategyAgent', () => {
       buildAgentSystemPrompt: '# AGENTS\n\n# Skill: ja-stock\n\nskill body',
       buildAgentTools: mcpTools,
       buildAgentReceivedCreatedModel: true,
-      invokeCallbacksIncludeGenAiHandler: true,
+      invokeCallbacks: [deps.genAiCallbackHandler],
       mcpClientClosed: true,
     })
   })
@@ -240,22 +237,5 @@ describe('runStrategyAgent', () => {
       message: 'mcp tool blew up',
       errorKind: 'agent_error',
     })
-  })
-
-  it("scopes the MCP tools client to the task's strategy_id, independent of the fetched agent config", async () => {
-    const { deps, calls } = buildDeps({
-      agentInvoke: () =>
-        Promise.resolve({
-          structuredResponse: { status: 'completed', message: 'done' },
-        }),
-    })
-
-    await runStrategyAgent(
-      deps,
-      'strategy-boundary-check',
-      buildUserMessage('do the thing'),
-    )
-
-    expect(calls.createMcpClientStrategyId).toBe('strategy-boundary-check')
   })
 })

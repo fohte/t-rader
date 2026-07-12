@@ -90,7 +90,7 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 
 ## Agent サービス
 
-`agent/` は kubeopencode (下記「戦略 Agent reconcile」) を置き換える予定の、A2A (Agent-to-Agent) プロトコルサーバー。現時点では A2A server 基盤・internal API・observability の scaffold のみで、戦略実行ロジック (LangGraph agent 構成、MCP tool 接続) は未実装 (`runStrategyAgent` はプレースホルダの結果を返す)。backend からの呼び出しも未接続。
+`agent/` は kubeopencode (下記「戦略 Agent reconcile」) を置き換える予定の、A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤・internal API・observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/strategies/{id}/agent-config`) から LangGraph agent 構成・MCP tool 呼び出しまでの戦略実行ロジックを備える。backend からの呼び出しはまだ未接続。
 
 - DB は backend とは別の論理 DB (`t_rader_agent_development` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ (`docker-compose.infra.yml` の initdb スクリプトで作成)。initdb は Postgres の data ディレクトリが空の初回起動時にしか実行されないため、既存の共有 `db_data` ボリュームを使っている場合は `docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development -c 'CREATE DATABASE t_rader_agent_development'` 等で手動作成すること (test 用 DB も同様)
 - マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
@@ -147,6 +147,9 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 | `INTERNAL_API_TOKEN`    | backend -> agent の internal API 呼び出しを認証する bearer token                                                                         | -                       |
 | `BACKEND_WEBHOOK_URL`   | agent -> backend の push notification 送信先 URL                                                                                         | -                       |
 | `BACKEND_WEBHOOK_TOKEN` | agent -> backend の push notification 送信を認証する bearer token                                                                        | -                       |
+| `BACKEND_API_BASE_URL`  | agent が戦略の AGENTS.md / skills / model を取得する backend のベース URL                                                                | -                       |
+| `STRATEGY_MCP_URL`      | agent が strategy tool 群に接続する backend の MCP エンドポイント (下記「戦略 Agent reconcile」の同名変数は backend 側の別用途)          | -                       |
+| `OPENCODE_API_KEY`      | agent が戦略 agent の LLM (OpenCode Go) 呼び出しに使う API キー                                                                          | -                       |
 | `JQUANTS_API_KEY`       | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                     | -                       |
 | `VITE_API_URL`          | Vite 開発サーバーのプロキシ先 URL                                                                                                        | `http://localhost:3000` |
 | `API_BACKEND_URL`       | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                            | -                       |
