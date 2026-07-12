@@ -3032,6 +3032,69 @@
         }
       }
     },
+    "/api/strategies/{id}/agent-config": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。",
+        "operationId": "get_agent_config",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfigResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/agents-md": {
       "get": {
         "tags": [
@@ -5765,6 +5828,36 @@
           }
         },
         "additionalProperties": false
+      },
+      "AgentConfigResponse": {
+        "type": "object",
+        "description": "t-rader-agent がタスク実行時に取得する agent 設定一式。",
+        "required": [
+          "agents_md",
+          "skills",
+          "model",
+          "small_model"
+        ],
+        "properties": {
+          "agents_md": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "skills": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "small_model": {
+            "type": "string"
+          }
+        }
       },
       "AgentsMdBody": {
         "type": "object",
