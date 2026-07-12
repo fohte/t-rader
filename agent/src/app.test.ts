@@ -60,7 +60,7 @@ const buildTestApp = (sql: Sql) =>
   })
 
 describe('createApp', () => {
-  it('returns ok on /health after a successful DB ping', async () => {
+  it('returns ok on /health without touching the DB', async () => {
     const queries: string[][] = []
     const sql = fakeSql((strings) => {
       queries.push(Array.from(strings))
@@ -72,13 +72,29 @@ describe('createApp', () => {
     expect(actual).toEqual({
       status: 200,
       body: { status: 'ok' },
+      queries: [],
+    })
+  })
+
+  it('returns ok on /health/ready after a successful DB ping', async () => {
+    const queries: string[][] = []
+    const sql = fakeSql((strings) => {
+      queries.push(Array.from(strings))
+      return Promise.resolve([])
+    })
+
+    const res = await buildTestApp(sql).request('/health/ready')
+    const actual = { status: res.status, body: await res.json(), queries }
+    expect(actual).toEqual({
+      status: 200,
+      body: { status: 'ok' },
       queries: [['SELECT 1']],
     })
   })
 
-  it('returns 503 on /health when the DB ping fails', async () => {
+  it('returns 503 on /health/ready when the DB ping fails', async () => {
     const sql = fakeSql(() => Promise.reject(new Error('connection refused')))
-    const res = await buildTestApp(sql).request('/health')
+    const res = await buildTestApp(sql).request('/health/ready')
     const actual = { status: res.status, body: await res.json() }
     expect(actual).toEqual({
       status: 503,
