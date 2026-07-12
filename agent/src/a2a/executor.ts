@@ -102,25 +102,48 @@ export class TraderAgentExecutor implements AgentExecutor {
       status: { state: 'working', timestamp: new Date().toISOString() },
     } satisfies TaskStatusUpdateEvent)
 
-    const result = await this.deps.runStrategyAgent(strategyId, userMessage)
-
-    eventBus.publish({
-      kind: 'status-update',
-      taskId,
-      contextId,
-      final: true,
-      status: {
-        state: result.status,
-        timestamp: new Date().toISOString(),
-        message: buildAgentMessage(
-          result.message,
-          taskId,
-          contextId,
-          result.errorKind,
-        ),
-      },
-    } satisfies TaskStatusUpdateEvent)
-    eventBus.finished()
+    // runStrategyAgent maps its own known failure modes to a StrategyAgentResult,
+    // but an unexpected rejection (e.g. MCP client construction throwing before
+    // its own try/catch) must still resolve the task rather than leave it stuck
+    // in working state with eventBus.finished() never called.
+    try {
+      const result = await this.deps.runStrategyAgent(strategyId, userMessage)
+      eventBus.publish({
+        kind: 'status-update',
+        taskId,
+        contextId,
+        final: true,
+        status: {
+          state: result.status,
+          timestamp: new Date().toISOString(),
+          message: buildAgentMessage(
+            result.message,
+            taskId,
+            contextId,
+            result.errorKind,
+          ),
+        },
+      } satisfies TaskStatusUpdateEvent)
+    } catch (error) {
+      eventBus.publish({
+        kind: 'status-update',
+        taskId,
+        contextId,
+        final: true,
+        status: {
+          state: 'failed',
+          timestamp: new Date().toISOString(),
+          message: buildAgentMessage(
+            error instanceof Error ? error.message : String(error),
+            taskId,
+            contextId,
+            'agent_error',
+          ),
+        },
+      } satisfies TaskStatusUpdateEvent)
+    } finally {
+      eventBus.finished()
+    }
   }
 
   async cancelTask(taskId: string, eventBus: ExecutionEventBus): Promise<void> {

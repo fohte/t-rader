@@ -52,4 +52,23 @@ describe('createAgentConfigFetcher', () => {
       'failed to fetch agent config for strategy missing-strategy: 404',
     )
   })
+
+  it('throws when the response body does not match the expected shape', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ agents_md: '# AGENTS' }), {
+            status: 200,
+          }),
+        ),
+      ),
+    )
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+
+    await expect(fetchAgentConfig('strategy-1')).rejects.toThrow(
+      'malformed agent-config response for strategy strategy-1',
+    )
+  })
 })

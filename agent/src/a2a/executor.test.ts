@@ -187,6 +187,36 @@ describe('TraderAgentExecutor', () => {
     })
   })
 
+  it('publishes a failed status-update and still calls finished() when runStrategyAgent rejects unexpectedly', async () => {
+    const executor = buildExecutor(() =>
+      Promise.reject(new Error('mcp client construction blew up')),
+    )
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-6', 'ctx-6')
+
+    await executor.execute(requestContext, eventBus)
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+    const completed = eventBus.events[2] as {
+      status: { state: string; message?: Message }
+    }
+    const actual = {
+      finished: eventBus.finishedCalled,
+      state: completed.status.state,
+      messageText: completed.status.message?.parts[0],
+      errorKind: completed.status.message?.metadata?.['error_kind'],
+    }
+    expect(actual).toEqual({
+      finished: true,
+      state: 'failed',
+      messageText: { kind: 'text', text: 'mcp client construction blew up' },
+      errorKind: 'agent_error',
+    })
+  })
+
   it('publishes a canceled status-update using the stored task contextId', async () => {
     const eventBus = new FakeEventBus()
     const executor = new TraderAgentExecutor({
