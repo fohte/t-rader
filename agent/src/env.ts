@@ -9,6 +9,13 @@ export interface Env {
   BACKEND_WEBHOOK_TOKEN: string
   A2A_WATCHDOG_TIMEOUT_MS: number
   A2A_RETENTION_DAYS: number
+  // Base URL of t-rader backend, used to fetch AGENTS.md / skills / model
+  // via GET {base}/api/strategies/{id}/agent-config.
+  BACKEND_API_BASE_URL: string
+  // Same target as backend's STRATEGY_MCP_URL env (the strategy MCP
+  // endpoint), reached from this service instead of a kubeopencode Agent.
+  STRATEGY_MCP_URL: string
+  OPENCODE_API_KEY: string
 }
 
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000
@@ -84,6 +91,9 @@ export const loadEnv = (
       'A2A_RETENTION_DAYS',
       DEFAULT_RETENTION_DAYS,
     ),
+    BACKEND_API_BASE_URL: requireString('BACKEND_API_BASE_URL'),
+    STRATEGY_MCP_URL: requireString('STRATEGY_MCP_URL'),
+    OPENCODE_API_KEY: requireString('OPENCODE_API_KEY'),
   }
 
   if (issues.length > 0) {

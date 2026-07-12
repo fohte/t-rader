@@ -64,7 +64,11 @@ describeIfDb('t-rader-agent internal API integration', () => {
       pushNotificationStore,
     )
     const agentCard = buildAgentCard({ url: 'http://localhost/' })
-    const executor = new TraderAgentExecutor({ taskStore })
+    const executor = new TraderAgentExecutor({
+      taskStore,
+      runStrategyAgent: () =>
+        Promise.resolve({ status: 'completed', message: 'strategy result' }),
+    })
     const requestHandler = new DefaultRequestHandler(
       agentCard,
       taskStore,
@@ -113,7 +117,7 @@ describeIfDb('t-rader-agent internal API integration', () => {
       finalState: {
         task_id: taskId,
         state: 'completed',
-        result_text: 'strategy agent execution is not implemented yet',
+        result_text: 'strategy result',
       },
     })
   })

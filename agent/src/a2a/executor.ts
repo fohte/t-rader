@@ -8,6 +8,8 @@ import type {
   TaskStore,
 } from '@a2a-js/sdk/server'
 
+import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -23,6 +25,7 @@ const buildAgentMessage = (
   text: string,
   taskId: string,
   contextId: string,
+  errorKind?: string,
 ): Message => ({
   kind: 'message',
   role: 'agent',
@@ -30,16 +33,20 @@ const buildAgentMessage = (
   taskId,
   contextId,
   parts: [{ kind: 'text', text }],
+  ...(errorKind !== undefined ? { metadata: { error_kind: errorKind } } : {}),
 })
 
 export interface TraderAgentExecutorDeps {
   taskStore: Pick<TaskStore, 'load'>
+  runStrategyAgent: (
+    strategyId: string,
+    userMessage: Message,
+  ) => Promise<StrategyAgentResult>
 }
 
-// Validates strategy_id and drives the task through the A2A lifecycle.
-// Actual strategy execution (AgentConfigApi lookup, LangGraph agent
-// construction, MCP tool calls) is not implemented yet — this always
-// completes with a placeholder result once strategy_id passes validation.
+// Validates strategy_id and drives the task through the A2A lifecycle,
+// delegating actual execution (AgentConfigApi lookup, LangGraph agent
+// construction, MCP tool calls) to the injected runStrategyAgent.
 export class TraderAgentExecutor implements AgentExecutor {
   constructor(private readonly deps: TraderAgentExecutorDeps) {}
 
@@ -95,7 +102,7 @@ export class TraderAgentExecutor implements AgentExecutor {
       status: { state: 'working', timestamp: new Date().toISOString() },
     } satisfies TaskStatusUpdateEvent)
 
-    const resultText = await this.runStrategyAgent(strategyId, userMessage)
+    const result = await this.deps.runStrategyAgent(strategyId, userMessage)
 
     eventBus.publish({
       kind: 'status-update',
@@ -103,9 +110,14 @@ export class TraderAgentExecutor implements AgentExecutor {
       contextId,
       final: true,
       status: {
-        state: 'completed',
+        state: result.status,
         timestamp: new Date().toISOString(),
-        message: buildAgentMessage(resultText, taskId, contextId),
+        message: buildAgentMessage(
+          result.message,
+          taskId,
+          contextId,
+          result.errorKind,
+        ),
       },
     } satisfies TaskStatusUpdateEvent)
     eventBus.finished()
@@ -121,14 +133,5 @@ export class TraderAgentExecutor implements AgentExecutor {
       status: { state: 'canceled', timestamp: new Date().toISOString() },
     } satisfies TaskStatusUpdateEvent)
     eventBus.finished()
-  }
-
-  private runStrategyAgent(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- placeholder body below does not reference these
-    _strategyId: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- placeholder body below does not reference these
-    _userMessage: Message,
-  ): Promise<string> {
-    return Promise.resolve('strategy agent execution is not implemented yet')
   }
 }
