@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24.14.0-slim AS builder
+FROM node:24.17.0-slim AS builder
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
