@@ -186,7 +186,7 @@ describeIfDb('PostgresTaskStore', () => {
         new Date('2026-01-05T00:00:00.000Z'),
       )
 
-      expect.soft(deletedCount).toEqual(2)
+      expect.soft(deletedCount).toBe(2)
       expect.soft(await store.load('old-completed')).toEqual(undefined)
       expect.soft(await store.load('old-input-required')).toEqual(undefined)
       expect.soft(await store.load('recent-completed')).toEqual(

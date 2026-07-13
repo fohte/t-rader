@@ -147,12 +147,8 @@ describe('GenAiCallbackHandler', () => {
     handler.handleLLMEnd(buildLlmResult({ content: 'hello' }), 'run-2')
 
     const [span] = exporter.getFinishedSpans()
-    expect(span?.attributes[ATTR_GEN_AI_INPUT_MESSAGES] !== undefined).toBe(
-      false,
-    )
-    expect(span?.attributes[ATTR_GEN_AI_OUTPUT_MESSAGES] !== undefined).toBe(
-      false,
-    )
+    expect(span?.attributes[ATTR_GEN_AI_INPUT_MESSAGES]).toBeUndefined()
+    expect(span?.attributes[ATTR_GEN_AI_OUTPUT_MESSAGES]).toBeUndefined()
   })
 
   it('captures gen_ai.input.messages / gen_ai.output.messages when captureMessageContent is enabled', () => {

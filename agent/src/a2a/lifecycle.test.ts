@@ -67,7 +67,7 @@ describe('runRetentionSweep', () => {
 
     const deletedCount = await runRetentionSweep(store, 7, now)
 
-    expect(deletedCount).toEqual(3)
+    expect(deletedCount).toBe(3)
     expect(store.deleteSettledOlderThanCalls).toEqual([
       new Date('2026-01-03T00:00:00.000Z'),
     ])
