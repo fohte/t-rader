@@ -11,6 +11,9 @@ const fullSource = {
   BACKEND_WEBHOOK_TOKEN: 'webhook-token',
   A2A_WATCHDOG_TIMEOUT_MS: '60000',
   A2A_RETENTION_DAYS: '7',
+  BACKEND_API_BASE_URL: 'http://t-rader-backend',
+  STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
+  OPENCODE_API_KEY: 'opencode-key',
 } as const
 
 const captureIssues = (run: () => unknown): readonly string[] => {
@@ -34,6 +37,9 @@ describe('loadEnv', () => {
       BACKEND_WEBHOOK_TOKEN: 'webhook-token',
       A2A_WATCHDOG_TIMEOUT_MS: 60000,
       A2A_RETENTION_DAYS: 7,
+      BACKEND_API_BASE_URL: 'http://t-rader-backend',
+      STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
+      OPENCODE_API_KEY: 'opencode-key',
     })
   })
 
@@ -54,6 +60,9 @@ describe('loadEnv', () => {
       BACKEND_WEBHOOK_TOKEN: 'webhook-token',
       A2A_WATCHDOG_TIMEOUT_MS: 10 * 60 * 1000,
       A2A_RETENTION_DAYS: 30,
+      BACKEND_API_BASE_URL: 'http://t-rader-backend',
+      STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
+      OPENCODE_API_KEY: 'opencode-key',
     })
   })
 
@@ -65,6 +74,9 @@ describe('loadEnv', () => {
       'missing required env: INTERNAL_API_TOKEN',
       'missing required env: BACKEND_WEBHOOK_URL',
       'missing required env: BACKEND_WEBHOOK_TOKEN',
+      'missing required env: BACKEND_API_BASE_URL',
+      'missing required env: STRATEGY_MCP_URL',
+      'missing required env: OPENCODE_API_KEY',
     ])
   })
 

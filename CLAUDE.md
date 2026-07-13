@@ -84,7 +84,8 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 - `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
 - `agent/src/main.ts` - A2A server のエントリポイント、Hono app の組み立て
-- `agent/src/a2a/executor.ts` - `TraderAgentExecutor` (戦略実行ロジックは未実装、プレースホルダ結果を返す)
+- `agent/src/a2a/executor.ts` - `TraderAgentExecutor` (戦略実行を `agent/src/strategy-agent/` の `runStrategyAgent` に委譲)
+- `agent/src/strategy-agent/strategy-agent.ts` - agent-config 取得 + LangGraph agent 構成 + MCP tool 呼び出しの実行ロジック
 - `agent/src/internal-api/routes.ts` - backend 向け internal API (`POST /internal/tasks`, `GET /internal/tasks/{task_id}`)
 - `agent/drizzle/` - drizzle-orm マイグレーション (起動時に自動実行)
 

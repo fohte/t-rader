@@ -34,6 +34,8 @@ services:
       INTERNAL_API_TOKEN: dev-internal-token
       BACKEND_WEBHOOK_URL: http://backend:3000/api/agent-tasks/notifications
       BACKEND_WEBHOOK_TOKEN: dev-webhook-token
+      BACKEND_API_BASE_URL: http://backend:3000
+      STRATEGY_MCP_URL: http://backend:3000/mcp/strategy
     ports:
       - '127.0.0.1::8080'
     volumes:

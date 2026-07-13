@@ -14,6 +14,13 @@ import { observability } from '@/bootstrap'
 import { createSql, pingDb } from '@/db'
 import { runMigrations } from '@/db/migrations'
 import { loadEnv } from '@/env'
+import { GenAiCallbackHandler } from '@/genai/genai-callback-handler'
+import {
+  createStrategyAgentDeps,
+  runStrategyAgent,
+} from '@/strategy-agent/strategy-agent'
+
+const GEN_AI_PROVIDER_NAME = 'opencode'
 
 // Upper bound on graceful shutdown: server.close()'s callback only fires once
 // every open connection ends, so a client holding a keep-alive connection
@@ -32,7 +39,19 @@ export const main = async (): Promise<void> => {
     pushNotificationStore,
   )
   const agentCard = buildAgentCard({ url: env.TRADER_AGENT_URL })
-  const executor = new TraderAgentExecutor({ taskStore })
+  const strategyAgentDeps = createStrategyAgentDeps({
+    backendApiBaseUrl: env.BACKEND_API_BASE_URL,
+    strategyMcpUrl: env.STRATEGY_MCP_URL,
+    openCodeApiKey: env.OPENCODE_API_KEY,
+    genAiCallbackHandler: new GenAiCallbackHandler({
+      providerName: GEN_AI_PROVIDER_NAME,
+    }),
+  })
+  const executor = new TraderAgentExecutor({
+    taskStore,
+    runStrategyAgent: (strategyId, userMessage) =>
+      runStrategyAgent(strategyAgentDeps, strategyId, userMessage),
+  })
   const requestHandler = new DefaultRequestHandler(
     agentCard,
     taskStore,

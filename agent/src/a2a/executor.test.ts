@@ -3,7 +3,9 @@ import type { AgentExecutionEvent, ExecutionEventBus } from '@a2a-js/sdk/server'
 import { RequestContext } from '@a2a-js/sdk/server'
 import { describe, expect, it } from 'vitest'
 
+import type { TraderAgentExecutorDeps } from '@/a2a/executor'
 import { extractStrategyId, TraderAgentExecutor } from '@/a2a/executor'
+import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
 
 class FakeEventBus implements ExecutionEventBus {
   public readonly events: AgentExecutionEvent[] = []
@@ -59,10 +61,19 @@ describe('extractStrategyId', () => {
   })
 })
 
+const defaultStrategyAgentResult: StrategyAgentResult = {
+  status: 'completed',
+  message: 'strategy agent result text',
+}
+
 describe('TraderAgentExecutor', () => {
-  const buildExecutor = (): TraderAgentExecutor =>
+  const buildExecutor = (
+    runStrategyAgent: TraderAgentExecutorDeps['runStrategyAgent'] = () =>
+      Promise.resolve(defaultStrategyAgentResult),
+  ): TraderAgentExecutor =>
     new TraderAgentExecutor({
       taskStore: { load: () => Promise.resolve(undefined) },
+      runStrategyAgent,
     })
 
   it('rejects the task when strategy_id is missing', async () => {
@@ -137,8 +148,72 @@ describe('TraderAgentExecutor', () => {
       completedState: 'completed',
       completedMessageText: {
         kind: 'text',
-        text: 'strategy agent execution is not implemented yet',
+        text: 'strategy agent result text',
       },
+    })
+  })
+
+  it('maps a failed strategy agent result to a failed task with error_kind metadata', async () => {
+    const executor = buildExecutor(() =>
+      Promise.resolve({
+        status: 'failed',
+        message: 'usage limit reached',
+        errorKind: 'usage_limit',
+      }),
+    )
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-5', 'ctx-5')
+
+    await executor.execute(requestContext, eventBus)
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+    const completed = eventBus.events[2] as {
+      status: { state: string; message?: Message }
+    }
+    const actual = {
+      finished: eventBus.finishedCalled,
+      state: completed.status.state,
+      messageText: completed.status.message?.parts[0],
+      errorKind: completed.status.message?.metadata?.['error_kind'],
+    }
+    expect(actual).toEqual({
+      finished: true,
+      state: 'failed',
+      messageText: { kind: 'text', text: 'usage limit reached' },
+      errorKind: 'usage_limit',
+    })
+  })
+
+  it('publishes a failed status-update and still calls finished() when runStrategyAgent rejects unexpectedly', async () => {
+    const executor = buildExecutor(() =>
+      Promise.reject(new Error('mcp client construction blew up')),
+    )
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-6', 'ctx-6')
+
+    await executor.execute(requestContext, eventBus)
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+    const completed = eventBus.events[2] as {
+      status: { state: string; message?: Message }
+    }
+    const actual = {
+      finished: eventBus.finishedCalled,
+      state: completed.status.state,
+      messageText: completed.status.message?.parts[0],
+      errorKind: completed.status.message?.metadata?.['error_kind'],
+    }
+    expect(actual).toEqual({
+      finished: true,
+      state: 'failed',
+      messageText: { kind: 'text', text: 'mcp client construction blew up' },
+      errorKind: 'agent_error',
     })
   })
 
@@ -154,6 +229,7 @@ describe('TraderAgentExecutor', () => {
             status: { state: 'working', timestamp: '2026-01-01T00:00:00.000Z' },
           } as Task),
       },
+      runStrategyAgent: () => Promise.resolve(defaultStrategyAgentResult),
     })
 
     await executor.cancelTask('task-4', eventBus)
