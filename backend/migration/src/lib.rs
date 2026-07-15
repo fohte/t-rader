@@ -10,6 +10,7 @@ mod m20260625_103524_custom_indicator;
 mod m20260626_131137_news_aggregation;
 mod m20260628_065359_hypothesis;
 mod m20260628_111309_add_rss_feed;
+mod m20260715_145104_strategy_task_a2a_migration;
 
 pub struct Migrator;
 
@@ -26,6 +27,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260626_131137_news_aggregation::Migration),
             Box::new(m20260628_065359_hypothesis::Migration),
             Box::new(m20260628_111309_add_rss_feed::Migration),
+            Box::new(m20260715_145104_strategy_task_a2a_migration::Migration),
         ]
     }
 }

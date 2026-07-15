@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  '/api/agent-tasks/notifications': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** t-rader-agent からの push notification を受信する。 */
+    post: operations['receive_agent_task_notification']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/annotations': {
     parameters: {
       query?: never
@@ -1504,7 +1521,7 @@ export interface components {
     }
     /** @description `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。 */
     StrategyChatResponse: {
-      kubeopencode_task_name: string
+      a2a_task_id: string
       /** Format: uuid */
       task_id: string
     }
@@ -1533,11 +1550,13 @@ export interface components {
     }
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
+      a2a_task_id?: string | null
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
-      kubeopencode_task_name: string
       phase: string
+      /** @description agent の最終応答テキスト (completed 時のみ) */
+      result_text?: string | null
       source: string
       /** Format: uuid */
       strategy_id: string
@@ -1693,6 +1712,46 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
+  receive_agent_task_notification: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': unknown
+      }
+    }
+    responses: {
+      /** @description 受理 (watcher の即時 polling を誘発) */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      /** @description トークン不一致 */
+      401: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_annotations: {
     parameters: {
       query?: {
@@ -4131,15 +4190,6 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
-      /** @description kubeopencode タスクの名前衝突 */
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
       /** @description リクエストボディのパースに失敗 */
       422: {
         headers: {
@@ -4150,15 +4200,6 @@ export interface operations {
         }
       }
       500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description 戦略 Agent が ready ではない */
-      503: {
         headers: {
           [name: string]: unknown
         }

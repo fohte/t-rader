@@ -36,7 +36,7 @@ pub struct StrategyChatRequest {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct StrategyChatResponse {
     pub task_id: Uuid,
-    pub kubeopencode_task_name: String,
+    pub a2a_task_id: String,
 }
 
 /// `GET /api/strategies/:id/tasks/:task_id` の戻り値。
@@ -44,10 +44,12 @@ pub struct StrategyChatResponse {
 pub struct StrategyTaskStatusResponse {
     pub task_id: Uuid,
     pub strategy_id: Uuid,
-    pub kubeopencode_task_name: String,
+    pub a2a_task_id: Option<String>,
     pub source: String,
     pub phase: String,
     pub error_summary: Option<String>,
+    /// agent の最終応答テキスト (completed 時のみ)
+    pub result_text: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
 }

@@ -10,8 +10,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub task_id: Uuid,
     pub strategy_id: Uuid,
-    #[sea_orm(column_type = "Text", unique)]
-    pub kubeopencode_task_name: String,
+    #[sea_orm(column_type = "Text", nullable, unique)]
+    pub a2a_task_id: Option<String>,
     #[sea_orm(column_type = "Text")]
     pub source: String,
     #[sea_orm(column_type = "Text")]
@@ -21,6 +21,9 @@ pub struct Model {
     pub error_summary: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub result_text: Option<String>,
+    pub deadline_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

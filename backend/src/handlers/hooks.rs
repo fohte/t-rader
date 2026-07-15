@@ -79,7 +79,7 @@ pub async fn receive_hook(
     let trigger_id = trigger_row.trigger_id;
     match fire_trigger(
         &state.db,
-        &state.kubeopencode,
+        &state.agent_task_client,
         trigger_id,
         payload,
         TaskSource::Hook,
@@ -116,10 +116,10 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
+    use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
+    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::{strategy, strategy_task, trigger};
-    use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
-    use crate::testing::create_test_server_with_db_and_kube;
+    use crate::testing::create_test_server_with_db_and_agent_client;
 
     /// strategy_task 行の動的フィールド (id / 時刻) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
@@ -150,7 +150,7 @@ mod tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
-            agent_status: Set(StrategyAgentStatus::Ready),
+            agent_status: NotSet,
             agent_error: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
@@ -191,8 +191,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn fires_when_event_match_satisfied(pool: PgPool) {
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
-        let (db, server) = create_test_server_with_db_and_kube(pool, kube).await;
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "長期").await;
         let _ = seed_hook_trigger(
             &db,
@@ -227,7 +227,7 @@ mod tests {
                     strategy_id: sid,
                     source: "hook".to_string(),
                     prompt: "alert 7203 for 長期".to_string(),
-                    phase: StrategyTaskPhase::Pending,
+                    phase: StrategyTaskPhase::Running,
                 },
             ),
         );
@@ -235,8 +235,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn skips_when_event_match_not_satisfied(pool: PgPool) {
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
-        let (db, server) = create_test_server_with_db_and_kube(pool, kube).await;
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "s").await;
         let _ = seed_hook_trigger(
             &db,
@@ -265,8 +265,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn disabled_trigger_is_404(pool: PgPool) {
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
-        let (db, server) = create_test_server_with_db_and_kube(pool, kube).await;
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "s").await;
         let _ = seed_hook_trigger(&db, sid, "off", "x", None, false).await;
 
@@ -276,16 +276,16 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn unknown_slug_is_404(pool: PgPool) {
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
-        let (_db, server) = create_test_server_with_db_and_kube(pool, kube).await;
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let (_db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let res = server.post("/api/hooks/nope").json(&json!({})).await;
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[sqlx::test(migrations = false)]
     async fn placeholders_expand_from_payload(pool: PgPool) {
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
-        let (db, server) = create_test_server_with_db_and_kube(pool, kube).await;
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "s").await;
         let _ = seed_hook_trigger(
             &db,
@@ -314,7 +314,7 @@ mod tests {
                 strategy_id: sid,
                 source: "hook".to_string(),
                 prompt: "sym=7203 price=2500".to_string(),
-                phase: StrategyTaskPhase::Pending,
+                phase: StrategyTaskPhase::Running,
             }],
         );
     }

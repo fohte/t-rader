@@ -1,3 +1,4 @@
+pub mod agent_client;
 pub mod cli;
 pub mod data_provider;
 pub mod entities;
@@ -29,12 +30,14 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
+use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
 use crate::data_provider::DataProviderKind;
 use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    annotations, bars, comments, custom_indicators, history, hooks, hypotheses, imports, interests,
-    macro_data, news, notes, refs, rss_feeds, strategies, trades, triggers, watchlists,
+    agent_tasks, annotations, bars, comments, custom_indicators, history, hooks, hypotheses,
+    imports, interests, macro_data, news, notes, refs, rss_feeds, strategies, trades, triggers,
+    watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::kubeopencode::{
@@ -49,9 +52,18 @@ pub struct AppState {
     /// `JQUANTS_API_KEY` 未設定時は None で起動する。
     /// データ取得系のエンドポイントは利用時にエラーを返す。
     pub data_provider: Option<Arc<DataProviderKind>>,
-    /// kubeopencode (Task CR) クライアント。`KUBEOPENCODE_API_URL=disabled` (dev opt-out)
-    /// の場合は `DisabledKubeopencodeClient` が入り、submit_strategy_task は MCP エラーを返す。
+    /// kubeopencode (Agent CR) クライアント。戦略 CRUD 時の Agent reconcile / delete にのみ使う。
+    /// `KUBEOPENCODE_API_URL=disabled` (dev opt-out) の場合は `DisabledKubeopencodeClient` が入る。
     pub kubeopencode: SharedKubeopencodeClient,
+    /// t-rader-agent 内部 API クライアント。戦略タスクの投入 / 状態照会に使う。
+    /// `TRADER_AGENT_API_URL=disabled` (dev opt-out) の場合は `DisabledAgentTaskClient` が入る。
+    pub agent_task_client: SharedAgentTaskClient,
+    /// watcher (`mcp::watcher`) の polling を即時発火させるための通知。
+    /// t-rader-agent からの webhook 受信時に `notify_one()` される。
+    pub agent_task_notify: Arc<tokio::sync::Notify>,
+    /// t-rader-agent からの webhook (`POST /api/agent-tasks/notifications`) を認証する
+    /// bearer トークン。
+    pub agent_webhook_token: Arc<str>,
     /// Kata Containers exec Pod executor。`KATA_EXEC_API_URL` 未設定時は `None` で
     /// 起動し、`eval_python` tool は MCP エラーを返す。
     pub kata_executor: Option<SharedKataExecutor>,
@@ -64,6 +76,12 @@ impl AppState {
     pub fn disabled_kubeopencode() -> SharedKubeopencodeClient {
         let client: Arc<dyn KubeopencodeClient + Send + Sync> =
             Arc::new(DisabledKubeopencodeClient);
+        client
+    }
+
+    /// テスト・初期化以外で t-rader-agent 内部 API クライアントが未設定のケース向けのデフォルト
+    pub fn disabled_agent_task_client() -> SharedAgentTaskClient {
+        let client: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(DisabledAgentTaskClient);
         client
     }
 }
@@ -126,6 +144,9 @@ mod app_state_tests {
             db: mock_db(),
             data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
             kubeopencode: AppState::disabled_kubeopencode(),
+            agent_task_client: AppState::disabled_agent_task_client(),
+            agent_task_notify: Arc::new(tokio::sync::Notify::new()),
+            agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             macro_cache: None,
         };
@@ -138,6 +159,9 @@ mod app_state_tests {
             db: mock_db(),
             data_provider: None,
             kubeopencode: AppState::disabled_kubeopencode(),
+            agent_task_client: AppState::disabled_agent_task_client(),
+            agent_task_notify: Arc::new(tokio::sync::Notify::new()),
+            agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             macro_cache: None,
         };
@@ -258,6 +282,8 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         // hooks (外部 webhook 受信)
         .routes(routes!(hooks::receive_hook))
+        // t-rader-agent からのタスク決着通知
+        .routes(routes!(agent_tasks::receive_agent_task_notification))
         // imports
         .routes(routes!(imports::sbi_preview))
         .routes(routes!(imports::sbi_commit))
@@ -300,7 +326,7 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 
 pub fn create_router(state: AppState) -> Router {
     let db = state.db.clone();
-    let kube = state.kubeopencode.clone();
+    let agent_task_client = state.agent_task_client.clone();
     let data_provider = state.data_provider.clone();
     let kata_executor = state.kata_executor.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
@@ -310,7 +336,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
         .merge(mcp::router(
             db,
-            kube,
+            agent_task_client,
             data_provider,
             kata_executor,
             mcp::allowed_hosts_from_env(),

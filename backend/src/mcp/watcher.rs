@@ -1,39 +1,61 @@
 //! 戦略タスクの phase 監視 (polling)
 //!
 //! 一定 interval で `strategy_task.phase IN ('pending', 'running')` の行を LIST し、
-//! kubeopencode の Task CR を get_task_status で照会して結果を DB に反映する。
+//! t-rader-agent の内部 API (`GET /internal/tasks/:task_id`) を照会して結果を DB に反映する。
+//! t-rader-agent からの webhook 受信は `notify` 経由で polling を即時発火させるための最適化に
+//! 過ぎず、決着の正 (最終的な整合性を保証する経路) は本 polling である。
 //!
-//! 監視期間中に Task CR 自体が消えた場合は、最後の phase / error_summary を「失敗 (lost)」
-//! として確定させ、以降の polling 対象から外す。
+//! `deadline_at` を過ぎても決着しない行 (内部 API 到達不能、投入自体の記録漏れを含む) は
+//! failed に確定し、沈黙したまま残ることを防ぐ。
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
-use tokio::sync::Semaphore;
+use tokio::sync::{Notify, Semaphore};
 
+use crate::agent_client::{AgentTaskError, AgentTaskState, AgentTaskStatus, SharedAgentTaskClient};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::strategy_task;
-use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient, TaskPhase};
 
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
 
-/// 行 insert 直後 — まだ Task CR が apiserver に登録されていない race window — で
-/// NotFound を Failed に確定させないための猶予期間。これ未満の経過時間で NotFound を
-/// 受け取った場合は次の tick まで判定を保留する。
-pub const NOT_FOUND_GRACE: chrono::Duration = chrono::Duration::seconds(60);
-
-/// 1 tick あたりに同時実行する kubeopencode API 問い合わせ数の上限。1 件の遅延・タイムアウトが
-/// 他の reconcile をブロックしないよう、行ごとに `get_task_status` を並列化する。kube-apiserver に
+/// 1 tick あたりに同時実行する内部 API 問い合わせ数の上限。1 件の遅延・タイムアウトが
+/// 他の reconcile をブロックしないよう、行ごとに `get` を並列化する。t-rader-agent に
 /// 同時接続を投げすぎないよう上限を設ける。
 const MAX_CONCURRENT_STATUS_FETCHES: usize = 8;
+
+/// A2A TaskState を strategy_task の phase に写像する。
+/// 戦略タスクは 1 shot 実行 (再開なし) のため、input-required も failed 扱いとする。
+fn phase_for_state(state: AgentTaskState) -> StrategyTaskPhase {
+    match state {
+        AgentTaskState::Submitted | AgentTaskState::Working => StrategyTaskPhase::Running,
+        AgentTaskState::Completed => StrategyTaskPhase::Completed,
+        AgentTaskState::InputRequired
+        | AgentTaskState::Canceled
+        | AgentTaskState::Failed
+        | AgentTaskState::Rejected => StrategyTaskPhase::Failed,
+    }
+}
+
+fn error_summary_for(status: &AgentTaskStatus, phase: &StrategyTaskPhase) -> Option<String> {
+    if *phase != StrategyTaskPhase::Failed {
+        return None;
+    }
+    Some(
+        status
+            .error_kind
+            .clone()
+            .unwrap_or_else(|| "agent task failed".to_string()),
+    )
+}
 
 /// 1 回分の polling を実行する。失敗した個別 task はログに残し、他の task の処理を継続する。
 ///
 /// 戻り値は phase 更新が走った task 数。
-pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) -> usize {
+pub async fn run_once(db: &DatabaseConnection, agent_client: &SharedAgentTaskClient) -> usize {
     let rows = match strategy_task::Entity::find()
         .filter(
             strategy_task::Column::Phase
@@ -50,19 +72,20 @@ pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) 
         }
     };
 
+    let now = Utc::now().fixed_offset();
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_STATUS_FETCHES));
     let mut handles = Vec::with_capacity(rows.len());
     for row in rows {
-        let kube = kube.clone();
+        let agent_client = agent_client.clone();
         let db = db.clone();
         let sem = semaphore.clone();
         handles.push(tokio::spawn(async move {
-            // semaphore で kube-apiserver への同時接続数を制限する。
+            // semaphore で t-rader-agent への同時接続数を制限する。
             let _permit = match sem.acquire_owned().await {
                 Ok(permit) => permit,
                 Err(_) => return false,
             };
-            reconcile_one(&db, &kube, row).await
+            reconcile_one(&db, &agent_client, row, now).await
         }));
     }
 
@@ -82,54 +105,58 @@ pub async fn run_once(db: &DatabaseConnection, kube: &SharedKubeopencodeClient) 
 /// 単一行の status 取得 → phase 反映を行う。更新が走った場合のみ `true` を返す。
 async fn reconcile_one(
     db: &DatabaseConnection,
-    kube: &SharedKubeopencodeClient,
+    agent_client: &SharedAgentTaskClient,
     row: strategy_task::Model,
+    now: DateTime<FixedOffset>,
 ) -> bool {
-    let (new_phase, new_error) = match kube.get_task_status(&row.kubeopencode_task_name).await {
-        Ok(status) => {
-            let phase = match status.phase {
-                Some(TaskPhase::Pending) => StrategyTaskPhase::Pending,
-                Some(TaskPhase::Running) => StrategyTaskPhase::Running,
-                Some(TaskPhase::Completed) => StrategyTaskPhase::Completed,
-                Some(TaskPhase::Failed) => StrategyTaskPhase::Failed,
-                None => row.phase.clone(),
-            };
-            let error = match phase {
-                StrategyTaskPhase::Failed => {
-                    Some(status.message.unwrap_or_else(|| "task failed".to_string()))
-                }
-                _ => row.error_summary.clone(),
-            };
-            (phase, error)
-        }
-        Err(KubeopencodeError::NotFound(name)) => {
-            // CR insert と create_task は別段階で実行されるため、insert 直後 ~ create 完了前の
-            // 窓で NotFound が返り得る。本物の消失と誤検知を区別するため、行が
-            // `NOT_FOUND_GRACE` 未満なら判定を保留する。
-            let age = Utc::now().fixed_offset() - row.created_at;
-            if age < NOT_FOUND_GRACE {
-                tracing::debug!(
-                    task = %name,
-                    age_ms = age.num_milliseconds(),
-                    "task cr not found within grace period; will retry"
-                );
-                return false;
-            }
-            (
-                StrategyTaskPhase::Failed,
-                Some(format!("task cr {name} not found")),
+    let Some(a2a_task_id) = row.a2a_task_id.clone() else {
+        // submit_task の Pending 行 INSERT 後、内部 API 投入前にプロセスが落ちた等で
+        // a2a_task_id が記録されないまま孤児化したケース。get のしようがないので
+        // deadline のみで確定する。
+        if now > row.deadline_at {
+            return apply_failed(
+                db,
+                row,
+                "agent task submission was not recorded".to_string(),
             )
+            .await;
+        }
+        return false;
+    };
+
+    match agent_client.get(&a2a_task_id).await {
+        Ok(status) => apply_status(db, row, status).await,
+        Err(AgentTaskError::NotFound(_)) => {
+            // t-rader-agent 側で task が purge 済み等。沈黙させず失敗として確定する。
+            apply_failed(db, row, format!("agent task {a2a_task_id} not found")).await
         }
         Err(err) => {
-            tracing::warn!(
-                error = %err,
-                task = %row.kubeopencode_task_name,
-                "failed to fetch task status; will retry on next tick",
-            );
-            return false;
+            // 一時的な到達不能。deadline 超過まではリトライに委ね、超過後は
+            // server ごと長期停止しているとみなして失敗確定する (client 側の最終防衛)。
+            if now > row.deadline_at {
+                apply_failed(db, row, format!("agent task unreachable: {err}")).await
+            } else {
+                tracing::warn!(
+                    error = %err,
+                    task_id = %row.task_id,
+                    a2a_task_id,
+                    "failed to fetch agent task status; will retry on next tick",
+                );
+                false
+            }
         }
-    };
-    match apply_phase(db, row, new_phase, new_error).await {
+    }
+}
+
+async fn apply_status(
+    db: &DatabaseConnection,
+    row: strategy_task::Model,
+    status: AgentTaskStatus,
+) -> bool {
+    let new_phase = phase_for_state(status.state);
+    let new_error = error_summary_for(&status, &new_phase);
+    let new_result_text = status.result_text.or_else(|| row.result_text.clone());
+    match apply_phase(db, row, new_phase, new_error, new_result_text).await {
         Ok(updated) => updated,
         Err(err) => {
             tracing::warn!(error = %err, "failed to update strategy_task phase");
@@ -138,27 +165,43 @@ async fn reconcile_one(
     }
 }
 
-/// 1 行ぶんの phase / error_summary 更新を適用する。差分が無ければ DB 書き込みをしない。
-/// 主キーと変更カラムのみを `Set` した ActiveModel で UPDATE することで、prompt 等の
+async fn apply_failed(db: &DatabaseConnection, row: strategy_task::Model, message: String) -> bool {
+    match apply_phase(db, row, StrategyTaskPhase::Failed, Some(message), None).await {
+        Ok(updated) => updated,
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to update strategy_task phase");
+            false
+        }
+    }
+}
+
+/// 1 行ぶんの phase / error_summary / result_text 更新を適用する。差分が無ければ DB 書き込みを
+/// しない。主キーと変更カラムのみを `Set` した ActiveModel で UPDATE することで、prompt 等の
 /// 長文カラムを毎回書き直すのを避ける。
 async fn apply_phase(
     db: &DatabaseConnection,
     row: strategy_task::Model,
     new_phase: StrategyTaskPhase,
     new_error: Option<String>,
+    new_result_text: Option<String>,
 ) -> Result<bool, sea_orm::DbErr> {
-    if new_phase == row.phase && new_error == row.error_summary {
+    if new_phase == row.phase
+        && new_error == row.error_summary
+        && new_result_text == row.result_text
+    {
         return Ok(false);
     }
     let active = strategy_task::ActiveModel {
         task_id: sea_orm::ActiveValue::Unchanged(row.task_id),
         phase: Set(new_phase),
         error_summary: Set(new_error),
+        result_text: Set(new_result_text),
         updated_at: Set(Utc::now().fixed_offset()),
         strategy_id: NotSet,
-        kubeopencode_task_name: NotSet,
+        a2a_task_id: NotSet,
         source: NotSet,
         prompt: NotSet,
+        deadline_at: NotSet,
         created_at: NotSet,
     };
     strategy_task::Entity::update(active).exec(db).await?;
@@ -166,10 +209,14 @@ async fn apply_phase(
 }
 
 /// 定期 polling のバックグラウンドタスクを起動する。
+///
+/// `notify` は webhook 受信時に即時 polling を誘発するための最適化。tick 到来と notify の
+/// どちらが先でも 1 回の polling を実行する。
 pub fn spawn(
     db: DatabaseConnection,
-    kube: SharedKubeopencodeClient,
+    agent_client: SharedAgentTaskClient,
     interval: Duration,
+    notify: Arc<Notify>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -177,8 +224,11 @@ pub fn spawn(
         // 起動直後の即時実行は避ける (initial delay)。
         ticker.tick().await;
         loop {
-            ticker.tick().await;
-            let updated = run_once(&db, &kube).await;
+            tokio::select! {
+                _ = ticker.tick() => {}
+                _ = notify.notified() => {}
+            }
+            let updated = run_once(&db, &agent_client).await;
             if updated > 0 {
                 tracing::info!(updated, "strategy_task phases reconciled");
             }
@@ -190,8 +240,8 @@ pub fn spawn(
 mod tests {
     use std::sync::Arc;
 
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient};
     use crate::entities::strategy;
-    use crate::kubeopencode::{FakeKubeopencodeClient, TaskCrStatus};
     use crate::testing::create_test_db;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     use sqlx::PgPool;
@@ -219,30 +269,29 @@ mod tests {
         id
     }
 
-    async fn insert_pending_task(db: &DatabaseConnection, strategy_id: Uuid, name: &str) -> Uuid {
-        insert_pending_task_aged(db, strategy_id, name, chrono::Duration::seconds(0)).await
-    }
-
-    /// `aged` だけ過去に created_at を寄せた pending タスクを挿入する。grace period を
-    /// 跨いだ NotFound 判定のテスト用。
-    async fn insert_pending_task_aged(
+    /// `deadline_offset` だけ現在時刻からずらした deadline_at を持つ行を挿入する。
+    /// 過去にすれば「deadline 超過」、未来にすれば「deadline 未到来」の状態を作れる。
+    async fn insert_task(
         db: &DatabaseConnection,
         strategy_id: Uuid,
-        name: &str,
-        aged: chrono::Duration,
+        a2a_task_id: Option<&str>,
+        phase: StrategyTaskPhase,
+        deadline_offset: chrono::Duration,
     ) -> Uuid {
         let task_id = Uuid::new_v4();
-        let backdated = Utc::now().fixed_offset() - aged;
+        let now = Utc::now().fixed_offset();
         strategy_task::ActiveModel {
             task_id: Set(task_id),
             strategy_id: Set(strategy_id),
-            kubeopencode_task_name: Set(name.to_string()),
+            a2a_task_id: Set(a2a_task_id.map(|s| s.to_string())),
             source: Set("slack".to_string()),
             prompt: Set("hi".to_string()),
-            phase: Set(StrategyTaskPhase::Pending),
+            phase: Set(phase),
             error_summary: Set(None),
-            created_at: Set(backdated),
-            updated_at: Set(backdated),
+            result_text: Set(None),
+            deadline_at: Set(now + deadline_offset),
+            created_at: NotSet,
+            updated_at: NotSet,
         }
         .insert(db)
         .await
@@ -250,90 +299,174 @@ mod tests {
         task_id
     }
 
+    const FAR_FUTURE: chrono::Duration = chrono::Duration::minutes(15);
+    const PAST: chrono::Duration = chrono::Duration::seconds(-1);
+
     #[sqlx::test(migrations = false)]
-    async fn reconciles_completed_and_failed(pool: PgPool) {
+    async fn reconciles_completed_running_and_failed_states(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
-        let _ = insert_pending_task(&db, strategy_id, "task-completed").await;
-        let _ = insert_pending_task(&db, strategy_id, "task-failed").await;
-        let _ = insert_pending_task(&db, strategy_id, "task-running").await;
+        let completed_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-completed"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let failed_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-failed"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let running_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-running"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
 
-        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_status(
-            "task-completed",
-            TaskCrStatus {
-                phase: Some(TaskPhase::Completed),
-                message: None,
+            "t-completed",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("all good".to_string()),
+                error_kind: None,
             },
         )
         .await;
         fake.set_status(
-            "task-failed",
-            TaskCrStatus {
-                phase: Some(TaskPhase::Failed),
-                message: Some("boom".into()),
+            "t-failed",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_kind: Some("usage_limit".to_string()),
             },
         )
         .await;
         fake.set_status(
-            "task-running",
-            TaskCrStatus {
-                phase: Some(TaskPhase::Running),
-                message: None,
+            "t-running",
+            AgentTaskStatus {
+                state: AgentTaskState::Working,
+                result_text: None,
+                error_kind: None,
             },
         )
         .await;
 
-        let kube: SharedKubeopencodeClient = fake.clone();
-        let updated = run_once(&db, &kube).await;
-        assert_eq!(updated, 3);
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let updated = run_once(&db, &agent_client).await;
+        // running は phase (Running) も error/result も変化しないので更新カウントに含まれない。
+        assert_eq!(updated, 2);
 
-        let rows = strategy_task::Entity::find()
-            .order_by_asc(strategy_task::Column::KubeopencodeTaskName)
-            .all(&db)
+        let completed = strategy_task::Entity::find_by_id(completed_id)
+            .one(&db)
             .await
+            .unwrap()
             .unwrap();
-        let mut summary: Vec<(String, StrategyTaskPhase, Option<String>)> = rows
-            .into_iter()
-            .map(|r| (r.kubeopencode_task_name, r.phase, r.error_summary))
-            .collect();
-        summary.sort_by(|a, b| a.0.cmp(&b.0));
+        let failed = strategy_task::Entity::find_by_id(failed_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        let running = strategy_task::Entity::find_by_id(running_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(
-            summary,
-            vec![
-                (
-                    "task-completed".to_string(),
-                    StrategyTaskPhase::Completed,
-                    None
-                ),
-                (
-                    "task-failed".to_string(),
-                    StrategyTaskPhase::Failed,
-                    Some("boom".to_string()),
-                ),
-                ("task-running".to_string(), StrategyTaskPhase::Running, None),
-            ],
+            (
+                completed.phase,
+                completed.result_text,
+                completed.error_summary
+            ),
+            (
+                StrategyTaskPhase::Completed,
+                Some("all good".to_string()),
+                None
+            ),
+        );
+        assert_eq!(
+            (failed.phase, failed.result_text, failed.error_summary),
+            (
+                StrategyTaskPhase::Failed,
+                None,
+                Some("usage_limit".to_string())
+            ),
+        );
+        assert_eq!(
+            (running.phase, running.result_text, running.error_summary),
+            (StrategyTaskPhase::Running, None, None),
         );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn marks_missing_task_as_failed(pool: PgPool) {
+    async fn input_required_maps_to_failed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
-        let _ = insert_pending_task_aged(
+        let task_id = insert_task(
             &db,
             strategy_id,
-            "ghost",
-            NOT_FOUND_GRACE + chrono::Duration::seconds(1),
+            Some("t-ir"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
         )
         .await;
-        let fake: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-ir",
+            AgentTaskStatus {
+                state: AgentTaskState::InputRequired,
+                result_text: None,
+                error_kind: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (row.phase, row.error_summary),
+            (
+                StrategyTaskPhase::Failed,
+                Some("agent task failed".to_string())
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn not_found_after_deadline_marks_failed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("ghost"),
+            StrategyTaskPhase::Running,
+            PAST,
+        )
+        .await;
+        let fake: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let updated = run_once(&db, &fake).await;
         assert_eq!(updated, 1);
 
-        let row = strategy_task::Entity::find()
+        let row = strategy_task::Entity::find_by_id(task_id)
             .one(&db)
             .await
             .unwrap()
@@ -341,26 +474,136 @@ mod tests {
         assert_eq!(row.phase, StrategyTaskPhase::Failed);
         assert_eq!(
             row.error_summary,
-            Some("task cr ghost not found".to_string())
+            Some("agent task ghost not found".to_string())
         );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn skips_recent_not_found_within_grace(pool: PgPool) {
+    async fn not_found_before_deadline_is_skipped(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
-        let _ = insert_pending_task(&db, strategy_id, "fresh").await;
-        let fake: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("fresh"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let updated = run_once(&db, &fake).await;
         assert_eq!(updated, 0);
 
-        let row = strategy_task::Entity::find()
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.phase, StrategyTaskPhase::Running);
+        assert_eq!(row.error_summary, None);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn orphaned_row_without_a2a_task_id_failed_after_deadline(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(&db, strategy_id, None, StrategyTaskPhase::Pending, PAST).await;
+        let fake: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+
+        let updated = run_once(&db, &fake).await;
+        assert_eq!(updated, 1);
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.phase, StrategyTaskPhase::Failed);
+        assert_eq!(
+            row.error_summary,
+            Some("agent task submission was not recorded".to_string())
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn orphaned_row_without_a2a_task_id_skipped_before_deadline(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            None,
+            StrategyTaskPhase::Pending,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+
+        let updated = run_once(&db, &fake).await;
+        assert_eq!(updated, 0);
+
+        let row = strategy_task::Entity::find_by_id(task_id)
             .one(&db)
             .await
             .unwrap()
             .unwrap();
         assert_eq!(row.phase, StrategyTaskPhase::Pending);
-        assert_eq!(row.error_summary, None);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn transient_error_after_deadline_marks_failed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("flaky"),
+            StrategyTaskPhase::Running,
+            PAST,
+        )
+        .await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_get_error(AgentTaskError::Network("connection refused".to_string()))
+            .await;
+        let agent_client: SharedAgentTaskClient = fake;
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.phase, StrategyTaskPhase::Failed);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn transient_error_before_deadline_is_skipped(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("flaky"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_get_error(AgentTaskError::Network("connection refused".to_string()))
+            .await;
+        let agent_client: SharedAgentTaskClient = fake;
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 0);
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.phase, StrategyTaskPhase::Running);
     }
 }

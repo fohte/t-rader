@@ -164,6 +164,9 @@ mod tests {
             db,
             data_provider: None,
             kubeopencode: AppState::disabled_kubeopencode(),
+            agent_task_client: AppState::disabled_agent_task_client(),
+            agent_task_notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+            agent_webhook_token: std::sync::Arc::from("test-token"),
             kata_executor: None,
             macro_cache,
         };

@@ -11,8 +11,8 @@ use sea_orm::{DatabaseConnection, EntityTrait, IntoActiveModel};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::agent_client::SharedAgentTaskClient;
 use crate::entities::{strategy, trigger};
-use crate::kubeopencode::SharedKubeopencodeClient;
 use crate::services::strategy_tasks::{SubmitTaskError, SubmittedTask, TaskSource, submit_task};
 
 #[derive(Debug, thiserror::Error)]
@@ -33,7 +33,7 @@ pub enum FireTriggerError {
 /// 失敗すると次回 worker 走査で再発火しうる。
 pub async fn fire_trigger(
     db: &DatabaseConnection,
-    kube: &SharedKubeopencodeClient,
+    agent_client: &SharedAgentTaskClient,
     trigger_id: Uuid,
     payload: Value,
     source: TaskSource,
@@ -58,7 +58,7 @@ pub async fn fire_trigger(
     let context = build_standard_context(&strategy_row, now);
     let prompt = expand_template(&trigger_row.prompt_template, &payload, &context);
 
-    let outcome = submit_task(db, kube, trigger_row.strategy_id, &prompt, source).await?;
+    let outcome = submit_task(db, agent_client, trigger_row.strategy_id, &prompt, source).await?;
 
     let now_fixed = now.fixed_offset();
     let mut active = trigger_row.into_active_model();
@@ -313,9 +313,8 @@ mod fire_tests {
     use serde_json::json;
     use sqlx::PgPool;
 
-    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::{strategy, strategy_task, trigger};
-    use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
     use crate::testing::create_test_db;
 
     use super::*;
@@ -329,8 +328,7 @@ mod fire_tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
-            // submit_strategy_task は Ready のみ受け付けるため Ready で投入
-            agent_status: Set(StrategyAgentStatus::Ready),
+            agent_status: NotSet,
             agent_error: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
@@ -412,7 +410,7 @@ mod fire_tests {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "長期").await;
         let tid = seed_hook_trigger(&db, sid, "tv", "alert {{payload.symbol}}").await;
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let outcome = fire_trigger(&db, &kube, tid, json!({"symbol": "7203"}), TaskSource::Hook)
             .await
@@ -468,7 +466,7 @@ mod fire_tests {
         .insert(&db)
         .await
         .unwrap();
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         fire_trigger(&db, &kube, id, json!({}), TaskSource::Cron)
             .await
@@ -511,7 +509,7 @@ mod fire_tests {
         .insert(&db)
         .await
         .unwrap();
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let err = fire_trigger(&db, &kube, id, json!({}), TaskSource::Hook)
             .await
@@ -522,7 +520,7 @@ mod fire_tests {
     #[sqlx::test(migrations = false)]
     async fn fire_missing_trigger_returns_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let missing = Uuid::new_v4();
         let err = fire_trigger(&db, &kube, missing, json!({}), TaskSource::Hook)
             .await
@@ -533,25 +531,15 @@ mod fire_tests {
     #[sqlx::test(migrations = false)]
     async fn fire_does_not_update_last_fired_when_submit_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
-        // 戦略を Pending のまま投入 → submit_strategy_task が AgentPending で失敗する
-        let sid = Uuid::new_v4();
-        strategy::ActiveModel {
-            id: Set(sid),
-            name: Set("p".to_string()),
-            description: Set(None),
-            sort_order: Set(0),
-            agents_md: NotSet,
-            skills: NotSet,
-            agent_status: NotSet,
-            agent_error: NotSet,
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        let sid = seed_strategy(&db, "p").await;
         let tid = seed_hook_trigger(&db, sid, "p", "x").await;
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::Api {
+            status: 500,
+            message: "boom".into(),
+        })
+        .await;
+        let kube: SharedAgentTaskClient = fake;
 
         let err = fire_trigger(&db, &kube, tid, json!({}), TaskSource::Hook)
             .await
@@ -564,9 +552,7 @@ mod fire_tests {
         assert_eq!(
             (err.to_string(), TriggerFireShape::from(&row)),
             (
-                "submit strategy task failed: strategy agent not ready: status=pending \
-                 (reconcile in progress)"
-                    .to_string(),
+                "submit strategy task failed: agent task api error (status 500): boom".to_string(),
                 TriggerFireShape {
                     trigger_id: tid,
                     enabled: true,

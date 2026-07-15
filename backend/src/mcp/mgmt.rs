@@ -20,8 +20,8 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::agent_client::{AgentTaskError, SharedAgentTaskClient};
 use crate::entities::{annotation, note, rss_feed, strategy};
-use crate::kubeopencode::{KubeopencodeError, SharedKubeopencodeClient};
 use crate::services::rss_feed as rss_feed_svc;
 use crate::services::strategy_tasks::{
     self, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
@@ -33,12 +33,12 @@ const MAX_LIST_LIMIT: u64 = 100;
 #[derive(Clone)]
 pub struct MgmtServer {
     db: DatabaseConnection,
-    kube: SharedKubeopencodeClient,
+    agent_client: SharedAgentTaskClient,
 }
 
 impl MgmtServer {
-    pub fn new(db: DatabaseConnection, kube: SharedKubeopencodeClient) -> Self {
-        Self { db, kube }
+    pub fn new(db: DatabaseConnection, agent_client: SharedAgentTaskClient) -> Self {
+        Self { db, agent_client }
     }
 }
 
@@ -67,21 +67,22 @@ pub struct SubmitStrategyTaskParams {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct SubmitStrategyTaskResult {
     pub task_id: Uuid,
-    pub kubeopencode_task_name: String,
+    pub a2a_task_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetStrategyTaskStatusParams {
-    pub kubeopencode_task_name: String,
+    pub a2a_task_id: String,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct GetStrategyTaskStatusResult {
     pub task_id: Uuid,
     pub strategy_id: Uuid,
-    pub kubeopencode_task_name: String,
+    pub a2a_task_id: Option<String>,
     pub phase: String,
     pub error_summary: Option<String>,
+    pub result_text: Option<String>,
     pub updated_at: DateTime<FixedOffset>,
 }
 
@@ -291,7 +292,7 @@ impl MgmtServer {
     ) -> Result<Json<SubmitStrategyTaskResult>, McpError> {
         let submitted = strategy_tasks::submit_task(
             &self.db,
-            &self.kube,
+            &self.agent_client,
             params.strategy_id,
             &params.prompt,
             TaskSource::MgmtMcp,
@@ -300,7 +301,7 @@ impl MgmtServer {
         .map_err(map_submit_error)?;
         Ok(Json(SubmitStrategyTaskResult {
             task_id: submitted.task_id,
-            kubeopencode_task_name: submitted.kubeopencode_task_name,
+            a2a_task_id: submitted.a2a_task_id,
         }))
     }
 
@@ -314,16 +315,17 @@ impl MgmtServer {
         Parameters(params): Parameters<GetStrategyTaskStatusParams>,
     ) -> Result<Json<GetStrategyTaskStatusResult>, McpError> {
         let view: TaskStatusView =
-            strategy_tasks::get_task_by_name(&self.db, &params.kubeopencode_task_name)
+            strategy_tasks::get_task_by_a2a_task_id(&self.db, &params.a2a_task_id)
                 .await
                 .map_err(db_error)?
                 .ok_or_else(|| McpError::resource_not_found("strategy task not found", None))?;
         Ok(Json(GetStrategyTaskStatusResult {
             task_id: view.task_id,
             strategy_id: view.strategy_id,
-            kubeopencode_task_name: view.kubeopencode_task_name,
+            a2a_task_id: view.a2a_task_id,
             phase: phase_str(&view.phase).to_string(),
             error_summary: view.error_summary,
+            result_text: view.result_text,
             updated_at: view.updated_at,
         }))
     }
@@ -481,14 +483,8 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
     match err {
         SubmitTaskError::EmptyPrompt => invalid_params("prompt must not be empty"),
         SubmitTaskError::StrategyNotFound(id) => invalid_params(format!("strategy {id} not found")),
-        SubmitTaskError::AgentPending => {
-            invalid_params("strategy agent not ready: status=pending (reconcile in progress)")
-        }
-        SubmitTaskError::AgentFailed(reason) => {
-            invalid_params(format!("strategy agent not ready: status=failed: {reason}"))
-        }
         SubmitTaskError::Database(db_err) => db_error(db_err),
-        SubmitTaskError::Kubeopencode(kube_err) => map_kube_error(&kube_err),
+        SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
 }
 
@@ -505,23 +501,18 @@ fn map_rss_feed_error(err: rss_feed_svc::RssFeedError) -> McpError {
     }
 }
 
-fn map_kube_error(err: &KubeopencodeError) -> McpError {
+fn map_agent_task_error(err: &AgentTaskError) -> McpError {
     match err {
-        KubeopencodeError::NotConfigured => internal_error("kubeopencode is not configured"),
-        KubeopencodeError::AlreadyExists(name) => {
-            invalid_params(format!("kubeopencode task already exists: {name}"))
+        AgentTaskError::NotConfigured => internal_error("agent task client is not configured"),
+        AgentTaskError::NotFound(name) => {
+            McpError::resource_not_found(format!("agent task not found: {name}"), None)
         }
-        KubeopencodeError::NotFound(name) => {
-            McpError::resource_not_found(format!("kubeopencode task not found: {name}"), None)
+        AgentTaskError::Api { status, message } => {
+            internal_error(format!("agent task api error (status {status}): {message}"))
         }
-        KubeopencodeError::Api { status, message } => internal_error(format!(
-            "kubeopencode api error (status {status}): {message}"
-        )),
-        KubeopencodeError::Network(msg) => {
-            internal_error(format!("kubeopencode network error: {msg}"))
-        }
-        KubeopencodeError::Parse(msg) => internal_error(format!("kubeopencode parse error: {msg}")),
-        KubeopencodeError::Init(msg) => internal_error(format!("kubeopencode init error: {msg}")),
+        AgentTaskError::Network(msg) => internal_error(format!("agent task network error: {msg}")),
+        AgentTaskError::Parse(msg) => internal_error(format!("agent task parse error: {msg}")),
+        AgentTaskError::Init(msg) => internal_error(format!("agent task init error: {msg}")),
     }
 }
 
@@ -546,12 +537,11 @@ mod integration_tests {
 
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::IntoActiveModel;
     use sqlx::PgPool;
 
-    use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
+    use crate::agent_client::FakeAgentTaskClient;
+    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
-    use crate::kubeopencode::{FakeKubeopencodeClient, KubeopencodeError, agent_name_for};
     use crate::testing::create_test_db;
 
     use super::*;
@@ -560,14 +550,6 @@ mod integration_tests {
     const MGMT_TASK_SOURCE: &str = "mgmt-mcp";
 
     async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
-        insert_strategy_with_status(db, name, StrategyAgentStatus::Ready).await
-    }
-
-    async fn insert_strategy_with_status(
-        db: &DatabaseConnection,
-        name: &str,
-        status: StrategyAgentStatus,
-    ) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),
@@ -576,7 +558,7 @@ mod integration_tests {
             sort_order: Set(0),
             agents_md: sea_orm::ActiveValue::NotSet,
             skills: sea_orm::ActiveValue::NotSet,
-            agent_status: Set(status),
+            agent_status: sea_orm::ActiveValue::NotSet,
             agent_error: sea_orm::ActiveValue::NotSet,
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
@@ -587,15 +569,16 @@ mod integration_tests {
         id
     }
 
-    fn build_server(db: DatabaseConnection, fake: Arc<FakeKubeopencodeClient>) -> MgmtServer {
-        MgmtServer::new(db, fake as SharedKubeopencodeClient)
+    fn build_server(db: DatabaseConnection, fake: Arc<FakeAgentTaskClient>) -> MgmtServer {
+        MgmtServer::new(db, fake as SharedAgentTaskClient)
     }
 
     #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_inserts_row_and_creates_cr(pool: PgPool) {
+    async fn submit_strategy_task_inserts_row_and_submits_to_agent(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long-term").await;
-        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_next_task_id("agent-task-1").await;
         let server = build_server(db.clone(), fake.clone());
 
         let Json(result) = server
@@ -606,27 +589,20 @@ mod integration_tests {
             .await
             .expect("submit ok");
 
-        let task_name = result.kubeopencode_task_name.clone();
+        assert_eq!(result.a2a_task_id, "agent-task-1");
         let task_id = result.task_id;
 
-        // kubeopencode に渡された TaskCrSpec の集合は、戻り値の task_name を採用したもの 1 件
-        let created: Vec<(String, String, String)> = fake
-            .created
+        // agent_client に渡された投入内容の集合は、戻り値の task_id を採用したもの 1 件
+        let submitted: Vec<(uuid::Uuid, String)> = fake
+            .submitted
             .lock()
             .await
             .iter()
-            .map(|s| (s.name.clone(), s.agent_name.clone(), s.description.clone()))
+            .map(|s| (s.strategy_id, s.prompt.clone()))
             .collect();
-        assert_eq!(
-            created,
-            vec![(
-                task_name.clone(),
-                agent_name_for(strategy_id),
-                "inspect 7203".to_string(),
-            )],
-        );
+        assert_eq!(submitted, vec![(strategy_id, "inspect 7203".to_string())]);
 
-        // strategy_task 行は pending で 1 件、戻り値と一致する内容を持つ
+        // strategy_task 行は running で 1 件、戻り値と一致する内容を持つ
         let rows: Vec<StrategyTaskRowSummary> = strategy_task::Entity::find()
             .all(&db)
             .await
@@ -639,10 +615,10 @@ mod integration_tests {
             vec![StrategyTaskRowSummary {
                 task_id,
                 strategy_id,
-                kubeopencode_task_name: task_name,
+                a2a_task_id: Some("agent-task-1".to_string()),
                 source: MGMT_TASK_SOURCE.to_string(),
                 prompt: "inspect 7203".to_string(),
-                phase: StrategyTaskPhase::Pending,
+                phase: StrategyTaskPhase::Running,
                 error_summary: None,
             }],
         );
@@ -652,7 +628,7 @@ mod integration_tests {
     struct StrategyTaskRowSummary {
         task_id: Uuid,
         strategy_id: Uuid,
-        kubeopencode_task_name: String,
+        a2a_task_id: Option<String>,
         source: String,
         prompt: String,
         phase: StrategyTaskPhase,
@@ -664,7 +640,7 @@ mod integration_tests {
             Self {
                 task_id: m.task_id,
                 strategy_id: m.strategy_id,
-                kubeopencode_task_name: m.kubeopencode_task_name,
+                a2a_task_id: m.a2a_task_id,
                 source: m.source,
                 prompt: m.prompt,
                 phase: m.phase,
@@ -676,7 +652,7 @@ mod integration_tests {
     #[sqlx::test(migrations = false)]
     async fn submit_strategy_task_rejects_unknown_strategy(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let fake = Arc::new(FakeAgentTaskClient::new());
         let server = build_server(db, fake);
 
         let err = server
@@ -691,64 +667,10 @@ mod integration_tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_rejects_pending_agent(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy_with_status(&db, "x", StrategyAgentStatus::Pending).await;
-        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
-        let err = server
-            .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
-                strategy_id,
-                prompt: "x".into(),
-            }))
-            .await
-            .err()
-            .unwrap_or_else(|| panic!("expected error"));
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                "strategy agent not ready: status=pending (reconcile in progress)",
-            ),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_rejects_failed_agent(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy_with_status(&db, "x", StrategyAgentStatus::Failed).await;
-        // 失敗時の agent_error を反映できることを確認するため、別途 UPDATE する
-        let mut row = strategy::Entity::find_by_id(strategy_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap()
-            .into_active_model();
-        row.agent_error = Set(Some("boom".into()));
-        row.update(&db).await.unwrap();
-
-        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
-        let err = server
-            .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
-                strategy_id,
-                prompt: "x".into(),
-            }))
-            .await
-            .err()
-            .unwrap_or_else(|| panic!("expected error"));
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                "strategy agent not ready: status=failed: boom",
-            ),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
     async fn submit_strategy_task_rejects_empty_prompt(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
-        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
             .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
                 strategy_id,
@@ -761,11 +683,11 @@ mod integration_tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_persists_failure_on_kube_error(pool: PgPool) {
+    async fn submit_strategy_task_persists_failure_on_agent_error(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
-        let fake = Arc::new(FakeKubeopencodeClient::new());
-        fake.set_create_error(KubeopencodeError::Api {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::Api {
             status: 500,
             message: "boom".into(),
         })
@@ -787,7 +709,7 @@ mod integration_tests {
         assert_eq!(rows[0].phase, StrategyTaskPhase::Failed);
         assert_eq!(
             rows[0].error_summary.as_deref(),
-            Some("create_task failed: kubeopencode api error (status 500): boom"),
+            Some("agent task submission failed: agent task api error (status 500): boom"),
         );
     }
 
@@ -795,7 +717,7 @@ mod integration_tests {
     async fn get_strategy_task_status_returns_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
-        let fake = Arc::new(FakeKubeopencodeClient::new());
+        let fake = Arc::new(FakeAgentTaskClient::new());
         let server = build_server(db.clone(), fake);
 
         let Json(submitted) = server
@@ -808,23 +730,24 @@ mod integration_tests {
 
         let Json(status) = server
             .get_strategy_task_status(Parameters(GetStrategyTaskStatusParams {
-                kubeopencode_task_name: submitted.kubeopencode_task_name.clone(),
+                a2a_task_id: submitted.a2a_task_id.clone(),
             }))
             .await
             .expect("ok");
         assert_eq!(status.task_id, submitted.task_id);
         assert_eq!(status.strategy_id, strategy_id);
-        assert_eq!(status.phase, "pending");
+        assert_eq!(status.phase, "running");
         assert!(status.error_summary.is_none());
+        assert!(status.result_text.is_none());
     }
 
     #[sqlx::test(migrations = false)]
     async fn get_strategy_task_status_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
             .get_strategy_task_status(Parameters(GetStrategyTaskStatusParams {
-                kubeopencode_task_name: "nonexistent".into(),
+                a2a_task_id: "nonexistent".into(),
             }))
             .await
             .err()
@@ -876,7 +799,7 @@ mod integration_tests {
         .await
         .unwrap();
 
-        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let Json(result) = server.list_strategies().await.expect("ok");
         assert_eq!(result.strategies.len(), 1);
         assert_eq!(result.strategies[0].strategy_id, strategy_id);
@@ -886,7 +809,7 @@ mod integration_tests {
     #[sqlx::test(migrations = false)]
     async fn create_rss_feed_inserts_and_lists(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let server = build_server(db.clone(), Arc::new(FakeKubeopencodeClient::new()));
+        let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(created) = server
             .create_rss_feed(Parameters(CreateRssFeedParams {
@@ -931,7 +854,7 @@ mod integration_tests {
     #[sqlx::test(migrations = false)]
     async fn create_rss_feed_rejects_invalid_source(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
             .create_rss_feed(Parameters(CreateRssFeedParams {
                 source: "Bad Source".into(),
@@ -968,7 +891,7 @@ mod integration_tests {
             .await
             .unwrap();
         }
-        let server = build_server(db, Arc::new(FakeKubeopencodeClient::new()));
+        let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let Json(result) = server
             .list_recent_notes(Parameters(ListRecentParams {
                 strategy_id,
