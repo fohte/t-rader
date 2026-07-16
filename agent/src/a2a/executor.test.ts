@@ -84,9 +84,9 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
-    const actual = {
-      finished: eventBus.finishedCalled,
-      events: eventBus.events.map((e) =>
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(
+      eventBus.events.map((e) =>
         'kind' in e && e.kind === 'task'
           ? { kind: 'task', state: e.status.state }
           : {
@@ -95,14 +95,10 @@ describe('TraderAgentExecutor', () => {
               final: (e as { final?: boolean }).final,
             },
       ),
-    }
-    expect(actual).toEqual({
-      finished: true,
-      events: [
-        { kind: 'task', state: 'rejected' },
-        { kind: 'status-update', final: true },
-      ],
-    })
+    ).toEqual([
+      { kind: 'task', state: 'rejected' },
+      { kind: 'status-update', final: true },
+    ])
   })
 
   it('rejects the task when strategy_id is not a valid UUID', async () => {
@@ -134,22 +130,13 @@ describe('TraderAgentExecutor', () => {
       { status: { state: string } },
       { status: { state: string; message?: Message } },
     ]
-    const actual = {
-      finished: eventBus.finishedCalled,
-      taskState: task.status.state,
-      workingState: working.status.state,
-      completedState: completed.status.state,
-      completedMessageText: completed.status.message?.parts[0],
-    }
-    expect(actual).toEqual({
-      finished: true,
-      taskState: 'submitted',
-      workingState: 'working',
-      completedState: 'completed',
-      completedMessageText: {
-        kind: 'text',
-        text: 'strategy agent result text',
-      },
+    expect.soft(eventBus.finishedCalled).toBe(true)
+    expect.soft(task.status.state).toBe('submitted')
+    expect.soft(working.status.state).toBe('working')
+    expect.soft(completed.status.state).toBe('completed')
+    expect.soft(completed.status.message?.parts[0]).toEqual({
+      kind: 'text',
+      text: 'strategy agent result text',
     })
   })
 
@@ -171,19 +158,30 @@ describe('TraderAgentExecutor', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
     const completed = eventBus.events[2] as {
-      status: { state: string; message?: Message }
+      status: { timestamp: string; message?: Message }
     }
-    const actual = {
-      finished: eventBus.finishedCalled,
-      state: completed.status.state,
-      messageText: completed.status.message?.parts[0],
-      errorKind: completed.status.message?.metadata?.['error_kind'],
-    }
-    expect(actual).toEqual({
-      finished: true,
-      state: 'failed',
-      messageText: { kind: 'text', text: 'usage limit reached' },
-      errorKind: 'usage_limit',
+    const { timestamp } = completed.status
+    const { messageId } = completed.status.message ?? {}
+
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(completed).toEqual({
+      kind: 'status-update',
+      taskId: 'task-5',
+      contextId: 'ctx-5',
+      final: true,
+      status: {
+        state: 'failed',
+        timestamp,
+        message: {
+          kind: 'message',
+          role: 'agent',
+          messageId,
+          taskId: 'task-5',
+          contextId: 'ctx-5',
+          parts: [{ kind: 'text', text: 'usage limit reached' }],
+          metadata: { error_kind: 'usage_limit' },
+        },
+      },
     })
   })
 
@@ -201,19 +199,30 @@ describe('TraderAgentExecutor', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
     const completed = eventBus.events[2] as {
-      status: { state: string; message?: Message }
+      status: { timestamp: string; message?: Message }
     }
-    const actual = {
-      finished: eventBus.finishedCalled,
-      state: completed.status.state,
-      messageText: completed.status.message?.parts[0],
-      errorKind: completed.status.message?.metadata?.['error_kind'],
-    }
-    expect(actual).toEqual({
-      finished: true,
-      state: 'failed',
-      messageText: { kind: 'text', text: 'mcp client construction blew up' },
-      errorKind: 'agent_error',
+    const { timestamp } = completed.status
+    const { messageId } = completed.status.message ?? {}
+
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(completed).toEqual({
+      kind: 'status-update',
+      taskId: 'task-6',
+      contextId: 'ctx-6',
+      final: true,
+      status: {
+        state: 'failed',
+        timestamp,
+        message: {
+          kind: 'message',
+          role: 'agent',
+          messageId,
+          taskId: 'task-6',
+          contextId: 'ctx-6',
+          parts: [{ kind: 'text', text: 'mcp client construction blew up' }],
+          metadata: { error_kind: 'agent_error' },
+        },
+      },
     })
   })
 
@@ -241,19 +250,13 @@ describe('TraderAgentExecutor', () => {
     const { timestamp } = statusUpdateEvent.status
     expect(Number.isNaN(new Date(timestamp).getTime())).toBe(false)
 
-    const actual = {
-      finished: eventBus.finishedCalled,
-      event: eventBus.events[0],
-    }
-    expect(actual).toEqual({
-      finished: true,
-      event: {
-        kind: 'status-update',
-        taskId: 'task-4',
-        contextId: 'ctx-4',
-        final: true,
-        status: { state: 'canceled', timestamp },
-      },
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(eventBus.events[0]).toEqual({
+      kind: 'status-update',
+      taskId: 'task-4',
+      contextId: 'ctx-4',
+      final: true,
+      status: { state: 'canceled', timestamp },
     })
   })
 })

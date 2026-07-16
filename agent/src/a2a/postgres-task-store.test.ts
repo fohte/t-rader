@@ -113,36 +113,31 @@ describeIfDb('PostgresTaskStore', () => {
         Number.isNaN(new Date(expired[0]?.status.timestamp ?? '').getTime()),
       ).toBe(false)
 
-      const actual = {
-        expiredIds: expired.map((t) => t.id).sort(),
-        expiredStates: expired.map((t) => t.status.state),
-        stale: await store.load('stale'),
-        fresh: await store.load('fresh'),
-        alreadyDone: await store.load('already-done'),
-      }
-      expect(actual).toEqual({
-        expiredIds: ['stale'],
-        expiredStates: ['failed'],
-        stale: {
-          id: 'stale',
-          contextId: 'ctx-stale',
-          kind: 'task',
-          status: {
-            state: 'failed',
-            timestamp: expired[0]?.status.timestamp,
-          },
+      expect.soft(expired.map((t) => t.id).sort()).toEqual(['stale'])
+      expect.soft(expired.map((t) => t.status.state)).toEqual(['failed'])
+      expect.soft(await store.load('stale')).toEqual({
+        id: 'stale',
+        contextId: 'ctx-stale',
+        kind: 'task',
+        status: {
+          state: 'failed',
+          timestamp: expired[0]?.status.timestamp,
         },
-        fresh: buildTask({
+      })
+      expect.soft(await store.load('fresh')).toEqual(
+        buildTask({
           id: 'fresh',
           state: 'working',
           timestamp: '2026-01-01T00:09:00.000Z',
         }),
-        alreadyDone: buildTask({
+      )
+      expect.soft(await store.load('already-done')).toEqual(
+        buildTask({
           id: 'already-done',
           state: 'completed',
           timestamp: '2026-01-01T00:00:00.000Z',
         }),
-      })
+      )
     })
   })
 
@@ -191,34 +186,29 @@ describeIfDb('PostgresTaskStore', () => {
         new Date('2026-01-05T00:00:00.000Z'),
       )
 
-      const actual = {
-        deletedCount,
-        oldCompleted: await store.load('old-completed'),
-        oldInputRequired: await store.load('old-input-required'),
-        recentCompleted: await store.load('recent-completed'),
-        stillWorking: await store.load('still-working'),
-        oldCompletedPushConfigs: await pushStore.load('old-completed'),
-        recentCompletedPushConfigs: await pushStore.load('recent-completed'),
-      }
-      expect(actual).toEqual({
-        deletedCount: 2,
-        oldCompleted: undefined,
-        oldInputRequired: undefined,
-        recentCompleted: buildTask({
+      expect.soft(deletedCount).toBe(2)
+      expect.soft(await store.load('old-completed')).toEqual(undefined)
+      expect.soft(await store.load('old-input-required')).toEqual(undefined)
+      expect.soft(await store.load('recent-completed')).toEqual(
+        buildTask({
           id: 'recent-completed',
           state: 'completed',
           timestamp: '2026-01-10T00:00:00.000Z',
         }),
-        stillWorking: buildTask({
+      )
+      expect.soft(await store.load('still-working')).toEqual(
+        buildTask({
           id: 'still-working',
           state: 'working',
           timestamp: '2026-01-01T00:00:00.000Z',
         }),
-        oldCompletedPushConfigs: [],
-        recentCompletedPushConfigs: [
+      )
+      expect.soft(await pushStore.load('old-completed')).toEqual([])
+      expect
+        .soft(await pushStore.load('recent-completed'))
+        .toEqual([
           { id: 'recent-completed', url: 'https://example.com/recent' },
-        ],
-      })
+        ])
     })
   })
 })

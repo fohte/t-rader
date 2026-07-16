@@ -28,16 +28,15 @@ describe('createAgentConfigFetcher', () => {
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
     const config = await fetchAgentConfig('strategy-1')
 
-    const actual = { config, requestedUrl: fetchMock.mock.calls[0]?.[0] }
-    expect(actual).toEqual({
-      config: {
-        agentsMd: '# AGENTS',
-        skills: { 'ja-stock': 'skill body' },
-        model: 'opencode-go/minimax-m3',
-        smallModel: 'opencode-go/deepseek-v4-flash',
-      },
-      requestedUrl: 'http://backend/api/strategies/strategy-1/agent-config',
+    expect(config).toEqual({
+      agentsMd: '# AGENTS',
+      skills: { 'ja-stock': 'skill body' },
+      model: 'opencode-go/minimax-m3',
+      smallModel: 'opencode-go/deepseek-v4-flash',
     })
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://backend/api/strategies/strategy-1/agent-config',
+    )
   })
 
   it('throws with the strategy id and status when the backend responds with an error', async () => {
@@ -61,6 +60,31 @@ describe('createAgentConfigFetcher', () => {
           new Response(JSON.stringify({ agents_md: '# AGENTS' }), {
             status: 200,
           }),
+        ),
+      ),
+    )
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+
+    await expect(fetchAgentConfig('strategy-1')).rejects.toThrow(
+      'malformed agent-config response for strategy strategy-1',
+    )
+  })
+
+  it('throws when skills is an array instead of a record', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              agents_md: '# AGENTS',
+              skills: ['ja-stock'],
+              model: 'opencode-go/minimax-m3',
+              small_model: 'opencode-go/deepseek-v4-flash',
+            }),
+            { status: 200 },
+          ),
         ),
       ),
     )

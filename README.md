@@ -40,6 +40,8 @@ docker compose up
 
 起動後、`docker compose port frontend 5173` で確認したポートでフロントエンドにアクセスできる。
 
+`agent` サービスは `OPENCODE_API_KEY` が未設定だと起動に失敗する。`docker-compose.yml` の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること (詳細は下記「環境変数」参照)。
+
 ### Git worktree で並列開発する場合
 
 DB は `docker-compose.infra.yml` で 1 つだけ起動し、全 worktree で共有する。
@@ -90,7 +92,7 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 
 ## Agent サービス
 
-`agent/` は kubeopencode (下記「戦略 Agent reconcile」) を置き換える予定の、A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤・internal API・observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/strategies/{id}/agent-config`) から LangGraph agent 構成・MCP tool 呼び出しまでの戦略実行ロジックを備える。backend からの呼び出しはまだ未接続。
+`agent/` は kubeopencode (下記「戦略 Agent reconcile」) を置き換える予定の、A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤、internal API、observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/strategies/{id}/agent-config`) から LangGraph agent 構成、MCP tool 呼び出しまでの戦略実行ロジックを備える。backend からの呼び出しはまだ未接続。
 
 - DB は backend とは別の論理 DB (`t_rader_agent_development` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ (`docker-compose.infra.yml` の initdb スクリプトで作成)。initdb は Postgres の data ディレクトリが空の初回起動時にしか実行されないため、既存の共有 `db_data` ボリュームを使っている場合は `docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development -c 'CREATE DATABASE t_rader_agent_development'` 等で手動作成すること (test 用 DB も同様)
 - マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
@@ -135,26 +137,26 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 
 ## 環境変数
 
-| 変数                    | 説明                                                                                                                                     | デフォルト              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `DATABASE_URL`          | PostgreSQL 接続 URL                                                                                                                      | -                       |
-| `POSTGRES_USER`         | DB ユーザー名                                                                                                                            | `t_rader`               |
-| `POSTGRES_PASSWORD`     | DB パスワード                                                                                                                            | `t_rader`               |
-| `POSTGRES_DB`           | DB 名                                                                                                                                    | `t_rader_development`   |
-| `BACKEND_PORT`          | backend プロセスのリッスンポート (`cargo run` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係) | `3000`                  |
-| `TRADER_AGENT_PORT`     | agent プロセスのリッスンポート (`pnpm dev` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)    | `8080`                  |
-| `TRADER_AGENT_URL`      | agent が自身の A2A Agent Card に載せる URL                                                                                               | -                       |
-| `INTERNAL_API_TOKEN`    | backend -> agent の internal API 呼び出しを認証する bearer token                                                                         | -                       |
-| `BACKEND_WEBHOOK_URL`   | agent -> backend の push notification 送信先 URL                                                                                         | -                       |
-| `BACKEND_WEBHOOK_TOKEN` | agent -> backend の push notification 送信を認証する bearer token                                                                        | -                       |
-| `BACKEND_API_BASE_URL`  | agent が戦略の AGENTS.md / skills / model を取得する backend のベース URL                                                                | -                       |
-| `STRATEGY_MCP_URL`      | agent が strategy tool 群に接続する backend の MCP エンドポイント (下記「戦略 Agent reconcile」の同名変数は backend 側の別用途)          | -                       |
-| `OPENCODE_API_KEY`      | agent が戦略 agent の LLM (OpenCode Go) 呼び出しに使う API キー                                                                          | -                       |
-| `JQUANTS_API_KEY`       | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                     | -                       |
-| `VITE_API_URL`          | Vite 開発サーバーのプロキシ先 URL                                                                                                        | `http://localhost:3000` |
-| `API_BACKEND_URL`       | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                            | -                       |
-| `NGINX_RESOLVER`        | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                  | -                       |
-| `MCP_ALLOWED_HOSTS`     | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                      | -                       |
+| 変数                    | 説明                                                                                                                                                                                            | デフォルト              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `DATABASE_URL`          | PostgreSQL 接続 URL                                                                                                                                                                             | -                       |
+| `POSTGRES_USER`         | DB ユーザー名                                                                                                                                                                                   | `t_rader`               |
+| `POSTGRES_PASSWORD`     | DB パスワード                                                                                                                                                                                   | `t_rader`               |
+| `POSTGRES_DB`           | DB 名                                                                                                                                                                                           | `t_rader_development`   |
+| `BACKEND_PORT`          | backend プロセスのリッスンポート (`cargo run` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                        | `3000`                  |
+| `TRADER_AGENT_PORT`     | agent プロセスのリッスンポート (`pnpm dev` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                           | `8080`                  |
+| `TRADER_AGENT_URL`      | agent が自身の A2A Agent Card に載せる URL                                                                                                                                                      | -                       |
+| `INTERNAL_API_TOKEN`    | backend -> agent の internal API 呼び出しを認証する bearer token                                                                                                                                | -                       |
+| `BACKEND_WEBHOOK_URL`   | agent -> backend の push notification 送信先 URL                                                                                                                                                | -                       |
+| `BACKEND_WEBHOOK_TOKEN` | agent -> backend の push notification 送信を認証する bearer token                                                                                                                               | -                       |
+| `BACKEND_API_BASE_URL`  | agent が戦略の AGENTS.md / skills / model を取得する backend のベース URL                                                                                                                       | -                       |
+| `STRATEGY_MCP_URL`      | agent が strategy tool 群に接続する backend の MCP エンドポイント (下記「戦略 Agent reconcile」の同名変数は backend 側の別用途)                                                                 | -                       |
+| `OPENCODE_API_KEY`      | agent が戦略 Agent の LLM (OpenCode Go) 呼び出しに使う API キー。未設定だと agent の起動に失敗する。docker-compose の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること | -                       |
+| `JQUANTS_API_KEY`       | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                                                                            | -                       |
+| `VITE_API_URL`          | Vite 開発サーバーのプロキシ先 URL                                                                                                                                                               | `http://localhost:3000` |
+| `API_BACKEND_URL`       | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                                                                                   | -                       |
+| `NGINX_RESOLVER`        | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                                                                         | -                       |
+| `MCP_ALLOWED_HOSTS`     | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                                                                             | -                       |
 
 ### DataProvider 切替
 

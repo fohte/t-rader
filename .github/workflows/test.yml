@@ -111,6 +111,9 @@ jobs:
       - name: Check peer dependencies (frontend)
         run: cd "frontend" && pnpm peers check
 
+      - name: Check peer dependencies (agent)
+        run: cd "agent" && pnpm peers check
+
       - name: Fetch cargo dependencies (backend)
         if: steps.check-backend.outputs.has_backend == 'true'
         run: cd "backend" && cargo fetch
