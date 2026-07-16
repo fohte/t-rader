@@ -139,8 +139,8 @@ describe('runStrategyAgent', () => {
       .toBe('# AGENTS\n\n# Skill: ja-stock\n\nskill body')
     expect.soft(calls.buildAgentOptions?.tools).toEqual(mcpTools)
     expect
-      .soft(calls.buildAgentOptions?.model === calls.createChatModelReturnValue)
-      .toBe(true)
+      .soft(calls.buildAgentOptions?.model)
+      .toBe(calls.createChatModelReturnValue)
     expect.soft(calls.invokeCallbacks).toEqual([deps.genAiCallbackHandler])
     expect.soft(calls.mcpClientClosed).toBe(true)
   })

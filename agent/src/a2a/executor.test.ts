@@ -158,17 +158,31 @@ describe('TraderAgentExecutor', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
     const completed = eventBus.events[2] as {
-      status: { state: string; message?: Message }
+      status: { timestamp: string; message?: Message }
     }
+    const { timestamp } = completed.status
+    const { messageId } = completed.status.message ?? {}
+
     expect(eventBus.finishedCalled).toBe(true)
-    expect(completed.status.state).toBe('failed')
-    expect(completed.status.message?.parts[0]).toEqual({
-      kind: 'text',
-      text: 'usage limit reached',
+    expect(completed).toEqual({
+      kind: 'status-update',
+      taskId: 'task-5',
+      contextId: 'ctx-5',
+      final: true,
+      status: {
+        state: 'failed',
+        timestamp,
+        message: {
+          kind: 'message',
+          role: 'agent',
+          messageId,
+          taskId: 'task-5',
+          contextId: 'ctx-5',
+          parts: [{ kind: 'text', text: 'usage limit reached' }],
+          metadata: { error_kind: 'usage_limit' },
+        },
+      },
     })
-    expect(completed.status.message?.metadata?.['error_kind']).toBe(
-      'usage_limit',
-    )
   })
 
   it('publishes a failed status-update and still calls finished() when runStrategyAgent rejects unexpectedly', async () => {
@@ -185,17 +199,31 @@ describe('TraderAgentExecutor', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
     const completed = eventBus.events[2] as {
-      status: { state: string; message?: Message }
+      status: { timestamp: string; message?: Message }
     }
+    const { timestamp } = completed.status
+    const { messageId } = completed.status.message ?? {}
+
     expect(eventBus.finishedCalled).toBe(true)
-    expect(completed.status.state).toBe('failed')
-    expect(completed.status.message?.parts[0]).toEqual({
-      kind: 'text',
-      text: 'mcp client construction blew up',
+    expect(completed).toEqual({
+      kind: 'status-update',
+      taskId: 'task-6',
+      contextId: 'ctx-6',
+      final: true,
+      status: {
+        state: 'failed',
+        timestamp,
+        message: {
+          kind: 'message',
+          role: 'agent',
+          messageId,
+          taskId: 'task-6',
+          contextId: 'ctx-6',
+          parts: [{ kind: 'text', text: 'mcp client construction blew up' }],
+          metadata: { error_kind: 'agent_error' },
+        },
+      },
     })
-    expect(completed.status.message?.metadata?.['error_kind']).toBe(
-      'agent_error',
-    )
   })
 
   it('publishes a canceled status-update using the stored task contextId', async () => {
