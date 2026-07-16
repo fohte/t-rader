@@ -126,15 +126,17 @@ async fn reconcile_one(
 
     match agent_client.get(&a2a_task_id).await {
         Ok(status) => apply_status(db, row, status).await,
-        Err(AgentTaskError::NotFound(_)) => {
-            // t-rader-agent 側で task が purge 済み等。沈黙させず失敗として確定する。
-            apply_failed(db, row, format!("agent task {a2a_task_id} not found")).await
-        }
         Err(err) => {
-            // 一時的な到達不能。deadline 超過まではリトライに委ね、超過後は
-            // server ごと長期停止しているとみなして失敗確定する (client 側の最終防衛)。
+            // 一時的な到達不能 (NotFound を含む)。t-rader-agent 側の task 作成と backend
+            // 側の a2a_task_id 記録は別段階のため、insert 直後の一過性の不整合を誤って
+            // 確定させないよう deadline 超過まではリトライに委ねる。超過後は server ごと
+            // 長期停止しているとみなして失敗確定する (client 側の最終防衛)。
             if now > row.deadline_at {
-                apply_failed(db, row, format!("agent task unreachable: {err}")).await
+                let message = match &err {
+                    AgentTaskError::NotFound(_) => format!("agent task {a2a_task_id} not found"),
+                    _ => format!("agent task unreachable: {err}"),
+                };
+                apply_failed(db, row, message).await
             } else {
                 tracing::warn!(
                     error = %err,
@@ -156,17 +158,22 @@ async fn apply_status(
     let new_phase = phase_for_state(status.state);
     let new_error = error_summary_for(&status, &new_phase);
     let new_result_text = status.result_text.or_else(|| row.result_text.clone());
-    match apply_phase(db, row, new_phase, new_error, new_result_text).await {
-        Ok(updated) => updated,
-        Err(err) => {
-            tracing::warn!(error = %err, "failed to update strategy_task phase");
-            false
-        }
-    }
+    apply_phase_logged(db, row, new_phase, new_error, new_result_text).await
 }
 
 async fn apply_failed(db: &DatabaseConnection, row: strategy_task::Model, message: String) -> bool {
-    match apply_phase(db, row, StrategyTaskPhase::Failed, Some(message), None).await {
+    apply_phase_logged(db, row, StrategyTaskPhase::Failed, Some(message), None).await
+}
+
+/// `apply_phase` を呼び、失敗した場合はログを残して `false` にフォールバックする。
+async fn apply_phase_logged(
+    db: &DatabaseConnection,
+    row: strategy_task::Model,
+    new_phase: StrategyTaskPhase,
+    new_error: Option<String>,
+    new_result_text: Option<String>,
+) -> bool {
+    match apply_phase(db, row, new_phase, new_error, new_result_text).await {
         Ok(updated) => updated,
         Err(err) => {
             tracing::warn!(error = %err, "failed to update strategy_task phase");
@@ -299,6 +306,14 @@ mod tests {
         task_id
     }
 
+    async fn fetch_task(db: &DatabaseConnection, task_id: Uuid) -> strategy_task::Model {
+        strategy_task::Entity::find_by_id(task_id)
+            .one(db)
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
     const FAR_FUTURE: chrono::Duration = chrono::Duration::minutes(15);
     const PAST: chrono::Duration = chrono::Duration::seconds(-1);
 
@@ -365,21 +380,9 @@ mod tests {
         // running は phase (Running) も error/result も変化しないので更新カウントに含まれない。
         assert_eq!(updated, 2);
 
-        let completed = strategy_task::Entity::find_by_id(completed_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
-        let failed = strategy_task::Entity::find_by_id(failed_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
-        let running = strategy_task::Entity::find_by_id(running_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let completed = fetch_task(&db, completed_id).await;
+        let failed = fetch_task(&db, failed_id).await;
+        let running = fetch_task(&db, running_id).await;
 
         assert_eq!(
             (
@@ -435,11 +438,7 @@ mod tests {
         let updated = run_once(&db, &agent_client).await;
         assert_eq!(updated, 1);
 
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let row = fetch_task(&db, task_id).await;
         assert_eq!(
             (row.phase, row.error_summary),
             (
@@ -466,11 +465,7 @@ mod tests {
         let updated = run_once(&db, &fake).await;
         assert_eq!(updated, 1);
 
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let row = fetch_task(&db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Failed);
         assert_eq!(
             row.error_summary,
@@ -495,11 +490,7 @@ mod tests {
         let updated = run_once(&db, &fake).await;
         assert_eq!(updated, 0);
 
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let row = fetch_task(&db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Running);
         assert_eq!(row.error_summary, None);
     }
@@ -514,11 +505,7 @@ mod tests {
         let updated = run_once(&db, &fake).await;
         assert_eq!(updated, 1);
 
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let row = fetch_task(&db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Failed);
         assert_eq!(
             row.error_summary,
@@ -543,11 +530,7 @@ mod tests {
         let updated = run_once(&db, &fake).await;
         assert_eq!(updated, 0);
 
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let row = fetch_task(&db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Pending);
     }
 
@@ -571,11 +554,7 @@ mod tests {
         let updated = run_once(&db, &agent_client).await;
         assert_eq!(updated, 1);
 
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let row = fetch_task(&db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Failed);
     }
 
@@ -599,11 +578,7 @@ mod tests {
         let updated = run_once(&db, &agent_client).await;
         assert_eq!(updated, 0);
 
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap();
+        let row = fetch_task(&db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Running);
     }
 }

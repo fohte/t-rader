@@ -48,6 +48,9 @@ pub async fn receive_agent_task_notification(
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
     if !constant_time_eq(presented.as_bytes(), state.agent_webhook_token.as_bytes()) {
+        // 決着自体は polling が担うため沈黙はしないが、トークン誤設定は polling の裏に
+        // 隠れて気づきにくい。運用者が気づけるようログに残す。
+        tracing::warn!("agent task notification rejected: token mismatch");
         return Err(AppError::Unauthorized("invalid notification token".into()));
     }
     state.agent_task_notify.notify_one();

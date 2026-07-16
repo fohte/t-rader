@@ -172,9 +172,12 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    let agent_webhook_token = std::env::var("AGENT_WEBHOOK_TOKEN").map_err(|_| {
-        AppError::Config("AGENT_WEBHOOK_TOKEN environment variable is not set".to_string())
-    })?;
+    let agent_webhook_token = std::env::var("AGENT_WEBHOOK_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            AppError::Config("AGENT_WEBHOOK_TOKEN environment variable is not set".to_string())
+        })?;
 
     let kata_executor: Option<SharedKataExecutor> = match KataExecutorConfig::from_env() {
         Some(config) => match HttpKataExecutor::new(config) {

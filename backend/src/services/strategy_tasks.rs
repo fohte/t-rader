@@ -187,7 +187,18 @@ pub async fn submit_task(
         updated_at: Set(chrono::Utc::now().fixed_offset()),
         ..Default::default()
     };
-    running.update(db).await?;
+    if let Err(err) = running.update(db).await {
+        // agent への投入自体は成功しているため、この行は a2a_task_id が記録されない
+        // まま孤児化する。watcher が deadline 超過で failed 確定するが、実際には
+        // agent 側でタスクが動いているので、追跡できるよう a2a_task_id をログに残す。
+        tracing::error!(
+            error = %err,
+            task_id = %task_id,
+            a2a_task_id = %agent_ref.task_id,
+            "agent task submitted but failed to record a2a_task_id; row orphaned until deadline",
+        );
+        return Err(SubmitTaskError::Database(err));
+    }
 
     Ok(SubmittedTask {
         task_id,

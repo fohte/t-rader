@@ -281,10 +281,10 @@ impl MgmtServer {
         Ok(Json(ListStrategiesResult { strategies }))
     }
 
-    /// 戦略 id + prompt から kubeopencode Task CR を作成し task_name を返す
+    /// 戦略 id + prompt から t-rader-agent にタスクを投入し task_id / a2a_task_id を返す
     #[tool(
         name = "submit_strategy_task",
-        description = "Submit a strategy task: create a kubeopencode Task CR for the strategy agent and return the task name."
+        description = "Submit a strategy task to t-rader-agent for the given strategy_id and prompt; returns task_id and a2a_task_id."
     )]
     async fn submit_strategy_task(
         &self,
