@@ -50,8 +50,8 @@ fohte 個人用の日本株投資プラットフォーム。
 ## Bash commands
 
 ```bash
-# DB 起動 (全 worktree 共有、1 回だけ起動すればよい)
-docker compose -f docker-compose.infra.yml up -d
+# DB 起動 (全 worktree 共有、1 回だけ起動すればよい)。実ポートを反映した .env.runtime も生成される
+mise run db-up
 
 # バックエンド (ローカル)
 cd backend && cargo run
@@ -107,15 +107,16 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 ## 環境変数
 
 - `.env` (git 管理) にローカル開発用のデフォルト値を定義している
+- `.env.runtime` (git 管理外、`mise run db-up` が自動生成) で DB のランダム割り当てポートなど、起動するたびに変わる値を定義する
 - `.env.local` (git 管理外) で個人の環境に合わせた上書きが可能
-- `.mise.toml` の `[env]` セクションで `.env` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)
-- `DATABASE_URL` のデフォルト値は `.env` ファイルに定義されている
+- `.mise.toml` の `[env]` セクションで `.env` → `.env.runtime` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)。`.env.local` が常に最後に勝つ
 
 ## DB 接続
 
-- DB は `docker compose -f docker-compose.infra.yml up -d` で起動する (全 worktree 共有)
-- db のホストポートはランダム割り当てのため、`.env` の `DATABASE_URL` デフォルト値 (`localhost:5432`) は実際のポートと一致しない場合がある
-- `cargo run` でローカル直接起動する場合は `docker compose -f docker-compose.infra.yml port db 5432` で実ポートを確認し、`.env.local` で `DATABASE_URL` を上書きすること
+- DB は `mise run db-up` で起動する (`docker compose -f docker-compose.infra.yml up -d` のラッパー、全 worktree 共有)
+- db のホストポートはランダム割り当てのため、`mise run db-up` が実ポートを反映した `DATABASE_URL` を `.env.runtime` に書き出す。手動でのポート確認は不要
+- `cargo run` 等でローカル直接起動する場合、`.env.runtime` の値がそのまま使われる
+- agent をローカル直接起動する場合は、agent 専用の論理 DB (`t_rader_agent_development`) を指す `DATABASE_URL` を `.env.local` で上書きすること (`.env.runtime` の値は backend 用)
 
 ## Warnings
 

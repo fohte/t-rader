@@ -1,7 +1,26 @@
 [env]
-_.file = ['.env', '.env.local']
+_.file = ['.env', '.env.runtime', '.env.local']
 # Share target dir across worktrees to avoid full recompilation
 CARGO_TARGET_DIR = "{{config_root}}/target"
+
+[tasks.db-up]
+description = "DB を起動し、実ポートを反映した DATABASE_URL を .env.runtime に生成する"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+docker compose -f docker-compose.infra.yml up -d
+
+host_port="$(docker compose -f docker-compose.infra.yml port db 5432)"
+port="${host_port##*:}"
+
+cat > .env.runtime <<EOF
+# mise run db-up が自動生成するファイル。直接編集しないこと。
+DATABASE_URL=postgres://${POSTGRES_USER:-t_rader}:${POSTGRES_PASSWORD:-t_rader}@127.0.0.1:${port}/${POSTGRES_DB:-t_rader_development}
+EOF
+
+echo "Generated .env.runtime (db port: ${port})"
+'''
 
 [tools]
 lefthook = "2.1.9"
