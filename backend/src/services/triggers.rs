@@ -433,7 +433,7 @@ mod fire_tests {
                     strategy_id: sid,
                     source: "hook".to_string(),
                     prompt: "alert 7203".to_string(),
-                    phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Pending,
+                    phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
                 },
                 TriggerFireShape {
                     trigger_id: tid,
@@ -483,7 +483,7 @@ mod fire_tests {
                 strategy_id: sid,
                 source: "cron".to_string(),
                 prompt: "morning s".to_string(),
-                phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Pending,
+                phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
             }],
         );
     }

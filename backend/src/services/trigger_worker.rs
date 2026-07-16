@@ -364,7 +364,7 @@ mod run_once_tests {
                     strategy_id: sid,
                     source: "cron".to_string(),
                     prompt: "長期 morning".to_string(),
-                    phase: StrategyTaskPhase::Pending,
+                    phase: StrategyTaskPhase::Running,
                 }],
                 true,
             ),
