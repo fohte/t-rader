@@ -15,6 +15,7 @@ interface AgentConfigResponseBody {
 const isRecordOfStrings = (value: unknown): value is Record<string, string> =>
   typeof value === 'object' &&
   value !== null &&
+  !Array.isArray(value) &&
   Object.values(value).every((v) => typeof v === 'string')
 
 // Guards against a malformed/mismatched backend response reaching

@@ -111,14 +111,11 @@ describeIfDb('t-rader-agent internal API integration', () => {
     const finalState = await pollUntilTerminal(app, taskId)
     await settlePushNotification()
 
-    const actual = { submitStatus: submitRes.status, finalState }
-    expect(actual).toEqual({
-      submitStatus: 201,
-      finalState: {
-        task_id: taskId,
-        state: 'completed',
-        result_text: 'strategy result',
-      },
+    expect(submitRes.status).toBe(201)
+    expect(finalState).toEqual({
+      task_id: taskId,
+      state: 'completed',
+      result_text: 'strategy result',
     })
   })
 

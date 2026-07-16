@@ -130,29 +130,19 @@ describe('runStrategyAgent', () => {
       buildUserMessage('do the thing'),
     )
 
-    const actual = {
-      result,
-      fetchAgentConfigStrategyId: calls.fetchAgentConfigStrategyId,
-      createMcpClientStrategyId: calls.createMcpClientStrategyId,
-      createChatModelArg: calls.createChatModelArg,
-      buildAgentSystemPrompt: calls.buildAgentOptions?.systemPrompt,
-      buildAgentTools: calls.buildAgentOptions?.tools,
-      buildAgentReceivedCreatedModel:
-        calls.buildAgentOptions?.model === calls.createChatModelReturnValue,
-      invokeCallbacks: calls.invokeCallbacks,
-      mcpClientClosed: calls.mcpClientClosed,
-    }
-    expect(actual).toEqual({
-      result: { status: 'completed', message: 'done' },
-      fetchAgentConfigStrategyId: 'strategy-1',
-      createMcpClientStrategyId: 'strategy-1',
-      createChatModelArg: 'opencode-go/minimax-m3',
-      buildAgentSystemPrompt: '# AGENTS\n\n# Skill: ja-stock\n\nskill body',
-      buildAgentTools: mcpTools,
-      buildAgentReceivedCreatedModel: true,
-      invokeCallbacks: [deps.genAiCallbackHandler],
-      mcpClientClosed: true,
-    })
+    expect.soft(result).toEqual({ status: 'completed', message: 'done' })
+    expect.soft(calls.fetchAgentConfigStrategyId).toBe('strategy-1')
+    expect.soft(calls.createMcpClientStrategyId).toBe('strategy-1')
+    expect.soft(calls.createChatModelArg).toBe('opencode-go/minimax-m3')
+    expect
+      .soft(calls.buildAgentOptions?.systemPrompt)
+      .toBe('# AGENTS\n\n# Skill: ja-stock\n\nskill body')
+    expect.soft(calls.buildAgentOptions?.tools).toEqual(mcpTools)
+    expect
+      .soft(calls.buildAgentOptions?.model)
+      .toBe(calls.createChatModelReturnValue)
+    expect.soft(calls.invokeCallbacks).toEqual([deps.genAiCallbackHandler])
+    expect.soft(calls.mcpClientClosed).toBe(true)
   })
 
   it('maps an "error" structured response to failed with error_kind agent_error', async () => {
@@ -210,15 +200,12 @@ describe('runStrategyAgent', () => {
       buildUserMessage('do the thing'),
     )
 
-    const actual = { result, mcpClientClosed: calls.mcpClientClosed }
-    expect(actual).toEqual({
-      result: {
-        status: 'failed',
-        message: 'usage limit reached',
-        errorKind: 'usage_limit',
-      },
-      mcpClientClosed: true,
+    expect(result).toEqual({
+      status: 'failed',
+      message: 'usage limit reached',
+      errorKind: 'usage_limit',
     })
+    expect(calls.mcpClientClosed).toBe(true)
   })
 
   it('maps a generic thrown error to error_kind agent_error using its message', async () => {

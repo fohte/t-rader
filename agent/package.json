@@ -32,8 +32,8 @@
     "@opentelemetry/sdk-node": "0.219.0",
     "@opentelemetry/sdk-trace-base": "2.8.0",
     "@opentelemetry/semantic-conventions": "1.41.1",
-    "@sentry/node": "10.62.0",
-    "@sentry/opentelemetry": "10.62.0",
+    "@sentry/node": "10.63.0",
+    "@sentry/opentelemetry": "10.63.0",
     "drizzle-orm": "0.45.2",
     "hono": "4.12.27",
     "langchain": "1.5.2",
@@ -41,9 +41,9 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.1.0",
+    "@commitlint/cli": "21.2.0",
     "@eslint/eslintrc": "3.3.5",
-    "@fohte/eslint-config": "0.3.5",
+    "@fohte/eslint-config": "0.3.6",
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.13.2",
