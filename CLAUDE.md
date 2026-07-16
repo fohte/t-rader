@@ -114,7 +114,7 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 ## DB 接続
 
 - DB は `mise run db-up` で起動する (`docker compose -f docker-compose.infra.yml up -d` のラッパー、全 worktree 共有)
-- db のホストポートはランダム割り当てのため、`mise run db-up` が実ポートを反映した `DATABASE_URL` を `.env.runtime` に書き出す。手動でのポート確認は不要
+- db のホストポートはランダム割り当てのため、`mise run db-up` が実ポートを反映した `DATABASE_URL` を `.env.runtime` に書き出す。手動でのポート確認は不要になる
 - `cargo run` 等でローカル直接起動する場合、`.env.runtime` の値がそのまま使われる
 - agent をローカル直接起動する場合は、agent 専用の論理 DB (`t_rader_agent_development`) を指す `DATABASE_URL` を `.env.local` で上書きすること (`.env.runtime` の値は backend 用)
 
