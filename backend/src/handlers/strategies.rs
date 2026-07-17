@@ -750,16 +750,7 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn delete_strategy_removes_row(pool: PgPool) {
         let server = create_test_server(pool).await;
-
-        let created = server
-            .post("/api/strategies")
-            .json(&json!({ "name": "to-delete" }))
-            .await;
-        created.assert_status(axum::http::StatusCode::CREATED);
-        let id = created.json::<serde_json::Value>()["id"]
-            .as_str()
-            .map(str::to_string)
-            .expect("id");
+        let id = create_strategy(&server, "to-delete").await;
 
         let deleted = server.delete(&format!("/api/strategies/{id}")).await;
         deleted.assert_status(axum::http::StatusCode::NO_CONTENT);
