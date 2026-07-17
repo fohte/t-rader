@@ -1,7 +1,11 @@
 [env]
-_.file = ['.env', '.env.local']
+_.file = ['.env', '.env.runtime', '.env.local']
 # Share target dir across worktrees to avoid full recompilation
 CARGO_TARGET_DIR = "{{config_root}}/target"
+
+[tasks.db-up]
+description = "DB を起動し、実ポートを反映した DATABASE_URL を .env.runtime に生成する"
+file = "scripts/db-up"
 
 [tools]
 lefthook = "2.1.9"

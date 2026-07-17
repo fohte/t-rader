@@ -1,6 +1,6 @@
 # インフラ (DB) 専用 Compose ファイル
 # 全 worktree で共有する。1 回だけ起動すればよい:
-#   docker compose -f docker-compose.infra.yml up -d
+#   mise run db-up
 name: t-rader-infra
 
 services:
