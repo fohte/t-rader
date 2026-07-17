@@ -4,20 +4,6 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(
-    rs_type = "Enum",
-    db_type = "Enum",
-    enum_name = "strategy_agent_status"
-)]
-pub enum StrategyAgentStatus {
-    #[sea_orm(string_value = "pending")]
-    Pending,
-    #[sea_orm(string_value = "ready")]
-    Ready,
-    #[sea_orm(string_value = "failed")]
-    Failed,
-}
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "Enum", db_type = "Enum", enum_name = "strategy_task_phase")]
 pub enum StrategyTaskPhase {
     #[sea_orm(string_value = "pending")]

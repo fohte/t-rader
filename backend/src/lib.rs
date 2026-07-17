@@ -6,7 +6,6 @@ pub mod error;
 pub mod extractors;
 pub mod handlers;
 pub mod kata_exec;
-pub mod kubeopencode;
 pub mod mcp;
 pub mod middleware;
 pub mod models;
@@ -40,9 +39,6 @@ use crate::handlers::{
     watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
-use crate::kubeopencode::{
-    DisabledKubeopencodeClient, KubeopencodeClient, SharedKubeopencodeClient,
-};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -52,9 +48,6 @@ pub struct AppState {
     /// `JQUANTS_API_KEY` 未設定時は None で起動する。
     /// データ取得系のエンドポイントは利用時にエラーを返す。
     pub data_provider: Option<Arc<DataProviderKind>>,
-    /// kubeopencode (Agent CR) クライアント。戦略 CRUD 時の Agent reconcile / delete にのみ使う。
-    /// `KUBEOPENCODE_API_URL=disabled` (dev opt-out) の場合は `DisabledKubeopencodeClient` が入る。
-    pub kubeopencode: SharedKubeopencodeClient,
     /// t-rader-agent 内部 API クライアント。戦略タスクの投入 / 状態照会に使う。
     /// `TRADER_AGENT_API_URL=disabled` (dev opt-out) の場合は `DisabledAgentTaskClient` が入る。
     pub agent_task_client: SharedAgentTaskClient,
@@ -72,13 +65,6 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// テスト・初期化以外で kubeopencode が未設定のケース向けのデフォルト
-    pub fn disabled_kubeopencode() -> SharedKubeopencodeClient {
-        let client: Arc<dyn KubeopencodeClient + Send + Sync> =
-            Arc::new(DisabledKubeopencodeClient);
-        client
-    }
-
     /// テスト・初期化以外で t-rader-agent 内部 API クライアントが未設定のケース向けのデフォルト
     pub fn disabled_agent_task_client() -> SharedAgentTaskClient {
         let client: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(DisabledAgentTaskClient);
@@ -143,7 +129,6 @@ mod app_state_tests {
         let state = AppState {
             db: mock_db(),
             data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
-            kubeopencode: AppState::disabled_kubeopencode(),
             agent_task_client: AppState::disabled_agent_task_client(),
             agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),
@@ -158,7 +143,6 @@ mod app_state_tests {
         let state = AppState {
             db: mock_db(),
             data_provider: None,
-            kubeopencode: AppState::disabled_kubeopencode(),
             agent_task_client: AppState::disabled_agent_task_client(),
             agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),

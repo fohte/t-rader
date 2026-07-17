@@ -5,7 +5,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 | path            | 用途                                                                                                  | 主な利用者                             |
 | --------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------- |
 | `/mcp/mgmt`     | 管理 MCP。戦略状態の参照と戦略タスク投入                                                              | 外部のコントロールプレーンクライアント |
-| `/mcp/strategy` | 戦略実行 MCP。戦略 Agent が戦略境界内のリソース (ノート / アノテーション / 価格 / Python 実行) を操作 | 戦略 Agent (kubeopencode 上)           |
+| `/mcp/strategy` | 戦略実行 MCP。戦略 Agent が戦略境界内のリソース (ノート / アノテーション / 価格 / Python 実行) を操作 | t-rader-agent                          |
 
 両 path とも JSON-RPC over Streamable HTTP (SSE) で通信する。クライアントは `initialize` → `mcp-session-id` ヘッダで以後のリクエストを継続する。
 
@@ -25,11 +25,11 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 ## 戦略実行 MCP (`/mcp/strategy`)
 
-戦略 Agent Pod (1 戦略 = 1 Agent) からのみ呼ばれる想定。接続元の絞り込みはクラスタ側のネットワーク境界で組み立てる。
+t-rader-agent からのみ呼ばれる想定。接続元の絞り込みはクラスタ側のネットワーク境界で組み立てる。
 
 ### 戦略境界の保証
 
-戦略 Agent は接続時に `x-strategy-id` HTTP ヘッダで自身の `strategy_id` を持ち込む。
+t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行中の `strategy_id` を持ち込む。
 
 - ヘッダが欠落 / 非 UUID なら MCP 層で reject する。
 - tool 引数の `strategy_id` がヘッダの値と一致しない呼び出しも reject する。

@@ -1,6 +1,6 @@
 # Deployment
 
-t-rader-backend は Kubernetes クラスタ上に Deployment + Service として配備する。backend 自体は Axum プロセスを 1 つだけ起動し、LLM 実行は kubeopencode operator (別 namespace) に委譲する。本ドキュメントは backend を任意の Kubernetes クラスタで動かすために必要な要件を記述する。
+t-rader-backend は Kubernetes クラスタ上に Deployment + Service として配備する。backend 自体は Axum プロセスを 1 つだけ起動し、LLM 実行は t-rader-agent (別 Deployment) に委譲する。本ドキュメントは backend を任意の Kubernetes クラスタで動かすために必要な要件を記述する。
 
 ## Service と接続経路
 
@@ -15,7 +15,6 @@ t-rader-backend は Kubernetes クラスタ上に Deployment + Service として
 | ----------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
 | 必須              | `DATABASE_URL`           | PostgreSQL 接続 URL。起動時にマイグレーションを自動実行する                                                                                      | 起動失敗                                                                                                    |
 | 必須              | `AGENT_WEBHOOK_TOKEN`    | agent からの webhook 通知 (`POST /api/agent-tasks/notifications`) を認証する bearer token。agent 側の `BACKEND_WEBHOOK_TOKEN` と同じ値にすること | 起動失敗                                                                                                    |
-| 必須 (production) | `KUBEOPENCODE_API_URL`   | kube-apiserver の base URL (in-cluster なら `https://kubernetes.default.svc`)                                                                    | warning ログを出して `DisabledKubeopencodeClient` で起動。Task CR 投入は全て失敗                            |
 | 必須 (production) | `TRADER_AGENT_API_URL`   | t-rader-agent internal API の base URL (例: `http://t-rader-agent.t-rader/internal`)                                                             | 起動失敗。`disabled` (dev 用 sentinel) を明示すると warning ログを出して agent task client を無効化して起動 |
 | 条件付き          | `TRADER_AGENT_API_TOKEN` | `TRADER_AGENT_API_URL` が実 URL の場合に必要な bearer token (agent 側の `INTERNAL_API_TOKEN` と同じ値)                                           | 起動失敗                                                                                                    |
 | 必須 (in-cluster) | `MCP_ALLOWED_HOSTS`      | MCP server が受理する `Host` ヘッダの追加許可リスト (カンマ区切り)                                                                               | in-cluster Service DNS が 403 で弾かれる ([`docs/mcp.md`](./mcp.md))                                        |
@@ -25,29 +24,11 @@ t-rader-backend は Kubernetes クラスタ上に Deployment + Service として
 | 条件付き          | `IBKR_BASE_URL` 等       | `DATA_PROVIDER=ibkr` 時に Gateway 接続情報を設定                                                                                                 | デフォルト値で初期化を試行                                                                                  |
 | 任意              | `BACKEND_PORT`           | listen port                                                                                                                                      | `3000` で listen                                                                                            |
 
-kubeopencode / kata-exec の追加の任意変数 (`KUBEOPENCODE_NAMESPACE`, `KATA_EXEC_NAMESPACE`, `KATA_EXEC_IMAGE`, `KATA_EXEC_TOKEN`, `KATA_EXEC_DEFAULT_TIMEOUT_SECS`, `KATA_EXEC_MAX_OUTPUT_BYTES` 等) は backend のソース (`backend/src/kubeopencode/`, `backend/src/kata_exec/`) を参照。in-cluster で動かす場合 token / CA は ServiceAccount のものを自動で読む。
+kata-exec の追加の任意変数 (`KATA_EXEC_NAMESPACE`, `KATA_EXEC_IMAGE`, `KATA_EXEC_TOKEN`, `KATA_EXEC_DEFAULT_TIMEOUT_SECS`, `KATA_EXEC_MAX_OUTPUT_BYTES` 等) は backend のソース (`backend/src/kata_exec/`) を参照。in-cluster で動かす場合 token / CA は ServiceAccount のものを自動で読む。
 
 ## backend が要求する権限
 
-backend ServiceAccount に以下の Role を付与する。namespace 名は backend 側で env (`KUBEOPENCODE_NAMESPACE` / `KATA_EXEC_NAMESPACE`) で受け取るため任意。
-
-### 戦略 Agent ランタイム namespace
-
-`submit_strategy_task` から Task CR を作成し、watcher で status を取得するために以下が必要:
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: t-rader-kubeopencode
-  namespace: <KUBEOPENCODE_NAMESPACE>
-rules:
-  - apiGroups: ['kubeopencode.io']
-    resources: ['tasks']
-    verbs: ['create', 'get']
-```
-
-戦略 Agent CR と関連 ServiceAccount / ConfigMap / ExternalSecret は現状 backend からは reconcile しないため、それらの権限は不要 ([`docs/kubeopencode-integration.md`](./kubeopencode-integration.md))。
+backend ServiceAccount に以下の Role を付与する。namespace 名は backend 側で env (`KATA_EXEC_NAMESPACE`) で受け取るため任意。
 
 ### exec Pod 用 namespace
 

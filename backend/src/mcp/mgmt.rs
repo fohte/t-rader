@@ -558,8 +558,6 @@ mod integration_tests {
             sort_order: Set(0),
             agents_md: sea_orm::ActiveValue::NotSet,
             skills: sea_orm::ActiveValue::NotSet,
-            agent_status: sea_orm::ActiveValue::NotSet,
-            agent_error: sea_orm::ActiveValue::NotSet,
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
         }

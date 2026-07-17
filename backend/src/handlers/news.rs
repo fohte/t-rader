@@ -129,10 +129,8 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::AppState;
-    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
     use crate::entities::{news_item, news_strategy_link, strategy};
-    use crate::testing::create_test_server_with_db_and_kube;
+    use crate::testing::create_test_server_with_db;
 
     async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
         let id = Uuid::new_v4();
@@ -143,8 +141,6 @@ mod tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
-            agent_status: Set(StrategyAgentStatus::Ready),
-            agent_error: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -215,8 +211,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn list_strategy_news_returns_only_linked_news(pool: PgPool) {
-        let (db, server) =
-            create_test_server_with_db_and_kube(pool, AppState::disabled_kubeopencode()).await;
+        let (db, server) = create_test_server_with_db(pool).await;
 
         let strategy_a = insert_strategy(&db, "戦略A").await;
         let strategy_b = insert_strategy(&db, "戦略B").await;
@@ -274,8 +269,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn list_strategy_news_returns_404_for_nonexistent_strategy(pool: PgPool) {
-        let (_, server) =
-            create_test_server_with_db_and_kube(pool, AppState::disabled_kubeopencode()).await;
+        let (_, server) = create_test_server_with_db(pool).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/news")
             .await;
@@ -284,8 +278,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn list_strategy_news_returns_empty_when_no_links(pool: PgPool) {
-        let (db, server) =
-            create_test_server_with_db_and_kube(pool, AppState::disabled_kubeopencode()).await;
+        let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_strategy(&db, "戦略X").await;
         let res = server
             .get(&format!("/api/strategies/{strategy_id}/news"))
@@ -296,8 +289,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn list_strategy_news_collapses_multiple_ref_matches_per_news(pool: PgPool) {
-        let (db, server) =
-            create_test_server_with_db_and_kube(pool, AppState::disabled_kubeopencode()).await;
+        let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_strategy(&db, "戦略M").await;
         let news_id = insert_news(&db, "トヨタ 半導体 双方", "https://ex.com/m", 5).await;
         insert_link(&db, news_id, strategy_id, "stock", "7203", "トヨタ").await;

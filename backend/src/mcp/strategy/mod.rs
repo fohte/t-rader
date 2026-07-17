@@ -1,6 +1,6 @@
 //! 戦略実行 MCP server の tool 実装
 //!
-//! 各戦略の kubeopencode Agent から呼ばれる。接続コンテキストに `x-strategy-id`
+//! 各戦略の t-rader-agent から呼ばれる。接続コンテキストに `x-strategy-id`
 //! HTTP ヘッダで自身の strategy_id を持ち込み、tool 引数の strategy_id と一致しない
 //! 呼び出しは MCP 層で拒否する (戦略境界)。さらに対象リソース (note / annotation)
 //! の strategy_id と一致するかを Repository 層で二重検査する。

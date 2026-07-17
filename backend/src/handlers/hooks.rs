@@ -150,8 +150,6 @@ mod tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
-            agent_status: NotSet,
-            agent_error: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }

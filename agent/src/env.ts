@@ -13,7 +13,7 @@ export interface Env {
   // via GET {base}/api/strategies/{id}/agent-config.
   BACKEND_API_BASE_URL: string
   // Same target as backend's STRATEGY_MCP_URL env (the strategy MCP
-  // endpoint), reached from this service instead of a kubeopencode Agent.
+  // endpoint).
   STRATEGY_MCP_URL: string
   OPENCODE_API_KEY: string
 }

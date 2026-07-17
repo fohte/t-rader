@@ -17,10 +17,6 @@ use backend::data_provider::news::NewsAggregator;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
-use backend::kubeopencode::{
-    HttpKubeopencodeClient, KubeopencodeClient, KubeopencodeConfig, KubeopencodeConfigSource,
-    SharedKubeopencodeClient,
-};
 use clap::Parser;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
@@ -125,25 +121,6 @@ async fn main() -> Result<(), AppError> {
         backend::mcp::store::DEFAULT_GC_INTERVAL,
     );
 
-    let kubeopencode: SharedKubeopencodeClient = match KubeopencodeConfig::from_env()
-        .map_err(|e| AppError::Config(e.to_string()))?
-    {
-        KubeopencodeConfigSource::Configured(config) => {
-            let client = HttpKubeopencodeClient::new(config).map_err(|e| {
-                AppError::Config(format!("failed to initialize kubeopencode client: {e}"))
-            })?;
-            tracing::info!("kubeopencode client initialized");
-            let arc: Arc<dyn KubeopencodeClient + Send + Sync> = Arc::new(client);
-            arc
-        }
-        KubeopencodeConfigSource::Disabled => {
-            tracing::warn!(
-                "KUBEOPENCODE_API_URL=disabled: kubeopencode を無効化して起動します (dev 用 opt-out)"
-            );
-            AppState::disabled_kubeopencode()
-        }
-    };
-
     // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。webhook 受信時の
     // 即時 polling 誘発用に Notify を watcher と共有する。
     let agent_task_notify = Arc::new(tokio::sync::Notify::new());
@@ -240,7 +217,6 @@ async fn main() -> Result<(), AppError> {
     let state = AppState {
         db,
         data_provider,
-        kubeopencode,
         agent_task_client,
         agent_task_notify,
         agent_webhook_token: Arc::from(agent_webhook_token),
