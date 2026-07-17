@@ -5,6 +5,8 @@ pub mod entities;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
+#[cfg(test)]
+mod integration_tests;
 pub mod kata_exec;
 pub mod mcp;
 pub mod middleware;
