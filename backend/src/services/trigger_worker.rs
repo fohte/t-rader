@@ -252,7 +252,7 @@ mod run_once_tests {
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::{strategy, strategy_task};
-    use crate::testing::create_test_db;
+    use crate::testing::{create_test_db, insert_test_cron_trigger};
 
     use super::*;
 
@@ -265,34 +265,6 @@ mod run_once_tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .unwrap();
-        id
-    }
-
-    async fn insert_cron_trigger(
-        db: &DatabaseConnection,
-        strategy_id: Uuid,
-        schedule: &str,
-        enabled: bool,
-        last_fired_at: Option<DateTime<Utc>>,
-        prompt: &str,
-    ) -> Uuid {
-        let id = Uuid::new_v4();
-        trigger::ActiveModel {
-            trigger_id: Set(id),
-            strategy_id: Set(strategy_id),
-            kind: Set("cron".to_string()),
-            schedule: Set(Some(schedule.to_string())),
-            hook_slug: Set(None),
-            event_match: Set(None),
-            prompt_template: Set(prompt.to_string()),
-            enabled: Set(enabled),
-            last_fired_at: Set(last_fired_at.map(|dt| dt.fixed_offset())),
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -328,7 +300,7 @@ mod run_once_tests {
         let sid = seed_strategy(&db).await;
         // 毎分発火する schedule、last_fired_at は十分過去
         let past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
-        let tid = insert_cron_trigger(
+        let tid = insert_test_cron_trigger(
             &db,
             sid,
             "* * * * *",
@@ -374,7 +346,7 @@ mod run_once_tests {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
         let past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
-        let _ = insert_cron_trigger(&db, sid, "* * * * *", false, Some(past), "x").await;
+        let _ = insert_test_cron_trigger(&db, sid, "* * * * *", false, Some(past), "x").await;
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
@@ -391,7 +363,7 @@ mod run_once_tests {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
         let just_fired = Utc::now() - chrono::Duration::seconds(1);
-        let _ = insert_cron_trigger(&db, sid, "0 9 * * *", true, Some(just_fired), "x").await;
+        let _ = insert_test_cron_trigger(&db, sid, "0 9 * * *", true, Some(just_fired), "x").await;
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;

@@ -118,8 +118,8 @@ mod tests {
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::{strategy, strategy_task, trigger};
-    use crate::testing::create_test_server_with_db_and_agent_client;
+    use crate::entities::{strategy, strategy_task};
+    use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_hook_trigger};
 
     /// strategy_task 行の動的フィールド (id / 時刻) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
@@ -159,40 +159,12 @@ mod tests {
         id
     }
 
-    async fn seed_hook_trigger(
-        db: &sea_orm::DatabaseConnection,
-        strategy_id: Uuid,
-        slug: &str,
-        prompt_template: &str,
-        event_match: Option<Value>,
-        enabled: bool,
-    ) -> Uuid {
-        let id = Uuid::new_v4();
-        trigger::ActiveModel {
-            trigger_id: Set(id),
-            strategy_id: Set(strategy_id),
-            kind: Set("hook".to_string()),
-            schedule: Set(None),
-            hook_slug: Set(Some(slug.to_string())),
-            event_match: Set(event_match),
-            prompt_template: Set(prompt_template.to_string()),
-            enabled: Set(enabled),
-            last_fired_at: NotSet,
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .unwrap();
-        id
-    }
-
     #[sqlx::test(migrations = false)]
     async fn fires_when_event_match_satisfied(pool: PgPool) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "長期").await;
-        let _ = seed_hook_trigger(
+        let _ = insert_test_hook_trigger(
             &db,
             sid,
             "tv-alert",
@@ -236,7 +208,7 @@ mod tests {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "s").await;
-        let _ = seed_hook_trigger(
+        let _ = insert_test_hook_trigger(
             &db,
             sid,
             "tv-alert",
@@ -266,7 +238,7 @@ mod tests {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "s").await;
-        let _ = seed_hook_trigger(&db, sid, "off", "x", None, false).await;
+        let _ = insert_test_hook_trigger(&db, sid, "off", "x", None, false).await;
 
         let res = server.post("/api/hooks/off").json(&json!({})).await;
         res.assert_status(StatusCode::NOT_FOUND);
@@ -285,7 +257,7 @@ mod tests {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "s").await;
-        let _ = seed_hook_trigger(
+        let _ = insert_test_hook_trigger(
             &db,
             sid,
             "tv",
@@ -324,7 +296,7 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake;
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let sid = seed_strategy(&db, "s").await;
-        let _ = seed_hook_trigger(&db, sid, "tv-alert", "x", None, true).await;
+        let _ = insert_test_hook_trigger(&db, sid, "tv-alert", "x", None, true).await;
 
         let res = server.post("/api/hooks/tv-alert").json(&json!({})).await;
         res.assert_status(StatusCode::SERVICE_UNAVAILABLE);

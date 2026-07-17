@@ -286,7 +286,7 @@ impl MgmtServer {
         name = "submit_strategy_task",
         description = "Submit a strategy task to t-rader-agent for the given strategy_id and prompt; returns task_id and a2a_task_id."
     )]
-    async fn submit_strategy_task(
+    pub(crate) async fn submit_strategy_task(
         &self,
         Parameters(params): Parameters<SubmitStrategyTaskParams>,
     ) -> Result<Json<SubmitStrategyTaskResult>, McpError> {
