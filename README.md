@@ -31,8 +31,8 @@ mise install
 # 環境変数の設定
 cp .env.example .env
 
-# DB を起動 (初回のみ。全 worktree で共有される)
-docker compose -f docker-compose.infra.yml up -d
+# DB を起動 (初回のみ。全 worktree で共有される)。実ポートを反映した .env.runtime も生成される
+mise run db-up
 
 # アプリ (backend, frontend, agent) を起動
 docker compose up
@@ -102,7 +102,8 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 # agent 単体でテスト実行 (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
 cd agent && pnpm test
 
-# DB 統合テストを含めて実行する場合。ポートは `docker compose -f docker-compose.infra.yml port db 5432` で確認する
+# DB 統合テストを含めて実行する場合。ポートは .env.runtime の DATABASE_URL か
+# `docker compose -f docker-compose.infra.yml port db 5432` で確認する
 cd agent && TEST_DATABASE_URL=postgres://t_rader:t_rader@localhost:<port>/t_rader_agent_test pnpm test
 ```
 
@@ -139,7 +140,7 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 
 | 変数                     | 説明                                                                                                                                                                                            | デフォルト              |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `DATABASE_URL`           | PostgreSQL 接続 URL                                                                                                                                                                             | -                       |
+| `DATABASE_URL`           | PostgreSQL 接続 URL (`mise run db-up` が実ポートを反映して `.env.runtime` に自動生成する)                                                                                                       | -                       |
 | `POSTGRES_USER`          | DB ユーザー名                                                                                                                                                                                   | `t_rader`               |
 | `POSTGRES_PASSWORD`      | DB パスワード                                                                                                                                                                                   | `t_rader`               |
 | `POSTGRES_DB`            | DB 名                                                                                                                                                                                           | `t_rader_development`   |
