@@ -688,7 +688,7 @@ mod tests {
 
     use uuid::Uuid;
 
-    use super::agent_model_settings_with;
+    use super::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with};
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::{strategy, strategy_task};
     use crate::testing::{
@@ -960,10 +960,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::unset(&[], (crate::handlers::strategies::DEFAULT_AGENT_MODEL, crate::handlers::strategies::DEFAULT_AGENT_SMALL_MODEL))]
+    #[case::unset(&[], (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL))]
     #[case::empty(
         &[("STRATEGY_AGENT_MODEL", ""), ("STRATEGY_AGENT_SMALL_MODEL", "")],
-        (crate::handlers::strategies::DEFAULT_AGENT_MODEL, crate::handlers::strategies::DEFAULT_AGENT_SMALL_MODEL)
+        (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL)
     )]
     #[case::overridden(
         &[("STRATEGY_AGENT_MODEL", "m-x"), ("STRATEGY_AGENT_SMALL_MODEL", "m-y")],
@@ -1010,8 +1010,8 @@ mod tests {
             json!({
                 "agents_md": agents_md,
                 "skills": { "scout": "scout body", "review": "review body" },
-                "model": super::DEFAULT_AGENT_MODEL,
-                "small_model": super::DEFAULT_AGENT_SMALL_MODEL,
+                "model": DEFAULT_AGENT_MODEL,
+                "small_model": DEFAULT_AGENT_SMALL_MODEL,
             }),
         );
     }
