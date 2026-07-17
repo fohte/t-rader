@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum_test::TestServer;
+use chrono::{DateTime, Utc};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -9,7 +10,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::entities::strategy;
+use crate::entities::{strategy, trigger};
 use crate::kata_exec::SharedKataExecutor;
 use crate::{AppState, create_router};
 
@@ -68,6 +69,64 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
     .insert(db)
     .await
     .expect("insert test strategy");
+    id
+}
+
+/// テストで cron trigger を 1 件 seed する。
+pub async fn insert_test_cron_trigger(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+    schedule: &str,
+    enabled: bool,
+    last_fired_at: Option<DateTime<Utc>>,
+    prompt_template: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    trigger::ActiveModel {
+        trigger_id: Set(id),
+        strategy_id: Set(strategy_id),
+        kind: Set("cron".to_string()),
+        schedule: Set(Some(schedule.to_string())),
+        hook_slug: Set(None),
+        event_match: Set(None),
+        prompt_template: Set(prompt_template.to_string()),
+        enabled: Set(enabled),
+        last_fired_at: Set(last_fired_at.map(|dt| dt.fixed_offset())),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("insert test cron trigger");
+    id
+}
+
+/// テストで hook trigger を 1 件 seed する。
+pub async fn insert_test_hook_trigger(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+    slug: &str,
+    prompt_template: &str,
+    event_match: Option<serde_json::Value>,
+    enabled: bool,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    trigger::ActiveModel {
+        trigger_id: Set(id),
+        strategy_id: Set(strategy_id),
+        kind: Set("hook".to_string()),
+        schedule: Set(None),
+        hook_slug: Set(Some(slug.to_string())),
+        event_match: Set(event_match),
+        prompt_template: Set(prompt_template.to_string()),
+        enabled: Set(enabled),
+        last_fired_at: NotSet,
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("insert test hook trigger");
     id
 }
 

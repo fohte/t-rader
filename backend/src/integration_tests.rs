@@ -10,9 +10,7 @@ use std::sync::Arc;
 
 use chrono::{TimeZone, Utc};
 use rmcp::handler::server::wrapper::Parameters;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -21,67 +19,14 @@ use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{strategy_task, trigger};
+use crate::entities::strategy_task;
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
 use crate::mcp::watcher;
 use crate::services::trigger_worker;
-use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_strategy};
-
-async fn insert_cron_trigger(
-    db: &DatabaseConnection,
-    strategy_id: Uuid,
-    prompt_template: &str,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    // schedule は毎分発火。last_fired_at を十分に過去へ置き、run_once で確実に発火対象にする。
-    let far_past = Utc
-        .with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
-        .unwrap()
-        .fixed_offset();
-    trigger::ActiveModel {
-        trigger_id: Set(id),
-        strategy_id: Set(strategy_id),
-        kind: Set("cron".to_string()),
-        schedule: Set(Some("* * * * *".to_string())),
-        hook_slug: Set(None),
-        event_match: Set(None),
-        prompt_template: Set(prompt_template.to_string()),
-        enabled: Set(true),
-        last_fired_at: Set(Some(far_past)),
-        created_at: NotSet,
-        updated_at: NotSet,
-    }
-    .insert(db)
-    .await
-    .expect("insert cron trigger");
-    id
-}
-
-async fn insert_hook_trigger(
-    db: &DatabaseConnection,
-    strategy_id: Uuid,
-    slug: &str,
-    prompt_template: &str,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    trigger::ActiveModel {
-        trigger_id: Set(id),
-        strategy_id: Set(strategy_id),
-        kind: Set("hook".to_string()),
-        schedule: Set(None),
-        hook_slug: Set(Some(slug.to_string())),
-        event_match: Set(None),
-        prompt_template: Set(prompt_template.to_string()),
-        enabled: Set(true),
-        last_fired_at: NotSet,
-        created_at: NotSet,
-        updated_at: NotSet,
-    }
-    .insert(db)
-    .await
-    .expect("insert hook trigger");
-    id
-}
+use crate::testing::{
+    create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
+    insert_test_hook_trigger, insert_test_strategy,
+};
 
 #[sqlx::test(migrations = false)]
 async fn all_four_submission_routes_converge_on_submit_task(pool: PgPool) {
@@ -91,7 +36,6 @@ async fn all_four_submission_routes_converge_on_submit_task(pool: PgPool) {
         create_test_server_with_db_and_agent_client(pool, agent_client.clone()).await;
     let strategy_id = insert_test_strategy(&db, "s").await;
 
-    // 1. 管理 MCP
     let mgmt = MgmtServer::new(db.clone(), agent_client.clone());
     mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
         strategy_id,
@@ -100,21 +44,28 @@ async fn all_four_submission_routes_converge_on_submit_task(pool: PgPool) {
     .await
     .expect("mgmt submit ok");
 
-    // 2. フロントエンド (フローティングチャット)
     let res = server
         .post(&format!("/api/strategies/{strategy_id}/chat"))
         .json(&json!({ "prompt": "from frontend" }))
         .await;
     res.assert_status(axum::http::StatusCode::ACCEPTED);
 
-    // 3. cron trigger
-    insert_cron_trigger(&db, strategy_id, "from cron").await;
+    // schedule は毎分発火。last_fired_at を十分に過去へ置き、run_once で確実に発火対象にする。
+    let far_past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
+    insert_test_cron_trigger(
+        &db,
+        strategy_id,
+        "* * * * *",
+        true,
+        Some(far_past),
+        "from cron",
+    )
+    .await;
     let attempts =
         trigger_worker::run_once(&db, &agent_client, trigger_worker::DEFAULT_INTERVAL).await;
     assert_eq!(attempts, 1);
 
-    // 4. hook trigger
-    insert_hook_trigger(&db, strategy_id, "wh", "from hook").await;
+    insert_test_hook_trigger(&db, strategy_id, "wh", "from hook", None, true).await;
     let res = server.post("/api/hooks/wh").json(&json!({})).await;
     res.assert_status_ok();
 
