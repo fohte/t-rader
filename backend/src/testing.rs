@@ -9,10 +9,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
 use crate::entities::strategy;
 use crate::kata_exec::SharedKataExecutor;
-use crate::kubeopencode::SharedKubeopencodeClient;
 use crate::{AppState, create_router};
 
 /// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
@@ -32,12 +30,11 @@ pub async fn create_test_db(pool: PgPool) -> DatabaseConnection {
     db
 }
 
-/// kubeopencode / agent_task_client を disabled にした最小構成の `AppState` を組み立てる。
+/// agent_task_client を disabled にした最小構成の `AppState` を組み立てる。
 fn base_state(db: DatabaseConnection) -> AppState {
     AppState {
         db,
         data_provider: None,
-        kubeopencode: AppState::disabled_kubeopencode(),
         agent_task_client: AppState::disabled_agent_task_client(),
         agent_task_notify: Arc::new(tokio::sync::Notify::new()),
         agent_webhook_token: Arc::from(TEST_AGENT_WEBHOOK_TOKEN),
@@ -55,7 +52,7 @@ pub async fn create_test_server(pool: PgPool) -> TestServer {
     TestServer::new(router).expect("failed to create test server")
 }
 
-/// テストで戦略レコードを 1 件 seed する。agent_status は `Ready` 固定。
+/// テストで戦略レコードを 1 件 seed する。
 pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
     let id = Uuid::new_v4();
     strategy::ActiveModel {
@@ -65,8 +62,6 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
         sort_order: Set(0),
         agents_md: NotSet,
         skills: NotSet,
-        agent_status: Set(StrategyAgentStatus::Ready),
-        agent_error: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
     }
@@ -76,18 +71,13 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
     id
 }
 
-/// `create_test_server` の `(db, server)` ペア版。kubeopencode / agent_task_client は disabled。
+/// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。
 pub async fn create_test_server_with_db(pool: PgPool) -> (DatabaseConnection, TestServer) {
-    create_test_server_with_db_and_kube(pool, AppState::disabled_kubeopencode()).await
-}
-
-/// kubeopencode クライアントを差し替えて TestServer を作成する
-pub async fn create_test_server_with_kube(
-    pool: PgPool,
-    kube: SharedKubeopencodeClient,
-) -> TestServer {
-    let (_, server) = create_test_server_with_db_and_kube(pool, kube).await;
-    server
+    let db = create_test_db(pool).await;
+    let state = base_state(db.clone());
+    let router = create_router(state);
+    let server = TestServer::new(router).expect("failed to create test server");
+    (db, server)
 }
 
 /// kata executor を差し替えて TestServer を作成する
@@ -102,20 +92,6 @@ pub async fn create_test_server_with_kata(
     TestServer::new(router).expect("failed to create test server")
 }
 
-/// テスト中に SeaORM 経由で直接行を seed したい場合に、`DatabaseConnection` と
-/// `TestServer` をペアで返すバリアント。kubeopencode クライアントを差し替える。
-pub async fn create_test_server_with_db_and_kube(
-    pool: PgPool,
-    kube: SharedKubeopencodeClient,
-) -> (DatabaseConnection, TestServer) {
-    let db = create_test_db(pool).await;
-    let mut state = base_state(db.clone());
-    state.kubeopencode = kube;
-    let router = create_router(state);
-    let server = TestServer::new(router).expect("failed to create test server");
-    (db, server)
-}
-
 /// agent_task_client (t-rader-agent 内部 API client) を差し替えて TestServer を作成する
 pub async fn create_test_server_with_agent_client(
     pool: PgPool,
@@ -125,7 +101,7 @@ pub async fn create_test_server_with_agent_client(
     server
 }
 
-/// `create_test_server_with_db_and_kube` の agent_task_client 版。
+/// `create_test_server_with_db` の agent_task_client 差し替え版。
 pub async fn create_test_server_with_db_and_agent_client(
     pool: PgPool,
     agent_client: SharedAgentTaskClient,

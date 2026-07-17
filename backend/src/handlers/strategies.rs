@@ -14,13 +14,11 @@ use crate::agent_client::AgentTaskError;
 use crate::entities::{strategy, strategy_interest};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::kubeopencode::{KubeopencodeError, agent_name_for};
 use crate::models::{
     AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
     StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, UpdateStrategyRequest,
 };
 use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::strategy_agent;
 use crate::services::strategy_tasks::{self, GetTaskError, SubmitTaskError, TaskSource, phase_str};
 
 fn validate_name(value: &str) -> Result<String, AppError> {
@@ -111,8 +109,6 @@ pub async fn create_strategy(
         sort_order: Set(sort_order),
         agents_md: NotSet,
         skills: NotSet,
-        agent_status: NotSet,
-        agent_error: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
     };
@@ -130,9 +126,6 @@ pub async fn create_strategy(
     )
     .await?;
     txn.commit().await?;
-
-    // commit 前に spawn すると rollback 時に Agent CR が孤立する
-    strategy_agent::spawn_reconcile(state.db.clone(), state.kubeopencode.clone(), id);
 
     Ok((StatusCode::CREATED, Json(created)))
 }
@@ -217,21 +210,7 @@ pub async fn delete_strategy(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    // 不在の id なら Kube API を叩く前に 404 を確定させる
     find_strategy_or_404(&state.db, id).await?;
-
-    // Agent CR を先に消す: DB を先に消すと孤児 Agent が一時的に残り、in-flight Task の
-    // agentRef は解決できるが履歴 (strategy_task / change_history) との突き合わせが切れる
-    let agent_name = agent_name_for(id);
-    match state.kubeopencode.delete_strategy_agent(&agent_name).await {
-        Ok(()) | Err(KubeopencodeError::NotConfigured) => {}
-        Err(err) => {
-            tracing::error!(error = %err, strategy_id = %id, "failed to delete strategy agent");
-            return Err(AppError::Config(format!(
-                "failed to delete strategy agent: {err}"
-            )));
-        }
-    }
 
     let txn = state.db.begin().await?;
     let result = strategy::Entity::delete_by_id(id).exec(&txn).await?;
@@ -433,8 +412,6 @@ async fn save_skills(
     .await?;
     txn.commit().await?;
 
-    // rollback 時に reconcile が走ると孤児 Agent CR が残る race を避けるため commit 後に spawn する
-    strategy_agent::spawn_reconcile(state.db.clone(), state.kubeopencode.clone(), updated.id);
     Ok(updated)
 }
 
@@ -500,8 +477,6 @@ pub async fn put_agents_md(
     .await?;
     txn.commit().await?;
 
-    // rollback 時に reconcile が走ると孤児 Agent CR が残る race を避けるため commit 後に spawn する
-    strategy_agent::spawn_reconcile(state.db.clone(), state.kubeopencode.clone(), updated.id);
     Ok(Json(AgentsMdBody {
         content: updated.agents_md,
     }))
@@ -651,7 +626,10 @@ pub async fn delete_skill(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// モデル設定は DB ではなく env 由来。kubeopencode reconcile と同じ変数名 / デフォルトを使う。
+pub(crate) const DEFAULT_AGENT_MODEL: &str = "opencode-go/minimax-m3";
+pub(crate) const DEFAULT_AGENT_SMALL_MODEL: &str = "opencode-go/deepseek-v4-flash";
+
+/// モデル設定は DB ではなく env 由来。
 fn agent_model_settings() -> (String, String) {
     agent_model_settings_with(|key| std::env::var(key).ok())
 }
@@ -662,10 +640,10 @@ where
 {
     let model = get("STRATEGY_AGENT_MODEL")
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| crate::kubeopencode::DEFAULT_AGENT_MODEL.to_string());
+        .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_string());
     let small_model = get("STRATEGY_AGENT_SMALL_MODEL")
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL.to_string());
+        .unwrap_or_else(|| DEFAULT_AGENT_SMALL_MODEL.to_string());
     (model, small_model)
 }
 
@@ -710,14 +688,11 @@ mod tests {
 
     use uuid::Uuid;
 
-    use super::agent_model_settings_with;
+    use super::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with};
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
     use crate::entities::{strategy, strategy_task};
-    use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
     use crate::testing::{
-        create_test_server, create_test_server_with_db,
-        create_test_server_with_db_and_agent_client, create_test_server_with_kube,
+        create_test_server, create_test_server_with_db, create_test_server_with_db_and_agent_client,
     };
 
     async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
@@ -729,8 +704,6 @@ mod tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
-            agent_status: NotSet,
-            agent_error: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -775,57 +748,23 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn delete_strategy_calls_kube_delete(pool: PgPool) {
-        let fake = Arc::new(FakeKubeopencodeClient::new());
-        let kube: SharedKubeopencodeClient = fake.clone();
-        let server = create_test_server_with_kube(pool, kube).await;
-
-        let created = server
-            .post("/api/strategies")
-            .json(&json!({ "name": "to-delete" }))
-            .await;
-        created.assert_status(axum::http::StatusCode::CREATED);
-        let id = created.json::<serde_json::Value>()["id"]
-            .as_str()
-            .map(str::to_string)
-            .expect("id");
+    async fn delete_strategy_removes_row(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let id = create_strategy(&server, "to-delete").await;
 
         let deleted = server.delete(&format!("/api/strategies/{id}")).await;
         deleted.assert_status(axum::http::StatusCode::NO_CONTENT);
 
-        let uuid = Uuid::parse_str(&id).unwrap();
-        let expected_agent = crate::kubeopencode::agent_name_for(uuid);
-        assert_eq!(
-            fake.deleted_agents.lock().await.as_slice(),
-            &[expected_agent],
-        );
+        let get = server.get(&format!("/api/strategies/{id}")).await;
+        get.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    async fn wait_for_reconcile_count(fake: &FakeKubeopencodeClient, expected: usize) {
-        for _ in 0..200 {
-            if fake.reconciled.lock().await.len() >= expected {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        panic!(
-            "reconcile count did not reach {expected} within timeout (current: {})",
-            fake.reconciled.lock().await.len()
-        );
-    }
-
-    async fn create_strategy_for_skills(
-        server: &axum_test::TestServer,
-        fake: &FakeKubeopencodeClient,
-        name: &str,
-    ) -> String {
+    async fn create_strategy(server: &axum_test::TestServer, name: &str) -> String {
         let created = server
             .post("/api/strategies")
             .json(&json!({ "name": name }))
             .await;
         created.assert_status(axum::http::StatusCode::CREATED);
-        // 以降の検証で追加分のみをカウントするため、作成時 spawn_reconcile の到着を先に待つ
-        wait_for_reconcile_count(fake, 1).await;
         created.json::<serde_json::Value>()["id"]
             .as_str()
             .map(str::to_string)
@@ -833,11 +772,9 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn put_then_get_agents_md_round_trips_and_triggers_reconcile(pool: PgPool) {
-        let fake = Arc::new(FakeKubeopencodeClient::new());
-        let kube: SharedKubeopencodeClient = fake.clone();
-        let server = create_test_server_with_kube(pool, kube).await;
-        let id = create_strategy_for_skills(&server, &fake, "s").await;
+    async fn put_then_get_agents_md_round_trips(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let id = create_strategy(&server, "s").await;
 
         let body = "# 方針\n慎重に運用する";
         let put = server
@@ -850,19 +787,6 @@ mod tests {
         let get = server.get(&format!("/api/strategies/{id}/agents-md")).await;
         get.assert_status_ok();
         assert_eq!(get.json::<serde_json::Value>(), json!({ "content": body }));
-
-        wait_for_reconcile_count(&fake, 2).await;
-        let last = fake.reconciled.lock().await.last().cloned().expect("spec");
-        let uuid = Uuid::parse_str(&id).unwrap();
-        assert_eq!(
-            last,
-            crate::kubeopencode::StrategyAgentSpec {
-                strategy_id: uuid,
-                agent_name: crate::kubeopencode::agent_name_for(uuid),
-                agents_md: body.to_string(),
-                skills: std::collections::BTreeMap::new(),
-            },
-        );
     }
 
     #[sqlx::test(migrations = false)]
@@ -876,10 +800,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn put_skills_replaces_whole_map(pool: PgPool) {
-        let fake = Arc::new(FakeKubeopencodeClient::new());
-        let kube: SharedKubeopencodeClient = fake.clone();
-        let server = create_test_server_with_kube(pool, kube).await;
-        let id = create_strategy_for_skills(&server, &fake, "s").await;
+        let server = create_test_server(pool).await;
+        let id = create_strategy(&server, "s").await;
 
         let put = server
             .put(&format!("/api/strategies/{id}/skills"))
@@ -906,10 +828,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn single_skill_add_update_delete_lifecycle(pool: PgPool) {
-        let fake = Arc::new(FakeKubeopencodeClient::new());
-        let kube: SharedKubeopencodeClient = fake.clone();
-        let server = create_test_server_with_kube(pool, kube).await;
-        let id = create_strategy_for_skills(&server, &fake, "s").await;
+        let server = create_test_server(pool).await;
+        let id = create_strategy(&server, "s").await;
 
         let add = server
             .put(&format!("/api/strategies/{id}/skills/scout"))
@@ -949,16 +869,12 @@ mod tests {
             after_del.json::<serde_json::Value>(),
             json!({ "skills": { "review": "rev" } }),
         );
-
-        wait_for_reconcile_count(&fake, 5).await;
     }
 
     #[sqlx::test(migrations = false)]
     async fn delete_unknown_skill_returns_404(pool: PgPool) {
-        let fake = Arc::new(FakeKubeopencodeClient::new());
-        let kube: SharedKubeopencodeClient = fake.clone();
-        let server = create_test_server_with_kube(pool, kube).await;
-        let id = create_strategy_for_skills(&server, &fake, "s").await;
+        let server = create_test_server(pool).await;
+        let id = create_strategy(&server, "s").await;
 
         let res = server
             .delete(&format!("/api/strategies/{id}/skills/missing"))
@@ -968,10 +884,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn invalid_skill_name_returns_400(pool: PgPool) {
-        let fake = Arc::new(FakeKubeopencodeClient::new());
-        let kube: SharedKubeopencodeClient = fake.clone();
-        let server = create_test_server_with_kube(pool, kube).await;
-        let id = create_strategy_for_skills(&server, &fake, "s").await;
+        let server = create_test_server(pool).await;
+        let id = create_strategy(&server, "s").await;
 
         for name in [
             "-bad",
@@ -1046,10 +960,10 @@ mod tests {
     }
 
     #[rstest]
-    #[case::unset(&[], (crate::kubeopencode::DEFAULT_AGENT_MODEL, crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL))]
+    #[case::unset(&[], (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL))]
     #[case::empty(
         &[("STRATEGY_AGENT_MODEL", ""), ("STRATEGY_AGENT_SMALL_MODEL", "")],
-        (crate::kubeopencode::DEFAULT_AGENT_MODEL, crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL)
+        (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL)
     )]
     #[case::overridden(
         &[("STRATEGY_AGENT_MODEL", "m-x"), ("STRATEGY_AGENT_SMALL_MODEL", "m-y")],
@@ -1080,8 +994,6 @@ mod tests {
             sort_order: Set(0),
             agents_md: Set(agents_md.to_string()),
             skills: Set(json!({ "scout": "scout body", "review": "review body" })),
-            agent_status: Set(StrategyAgentStatus::Ready),
-            agent_error: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -1098,8 +1010,8 @@ mod tests {
             json!({
                 "agents_md": agents_md,
                 "skills": { "scout": "scout body", "review": "review body" },
-                "model": crate::kubeopencode::DEFAULT_AGENT_MODEL,
-                "small_model": crate::kubeopencode::DEFAULT_AGENT_SMALL_MODEL,
+                "model": DEFAULT_AGENT_MODEL,
+                "small_model": DEFAULT_AGENT_SMALL_MODEL,
             }),
         );
     }

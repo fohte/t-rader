@@ -92,7 +92,7 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 
 ## Agent サービス
 
-`agent/` は kubeopencode (下記「戦略 Agent reconcile」) を置き換える予定の、A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤、internal API、observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/strategies/{id}/agent-config`) から LangGraph agent 構成、MCP tool 呼び出しまでの戦略実行ロジックを備える。backend からの呼び出しはまだ未接続。
+`agent/` は A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤、internal API、observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/strategies/{id}/agent-config`) から LangGraph agent 構成、MCP tool 呼び出しまでの戦略実行ロジックを備える。
 
 - DB は backend とは別の論理 DB (`t_rader_agent_development` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ (`docker-compose.infra.yml` の initdb スクリプトで作成)。initdb は Postgres の data ディレクトリが空の初回起動時にしか実行されないため、既存の共有 `db_data` ボリュームを使っている場合は `docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development -c 'CREATE DATABASE t_rader_agent_development'` 等で手動作成すること (test 用 DB も同様)
 - マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
@@ -154,7 +154,7 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 | `BACKEND_WEBHOOK_TOKEN`  | agent -> backend の push notification 送信を認証する bearer token                                                                                                                               | -                       |
 | `AGENT_WEBHOOK_TOKEN`    | backend が agent からの push notification を認証する bearer token (`BACKEND_WEBHOOK_TOKEN` と同じ値)                                                                                            | -                       |
 | `BACKEND_API_BASE_URL`   | agent が戦略の AGENTS.md / skills / model を取得する backend のベース URL                                                                                                                       | -                       |
-| `STRATEGY_MCP_URL`       | agent が strategy tool 群に接続する backend の MCP エンドポイント (下記「戦略 Agent reconcile」の同名変数は backend 側の別用途)                                                                 | -                       |
+| `STRATEGY_MCP_URL`       | agent が strategy tool 群に接続する backend の MCP エンドポイント                                                                                                                               | -                       |
 | `OPENCODE_API_KEY`       | agent が戦略 Agent の LLM (OpenCode Go) 呼び出しに使う API キー。未設定だと agent の起動に失敗する。docker-compose の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること | -                       |
 | `JQUANTS_API_KEY`        | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                                                                            | -                       |
 | `VITE_API_URL`           | Vite 開発サーバーのプロキシ先 URL                                                                                                                                                               | `http://localhost:3000` |
@@ -174,23 +174,7 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 
 IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐させ、その HTTP エンドポイントを `IBKR_BASE_URL` に設定する (例: `https://ibkr-gateway:5000/v1/api`)。秘密鍵相当の API キーは存在せず、認証は Gateway 側の Web ログインで維持される。
 
-### 戦略 Agent reconcile
-
-kubeopencode operator (Agent CR / Task CR) ベースの戦略実行機構。将来的に上記の `agent/` (LangGraph JS ベース) へ移行予定だが、移行が完了するまではこちらが本番の実行経路。
-
-`KUBEOPENCODE_API_URL` が `disabled` でない (= 実 kube cluster に接続する) 場合、戦略 Agent の reconcile に以下が必要になる。
-
-| 変数                                    | 必須/任意 | 用途                                                                                                                       |
-| --------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `STRATEGY_MCP_URL`                      | 必須      | Agent CR の `spec.config.mcp.t-rader-strategy.url`。例: `http://t-rader-backend.t-rader/mcp/strategy`                      |
-| `STRATEGY_AGENT_SSM_PARAMETER_TEMPLATE` | 任意      | SSM パラメータ key の template。`{name}` が Agent 名で置換される。デフォルト `/infra/kubeopencode/{name}-opencode-api-key` |
-| `STRATEGY_AGENT_MODEL`                  | 任意      | 戦略 Agent の primary model。デフォルト `opencode-go/minimax-m3`                                                           |
-| `STRATEGY_AGENT_SMALL_MODEL`            | 任意      | 戦略 Agent の small model。デフォルト `opencode-go/deepseek-v4-flash`                                                      |
-
-dev では `KUBEOPENCODE_API_URL=disabled` を使えば上記は不要。
-
 ## Deployment と外部連携
 
 - [`docs/mcp.md`](./docs/mcp.md): `/mcp/mgmt` と `/mcp/strategy` の tool 一覧、session 永続化、`MCP_ALLOWED_HOSTS` の挙動
 - [`docs/deployment.md`](./docs/deployment.md): 必須 env、backend が要求する権限、Service port
-- [`docs/kubeopencode-integration.md`](./docs/kubeopencode-integration.md): kubeopencode operator との連携で backend が依存する seam
