@@ -10,6 +10,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
+use crate::agent_client::AgentTaskError;
 use crate::entities::{strategy, strategy_interest};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
@@ -276,6 +277,9 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
             AppError::NotFound(format!("strategy {id} not found"))
         }
         SubmitTaskError::Database(db_err) => AppError::Database(db_err),
+        SubmitTaskError::AgentTask(AgentTaskError::NotConfigured) => {
+            AppError::ServiceUnavailable("agent task client is not configured".into())
+        }
         SubmitTaskError::AgentTask(agent_err) => {
             AppError::Config(format!("agent task error: {agent_err}"))
         }
@@ -295,6 +299,7 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
         (status = 404, description = "戦略が存在しない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
     )
 )]
 pub async fn submit_strategy_chat(
@@ -706,7 +711,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::agent_model_settings_with;
-    use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyAgentStatus;
     use crate::entities::{strategy, strategy_task};
     use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
@@ -1191,6 +1196,25 @@ mod tests {
             .json(&json!({ "prompt": "   " }))
             .await;
         res.assert_status(axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_chat_agent_not_configured_returns_503(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+        let agent_client: SharedAgentTaskClient = fake;
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+
+        let res = server
+            .post(&format!("/api/strategies/{strategy_id}/chat"))
+            .json(&json!({ "prompt": "inspect 7203" }))
+            .await;
+        res.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            res.json::<serde_json::Value>(),
+            json!({ "error": "agent task client is not configured" }),
+        );
     }
 
     #[sqlx::test(migrations = false)]
