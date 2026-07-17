@@ -172,6 +172,9 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
+    // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
+    // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
+    // 合わさって空文字同士の一致で認証をすり抜けてしまう。
     let agent_webhook_token = std::env::var("AGENT_WEBHOOK_TOKEN")
         .ok()
         .filter(|s| !s.is_empty())
