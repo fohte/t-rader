@@ -1046,7 +1046,7 @@
             }
           },
           "503": {
-            "description": "戦略 Agent が Ready ではない",
+            "description": "agent task client が未設定",
             "content": {
               "application/json": {
                 "schema": {

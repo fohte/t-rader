@@ -46,7 +46,7 @@ pub struct HookResponse {
         (status = 404, body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
-        (status = 503, description = "戦略 Agent が Ready ではない", body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
     )
 )]
 pub async fn receive_hook(
@@ -116,7 +116,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::{strategy, strategy_task, trigger};
     use crate::testing::create_test_server_with_db_and_agent_client;
@@ -316,6 +316,23 @@ mod tests {
                 prompt: "sym=7203 price=2500".to_string(),
                 phase: StrategyTaskPhase::Running,
             }],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn agent_not_configured_returns_503(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+        let agent_client: SharedAgentTaskClient = fake;
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let sid = seed_strategy(&db, "s").await;
+        let _ = seed_hook_trigger(&db, sid, "tv-alert", "x", None, true).await;
+
+        let res = server.post("/api/hooks/tv-alert").json(&json!({})).await;
+        res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            res.json::<Value>(),
+            json!({ "error": "agent task client is not configured" }),
         );
     }
 }
