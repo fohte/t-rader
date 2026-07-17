@@ -17,9 +17,9 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 use sea_orm::DatabaseConnection;
 
+use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::DataProviderKind;
 use crate::kata_exec::SharedKataExecutor;
-use crate::kubeopencode::SharedKubeopencodeClient;
 pub use mgmt::MgmtServer;
 pub use store::PostgresSessionStore;
 pub use strategy::StrategyServer;
@@ -30,7 +30,7 @@ pub use strategy::StrategyServer;
 /// 跨いだ `mcp-session-id` で来たリクエストを transparently に再開する。
 pub fn router(
     db: DatabaseConnection,
-    kube: SharedKubeopencodeClient,
+    agent_client: SharedAgentTaskClient,
     data_provider: Option<Arc<DataProviderKind>>,
     kata_executor: Option<SharedKataExecutor>,
     extra_allowed_hosts: Vec<String>,
@@ -39,7 +39,7 @@ pub fn router(
 
     let mgmt_db = db.clone();
     let mgmt = StreamableHttpService::new(
-        move || Ok(MgmtServer::new(mgmt_db.clone(), kube.clone())),
+        move || Ok(MgmtServer::new(mgmt_db.clone(), agent_client.clone())),
         LocalSessionManager::default().into(),
         build_config(session_store.clone(), &extra_allowed_hosts),
     );
@@ -130,8 +130,8 @@ mod tests {
         sea_orm::Database::connect(&url).await.ok()
     }
 
-    fn test_kube() -> SharedKubeopencodeClient {
-        Arc::new(crate::kubeopencode::client::DisabledKubeopencodeClient)
+    fn test_agent_client() -> SharedAgentTaskClient {
+        Arc::new(crate::agent_client::DisabledAgentTaskClient)
     }
 
     /// `mcp-session-id` ヘッダを SSE レスポンスから抽出する。
@@ -154,7 +154,7 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_kube(), None, None, Vec::new()))
+        let server = TestServer::new(router(db, test_agent_client(), None, None, Vec::new()))
             .expect("failed to build test server");
 
         let response = server
@@ -196,8 +196,14 @@ mod tests {
         };
 
         let session_id = {
-            let server_a = TestServer::new(router(db.clone(), test_kube(), None, None, Vec::new()))
-                .expect("failed to build server A");
+            let server_a = TestServer::new(router(
+                db.clone(),
+                test_agent_client(),
+                None,
+                None,
+                Vec::new(),
+            ))
+            .expect("failed to build server A");
             let resp = server_a
                 .post("/mcp/mgmt")
                 .add_header("accept", "application/json, text/event-stream")
@@ -209,8 +215,14 @@ mod tests {
 
         // server_a は drop されたので in-memory session も消えている。
         // 別 router (= 再起動後のプロセス) で同じ session_id が受け付けられるはず。
-        let server_b = TestServer::new(router(db.clone(), test_kube(), None, None, Vec::new()))
-            .expect("failed to build server B");
+        let server_b = TestServer::new(router(
+            db.clone(),
+            test_agent_client(),
+            None,
+            None,
+            Vec::new(),
+        ))
+        .expect("failed to build server B");
         let resume = server_b
             .get("/mcp/mgmt")
             .add_header("accept", "text/event-stream")
@@ -271,7 +283,7 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_kube(), None, None, Vec::new()))
+        let server = TestServer::new(router(db, test_agent_client(), None, None, Vec::new()))
             .expect("failed to build test server");
 
         let response = server
@@ -293,7 +305,7 @@ mod tests {
         };
         let server = TestServer::new(router(
             db,
-            test_kube(),
+            test_agent_client(),
             None,
             None,
             vec!["t-rader-backend.t-rader.svc.cluster.local".to_string()],

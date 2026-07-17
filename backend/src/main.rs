@@ -2,6 +2,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use backend::AppState;
+use backend::agent_client::{
+    AgentTaskClient, AgentTaskClientConfig, AgentTaskClientConfigSource, HttpAgentTaskClient,
+    SharedAgentTaskClient,
+};
 use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::DataProviderKind;
@@ -130,11 +134,6 @@ async fn main() -> Result<(), AppError> {
             })?;
             tracing::info!("kubeopencode client initialized");
             let arc: Arc<dyn KubeopencodeClient + Send + Sync> = Arc::new(client);
-            let _watcher = backend::mcp::watcher::spawn(
-                db.clone(),
-                arc.clone(),
-                backend::mcp::watcher::DEFAULT_INTERVAL,
-            );
             arc
         }
         KubeopencodeConfigSource::Disabled => {
@@ -144,6 +143,44 @@ async fn main() -> Result<(), AppError> {
             AppState::disabled_kubeopencode()
         }
     };
+
+    // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。webhook 受信時の
+    // 即時 polling 誘発用に Notify を watcher と共有する。
+    let agent_task_notify = Arc::new(tokio::sync::Notify::new());
+    let agent_task_client: SharedAgentTaskClient = match AgentTaskClientConfig::from_env()
+        .map_err(|e| AppError::Config(e.to_string()))?
+    {
+        AgentTaskClientConfigSource::Configured(config) => {
+            let client = HttpAgentTaskClient::new(config).map_err(|e| {
+                AppError::Config(format!("failed to initialize agent task client: {e}"))
+            })?;
+            tracing::info!("agent task client initialized");
+            let arc: Arc<dyn AgentTaskClient + Send + Sync> = Arc::new(client);
+            let _watcher = backend::mcp::watcher::spawn(
+                db.clone(),
+                arc.clone(),
+                backend::mcp::watcher::DEFAULT_INTERVAL,
+                agent_task_notify.clone(),
+            );
+            arc
+        }
+        AgentTaskClientConfigSource::Disabled => {
+            tracing::warn!(
+                "TRADER_AGENT_API_URL=disabled: agent task client を無効化して起動します (dev 用 opt-out)"
+            );
+            AppState::disabled_agent_task_client()
+        }
+    };
+
+    // agent_task_client が disabled でも opt-out させない。空文字を webhook token の
+    // デフォルトにすると、通知ハンドラがヘッダ未設定時に空文字へフォールバックする実装と
+    // 合わさって空文字同士の一致で認証をすり抜けてしまう。
+    let agent_webhook_token = std::env::var("AGENT_WEBHOOK_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            AppError::Config("AGENT_WEBHOOK_TOKEN environment variable is not set".to_string())
+        })?;
 
     let kata_executor: Option<SharedKataExecutor> = match KataExecutorConfig::from_env() {
         Some(config) => match HttpKataExecutor::new(config) {
@@ -196,7 +233,7 @@ async fn main() -> Result<(), AppError> {
     );
     let _trigger_worker = backend::services::trigger_worker::spawn(
         db.clone(),
-        kubeopencode.clone(),
+        agent_task_client.clone(),
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
@@ -204,6 +241,9 @@ async fn main() -> Result<(), AppError> {
         db,
         data_provider,
         kubeopencode,
+        agent_task_client,
+        agent_task_notify,
+        agent_webhook_token: Arc::from(agent_webhook_token),
         kata_executor,
         macro_cache: Some(macro_cache),
     };

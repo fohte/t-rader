@@ -14,8 +14,8 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::json;
 use tokio::sync::Semaphore;
 
+use crate::agent_client::SharedAgentTaskClient;
 use crate::entities::trigger;
-use crate::kubeopencode::SharedKubeopencodeClient;
 use crate::services::strategy_tasks::TaskSource;
 use crate::services::triggers::{FireTriggerError, fire_trigger};
 
@@ -62,7 +62,7 @@ fn should_fire(
 /// 戻り値は発火を試みた件数 (成功 / 失敗を問わない)。`interval` には worker の tick 間隔を渡す。
 pub async fn run_once(
     db: &DatabaseConnection,
-    kube: &SharedKubeopencodeClient,
+    agent_client: &SharedAgentTaskClient,
     interval: Duration,
 ) -> usize {
     let rows = match trigger::Entity::find()
@@ -110,7 +110,7 @@ pub async fn run_once(
     let target_count = targets.len();
     let mut handles = Vec::with_capacity(target_count);
     for row in targets {
-        let kube = kube.clone();
+        let agent_client = agent_client.clone();
         let db = db.clone();
         let sem = semaphore.clone();
         let trigger_id = row.trigger_id;
@@ -118,7 +118,7 @@ pub async fn run_once(
             let Ok(_permit) = sem.acquire_owned().await else {
                 return;
             };
-            match fire_trigger(&db, &kube, trigger_id, json!({}), TaskSource::Cron).await {
+            match fire_trigger(&db, &agent_client, trigger_id, json!({}), TaskSource::Cron).await {
                 Ok(_) => {}
                 // 取得 → 発火の間に disable された race。
                 Err(FireTriggerError::Disabled(_)) => {}
@@ -141,7 +141,7 @@ pub async fn run_once(
 /// 定期 polling のバックグラウンドタスクを起動する。
 pub fn spawn(
     db: DatabaseConnection,
-    kube: SharedKubeopencodeClient,
+    agent_client: SharedAgentTaskClient,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -151,7 +151,7 @@ pub fn spawn(
         ticker.tick().await;
         loop {
             ticker.tick().await;
-            let attempts = run_once(&db, &kube, interval).await;
+            let attempts = run_once(&db, &agent_client, interval).await;
             if attempts > 0 {
                 tracing::info!(attempts, "cron triggers evaluated");
             }
@@ -249,9 +249,9 @@ mod run_once_tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::sea_orm_active_enums::{StrategyAgentStatus, StrategyTaskPhase};
+    use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
+    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::{strategy, strategy_task};
-    use crate::kubeopencode::{FakeKubeopencodeClient, SharedKubeopencodeClient};
     use crate::testing::create_test_db;
 
     use super::*;
@@ -265,7 +265,7 @@ mod run_once_tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
-            agent_status: Set(StrategyAgentStatus::Ready),
+            agent_status: NotSet,
             agent_error: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
@@ -339,7 +339,7 @@ mod run_once_tests {
             "{{strategy.name}} morning",
         )
         .await;
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 1);
@@ -364,7 +364,7 @@ mod run_once_tests {
                     strategy_id: sid,
                     source: "cron".to_string(),
                     prompt: "長期 morning".to_string(),
-                    phase: StrategyTaskPhase::Pending,
+                    phase: StrategyTaskPhase::Running,
                 }],
                 true,
             ),
@@ -377,7 +377,7 @@ mod run_once_tests {
         let sid = seed_strategy(&db).await;
         let past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
         let _ = insert_cron_trigger(&db, sid, "* * * * *", false, Some(past), "x").await;
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 0);
@@ -394,7 +394,7 @@ mod run_once_tests {
         let sid = seed_strategy(&db).await;
         let just_fired = Utc::now() - chrono::Duration::seconds(1);
         let _ = insert_cron_trigger(&db, sid, "0 9 * * *", true, Some(just_fired), "x").await;
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 0);
@@ -424,7 +424,7 @@ mod run_once_tests {
         .insert(&db)
         .await
         .unwrap();
-        let kube: SharedKubeopencodeClient = Arc::new(FakeKubeopencodeClient::new());
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let attempts = run_once(&db, &kube, DEFAULT_INTERVAL).await;
         assert_eq!(attempts, 0);

@@ -9,6 +9,48 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/agent-tasks/notifications": {
+      "post": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "t-rader-agent からの push notification を受信する。",
+        "operationId": "receive_agent_task_notification",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "受理 (watcher の即時 polling を誘発)"
+          },
+          "401": {
+            "description": "トークン不一致",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/annotations": {
       "get": {
         "tags": [
@@ -1004,7 +1046,7 @@
             }
           },
           "503": {
-            "description": "戦略 Agent が Ready ではない",
+            "description": "agent task client が未設定",
             "content": {
               "application/json": {
                 "schema": {
@@ -3299,16 +3341,6 @@
               }
             }
           },
-          "409": {
-            "description": "kubeopencode タスクの名前衝突",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "422": {
             "description": "リクエストボディのパースに失敗",
             "content": {
@@ -3330,7 +3362,7 @@
             }
           },
           "503": {
-            "description": "戦略 Agent が ready ではない",
+            "description": "agent task client が未設定",
             "content": {
               "application/json": {
                 "schema": {
@@ -7361,10 +7393,10 @@
         "description": "`POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。",
         "required": [
           "task_id",
-          "kubeopencode_task_name"
+          "a2a_task_id"
         ],
         "properties": {
-          "kubeopencode_task_name": {
+          "a2a_task_id": {
             "type": "string"
           },
           "task_id": {
@@ -7456,13 +7488,18 @@
         "required": [
           "task_id",
           "strategy_id",
-          "kubeopencode_task_name",
           "source",
           "phase",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "a2a_task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -7473,11 +7510,15 @@
               "null"
             ]
           },
-          "kubeopencode_task_name": {
-            "type": "string"
-          },
           "phase": {
             "type": "string"
+          },
+          "result_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "agent の最終応答テキスト (completed 時のみ)"
           },
           "source": {
             "type": "string"

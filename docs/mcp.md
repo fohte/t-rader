@@ -13,15 +13,15 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 外部のコントロールプレーンクライアントから呼ばれる。tool 単位の認可は持たず、ネットワーク境界 (VPN / Zero Trust proxy 等) と前段認証で担保する想定。
 
-| tool                       | 入力                     | 出力 (要約)                                                                                |
-| -------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
-| `list_strategies`          | (なし)                   | 戦略一覧 (`strategy_id`, `name`, `updated_at`, `unread_card_count`)                        |
-| `submit_strategy_task`     | `strategy_id`, `prompt`  | `task_id`, `kubeopencode_task_name`。DB に `strategy_task` 行を作り Task CR を投入する     |
-| `get_strategy_task_status` | `kubeopencode_task_name` | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `updated_at` 等 |
-| `list_recent_notes`        | `strategy_id`, `limit?`  | 最新ノートのメタデータ一覧                                                                 |
-| `list_recent_annotations`  | `strategy_id`, `limit?`  | 最新アノテーションのメタデータ一覧                                                         |
+| tool                       | 入力                    | 出力 (要約)                                                                                               |
+| -------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `list_strategies`          | (なし)                  | 戦略一覧 (`strategy_id`, `name`, `updated_at`, `unread_card_count`)                                       |
+| `submit_strategy_task`     | `strategy_id`, `prompt` | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                 |
+| `get_strategy_task_status` | `a2a_task_id`           | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等 |
+| `list_recent_notes`        | `strategy_id`, `limit?` | 最新ノートのメタデータ一覧                                                                                |
+| `list_recent_annotations`  | `strategy_id`, `limit?` | 最新アノテーションのメタデータ一覧                                                                        |
 
-`submit_strategy_task` は kubeopencode API クライアント経由で戦略 Agent ランタイム namespace に Task CR を作成する。詳細は [`docs/kubeopencode-integration.md`](./kubeopencode-integration.md) を参照。
+`submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。クライアント実装は `backend/src/agent_client/` が SSOT。投入から決着までの共通ロジックは `backend/src/services/strategy_tasks.rs`、決着 polling は `backend/src/mcp/watcher.rs` を参照。
 
 ## 戦略実行 MCP (`/mcp/strategy`)
 

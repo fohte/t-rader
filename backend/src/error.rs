@@ -72,6 +72,9 @@ pub enum AppError {
 
     #[error("service unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
 }
 
 /// API エラーレスポンスの JSON 構造
@@ -107,6 +110,7 @@ impl IntoResponse for AppError {
             AppError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             AppError::DataProvider(e) => match e {
                 DataProviderError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
                 DataProviderError::RateLimited { .. } => {

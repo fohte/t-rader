@@ -1,3 +1,4 @@
+pub mod agent_tasks;
 pub mod annotations;
 pub mod bars;
 pub mod comments;
