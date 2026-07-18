@@ -15,6 +15,9 @@ export interface Env {
   // Same target as backend's STRATEGY_MCP_URL env (the strategy MCP
   // endpoint).
   STRATEGY_MCP_URL: string
+  // The backend's management MCP endpoint (/mcp/mgmt), used to resolve a
+  // strategy from free text when message metadata doesn't carry strategy_id.
+  MGMT_MCP_URL: string
   OPENCODE_API_KEY: string
 }
 
@@ -93,6 +96,7 @@ export const loadEnv = (
     ),
     BACKEND_API_BASE_URL: requireString('BACKEND_API_BASE_URL'),
     STRATEGY_MCP_URL: requireString('STRATEGY_MCP_URL'),
+    MGMT_MCP_URL: requireString('MGMT_MCP_URL'),
     OPENCODE_API_KEY: requireString('OPENCODE_API_KEY'),
   }
 

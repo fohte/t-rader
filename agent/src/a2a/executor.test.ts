@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { TraderAgentExecutorDeps } from '@/a2a/executor'
 import { extractStrategyId, TraderAgentExecutor } from '@/a2a/executor'
 import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
+import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
 
 class FakeEventBus implements ExecutionEventBus {
   public readonly events: AgentExecutionEvent[] = []
@@ -31,12 +32,22 @@ class FakeEventBus implements ExecutionEventBus {
   }
 }
 
-const buildUserMessage = (metadata?: Record<string, unknown>): Message => ({
+const buildUserMessage = (
+  metadata?: Record<string, unknown>,
+  text = 'do the thing',
+): Message => ({
   kind: 'message',
   role: 'user',
   messageId: 'm1',
-  parts: [{ kind: 'text', text: 'do the thing' }],
+  parts: [{ kind: 'text', text }],
   ...(metadata !== undefined ? { metadata } : {}),
+})
+
+const buildAgentMessage = (text: string): Message => ({
+  kind: 'message',
+  role: 'agent',
+  messageId: 'agent-m1',
+  parts: [{ kind: 'text', text }],
 })
 
 describe('extractStrategyId', () => {
@@ -66,42 +77,27 @@ const defaultStrategyAgentResult: StrategyAgentResult = {
   message: 'strategy agent result text',
 }
 
+const CANDIDATES: readonly StrategyCandidate[] = [
+  { strategyId: '11111111-1111-1111-1111-111111111111', name: '長期投資' },
+  { strategyId: '22222222-2222-2222-2222-222222222222', name: '中期投資' },
+]
+
+type StatusEvent = {
+  status: { state: string; timestamp: string; message?: Message }
+}
+
 describe('TraderAgentExecutor', () => {
   const buildExecutor = (
-    runStrategyAgent: TraderAgentExecutorDeps['runStrategyAgent'] = () =>
-      Promise.resolve(defaultStrategyAgentResult),
+    overrides: Partial<TraderAgentExecutorDeps> = {},
   ): TraderAgentExecutor =>
     new TraderAgentExecutor({
       taskStore: { load: () => Promise.resolve(undefined) },
-      runStrategyAgent,
+      runStrategyAgent: () => Promise.resolve(defaultStrategyAgentResult),
+      fetchStrategyCandidates: () => Promise.resolve(CANDIDATES),
+      ...overrides,
     })
 
-  it('rejects the task when strategy_id is missing', async () => {
-    const executor = buildExecutor()
-    const eventBus = new FakeEventBus()
-    const userMessage = buildUserMessage()
-    const requestContext = new RequestContext(userMessage, 'task-1', 'ctx-1')
-
-    await executor.execute(requestContext, eventBus)
-
-    expect(eventBus.finishedCalled).toBe(true)
-    expect(
-      eventBus.events.map((e) =>
-        'kind' in e && e.kind === 'task'
-          ? { kind: 'task', state: e.status.state }
-          : {
-              kind: (e as { kind: string }).kind,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- `final` only exists on some AgentExecutionEvent variants; test only inspects it when present
-              final: (e as { final?: boolean }).final,
-            },
-      ),
-    ).toEqual([
-      { kind: 'task', state: 'rejected' },
-      { kind: 'status-update', final: true },
-    ])
-  })
-
-  it('rejects the task when strategy_id is not a valid UUID', async () => {
+  it('rejects the task when strategy_id metadata is present but not a valid UUID', async () => {
     const executor = buildExecutor()
     const eventBus = new FakeEventBus()
     const userMessage = buildUserMessage({ strategy_id: 'not-a-uuid' })
@@ -109,9 +105,10 @@ describe('TraderAgentExecutor', () => {
 
     await executor.execute(requestContext, eventBus)
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status.state` field common to every AgentExecutionEvent variant
-    const finalEvent = eventBus.events[1] as { status: { state: string } }
-    expect(finalEvent.status.state).toBe('rejected')
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+    const [, rejected] = eventBus.events as [Task, StatusEvent]
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(rejected.status.state).toBe('rejected')
   })
 
   it('drives a valid strategy_id through submitted -> working -> completed', async () => {
@@ -127,8 +124,8 @@ describe('TraderAgentExecutor', () => {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
     const [task, working, completed] = eventBus.events as [
       Task,
-      { status: { state: string } },
-      { status: { state: string; message?: Message } },
+      StatusEvent,
+      StatusEvent,
     ]
     expect.soft(eventBus.finishedCalled).toBe(true)
     expect.soft(task.status.state).toBe('submitted')
@@ -141,13 +138,14 @@ describe('TraderAgentExecutor', () => {
   })
 
   it('maps a failed strategy agent result to a failed task with error_kind metadata', async () => {
-    const executor = buildExecutor(() =>
-      Promise.resolve({
-        status: 'failed',
-        message: 'usage limit reached',
-        errorKind: 'usage_limit',
-      }),
-    )
+    const executor = buildExecutor({
+      runStrategyAgent: () =>
+        Promise.resolve({
+          status: 'failed',
+          message: 'usage limit reached',
+          errorKind: 'usage_limit',
+        }),
+    })
     const eventBus = new FakeEventBus()
     const userMessage = buildUserMessage({
       strategy_id: '11111111-1111-1111-1111-111111111111',
@@ -157,9 +155,7 @@ describe('TraderAgentExecutor', () => {
     await executor.execute(requestContext, eventBus)
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
-    const completed = eventBus.events[2] as {
-      status: { timestamp: string; message?: Message }
-    }
+    const [, , completed] = eventBus.events as [Task, StatusEvent, StatusEvent]
     const { timestamp } = completed.status
     const { messageId } = completed.status.message ?? {}
 
@@ -186,9 +182,10 @@ describe('TraderAgentExecutor', () => {
   })
 
   it('publishes a failed status-update and still calls finished() when runStrategyAgent rejects unexpectedly', async () => {
-    const executor = buildExecutor(() =>
-      Promise.reject(new Error('mcp client construction blew up')),
-    )
+    const executor = buildExecutor({
+      runStrategyAgent: () =>
+        Promise.reject(new Error('mcp client construction blew up')),
+    })
     const eventBus = new FakeEventBus()
     const userMessage = buildUserMessage({
       strategy_id: '11111111-1111-1111-1111-111111111111',
@@ -198,9 +195,7 @@ describe('TraderAgentExecutor', () => {
     await executor.execute(requestContext, eventBus)
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
-    const completed = eventBus.events[2] as {
-      status: { timestamp: string; message?: Message }
-    }
+    const [, , completed] = eventBus.events as [Task, StatusEvent, StatusEvent]
     const { timestamp } = completed.status
     const { messageId } = completed.status.message ?? {}
 
@@ -239,14 +234,13 @@ describe('TraderAgentExecutor', () => {
           } as Task),
       },
       runStrategyAgent: () => Promise.resolve(defaultStrategyAgentResult),
+      fetchStrategyCandidates: () => Promise.resolve(CANDIDATES),
     })
 
     await executor.cancelTask('task-4', eventBus)
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status.timestamp` field common to every AgentExecutionEvent variant
-    const statusUpdateEvent = eventBus.events[0] as {
-      status: { timestamp: string }
-    }
+    const [statusUpdateEvent] = eventBus.events as unknown as [StatusEvent]
     const { timestamp } = statusUpdateEvent.status
     expect(Number.isNaN(new Date(timestamp).getTime())).toBe(false)
 
@@ -257,6 +251,193 @@ describe('TraderAgentExecutor', () => {
       contextId: 'ctx-4',
       final: true,
       status: { state: 'canceled', timestamp },
+    })
+  })
+
+  describe('strategy resolution from free text (no strategy_id metadata)', () => {
+    it('resolves the strategy uniquely from message content and runs it', async () => {
+      const calls: { strategyId: string; text: string }[] = []
+      const executor = buildExecutor({
+        runStrategyAgent: (strategyId, userMessage) => {
+          calls.push({
+            strategyId,
+            text: userMessage.parts
+              .map((p) => (p.kind === 'text' ? p.text : ''))
+              .join('\n'),
+          })
+          return Promise.resolve(defaultStrategyAgentResult)
+        },
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage(
+        undefined,
+        '長期投資でNVDAを分析して',
+      )
+      const requestContext = new RequestContext(userMessage, 'task-7', 'ctx-7')
+
+      await executor.execute(requestContext, eventBus)
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+      const [task, working, completed] = eventBus.events as [
+        Task,
+        StatusEvent,
+        StatusEvent,
+      ]
+      expect.soft(eventBus.finishedCalled).toBe(true)
+      expect.soft(task.status.state).toBe('submitted')
+      expect.soft(working.status.state).toBe('working')
+      expect.soft(completed.status.state).toBe('completed')
+      expect(calls).toEqual([
+        {
+          strategyId: '11111111-1111-1111-1111-111111111111',
+          text: '長期投資でNVDAを分析して',
+        },
+      ])
+    })
+
+    it('transitions to input-required when multiple strategies match ambiguously', async () => {
+      const executor = buildExecutor()
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage(
+        undefined,
+        '投資戦略でNVDAを分析して',
+      )
+      const requestContext = new RequestContext(userMessage, 'task-8', 'ctx-8')
+
+      await executor.execute(requestContext, eventBus)
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+      const [, , final] = eventBus.events as [Task, StatusEvent, StatusEvent]
+      expect(eventBus.finishedCalled).toBe(true)
+      expect(final.status.state).toBe('input-required')
+      expect(final.status.message?.parts[0]).toEqual({
+        kind: 'text',
+        text: '対象の戦略を一意に特定できませんでした。次のうちどれですか: 長期投資, 中期投資',
+      })
+    })
+
+    it('transitions to input-required when no strategy matches', async () => {
+      const executor = buildExecutor()
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage(undefined, 'こんにちは')
+      const requestContext = new RequestContext(userMessage, 'task-9', 'ctx-9')
+
+      await executor.execute(requestContext, eventBus)
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+      const [, , final] = eventBus.events as [Task, StatusEvent, StatusEvent]
+      expect(eventBus.finishedCalled).toBe(true)
+      expect(final.status.state).toBe('input-required')
+      expect(final.status.message?.parts[0]).toEqual({
+        kind: 'text',
+        text: '対象の戦略が見つかりませんでした。次のいずれかの戦略名を含めて教えてください: 長期投資, 中期投資',
+      })
+    })
+
+    it('fails immediately without waiting on the watchdog when fetchStrategyCandidates itself throws', async () => {
+      const executor = buildExecutor({
+        fetchStrategyCandidates: () =>
+          Promise.reject(new Error('mgmt MCP unreachable')),
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage(
+        undefined,
+        '長期投資でNVDAを分析して',
+      )
+      const requestContext = new RequestContext(
+        userMessage,
+        'task-10',
+        'ctx-10',
+      )
+
+      await executor.execute(requestContext, eventBus)
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+      const [, , final] = eventBus.events as [Task, StatusEvent, StatusEvent]
+      const { timestamp } = final.status
+      const { messageId } = final.status.message ?? {}
+      expect(eventBus.finishedCalled).toBe(true)
+      expect(final.status).toEqual({
+        state: 'failed',
+        timestamp,
+        message: {
+          kind: 'message',
+          role: 'agent',
+          messageId,
+          taskId: 'task-10',
+          contextId: 'ctx-10',
+          parts: [{ kind: 'text', text: 'mgmt MCP unreachable' }],
+          metadata: { error_kind: 'strategy_resolution_error' },
+        },
+      })
+    })
+
+    it('re-resolves from the full message history when a follow-up message resumes an input-required task, without republishing the task history', async () => {
+      const calls: { strategyId: string; text: string }[] = []
+      const executor = buildExecutor({
+        runStrategyAgent: (strategyId, userMessage) => {
+          calls.push({
+            strategyId,
+            text: userMessage.parts
+              .map((p) => (p.kind === 'text' ? p.text : ''))
+              .join('\n'),
+          })
+          return Promise.resolve(defaultStrategyAgentResult)
+        },
+      })
+      const eventBus = new FakeEventBus()
+
+      const firstUserMessage = buildUserMessage(
+        undefined,
+        '投資戦略でNVDAを分析して',
+      )
+      const clarifyingQuestion = buildAgentMessage(
+        '対象の戦略を一意に特定できませんでした。次のうちどれですか: 長期投資, 中期投資',
+      )
+      const followUpMessage = buildUserMessage(
+        undefined,
+        '長期の方でお願いします',
+      )
+      // Mirrors what DefaultRequestHandler._createRequestContext does before
+      // calling execute(): the incoming follow-up message is already
+      // appended to the stored task's history.
+      const existingTask: Task = {
+        id: 'task-11',
+        contextId: 'ctx-11',
+        kind: 'task',
+        history: [firstUserMessage, clarifyingQuestion, followUpMessage],
+        status: {
+          state: 'input-required',
+          timestamp: '2026-01-01T00:00:00.000Z',
+        },
+      }
+      const requestContext = new RequestContext(
+        followUpMessage,
+        'task-11',
+        'ctx-11',
+        existingTask,
+      )
+
+      await executor.execute(requestContext, eventBus)
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+      const [working, completed] = eventBus.events as unknown as [
+        StatusEvent,
+        StatusEvent,
+      ]
+      expect(eventBus.finishedCalled).toBe(true)
+      // No Task-kind event: the existing history must not be clobbered.
+      expect(eventBus.events.every((e) => e.kind === 'status-update')).toBe(
+        true,
+      )
+      expect.soft(working.status.state).toBe('working')
+      expect.soft(completed.status.state).toBe('completed')
+      expect(calls).toEqual([
+        {
+          strategyId: '11111111-1111-1111-1111-111111111111',
+          text: '投資戦略でNVDAを分析して\n長期の方でお願いします',
+        },
+      ])
     })
   })
 })

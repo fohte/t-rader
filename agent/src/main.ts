@@ -19,6 +19,7 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '@/strategy-agent/strategy-agent'
+import { createStrategyCandidatesFetcher } from '@/strategy-resolution/mgmt-mcp-client'
 
 const GEN_AI_PROVIDER_NAME = 'opencode'
 
@@ -51,6 +52,7 @@ export const main = async (): Promise<void> => {
     taskStore,
     runStrategyAgent: (strategyId, userMessage) =>
       runStrategyAgent(strategyAgentDeps, strategyId, userMessage),
+    fetchStrategyCandidates: createStrategyCandidatesFetcher(env.MGMT_MCP_URL),
   })
   const requestHandler = new DefaultRequestHandler(
     agentCard,
