@@ -68,6 +68,12 @@ describeIfDb('t-rader-agent internal API integration', () => {
       taskStore,
       runStrategyAgent: () =>
         Promise.resolve({ status: 'completed', message: 'strategy result' }),
+      // Every request in this suite carries strategy_id metadata (internal
+      // API always sets it), so strategy resolution is never exercised.
+      fetchStrategyCandidates: () =>
+        Promise.reject(
+          new Error('not used: strategy_id metadata is always set'),
+        ),
     })
     const requestHandler = new DefaultRequestHandler(
       agentCard,

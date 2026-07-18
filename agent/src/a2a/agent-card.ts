@@ -19,7 +19,7 @@ export const buildAgentCard = (options: BuildAgentCardOptions): AgentCard => ({
       id: 'strategy-task',
       name: 'Strategy task execution',
       description:
-        'Runs one prompt against a single strategy, scoped to that strategy via the strategy_id message metadata, and returns the result text.',
+        'Runs one prompt against a single t-rader strategy and returns the result text. Callers that know the target strategy can scope the request precisely via the strategy_id message metadata. Callers without that (e.g. a conversational request like "run the long-term strategy on Toyota") can instead just describe the target strategy in the message text; it is resolved against the current strategy list. If the target strategy can\'t be uniquely identified, the task moves to input-required and asks which strategy to use — reply on the same task to continue.',
       tags: ['strategy'],
     },
   ],

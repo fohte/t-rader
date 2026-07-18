@@ -13,6 +13,7 @@ const fullSource = {
   A2A_RETENTION_DAYS: '7',
   BACKEND_API_BASE_URL: 'http://t-rader-backend',
   STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
+  MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
   OPENCODE_API_KEY: 'opencode-key',
 } as const
 
@@ -39,6 +40,7 @@ describe('loadEnv', () => {
       A2A_RETENTION_DAYS: 7,
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
+      MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
       OPENCODE_API_KEY: 'opencode-key',
     })
   })
@@ -62,6 +64,7 @@ describe('loadEnv', () => {
       A2A_RETENTION_DAYS: 30,
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
+      MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
       OPENCODE_API_KEY: 'opencode-key',
     })
   })
@@ -76,6 +79,7 @@ describe('loadEnv', () => {
       'missing required env: BACKEND_WEBHOOK_TOKEN',
       'missing required env: BACKEND_API_BASE_URL',
       'missing required env: STRATEGY_MCP_URL',
+      'missing required env: MGMT_MCP_URL',
       'missing required env: OPENCODE_API_KEY',
     ])
   })

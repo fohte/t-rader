@@ -88,8 +88,9 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 - `backend/src/mcp/watcher.rs` - 戦略タスクの phase polling (pending/running 行の状態照会 + deadline 超過の失敗確定)
 - `backend/src/handlers/agent_tasks.rs` - t-rader-agent からのタスク決着 webhook 受信
 - `agent/src/main.ts` - A2A server のエントリポイント、Hono app の組み立て
-- `agent/src/a2a/executor.ts` - `TraderAgentExecutor` (戦略実行を `agent/src/strategy-agent/` の `runStrategyAgent` に委譲)
+- `agent/src/a2a/executor.ts` - `TraderAgentExecutor` (`strategy_id` metadata があれば即実行、なければ `agent/src/strategy-resolution/` で名前解決した上で `agent/src/strategy-agent/` の `runStrategyAgent` に委譲)
 - `agent/src/strategy-agent/strategy-agent.ts` - agent-config 取得 + LangGraph agent 構成 + MCP tool 呼び出しの実行ロジック
+- `agent/src/strategy-resolution/resolve-strategy.ts` - 戦略候補一覧から自由文の対象戦略を決定的な文字列類似度で解決するロジック
 - `agent/src/internal-api/routes.ts` - backend 向け internal API (`POST /internal/tasks`, `GET /internal/tasks/{task_id}`)
 - `agent/drizzle/` - drizzle-orm マイグレーション (起動時に自動実行)
 

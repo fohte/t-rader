@@ -1,0 +1,99 @@
+import { MultiServerMCPClient } from '@langchain/mcp-adapters'
+
+import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
+
+interface ListStrategiesResponseBody {
+  strategies: { strategy_id: string; name: string }[]
+}
+
+const isListStrategiesResponseBody = (
+  value: unknown,
+): value is ListStrategiesResponseBody => {
+  if (typeof value !== 'object' || value === null) return false
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- value is an untyped bag; each field is narrowed immediately below via typeof
+  const record = value as Record<string, unknown>
+  const strategies = record['strategies']
+  return (
+    Array.isArray(strategies) &&
+    strategies.every(
+      (s: unknown) =>
+        typeof s === 'object' &&
+        s !== null &&
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- s is an untyped bag; each field is narrowed immediately below via typeof
+        typeof (s as Record<string, unknown>)['strategy_id'] === 'string' &&
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- s is an untyped bag; each field is narrowed immediately below via typeof
+        typeof (s as Record<string, unknown>)['name'] === 'string',
+    )
+  )
+}
+
+const isTextContentBlock = (
+  value: unknown,
+): value is { type: 'text'; text: string } =>
+  typeof value === 'object' &&
+  value !== null &&
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- value is an untyped bag; each field is narrowed immediately below via typeof
+  (value as Record<string, unknown>)['type'] === 'text' &&
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- value is an untyped bag; each field is narrowed immediately below via typeof
+  typeof (value as Record<string, unknown>)['text'] === 'string'
+
+// Pure so the response parsing/validation can be unit tested without a live
+// MCP server (mirrors agent-config-client.ts's response-shape guard). Takes
+// the MCP SDK's CallToolResult.content as `unknown` rather than importing
+// its type, since this only needs the single text content block it expects.
+export const parseListStrategiesToolResult = (
+  content: unknown,
+): readonly StrategyCandidate[] => {
+  if (!Array.isArray(content)) {
+    throw new Error('list_strategies MCP tool returned no content')
+  }
+  const textBlock = content.find(isTextContentBlock)
+  if (textBlock === undefined) {
+    throw new Error('list_strategies MCP tool returned no text content')
+  }
+  const parsed: unknown = JSON.parse(textBlock.text)
+  if (!isListStrategiesResponseBody(parsed)) {
+    throw new Error('malformed list_strategies response')
+  }
+  return parsed.strategies.map((s) => ({
+    strategyId: s.strategy_id,
+    name: s.name,
+  }))
+}
+
+export type FetchStrategyCandidates = () => Promise<
+  readonly StrategyCandidate[]
+>
+
+// Real wiring for production use; executor tests inject a fake
+// FetchStrategyCandidates directly instead of exercising this MCP plumbing.
+export const createStrategyCandidatesFetcher = (
+  mgmtMcpUrl: string,
+): FetchStrategyCandidates => {
+  return async () => {
+    const client = new MultiServerMCPClient({
+      mcpServers: { mgmt: { url: mgmtMcpUrl } },
+    })
+    try {
+      const mcpClient = await client.getClient('mgmt')
+      if (mcpClient === undefined) {
+        throw new Error('failed to connect to mgmt MCP server')
+      }
+      const result = await mcpClient.callTool({
+        name: 'list_strategies',
+        arguments: {},
+      })
+      if (result.isError === true) {
+        throw new Error('list_strategies MCP tool call returned an error')
+      }
+      return parseListStrategiesToolResult(result.content)
+    } finally {
+      // A close failure must not override the result/error already
+      // determined above by discarding it in favor of this finally block's
+      // own rejection.
+      await client.close().catch((closeError: unknown) => {
+        console.error('failed to close mgmt MCP client:', closeError)
+      })
+    }
+  }
+}
