@@ -111,6 +111,35 @@ describe('TraderAgentExecutor', () => {
     expect(rejected.status.state).toBe('rejected')
   })
 
+  it('rejects a resumed task without republishing (and clobbering) its stored history', async () => {
+    const executor = buildExecutor()
+    const eventBus = new FakeEventBus()
+    const priorMessage = buildUserMessage(undefined, 'earlier turn')
+    const followUpMessage = buildUserMessage({ strategy_id: 'not-a-uuid' })
+    const existingTask: Task = {
+      id: 'task-2b',
+      contextId: 'ctx-2b',
+      kind: 'task',
+      history: [priorMessage, followUpMessage],
+      status: {
+        state: 'input-required',
+        timestamp: '2026-01-01T00:00:00.000Z',
+      },
+    }
+    const requestContext = new RequestContext(
+      followUpMessage,
+      'task-2b',
+      'ctx-2b',
+      existingTask,
+    )
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(eventBus.finishedCalled).toBe(true)
+    expect(eventBus.events).toHaveLength(1)
+    expect(eventBus.events.every((e) => e.kind === 'status-update')).toBe(true)
+  })
+
   it('drives a valid strategy_id through submitted -> working -> completed', async () => {
     const executor = buildExecutor()
     const eventBus = new FakeEventBus()
@@ -308,11 +337,25 @@ describe('TraderAgentExecutor', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
       const [, , final] = eventBus.events as [Task, StatusEvent, StatusEvent]
+      const { timestamp } = final.status
+      const { messageId } = final.status.message ?? {}
       expect(eventBus.finishedCalled).toBe(true)
-      expect(final.status.state).toBe('input-required')
-      expect(final.status.message?.parts[0]).toEqual({
-        kind: 'text',
-        text: '対象の戦略を一意に特定できませんでした。次のうちどれですか: 長期投資, 中期投資',
+      expect(final.status).toEqual({
+        state: 'input-required',
+        timestamp,
+        message: {
+          kind: 'message',
+          role: 'agent',
+          messageId,
+          taskId: 'task-8',
+          contextId: 'ctx-8',
+          parts: [
+            {
+              kind: 'text',
+              text: '対象の戦略を一意に特定できませんでした。次のうちどれですか: 長期投資, 中期投資',
+            },
+          ],
+        },
       })
     })
 
@@ -326,15 +369,57 @@ describe('TraderAgentExecutor', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
       const [, , final] = eventBus.events as [Task, StatusEvent, StatusEvent]
+      const { timestamp } = final.status
+      const { messageId } = final.status.message ?? {}
+      expect(eventBus.finishedCalled).toBe(true)
+      expect(final.status).toEqual({
+        state: 'input-required',
+        timestamp,
+        message: {
+          kind: 'message',
+          role: 'agent',
+          messageId,
+          taskId: 'task-9',
+          contextId: 'ctx-9',
+          parts: [
+            {
+              kind: 'text',
+              text: '対象の戦略が見つかりませんでした。次のいずれかの戦略名を含めて教えてください: 長期投資, 中期投資',
+            },
+          ],
+        },
+      })
+    })
+
+    it('transitions to input-required with a dedicated message when there are no strategies to choose from', async () => {
+      const executor = buildExecutor({
+        fetchStrategyCandidates: () => Promise.resolve([]),
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage(undefined, 'NVDAを分析して')
+      const requestContext = new RequestContext(
+        userMessage,
+        'task-12',
+        'ctx-12',
+      )
+
+      await executor.execute(requestContext, eventBus)
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+      const [, , final] = eventBus.events as [Task, StatusEvent, StatusEvent]
       expect(eventBus.finishedCalled).toBe(true)
       expect(final.status.state).toBe('input-required')
       expect(final.status.message?.parts[0]).toEqual({
         kind: 'text',
-        text: '対象の戦略が見つかりませんでした。次のいずれかの戦略名を含めて教えてください: 長期投資, 中期投資',
+        text: '利用可能な戦略が登録されていません。',
       })
     })
 
-    it('fails immediately without waiting on the watchdog when fetchStrategyCandidates itself throws', async () => {
+    // Failing this turn synchronously (rather than leaving the task stuck in
+    // working) matters because there's no retry loop above the executor —
+    // the only other way the task would ever settle is the watchdog's
+    // timeout, minutes later.
+    it('fails immediately when fetchStrategyCandidates itself throws', async () => {
       const executor = buildExecutor({
         fetchStrategyCandidates: () =>
           Promise.reject(new Error('mgmt MCP unreachable')),

@@ -37,7 +37,7 @@ describe('parseListStrategiesToolResult', () => {
   it('throws when the text content is not valid JSON', () => {
     expect(() =>
       parseListStrategiesToolResult([{ type: 'text', text: 'not json' }]),
-    ).toThrow()
+    ).toThrow(SyntaxError)
   })
 
   it('throws when the parsed body does not match the expected shape', () => {

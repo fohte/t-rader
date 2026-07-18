@@ -8,6 +8,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, toolStrategy } from 'langchain'
 import { z } from 'zod'
 
+import { extractMessageText } from '@/a2a/message-text'
 import type { FetchAgentConfig } from '@/strategy-agent/agent-config-client'
 import { createAgentConfigFetcher } from '@/strategy-agent/agent-config-client'
 import { buildSystemPrompt } from '@/strategy-agent/system-prompt'
@@ -109,14 +110,6 @@ export const createStrategyAgentDeps = (
   buildAgent: defaultBuildAgent,
   genAiCallbackHandler: config.genAiCallbackHandler,
 })
-
-const extractMessageText = (message: Message): string =>
-  message.parts
-    .filter(
-      (part): part is { kind: 'text'; text: string } => part.kind === 'text',
-    )
-    .map((part) => part.text)
-    .join('\n')
 
 export const runStrategyAgent = async (
   deps: StrategyAgentDeps,

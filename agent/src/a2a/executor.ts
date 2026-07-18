@@ -8,6 +8,7 @@ import type {
   TaskStore,
 } from '@a2a-js/sdk/server'
 
+import { extractMessageText } from '@/a2a/message-text'
 import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
 import type {
   StrategyCandidate,
@@ -40,14 +41,6 @@ const buildAgentMessage = (
   ...(errorKind !== undefined ? { metadata: { error_kind: errorKind } } : {}),
 })
 
-const extractMessageText = (message: Message): string =>
-  message.parts
-    .filter(
-      (part): part is { kind: 'text'; text: string } => part.kind === 'text',
-    )
-    .map((part) => part.text)
-    .join('\n')
-
 // Only user-authored text feeds strategy resolution and the eventual
 // analysis prompt. Including the agent's own clarifying question (which
 // necessarily names the candidates it's asking about) would make every
@@ -77,10 +70,15 @@ const describeCandidates = (candidates: readonly StrategyCandidate[]): string =>
 
 const buildClarifyingMessageText = (
   resolution: Extract<StrategyResolution, { kind: 'ambiguous' | 'not_found' }>,
-): string =>
-  resolution.kind === 'ambiguous'
-    ? `対象の戦略を一意に特定できませんでした。次のうちどれですか: ${describeCandidates(resolution.candidates)}`
-    : `対象の戦略が見つかりませんでした。次のいずれかの戦略名を含めて教えてください: ${describeCandidates(resolution.candidates)}`
+): string => {
+  if (resolution.kind === 'ambiguous') {
+    return `対象の戦略を一意に特定できませんでした。次のうちどれですか: ${describeCandidates(resolution.candidates)}`
+  }
+  if (resolution.candidates.length === 0) {
+    return '利用可能な戦略が登録されていません。'
+  }
+  return `対象の戦略が見つかりませんでした。次のいずれかの戦略名を含めて教えてください: ${describeCandidates(resolution.candidates)}`
+}
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -111,28 +109,33 @@ export class TraderAgentExecutor implements AgentExecutor {
     const rawStrategyId = extractStrategyId(userMessage)
 
     if (rawStrategyId !== undefined && !isValidStrategyId(rawStrategyId)) {
-      const rejectedTask: Task = {
-        id: taskId,
-        contextId,
-        kind: 'task',
-        history: [userMessage],
-        status: {
-          state: 'rejected',
-          timestamp: new Date().toISOString(),
-          message: buildAgentMessage(
-            'strategy_id is missing or not a valid UUID',
-            taskId,
-            contextId,
-          ),
-        },
+      const rejectedStatus = {
+        state: 'rejected' as const,
+        timestamp: new Date().toISOString(),
+        message: buildAgentMessage(
+          'strategy_id is missing or not a valid UUID',
+          taskId,
+          contextId,
+        ),
       }
-      eventBus.publish(rejectedTask)
+      // Same task === undefined guard as the submitted/working path below:
+      // a resumed task's history was already updated by the framework, and
+      // publishing a full Task event here would replace it wholesale.
+      if (task === undefined) {
+        eventBus.publish({
+          id: taskId,
+          contextId,
+          kind: 'task',
+          history: [userMessage],
+          status: rejectedStatus,
+        } satisfies Task)
+      }
       eventBus.publish({
         kind: 'status-update',
         taskId,
         contextId,
         final: true,
-        status: rejectedTask.status,
+        status: rejectedStatus,
       } satisfies TaskStatusUpdateEvent)
       eventBus.finished()
       return
