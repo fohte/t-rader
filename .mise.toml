@@ -8,7 +8,7 @@ description = "DB を起動し、実ポートを反映した DATABASE_URL を .e
 file = "scripts/db-up"
 
 [tools]
-lefthook = "2.1.9"
+lefthook = "2.1.10"
 "github:ast-grep/ast-grep" = "0.44.0"
 "cargo:sea-orm-cli" = "2.0.0-rc.40"
 
