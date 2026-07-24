@@ -1,4 +1,4 @@
-import { ok } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -45,6 +45,24 @@ describe('createAgentConfigFetcher', () => {
     )
   })
 
+  it('returns an error when fetch itself rejects', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new Error('network down'))),
+    )
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const result = await fetchAgentConfig('strategy-1')
+
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'failed to fetch agent config for strategy strategy-1',
+        ),
+      ),
+    )
+  })
+
   it('returns an error with the strategy id and status when the backend responds with an error', async () => {
     vi.stubGlobal(
       'fetch',
@@ -54,59 +72,64 @@ describe('createAgentConfigFetcher', () => {
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
     const result = await fetchAgentConfig('missing-strategy')
 
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr()).toEqual(
-      new AgentConfigFetchError(
-        'failed to fetch agent config for strategy missing-strategy: 404',
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'failed to fetch agent config for strategy missing-strategy: 404',
+        ),
       ),
     )
   })
 
-  it('returns an error when the response body does not match the expected shape', async () => {
+  it('returns an error when the response body is not valid JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('not json', { status: 200 }))),
+    )
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const result = await fetchAgentConfig('strategy-1')
+
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'failed to parse agent-config response body for strategy strategy-1',
+        ),
+      ),
+    )
+  })
+
+  it.each([
+    {
+      name: 'the response body does not match the expected shape',
+      body: { agents_md: '# AGENTS' },
+    },
+    {
+      name: 'skills is an array instead of a record',
+      body: {
+        agents_md: '# AGENTS',
+        skills: ['ja-stock'],
+        model: 'opencode-go/minimax-m3',
+        small_model: 'opencode-go/deepseek-v4-flash',
+      },
+    },
+  ])('returns an error when $name', async ({ body }) => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ agents_md: '# AGENTS' }), {
-            status: 200,
-          }),
-        ),
+        Promise.resolve(new Response(JSON.stringify(body), { status: 200 })),
       ),
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
     const result = await fetchAgentConfig('strategy-1')
 
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toBe(
-      'malformed agent-config response for strategy strategy-1: expected agents_md/model/small_model strings and a skills map of strings',
-    )
-  })
-
-  it('returns an error when skills is an array instead of a record', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              agents_md: '# AGENTS',
-              skills: ['ja-stock'],
-              model: 'opencode-go/minimax-m3',
-              small_model: 'opencode-go/deepseek-v4-flash',
-            }),
-            { status: 200 },
-          ),
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'malformed agent-config response for strategy strategy-1: expected agents_md/model/small_model strings and a skills map of strings',
         ),
       ),
-    )
-
-    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig('strategy-1')
-
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toBe(
-      'malformed agent-config response for strategy strategy-1: expected agents_md/model/small_model strings and a skills map of strings',
     )
   })
 })

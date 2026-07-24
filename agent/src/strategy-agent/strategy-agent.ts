@@ -124,16 +124,20 @@ export const runStrategyAgent = async (
   const mcpClient = deps.createMcpClient(strategyId)
 
   try {
-    const [agentConfigResult, tools] = await Promise.all([
-      deps.fetchAgentConfig(strategyId),
-      mcpClient.getTools(),
-    ])
+    // fetchAgentConfig is awaited on its own (rather than via Promise.all)
+    // so a fetch failure fails fast instead of waiting out
+    // mcpClient.getTools() first — ResultAsync.fromPromise never rejects,
+    // so Promise.all would otherwise wait for both to settle regardless of
+    // which one failed.
+    const toolsPromise = mcpClient.getTools()
+    const agentConfigResult = await deps.fetchAgentConfig(strategyId)
     const agentConfig = agentConfigResult.match(
       (config) => config,
       (error) => {
         throw error
       },
     )
+    const tools = await toolsPromise
 
     const agent = deps.buildAgent({
       model: deps.createChatModel(agentConfig.model),
@@ -183,6 +187,7 @@ export const runStrategyAgent = async (
     // determined above by discarding it in favor of this finally block's
     // own rejection.
     await mcpClient.close().catch((closeError: unknown) => {
+      console.error('failed to close MCP client:', closeError)
       captureWithFingerprint(closeError, MCP_CLIENT_CLOSE_FAILED_FINGERPRINT, {
         extras: { strategyId },
       })

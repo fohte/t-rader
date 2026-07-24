@@ -108,10 +108,9 @@ export type FetchStrategyCandidates = () => Promise<
 
 // Real wiring for production use; executor tests inject a fake
 // FetchStrategyCandidates directly instead of exercising this MCP plumbing.
-// Stays Promise/throw-based (rather than returning a ResultAsync) because
-// its MCP client needs a try/finally to guarantee close() runs, which is
-// itself an interop boundary concern; parseListStrategiesToolResult's
-// Result is handled internally via match().
+// The MCP client's close() must run inside a try/finally, so this stays
+// throw-based; parseListStrategiesToolResult's Result is unwrapped
+// internally via match().
 export const createStrategyCandidatesFetcher = (
   mgmtMcpUrl: string,
 ): FetchStrategyCandidates => {
@@ -146,6 +145,7 @@ export const createStrategyCandidatesFetcher = (
       // determined above by discarding it in favor of this finally block's
       // own rejection.
       await client.close().catch((closeError: unknown) => {
+        console.error('failed to close mgmt MCP client:', closeError)
         captureWithFingerprint(closeError, MGMT_MCP_CLIENT_CLOSE_FINGERPRINT)
       })
     }
