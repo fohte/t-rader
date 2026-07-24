@@ -5,8 +5,11 @@ import {
   JsonRpcTransportHandler,
   ServerCallContext,
 } from '@a2a-js/sdk/server'
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
+
+const STREAM_FAILED_FINGERPRINT = 'a2a.hono.stream-failed'
 
 export interface A2aHonoBridgeOptions {
   agentCard: AgentCard
@@ -16,6 +19,15 @@ export interface A2aHonoBridgeOptions {
   // unauthenticated so remote agents can discover capabilities first.
   bearerToken?: string
 }
+
+const internalErrorResponse = (err: unknown): JSONRPCResponse => ({
+  jsonrpc: '2.0',
+  id: null,
+  error: {
+    code: -32603,
+    message: err instanceof Error ? err.message : String(err),
+  },
+})
 
 const isAsyncGenerator = (
   value: JSONRPCResponse | AsyncGenerator<JSONRPCResponse, void, undefined>,
@@ -54,11 +66,26 @@ export const mountA2aRoutes = (
     const result = await transportHandler.handle(body, context)
 
     if (isAsyncGenerator(result)) {
-      return streamSSE(c, async (stream) => {
-        for await (const event of result) {
-          await stream.writeSSE({ data: JSON.stringify(event) })
-        }
-      })
+      return streamSSE(
+        c,
+        async (stream) => {
+          for await (const event of result) {
+            await stream.writeSSE({ data: JSON.stringify(event) })
+          }
+        },
+        async (err, stream) => {
+          console.error('a2a JSON-RPC stream failed:', err)
+          captureWithFingerprint(err, STREAM_FAILED_FINGERPRINT)
+          await stream
+            .writeSSE({
+              event: 'error',
+              data: JSON.stringify(internalErrorResponse(err)),
+            })
+            .catch(() => {
+              // The connection is likely already closed; nothing more to do.
+            })
+        },
+      )
     }
     return c.json(result)
   })

@@ -3,10 +3,12 @@ import { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
+import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
 import type { AgentConfig } from '@/strategy-agent/agent-config-client'
+import { AgentConfigFetchError } from '@/strategy-agent/agent-config-client'
 import type {
   CompiledStrategyAgent,
   McpToolsClient,
@@ -81,7 +83,7 @@ const buildDeps = (
   const deps: StrategyAgentDeps = {
     fetchAgentConfig: (strategyId) => {
       calls.fetchAgentConfigStrategyId = strategyId
-      return Promise.resolve(AGENT_CONFIG)
+      return okAsync(AGENT_CONFIG)
     },
     createMcpClient: (strategyId): McpToolsClient => {
       calls.createMcpClientStrategyId = strategyId
@@ -224,5 +226,27 @@ describe('runStrategyAgent', () => {
       message: 'mcp tool blew up',
       errorKind: 'agent_error',
     })
+  })
+
+  it('maps a fetchAgentConfig error result to error_kind agent_error and still closes the MCP client', async () => {
+    const { deps, calls } = buildDeps({
+      agentInvoke: () => Promise.reject(new Error('should not be invoked')),
+    })
+    const fetchError = new AgentConfigFetchError(
+      'failed to fetch agent config for strategy strategy-1: 500',
+    )
+
+    const result = await runStrategyAgent(
+      { ...deps, fetchAgentConfig: () => errAsync(fetchError) },
+      'strategy-1',
+      buildUserMessage('do the thing'),
+    )
+
+    expect(result).toEqual({
+      status: 'failed',
+      message: fetchError.message,
+      errorKind: 'agent_error',
+    })
+    expect(calls.mcpClientClosed).toBe(true)
   })
 })

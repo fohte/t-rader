@@ -1,4 +1,5 @@
 import type { Message } from '@a2a-js/sdk'
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { HumanMessage } from '@langchain/core/messages'
@@ -18,6 +19,10 @@ import { isUsageLimitError } from '@/strategy-agent/usage-limit'
 const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
 const STRATEGY_ID_HEADER = 'x-strategy-id'
+
+const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
+const MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
+  'strategy-agent.mcp-client-close-failed'
 
 const structuredResponseSchema = z.object({
   status: z.enum(['completed', 'error']),
@@ -119,10 +124,16 @@ export const runStrategyAgent = async (
   const mcpClient = deps.createMcpClient(strategyId)
 
   try {
-    const [agentConfig, tools] = await Promise.all([
+    const [agentConfigResult, tools] = await Promise.all([
       deps.fetchAgentConfig(strategyId),
       mcpClient.getTools(),
     ])
+    const agentConfig = agentConfigResult.match(
+      (config) => config,
+      (error) => {
+        throw error
+      },
+    )
 
     const agent = deps.buildAgent({
       model: deps.createChatModel(agentConfig.model),
@@ -152,6 +163,9 @@ export const runStrategyAgent = async (
     }
   } catch (error) {
     console.error('strategy agent execution failed:', error)
+    captureWithFingerprint(error, EXECUTION_FAILED_FINGERPRINT, {
+      extras: { strategyId },
+    })
     if (isUsageLimitError(error)) {
       return {
         status: 'failed',
@@ -169,7 +183,9 @@ export const runStrategyAgent = async (
     // determined above by discarding it in favor of this finally block's
     // own rejection.
     await mcpClient.close().catch((closeError: unknown) => {
-      console.error('failed to close MCP client:', closeError)
+      captureWithFingerprint(closeError, MCP_CLIENT_CLOSE_FAILED_FINGERPRINT, {
+        extras: { strategyId },
+      })
     })
   }
 }

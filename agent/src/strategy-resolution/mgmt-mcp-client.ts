@@ -1,6 +1,25 @@
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
+import { err, ok, Result } from 'neverthrow'
 
 import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
+
+export class StrategyCandidatesParseError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause })
+    this.name = 'StrategyCandidatesParseError'
+  }
+}
+
+export class StrategyCandidatesFetchError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause })
+    this.name = 'StrategyCandidatesFetchError'
+  }
+}
+
+const MGMT_MCP_CLIENT_CLOSE_FINGERPRINT =
+  'strategy-resolution.mgmt-mcp-client.close-failed'
 
 interface ListStrategiesResponseBody {
   strategies: { strategy_id: string; name: string }[]
@@ -37,28 +56,50 @@ const isTextContentBlock = (
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- value is an untyped bag; each field is narrowed immediately below via typeof
   typeof (value as Record<string, unknown>)['text'] === 'string'
 
+const safeJsonParse = Result.fromThrowable(
+  (text: string): unknown => JSON.parse(text),
+  (error): StrategyCandidatesParseError =>
+    new StrategyCandidatesParseError(
+      'list_strategies MCP tool returned invalid JSON',
+      error,
+    ),
+)
+
 // Pure so the response parsing/validation can be unit tested without a live
 // MCP server (mirrors agent-config-client.ts's response-shape guard). Takes
 // the MCP SDK's CallToolResult.content as `unknown` rather than importing
 // its type, since this only needs the single text content block it expects.
 export const parseListStrategiesToolResult = (
   content: unknown,
-): readonly StrategyCandidate[] => {
+): Result<readonly StrategyCandidate[], StrategyCandidatesParseError> => {
   if (!Array.isArray(content)) {
-    throw new Error('list_strategies MCP tool returned no content')
+    return err(
+      new StrategyCandidatesParseError(
+        'list_strategies MCP tool returned no content',
+      ),
+    )
   }
   const textBlock = content.find(isTextContentBlock)
   if (textBlock === undefined) {
-    throw new Error('list_strategies MCP tool returned no text content')
+    return err(
+      new StrategyCandidatesParseError(
+        'list_strategies MCP tool returned no text content',
+      ),
+    )
   }
-  const parsed: unknown = JSON.parse(textBlock.text)
-  if (!isListStrategiesResponseBody(parsed)) {
-    throw new Error('malformed list_strategies response')
-  }
-  return parsed.strategies.map((s) => ({
-    strategyId: s.strategy_id,
-    name: s.name,
-  }))
+  return safeJsonParse(textBlock.text).andThen((parsed) => {
+    if (!isListStrategiesResponseBody(parsed)) {
+      return err(
+        new StrategyCandidatesParseError('malformed list_strategies response'),
+      )
+    }
+    return ok(
+      parsed.strategies.map((s) => ({
+        strategyId: s.strategy_id,
+        name: s.name,
+      })),
+    )
+  })
 }
 
 export type FetchStrategyCandidates = () => Promise<
@@ -67,6 +108,10 @@ export type FetchStrategyCandidates = () => Promise<
 
 // Real wiring for production use; executor tests inject a fake
 // FetchStrategyCandidates directly instead of exercising this MCP plumbing.
+// Stays Promise/throw-based (rather than returning a ResultAsync) because
+// its MCP client needs a try/finally to guarantee close() runs, which is
+// itself an interop boundary concern; parseListStrategiesToolResult's
+// Result is handled internally via match().
 export const createStrategyCandidatesFetcher = (
   mgmtMcpUrl: string,
 ): FetchStrategyCandidates => {
@@ -77,22 +122,31 @@ export const createStrategyCandidatesFetcher = (
     try {
       const mcpClient = await client.getClient('mgmt')
       if (mcpClient === undefined) {
-        throw new Error('failed to connect to mgmt MCP server')
+        throw new StrategyCandidatesFetchError(
+          'failed to connect to mgmt MCP server',
+        )
       }
       const result = await mcpClient.callTool({
         name: 'list_strategies',
         arguments: {},
       })
       if (result.isError === true) {
-        throw new Error('list_strategies MCP tool call returned an error')
+        throw new StrategyCandidatesFetchError(
+          'list_strategies MCP tool call returned an error',
+        )
       }
-      return parseListStrategiesToolResult(result.content)
+      return parseListStrategiesToolResult(result.content).match(
+        (candidates) => candidates,
+        (error) => {
+          throw error
+        },
+      )
     } finally {
       // A close failure must not override the result/error already
       // determined above by discarding it in favor of this finally block's
       // own rejection.
       await client.close().catch((closeError: unknown) => {
-        console.error('failed to close mgmt MCP client:', closeError)
+        captureWithFingerprint(closeError, MGMT_MCP_CLIENT_CLOSE_FINGERPRINT)
       })
     }
   }

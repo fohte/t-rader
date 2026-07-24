@@ -7,6 +7,7 @@ import type {
   RequestContext,
   TaskStore,
 } from '@a2a-js/sdk/server'
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 
 import { extractMessageText } from '@/a2a/message-text'
 import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
@@ -18,6 +19,10 @@ import { resolveStrategy } from '@/strategy-resolution/resolve-strategy'
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const STRATEGY_RESOLUTION_FAILED_FINGERPRINT =
+  'a2a.executor.strategy-resolution-failed'
+const TURN_FAILED_FINGERPRINT = 'a2a.executor.turn-failed'
 
 export const extractStrategyId = (message: Message): string | undefined => {
   const raw = message.metadata?.['strategy_id']
@@ -180,6 +185,9 @@ export class TraderAgentExecutor implements AgentExecutor {
       try {
         candidates = await this.deps.fetchStrategyCandidates()
       } catch (error) {
+        captureWithFingerprint(error, STRATEGY_RESOLUTION_FAILED_FINGERPRINT, {
+          extras: { taskId, contextId },
+        })
         eventBus.publish({
           kind: 'status-update',
           taskId,
@@ -251,6 +259,9 @@ export class TraderAgentExecutor implements AgentExecutor {
         },
       } satisfies TaskStatusUpdateEvent)
     } catch (error) {
+      captureWithFingerprint(error, TURN_FAILED_FINGERPRINT, {
+        extras: { taskId, contextId },
+      })
       eventBus.publish({
         kind: 'status-update',
         taskId,

@@ -1,5 +1,6 @@
 import type { AgentCard, PushNotificationConfig } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { Hono } from 'hono'
 
 import { mountA2aRoutes } from '@/a2a/hono-bridge'
@@ -7,6 +8,8 @@ import type { Sql } from '@/db'
 import { pingDb } from '@/db'
 import { bearerAuth } from '@/internal-api/auth'
 import { mountInternalApiRoutes } from '@/internal-api/routes'
+
+const REQUEST_FAILED_FINGERPRINT = 'app.request-failed'
 
 export interface AppDeps {
   sql: Sql
@@ -24,6 +27,17 @@ const errorMessage = (err: unknown): string =>
 
 export const createApp = (deps: AppDeps): Hono => {
   const app = new Hono()
+
+  // Aggregated catch-all: an unexpected throw from any route (rather than
+  // one already converted to a JSON response, like the health checks and
+  // A2AError handling below) lands here exactly once.
+  app.onError((err, c) => {
+    console.error('request failed:', err)
+    captureWithFingerprint(err, REQUEST_FAILED_FINGERPRINT, {
+      extras: { path: c.req.path, method: c.req.method },
+    })
+    return c.json({ error: errorMessage(err) }, 500)
+  })
 
   // liveness/startup probe 用
   app.get('/health', (c) => c.json({ status: 'ok' }))
