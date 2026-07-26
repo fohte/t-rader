@@ -109,6 +109,7 @@ export class GenAiCallbackHandler extends BaseCallbackHandler {
       [ATTR_GEN_AI_REQUEST_MODEL]: model,
     })
     if (this.captureMessageContent) {
+      // eslint-disable-next-line no-restricted-syntax -- LangChain の callback ハンドラは throw できない契約のため
       try {
         span.setAttribute(
           ATTR_GEN_AI_INPUT_MESSAGES,
@@ -126,6 +127,7 @@ export class GenAiCallbackHandler extends BaseCallbackHandler {
     if (span === undefined) return
     this.spans.delete(runId)
 
+    // eslint-disable-next-line no-restricted-syntax -- LangChain の callback ハンドラは throw できない契約のため
     try {
       const generation = output.generations[0]?.[0]
       const generationInfo = generation?.generationInfo

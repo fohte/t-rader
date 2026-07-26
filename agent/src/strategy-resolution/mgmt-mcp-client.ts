@@ -118,9 +118,11 @@ export const createStrategyCandidatesFetcher = (
     const client = new MultiServerMCPClient({
       mcpServers: { mgmt: { url: mgmtMcpUrl } },
     })
+    // eslint-disable-next-line no-restricted-syntax -- client.close() を finally で必ず呼ぶため try/finally が必要
     try {
       const mcpClient = await client.getClient('mgmt')
       if (mcpClient === undefined) {
+        // eslint-disable-next-line no-restricted-syntax -- 上の try/finally 内、MCP 接続失敗
         throw new StrategyCandidatesFetchError(
           'failed to connect to mgmt MCP server',
         )
@@ -130,6 +132,7 @@ export const createStrategyCandidatesFetcher = (
         arguments: {},
       })
       if (result.isError === true) {
+        // eslint-disable-next-line no-restricted-syntax -- 上の try/finally 内、MCP ツール呼び出し失敗
         throw new StrategyCandidatesFetchError(
           'list_strategies MCP tool call returned an error',
         )
@@ -137,6 +140,7 @@ export const createStrategyCandidatesFetcher = (
       return parseListStrategiesToolResult(result.content).match(
         (candidates) => candidates,
         (error) => {
+          // eslint-disable-next-line no-restricted-syntax -- 上の try/finally 内、Result を throw で unwrap
           throw error
         },
       )

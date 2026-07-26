@@ -44,6 +44,7 @@ export const createApp = (deps: AppDeps): Hono => {
 
   // readiness probe 用
   app.get('/health/ready', async (c) => {
+    // eslint-disable-next-line no-restricted-syntax -- pingDb() の throw を readiness レスポンスに変換する境界
     try {
       await pingDb(deps.sql)
       return c.json({ status: 'ok' })

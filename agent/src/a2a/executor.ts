@@ -182,6 +182,7 @@ export class TraderAgentExecutor implements AgentExecutor {
       const latestText = extractMessageText(userMessage)
 
       let candidates: readonly StrategyCandidate[]
+      // eslint-disable-next-line no-restricted-syntax -- fetchStrategyCandidates は throw ベースの MCP client 実装
       try {
         candidates = await this.deps.fetchStrategyCandidates()
       } catch (error) {
@@ -240,6 +241,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     // but an unexpected rejection (e.g. MCP client construction throwing before
     // its own try/catch) must still resolve the task rather than leave it stuck
     // in working state with eventBus.finished() never called.
+    // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
       const result = await this.deps.runStrategyAgent(strategyId, promptMessage)
       eventBus.publish({

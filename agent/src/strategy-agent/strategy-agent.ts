@@ -123,6 +123,7 @@ export const runStrategyAgent = async (
 ): Promise<StrategyAgentResult> => {
   const mcpClient = deps.createMcpClient(strategyId)
 
+  // eslint-disable-next-line no-restricted-syntax -- LangGraph agent.invoke 等 throw ベースの外部呼び出しを StrategyAgentResult に変換する境界
   try {
     // fetchAgentConfig is awaited on its own (rather than via Promise.all)
     // so a fetch failure fails fast instead of waiting out
@@ -134,6 +135,7 @@ export const runStrategyAgent = async (
     const agentConfig = agentConfigResult.match(
       (config) => config,
       (error) => {
+        // eslint-disable-next-line no-restricted-syntax -- 直後の catch で StrategyAgentResult に変換するため、Result を throw で unwrap
         throw error
       },
     )

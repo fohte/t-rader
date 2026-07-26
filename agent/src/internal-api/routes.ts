@@ -74,6 +74,7 @@ export const mountInternalApiRoutes = (
 
   app.post('/internal/tasks', async (c) => {
     let rawBody: unknown
+    // eslint-disable-next-line no-restricted-syntax -- c.req.json() の throw を 400 レスポンスに変換する境界
     try {
       rawBody = await c.req.json()
     } catch {
@@ -112,6 +113,7 @@ export const mountInternalApiRoutes = (
 
   app.get('/internal/tasks/:taskId', async (c) => {
     const taskId = c.req.param('taskId')
+    // eslint-disable-next-line no-restricted-syntax -- requestHandler.getTask (A2A SDK、throw ベース) の例外をレスポンスに変換する境界
     try {
       const task = await requestHandler.getTask({ id: taskId })
       return c.json(toTaskResponse(task))
@@ -119,6 +121,7 @@ export const mountInternalApiRoutes = (
       if (isTaskNotFoundError(err)) {
         return c.json({ error: 'task not found' }, 404)
       }
+      // eslint-disable-next-line no-restricted-syntax -- タスク未検出以外は app.onError の catch-all に委ねるため再送出
       throw err
     }
   })

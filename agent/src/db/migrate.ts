@@ -6,10 +6,12 @@ import { EnvError } from '@/env'
 const main = async (): Promise<void> => {
   const databaseUrl = process.env['DATABASE_URL']
   if (databaseUrl === undefined || databaseUrl === '') {
+    // eslint-disable-next-line no-restricted-syntax -- init container のエントリポイント、fail fast
     throw new EnvError(['missing required env: DATABASE_URL'])
   }
 
   const sql = createSql(databaseUrl)
+  // eslint-disable-next-line no-restricted-syntax -- sql.end() を finally で必ず呼ぶため try/finally が必要
   try {
     await runMigrations(sql)
     console.log('migrations applied')
