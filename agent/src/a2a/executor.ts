@@ -11,6 +11,7 @@ import { captureWithFingerprint } from '@fohte/service-kit/observability'
 
 import { extractMessageText } from '@/a2a/message-text'
 import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
+import type { FetchStrategyCandidates } from '@/strategy-resolution/mgmt-mcp-client'
 import type {
   StrategyCandidate,
   StrategyResolution,
@@ -97,7 +98,7 @@ export interface TraderAgentExecutorDeps {
   // Looks up the current strategy list (via the backend's management MCP)
   // to resolve a strategy_id from free text when the caller doesn't supply
   // one via message metadata.
-  fetchStrategyCandidates: () => Promise<readonly StrategyCandidate[]>
+  fetchStrategyCandidates: FetchStrategyCandidates
 }
 
 // Validates strategy_id and drives the task through the A2A lifecycle,
@@ -181,14 +182,13 @@ export class TraderAgentExecutor implements AgentExecutor {
       // ambiguous) request would just dilute or re-tie the match.
       const latestText = extractMessageText(userMessage)
 
-      let candidates: readonly StrategyCandidate[]
-      // eslint-disable-next-line no-restricted-syntax -- fetchStrategyCandidates は throw ベースの MCP client 実装
-      try {
-        candidates = await this.deps.fetchStrategyCandidates()
-      } catch (error) {
-        captureWithFingerprint(error, STRATEGY_RESOLUTION_FAILED_FINGERPRINT, {
-          extras: { taskId, contextId },
-        })
+      const candidatesResult = await this.deps.fetchStrategyCandidates()
+      if (candidatesResult.isErr()) {
+        captureWithFingerprint(
+          candidatesResult.error,
+          STRATEGY_RESOLUTION_FAILED_FINGERPRINT,
+          { extras: { taskId, contextId } },
+        )
         eventBus.publish({
           kind: 'status-update',
           taskId,
@@ -198,7 +198,7 @@ export class TraderAgentExecutor implements AgentExecutor {
             state: 'failed',
             timestamp: new Date().toISOString(),
             message: buildAgentMessage(
-              errorMessage(error),
+              errorMessage(candidatesResult.error),
               taskId,
               contextId,
               'strategy_resolution_error',
@@ -209,7 +209,7 @@ export class TraderAgentExecutor implements AgentExecutor {
         return
       }
 
-      const resolution = resolveStrategy(candidates, latestText)
+      const resolution = resolveStrategy(candidatesResult.value, latestText)
       if (resolution.kind !== 'resolved') {
         eventBus.publish({
           kind: 'status-update',
@@ -239,8 +239,9 @@ export class TraderAgentExecutor implements AgentExecutor {
 
     // runStrategyAgent maps its own known failure modes to a StrategyAgentResult,
     // but an unexpected rejection (e.g. MCP client construction throwing before
-    // its own try/catch) must still resolve the task rather than leave it stuck
-    // in working state with eventBus.finished() never called.
+    // its internal Result chain even starts) must still resolve the task
+    // rather than leave it stuck in working state with eventBus.finished()
+    // never called.
     // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
       const result = await this.deps.runStrategyAgent(strategyId, promptMessage)

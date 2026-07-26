@@ -9,6 +9,7 @@ import type {
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { A2AError } from '@a2a-js/sdk/server'
 import type { Hono } from 'hono'
+import { ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
 const TASK_NOT_FOUND_ERROR_CODE = -32001
@@ -73,15 +74,15 @@ export const mountInternalApiRoutes = (
   const { requestHandler, pushNotificationConfig } = options
 
   app.post('/internal/tasks', async (c) => {
-    let rawBody: unknown
-    // eslint-disable-next-line no-restricted-syntax -- c.req.json() の throw を 400 レスポンスに変換する境界
-    try {
-      rawBody = await c.req.json()
-    } catch {
-      return c.json({ error: 'invalid JSON body' }, 400)
+    const rawBodyResult = await ResultAsync.fromPromise(
+      c.req.json(),
+      () => 'invalid JSON body' as const,
+    )
+    if (rawBodyResult.isErr()) {
+      return c.json({ error: rawBodyResult.error }, 400)
     }
 
-    const parsed = submitTaskBodySchema.safeParse(rawBody)
+    const parsed = submitTaskBodySchema.safeParse(rawBodyResult.value)
     if (!parsed.success) {
       return c.json(
         { error: 'invalid request body', issues: parsed.error.issues },
@@ -113,16 +114,19 @@ export const mountInternalApiRoutes = (
 
   app.get('/internal/tasks/:taskId', async (c) => {
     const taskId = c.req.param('taskId')
-    // eslint-disable-next-line no-restricted-syntax -- requestHandler.getTask (A2A SDK、throw ベース) の例外をレスポンスに変換する境界
-    try {
-      const task = await requestHandler.getTask({ id: taskId })
-      return c.json(toTaskResponse(task))
-    } catch (err) {
-      if (isTaskNotFoundError(err)) {
+    const taskResult = await ResultAsync.fromPromise(
+      requestHandler.getTask({ id: taskId }),
+      (err) => err,
+    )
+    if (taskResult.isErr()) {
+      if (isTaskNotFoundError(taskResult.error)) {
         return c.json({ error: 'task not found' }, 404)
       }
+      // Not task-not-found: rethrown so app.onError's catch-all handles
+      // logging/Sentry/500 the same as any other unexpected failure.
       // eslint-disable-next-line no-restricted-syntax -- タスク未検出以外は app.onError の catch-all に委ねるため再送出
-      throw err
+      throw taskResult.error
     }
+    return c.json(toTaskResponse(taskResult.value))
   })
 }

@@ -1,11 +1,13 @@
 import type { Message, Task } from '@a2a-js/sdk'
 import type { AgentExecutionEvent, ExecutionEventBus } from '@a2a-js/sdk/server'
 import { RequestContext } from '@a2a-js/sdk/server'
+import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '@/a2a/executor'
 import { extractStrategyId, TraderAgentExecutor } from '@/a2a/executor'
 import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
+import { StrategyCandidatesFetchError } from '@/strategy-resolution/mgmt-mcp-client'
 import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
 
 class FakeEventBus implements ExecutionEventBus {
@@ -93,7 +95,7 @@ describe('TraderAgentExecutor', () => {
     new TraderAgentExecutor({
       taskStore: { load: () => Promise.resolve(undefined) },
       runStrategyAgent: () => Promise.resolve(defaultStrategyAgentResult),
-      fetchStrategyCandidates: () => Promise.resolve(CANDIDATES),
+      fetchStrategyCandidates: () => okAsync(CANDIDATES),
       ...overrides,
     })
 
@@ -263,7 +265,7 @@ describe('TraderAgentExecutor', () => {
           } as Task),
       },
       runStrategyAgent: () => Promise.resolve(defaultStrategyAgentResult),
-      fetchStrategyCandidates: () => Promise.resolve(CANDIDATES),
+      fetchStrategyCandidates: () => okAsync(CANDIDATES),
     })
 
     await executor.cancelTask('task-4', eventBus)
@@ -393,7 +395,7 @@ describe('TraderAgentExecutor', () => {
 
     it('transitions to input-required with a dedicated message when there are no strategies to choose from', async () => {
       const executor = buildExecutor({
-        fetchStrategyCandidates: () => Promise.resolve([]),
+        fetchStrategyCandidates: () => okAsync([]),
       })
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(undefined, 'NVDAを分析して')
@@ -419,10 +421,10 @@ describe('TraderAgentExecutor', () => {
     // working) matters because there's no retry loop above the executor —
     // the only other way the task would ever settle is the watchdog's
     // timeout, minutes later.
-    it('fails immediately when fetchStrategyCandidates itself throws', async () => {
+    it('fails immediately when fetchStrategyCandidates returns an error', async () => {
       const executor = buildExecutor({
         fetchStrategyCandidates: () =>
-          Promise.reject(new Error('mgmt MCP unreachable')),
+          errAsync(new StrategyCandidatesFetchError('mgmt MCP unreachable')),
       })
       const eventBus = new FakeEventBus()
       const userMessage = buildUserMessage(

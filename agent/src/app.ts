@@ -2,6 +2,7 @@ import type { AgentCard, PushNotificationConfig } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { Hono } from 'hono'
+import { ResultAsync } from 'neverthrow'
 
 import { mountA2aRoutes } from '@/a2a/hono-bridge'
 import type { Sql } from '@/db'
@@ -44,13 +45,14 @@ export const createApp = (deps: AppDeps): Hono => {
 
   // readiness probe 用
   app.get('/health/ready', async (c) => {
-    // eslint-disable-next-line no-restricted-syntax -- pingDb() の throw を readiness レスポンスに変換する境界
-    try {
-      await pingDb(deps.sql)
-      return c.json({ status: 'ok' })
-    } catch (err) {
-      return c.json({ status: 'error', error: errorMessage(err) }, 503)
-    }
+    const pingResult = await ResultAsync.fromPromise(
+      pingDb(deps.sql),
+      (err) => err,
+    )
+    return pingResult.match(
+      () => c.json({ status: 'ok' }),
+      (err) => c.json({ status: 'error', error: errorMessage(err) }, 503),
+    )
   })
 
   app.use('/internal/*', bearerAuth(deps.internalApiToken))

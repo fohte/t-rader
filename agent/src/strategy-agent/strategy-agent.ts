@@ -7,6 +7,7 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
 import { createAgent, toolStrategy } from 'langchain'
+import { ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
 import { extractMessageText } from '@/a2a/message-text'
@@ -123,51 +124,15 @@ export const runStrategyAgent = async (
 ): Promise<StrategyAgentResult> => {
   const mcpClient = deps.createMcpClient(strategyId)
 
-  // eslint-disable-next-line no-restricted-syntax -- LangGraph agent.invoke 等 throw ベースの外部呼び出しを StrategyAgentResult に変換する境界
-  try {
-    // fetchAgentConfig is awaited on its own (rather than via Promise.all)
-    // so a fetch failure fails fast instead of waiting out
-    // mcpClient.getTools() first — ResultAsync.fromPromise never rejects,
-    // so Promise.all would otherwise wait for both to settle regardless of
-    // which one failed.
-    const toolsPromise = mcpClient.getTools()
-    const agentConfigResult = await deps.fetchAgentConfig(strategyId)
-    const agentConfig = agentConfigResult.match(
-      (config) => config,
-      (error) => {
-        // eslint-disable-next-line no-restricted-syntax -- 直後の catch で StrategyAgentResult に変換するため、Result を throw で unwrap
-        throw error
-      },
-    )
-    const tools = await toolsPromise
-
-    const agent = deps.buildAgent({
-      model: deps.createChatModel(agentConfig.model),
-      tools,
-      systemPrompt: buildSystemPrompt(agentConfig),
+  const closeMcpClient = (): Promise<void> =>
+    mcpClient.close().catch((closeError: unknown) => {
+      console.error('failed to close MCP client:', closeError)
+      captureWithFingerprint(closeError, MCP_CLIENT_CLOSE_FAILED_FINGERPRINT, {
+        extras: { strategyId },
+      })
     })
 
-    const result = await agent.invoke(
-      { messages: [new HumanMessage(extractMessageText(userMessage))] },
-      { callbacks: [deps.genAiCallbackHandler] },
-    )
-
-    if (result.structuredResponse === undefined) {
-      return {
-        status: 'failed',
-        message: 'agent did not return a structured response',
-        errorKind: 'agent_error',
-      }
-    }
-    if (result.structuredResponse.status === 'completed') {
-      return { status: 'completed', message: result.structuredResponse.message }
-    }
-    return {
-      status: 'failed',
-      message: result.structuredResponse.message,
-      errorKind: 'agent_error',
-    }
-  } catch (error) {
+  const toErrorResult = (error: unknown): StrategyAgentResult => {
     console.error('strategy agent execution failed:', error)
     captureWithFingerprint(error, EXECUTION_FAILED_FINGERPRINT, {
       extras: { strategyId },
@@ -184,15 +149,60 @@ export const runStrategyAgent = async (
       message: error instanceof Error ? error.message : String(error),
       errorKind: 'agent_error',
     }
-  } finally {
-    // A close failure must not override the result/error already
-    // determined above by discarding it in favor of this finally block's
-    // own rejection.
-    await mcpClient.close().catch((closeError: unknown) => {
-      console.error('failed to close MCP client:', closeError)
-      captureWithFingerprint(closeError, MCP_CLIENT_CLOSE_FAILED_FINGERPRINT, {
-        extras: { strategyId },
-      })
-    })
   }
+
+  // Started before fetchAgentConfig is awaited below so it's already in
+  // flight rather than sequenced after it.
+  const toolsResult = ResultAsync.fromPromise(
+    mcpClient.getTools(),
+    (error) => error,
+  )
+
+  // Chained via andThen (rather than Promise.all) so a fetchAgentConfig
+  // failure fails fast instead of waiting out toolsResult first —
+  // ResultAsync.fromPromise never rejects, so Promise.all would otherwise
+  // wait for both to settle regardless of which one failed.
+  const result = deps
+    .fetchAgentConfig(strategyId)
+    .andThen((agentConfig) =>
+      toolsResult.andThen((tools) => {
+        const agent = deps.buildAgent({
+          model: deps.createChatModel(agentConfig.model),
+          tools,
+          systemPrompt: buildSystemPrompt(agentConfig),
+        })
+        return ResultAsync.fromPromise(
+          agent.invoke(
+            { messages: [new HumanMessage(extractMessageText(userMessage))] },
+            { callbacks: [deps.genAiCallbackHandler] },
+          ),
+          (error) => error,
+        )
+      }),
+    )
+    .map((invokeResult): StrategyAgentResult => {
+      if (invokeResult.structuredResponse === undefined) {
+        return {
+          status: 'failed',
+          message: 'agent did not return a structured response',
+          errorKind: 'agent_error',
+        }
+      }
+      if (invokeResult.structuredResponse.status === 'completed') {
+        return {
+          status: 'completed',
+          message: invokeResult.structuredResponse.message,
+        }
+      }
+      return {
+        status: 'failed',
+        message: invokeResult.structuredResponse.message,
+        errorKind: 'agent_error',
+      }
+    })
+
+  // A close failure must not override the result/error already determined
+  // above by discarding it in favor of this finally block's own rejection
+  // — closeMcpClient() itself never rejects.
+  return result.match((r) => r, toErrorResult).finally(() => closeMcpClient())
 }

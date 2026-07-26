@@ -1,6 +1,6 @@
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
-import { err, ok, Result } from 'neverthrow'
+import { err, errAsync, ok, Result, ResultAsync } from 'neverthrow'
 
 import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
 
@@ -102,56 +102,64 @@ export const parseListStrategiesToolResult = (
   })
 }
 
-export type FetchStrategyCandidates = () => Promise<
-  readonly StrategyCandidate[]
+export type FetchStrategyCandidates = () => ResultAsync<
+  readonly StrategyCandidate[],
+  StrategyCandidatesFetchError | StrategyCandidatesParseError
 >
 
 // Real wiring for production use; executor tests inject a fake
 // FetchStrategyCandidates directly instead of exercising this MCP plumbing.
-// The MCP client's close() must run inside a try/finally, so this stays
-// throw-based; parseListStrategiesToolResult's Result is unwrapped
-// internally via match().
 export const createStrategyCandidatesFetcher = (
   mgmtMcpUrl: string,
 ): FetchStrategyCandidates => {
-  return async () => {
+  return () => {
     const client = new MultiServerMCPClient({
       mcpServers: { mgmt: { url: mgmtMcpUrl } },
     })
-    // eslint-disable-next-line no-restricted-syntax -- client.close() を finally で必ず呼ぶため try/finally が必要
-    try {
-      const mcpClient = await client.getClient('mgmt')
-      if (mcpClient === undefined) {
-        // eslint-disable-next-line no-restricted-syntax -- 上の try/finally 内、MCP 接続失敗
-        throw new StrategyCandidatesFetchError(
-          'failed to connect to mgmt MCP server',
-        )
-      }
-      const result = await mcpClient.callTool({
-        name: 'list_strategies',
-        arguments: {},
-      })
-      if (result.isError === true) {
-        // eslint-disable-next-line no-restricted-syntax -- 上の try/finally 内、MCP ツール呼び出し失敗
-        throw new StrategyCandidatesFetchError(
-          'list_strategies MCP tool call returned an error',
-        )
-      }
-      return parseListStrategiesToolResult(result.content).match(
-        (candidates) => candidates,
-        (error) => {
-          // eslint-disable-next-line no-restricted-syntax -- 上の try/finally 内、Result を throw で unwrap
-          throw error
-        },
-      )
-    } finally {
-      // A close failure must not override the result/error already
-      // determined above by discarding it in favor of this finally block's
-      // own rejection.
-      await client.close().catch((closeError: unknown) => {
+    const closeClient = (): Promise<void> =>
+      client.close().catch((closeError: unknown) => {
         console.error('failed to close mgmt MCP client:', closeError)
         captureWithFingerprint(closeError, MGMT_MCP_CLIENT_CLOSE_FINGERPRINT)
       })
-    }
+
+    const fetchCandidates = ResultAsync.fromPromise(
+      client.getClient('mgmt'),
+      (error) =>
+        new StrategyCandidatesFetchError(
+          'failed to connect to mgmt MCP server',
+          error,
+        ),
+    )
+      .andThen((mcpClient) =>
+        mcpClient === undefined
+          ? errAsync(
+              new StrategyCandidatesFetchError(
+                'failed to connect to mgmt MCP server',
+              ),
+            )
+          : ResultAsync.fromPromise(
+              mcpClient.callTool({ name: 'list_strategies', arguments: {} }),
+              (error) =>
+                new StrategyCandidatesFetchError(
+                  'list_strategies MCP tool call failed',
+                  error,
+                ),
+            ),
+      )
+      .andThen((toolResult) =>
+        toolResult.isError === true
+          ? errAsync(
+              new StrategyCandidatesFetchError(
+                'list_strategies MCP tool call returned an error',
+              ),
+            )
+          : parseListStrategiesToolResult(toolResult.content),
+      )
+
+    // closeClient() itself never rejects, so this finally can't override the
+    // result/error already determined above with a rejection of its own.
+    return new ResultAsync(
+      Promise.resolve(fetchCandidates).finally(() => closeClient()),
+    )
   }
 }
