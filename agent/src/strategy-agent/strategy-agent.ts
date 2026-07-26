@@ -151,58 +151,66 @@ export const runStrategyAgent = async (
     }
   }
 
-  // Started before fetchAgentConfig is awaited below so it's already in
-  // flight rather than sequenced after it.
-  const toolsResult = ResultAsync.fromPromise(
-    mcpClient.getTools(),
-    (error) => error,
-  )
+  // mcpClient is already constructed at this point, so chain construction
+  // itself throwing synchronously (e.g. getTools() or fetchAgentConfig)
+  // must still reach the .finally() below and close it. Wrapped in .then()
+  // (rather than relying on this function's own `async` to convert a
+  // synchronous throw to a rejection) makes that explicit.
+  return Promise.resolve()
+    .then(() => {
+      // Started before fetchAgentConfig is awaited below so it's already
+      // in flight rather than sequenced after it.
+      const toolsResult = ResultAsync.fromPromise(
+        mcpClient.getTools(),
+        (error) => error,
+      )
 
-  // Chained via andThen (rather than Promise.all) so a fetchAgentConfig
-  // failure fails fast instead of waiting out toolsResult first —
-  // ResultAsync.fromPromise never rejects, so Promise.all would otherwise
-  // wait for both to settle regardless of which one failed.
-  const result = deps
-    .fetchAgentConfig(strategyId)
-    .andThen((agentConfig) =>
-      toolsResult.andThen((tools) => {
-        const agent = deps.buildAgent({
-          model: deps.createChatModel(agentConfig.model),
-          tools,
-          systemPrompt: buildSystemPrompt(agentConfig),
-        })
-        return ResultAsync.fromPromise(
-          agent.invoke(
-            { messages: [new HumanMessage(extractMessageText(userMessage))] },
-            { callbacks: [deps.genAiCallbackHandler] },
-          ),
-          (error) => error,
+      // Chained via andThen (rather than Promise.all) so a fetchAgentConfig
+      // failure fails fast instead of waiting out toolsResult first —
+      // ResultAsync.fromPromise never rejects, so Promise.all would
+      // otherwise wait for both to settle regardless of which one failed.
+      return deps
+        .fetchAgentConfig(strategyId)
+        .andThen((agentConfig) =>
+          toolsResult.andThen((tools) => {
+            const agent = deps.buildAgent({
+              model: deps.createChatModel(agentConfig.model),
+              tools,
+              systemPrompt: buildSystemPrompt(agentConfig),
+            })
+            return ResultAsync.fromPromise(
+              agent.invoke(
+                {
+                  messages: [new HumanMessage(extractMessageText(userMessage))],
+                },
+                { callbacks: [deps.genAiCallbackHandler] },
+              ),
+              (error) => error,
+            )
+          }),
         )
-      }),
-    )
-    .map((invokeResult): StrategyAgentResult => {
-      if (invokeResult.structuredResponse === undefined) {
-        return {
-          status: 'failed',
-          message: 'agent did not return a structured response',
-          errorKind: 'agent_error',
-        }
-      }
-      if (invokeResult.structuredResponse.status === 'completed') {
-        return {
-          status: 'completed',
-          message: invokeResult.structuredResponse.message,
-        }
-      }
-      return {
-        status: 'failed',
-        message: invokeResult.structuredResponse.message,
-        errorKind: 'agent_error',
-      }
+        .map((invokeResult): StrategyAgentResult => {
+          if (invokeResult.structuredResponse === undefined) {
+            return {
+              status: 'failed',
+              message: 'agent did not return a structured response',
+              errorKind: 'agent_error',
+            }
+          }
+          if (invokeResult.structuredResponse.status === 'completed') {
+            return {
+              status: 'completed',
+              message: invokeResult.structuredResponse.message,
+            }
+          }
+          return {
+            status: 'failed',
+            message: invokeResult.structuredResponse.message,
+            errorKind: 'agent_error',
+          }
+        })
+        .match((r) => r, toErrorResult)
     })
-
-  // A close failure must not override the result/error already determined
-  // above by discarding it in favor of this finally block's own rejection
-  // — closeMcpClient() itself never rejects.
-  return result.match((r) => r, toErrorResult).finally(() => closeMcpClient())
+    .catch((error: unknown) => toErrorResult(error))
+    .finally(() => closeMcpClient())
 }

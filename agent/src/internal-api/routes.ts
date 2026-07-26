@@ -124,7 +124,7 @@ export const mountInternalApiRoutes = (
       }
       // Not task-not-found: rethrown so app.onError's catch-all handles
       // logging/Sentry/500 the same as any other unexpected failure.
-      // eslint-disable-next-line no-restricted-syntax -- タスク未検出以外は app.onError の catch-all に委ねるため再送出
+      // eslint-disable-next-line no-restricted-syntax -- 上記の通り、タスク未検出以外は再送出
       throw taskResult.error
     }
     return c.json(toTaskResponse(taskResult.value))

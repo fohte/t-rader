@@ -107,15 +107,30 @@ export type FetchStrategyCandidates = () => ResultAsync<
   StrategyCandidatesFetchError | StrategyCandidatesParseError
 >
 
+// MultiServerMCPClient's constructor validates its config synchronously
+// (zod parse), so this stays on the Result channel rather than letting a
+// bad mgmtMcpUrl throw before any client exists to close.
+const buildMgmtClient = Result.fromThrowable(
+  (mgmtMcpUrl: string) =>
+    new MultiServerMCPClient({ mcpServers: { mgmt: { url: mgmtMcpUrl } } }),
+  (error): StrategyCandidatesFetchError =>
+    new StrategyCandidatesFetchError(
+      'failed to construct mgmt MCP client',
+      error,
+    ),
+)
+
 // Real wiring for production use; executor tests inject a fake
 // FetchStrategyCandidates directly instead of exercising this MCP plumbing.
 export const createStrategyCandidatesFetcher = (
   mgmtMcpUrl: string,
 ): FetchStrategyCandidates => {
   return () => {
-    const client = new MultiServerMCPClient({
-      mcpServers: { mgmt: { url: mgmtMcpUrl } },
-    })
+    const clientResult = buildMgmtClient(mgmtMcpUrl)
+    if (clientResult.isErr()) {
+      return errAsync(clientResult.error)
+    }
+    const client = clientResult.value
     const closeClient = (): Promise<void> =>
       client.close().catch((closeError: unknown) => {
         console.error('failed to close mgmt MCP client:', closeError)
