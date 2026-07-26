@@ -1,6 +1,10 @@
+import { err, ok } from 'neverthrow'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createAgentConfigFetcher } from '@/strategy-agent/agent-config-client'
+import {
+  AgentConfigFetchError,
+  createAgentConfigFetcher,
+} from '@/strategy-agent/agent-config-client'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -26,73 +30,106 @@ describe('createAgentConfigFetcher', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const config = await fetchAgentConfig('strategy-1')
+    const result = await fetchAgentConfig('strategy-1')
 
-    expect(config).toEqual({
-      agentsMd: '# AGENTS',
-      skills: { 'ja-stock': 'skill body' },
-      model: 'opencode-go/minimax-m3',
-      smallModel: 'opencode-go/deepseek-v4-flash',
-    })
+    expect(result).toEqual(
+      ok({
+        agentsMd: '# AGENTS',
+        skills: { 'ja-stock': 'skill body' },
+        model: 'opencode-go/minimax-m3',
+        smallModel: 'opencode-go/deepseek-v4-flash',
+      }),
+    )
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'http://backend/api/strategies/strategy-1/agent-config',
     )
   })
 
-  it('throws with the strategy id and status when the backend responds with an error', async () => {
+  it('returns an error when fetch itself rejects', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new Error('network down'))),
+    )
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const result = await fetchAgentConfig('strategy-1')
+
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'failed to fetch agent config for strategy strategy-1',
+        ),
+      ),
+    )
+  })
+
+  it('returns an error with the strategy id and status when the backend responds with an error', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.resolve(new Response('not found', { status: 404 }))),
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const result = await fetchAgentConfig('missing-strategy')
 
-    await expect(fetchAgentConfig('missing-strategy')).rejects.toThrow(
-      'failed to fetch agent config for strategy missing-strategy: 404',
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'failed to fetch agent config for strategy missing-strategy: 404',
+        ),
+      ),
     )
   })
 
-  it('throws when the response body does not match the expected shape', async () => {
+  it('returns an error when the response body is not valid JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('not json', { status: 200 }))),
+    )
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const result = await fetchAgentConfig('strategy-1')
+
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'failed to parse agent-config response body for strategy strategy-1',
+        ),
+      ),
+    )
+  })
+
+  it.each([
+    {
+      name: 'the response body does not match the expected shape',
+      body: { agents_md: '# AGENTS' },
+    },
+    {
+      name: 'skills is an array instead of a record',
+      body: {
+        agents_md: '# AGENTS',
+        skills: ['ja-stock'],
+        model: 'opencode-go/minimax-m3',
+        small_model: 'opencode-go/deepseek-v4-flash',
+      },
+    },
+  ])('returns an error when $name', async ({ body }) => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ agents_md: '# AGENTS' }), {
-            status: 200,
-          }),
-        ),
+        Promise.resolve(new Response(JSON.stringify(body), { status: 200 })),
       ),
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const result = await fetchAgentConfig('strategy-1')
 
-    await expect(fetchAgentConfig('strategy-1')).rejects.toThrow(
-      'malformed agent-config response for strategy strategy-1',
-    )
-  })
-
-  it('throws when skills is an array instead of a record', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              agents_md: '# AGENTS',
-              skills: ['ja-stock'],
-              model: 'opencode-go/minimax-m3',
-              small_model: 'opencode-go/deepseek-v4-flash',
-            }),
-            { status: 200 },
-          ),
+    expect(result).toEqual(
+      err(
+        new AgentConfigFetchError(
+          'malformed agent-config response for strategy strategy-1: expected agents_md/model/small_model strings and a skills map of strings',
         ),
       ),
-    )
-
-    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-
-    await expect(fetchAgentConfig('strategy-1')).rejects.toThrow(
-      'malformed agent-config response for strategy strategy-1',
     )
   })
 })

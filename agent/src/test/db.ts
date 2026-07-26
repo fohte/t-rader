@@ -8,6 +8,7 @@ export const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL']
 if (TEST_DATABASE_URL !== undefined) {
   const host = new URL(TEST_DATABASE_URL).hostname
   if (!LOCAL_HOSTS.has(host)) {
+    // eslint-disable-next-line no-restricted-syntax -- TEST_DATABASE_URL の安全ガード、fail fast
     throw new Error(
       `TEST_DATABASE_URL must point at a local Postgres (got host: ${host}); ` +
         `the test setup runs DROP SCHEMA CASCADE`,
@@ -27,6 +28,7 @@ let pool: postgres.Sql | null = null
 const getPool = (): postgres.Sql => {
   if (pool === null) {
     if (TEST_DATABASE_URL === undefined) {
+      // eslint-disable-next-line no-restricted-syntax -- describeIfDb でスキップされるはずの呼び出しが紛れ込んだ場合の fail fast
       throw new Error('TEST_DATABASE_URL is not set')
     }
     pool = postgres(TEST_DATABASE_URL, { max: 8, onnotice: () => {} })
@@ -61,6 +63,7 @@ export const setupTx = (): (() => postgres.Sql) => {
     const r = reserved
     reserved = null
     if (r !== null) {
+      // eslint-disable-next-line no-restricted-syntax -- release() を finally で必ず呼ぶため try/finally が必要
       try {
         await r.unsafe('ROLLBACK')
       } finally {
@@ -71,6 +74,7 @@ export const setupTx = (): (() => postgres.Sql) => {
 
   return () => {
     if (reserved === null) {
+      // eslint-disable-next-line no-restricted-syntax -- テスト外からのアクセス防止、fail fast
       throw new Error('tx accessed outside a test (call setupTx in describe)')
     }
     return reserved

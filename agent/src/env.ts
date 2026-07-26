@@ -101,6 +101,7 @@ export const loadEnv = (
   }
 
   if (issues.length > 0) {
+    // eslint-disable-next-line no-restricted-syntax -- 起動時の env 検証、fail fast
     throw new EnvError(issues)
   }
 

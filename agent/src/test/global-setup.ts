@@ -8,6 +8,7 @@ export default async function setup(): Promise<void> {
   if (url === undefined) return
 
   const sql = postgres(url, { max: 2, onnotice: () => {} })
+  // eslint-disable-next-line no-restricted-syntax -- sql.end() を finally で必ず呼ぶため try/finally が必要
   try {
     await sql.unsafe('DROP SCHEMA IF EXISTS public CASCADE')
     await sql.unsafe('DROP SCHEMA IF EXISTS drizzle CASCADE')

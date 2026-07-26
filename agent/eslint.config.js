@@ -1,7 +1,10 @@
 import { config } from '@fohte/eslint-config'
 
 export default config(
-  { typescript: { typeChecked: true } },
+  {
+    typescript: { typeChecked: true },
+    errorHandling: {},
+  },
   {
     rules: {
       'no-restricted-imports': [

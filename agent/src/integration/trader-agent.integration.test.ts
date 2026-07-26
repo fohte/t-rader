@@ -3,6 +3,7 @@ import {
   DefaultRequestHandler,
 } from '@a2a-js/sdk/server'
 import type { Hono } from 'hono'
+import { errAsync } from 'neverthrow'
 import { expect, it } from 'vitest'
 
 import { buildAgentCard } from '@/a2a/agent-card'
@@ -10,6 +11,7 @@ import { TraderAgentExecutor } from '@/a2a/executor'
 import { PostgresPushNotificationStore } from '@/a2a/postgres-push-notification-store'
 import { PostgresTaskStore } from '@/a2a/postgres-task-store'
 import { createApp } from '@/app'
+import { StrategyCandidatesFetchError } from '@/strategy-resolution/mgmt-mcp-client'
 import { describeIfDb, setupDrizzleTx } from '@/test/db'
 
 interface TaskResponse {
@@ -71,8 +73,10 @@ describeIfDb('t-rader-agent internal API integration', () => {
       // Every request in this suite carries strategy_id metadata (internal
       // API always sets it), so strategy resolution is never exercised.
       fetchStrategyCandidates: () =>
-        Promise.reject(
-          new Error('not used: strategy_id metadata is always set'),
+        errAsync(
+          new StrategyCandidatesFetchError(
+            'not used: strategy_id metadata is always set',
+          ),
         ),
     })
     const requestHandler = new DefaultRequestHandler(
