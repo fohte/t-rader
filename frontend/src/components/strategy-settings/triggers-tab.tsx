@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Result } from 'neverthrow'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '#components/ui/button'
@@ -7,6 +6,7 @@ import { Input } from '#components/ui/input'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
+import { parseJson } from '#lib/json'
 
 type Trigger = components['schemas']['Trigger']
 type TriggerKind = components['schemas']['TriggerKind']
@@ -62,10 +62,6 @@ interface ValidationResult {
   error: string | null
   eventMatch?: Record<string, unknown> | null
 }
-
-const parseJson = Result.fromThrowable((raw: string): unknown =>
-  JSON.parse(raw),
-)
 
 function validateForm(form: FormState): ValidationResult {
   if (form.promptTemplate.trim() === '') {

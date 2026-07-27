@@ -12,6 +12,7 @@ import {
 import { Button } from '#components/ui/button'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api, fetchClient } from '#lib/api/client'
+import { parseJson } from '#lib/json'
 
 interface IndicatorsPageProps {
   scope: IndicatorScopeLabel
@@ -47,10 +48,6 @@ function modelToForm(m: IndicatorModel): IndicatorEditorValue {
     description: m.description ?? '',
   }
 }
-
-const parseJson = Result.fromThrowable((raw: string): unknown =>
-  JSON.parse(raw),
-)
 
 export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
   const queryClient = useQueryClient()

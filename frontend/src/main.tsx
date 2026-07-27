@@ -26,16 +26,15 @@ declare module '@tanstack/react-router' {
 }
 
 const rootElement = document.getElementById('root')
-if (!rootElement) {
-  // eslint-disable-next-line no-restricted-syntax -- 起動時の fatal invariant。#root がなければ描画自体できず、Result を返す先がない
-  throw new Error('Root element not found')
+if (rootElement) {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+} else {
+  console.error('Root element not found')
 }
-
-createRoot(rootElement).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
-  </StrictMode>,
-)
