@@ -5,20 +5,4 @@ export default config(
     typescript: { typeChecked: true },
     errorHandling: {},
   },
-  {
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['./*', '../*'],
-              message:
-                'Please use absolute imports instead of relative imports.',
-            },
-          ],
-        },
-      ],
-    },
-  },
 )
