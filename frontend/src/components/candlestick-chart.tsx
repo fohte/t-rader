@@ -14,8 +14,8 @@ import {
 } from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
 
-import type { components } from '@/lib/api/schema.gen'
-import { toCandlestickData, toVolumeData } from '@/lib/chart-utils'
+import type { components } from '#lib/api/schema.gen'
+import { toCandlestickData, toVolumeData } from '#lib/chart-utils'
 
 type Bar = components['schemas']['Bar']
 

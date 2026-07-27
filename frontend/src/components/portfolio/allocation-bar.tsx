@@ -1,4 +1,4 @@
-import { formatYen } from '@/components/trades/format'
+import { formatYen } from '#components/trades/format'
 
 export interface AllocationSegment {
   key: string

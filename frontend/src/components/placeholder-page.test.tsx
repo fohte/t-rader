@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { History } from 'lucide-react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { PlaceholderPage } from '@/components/placeholder-page'
+import { PlaceholderPage } from '#components/placeholder-page'
 
 afterEach(cleanup)
 

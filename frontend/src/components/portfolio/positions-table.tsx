@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
-import { formatYen, pnlColorClass } from '@/components/trades/format'
-import type { components } from '@/lib/api/schema.gen'
+import { formatYen, pnlColorClass } from '#components/trades/format'
+import type { components } from '#lib/api/schema.gen'
 
 type PositionSummary = components['schemas']['PositionSummary']
 type Stock = components['schemas']['Stock']

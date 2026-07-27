@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router'
 
-import { StatusPill } from '@/components/strategy-home/status-pill'
-import type { components } from '@/lib/api/schema.gen'
-import { formatRelative } from '@/lib/note-utils'
+import { StatusPill } from '#components/strategy-home/status-pill'
+import type { components } from '#lib/api/schema.gen'
+import { formatRelative } from '#lib/note-utils'
 
 type Note = components['schemas']['Note']
 

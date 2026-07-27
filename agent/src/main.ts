@@ -4,22 +4,22 @@ import {
 } from '@a2a-js/sdk/server'
 import { serve } from '@hono/node-server'
 
-import { buildAgentCard } from '@/a2a/agent-card'
-import { TraderAgentExecutor } from '@/a2a/executor'
-import { startTaskLifecycleJobs } from '@/a2a/lifecycle'
-import { PostgresPushNotificationStore } from '@/a2a/postgres-push-notification-store'
-import { PostgresTaskStore } from '@/a2a/postgres-task-store'
-import { createApp } from '@/app'
-import { observability } from '@/bootstrap'
-import { createSql, pingDb } from '@/db'
-import { runMigrations } from '@/db/migrations'
-import { loadEnv } from '@/env'
-import { GenAiCallbackHandler } from '@/genai/genai-callback-handler'
+import { buildAgentCard } from '#a2a/agent-card'
+import { TraderAgentExecutor } from '#a2a/executor'
+import { startTaskLifecycleJobs } from '#a2a/lifecycle'
+import { PostgresPushNotificationStore } from '#a2a/postgres-push-notification-store'
+import { PostgresTaskStore } from '#a2a/postgres-task-store'
+import { createApp } from '#app'
+import { observability } from '#bootstrap'
+import { createSql, pingDb } from '#db'
+import { runMigrations } from '#db/migrations'
+import { loadEnv } from '#env'
+import { GenAiCallbackHandler } from '#genai/genai-callback-handler'
 import {
   createStrategyAgentDeps,
   runStrategyAgent,
-} from '@/strategy-agent/strategy-agent'
-import { createStrategyCandidatesFetcher } from '@/strategy-resolution/mgmt-mcp-client'
+} from '#strategy-agent/strategy-agent'
+import { createStrategyCandidatesFetcher } from '#strategy-resolution/mgmt-mcp-client'
 
 const GEN_AI_PROVIDER_NAME = 'opencode'
 

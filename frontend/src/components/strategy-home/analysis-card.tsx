@@ -1,11 +1,11 @@
 import { Link } from '@tanstack/react-router'
 
-import { StatusPill } from '@/components/strategy-home/status-pill'
-import { TriggerTag } from '@/components/strategy-home/trigger-tag'
-import { openFloatingChat } from '@/components/strategy-shell/floating-chat-store'
-import { RefChip } from '@/components/strategy-shell/ref-chip'
-import type { components } from '@/lib/api/schema.gen'
-import { buildSnippet, extractRefs, formatRelative } from '@/lib/note-utils'
+import { StatusPill } from '#components/strategy-home/status-pill'
+import { TriggerTag } from '#components/strategy-home/trigger-tag'
+import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
+import { RefChip } from '#components/strategy-shell/ref-chip'
+import type { components } from '#lib/api/schema.gen'
+import { buildSnippet, extractRefs, formatRelative } from '#lib/note-utils'
 
 type Note = components['schemas']['Note']
 

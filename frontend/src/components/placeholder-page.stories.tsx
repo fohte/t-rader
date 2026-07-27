@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { History, NotebookPen } from 'lucide-react'
 
-import { PlaceholderPage } from '@/components/placeholder-page'
+import { PlaceholderPage } from '#components/placeholder-page'
 
 const meta = {
   title: 'Components/PlaceholderPage',

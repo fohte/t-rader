@@ -1,4 +1,4 @@
-import type { components } from '@/lib/api/schema.gen'
+import type { components } from '#lib/api/schema.gen'
 
 type Annotation = components['schemas']['Annotation']
 

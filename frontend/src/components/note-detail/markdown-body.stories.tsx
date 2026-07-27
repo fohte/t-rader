@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { MarkdownBody } from '@/components/note-detail/markdown-body'
+import { MarkdownBody } from '#components/note-detail/markdown-body'
 
 const SAMPLE = `# SUMCO レンジ回帰の確度評価
 

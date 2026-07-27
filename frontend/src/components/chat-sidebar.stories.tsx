@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 
-import { ChatSidebar } from '@/components/chat-sidebar'
+import { ChatSidebar } from '#components/chat-sidebar'
 
 const meta = {
   title: 'Components/ChatSidebar',

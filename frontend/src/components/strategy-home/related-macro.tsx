@@ -1,4 +1,4 @@
-import { type MacroTick, useMacroTicks } from '@/lib/use-macro-ticks'
+import { type MacroTick, useMacroTicks } from '#lib/use-macro-ticks'
 
 interface RelatedMacroProps {
   // 戦略の関心から抽出した indicator id 一覧

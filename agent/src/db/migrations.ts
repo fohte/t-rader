@@ -3,7 +3,7 @@ import path from 'node:path'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 
-import type { Sql } from '@/db'
+import type { Sql } from '#db'
 
 // import.meta.url-relative resolution breaks once this module is bundled: a
 // bundler may place the compiled output at a different directory depth than

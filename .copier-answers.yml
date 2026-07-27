@@ -7,11 +7,11 @@ monorepo_node_workspace: false
 project_name: t-rader
 repo_language: ja
 subpackages:
--   name: frontend
+  - name: frontend
     type: node
--   name: backend
+  - name: backend
     type: rust
--   name: agent
+  - name: agent
     type: node
     web_app: true
 type: base

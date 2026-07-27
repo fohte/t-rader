@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 
-import { bearerAuth } from '@/internal-api/auth'
+import { bearerAuth } from '#internal-api/auth'
 
 const buildApp = (token: string): Hono => {
   const app = new Hono()

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 
-import { CodeEditor } from '@/components/indicators/code-editor'
+import { CodeEditor } from '#components/indicators/code-editor'
 
 const meta = {
   title: 'Indicators/CodeEditor',

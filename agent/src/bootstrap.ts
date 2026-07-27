@@ -10,7 +10,7 @@ import {
   type ObservabilityHandle,
 } from '@fohte/service-kit/observability'
 
-import { createJsonStdoutLogger } from '@/logger'
+import { createJsonStdoutLogger } from '#logger'
 
 const jsonLogger = createJsonStdoutLogger()
 const observabilityLogger = {

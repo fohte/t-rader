@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { TriggerTag } from '@/components/strategy-home/trigger-tag'
+import { TriggerTag } from '#components/strategy-home/trigger-tag'
 
 const meta = {
   title: 'StrategyHome/TriggerTag',

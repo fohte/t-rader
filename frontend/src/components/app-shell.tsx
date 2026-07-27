@@ -1,16 +1,16 @@
 import { MessageSquare } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
-import { AppSidebar } from '@/components/app-sidebar'
-import { ChatSidebar } from '@/components/chat-sidebar'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
+import { AppSidebar } from '#components/app-sidebar'
+import { ChatSidebar } from '#components/chat-sidebar'
+import { Button } from '#components/ui/button'
+import { Separator } from '#components/ui/separator'
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from '@/components/ui/sidebar'
-import { TooltipProvider } from '@/components/ui/tooltip'
+} from '#components/ui/sidebar'
+import { TooltipProvider } from '#components/ui/tooltip'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [isChatOpen, setIsChatOpen] = useState(false)

@@ -11,9 +11,9 @@ import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { SKILL_NAME_ERROR_INVALID } from '@/components/strategy-settings/skill-name'
-import { SkillsTab } from '@/components/strategy-settings/skills-tab'
-import { fetchClient } from '@/lib/api/client'
+import { SKILL_NAME_ERROR_INVALID } from '#components/strategy-settings/skill-name'
+import { SkillsTab } from '#components/strategy-settings/skills-tab'
+import { fetchClient } from '#lib/api/client'
 
 interface SkillStore {
   [name: string]: string

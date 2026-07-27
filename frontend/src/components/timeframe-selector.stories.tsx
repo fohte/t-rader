@@ -5,7 +5,7 @@ import { fn } from 'storybook/test'
 import {
   type Timeframe,
   TimeframeSelector,
-} from '@/components/timeframe-selector'
+} from '#components/timeframe-selector'
 
 const meta = {
   title: 'Components/TimeframeSelector',

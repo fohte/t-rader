@@ -2,7 +2,7 @@ import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { err, errAsync, ok, Result, ResultAsync } from 'neverthrow'
 
-import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
+import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
 
 export class StrategyCandidatesParseError extends Error {
   constructor(message: string, cause?: unknown) {

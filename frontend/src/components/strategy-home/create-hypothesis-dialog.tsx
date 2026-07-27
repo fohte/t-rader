@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -9,9 +9,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { $api } from '@/lib/api/client'
+} from '#components/ui/dialog'
+import { Input } from '#components/ui/input'
+import { $api } from '#lib/api/client'
 
 interface CreateHypothesisDialogProps {
   strategyId: string

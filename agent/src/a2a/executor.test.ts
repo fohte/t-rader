@@ -4,11 +4,11 @@ import { RequestContext } from '@a2a-js/sdk/server'
 import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 
-import type { TraderAgentExecutorDeps } from '@/a2a/executor'
-import { extractStrategyId, TraderAgentExecutor } from '@/a2a/executor'
-import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
-import { StrategyCandidatesFetchError } from '@/strategy-resolution/mgmt-mcp-client'
-import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
+import type { TraderAgentExecutorDeps } from '#a2a/executor'
+import { extractStrategyId, TraderAgentExecutor } from '#a2a/executor'
+import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
+import { StrategyCandidatesFetchError } from '#strategy-resolution/mgmt-mcp-client'
+import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
 
 class FakeEventBus implements ExecutionEventBus {
   public readonly events: AgentExecutionEvent[] = []

@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { useLastVisited } from '@/components/strategy-home/use-last-visited'
+import { useLastVisited } from '#components/strategy-home/use-last-visited'
 
 describe('useLastVisited', () => {
   beforeEach(() => {

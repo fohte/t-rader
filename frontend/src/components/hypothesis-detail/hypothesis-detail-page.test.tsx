@@ -11,9 +11,9 @@ import userEvent from '@testing-library/user-event'
 import type { Middleware } from 'openapi-fetch'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { HypothesisDetailPage } from '@/components/hypothesis-detail/hypothesis-detail-page'
-import { fetchClient } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { HypothesisDetailPage } from '#components/hypothesis-detail/hypothesis-detail-page'
+import { fetchClient } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Hypothesis = components['schemas']['Hypothesis']
 

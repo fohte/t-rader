@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { HypothesisDetailPage } from '@/components/hypothesis-detail/hypothesis-detail-page'
+import { HypothesisDetailPage } from '#components/hypothesis-detail/hypothesis-detail-page'
 
 export const Route = createFileRoute(
   '/strategies/$id/hypotheses/$hypothesisId',

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-import { RssFeedDialog } from '@/components/settings/rss-feed-dialog'
+import { RssFeedDialog } from '#components/settings/rss-feed-dialog'
 
 const queryClient = new QueryClient()
 

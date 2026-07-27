@@ -4,7 +4,7 @@ import type {
   UTCTimestamp,
 } from 'lightweight-charts'
 
-import type { components } from '@/lib/api/schema.gen'
+import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 

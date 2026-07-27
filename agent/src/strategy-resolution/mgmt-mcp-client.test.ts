@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseListStrategiesToolResult,
   StrategyCandidatesParseError,
-} from '@/strategy-resolution/mgmt-mcp-client'
+} from '#strategy-resolution/mgmt-mcp-client'
 
 describe('parseListStrategiesToolResult', () => {
   it('maps a well-formed list_strategies text content to candidates', () => {

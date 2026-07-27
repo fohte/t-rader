@@ -1,14 +1,14 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useRef, useState } from 'react'
 
-import { CommentsPanel } from '@/components/note-detail/comments-panel'
-import { HistoryPanel } from '@/components/note-detail/history-panel'
-import { NoteDocument } from '@/components/note-detail/note-document'
-import { NoteHeader } from '@/components/note-detail/note-header'
-import { ReviewPanel } from '@/components/note-detail/review-panel'
-import { openFloatingChat } from '@/components/strategy-shell/floating-chat-store'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
+import { CommentsPanel } from '#components/note-detail/comments-panel'
+import { HistoryPanel } from '#components/note-detail/history-panel'
+import { NoteDocument } from '#components/note-detail/note-document'
+import { NoteHeader } from '#components/note-detail/note-header'
+import { ReviewPanel } from '#components/note-detail/review-panel'
+import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/strategies/$id/notes/$noteId')({
   component: NoteDetailPage,

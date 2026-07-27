@@ -2,8 +2,8 @@ import type { AgentCard, Task } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { describe, expect, it } from 'vitest'
 
-import { createApp } from '@/app'
-import type { Sql } from '@/db'
+import { createApp } from '#app'
+import type { Sql } from '#db'
 
 const notImplemented = (): never => {
   throw new Error('not implemented in test stub')

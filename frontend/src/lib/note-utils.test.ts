@@ -5,7 +5,7 @@ import {
   extractRefs,
   formatRelative,
   isNewerThan,
-} from '@/lib/note-utils'
+} from '#lib/note-utils'
 
 describe('extractRefs', () => {
   it('returns frontmatter refs when present', () => {

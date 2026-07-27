@@ -10,11 +10,11 @@ import { createAgent, toolStrategy } from 'langchain'
 import { ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
-import { extractMessageText } from '@/a2a/message-text'
-import type { FetchAgentConfig } from '@/strategy-agent/agent-config-client'
-import { createAgentConfigFetcher } from '@/strategy-agent/agent-config-client'
-import { buildSystemPrompt } from '@/strategy-agent/system-prompt'
-import { isUsageLimitError } from '@/strategy-agent/usage-limit'
+import { extractMessageText } from '#a2a/message-text'
+import type { FetchAgentConfig } from '#strategy-agent/agent-config-client'
+import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
+import { buildSystemPrompt } from '#strategy-agent/system-prompt'
+import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
 // OpenCode Go's OpenAI-compatible endpoint.
 const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'

@@ -2,13 +2,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
-import { AddInstrumentForm } from '@/components/add-instrument-form'
-import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
-import { WatchlistItemList } from '@/components/watchlist-item-list'
-import { WatchlistSelector } from '@/components/watchlist-selector'
-import { useInstrumentNames } from '@/hooks/use-instrument-names'
-import { $api } from '@/lib/api/client'
+import { AddInstrumentForm } from '#components/add-instrument-form'
+import { Separator } from '#components/ui/separator'
+import { Skeleton } from '#components/ui/skeleton'
+import { WatchlistItemList } from '#components/watchlist-item-list'
+import { WatchlistSelector } from '#components/watchlist-selector'
+import { useInstrumentNames } from '#hooks/use-instrument-names'
+import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/watchlist')({
   component: WatchlistPage,

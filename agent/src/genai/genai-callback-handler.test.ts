@@ -32,7 +32,7 @@ import {
   it,
 } from 'vitest'
 
-import { GenAiCallbackHandler } from '@/genai/genai-callback-handler'
+import { GenAiCallbackHandler } from '#genai/genai-callback-handler'
 
 const exporter = new InMemorySpanExporter()
 const provider = new BasicTracerProvider({

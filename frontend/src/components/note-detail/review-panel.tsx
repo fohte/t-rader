@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 
-import { StatusPill } from '@/components/strategy-home/status-pill'
-import { $api } from '@/lib/api/client'
+import { StatusPill } from '#components/strategy-home/status-pill'
+import { $api } from '#lib/api/client'
 
 interface ReviewPanelProps {
   noteId: string

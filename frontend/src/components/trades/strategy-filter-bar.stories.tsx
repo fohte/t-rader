@@ -4,8 +4,8 @@ import { useState } from 'react'
 import {
   type StrategyFilter,
   StrategyFilterBar,
-} from '@/components/trades/strategy-filter-bar'
-import type { components } from '@/lib/api/schema.gen'
+} from '#components/trades/strategy-filter-bar'
+import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
 type Trade = components['schemas']['Trade']

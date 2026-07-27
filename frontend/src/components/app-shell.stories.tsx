@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
-import { AppShell } from '@/components/app-shell'
+import { AppShell } from '#components/app-shell'
 
 function createStoryRouter(children: ReactNode) {
   const rootRoute = createRootRoute({

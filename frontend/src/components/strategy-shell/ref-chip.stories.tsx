@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { RefChip } from '@/components/strategy-shell/ref-chip'
+import { RefChip } from '#components/strategy-shell/ref-chip'
 
 const meta = {
   title: 'StrategyShell/RefChip',

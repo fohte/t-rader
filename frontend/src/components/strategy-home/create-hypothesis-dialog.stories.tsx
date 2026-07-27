@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-import { CreateHypothesisDialog } from '@/components/strategy-home/create-hypothesis-dialog'
+import { CreateHypothesisDialog } from '#components/strategy-home/create-hypothesis-dialog'
 
 const queryClient = new QueryClient()
 

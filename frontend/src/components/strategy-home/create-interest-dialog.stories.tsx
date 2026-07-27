@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-import { CreateInterestDialog } from '@/components/strategy-home/create-interest-dialog'
+import { CreateInterestDialog } from '#components/strategy-home/create-interest-dialog'
 
 const queryClient = new QueryClient()
 

@@ -9,14 +9,14 @@ import type {
 } from '@a2a-js/sdk/server'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 
-import { extractMessageText } from '@/a2a/message-text'
-import type { StrategyAgentResult } from '@/strategy-agent/strategy-agent'
-import type { FetchStrategyCandidates } from '@/strategy-resolution/mgmt-mcp-client'
+import { extractMessageText } from '#a2a/message-text'
+import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
+import type { FetchStrategyCandidates } from '#strategy-resolution/mgmt-mcp-client'
 import type {
   StrategyCandidate,
   StrategyResolution,
-} from '@/strategy-resolution/resolve-strategy'
-import { resolveStrategy } from '@/strategy-resolution/resolve-strategy'
+} from '#strategy-resolution/resolve-strategy'
+import { resolveStrategy } from '#strategy-resolution/resolve-strategy'
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

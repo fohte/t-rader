@@ -1,4 +1,4 @@
-import { REF_KIND_JP, resolveRef } from '@/lib/strategy-mock'
+import { REF_KIND_JP, resolveRef } from '#lib/strategy-mock'
 
 interface RefChipProps {
   // `stock:7203` のような prefix 付き token (markdown 中の [[...]] と同形式)

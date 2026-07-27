@@ -7,8 +7,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import { AnalysisCard } from '@/components/strategy-home/analysis-card'
-import type { components } from '@/lib/api/schema.gen'
+import { AnalysisCard } from '#components/strategy-home/analysis-card'
+import type { components } from '#lib/api/schema.gen'
 
 type Note = components['schemas']['Note']
 

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { formatYen } from '@/components/trades/format'
-import { useInvalidateTrades } from '@/components/trades/use-invalidate-trades'
-import { Button } from '@/components/ui/button'
+import { formatYen } from '#components/trades/format'
+import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
+import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -10,10 +10,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+} from '#components/ui/dialog'
+import { Input } from '#components/ui/input'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Trade = components['schemas']['Trade']
 type Strategy = components['schemas']['Strategy']

@@ -6,11 +6,11 @@ import {
   IndicatorEditor,
   type IndicatorEditorValue,
   type PreviewState,
-} from '@/components/indicators/indicator-editor'
+} from '#components/indicators/indicator-editor'
 
 vi.mock(
   '@monaco-editor/react',
-  () => import('@/components/indicators/__mocks__/monaco-editor-react'),
+  () => import('#components/indicators/__mocks__/monaco-editor-react'),
 )
 
 afterEach(cleanup)

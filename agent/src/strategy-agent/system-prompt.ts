@@ -1,4 +1,4 @@
-import type { AgentConfig } from '@/strategy-agent/agent-config-client'
+import type { AgentConfig } from '#strategy-agent/agent-config-client'
 
 // AGENTS.md and skills are both fetched from the backend and folded
 // together into one system prompt.

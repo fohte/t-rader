@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { CodeEditor } from '@/components/indicators/code-editor'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { CodeEditor } from '#components/indicators/code-editor'
+import { Button } from '#components/ui/button'
+import { Input } from '#components/ui/input'
 
 export interface IndicatorEditorValue {
   name: string

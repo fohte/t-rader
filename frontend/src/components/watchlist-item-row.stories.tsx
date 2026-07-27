@@ -7,7 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import { WatchlistItemRowView } from '@/components/watchlist-item-row'
+import { WatchlistItemRowView } from '#components/watchlist-item-row'
 
 function createStoryRouter(children: React.ReactNode) {
   const rootRoute = createRootRoute({

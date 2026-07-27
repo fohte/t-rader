@@ -1,7 +1,7 @@
 import createFetchClient from 'openapi-fetch'
 import createClient from 'openapi-react-query'
 
-import type { paths } from '@/lib/api/schema.gen'
+import type { paths } from '#lib/api/schema.gen'
 
 // openapi-fetch クライアント (React 外でも利用可能)
 export const fetchClient = createFetchClient<paths>({

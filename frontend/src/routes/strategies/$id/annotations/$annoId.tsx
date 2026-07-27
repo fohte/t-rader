@@ -2,10 +2,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { StatusPill } from '@/components/strategy-home/status-pill'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
-import { resolveRef } from '@/lib/strategy-mock'
+import { StatusPill } from '#components/strategy-home/status-pill'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
+import { resolveRef } from '#lib/strategy-mock'
 
 export const Route = createFileRoute('/strategies/$id/annotations/$annoId')({
   component: AnnotationDetailPage,

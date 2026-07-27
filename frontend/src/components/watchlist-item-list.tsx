@@ -1,9 +1,9 @@
 import { PackageOpen } from 'lucide-react'
 
-import { Skeleton } from '@/components/ui/skeleton'
-import { WatchlistItemRow } from '@/components/watchlist-item-row'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { Skeleton } from '#components/ui/skeleton'
+import { WatchlistItemRow } from '#components/watchlist-item-row'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type WatchlistItem = components['schemas']['WatchlistItem']
 

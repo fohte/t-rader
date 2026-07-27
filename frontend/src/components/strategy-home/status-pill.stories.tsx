@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { StatusPill } from '@/components/strategy-home/status-pill'
+import { StatusPill } from '#components/strategy-home/status-pill'
 
 const meta = {
   title: 'StrategyHome/StatusPill',

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { WatchlistSelectorView } from '@/components/watchlist-selector'
+import { WatchlistSelectorView } from '#components/watchlist-selector'
 
 const meta = {
   title: 'Components/WatchlistSelector',

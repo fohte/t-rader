@@ -21,7 +21,7 @@
   "devDependencies": {
     "@commitlint/cli": "21.2.1",
     "@eslint/eslintrc": "3.3.5",
-    "@fohte/eslint-config": "0.3.9",
+    "@fohte/eslint-config": "0.4.0",
     "@storybook/addon-docs": "10.2.10",
     "@storybook/addon-themes": "10.2.10",
     "@storybook/react-vite": "10.2.10",
@@ -53,7 +53,6 @@
     "vitest": "4.1.10"
   },
   "dependencies": {
-<<<<<<< before updating
     "@monaco-editor/react": "4.7.0",
     "@tanstack/react-query": "5.90.21",
     "@tanstack/react-router": "1.170.17",
@@ -62,6 +61,7 @@
     "clsx": "2.1.1",
     "lightweight-charts": "5.2.0",
     "lucide-react": "0.577.0",
+    "neverthrow": "8.2.0",
     "openapi-fetch": "0.17.0",
     "openapi-react-query": "0.5.4",
     "radix-ui": "1.4.3",
@@ -69,12 +69,9 @@
     "react-dom": "19.2.7",
     "react-error-boundary": "6.1.2",
     "tailwind-merge": "3.6.0"
-||||||| last update
-=======
-    "neverthrow": "8.2.0"
->>>>>>> after updating
   },
   "imports": {
-  "#*": "./src/*.ts"
-}
+    "#*.css": "./src/*.css",
+    "#*": "./src/*.js"
+  }
 }

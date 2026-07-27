@@ -6,14 +6,14 @@ import {
   consumeFloatingChatSeed,
   openFloatingChat,
   useFloatingChat,
-} from '@/components/strategy-shell/floating-chat-store'
+} from '#components/strategy-shell/floating-chat-store'
 import {
   type FloatingChatNote,
   type FloatingChatStatus,
   FloatingChatView,
-} from '@/components/strategy-shell/floating-chat-view'
-import { useCurrentStrategyId } from '@/components/strategy-shell/use-current-strategy-id'
-import { $api } from '@/lib/api/client'
+} from '#components/strategy-shell/floating-chat-view'
+import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
+import { $api } from '#lib/api/client'
 
 const POLL_INTERVAL_MS = 2000
 // ノート紐付けは現状 created_at の比較で代替している。client 時刻が backend に

@@ -6,13 +6,13 @@ import type { Hono } from 'hono'
 import { errAsync } from 'neverthrow'
 import { expect, it } from 'vitest'
 
-import { buildAgentCard } from '@/a2a/agent-card'
-import { TraderAgentExecutor } from '@/a2a/executor'
-import { PostgresPushNotificationStore } from '@/a2a/postgres-push-notification-store'
-import { PostgresTaskStore } from '@/a2a/postgres-task-store'
-import { createApp } from '@/app'
-import { StrategyCandidatesFetchError } from '@/strategy-resolution/mgmt-mcp-client'
-import { describeIfDb, setupDrizzleTx } from '@/test/db'
+import { buildAgentCard } from '#a2a/agent-card'
+import { TraderAgentExecutor } from '#a2a/executor'
+import { PostgresPushNotificationStore } from '#a2a/postgres-push-notification-store'
+import { PostgresTaskStore } from '#a2a/postgres-task-store'
+import { createApp } from '#app'
+import { StrategyCandidatesFetchError } from '#strategy-resolution/mgmt-mcp-client'
+import { describeIfDb, setupDrizzleTx } from '#test/db'
 
 interface TaskResponse {
   task_id: string

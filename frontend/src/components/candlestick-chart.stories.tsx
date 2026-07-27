@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { CandlestickChart } from '@/components/candlestick-chart'
-import type { components } from '@/lib/api/schema.gen'
+import { CandlestickChart } from '#components/candlestick-chart'
+import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 

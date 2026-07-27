@@ -2,9 +2,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus } from 'lucide-react'
 import { type SyntheticEvent, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { $api } from '@/lib/api/client'
+import { Button } from '#components/ui/button'
+import { Input } from '#components/ui/input'
+import { $api } from '#lib/api/client'
 
 type AddInstrumentFormViewProps = {
   instrumentId: string

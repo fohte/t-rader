@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseInline, parseMarkdown } from '@/components/note-detail/markdown'
+import { parseInline, parseMarkdown } from '#components/note-detail/markdown'
 
 describe('parseInline', () => {
   it('extracts prefix refs as ref tokens', () => {

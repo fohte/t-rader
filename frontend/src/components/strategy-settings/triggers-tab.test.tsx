@@ -11,9 +11,9 @@ import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { TriggersTab } from '@/components/strategy-settings/triggers-tab'
-import { fetchClient } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { TriggersTab } from '#components/strategy-settings/triggers-tab'
+import { fetchClient } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Trigger = components['schemas']['Trigger']
 

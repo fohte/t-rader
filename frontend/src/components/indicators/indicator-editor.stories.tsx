@@ -4,7 +4,7 @@ import {
   IndicatorEditor,
   type IndicatorEditorValue,
   type PreviewState,
-} from '@/components/indicators/indicator-editor'
+} from '#components/indicators/indicator-editor'
 
 const meta = {
   title: 'Indicators/IndicatorEditor',

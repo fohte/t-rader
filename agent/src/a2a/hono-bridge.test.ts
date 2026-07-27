@@ -10,7 +10,7 @@ import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 
-import { mountA2aRoutes } from '@/a2a/hono-bridge'
+import { mountA2aRoutes } from '#a2a/hono-bridge'
 
 const notImplemented = (): never => {
   throw new Error('not implemented in test stub')

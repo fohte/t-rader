@@ -12,12 +12,12 @@ import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { IndicatorsPage } from '@/components/indicators/indicators-page'
-import { fetchClient } from '@/lib/api/client'
+import { IndicatorsPage } from '#components/indicators/indicators-page'
+import { fetchClient } from '#lib/api/client'
 
 vi.mock(
   '@monaco-editor/react',
-  () => import('@/components/indicators/__mocks__/monaco-editor-react'),
+  () => import('#components/indicators/__mocks__/monaco-editor-react'),
 )
 
 interface IndicatorRow {

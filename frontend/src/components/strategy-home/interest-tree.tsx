@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { CreateInterestDialog } from '@/components/strategy-home/create-interest-dialog'
-import { RefChip } from '@/components/strategy-shell/ref-chip'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { CreateInterestDialog } from '#components/strategy-home/create-interest-dialog'
+import { RefChip } from '#components/strategy-shell/ref-chip'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type StrategyInterest = components['schemas']['StrategyInterest']
 

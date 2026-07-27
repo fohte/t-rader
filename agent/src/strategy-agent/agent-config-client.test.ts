@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AgentConfigFetchError,
   createAgentConfigFetcher,
-} from '@/strategy-agent/agent-config-client'
+} from '#strategy-agent/agent-config-client'
 
 afterEach(() => {
   vi.unstubAllGlobals()

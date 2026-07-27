@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -9,10 +9,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+} from '#components/ui/dialog'
+import { Input } from '#components/ui/input'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type RssFeed = components['schemas']['RssFeed']
 

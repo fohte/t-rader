@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { Settings as SettingsIcon } from 'lucide-react'
 
-import { StrategySwitcher } from '@/components/strategy-shell/strategy-switcher'
-import { useCurrentStrategyId } from '@/components/strategy-shell/use-current-strategy-id'
+import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
+import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 
 const NAV_BASE =
   'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-[12px]'

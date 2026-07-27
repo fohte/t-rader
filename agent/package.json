@@ -4,6 +4,7 @@
   "packageManager": "pnpm@11.15.0",
   "type": "module",
   "imports": {
+    "#db": "./src/db/index.ts",
     "#*": "./src/*.ts"
   },
   "scripts": {

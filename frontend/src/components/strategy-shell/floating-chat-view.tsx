@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 
-import { formatRelative } from '@/lib/note-utils'
+import { formatRelative } from '#lib/note-utils'
 
 export interface FloatingChatNote {
   id: string

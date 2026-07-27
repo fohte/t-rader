@@ -1,8 +1,10 @@
 import { config } from '@fohte/eslint-config'
 
 export default config(
-<<<<<<< before updating
-  { typescript: { typeChecked: true } },
+  {
+    typescript: { typeChecked: true },
+    errorHandling: {},
+  },
   // TanStack Router の自動生成ファイル
   { ignores: ['src/routeTree.gen.ts'] },
   {
@@ -15,49 +17,13 @@ export default config(
       },
     },
   },
-||||||| last update
-  { typescript: { typeChecked: true } },
-=======
->>>>>>> after updating
   {
-<<<<<<< before updating
     rules: {
       // TanStack Router/Query の型定義が any を返すケースがあるため無効化
       '@typescript-eslint/no-unsafe-assignment': 'off',
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['./*', '../*'],
-              message:
-                'Please use absolute imports instead of relative imports.',
-            },
-          ],
-        },
-      ],
     },
-||||||| last update
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['./*', '../*'],
-              message:
-                'Please use absolute imports instead of relative imports.',
-            },
-          ],
-        },
-      ],
-    },
-=======
-    typescript: { typeChecked: true },
-    errorHandling: {},
->>>>>>> after updating
   },
-  // .storybook/ と vitest.config.ts は src 外にあり @ エイリアスが使えないため相対インポートを許可
+  // .storybook/ と vitest.config.ts は src 外にあり # subpath imports (src 配下の *.ts のみ解決) が届かない対象 (CSS、ルート直下の設定ファイル) を参照するため相対インポートを許可
   {
     files: ['.storybook/**/*.ts', 'vitest.config.ts'],
     rules: {

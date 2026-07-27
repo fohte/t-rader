@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { type SyntheticEvent, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -11,17 +11,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+} from '#components/ui/dialog'
+import { Input } from '#components/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+} from '#components/ui/select'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Watchlist = components['schemas']['Watchlist']
 

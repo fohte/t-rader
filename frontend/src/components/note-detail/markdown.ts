@@ -1,4 +1,4 @@
-import { REF_PREFIX_RE } from '@/lib/note-utils'
+import { REF_PREFIX_RE } from '#lib/note-utils'
 
 export type InlineToken =
   | { kind: 'text'; value: string }

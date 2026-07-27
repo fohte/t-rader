@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { StrategyCandidate } from '@/strategy-resolution/resolve-strategy'
-import { resolveStrategy } from '@/strategy-resolution/resolve-strategy'
+import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
+import { resolveStrategy } from '#strategy-resolution/resolve-strategy'
 
 const CANDIDATES: readonly StrategyCandidate[] = [
   { strategyId: 'long-term', name: '長期投資' },

@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Result } from 'neverthrow'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { Button } from '#components/ui/button'
+import { Input } from '#components/ui/input'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Trigger = components['schemas']['Trigger']
 type TriggerKind = components['schemas']['TriggerKind']
@@ -62,6 +63,10 @@ interface ValidationResult {
   eventMatch?: Record<string, unknown> | null
 }
 
+const parseJson = Result.fromThrowable((raw: string): unknown =>
+  JSON.parse(raw),
+)
+
 function validateForm(form: FormState): ValidationResult {
   if (form.promptTemplate.trim() === '') {
     return { ok: false, error: 'prompt_template は必須です' }
@@ -76,12 +81,11 @@ function validateForm(form: FormState): ValidationResult {
   let eventMatch: Record<string, unknown> | null = null
   const trimmed = form.eventMatch.trim()
   if (trimmed !== '') {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(trimmed)
-    } catch {
+    const parsedResult = parseJson(trimmed)
+    if (parsedResult.isErr()) {
       return { ok: false, error: 'event_match の JSON が不正です' }
     }
+    const parsed = parsedResult.value
     if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return {
         ok: false,

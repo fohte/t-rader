@@ -1,4 +1,4 @@
-import { type MacroTick, useMacroTicks } from '@/lib/use-macro-ticks'
+import { type MacroTick, useMacroTicks } from '#lib/use-macro-ticks'
 
 export interface MacroStripViewProps {
   ticks: MacroTick[] | null

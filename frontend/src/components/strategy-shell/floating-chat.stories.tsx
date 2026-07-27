@@ -11,7 +11,7 @@ import {
   type FloatingChatStatus,
   FloatingChatView,
   type FloatingChatViewProps,
-} from '@/components/strategy-shell/floating-chat-view'
+} from '#components/strategy-shell/floating-chat-view'
 
 const NOOP = (): void => {}
 

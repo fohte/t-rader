@@ -1,4 +1,4 @@
-import '@/index.css'
+import '#index.css'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
@@ -6,7 +6,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { routeTree } from '@/routeTree.gen'
+import { routeTree } from '#routeTree.gen'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +27,7 @@ declare module '@tanstack/react-router' {
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
+  // eslint-disable-next-line no-restricted-syntax -- 起動時の fatal invariant。#root がなければ描画自体できず、Result を返す先がない
   throw new Error('Root element not found')
 }
 

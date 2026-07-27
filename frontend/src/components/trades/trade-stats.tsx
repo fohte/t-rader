@@ -1,4 +1,4 @@
-import { formatYen, pnlColorClass } from '@/components/trades/format'
+import { formatYen, pnlColorClass } from '#components/trades/format'
 
 interface Stat {
   label: string

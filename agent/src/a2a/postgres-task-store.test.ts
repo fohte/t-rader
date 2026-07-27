@@ -1,9 +1,9 @@
 import type { Task, TaskState } from '@a2a-js/sdk'
 import { describe, expect, it } from 'vitest'
 
-import { PostgresPushNotificationStore } from '@/a2a/postgres-push-notification-store'
-import { PostgresTaskStore } from '@/a2a/postgres-task-store'
-import { describeIfDb, setupDrizzleTx } from '@/test/db'
+import { PostgresPushNotificationStore } from '#a2a/postgres-push-notification-store'
+import { PostgresTaskStore } from '#a2a/postgres-task-store'
+import { describeIfDb, setupDrizzleTx } from '#test/db'
 
 const buildTask = (overrides: {
   id: string

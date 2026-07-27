@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { TradesTable } from '@/components/trades/trades-table'
-import type { components } from '@/lib/api/schema.gen'
+import { TradesTable } from '#components/trades/trades-table'
+import type { components } from '#lib/api/schema.gen'
 
 type Trade = components['schemas']['Trade']
 type Strategy = components['schemas']['Strategy']
