@@ -12,8 +12,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from '@/components/ui/sidebar'
-import type { FileRouteTypes } from '@/routeTree.gen'
+} from '#components/ui/sidebar'
+import type { FileRouteTypes } from '#routeTree.gen'
 
 interface NavItem {
   title: string

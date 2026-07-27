@@ -1,11 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { HypothesisEditor } from '@/components/hypothesis-detail/hypothesis-editor'
-import { HypothesisStatusPanel } from '@/components/hypothesis-detail/hypothesis-status-panel'
-import { useInvalidateHypothesis } from '@/components/hypothesis-detail/use-invalidate-hypothesis'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
+import { HypothesisEditor } from '#components/hypothesis-detail/hypothesis-editor'
+import { HypothesisStatusPanel } from '#components/hypothesis-detail/hypothesis-status-panel'
+import { useInvalidateHypothesis } from '#components/hypothesis-detail/use-invalidate-hypothesis'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
 
 interface HypothesisDetailPageProps {
   strategyId: string

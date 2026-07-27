@@ -5,8 +5,8 @@ import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { AgentsMdTab } from '@/components/strategy-settings/agents-md-tab'
-import { fetchClient } from '@/lib/api/client'
+import { AgentsMdTab } from '#components/strategy-settings/agents-md-tab'
+import { fetchClient } from '#lib/api/client'
 
 interface Store {
   content: string

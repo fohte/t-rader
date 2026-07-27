@@ -6,7 +6,7 @@ import {
   runWatchdogSweep,
   startTaskLifecycleJobs,
   type TaskLifecycleStore,
-} from '@/a2a/lifecycle'
+} from '#a2a/lifecycle'
 
 const buildTask = (id: string): Task => ({
   id,

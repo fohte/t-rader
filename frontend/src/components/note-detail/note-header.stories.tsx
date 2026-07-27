@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { NoteHeader } from '@/components/note-detail/note-header'
-import type { components } from '@/lib/api/schema.gen'
+import { NoteHeader } from '#components/note-detail/note-header'
+import type { components } from '#lib/api/schema.gen'
 
 type Note = components['schemas']['Note']
 

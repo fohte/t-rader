@@ -12,9 +12,6 @@
     "noPropertyAccessFromIndexSignature": false,
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "jsx": "react-jsx"
   },

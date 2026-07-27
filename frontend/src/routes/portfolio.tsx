@@ -5,15 +5,15 @@ import { useMemo, useState } from 'react'
 import {
   AllocationBar,
   type AllocationSegment,
-} from '@/components/portfolio/allocation-bar'
-import { CashBalanceDialog } from '@/components/portfolio/cash-balance-dialog'
-import { PositionsTable } from '@/components/portfolio/positions-table'
-import { type StatItem, StatRow } from '@/components/portfolio/stat-row'
-import { useCashBalance } from '@/components/portfolio/use-cash-balance'
-import { formatYen, pnlColorClass } from '@/components/trades/format'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
+} from '#components/portfolio/allocation-bar'
+import { CashBalanceDialog } from '#components/portfolio/cash-balance-dialog'
+import { PositionsTable } from '#components/portfolio/positions-table'
+import { type StatItem, StatRow } from '#components/portfolio/stat-row'
+import { useCashBalance } from '#components/portfolio/use-cash-balance'
+import { formatYen, pnlColorClass } from '#components/trades/format'
+import { Button } from '#components/ui/button'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/portfolio')({
   component: PortfolioPage,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isUsageLimitError } from '@/strategy-agent/usage-limit'
+import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
 describe('isUsageLimitError', () => {
   it('returns true for rateLimitType "stop" (quota exhausted)', () => {

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { MacroStripView } from '@/components/strategy-shell/macro-strip'
+import { MacroStripView } from '#components/strategy-shell/macro-strip'
 
 const meta = {
   title: 'StrategyShell/MacroStrip',

@@ -3,8 +3,8 @@ import type { TaskStore } from '@a2a-js/sdk/server'
 import { and, eq, inArray, lt, notInArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 
-import type { Sql } from '@/db'
-import { a2aPushConfigs, a2aTasks } from '@/db/schema'
+import type { Sql } from '#db'
+import { a2aPushConfigs, a2aTasks } from '#db/schema'
 
 // Task rows in these states are done for good; `save()` never overwrites
 // them so a watchdog-driven failure can't be clobbered by a still-running

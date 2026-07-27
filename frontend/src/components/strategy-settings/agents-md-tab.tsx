@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { MarkdownEditor } from '@/components/strategy-settings/markdown-editor'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
+import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
 
 interface AgentsMdTabProps {
   strategyId: string

@@ -7,8 +7,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import { AppSidebar } from '@/components/app-sidebar'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { AppSidebar } from '#components/app-sidebar'
+import { SidebarInset, SidebarProvider } from '#components/ui/sidebar'
 
 function createStoryRouter(initialPath: string, content: React.ReactNode) {
   const rootRoute = createRootRoute({

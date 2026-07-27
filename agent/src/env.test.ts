@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { EnvError, loadEnv } from '@/env'
+import { EnvError, loadEnv } from '#env'
 
 const fullSource = {
   DATABASE_URL: 'postgres://localhost/t_rader_agent',

@@ -2,21 +2,21 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Columns2Icon } from 'lucide-react'
 import { useState } from 'react'
 
-import { CandlestickChart } from '@/components/candlestick-chart'
-import { ChartMarketDepthPanel } from '@/components/chart-market-depth-panel'
+import { CandlestickChart } from '#components/candlestick-chart'
+import { ChartMarketDepthPanel } from '#components/chart-market-depth-panel'
 import {
   type Timeframe,
   TimeframeSelector,
-} from '@/components/timeframe-selector'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+} from '#components/timeframe-selector'
+import { Button } from '#components/ui/button'
+import { Skeleton } from '#components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { $api } from '@/lib/api/client'
+} from '#components/ui/tooltip'
+import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/charts/$instrumentId')({
   component: ChartPage,

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { CashBalanceDialog } from '@/components/portfolio/cash-balance-dialog'
+import { CashBalanceDialog } from '#components/portfolio/cash-balance-dialog'
 
 const meta = {
   title: 'Portfolio/CashBalanceDialog',

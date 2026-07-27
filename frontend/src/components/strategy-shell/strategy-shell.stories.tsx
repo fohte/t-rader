@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import { StrategyShell } from '@/components/strategy-shell/strategy-shell'
+import { StrategyShell } from '#components/strategy-shell/strategy-shell'
 
 function createStoryRouter(initialPath: string) {
   const rootRoute = createRootRoute({

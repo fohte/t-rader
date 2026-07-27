@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   CandlestickChart,
   type ChartAnnotation,
-} from '@/components/candlestick-chart'
-import type { NumberedAnnotation } from '@/lib/annotation-utils'
-import { $api } from '@/lib/api/client'
+} from '#components/candlestick-chart'
+import type { NumberedAnnotation } from '#lib/annotation-utils'
+import { $api } from '#lib/api/client'
 
 type Timeframe = '1D' | '1W' | '1M'
 

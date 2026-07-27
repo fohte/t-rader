@@ -3,8 +3,8 @@ import type { PushNotificationStore } from '@a2a-js/sdk/server'
 import { and, eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 
-import type { Sql } from '@/db'
-import { a2aPushConfigs } from '@/db/schema'
+import type { Sql } from '#db'
+import { a2aPushConfigs } from '#db/schema'
 
 export class PostgresPushNotificationStore implements PushNotificationStore {
   private readonly db: ReturnType<typeof drizzle>

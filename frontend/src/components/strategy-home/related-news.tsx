@@ -1,5 +1,5 @@
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type NewsItem = components['schemas']['StrategyNewsItem']
 

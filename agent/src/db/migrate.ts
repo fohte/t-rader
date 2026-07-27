@@ -1,6 +1,6 @@
-import { createSql } from '@/db'
-import { runMigrations } from '@/db/migrations'
-import { EnvError } from '@/env'
+import { createSql } from '#db'
+import { runMigrations } from '#db/migrations'
+import { EnvError } from '#env'
 
 // infra runs this as `node dist/db/migrate.js` in an init container.
 const main = async (): Promise<void> => {

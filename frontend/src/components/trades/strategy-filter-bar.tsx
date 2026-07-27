@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import type { components } from '@/lib/api/schema.gen'
+import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
 type Trade = components['schemas']['Trade']

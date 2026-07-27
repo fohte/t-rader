@@ -7,7 +7,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import { Header } from '@/components/strategy-shell/header'
+import { Header } from '#components/strategy-shell/header'
 
 function createStoryRouter(initialPath: string) {
   const rootRoute = createRootRoute({ component: () => <Header /> })

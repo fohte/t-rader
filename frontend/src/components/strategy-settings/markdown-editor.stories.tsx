@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { MarkdownEditor } from '@/components/strategy-settings/markdown-editor'
+import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
 
 const meta = {
   title: 'StrategySettings/MarkdownEditor',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildSystemPrompt } from '@/strategy-agent/system-prompt'
+import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 
 describe('buildSystemPrompt', () => {
   it('concatenates AGENTS.md with each skill under its own heading', () => {

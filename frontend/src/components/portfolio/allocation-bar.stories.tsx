@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { AllocationBar } from '@/components/portfolio/allocation-bar'
+import { AllocationBar } from '#components/portfolio/allocation-bar'
 
 const meta = {
   title: 'Portfolio/AllocationBar',

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { PositionsTable } from '@/components/portfolio/positions-table'
-import type { components } from '@/lib/api/schema.gen'
+import { PositionsTable } from '#components/portfolio/positions-table'
+import type { components } from '#lib/api/schema.gen'
 
 type Stock = components['schemas']['Stock']
 

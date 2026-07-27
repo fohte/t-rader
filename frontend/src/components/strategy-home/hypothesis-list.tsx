@@ -1,10 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { CreateHypothesisDialog } from '@/components/strategy-home/create-hypothesis-dialog'
-import { HypothesisStatusPill } from '@/components/strategy-home/hypothesis-status-pill'
-import { $api } from '@/lib/api/client'
-import { formatRelative } from '@/lib/note-utils'
+import { CreateHypothesisDialog } from '#components/strategy-home/create-hypothesis-dialog'
+import { HypothesisStatusPill } from '#components/strategy-home/hypothesis-status-pill'
+import { $api } from '#lib/api/client'
+import { formatRelative } from '#lib/note-utils'
 
 interface HypothesisListProps {
   strategyId: string

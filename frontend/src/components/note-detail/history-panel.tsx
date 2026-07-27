@@ -1,5 +1,5 @@
-import { $api } from '@/lib/api/client'
-import { formatRelative } from '@/lib/note-utils'
+import { $api } from '#lib/api/client'
+import { formatRelative } from '#lib/note-utils'
 
 interface HistoryPanelProps {
   noteId: string

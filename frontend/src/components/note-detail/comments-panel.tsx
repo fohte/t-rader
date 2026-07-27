@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
-import { formatRelative } from '@/lib/note-utils'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
+import { formatRelative } from '#lib/note-utils'
 
 type Comment = components['schemas']['Comment']
 

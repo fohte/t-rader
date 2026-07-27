@@ -1,10 +1,10 @@
-import { useInvalidateHypothesis } from '@/components/hypothesis-detail/use-invalidate-hypothesis'
+import { useInvalidateHypothesis } from '#components/hypothesis-detail/use-invalidate-hypothesis'
 import {
   HYPOTHESIS_STATUS_LABEL,
   HYPOTHESIS_STATUSES,
   HypothesisStatusPill,
-} from '@/components/strategy-home/hypothesis-status-pill'
-import { $api } from '@/lib/api/client'
+} from '#components/strategy-home/hypothesis-status-pill'
+import { $api } from '#lib/api/client'
 
 interface HypothesisStatusPanelProps {
   strategyId: string

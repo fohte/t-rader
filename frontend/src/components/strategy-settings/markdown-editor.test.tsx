@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { MarkdownEditor } from '@/components/strategy-settings/markdown-editor'
+import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
 
 afterEach(cleanup)
 

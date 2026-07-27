@@ -2,9 +2,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Loader2, Trash2 } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { Button } from '#components/ui/button'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type WatchlistItem = components['schemas']['WatchlistItem']
 

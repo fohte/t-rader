@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
-import { StatusPill } from '@/components/strategy-home/status-pill'
-import type { NumberedAnnotation } from '@/lib/annotation-utils'
+import { StatusPill } from '#components/strategy-home/status-pill'
+import type { NumberedAnnotation } from '#lib/annotation-utils'
 
 interface AnnotationListProps {
   strategyId: string

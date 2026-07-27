@@ -19,8 +19,8 @@ import userEvent from '@testing-library/user-event'
 import { FileText, History } from 'lucide-react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { AppShell } from '@/components/app-shell'
-import { PlaceholderPage } from '@/components/placeholder-page'
+import { AppShell } from '#components/app-shell'
+import { PlaceholderPage } from '#components/placeholder-page'
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

@@ -1,7 +1,7 @@
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { MacroStripView } from '@/components/strategy-shell/macro-strip'
+import { MacroStripView } from '#components/strategy-shell/macro-strip'
 
 afterEach(cleanup)
 

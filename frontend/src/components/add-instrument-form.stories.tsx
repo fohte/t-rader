@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { SyntheticEvent } from 'react'
 
-import { AddInstrumentFormView } from '@/components/add-instrument-form'
+import { AddInstrumentFormView } from '#components/add-instrument-form'
 
 const meta = {
   title: 'Components/AddInstrumentForm',

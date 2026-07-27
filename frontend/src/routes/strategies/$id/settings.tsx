@@ -1,11 +1,11 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { AgentsMdTab } from '@/components/strategy-settings/agents-md-tab'
-import { SkillsTab } from '@/components/strategy-settings/skills-tab'
-import { TriggersTab } from '@/components/strategy-settings/triggers-tab'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
+import { AgentsMdTab } from '#components/strategy-settings/agents-md-tab'
+import { SkillsTab } from '#components/strategy-settings/skills-tab'
+import { TriggersTab } from '#components/strategy-settings/triggers-tab'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
 
 type TabKey = 'agents-md' | 'skills' | 'triggers'
 

@@ -11,9 +11,9 @@ import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { InterestTree } from '@/components/strategy-home/interest-tree'
-import { fetchClient } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { InterestTree } from '#components/strategy-home/interest-tree'
+import { fetchClient } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type StrategyInterest = components['schemas']['StrategyInterest']
 

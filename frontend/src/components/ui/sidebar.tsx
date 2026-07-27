@@ -5,25 +5,25 @@ import { PanelLeftIcon } from 'lucide-react'
 import { Slot } from 'radix-ui'
 import * as React from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
+import { Button } from '#components/ui/button'
+import { Input } from '#components/ui/input'
+import { Separator } from '#components/ui/separator'
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet'
-import { Skeleton } from '@/components/ui/skeleton'
+} from '#components/ui/sheet'
+import { Skeleton } from '#components/ui/skeleton'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { cn } from '@/lib/utils'
+} from '#components/ui/tooltip'
+import { useIsMobile } from '#hooks/use-mobile'
+import { cn } from '#lib/utils'
 
 type CSSPropertiesWithCustomVars = React.CSSProperties &
   Record<`--${string}`, string>
@@ -50,6 +50,7 @@ const SidebarContext = React.createContext<SidebarContextProps | null>(null)
 function useSidebar() {
   const context = React.useContext(SidebarContext)
   if (!context) {
+    // eslint-disable-next-line no-restricted-syntax -- React hook の契約上 Result を返せない。呼び出し側は直接分割代入する
     throw new Error('useSidebar must be used within a SidebarProvider.')
   }
 

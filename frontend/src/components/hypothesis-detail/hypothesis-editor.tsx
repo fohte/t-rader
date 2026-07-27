@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 
-import { MarkdownBody } from '@/components/note-detail/markdown-body'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { MarkdownBody } from '#components/note-detail/markdown-body'
+import { Button } from '#components/ui/button'
+import { Input } from '#components/ui/input'
 
 interface HypothesisEditorProps {
   initialTitle: string

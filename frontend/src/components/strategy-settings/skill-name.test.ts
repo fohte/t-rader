@@ -4,7 +4,7 @@ import {
   SKILL_NAME_ERROR_EMPTY,
   SKILL_NAME_ERROR_INVALID,
   validateSkillName,
-} from '@/components/strategy-settings/skill-name'
+} from '#components/strategy-settings/skill-name'
 
 describe('validateSkillName', () => {
   it.each([

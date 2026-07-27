@@ -2,10 +2,10 @@ import { Link } from '@tanstack/react-router'
 import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { UnreadBadge } from '@/components/strategy-shell/unread-badge'
-import { useCurrentStrategyId } from '@/components/strategy-shell/use-current-strategy-id'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { UnreadBadge } from '#components/strategy-shell/unread-badge'
+import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
 

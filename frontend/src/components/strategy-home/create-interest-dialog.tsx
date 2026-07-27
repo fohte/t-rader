@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { ORIGIN_LABEL } from '@/components/strategy-home/interest-tree'
-import { Button } from '@/components/ui/button'
+import { ORIGIN_LABEL } from '#components/strategy-home/interest-tree'
+import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -10,10 +10,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { $api } from '@/lib/api/client'
-import { REF_KIND_JP, type RefKind } from '@/lib/strategy-mock'
+} from '#components/ui/dialog'
+import { Input } from '#components/ui/input'
+import { $api } from '#lib/api/client'
+import { REF_KIND_JP, type RefKind } from '#lib/strategy-mock'
 
 const REF_KINDS: RefKind[] = ['stock', 'indicator', 'sector', 'theme']
 const ROLES = ['seed', 'derived'] as const

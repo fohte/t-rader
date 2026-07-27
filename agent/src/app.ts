@@ -4,11 +4,11 @@ import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { Hono } from 'hono'
 import { ResultAsync } from 'neverthrow'
 
-import { mountA2aRoutes } from '@/a2a/hono-bridge'
-import type { Sql } from '@/db'
-import { pingDb } from '@/db'
-import { bearerAuth } from '@/internal-api/auth'
-import { mountInternalApiRoutes } from '@/internal-api/routes'
+import { mountA2aRoutes } from '#a2a/hono-bridge'
+import type { Sql } from '#db'
+import { pingDb } from '#db'
+import { bearerAuth } from '#internal-api/auth'
+import { mountInternalApiRoutes } from '#internal-api/routes'
 
 const REQUEST_FAILED_FINGERPRINT = 'app.request-failed'
 

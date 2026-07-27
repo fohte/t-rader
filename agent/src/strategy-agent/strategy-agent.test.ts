@@ -7,14 +7,14 @@ import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-import type { AgentConfig } from '@/strategy-agent/agent-config-client'
-import { AgentConfigFetchError } from '@/strategy-agent/agent-config-client'
+import type { AgentConfig } from '#strategy-agent/agent-config-client'
+import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
 import type {
   CompiledStrategyAgent,
   McpToolsClient,
   StrategyAgentDeps,
-} from '@/strategy-agent/strategy-agent'
-import { runStrategyAgent } from '@/strategy-agent/strategy-agent'
+} from '#strategy-agent/strategy-agent'
+import { runStrategyAgent } from '#strategy-agent/strategy-agent'
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {

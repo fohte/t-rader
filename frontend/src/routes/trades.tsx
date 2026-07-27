@@ -2,19 +2,19 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { ImportSbiDialog } from '@/components/trades/import-sbi-dialog'
+import { ImportSbiDialog } from '#components/trades/import-sbi-dialog'
 import {
   type StrategyFilter,
   StrategyFilterBar,
-} from '@/components/trades/strategy-filter-bar'
-import { TradeFormDialog } from '@/components/trades/trade-form-dialog'
-import { TradeStats } from '@/components/trades/trade-stats'
-import { TradesTable } from '@/components/trades/trades-table'
-import { useInvalidateTrades } from '@/components/trades/use-invalidate-trades'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+} from '#components/trades/strategy-filter-bar'
+import { TradeFormDialog } from '#components/trades/trade-form-dialog'
+import { TradeStats } from '#components/trades/trade-stats'
+import { TradesTable } from '#components/trades/trades-table'
+import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
+import { Button } from '#components/ui/button'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Trade = components['schemas']['Trade']
 

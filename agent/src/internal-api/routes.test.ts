@@ -9,7 +9,7 @@ import { A2AError } from '@a2a-js/sdk/server'
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 
-import { mountInternalApiRoutes } from '@/internal-api/routes'
+import { mountInternalApiRoutes } from '#internal-api/routes'
 
 const notImplemented = (): never => {
   throw new Error('not implemented in test stub')

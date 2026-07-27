@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 
-import type { components } from '@/lib/api/schema.gen'
-import { formatRelative, isNewerThan } from '@/lib/note-utils'
+import type { components } from '#lib/api/schema.gen'
+import { formatRelative, isNewerThan } from '#lib/note-utils'
 
 type Note = components['schemas']['Note']
 type Annotation = components['schemas']['Annotation']

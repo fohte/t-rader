@@ -1,7 +1,7 @@
-import { TriggerTag } from '@/components/strategy-home/trigger-tag'
-import { RefChip } from '@/components/strategy-shell/ref-chip'
-import type { components } from '@/lib/api/schema.gen'
-import { extractRefs, formatRelative } from '@/lib/note-utils'
+import { TriggerTag } from '#components/strategy-home/trigger-tag'
+import { RefChip } from '#components/strategy-shell/ref-chip'
+import type { components } from '#lib/api/schema.gen'
+import { extractRefs, formatRelative } from '#lib/note-utils'
 
 type Note = components['schemas']['Note']
 

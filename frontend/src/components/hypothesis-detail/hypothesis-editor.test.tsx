@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { HypothesisEditor } from '@/components/hypothesis-detail/hypothesis-editor'
+import { HypothesisEditor } from '#components/hypothesis-detail/hypothesis-editor'
 
 describe('HypothesisEditor', () => {
   // 親の再レンダーで initialTitle/initialBody が同じ値のまま渡されても、

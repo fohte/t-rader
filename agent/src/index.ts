@@ -1,7 +1,7 @@
-import '@/bootstrap'
+import '#bootstrap'
 
-import { EnvError } from '@/env'
-import { main } from '@/main'
+import { EnvError } from '#env'
+import { main } from '#main'
 
 main().catch((err: unknown) => {
   if (err instanceof EnvError) {

@@ -1,9 +1,9 @@
 import { Pencil, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 
-import { formatYen, SOURCE_LABEL } from '@/components/trades/format'
-import { Button } from '@/components/ui/button'
-import type { components } from '@/lib/api/schema.gen'
+import { formatYen, SOURCE_LABEL } from '#components/trades/format'
+import { Button } from '#components/ui/button'
+import type { components } from '#lib/api/schema.gen'
 
 type Trade = components['schemas']['Trade']
 type Strategy = components['schemas']['Strategy']

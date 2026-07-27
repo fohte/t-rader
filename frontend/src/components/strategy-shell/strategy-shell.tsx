@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
-import { FloatingChat } from '@/components/strategy-shell/floating-chat'
-import { Header } from '@/components/strategy-shell/header'
+import { FloatingChat } from '#components/strategy-shell/floating-chat'
+import { Header } from '#components/strategy-shell/header'
 
 export function StrategyShell({ children }: { children: ReactNode }) {
   return (

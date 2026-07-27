@@ -1,7 +1,7 @@
 import { type RefObject, useEffect, useRef, useState } from 'react'
 
-import { MarkdownBody } from '@/components/note-detail/markdown-body'
-import { openFloatingChat } from '@/components/strategy-shell/floating-chat-store'
+import { MarkdownBody } from '#components/note-detail/markdown-body'
+import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
 
 interface NoteDocumentProps {
   source: string

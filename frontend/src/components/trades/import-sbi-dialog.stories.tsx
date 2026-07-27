@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { ImportSbiDialog } from '@/components/trades/import-sbi-dialog'
-import type { components } from '@/lib/api/schema.gen'
+import { ImportSbiDialog } from '#components/trades/import-sbi-dialog'
+import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
 

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 
-import { ErrorFallback } from '@/components/error-fallback'
+import { ErrorFallback } from '#components/error-fallback'
 
 const meta = {
   title: 'Components/ErrorFallback',

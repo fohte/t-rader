@@ -2,10 +2,10 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { CreateStrategyDialog } from '@/components/strategy-home/create-strategy-dialog'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
-import { formatRelative } from '@/lib/note-utils'
+import { CreateStrategyDialog } from '#components/strategy-home/create-strategy-dialog'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
+import { formatRelative } from '#lib/note-utils'
 
 export const Route = createFileRoute('/strategies/')({
   component: StrategyListPage,

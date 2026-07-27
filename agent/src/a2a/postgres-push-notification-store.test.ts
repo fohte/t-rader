@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 
-import { PostgresPushNotificationStore } from '@/a2a/postgres-push-notification-store'
-import { describeIfDb, setupDrizzleTx } from '@/test/db'
+import { PostgresPushNotificationStore } from '#a2a/postgres-push-notification-store'
+import { describeIfDb, setupDrizzleTx } from '#test/db'
 
 describeIfDb('PostgresPushNotificationStore', () => {
   const getTx = setupDrizzleTx()

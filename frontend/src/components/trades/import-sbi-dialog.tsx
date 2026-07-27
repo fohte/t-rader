@@ -1,7 +1,8 @@
+import { ResultAsync } from 'neverthrow'
 import { useState } from 'react'
 
-import { useInvalidateTrades } from '@/components/trades/use-invalidate-trades'
-import { Button } from '@/components/ui/button'
+import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
+import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -9,9 +10,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { fetchClient } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+} from '#components/ui/dialog'
+import { fetchClient } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
 type SbiPreviewRow = components['schemas']['SbiPreviewRow']
@@ -61,44 +62,52 @@ export function ImportSbiDialog({
   async function handleFile(file: File) {
     setPhase('previewing')
     setError(null)
-    try {
-      // openapi-fetch は text/csv の raw body 送信を素直に表現できないので fetch を直接使う
-      const buf = await file.arrayBuffer()
-      const httpRes = await fetch('/api/imports/sbi/preview', {
-        method: 'POST',
-        headers: { 'content-type': 'text/csv' },
-        body: buf,
-      })
-      if (!httpRes.ok) {
-        const errBody: unknown = await httpRes.json().catch(() => null)
-        const message =
-          errBody != null &&
-          typeof errBody === 'object' &&
-          'error' in errBody &&
-          typeof errBody.error === 'string'
-            ? errBody.error
-            : 'CSV の解析に失敗しました'
-        setError(message)
-        setPhase('select')
-        return
-      }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 自前 API でスキーマ一致を信頼するため、unknown→具象型は narrow 検証なしで通す
-      const data = (await httpRes.json()) as SbiPreviewResponse
-      const defaultStrategy = strategies[0]?.id ?? ''
-      setRows(
-        data.rows.map((r) => ({
-          ...r,
-          strategyId: defaultStrategy,
-          excluded: r.is_duplicate,
-        })),
-      )
-      setIssues(data.issues)
-      setBulkStrategy(defaultStrategy)
-      setPhase('review')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+
+    // openapi-fetch は text/csv の raw body 送信を素直に表現できないので fetch を直接使う
+    const result = await ResultAsync.fromPromise(
+      (async () => {
+        const buf = await file.arrayBuffer()
+        return fetch('/api/imports/sbi/preview', {
+          method: 'POST',
+          headers: { 'content-type': 'text/csv' },
+          body: buf,
+        })
+      })(),
+      (e) => (e instanceof Error ? e.message : String(e)),
+    )
+    if (result.isErr()) {
+      setError(result.error)
       setPhase('select')
+      return
     }
+    const httpRes = result.value
+
+    if (!httpRes.ok) {
+      const errBody: unknown = await httpRes.json().catch(() => null)
+      const message =
+        errBody != null &&
+        typeof errBody === 'object' &&
+        'error' in errBody &&
+        typeof errBody.error === 'string'
+          ? errBody.error
+          : 'CSV の解析に失敗しました'
+      setError(message)
+      setPhase('select')
+      return
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 自前 API でスキーマ一致を信頼するため、unknown→具象型は narrow 検証なしで通す
+    const data = (await httpRes.json()) as SbiPreviewResponse
+    const defaultStrategy = strategies[0]?.id ?? ''
+    setRows(
+      data.rows.map((r) => ({
+        ...r,
+        strategyId: defaultStrategy,
+        excluded: r.is_duplicate,
+      })),
+    )
+    setIssues(data.issues)
+    setBulkStrategy(defaultStrategy)
+    setPhase('review')
   }
 
   function applyBulkStrategy(id: string) {

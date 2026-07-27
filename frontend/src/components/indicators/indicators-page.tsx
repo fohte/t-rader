@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
+import { err, ok, Result, ResultAsync } from 'neverthrow'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -7,10 +8,11 @@ import {
   type IndicatorEditorValue,
   type IndicatorScopeLabel,
   type PreviewState,
-} from '@/components/indicators/indicator-editor'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api, fetchClient } from '@/lib/api/client'
+} from '#components/indicators/indicator-editor'
+import { Button } from '#components/ui/button'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api, fetchClient } from '#lib/api/client'
+import { parseJson } from '#lib/json'
 
 interface IndicatorsPageProps {
   scope: IndicatorScopeLabel
@@ -125,48 +127,54 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
   function parseJsonObject(
     label: string,
     raw: string,
-  ): { [key: string]: unknown } {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch (e) {
-      throw new Error(
-        `${label} が JSON として不正です: ${e instanceof Error ? e.message : String(e)}`,
+  ): Result<{ [key: string]: unknown }, Error> {
+    return parseJson(raw)
+      .mapErr(
+        (e) =>
+          new Error(
+            `${label} が JSON として不正です: ${e instanceof Error ? e.message : String(e)}`,
+          ),
       )
-    }
-    if (
-      parsed === null ||
-      typeof parsed !== 'object' ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error(`${label} はオブジェクトである必要があります`)
-    }
-    // 上のガードで null / 非 object / array は除外済み。
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 直前で plain object と確認済み
-    return parsed as { [key: string]: unknown }
+      .andThen((parsed) => {
+        if (
+          parsed === null ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed)
+        ) {
+          return err(new Error(`${label} はオブジェクトである必要があります`))
+        }
+        // 上のガードで null / 非 object / array は除外済み。
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 直前で plain object と確認済み
+        return ok(parsed as { [key: string]: unknown })
+      })
   }
 
-  function parseJsonValue(label: string, raw: string): unknown {
-    try {
-      return JSON.parse(raw)
-    } catch (e) {
-      throw new Error(
-        `${label} が JSON として不正です: ${e instanceof Error ? e.message : String(e)}`,
-      )
-    }
+  function parseJsonValue(label: string, raw: string): Result<unknown, Error> {
+    return parseJson(raw).mapErr(
+      (e) =>
+        new Error(
+          `${label} が JSON として不正です: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+    )
   }
 
   function handleSave(next: IndicatorEditorValue) {
     setSaveError(null)
-    let inputSchema: { [key: string]: unknown }
-    let outputSchema: { [key: string]: unknown }
-    try {
-      inputSchema = parseJsonObject('input_schema', next.inputSchema)
-      outputSchema = parseJsonObject('output_schema', next.outputSchema)
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : String(e))
+    const inputSchemaResult = parseJsonObject('input_schema', next.inputSchema)
+    if (inputSchemaResult.isErr()) {
+      setSaveError(inputSchemaResult.error.message)
       return
     }
+    const outputSchemaResult = parseJsonObject(
+      'output_schema',
+      next.outputSchema,
+    )
+    if (outputSchemaResult.isErr()) {
+      setSaveError(outputSchemaResult.error.message)
+      return
+    }
+    const inputSchema = inputSchemaResult.value
+    const outputSchema = outputSchemaResult.value
 
     const body = {
       name: next.name,
@@ -237,61 +245,82 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
   }) {
     const myReqId = ++previewReqIdRef.current
     setPreview({ isRunning: true, error: null, result: null })
-    let inputSchema: { [key: string]: unknown }
-    let outputSchema: { [key: string]: unknown }
-    let parsedArgs: unknown
-    try {
-      inputSchema = parseJsonObject('input_schema', args.inputSchema)
-      outputSchema = parseJsonObject('output_schema', args.outputSchema)
-      parsedArgs = parseJsonValue('args', args.argsJson)
-    } catch (e) {
+
+    const inputSchemaResult = parseJsonObject('input_schema', args.inputSchema)
+    if (inputSchemaResult.isErr()) {
       if (previewReqIdRef.current !== myReqId) return
       setPreview({
         isRunning: false,
-        error: e instanceof Error ? e.message : String(e),
+        error: inputSchemaResult.error.message,
         result: null,
       })
       return
     }
-
-    try {
-      const { data, error } = await fetchClient.POST(
-        '/api/indicators/preview',
-        {
-          body: {
-            code: args.code,
-            input_schema: inputSchema,
-            output_schema: outputSchema,
-            args: parsedArgs,
-          },
-        },
-      )
-      if (previewReqIdRef.current !== myReqId) return
-      if (error != null) {
-        setPreview({ isRunning: false, error: error.error, result: null })
-        return
-      }
-      setPreview({
-        isRunning: false,
-        error: null,
-        result: {
-          output: data.output ?? null,
-          stdout: data.stdout,
-          stderr: data.stderr,
-          exit_code: data.exit_code,
-        },
-      })
-    } catch (e) {
-      // fetch 自体の reject (ネットワーク断・CORS 失敗・abort 等) は
-      // openapi-fetch の { data, error } 経路に乗らず throw されるため、
-      // ここで拾わないと「実行中…」表示のまま固まる。
+    const outputSchemaResult = parseJsonObject(
+      'output_schema',
+      args.outputSchema,
+    )
+    if (outputSchemaResult.isErr()) {
       if (previewReqIdRef.current !== myReqId) return
       setPreview({
         isRunning: false,
-        error: e instanceof Error ? e.message : String(e),
+        error: outputSchemaResult.error.message,
         result: null,
       })
+      return
     }
+    const argsResult = parseJsonValue('args', args.argsJson)
+    if (argsResult.isErr()) {
+      if (previewReqIdRef.current !== myReqId) return
+      setPreview({
+        isRunning: false,
+        error: argsResult.error.message,
+        result: null,
+      })
+      return
+    }
+    const inputSchema = inputSchemaResult.value
+    const outputSchema = outputSchemaResult.value
+    const parsedArgs = argsResult.value
+
+    // fetch 自体の reject (ネットワーク断・CORS 失敗・abort 等) は
+    // openapi-fetch の { data, error } 経路に乗らず throw されるため、
+    // ResultAsync.fromPromise で拾わないと「実行中…」表示のまま固まる。
+    const responseResult = await ResultAsync.fromPromise(
+      fetchClient.POST('/api/indicators/preview', {
+        body: {
+          code: args.code,
+          input_schema: inputSchema,
+          output_schema: outputSchema,
+          args: parsedArgs,
+        },
+      }),
+      (e) => (e instanceof Error ? e.message : String(e)),
+    )
+    if (previewReqIdRef.current !== myReqId) return
+    if (responseResult.isErr()) {
+      setPreview({
+        isRunning: false,
+        error: responseResult.error,
+        result: null,
+      })
+      return
+    }
+    const { data, error } = responseResult.value
+    if (error != null) {
+      setPreview({ isRunning: false, error: error.error, result: null })
+      return
+    }
+    setPreview({
+      isRunning: false,
+      error: null,
+      result: {
+        output: data.output ?? null,
+        stdout: data.stdout,
+        stderr: data.stderr,
+        exit_code: data.exit_code,
+      },
+    })
   }
 
   // indicator 選択を切り替える。in-flight な preview を無効化し

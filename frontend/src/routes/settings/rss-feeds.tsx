@@ -3,11 +3,11 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
-import { RssFeedDialog } from '@/components/settings/rss-feed-dialog'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { RssFeedDialog } from '#components/settings/rss-feed-dialog'
+import { Button } from '#components/ui/button'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
 
 type RssFeed = components['schemas']['RssFeed']
 

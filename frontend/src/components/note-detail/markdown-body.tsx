@@ -4,8 +4,8 @@ import {
   type Block,
   type InlineToken,
   parseMarkdown,
-} from '@/components/note-detail/markdown'
-import { RefChip } from '@/components/strategy-shell/ref-chip'
+} from '#components/note-detail/markdown'
+import { RefChip } from '#components/strategy-shell/ref-chip'
 
 interface Ctx {
   onAnno?: (id: string) => void

@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
-import { $api } from '@/lib/api/client'
-import type { components } from '@/lib/api/schema.gen'
+import { Button } from '#components/ui/button'
+import { Input } from '#components/ui/input'
+import { Skeleton } from '#components/ui/skeleton'
+import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
+import { parseJson } from '#lib/json'
 
 type Trigger = components['schemas']['Trigger']
 type TriggerKind = components['schemas']['TriggerKind']
@@ -76,12 +77,11 @@ function validateForm(form: FormState): ValidationResult {
   let eventMatch: Record<string, unknown> | null = null
   const trimmed = form.eventMatch.trim()
   if (trimmed !== '') {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(trimmed)
-    } catch {
+    const parsedResult = parseJson(trimmed)
+    if (parsedResult.isErr()) {
       return { ok: false, error: 'event_match の JSON が不正です' }
     }
+    const parsed = parsedResult.value
     if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return {
         ok: false,
