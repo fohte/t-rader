@@ -9,7 +9,7 @@ file = "scripts/db-up"
 
 [tools]
 lefthook = "2.1.10"
-"github:ast-grep/ast-grep" = "0.44.0"
+"github:ast-grep/ast-grep" = "0.44.1"
 "cargo:sea-orm-cli" = "2.0.0-rc.40"
 
 # lefthook hooks
