@@ -1,7 +1,7 @@
 {
   "name": "agent",
   "private": true,
-  "packageManager": "pnpm@11.15.0",
+  "packageManager": "pnpm@11.15.1",
   "type": "module",
   "imports": {
     "#db": "./src/db/index.ts",
