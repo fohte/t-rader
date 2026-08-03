@@ -58,7 +58,7 @@ rmcp = { workspace = true, features = [
     "schemars",
     "transport-streamable-http-server",
 ] }
-schemars = { version = "=1.2.1", features = ["chrono04", "uuid1"] }
+schemars = { version = "=1.2.2", features = ["chrono04", "uuid1"] }
 rust_decimal = { workspace = true, features = ["serde-float"] }
 sea-orm = { workspace = true, features = [
     "runtime-tokio-native-tls",
