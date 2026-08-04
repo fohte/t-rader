@@ -142,8 +142,10 @@ impl IntoResponse for AppError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rstest::rstest;
+    use serde_json::json;
+
+    use super::*;
 
     #[rstest]
     fn test_service_unavailable_returns_503() {
@@ -153,13 +155,28 @@ mod tests {
     }
 
     #[rstest]
-    #[case::record_not_updated(DbErr::RecordNotUpdated, StatusCode::NOT_FOUND)]
+    #[case::record_not_updated(
+        DbErr::RecordNotUpdated,
+        StatusCode::NOT_FOUND,
+        json!({ "error": "resource not found" })
+    )]
     #[case::other_db_error(
         DbErr::Custom("unexpected".into()),
-        StatusCode::INTERNAL_SERVER_ERROR
+        StatusCode::INTERNAL_SERVER_ERROR,
+        json!({ "error": "internal server error" })
     )]
-    fn test_database_error_status(#[case] db_err: DbErr, #[case] expected: StatusCode) {
+    #[tokio::test]
+    async fn test_database_error_response(
+        #[case] db_err: DbErr,
+        #[case] expected_status: StatusCode,
+        #[case] expected_body: serde_json::Value,
+    ) {
         let response = AppError::Database(db_err).into_response();
-        assert_eq!(response.status(), expected);
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
+        assert_eq!((status, body), (expected_status, expected_body));
     }
 }

@@ -886,6 +886,8 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
+    // 実際の並行リクエストは非決定的なため、read (find_by_id) と update (save_skills) の
+    // 間に別経路で削除を挟むことで、handler 内で本来並行削除が起こるタイミングを決定的に再現する。
     #[sqlx::test(migrations = false)]
     async fn save_skills_returns_404_when_strategy_deleted_concurrently(pool: PgPool) {
         use axum::response::IntoResponse;
@@ -900,14 +902,12 @@ mod tests {
             .await
             .assert_status_ok();
 
-        // handler の find_strategy_or_404 が読んだ時点のスナップショットを再現する
         let current = strategy::Entity::find_by_id(id)
             .one(&state.db)
             .await
             .expect("find strategy")
             .expect("strategy exists");
 
-        // 別リクエストがこの間に strategy を削除した状態を再現する
         strategy::Entity::delete_by_id(id)
             .exec(&state.db)
             .await
@@ -925,7 +925,18 @@ mod tests {
         .expect_err("update against a deleted row must fail");
 
         let response = err.into_response();
-        assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
+        assert_eq!(
+            (status, body),
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                json!({ "error": "resource not found" }),
+            )
+        );
     }
 
     #[sqlx::test(migrations = false)]
