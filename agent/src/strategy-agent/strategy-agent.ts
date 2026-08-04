@@ -70,6 +70,7 @@ export interface StrategyAgentConfig {
   readonly backendApiBaseUrl: string
   readonly strategyMcpUrl: string
   readonly openCodeApiKey: string
+  readonly openCodeBaseUrl?: string | undefined
   readonly genAiCallbackHandler: BaseCallbackHandler
 }
 
@@ -111,7 +112,9 @@ export const createStrategyAgentDeps = (
     new ChatOpenAI({
       apiKey: config.openCodeApiKey,
       model,
-      configuration: { baseURL: OPENCODE_GO_BASE_URL },
+      configuration: {
+        baseURL: config.openCodeBaseUrl ?? OPENCODE_GO_BASE_URL,
+      },
     }),
   buildAgent: defaultBuildAgent,
   genAiCallbackHandler: config.genAiCallbackHandler,
