@@ -688,11 +688,15 @@ mod tests {
 
     use uuid::Uuid;
 
-    use super::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with};
+    use super::{
+        DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with, save_skills,
+        skills_object,
+    };
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::{strategy, strategy_task};
     use crate::testing::{
-        create_test_server, create_test_server_with_db, create_test_server_with_db_and_agent_client,
+        create_test_server, create_test_server_with_db,
+        create_test_server_with_db_and_agent_client, create_test_server_with_state,
     };
 
     async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
@@ -880,6 +884,59 @@ mod tests {
             .delete(&format!("/api/strategies/{id}/skills/missing"))
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    // 実際の並行リクエストは非決定的なため、read (find_by_id) と update (save_skills) の
+    // 間に別経路で削除を挟むことで、handler 内で本来並行削除が起こるタイミングを決定的に再現する。
+    #[sqlx::test(migrations = false)]
+    async fn save_skills_returns_404_when_strategy_deleted_concurrently(pool: PgPool) {
+        use axum::response::IntoResponse;
+
+        let (state, server) = create_test_server_with_state(pool).await;
+        let id_str = create_strategy(&server, "s").await;
+        let id: Uuid = id_str.parse().expect("uuid");
+
+        server
+            .put(&format!("/api/strategies/{id}/skills/scout"))
+            .json(&json!({ "content": "first" }))
+            .await
+            .assert_status_ok();
+
+        let current = strategy::Entity::find_by_id(id)
+            .one(&state.db)
+            .await
+            .expect("find strategy")
+            .expect("strategy exists");
+
+        strategy::Entity::delete_by_id(id)
+            .exec(&state.db)
+            .await
+            .expect("delete strategy");
+
+        let mut map = skills_object(&current.skills);
+        map.remove("scout");
+        let err = save_skills(
+            &state,
+            current,
+            serde_json::Value::Object(map),
+            "deleted skill scout".to_string(),
+        )
+        .await
+        .expect_err("update against a deleted row must fail");
+
+        let response = err.into_response();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
+        assert_eq!(
+            (status, body),
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                json!({ "error": "resource not found" }),
+            )
+        );
     }
 
     #[sqlx::test(migrations = false)]
