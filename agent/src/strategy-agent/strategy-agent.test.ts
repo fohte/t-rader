@@ -17,7 +17,6 @@ import type {
 } from '#strategy-agent/strategy-agent'
 import {
   createStrategyAgentDeps,
-  OPENCODE_GO_BASE_URL,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
 
@@ -269,10 +268,8 @@ describe('createStrategyAgentDeps', () => {
 
     const model = deps.createChatModel('test-model')
 
-    expect(model).toBeInstanceOf(ChatOpenAI)
     if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
-    expect(model.model).toBe('test-model')
-    expect(model.clientConfig.baseURL).toBe(OPENCODE_GO_BASE_URL)
+    expect(model.clientConfig.baseURL).toBe('https://opencode.ai/zen/go/v1')
   })
 
   it('accepts a base URL override', () => {

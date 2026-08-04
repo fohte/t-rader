@@ -19,8 +19,6 @@ export interface Env {
   // strategy from free text when message metadata doesn't carry strategy_id.
   MGMT_MCP_URL: string
   OPENCODE_API_KEY: string
-  // OpenAI 互換の LLM 接続先を上書きする。未設定時は strategy-agent.ts の
-  // OPENCODE_GO_BASE_URL にフォールバックする。
   OPENCODE_BASE_URL: string | undefined
 }
 
