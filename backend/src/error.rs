@@ -88,7 +88,11 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             AppError::Database(db_err) => {
-                if let Some(mapped) = classify_db_constraint(db_err) {
+                if matches!(db_err, DbErr::RecordNotUpdated) {
+                    // read-then-update の間に対象行が並行削除されると 0 行更新でここに来る。
+                    // クライアントからは「対象が既に存在しない」だけなので 404 として扱う。
+                    (StatusCode::NOT_FOUND, "resource not found".to_string())
+                } else if let Some(mapped) = classify_db_constraint(db_err) {
                     mapped
                 } else {
                     // 内部エラーの詳細はログに記録し、クライアントには汎用メッセージのみ返す
@@ -146,5 +150,16 @@ mod tests {
         let error = AppError::ServiceUnavailable("data provider is not configured".into());
         let response = error.into_response();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[rstest]
+    #[case::record_not_updated(DbErr::RecordNotUpdated, StatusCode::NOT_FOUND)]
+    #[case::other_db_error(
+        DbErr::Custom("unexpected".into()),
+        StatusCode::INTERNAL_SERVER_ERROR
+    )]
+    fn test_database_error_status(#[case] db_err: DbErr, #[case] expected: StatusCode) {
+        let response = AppError::Database(db_err).into_response();
+        assert_eq!(response.status(), expected);
     }
 }
