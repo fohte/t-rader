@@ -35,6 +35,14 @@ include-path-regex = "^/api/indicators/preview$"
 [operations.checks.not_a_server_error]
 expected-statuses = ["2xx", "4xx", 503]
 
+# hook 受信エンドポイントは agent task client 未設定時に 503 を返す仕様
+# (CI 環境では TRADER_AGENT_API_URL=disabled のため必然的に 503 になる)。
+# ref: https://github.com/schemathesis/schemathesis/issues/2539
+[[operations]]
+include-path-regex = "^/api/hooks/[^/]+$"
+[operations.checks.not_a_server_error]
+expected-statuses = ["2xx", "4xx", 503]
+
 [phases.fuzzing]
 # Fuzzing フェーズはランダム生成された UUID パスパラメータにより
 # 存在しないリソースへのリクエストが大量に発生し、4xx レスポンスが
