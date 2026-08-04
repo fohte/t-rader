@@ -3,6 +3,7 @@ import { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
+import { ChatOpenAI } from '@langchain/openai'
 import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -14,7 +15,11 @@ import type {
   McpToolsClient,
   StrategyAgentDeps,
 } from '#strategy-agent/strategy-agent'
-import { runStrategyAgent } from '#strategy-agent/strategy-agent'
+import {
+  createStrategyAgentDeps,
+  OPENCODE_GO_BASE_URL,
+  runStrategyAgent,
+} from '#strategy-agent/strategy-agent'
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -248,5 +253,37 @@ describe('runStrategyAgent', () => {
       errorKind: 'agent_error',
     })
     expect(calls.mcpClientClosed).toBe(true)
+  })
+})
+
+describe('createStrategyAgentDeps', () => {
+  const baseConfig = {
+    backendApiBaseUrl: 'http://t-rader-backend',
+    strategyMcpUrl: 'http://t-rader-backend/mcp/strategy',
+    openCodeApiKey: 'test-key',
+    genAiCallbackHandler: new FakeCallbackHandler(),
+  }
+
+  it('creates a chat model defaulted to the OpenCode Go base URL', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const model = deps.createChatModel('test-model')
+
+    expect(model).toBeInstanceOf(ChatOpenAI)
+    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
+    expect(model.model).toBe('test-model')
+    expect(model.clientConfig.baseURL).toBe(OPENCODE_GO_BASE_URL)
+  })
+
+  it('accepts a base URL override', () => {
+    const deps = createStrategyAgentDeps({
+      ...baseConfig,
+      openCodeBaseUrl: 'https://litellm.example.com/v1',
+    })
+
+    const model = deps.createChatModel('test-model')
+
+    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
+    expect(model.clientConfig.baseURL).toBe('https://litellm.example.com/v1')
   })
 })

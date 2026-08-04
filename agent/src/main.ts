@@ -44,6 +44,7 @@ export const main = async (): Promise<void> => {
     backendApiBaseUrl: env.BACKEND_API_BASE_URL,
     strategyMcpUrl: env.STRATEGY_MCP_URL,
     openCodeApiKey: env.OPENCODE_API_KEY,
+    openCodeBaseUrl: env.OPENCODE_BASE_URL,
     genAiCallbackHandler: new GenAiCallbackHandler({
       providerName: GEN_AI_PROVIDER_NAME,
     }),
