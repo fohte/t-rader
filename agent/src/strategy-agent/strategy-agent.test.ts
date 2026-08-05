@@ -275,7 +275,7 @@ describe('createStrategyAgentDeps', () => {
   it('accepts a base URL override', () => {
     const deps = createStrategyAgentDeps({
       ...baseConfig,
-      openCodeBaseUrl: 'https://litellm.example.com/v1',
+      llmBaseUrl: 'https://litellm.example.com/v1',
     })
 
     const model = deps.createChatModel('test-model')

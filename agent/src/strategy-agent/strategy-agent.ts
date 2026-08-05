@@ -70,7 +70,7 @@ export interface StrategyAgentConfig {
   readonly backendApiBaseUrl: string
   readonly strategyMcpUrl: string
   readonly openCodeApiKey: string
-  readonly openCodeBaseUrl?: string | undefined
+  readonly llmBaseUrl?: string | undefined
   readonly genAiCallbackHandler: BaseCallbackHandler
 }
 
@@ -113,7 +113,7 @@ export const createStrategyAgentDeps = (
       apiKey: config.openCodeApiKey,
       model,
       configuration: {
-        baseURL: config.openCodeBaseUrl ?? OPENCODE_GO_BASE_URL,
+        baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
       },
     }),
   buildAgent: defaultBuildAgent,
