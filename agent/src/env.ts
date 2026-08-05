@@ -19,7 +19,7 @@ export interface Env {
   // strategy from free text when message metadata doesn't carry strategy_id.
   MGMT_MCP_URL: string
   OPENCODE_API_KEY: string
-  OPENCODE_BASE_URL: string | undefined
+  LLM_BASE_URL: string | undefined
 }
 
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000
@@ -104,7 +104,7 @@ export const loadEnv = (
     STRATEGY_MCP_URL: requireString('STRATEGY_MCP_URL'),
     MGMT_MCP_URL: requireString('MGMT_MCP_URL'),
     OPENCODE_API_KEY: requireString('OPENCODE_API_KEY'),
-    OPENCODE_BASE_URL: optionalString('OPENCODE_BASE_URL'),
+    LLM_BASE_URL: optionalString('LLM_BASE_URL'),
   }
 
   if (issues.length > 0) {

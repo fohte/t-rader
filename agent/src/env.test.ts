@@ -15,7 +15,7 @@ const fullSource = {
   STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
   MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
   OPENCODE_API_KEY: 'opencode-key',
-  OPENCODE_BASE_URL: 'https://litellm.example.com/v1',
+  LLM_BASE_URL: 'https://litellm.example.com/v1',
 } as const
 
 const captureIssues = (run: () => unknown): readonly string[] => {
@@ -43,7 +43,7 @@ describe('loadEnv', () => {
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
       OPENCODE_API_KEY: 'opencode-key',
-      OPENCODE_BASE_URL: 'https://litellm.example.com/v1',
+      LLM_BASE_URL: 'https://litellm.example.com/v1',
     })
   })
 
@@ -68,12 +68,12 @@ describe('loadEnv', () => {
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
       OPENCODE_API_KEY: 'opencode-key',
-      OPENCODE_BASE_URL: 'https://litellm.example.com/v1',
+      LLM_BASE_URL: 'https://litellm.example.com/v1',
     })
   })
 
-  it('defaults OPENCODE_BASE_URL to undefined when omitted', () => {
-    const { OPENCODE_BASE_URL: _baseUrl, ...rest } = fullSource
+  it('defaults LLM_BASE_URL to undefined when omitted', () => {
+    const { LLM_BASE_URL: _baseUrl, ...rest } = fullSource
     void _baseUrl
     expect(loadEnv(rest)).toEqual({
       DATABASE_URL: 'postgres://localhost/t_rader_agent',
@@ -88,12 +88,12 @@ describe('loadEnv', () => {
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
       OPENCODE_API_KEY: 'opencode-key',
-      OPENCODE_BASE_URL: undefined,
+      LLM_BASE_URL: undefined,
     })
   })
 
-  it('treats an empty-string OPENCODE_BASE_URL as omitted', () => {
-    expect(loadEnv({ ...fullSource, OPENCODE_BASE_URL: '' })).toEqual({
+  it('treats an empty-string LLM_BASE_URL as omitted', () => {
+    expect(loadEnv({ ...fullSource, LLM_BASE_URL: '' })).toEqual({
       DATABASE_URL: 'postgres://localhost/t_rader_agent',
       TRADER_AGENT_PORT: 8080,
       TRADER_AGENT_URL: 'http://t-rader-agent:8080/',
@@ -106,7 +106,7 @@ describe('loadEnv', () => {
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
       OPENCODE_API_KEY: 'opencode-key',
-      OPENCODE_BASE_URL: undefined,
+      LLM_BASE_URL: undefined,
     })
   })
 
