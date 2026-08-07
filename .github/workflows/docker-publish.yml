@@ -1,9 +1,15 @@
+<<<<<<< before updating
 name: Docker
+||||||| last update
+=======
+name: Docker publish
+>>>>>>> after updating
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,19 +22,33 @@ jobs:
     strategy:
       matrix:
         include:
+<<<<<<< before updating
           - component: backend
             context: ./backend
           - component: frontend
             context: ./frontend
+||||||| last update
+=======
+>>>>>>> after updating
           - component: agent
+<<<<<<< before updating
             context: ./agent
+||||||| last update
+=======
+            context: agent
+            dockerfile: agent/Dockerfile
+>>>>>>> after updating
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+<<<<<<< before updating
         id: setup-buildx
+||||||| last update
+=======
+>>>>>>> after updating
 
       - name: Log in to ghcr.io
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -46,6 +66,7 @@ jobs:
             type=sha
             type=raw,value=latest
 
+<<<<<<< before updating
       # backend: RUN --mount=type=cache のキャッシュを GHA キャッシュに永続化する。
       # GHA 環境では BuildKit cache mount のデータが type=gha バックエンドに保存されないため、
       # buildkit-cache-dance を使って actions/cache 経由で永続化する。
@@ -69,13 +90,22 @@ jobs:
           dockerfile: backend/Dockerfile
           skip-extraction: ${{ steps.cargo-cache.outputs.cache-hit }}
 
+||||||| last update
+=======
+>>>>>>> after updating
       - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ${{ matrix.context }}
+<<<<<<< before updating
+||||||| last update
+=======
+          file: ${{ matrix.dockerfile }}
+>>>>>>> after updating
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+<<<<<<< before updating
           # frontend/agent: レイヤーキャッシュを GHA cache backend で永続化する。
           # backend は cache mount + buildkit-cache-dance で永続化するため不要。
           # cache-from/cache-to と buildkit-cache-dance を併用すると、Post ステップの
@@ -88,6 +118,20 @@ jobs:
           # (ghcr.io 側の問題で、2026-02 時点で未修正) があるため無効化。
           # 代替手段として actions/attest-build-provenance を別ステップで使う方法があるが、
           # GitHub Enterprise Cloud プランが必要なため Free/Pro の private リポジトリでは利用不可。
+||||||| last update
+=======
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+          # Disable provenance to avoid ghcr.io permission_denied errors on private packages
+>>>>>>> after updating
           # ref: https://github.com/docker/build-push-action/issues/981
+<<<<<<< before updating
           # ref: https://github.com/docker/build-push-action/issues/900
+||||||| last update
+=======
+>>>>>>> after updating
           provenance: false
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
