@@ -1,8 +1,5 @@
 node_modules
 dist
-<<<<<<< before updating
-||||||| last update
-=======
 .git
 .github
 .worktrees
@@ -26,4 +23,3 @@ scripts
 .storybook
 storybook-static
 **/*.test.ts
->>>>>>> after updating

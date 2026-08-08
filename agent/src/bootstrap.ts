@@ -5,11 +5,11 @@
 // `--import @fohte/service-kit/otel-register` flag on the start/dev scripts
 // must preload it before this file (or anything else) is imported, or
 // `http.Server` is never patched.
-import { initObservabilityIfConfigured,
+import {
+  initObservabilityIfConfigured,
   type ObservabilityHandle,
 } from '@fohte/service-kit/observability'
 
-<<<<<<< before updating
 import { createJsonStdoutLogger } from '#logger'
 
 const jsonLogger = createJsonStdoutLogger()
@@ -28,16 +28,7 @@ export const initFromEnv = (
   // Vitest sets NODE_ENV=test; skip initializing real Sentry/OTel
   // connections so test runs don't hang on open handles or ship telemetry.
   if (env['NODE_ENV'] === 'test') return undefined
-  return isObservabilityConfigured(env)
-    ? initObservability(env, { logger: observabilityLogger })
-    : undefined
+  return initObservabilityIfConfigured(env, { logger: observabilityLogger })
 }
 
 export const observability = initFromEnv()
-||||||| last update
-if (isObservabilityConfigured(process.env)) {
-  initObservability(process.env)
-}
-=======
-initObservabilityIfConfigured(process.env)
->>>>>>> after updating
