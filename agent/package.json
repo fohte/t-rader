@@ -1,15 +1,15 @@
 {
   "name": "agent",
   "private": true,
-  "packageManager": "pnpm@11.15.1",
+  "packageManager": "pnpm@11.16.0",
   "type": "module",
   "imports": {
     "#db": "./src/db/index.ts",
     "#*": "./src/*.ts"
   },
   "scripts": {
-    "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts",
+    "start": "node --import @fohte/service-kit/otel-register dist/index.js",
+    "dev": "tsx watch --import @fohte/service-kit/otel-register src/index.ts",
     "build": "tsup src/index.ts src/db/migrate.ts --format esm --out-dir dist --clean",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -30,15 +30,8 @@
     "@langchain/mcp-adapters": "1.1.3",
     "@langchain/openai": "1.5.5",
     "@opentelemetry/api": "1.9.1",
-    "@opentelemetry/auto-instrumentations-node": "0.77.0",
-    "@opentelemetry/exporter-trace-otlp-proto": "0.219.0",
-    "@opentelemetry/instrumentation": "0.219.0",
-    "@opentelemetry/resources": "2.8.0",
-    "@opentelemetry/sdk-node": "0.219.0",
     "@opentelemetry/sdk-trace-base": "2.8.0",
     "@opentelemetry/semantic-conventions": "1.41.1",
-    "@sentry/node": "10.63.0",
-    "@sentry/opentelemetry": "10.63.0",
     "drizzle-orm": "0.45.2",
     "hono": "4.12.34",
     "langchain": "1.5.4",
@@ -48,7 +41,7 @@
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.1",
-    "@eslint/eslintrc": "3.3.5",
+    "@eslint/eslintrc": "3.3.6",
     "@fohte/eslint-config": "0.4.0",
     "@ninoseki/eslint-plugin-neverthrow": "0.2.0",
     "@tsconfig/node-lts": "24.0.0",

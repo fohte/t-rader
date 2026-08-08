@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "packageManager": "pnpm@11.15.1",
+  "packageManager": "pnpm@11.16.0",
   "type": "module",
   "scripts": {
     "lint": "eslint .",
@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.1",
-    "@eslint/eslintrc": "3.3.5",
+    "@eslint/eslintrc": "3.3.6",
     "@fohte/eslint-config": "0.4.0",
     "@storybook/addon-docs": "10.2.10",
     "@storybook/addon-themes": "10.2.10",
