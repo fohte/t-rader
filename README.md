@@ -40,7 +40,7 @@ docker compose up
 
 起動後、`docker compose port frontend 5173` で確認したポートでフロントエンドにアクセスできる。
 
-`agent` サービスは `OPENCODE_API_KEY` が未設定だと起動に失敗する。`docker-compose.yml` の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること (詳細は下記「環境変数」参照)。
+`agent` サービスは `LLM_API_KEY` が未設定だと起動に失敗する。`docker-compose.yml` の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること (詳細は下記「環境変数」参照)。
 
 ### Git worktree で並列開発する場合
 
@@ -156,7 +156,7 @@ pnpm run format     # ESLint + Prettier によるフォーマット
 | `BACKEND_API_BASE_URL`   | agent が戦略の AGENTS.md / skills / model を取得する backend のベース URL                                                                                                                                                                  | -                            |
 | `STRATEGY_MCP_URL`       | agent が strategy tool 群に接続する backend の MCP エンドポイント                                                                                                                                                                          | -                            |
 | `MGMT_MCP_URL`           | agent が strategy_id metadata の無い message から対象戦略を名前解決する際に使う backend の管理 MCP エンドポイント                                                                                                                          | -                            |
-| `OPENCODE_API_KEY`       | agent が戦略 Agent の LLM 呼び出しに使う API キー (`LLM_BASE_URL` を差し替えた場合はその接続先の API キー)。未設定だと agent の起動に失敗する。docker-compose の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること | -                            |
+| `LLM_API_KEY`            | agent が戦略 Agent の LLM 呼び出しに使う API キー (`LLM_BASE_URL` を差し替えた場合はその接続先の API キー)。未設定だと agent の起動に失敗する。docker-compose の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること | -                            |
 | `LLM_BASE_URL`           | agent が戦略 Agent の LLM 呼び出しに使う OpenAI 互換エンドポイントの base URL。任意の互換エンドポイント (LiteLLM Proxy 等) に差し替えられる                                                                                                | OpenCode Go のエンドポイント |
 | `JQUANTS_API_KEY`        | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                                                                                                                       | -                            |
 | `VITE_API_URL`           | Vite 開発サーバーのプロキシ先 URL                                                                                                                                                                                                          | `http://localhost:3000`      |

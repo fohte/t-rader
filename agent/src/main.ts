@@ -43,7 +43,7 @@ export const main = async (): Promise<void> => {
   const strategyAgentDeps = createStrategyAgentDeps({
     backendApiBaseUrl: env.BACKEND_API_BASE_URL,
     strategyMcpUrl: env.STRATEGY_MCP_URL,
-    openCodeApiKey: env.OPENCODE_API_KEY,
+    llmApiKey: env.LLM_API_KEY,
     llmBaseUrl: env.LLM_BASE_URL,
     genAiCallbackHandler: new GenAiCallbackHandler({
       providerName: GEN_AI_PROVIDER_NAME,
