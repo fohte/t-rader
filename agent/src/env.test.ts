@@ -14,7 +14,7 @@ const fullSource = {
   BACKEND_API_BASE_URL: 'http://t-rader-backend',
   STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
   MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
-  OPENCODE_API_KEY: 'opencode-key',
+  LLM_API_KEY: 'llm-key',
   LLM_BASE_URL: 'https://litellm.example.com/v1',
 } as const
 
@@ -42,7 +42,7 @@ describe('loadEnv', () => {
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
-      OPENCODE_API_KEY: 'opencode-key',
+      LLM_API_KEY: 'llm-key',
       LLM_BASE_URL: 'https://litellm.example.com/v1',
     })
   })
@@ -67,7 +67,7 @@ describe('loadEnv', () => {
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
-      OPENCODE_API_KEY: 'opencode-key',
+      LLM_API_KEY: 'llm-key',
       LLM_BASE_URL: 'https://litellm.example.com/v1',
     })
   })
@@ -87,7 +87,7 @@ describe('loadEnv', () => {
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
-      OPENCODE_API_KEY: 'opencode-key',
+      LLM_API_KEY: 'llm-key',
       LLM_BASE_URL: undefined,
     })
   })
@@ -105,7 +105,7 @@ describe('loadEnv', () => {
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
-      OPENCODE_API_KEY: 'opencode-key',
+      LLM_API_KEY: 'llm-key',
       LLM_BASE_URL: undefined,
     })
   })
@@ -121,7 +121,7 @@ describe('loadEnv', () => {
       'missing required env: BACKEND_API_BASE_URL',
       'missing required env: STRATEGY_MCP_URL',
       'missing required env: MGMT_MCP_URL',
-      'missing required env: OPENCODE_API_KEY',
+      'missing required env: LLM_API_KEY',
     ])
   })
 

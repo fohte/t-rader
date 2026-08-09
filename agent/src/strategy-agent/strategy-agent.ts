@@ -69,7 +69,7 @@ export interface StrategyAgentDeps {
 export interface StrategyAgentConfig {
   readonly backendApiBaseUrl: string
   readonly strategyMcpUrl: string
-  readonly openCodeApiKey: string
+  readonly llmApiKey: string
   readonly llmBaseUrl?: string | undefined
   readonly genAiCallbackHandler: BaseCallbackHandler
 }
@@ -110,7 +110,7 @@ export const createStrategyAgentDeps = (
     }),
   createChatModel: (model) =>
     new ChatOpenAI({
-      apiKey: config.openCodeApiKey,
+      apiKey: config.llmApiKey,
       model,
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
