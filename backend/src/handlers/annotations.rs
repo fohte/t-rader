@@ -251,23 +251,20 @@ pub async fn update_annotation(
     Ok(Json(updated))
 }
 
-async fn change_annotation_status(
+async fn change_annotation_status_from(
     state: &AppState,
-    id: Uuid,
+    current: annotation::Model,
     new_status: &str,
     label: Option<String>,
 ) -> Result<annotation::Model, AppError> {
-    let txn = state.db.begin().await?;
-    let current = annotation::Entity::find_by_id(id)
-        .one(&txn)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
     if current.status == new_status {
         return Ok(current);
     }
+    let id = current.id;
     let mut active = current.clone().into_active_model();
     active.status = Set(new_status.to_string());
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
+    let txn = state.db.begin().await?;
     let updated = active.update(&txn).await?;
     change_history::record(
         &txn,
@@ -280,6 +277,19 @@ async fn change_annotation_status(
     .await?;
     txn.commit().await?;
     Ok(updated)
+}
+
+async fn change_annotation_status(
+    state: &AppState,
+    id: Uuid,
+    new_status: &str,
+    label: Option<String>,
+) -> Result<annotation::Model, AppError> {
+    let current = annotation::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
+    change_annotation_status_from(state, current, new_status, label).await
 }
 
 /// アノテーションを approved に遷移
@@ -320,6 +330,7 @@ pub async fn approve_annotation(
         (status = 404, body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
     )
 )]
 pub async fn reject_annotation(
@@ -331,6 +342,8 @@ pub async fn reject_annotation(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
+    // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
+    // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
     if current.status == "rejected" {
         return Ok(Json(current));
     }
@@ -350,7 +363,7 @@ pub async fn reject_annotation(
     .map_err(map_submit_error)?;
 
     Ok(Json(
-        change_annotation_status(&state, id, "rejected", payload.label).await?,
+        change_annotation_status_from(&state, current, "rejected", payload.label).await?,
     ))
 }
 

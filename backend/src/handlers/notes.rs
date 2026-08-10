@@ -369,13 +369,13 @@ pub async fn delete_note(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn change_note_status(
+async fn change_note_status_from(
     state: &AppState,
-    id: Uuid,
+    current: note::Model,
     new_status: &str,
     label: Option<String>,
 ) -> Result<note::Model, AppError> {
-    let current = find_note_or_404(&state.db, id).await?;
+    let id = current.id;
     let mut active = current.clone().into_active_model();
     active.status = Set(new_status.to_string());
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
@@ -392,6 +392,16 @@ async fn change_note_status(
     .await?;
     txn.commit().await?;
     Ok(updated)
+}
+
+async fn change_note_status(
+    state: &AppState,
+    id: Uuid,
+    new_status: &str,
+    label: Option<String>,
+) -> Result<note::Model, AppError> {
+    let current = find_note_or_404(&state.db, id).await?;
+    change_note_status_from(state, current, new_status, label).await
 }
 
 /// ノートを approved に遷移
@@ -432,6 +442,7 @@ pub async fn approve_note(
         (status = 404, body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
     )
 )]
 pub async fn reject_note(
@@ -440,6 +451,8 @@ pub async fn reject_note(
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<note::Model>, AppError> {
     let current = find_note_or_404(&state.db, id).await?;
+    // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
+    // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
     if current.status == "rejected" {
         return Ok(Json(current));
     }
@@ -459,7 +472,7 @@ pub async fn reject_note(
     .map_err(map_submit_error)?;
 
     Ok(Json(
-        change_note_status(&state, id, "rejected", payload.label).await?,
+        change_note_status_from(&state, current, "rejected", payload.label).await?,
     ))
 }
 
