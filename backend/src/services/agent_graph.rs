@@ -168,16 +168,47 @@ mod tests {
                 tools: [query_data, write_note]
         "};
 
-        let config = parse_agent_graph(yaml).unwrap().unwrap();
-        assert_eq!(config.phases.len(), 2);
-        assert_eq!(config.phases[0].key, "plan");
         assert_eq!(
-            config.phases[1].for_each.as_deref(),
-            Some("plan.hypotheses")
-        );
-        assert_eq!(
-            config.phases[1].tools,
-            vec!["query_data".to_string(), "write_note".to_string()]
+            parse_agent_graph(yaml),
+            Ok(Some(AgentGraphConfig {
+                phases: vec![
+                    AgentGraphPhase {
+                        key: "plan".to_string(),
+                        label: "調査計画".to_string(),
+                        model: "claude-opus-4".to_string(),
+                        prompt: "仮説を立てよ".to_string(),
+                        runs: Some("once".to_string()),
+                        for_each: None,
+                        label_field: None,
+                        max_parallel: None,
+                        skills: vec![],
+                        tools: vec![],
+                        output: serde_json::json!({
+                            "hypotheses": {
+                                "type": "array",
+                                "description": "検証すべき仮説",
+                                "items": { "title": { "type": "string" } },
+                            },
+                        })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                    },
+                    AgentGraphPhase {
+                        key: "investigate".to_string(),
+                        label: "仮説の調査".to_string(),
+                        model: "deepseek-v4-flash".to_string(),
+                        prompt: "割り当てられた仮説を検証せよ".to_string(),
+                        runs: None,
+                        for_each: Some("plan.hypotheses".to_string()),
+                        label_field: Some("title".to_string()),
+                        max_parallel: Some(4),
+                        skills: vec![],
+                        tools: vec!["query_data".to_string(), "write_note".to_string()],
+                        output: serde_json::Map::new(),
+                    },
+                ],
+            })),
         );
     }
 

@@ -4142,7 +4142,7 @@ export interface operations {
           'application/json': components['schemas']['AgentGraphBody']
         }
       }
-      /** @description YAML が不正、または for_each の参照先が実在しない */
+      /** @description YAML が不正、またはフェーズ定義が不正 (キー重複・for_each の参照先不備など) */
       400: {
         headers: {
           [name: string]: unknown
