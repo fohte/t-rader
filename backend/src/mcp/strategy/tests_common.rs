@@ -6,10 +6,10 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::entities::{comment, note, strategy};
+use crate::entities::{annotation, comment, note, strategy};
 
 use super::StrategyServer;
-use super::dto::{AnnotationDto, NoteDto};
+use super::dto::{AnnotationDto, CommentDto, NoteDto};
 
 pub(super) async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
     let id = Uuid::new_v4();
@@ -50,6 +50,11 @@ pub(super) fn normalize_annotation(mut a: AnnotationDto) -> AnnotationDto {
     a
 }
 
+pub(super) fn normalize_comment(mut c: CommentDto) -> CommentDto {
+    c.created_at = ts_sentinel();
+    c
+}
+
 /// 指定戦略の所有として固定タイトルの note を seed する (cross-strategy violation 用)
 pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, title: &str) -> Uuid {
     let id = Uuid::new_v4();
@@ -70,6 +75,29 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
     .insert(db)
     .await
     .expect("seed note");
+    id
+}
+
+/// 指定戦略の所有として固定パラメータの annotation を seed する (cross-strategy violation 用)
+pub(super) async fn seed_foreign_annotation(db: &DatabaseConnection, owner: Uuid) -> Uuid {
+    let id = Uuid::new_v4();
+    annotation::ActiveModel {
+        id: Set(id),
+        strategy_id: Set(owner),
+        target_symbol: Set("7203".into()),
+        target_kind: Set("signal".into()),
+        timestamp: Set("2026-06-01T00:00:00Z".parse().expect("ts")),
+        price: Set(None),
+        text: Set("breakout".into()),
+        status: Set(super::DEFAULT_ANNOTATION_STATUS.into()),
+        linked_note_id: Set(None),
+        created_by_kind: Set(super::STRATEGY_AGENT_ACTOR.into()),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("seed annotation");
     id
 }
 

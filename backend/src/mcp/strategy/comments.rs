@@ -72,9 +72,10 @@ mod tests {
 
     use crate::testing::create_test_db;
 
-    use super::super::dto::{CreateAnnotationParams, ReadCommentsParams};
+    use super::super::dto::{CommentDto, ReadCommentsParams};
     use super::super::tests_common::{
-        build_server, insert_strategy, seed_comment, seed_foreign_note,
+        build_server, insert_strategy, normalize_comment, seed_comment, seed_foreign_annotation,
+        seed_foreign_note, ts_sentinel,
     };
 
     #[sqlx::test(migrations = false)]
@@ -101,16 +102,33 @@ mod tests {
             .await
             .expect("read_comments");
 
-        let got: Vec<(uuid::Uuid, Option<uuid::Uuid>, &str)> = result
-            .comments
-            .iter()
-            .map(|c| (c.comment_id, c.parent_id, c.body.as_str()))
-            .collect();
         assert_eq!(
-            got,
+            result
+                .comments
+                .into_iter()
+                .map(normalize_comment)
+                .collect::<Vec<_>>(),
             vec![
-                (root, None, "root comment"),
-                (reply, Some(root), "reply comment"),
+                CommentDto {
+                    comment_id: root,
+                    target_kind: "note".into(),
+                    target_id: note_id,
+                    parent_id: None,
+                    body: "root comment".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    created_at: ts_sentinel(),
+                },
+                CommentDto {
+                    comment_id: reply,
+                    target_kind: "note".into(),
+                    target_id: note_id,
+                    parent_id: Some(root),
+                    body: "reply comment".into(),
+                    author_kind: "human".into(),
+                    author_label: "user".into(),
+                    created_at: ts_sentinel(),
+                },
             ],
         );
     }
@@ -120,23 +138,8 @@ mod tests {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
-        let created = server
-            .create_annotation_inner(
-                strategy_id,
-                CreateAnnotationParams {
-                    strategy_id,
-                    target_symbol: "7203".into(),
-                    target_kind: "signal".into(),
-                    timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
-                    price: None,
-                    text: "breakout".into(),
-                    linked_note_id: None,
-                },
-            )
-            .await
-            .expect("create annotation");
-        let annotation_id = created.annotation.annotation_id;
-        seed_comment(&db, "annotation", annotation_id, None, "looks wrong").await;
+        let annotation_id = seed_foreign_annotation(&db, strategy_id).await;
+        let comment_id = seed_comment(&db, "annotation", annotation_id, None, "looks wrong").await;
 
         let result = server
             .read_comments_inner(
@@ -149,8 +152,24 @@ mod tests {
             )
             .await
             .expect("read_comments");
-        let bodies: Vec<&str> = result.comments.iter().map(|c| c.body.as_str()).collect();
-        assert_eq!(bodies, vec!["looks wrong"]);
+
+        assert_eq!(
+            result
+                .comments
+                .into_iter()
+                .map(normalize_comment)
+                .collect::<Vec<_>>(),
+            vec![CommentDto {
+                comment_id,
+                target_kind: "annotation".into(),
+                target_id: annotation_id,
+                parent_id: None,
+                body: "looks wrong".into(),
+                author_kind: "human".into(),
+                author_label: "user".into(),
+                created_at: ts_sentinel(),
+            }],
+        );
     }
 
     #[sqlx::test(migrations = false)]
@@ -201,21 +220,7 @@ mod tests {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
-        let created = server
-            .create_annotation_inner(
-                strategy_b,
-                CreateAnnotationParams {
-                    strategy_id: strategy_b,
-                    target_symbol: "7203".into(),
-                    target_kind: "signal".into(),
-                    timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
-                    price: None,
-                    text: "breakout".into(),
-                    linked_note_id: None,
-                },
-            )
-            .await
-            .expect("create annotation");
+        let annotation_id = seed_foreign_annotation(&db, strategy_b).await;
 
         let err = server
             .read_comments_inner(
@@ -223,7 +228,7 @@ mod tests {
                 ReadCommentsParams {
                     strategy_id: strategy_a,
                     target_kind: "annotation".into(),
-                    target_id: created.annotation.annotation_id,
+                    target_id: annotation_id,
                 },
             )
             .await

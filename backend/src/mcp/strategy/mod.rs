@@ -15,6 +15,7 @@
 //! - `read_annotations`: アノテーション一覧を返す
 //! - `read_comments`: ノート / アノテーションに付いたレビューコメントを読み出す
 //! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
+//! - `add_interest`: 戦略の関心 (derived / origin=llm) を追加する
 //! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
 //!
 //! 実装はドメインごとに分割している:
@@ -25,6 +26,7 @@
 //! - `comments`: コメント取得 (`read_comments_inner`)
 //! - `data`: 価格データ取得 (`query_data_inner`)
 //! - `eval`: Python 実行 (`eval_python_inner`)
+//! - `interests`: 関心の追加 (`add_interest_inner`)
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
 //!
 //! 本モジュールは tool wrapper (`#[tool_router]` / `#[tool_handler]`) と
