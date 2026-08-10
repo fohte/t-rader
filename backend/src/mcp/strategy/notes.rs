@@ -83,6 +83,7 @@ impl StrategyServer {
                     "at least one of title / body_md / type_tag / frontmatter_json must be provided",
                 ));
             }
+            active.status = Set(DEFAULT_NOTE_STATUS.to_string());
             active.updated_at = Set(chrono::Utc::now().fixed_offset());
             active.update(&self.db).await.map_err(db_error)?;
             return Ok(WriteNoteResult {
@@ -168,7 +169,8 @@ mod tests {
 
     use super::super::dto::{ListNotesParams, ReadNoteParams, WriteNoteParams, WriteNoteResult};
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_note, seed_foreign_note, ts_sentinel,
+        build_server, insert_strategy, normalize_note, seed_foreign_note, set_note_status,
+        ts_sentinel,
     };
     use super::super::{DEFAULT_NOTE_STATUS, NoteDto, STRATEGY_AGENT_ACTOR};
 
@@ -290,6 +292,57 @@ mod tests {
                 updated_at: ts_sentinel(),
             },
         );
+    }
+
+    /// 却下 (rejected) されたノートを agent が更新すると、再レビュー待ち (unread) に戻る
+    #[sqlx::test(migrations = false)]
+    async fn write_note_update_resets_rejected_status_to_unread(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let server = build_server(db.clone());
+
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("original".into()),
+                    body_md: Some("v1".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("create");
+        set_note_status(&db, created.note_id, "rejected").await;
+
+        server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: Some("v2".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("update");
+
+        let read = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    strategy_id,
+                    note_id: created.note_id,
+                },
+            )
+            .await
+            .expect("read");
+        assert_eq!(read.status, DEFAULT_NOTE_STATUS);
     }
 
     /// `type_tag: Some(None)` (JSON で `"type_tag": null`) は既存タグの NULL クリアとして扱う
