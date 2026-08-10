@@ -32,6 +32,8 @@ pub enum TaskSource {
     Cron,
     /// hook trigger 発火
     Hook,
+    /// ノート / アノテーションのレビュー却下
+    Review,
 }
 
 impl TaskSource {
@@ -41,6 +43,7 @@ impl TaskSource {
             TaskSource::Frontend => "frontend",
             TaskSource::Cron => "cron",
             TaskSource::Hook => "hook",
+            TaskSource::Review => "review",
         }
     }
 }
@@ -256,6 +259,7 @@ mod tests {
     #[rstest]
     #[case::mgmt_mcp(TaskSource::MgmtMcp, "mgmt-mcp")]
     #[case::frontend(TaskSource::Frontend, "frontend")]
+    #[case::review(TaskSource::Review, "review")]
     fn task_source_as_str(#[case] source: TaskSource, #[case] expected: &str) {
         assert_eq!(source.as_str(), expected);
     }

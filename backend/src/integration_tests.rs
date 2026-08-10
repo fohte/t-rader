@@ -1,9 +1,9 @@
-//! 戦略タスクの投入 (4 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
+//! 戦略タスクの投入 (5 経路) → t-rader-agent 実行 (`FakeAgentTaskClient` でモック) →
 //! watcher による決着反映 → 応答取得までを、実装コンポーネントを跨いで通しで検証する。
 //!
 //! 各コンポーネント単体の挙動は `services::strategy_tasks` / `mcp::watcher` /
 //! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
-//! (4 経路が同一の `submit_task` に収束すること、投入から完了応答までが一気通貫で反映
+//! (5 経路が同一の `submit_task` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
 
 use std::sync::Arc;
@@ -29,7 +29,7 @@ use crate::testing::{
 };
 
 #[sqlx::test(migrations = false)]
-async fn all_four_submission_routes_converge_on_submit_task(pool: PgPool) {
+async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
     let (db, server) =
@@ -69,7 +69,20 @@ async fn all_four_submission_routes_converge_on_submit_task(pool: PgPool) {
     let res = server.post("/api/hooks/wh").json(&json!({})).await;
     res.assert_status_ok();
 
-    // 4 経路すべてが submit_task を通って strategy_task 行を作ることを、source 別に検証する。
+    let note_res = server
+        .post("/api/notes")
+        .json(&json!({ "strategy_id": strategy_id, "title": "note", "body_md": "body" }))
+        .await;
+    note_res.assert_status(axum::http::StatusCode::CREATED);
+    let note_body: Value = note_res.json();
+    let note_id = Uuid::parse_str(note_body["id"].as_str().unwrap()).unwrap();
+    let res = server
+        .post(&format!("/api/notes/{note_id}/reject"))
+        .json(&json!({}))
+        .await;
+    res.assert_status_ok();
+
+    // 5 経路すべてが submit_task を通って strategy_task 行を作ることを、source 別に検証する。
     let mut rows: Vec<(String, String, StrategyTaskPhase)> = strategy_task::Entity::find()
         .filter(strategy_task::Column::StrategyId.eq(strategy_id))
         .all(&db)
@@ -102,10 +115,18 @@ async fn all_four_submission_routes_converge_on_submit_task(pool: PgPool) {
                 "from mgmt".to_string(),
                 StrategyTaskPhase::Running
             ),
+            (
+                "review".to_string(),
+                format!(
+                    "ノート「note」(id: {note_id}) がレビューで却下されました。\
+付いているコメントを確認し、指摘を反映してください。"
+                ),
+                StrategyTaskPhase::Running
+            ),
         ],
     );
 
-    // 同一の agent_client (= 同一の submit_task 呼び出し経路) に 4 件とも届いていることを検証する。
+    // 同一の agent_client (= 同一の submit_task 呼び出し経路) に 5 件とも届いていることを検証する。
     let mut submitted_prompts: Vec<String> = fake
         .submitted
         .lock()
@@ -121,6 +142,10 @@ async fn all_four_submission_routes_converge_on_submit_task(pool: PgPool) {
             "from frontend".to_string(),
             "from hook".to_string(),
             "from mgmt".to_string(),
+            format!(
+                "ノート「note」(id: {note_id}) がレビューで却下されました。\
+付いているコメントを確認し、指摘を反映してください。"
+            ),
         ],
     );
 }

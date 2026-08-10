@@ -15,9 +15,11 @@ use crate::AppState;
 use crate::entities::annotation;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
+use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
+use crate::services::strategy_tasks::{self, TaskSource};
 
 const ALLOWED_TARGET_KIND: [&str; 4] = ["signal", "level", "observation", "other"];
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -325,6 +327,28 @@ pub async fn reject_annotation(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<annotation::Model>, AppError> {
+    let current = annotation::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
+    if current.status == "rejected" {
+        return Ok(Json(current));
+    }
+
+    let prompt = format!(
+        "アノテーション (id: {}, 対象: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
+        current.id, current.target_symbol
+    );
+    strategy_tasks::submit_task(
+        &state.db,
+        &state.agent_task_client,
+        current.strategy_id,
+        &prompt,
+        TaskSource::Review,
+    )
+    .await
+    .map_err(map_submit_error)?;
+
     Ok(Json(
         change_annotation_status(&state, id, "rejected", payload.label).await?,
     ))
@@ -363,4 +387,154 @@ pub async fn delete_annotation(
     .await?;
     txn.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum_test::TestServer;
+    use serde_json::Value;
+    use sqlx::PgPool;
+
+    use super::*;
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
+    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use crate::entities::strategy_task;
+    use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_strategy};
+
+    /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
+    #[derive(Debug, PartialEq, Eq)]
+    struct TaskShape {
+        strategy_id: Uuid,
+        source: String,
+        prompt: String,
+        phase: StrategyTaskPhase,
+    }
+
+    impl TaskShape {
+        fn from(row: &strategy_task::Model) -> Self {
+            Self {
+                strategy_id: row.strategy_id,
+                source: row.source.clone(),
+                prompt: row.prompt.clone(),
+                phase: row.phase.clone(),
+            }
+        }
+    }
+
+    async fn create_test_annotation(server: &TestServer, strategy_id: Uuid) -> Uuid {
+        let res = server
+            .post("/api/annotations")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "target_symbol": "7203",
+                "target_kind": "observation",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "text",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        let body: Value = res.json();
+        Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reject_annotation_submits_single_review_task_referencing_annotation(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let anno_id = create_test_annotation(&server, strategy_id).await;
+
+        let res = server
+            .post(&format!("/api/annotations/{anno_id}/reject"))
+            .json(&json!({}))
+            .await;
+        res.assert_status_ok();
+        let mut body: Value = res.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            body,
+            json!({
+                "id": anno_id,
+                "strategy_id": strategy_id,
+                "target_symbol": "7203",
+                "target_kind": "observation",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "price": null,
+                "text": "text",
+                "status": "rejected",
+                "linked_note_id": null,
+                "created_by_kind": "human",
+            }),
+        );
+
+        let tasks = strategy_task::Entity::find()
+            .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            tasks.iter().map(TaskShape::from).collect::<Vec<_>>(),
+            vec![TaskShape {
+                strategy_id,
+                source: "review".to_string(),
+                prompt: format!(
+                    "アノテーション (id: {anno_id}, 対象: 7203) がレビューで却下されました。\
+付いているコメントを確認し、指摘を反映してください。"
+                ),
+                phase: StrategyTaskPhase::Running,
+            }],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn rejecting_already_rejected_annotation_does_not_resubmit(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let anno_id = create_test_annotation(&server, strategy_id).await;
+
+        for _ in 0..2 {
+            let res = server
+                .post(&format!("/api/annotations/{anno_id}/reject"))
+                .json(&json!({}))
+                .await;
+            res.assert_status_ok();
+        }
+
+        let tasks = strategy_task::Entity::find()
+            .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 1);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reject_annotation_leaves_status_unchanged_when_agent_submission_fails(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+        let agent_client: SharedAgentTaskClient = fake;
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let anno_id = create_test_annotation(&server, strategy_id).await;
+
+        let res = server
+            .post(&format!("/api/annotations/{anno_id}/reject"))
+            .json(&json!({}))
+            .await;
+        res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+
+        let anno = annotation::Entity::find_by_id(anno_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(anno.status, "unread");
+    }
 }
