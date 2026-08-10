@@ -45,6 +45,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 | `list_notes`        | `strategy_id`, `limit?`                                                                         | ノート一覧                                                                          |
 | `create_annotation` | `strategy_id`, `target_symbol`, `target_kind`, `timestamp`, `text`, `price?`, `linked_note_id?` | アノテーション作成。`target_kind` は `signal` / `level` / `observation` / `other`   |
 | `read_annotations`  | `strategy_id`, `target_symbol?`, `limit?`                                                       | アノテーション一覧 (任意で `target_symbol` によるフィルタが可能)                    |
+| `read_comments`     | `strategy_id`, `target_kind` (`note` / `annotation`), `target_id`                               | 対象に付いたレビューコメント一覧 (古い順)。スレッドは `parent_id` で表現            |
 | `eval_python`       | `strategy_id`, `code`, `stdin?`, `timeout_secs?`, `max_output_bytes?`                           | Python コードを exec Pod (Kata Containers) 上で実行。stdout/stderr/exit code を返す |
 
 `eval_python` は入力値に対する純粋関数評価モデルとして設計している。1 evaluation = 1 exec Pod で起動し、入出力は stdin → stdout/stderr/exit code のみ。Pod spec 側の隔離 (read-only rootfs、non-root、capabilities drop、deadline 等) は backend が固定する。namespace 側の隔離 (RuntimeClass `kata`、NetworkPolicy 全 deny、Pod Security Admission) は [`docs/deployment.md`](./deployment.md) を参照。

@@ -160,6 +160,32 @@ pub struct AddInterestResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReadCommentsParams {
+    pub strategy_id: Uuid,
+    /// "note" | "annotation"
+    pub target_kind: String,
+    pub target_id: Uuid,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct CommentDto {
+    pub comment_id: Uuid,
+    pub target_kind: String,
+    pub target_id: Uuid,
+    /// 返信先コメント。スレッドの起点なら null。
+    pub parent_id: Option<Uuid>,
+    pub body: String,
+    pub author_kind: String,
+    pub author_label: String,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ReadCommentsResult {
+    pub comments: Vec<CommentDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct EvalPythonParams {
     pub strategy_id: Uuid,
     /// 実行する Python コード本体 (utf-8)

@@ -13,6 +13,7 @@
 //! - `list_notes`: ノート一覧を返す
 //! - `create_annotation`: アノテーションを作成する
 //! - `read_annotations`: アノテーション一覧を返す
+//! - `read_comments`: ノート / アノテーションに付いたレビューコメントを読み出す
 //! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
 //! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
 //!
@@ -21,6 +22,7 @@
 //! - `dto`: 各 tool の入出力スキーマ
 //! - `notes`: ノート操作 (`write_note_inner` / `read_note_inner` / `list_notes_inner`)
 //! - `annotations`: アノテーション操作 (`create_annotation_inner` / `read_annotations_inner`)
+//! - `comments`: コメント取得 (`read_comments_inner`)
 //! - `data`: 価格データ取得 (`query_data_inner`)
 //! - `eval`: Python 実行 (`eval_python_inner`)
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
@@ -29,6 +31,7 @@
 //! 戦略境界・エラー変換などドメイン横断のヘルパを担う。
 
 pub(super) mod annotations;
+pub(super) mod comments;
 pub(super) mod data;
 pub(super) mod dto;
 pub(super) mod eval;
@@ -52,14 +55,15 @@ use sea_orm::{DatabaseConnection, EntityTrait};
 use uuid::Uuid;
 
 use crate::data_provider::{DataProviderError, DataProviderKind};
-use crate::entities::{note, strategy};
+use crate::entities::{annotation, note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 
 use dto::{
     AddInterestParams, AddInterestResult, CreateAnnotationParams, CreateAnnotationResult,
     EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, ListNotesParams,
     ListNotesResult, NoteDto, QueryDataParams, QueryDataResult, ReadAnnotationsParams,
-    ReadAnnotationsResult, ReadNoteParams, WriteNoteParams, WriteNoteResult,
+    ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadNoteParams, WriteNoteParams,
+    WriteNoteResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -221,6 +225,24 @@ pub(super) async fn fetch_note_owned_by(
     Ok(row)
 }
 
+pub(super) async fn fetch_annotation_owned_by(
+    db: &DatabaseConnection,
+    annotation_id: Uuid,
+    expected: Uuid,
+) -> Result<annotation::Model, McpError> {
+    let row = annotation::Entity::find_by_id(annotation_id)
+        .one(db)
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| McpError::resource_not_found("annotation not found", None))?;
+    if row.strategy_id != expected {
+        return Err(invalid_params(format!(
+            "forbidden: annotation {annotation_id} belongs to another strategy"
+        )));
+    }
+    Ok(row)
+}
+
 pub(super) async fn ensure_strategy_exists(
     db: &DatabaseConnection,
     id: Uuid,
@@ -328,6 +350,20 @@ impl StrategyServer {
     ) -> Result<Json<ReadAnnotationsResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.read_annotations_inner(sid, params).await.map(Json)
+    }
+
+    /// ノート / アノテーションに付いたレビューコメントを読み出す
+    #[tool(
+        name = "read_comments",
+        description = "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id."
+    )]
+    async fn read_comments(
+        &self,
+        Parameters(params): Parameters<ReadCommentsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadCommentsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_comments_inner(sid, params).await.map(Json)
     }
 
     /// Python コードを exec Pod で実行する

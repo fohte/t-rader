@@ -6,7 +6,7 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::entities::{note, strategy};
+use crate::entities::{comment, note, strategy};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, NoteDto};
@@ -70,5 +70,30 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
     .insert(db)
     .await
     .expect("seed note");
+    id
+}
+
+/// note / annotation にコメントを直接 seed する (MCP に comment 作成 tool は無いため)
+pub(super) async fn seed_comment(
+    db: &DatabaseConnection,
+    target_kind: &str,
+    target_id: Uuid,
+    parent_id: Option<Uuid>,
+    body: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    comment::ActiveModel {
+        id: Set(id),
+        target_kind: Set(target_kind.to_string()),
+        target_id: Set(target_id),
+        parent_id: Set(parent_id),
+        body: Set(body.to_string()),
+        author_kind: Set("human".into()),
+        author_label: Set("user".into()),
+        created_at: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("seed comment");
     id
 }
