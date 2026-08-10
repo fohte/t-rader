@@ -1,5 +1,4 @@
 import type { Message } from '@a2a-js/sdk'
-import { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
@@ -30,10 +29,6 @@ class FakeChatModel extends BaseChatModel {
       new Error('FakeChatModel should never be invoked directly in tests'),
     )
   }
-}
-
-class FakeCallbackHandler extends BaseCallbackHandler {
-  name = 'fake-callback-handler'
 }
 
 const buildFakeTool = (name: string): DynamicStructuredTool =>
@@ -74,14 +69,12 @@ interface Calls {
     tools: readonly DynamicStructuredTool[]
     systemPrompt: string
   }
-  invokeCallbacks?: readonly BaseCallbackHandler[]
 }
 
 const buildDeps = (
   options: BuildDepsOptions,
 ): { deps: StrategyAgentDeps; calls: Calls } => {
   const calls: Calls = { mcpClientClosed: false }
-  const genAiCallbackHandler = new FakeCallbackHandler()
   const chatModel = new FakeChatModel({})
 
   const deps: StrategyAgentDeps = {
@@ -107,13 +100,9 @@ const buildDeps = (
     buildAgent: (buildOptions) => {
       calls.buildAgentOptions = buildOptions
       return {
-        invoke: (input, callOptions) => {
-          calls.invokeCallbacks = callOptions.callbacks
-          return options.agentInvoke(input, callOptions)
-        },
+        invoke: (input) => options.agentInvoke(input),
       }
     },
-    genAiCallbackHandler,
   }
 
   return { deps, calls }
@@ -147,7 +136,6 @@ describe('runStrategyAgent', () => {
     expect
       .soft(calls.buildAgentOptions?.model)
       .toBe(calls.createChatModelReturnValue)
-    expect.soft(calls.invokeCallbacks).toEqual([deps.genAiCallbackHandler])
     expect.soft(calls.mcpClientClosed).toBe(true)
   })
 
@@ -260,7 +248,7 @@ describe('createStrategyAgentDeps', () => {
     backendApiBaseUrl: 'http://t-rader-backend',
     strategyMcpUrl: 'http://t-rader-backend/mcp/strategy',
     llmApiKey: 'test-key',
-    genAiCallbackHandler: new FakeCallbackHandler(),
+    genAiProviderName: 'opencode',
   }
 
   it('creates a chat model defaulted to the OpenCode Go base URL', () => {

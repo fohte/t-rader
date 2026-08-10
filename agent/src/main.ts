@@ -14,7 +14,6 @@ import { observability } from '#bootstrap'
 import { createSql, pingDb } from '#db'
 import { runMigrations } from '#db/migrations'
 import { loadEnv } from '#env'
-import { GenAiCallbackHandler } from '#genai/genai-callback-handler'
 import {
   createStrategyAgentDeps,
   runStrategyAgent,
@@ -45,9 +44,7 @@ export const main = async (): Promise<void> => {
     strategyMcpUrl: env.STRATEGY_MCP_URL,
     llmApiKey: env.LLM_API_KEY,
     llmBaseUrl: env.LLM_BASE_URL,
-    genAiCallbackHandler: new GenAiCallbackHandler({
-      providerName: GEN_AI_PROVIDER_NAME,
-    }),
+    genAiProviderName: GEN_AI_PROVIDER_NAME,
   })
   const executor = new TraderAgentExecutor({
     taskStore,
