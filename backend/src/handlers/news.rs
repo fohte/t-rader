@@ -141,6 +141,7 @@ mod tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
+            agent_graph: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }

@@ -66,6 +66,13 @@ pub struct SkillBody {
     pub content: String,
 }
 
+/// 戦略ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AgentGraphBody {
+    pub content: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SkillsBody {
@@ -79,4 +86,6 @@ pub struct AgentConfigResponse {
     pub skills: BTreeMap<String, String>,
     pub model: String,
     pub small_model: String,
+    /// 多段フェーズ実行設定 (YAML)。未設定なら空文字列。
+    pub agent_graph: String,
 }
