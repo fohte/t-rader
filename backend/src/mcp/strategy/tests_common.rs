@@ -50,6 +50,18 @@ pub(super) fn normalize_annotation(mut a: AnnotationDto) -> AnnotationDto {
     a
 }
 
+/// note の status を直接書き換える (レビュー確定状態からの遷移をテストするため)
+pub(super) async fn set_note_status(db: &DatabaseConnection, note_id: Uuid, status: &str) {
+    note::ActiveModel {
+        id: Set(note_id),
+        status: Set(status.to_string()),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("set note status");
+}
+
 pub(super) fn normalize_comment(mut c: CommentDto) -> CommentDto {
     c.created_at = ts_sentinel();
     c

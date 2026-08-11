@@ -83,6 +83,9 @@ impl StrategyServer {
                     "at least one of title / body_md / type_tag / frontmatter_json must be provided",
                 ));
             }
+            // 内容が変わった時点で承認/却下時点の判断根拠は失効するため、
+            // 直近の status (承認/却下含む) を無条件で unread に戻す。
+            active.status = Set(DEFAULT_NOTE_STATUS.to_string());
             active.updated_at = Set(chrono::Utc::now().fixed_offset());
             active.update(&self.db).await.map_err(db_error)?;
             return Ok(WriteNoteResult {
@@ -168,7 +171,8 @@ mod tests {
 
     use super::super::dto::{ListNotesParams, ReadNoteParams, WriteNoteParams, WriteNoteResult};
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_note, seed_foreign_note, ts_sentinel,
+        build_server, insert_strategy, normalize_note, seed_foreign_note, set_note_status,
+        ts_sentinel,
     };
     use super::super::{DEFAULT_NOTE_STATUS, NoteDto, STRATEGY_AGENT_ACTOR};
 
@@ -222,74 +226,83 @@ mod tests {
         );
     }
 
+    // 更新前の status (unread / rejected) ごとにケースを列挙する。
+    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する (backend/src/handlers/hypotheses.rs:450 と同様)。
     #[sqlx::test(migrations = false)]
-    async fn write_note_updates_existing(pool: PgPool) {
+    async fn write_note_updates_existing_and_resets_status_to_unread(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
 
-        let created = server
-            .write_note_inner(
-                strategy_id,
-                WriteNoteParams {
+        for (label, initial_status) in [("already_unread", None), ("rejected", Some("rejected"))] {
+            let created = server
+                .write_note_inner(
                     strategy_id,
-                    note_id: None,
-                    title: Some("original".into()),
-                    body_md: Some("v1".into()),
-                    type_tag: None,
-                    frontmatter_json: None,
-                },
-            )
-            .await
-            .expect("create");
+                    WriteNoteParams {
+                        strategy_id,
+                        note_id: None,
+                        title: Some("original".into()),
+                        body_md: Some("v1".into()),
+                        type_tag: None,
+                        frontmatter_json: None,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: create failed: {e}"));
+            if let Some(status) = initial_status {
+                set_note_status(&db, created.note_id, status).await;
+            }
 
-        let updated = server
-            .write_note_inner(
-                strategy_id,
-                WriteNoteParams {
+            let updated = server
+                .write_note_inner(
                     strategy_id,
-                    note_id: Some(created.note_id),
-                    title: None,
-                    body_md: Some("v2".into()),
-                    type_tag: None,
-                    frontmatter_json: None,
-                },
-            )
-            .await
-            .expect("update");
-        assert_eq!(
-            updated,
-            WriteNoteResult {
-                note_id: created.note_id,
-                created: false,
-            },
-        );
-
-        let read = server
-            .read_note_inner(
-                strategy_id,
-                ReadNoteParams {
-                    strategy_id,
+                    WriteNoteParams {
+                        strategy_id,
+                        note_id: Some(created.note_id),
+                        title: None,
+                        body_md: Some("v2".into()),
+                        type_tag: None,
+                        frontmatter_json: None,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: update failed: {e}"));
+            assert_eq!(
+                updated,
+                WriteNoteResult {
                     note_id: created.note_id,
+                    created: false,
                 },
-            )
-            .await
-            .expect("read");
-        assert_eq!(
-            normalize_note(read),
-            NoteDto {
-                note_id: created.note_id,
-                strategy_id,
-                title: "original".into(),
-                body_md: "v2".into(),
-                frontmatter_json: serde_json::json!({}),
-                type_tag: None,
-                status: DEFAULT_NOTE_STATUS.into(),
-                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
-                created_at: ts_sentinel(),
-                updated_at: ts_sentinel(),
-            },
-        );
+                "case {label}",
+            );
+
+            let read = server
+                .read_note_inner(
+                    strategy_id,
+                    ReadNoteParams {
+                        strategy_id,
+                        note_id: created.note_id,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: read failed: {e}"));
+            assert_eq!(
+                normalize_note(read),
+                NoteDto {
+                    note_id: created.note_id,
+                    strategy_id,
+                    title: "original".into(),
+                    body_md: "v2".into(),
+                    frontmatter_json: serde_json::json!({}),
+                    type_tag: None,
+                    status: DEFAULT_NOTE_STATUS.into(),
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                },
+                "case {label}",
+            );
+        }
     }
 
     /// `type_tag: Some(None)` (JSON で `"type_tag": null`) は既存タグの NULL クリアとして扱う
