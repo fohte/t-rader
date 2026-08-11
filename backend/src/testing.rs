@@ -53,6 +53,19 @@ pub async fn create_test_server(pool: PgPool) -> TestServer {
     TestServer::new(router).expect("failed to create test server")
 }
 
+/// テスト用に `POST /api/strategies` で戦略を 1 件作成し、その ID を返す。
+pub async fn create_strategy(server: &TestServer, name: &str) -> String {
+    let created = server
+        .post("/api/strategies")
+        .json(&serde_json::json!({ "name": name }))
+        .await;
+    created.assert_status(axum::http::StatusCode::CREATED);
+    created.json::<serde_json::Value>()["id"]
+        .as_str()
+        .map(str::to_string)
+        .expect("id")
+}
+
 /// テストで戦略レコードを 1 件 seed する。
 pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
     let id = Uuid::new_v4();
@@ -63,6 +76,7 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
         sort_order: Set(0),
         agents_md: NotSet,
         skills: NotSet,
+        agent_graph: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
     }

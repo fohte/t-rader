@@ -1,3 +1,4 @@
+pub mod agent_graph;
 pub mod backfill;
 pub mod change_history;
 pub mod custom_indicators;

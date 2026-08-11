@@ -21,6 +21,12 @@ use crate::models::{
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategy_tasks::{self, GetTaskError, SubmitTaskError, TaskSource, phase_str};
 
+mod agent_graph;
+
+pub use agent_graph::{
+    __path_get_agent_graph, __path_put_agent_graph, get_agent_graph, put_agent_graph,
+};
+
 fn validate_name(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
     if trimmed.is_empty() {
@@ -29,7 +35,7 @@ fn validate_name(value: &str) -> Result<String, AppError> {
     Ok(trimmed)
 }
 
-async fn find_strategy_or_404(
+pub(super) async fn find_strategy_or_404(
     db: &sea_orm::DatabaseConnection,
     id: Uuid,
 ) -> Result<strategy::Model, AppError> {
@@ -109,6 +115,7 @@ pub async fn create_strategy(
         sort_order: Set(sort_order),
         agents_md: NotSet,
         skills: NotSet,
+        agent_graph: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
     };
@@ -672,6 +679,7 @@ pub async fn get_agent_config(
         skills: skills_to_btree(&row.skills),
         model,
         small_model,
+        agent_graph: row.agent_graph,
     }))
 }
 
@@ -695,7 +703,7 @@ mod tests {
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::{strategy, strategy_task};
     use crate::testing::{
-        create_test_server, create_test_server_with_db,
+        create_strategy, create_test_server, create_test_server_with_db,
         create_test_server_with_db_and_agent_client, create_test_server_with_state,
     };
 
@@ -708,6 +716,7 @@ mod tests {
             sort_order: Set(0),
             agents_md: NotSet,
             skills: NotSet,
+            agent_graph: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -761,18 +770,6 @@ mod tests {
 
         let get = server.get(&format!("/api/strategies/{id}")).await;
         get.assert_status(axum::http::StatusCode::NOT_FOUND);
-    }
-
-    async fn create_strategy(server: &axum_test::TestServer, name: &str) -> String {
-        let created = server
-            .post("/api/strategies")
-            .json(&json!({ "name": name }))
-            .await;
-        created.assert_status(axum::http::StatusCode::CREATED);
-        created.json::<serde_json::Value>()["id"]
-            .as_str()
-            .map(str::to_string)
-            .expect("id")
     }
 
     #[sqlx::test(migrations = false)]
@@ -1051,6 +1048,7 @@ mod tests {
             sort_order: Set(0),
             agents_md: Set(agents_md.to_string()),
             skills: Set(json!({ "scout": "scout body", "review": "review body" })),
+            agent_graph: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -1069,6 +1067,7 @@ mod tests {
                 "skills": { "scout": "scout body", "review": "review body" },
                 "model": DEFAULT_AGENT_MODEL,
                 "small_model": DEFAULT_AGENT_SMALL_MODEL,
+                "agent_graph": "",
             }),
         );
     }

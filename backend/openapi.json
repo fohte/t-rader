@@ -3157,6 +3157,150 @@
         }
       }
     },
+    "/api/strategies/{id}/agent-graph": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略 Agent の多段フェーズ実行設定 (YAML) を取得",
+        "operationId": "get_agent_graph",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGraphBody"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略 Agent の多段フェーズ実行設定 (YAML) を上書き保存する。\nパースできない YAML や、`for_each` の参照先が手前のフェーズに実在しない配列である\nといった不正な設定は 400 で弾く。",
+        "operationId": "put_agent_graph",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentGraphBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGraphBody"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "YAML が不正、またはフェーズ定義が不正 (キー重複・for_each の参照先不備など)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/agents-md": {
       "get": {
         "tags": [
@@ -5888,9 +6032,14 @@
           "agents_md",
           "skills",
           "model",
-          "small_model"
+          "small_model",
+          "agent_graph"
         ],
         "properties": {
+          "agent_graph": {
+            "type": "string",
+            "description": "多段フェーズ実行設定 (YAML)。未設定なら空文字列。"
+          },
           "agents_md": {
             "type": "string"
           },
@@ -5910,6 +6059,19 @@
             "type": "string"
           }
         }
+      },
+      "AgentGraphBody": {
+        "type": "object",
+        "description": "戦略ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "AgentsMdBody": {
         "type": "object",

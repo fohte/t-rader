@@ -30,8 +30,9 @@ pub use interest::{CreateInterestRequest, UpdateInterestRequest};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use refs::RefResolution;
 pub use strategy::{
-    AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
-    StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, UpdateStrategyRequest,
+    AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateStrategyRequest, SkillBody,
+    SkillsBody, StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse,
+    UpdateStrategyRequest,
 };
 pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
 pub use trigger::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};

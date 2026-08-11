@@ -22,6 +22,7 @@ sea-orm = "=2.0.0-rc.40"
 sea-orm-migration = "=2.0.0-rc.40"
 serde = "=1.0.229"
 serde_json = { version = "=1.0.151", features = ["arbitrary_precision"] }
+serde_yaml_ng = "=0.10.0"
 sqlx = "=0.9.0"
 thiserror = "=2.0.18"
 tokio = "=1.49.0"
@@ -70,6 +71,7 @@ sea-orm = { workspace = true, features = [
 ] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }

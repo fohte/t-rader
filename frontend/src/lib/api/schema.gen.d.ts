@@ -647,6 +647,28 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/agent-graph': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略 Agent の多段フェーズ実行設定 (YAML) を取得 */
+    get: operations['get_agent_graph']
+    /**
+     * 戦略 Agent の多段フェーズ実行設定 (YAML) を上書き保存する。
+     *     パースできない YAML や、`for_each` の参照先が手前のフェーズに実在しない配列である
+     *     といった不正な設定は 400 で弾く。
+     */
+    put: operations['put_agent_graph']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/agents-md': {
     parameters: {
       query?: never
@@ -1037,12 +1059,18 @@ export interface components {
     }
     /** @description t-rader-agent がタスク実行時に取得する agent 設定一式。 */
     AgentConfigResponse: {
+      /** @description 多段フェーズ実行設定 (YAML)。未設定なら空文字列。 */
+      agent_graph: string
       agents_md: string
       model: string
       skills: {
         [key: string]: string
       }
       small_model: string
+    }
+    /** @description 戦略ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。 */
+    AgentGraphBody: {
+      content: string
     }
     AgentsMdBody: {
       content: string
@@ -4045,6 +4073,111 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_agent_graph: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentGraphBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_agent_graph: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentGraphBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentGraphBody']
+        }
+      }
+      /** @description YAML が不正、またはフェーズ定義が不正 (キー重複・for_each の参照先不備など) */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
         headers: {
           [name: string]: unknown
         }
