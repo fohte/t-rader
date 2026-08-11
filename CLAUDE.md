@@ -84,7 +84,7 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 - `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
 - `backend/src/agent_client/` - t-rader-agent 内部 API client (`AgentTaskClient` trait、戦略タスクの投入 / 状態照会)
-- `backend/src/services/strategy_tasks.rs` - 戦略タスク投入の共通 service (`submit_task`、4 経路から呼ばれる)
+- `backend/src/services/strategy_tasks.rs` - 戦略タスク投入の共通 service (`submit_task`、5 経路から呼ばれる)
 - `backend/src/mcp/watcher.rs` - 戦略タスクの phase polling (pending/running 行の状態照会 + deadline 超過の失敗確定)
 - `backend/src/handlers/agent_tasks.rs` - t-rader-agent からのタスク決着 webhook 受信
 - `agent/src/main.ts` - A2A server のエントリポイント、Hono app の組み立て

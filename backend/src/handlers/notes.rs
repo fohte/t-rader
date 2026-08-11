@@ -15,9 +15,11 @@ use crate::AppState;
 use crate::entities::{note, note_ref};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
+use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
+use crate::services::strategy_tasks::{self, TaskSource};
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
@@ -367,13 +369,13 @@ pub async fn delete_note(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn change_note_status(
+async fn change_note_status_from(
     state: &AppState,
-    id: Uuid,
+    current: note::Model,
     new_status: &str,
     label: Option<String>,
 ) -> Result<note::Model, AppError> {
-    let current = find_note_or_404(&state.db, id).await?;
+    let id = current.id;
     let mut active = current.clone().into_active_model();
     active.status = Set(new_status.to_string());
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
@@ -390,6 +392,16 @@ async fn change_note_status(
     .await?;
     txn.commit().await?;
     Ok(updated)
+}
+
+async fn change_note_status(
+    state: &AppState,
+    id: Uuid,
+    new_status: &str,
+    label: Option<String>,
+) -> Result<note::Model, AppError> {
+    let current = find_note_or_404(&state.db, id).await?;
+    change_note_status_from(state, current, new_status, label).await
 }
 
 /// ノートを approved に遷移
@@ -430,6 +442,7 @@ pub async fn approve_note(
         (status = 404, body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
     )
 )]
 pub async fn reject_note(
@@ -437,15 +450,46 @@ pub async fn reject_note(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<note::Model>, AppError> {
+    let current = find_note_or_404(&state.db, id).await?;
+    // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
+    // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
+    if current.status == "rejected" {
+        return Ok(Json(current));
+    }
+
+    let prompt = format!(
+        "ノート「{}」(id: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
+        current.title, current.id
+    );
+    strategy_tasks::submit_task(
+        &state.db,
+        &state.agent_task_client,
+        current.strategy_id,
+        &prompt,
+        TaskSource::Review,
+    )
+    .await
+    .map_err(map_submit_error)?;
+
     Ok(Json(
-        change_note_status(&state, id, "rejected", payload.label).await?,
+        change_note_status_from(&state, current, "rejected", payload.label).await?,
     ))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+
+    use axum_test::TestServer;
     use rstest::rstest;
+    use serde_json::Value;
+    use sqlx::PgPool;
+
+    use super::*;
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
+    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use crate::entities::strategy_task;
+    use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_strategy};
 
     #[rstest]
     #[case::single("hello [[stock:7203]]", vec![("stock", "7203")])]
@@ -457,5 +501,134 @@ mod tests {
         let got = extract_refs(body);
         let got: Vec<(&str, &str)> = got.iter().map(|(k, i)| (k.as_str(), i.as_str())).collect();
         assert_eq!(got, expected);
+    }
+
+    /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
+    #[derive(Debug, PartialEq, Eq)]
+    struct TaskShape {
+        strategy_id: Uuid,
+        source: String,
+        prompt: String,
+        phase: StrategyTaskPhase,
+    }
+
+    impl TaskShape {
+        fn from(row: &strategy_task::Model) -> Self {
+            Self {
+                strategy_id: row.strategy_id,
+                source: row.source.clone(),
+                prompt: row.prompt.clone(),
+                phase: row.phase.clone(),
+            }
+        }
+    }
+
+    async fn create_test_note(server: &TestServer, strategy_id: Uuid, title: &str) -> Uuid {
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "title": title,
+                "body_md": "body",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        let body: Value = res.json();
+        Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reject_note_submits_single_review_task_referencing_note(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let note_id = create_test_note(&server, strategy_id, "タイトル").await;
+
+        let res = server
+            .post(&format!("/api/notes/{note_id}/reject"))
+            .json(&json!({}))
+            .await;
+        res.assert_status_ok();
+        let mut body: Value = res.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            body,
+            json!({
+                "id": note_id,
+                "strategy_id": strategy_id,
+                "title": "タイトル",
+                "body_md": "body",
+                "frontmatter_json": {},
+                "type_tag": null,
+                "status": "rejected",
+                "trigger": null,
+                "trigger_label": null,
+                "created_by_kind": "human",
+            }),
+        );
+
+        let tasks = strategy_task::Entity::find()
+            .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(
+            tasks.iter().map(TaskShape::from).collect::<Vec<_>>(),
+            vec![TaskShape {
+                strategy_id,
+                source: "review".to_string(),
+                prompt: format!(
+                    "ノート「タイトル」(id: {note_id}) がレビューで却下されました。\
+付いているコメントを確認し、指摘を反映してください。"
+                ),
+                phase: StrategyTaskPhase::Running,
+            }],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn rejecting_already_rejected_note_does_not_resubmit(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let note_id = create_test_note(&server, strategy_id, "t").await;
+
+        for _ in 0..2 {
+            let res = server
+                .post(&format!("/api/notes/{note_id}/reject"))
+                .json(&json!({}))
+                .await;
+            res.assert_status_ok();
+        }
+
+        let tasks = strategy_task::Entity::find()
+            .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+            .all(&db)
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 1);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reject_note_leaves_status_unchanged_when_agent_submission_fails(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+        let agent_client: SharedAgentTaskClient = fake;
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let note_id = create_test_note(&server, strategy_id, "t").await;
+
+        let res = server
+            .post(&format!("/api/notes/{note_id}/reject"))
+            .json(&json!({}))
+            .await;
+        res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+
+        let note = find_note_or_404(&db, note_id).await.unwrap();
+        assert_eq!(note.status, "unread");
     }
 }

@@ -533,6 +533,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "agent task client が未設定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -2067,6 +2077,16 @@
           },
           "500": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "agent task client が未設定",
             "content": {
               "application/json": {
                 "schema": {
