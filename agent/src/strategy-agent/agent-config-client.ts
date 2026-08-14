@@ -5,6 +5,7 @@ export interface AgentConfig {
   readonly skills: Readonly<Record<string, string>>
   readonly model: string
   readonly smallModel: string
+  readonly agentGraph: string
 }
 
 export class AgentConfigFetchError extends Error {
@@ -19,6 +20,7 @@ interface AgentConfigResponseBody {
   skills: Record<string, string>
   model: string
   small_model: string
+  agent_graph: string
 }
 
 const isRecordOfStrings = (value: unknown): value is Record<string, string> =>
@@ -40,6 +42,7 @@ const isAgentConfigResponseBody = (
     typeof record['agents_md'] === 'string' &&
     typeof record['model'] === 'string' &&
     typeof record['small_model'] === 'string' &&
+    typeof record['agent_graph'] === 'string' &&
     isRecordOfStrings(record['skills'])
   )
 }
@@ -81,7 +84,7 @@ export const createAgentConfigFetcher = (
         if (!isAgentConfigResponseBody(body)) {
           return errAsync(
             new AgentConfigFetchError(
-              `malformed agent-config response for strategy ${strategyId}: expected agents_md/model/small_model strings and a skills map of strings`,
+              `malformed agent-config response for strategy ${strategyId}: expected agents_md/model/small_model/agent_graph strings and a skills map of strings`,
             ),
           )
         }
@@ -90,6 +93,7 @@ export const createAgentConfigFetcher = (
           skills: body.skills,
           model: body.model,
           smallModel: body.small_model,
+          agentGraph: body.agent_graph,
         })
       })
 }

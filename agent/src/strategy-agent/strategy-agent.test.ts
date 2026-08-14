@@ -51,6 +51,7 @@ const AGENT_CONFIG: AgentConfig = {
   skills: { 'ja-stock': 'skill body' },
   model: 'opencode-go/minimax-m3',
   smallModel: 'opencode-go/deepseek-v4-flash',
+  agentGraph: '',
 }
 
 interface BuildDepsOptions {
@@ -103,6 +104,14 @@ const buildDeps = (
         invoke: (input) => options.agentInvoke(input),
       }
     },
+    buildPhaseAgent: () => ({
+      invoke: () =>
+        Promise.reject(
+          new Error(
+            'buildPhaseAgent should not be invoked when agent_graph is unset',
+          ),
+        ),
+    }),
   }
 
   return { deps, calls }

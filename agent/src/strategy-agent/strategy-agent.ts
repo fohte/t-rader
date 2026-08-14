@@ -12,12 +12,18 @@ import {
   ToolInvocationError,
   toolStrategy,
 } from 'langchain'
-import { ResultAsync } from 'neverthrow'
+import { errAsync, ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
 import { extractMessageText } from '#a2a/message-text'
 import type { FetchAgentConfig } from '#strategy-agent/agent-config-client'
 import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
+import { parseAgentGraph } from '#strategy-agent/agent-graph/parse'
+import type {
+  BuildPhaseAgentOptions,
+  CompiledPhaseAgent,
+} from '#strategy-agent/agent-graph/run-agent-graph'
+import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -65,6 +71,9 @@ export interface StrategyAgentDeps {
   readonly buildAgent: (
     options: BuildStrategyAgentOptions,
   ) => CompiledStrategyAgent
+  readonly buildPhaseAgent: (
+    options: BuildPhaseAgentOptions,
+  ) => CompiledPhaseAgent
 }
 
 export interface StrategyAgentConfig {
@@ -109,6 +118,35 @@ const createDefaultBuildAgent =
     }
   }
 
+// Same shape as createDefaultBuildAgent, but the response schema is a raw
+// JSON Schema built per-phase from agent_graph's `output` config rather than
+// the single fixed {status, message} zod schema — toolStrategy accepts both.
+const createDefaultBuildPhaseAgent =
+  (genAiProviderName: string) =>
+  (options: BuildPhaseAgentOptions): CompiledPhaseAgent => {
+    const agent = createAgent({
+      model: options.model,
+      tools: [...options.tools],
+      systemPrompt: options.systemPrompt,
+      responseFormat: toolStrategy(options.responseSchema),
+      middleware: [
+        createGenAiTracingMiddleware({ providerName: genAiProviderName }),
+        toolErrorMiddleware({
+          onError: (error) =>
+            ToolInvocationError.isInstance(error)
+              ? String(error)
+              : `${String(error)}\n Please fix your mistakes.`,
+        }),
+      ],
+    })
+    return {
+      invoke: async (input) => {
+        const result = await agent.invoke({ messages: [...input.messages] })
+        return { structuredResponse: result.structuredResponse }
+      },
+    }
+  }
+
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
@@ -132,6 +170,7 @@ export const createStrategyAgentDeps = (
       },
     }),
   buildAgent: createDefaultBuildAgent(config.genAiProviderName),
+  buildPhaseAgent: createDefaultBuildPhaseAgent(config.genAiProviderName),
 })
 
 export const runStrategyAgent = async (
@@ -190,6 +229,26 @@ export const runStrategyAgent = async (
         .fetchAgentConfig(strategyId)
         .andThen((agentConfig) =>
           toolsResult.andThen((tools) => {
+            const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
+            if (parsedGraph.isErr()) {
+              return errAsync(parsedGraph.error)
+            }
+            // agent_graph configured: delegate to the multi-phase
+            // orchestrator, which already resolves to a StrategyAgentResult
+            // (it never rejects, but fromPromise still funnels an
+            // unexpected throw through the same toErrorResult path below).
+            if (parsedGraph.value !== undefined) {
+              return ResultAsync.fromPromise(
+                runAgentGraph(deps, parsedGraph.value, {
+                  agentsMd: agentConfig.agentsMd,
+                  skills: agentConfig.skills,
+                  tools,
+                  originalPromptText: extractMessageText(userMessage),
+                }),
+                (error) => error,
+              )
+            }
+
             const agent = deps.buildAgent({
               model: deps.createChatModel(agentConfig.model),
               tools,
@@ -200,29 +259,28 @@ export const runStrategyAgent = async (
                 messages: [new HumanMessage(extractMessageText(userMessage))],
               }),
               (error) => error,
-            )
+            ).map((invokeResult): StrategyAgentResult => {
+              if (invokeResult.structuredResponse === undefined) {
+                return {
+                  status: 'failed',
+                  message: 'agent did not return a structured response',
+                  errorKind: 'agent_error',
+                }
+              }
+              if (invokeResult.structuredResponse.status === 'completed') {
+                return {
+                  status: 'completed',
+                  message: invokeResult.structuredResponse.message,
+                }
+              }
+              return {
+                status: 'failed',
+                message: invokeResult.structuredResponse.message,
+                errorKind: 'agent_error',
+              }
+            })
           }),
         )
-        .map((invokeResult): StrategyAgentResult => {
-          if (invokeResult.structuredResponse === undefined) {
-            return {
-              status: 'failed',
-              message: 'agent did not return a structured response',
-              errorKind: 'agent_error',
-            }
-          }
-          if (invokeResult.structuredResponse.status === 'completed') {
-            return {
-              status: 'completed',
-              message: invokeResult.structuredResponse.message,
-            }
-          }
-          return {
-            status: 'failed',
-            message: invokeResult.structuredResponse.message,
-            errorKind: 'agent_error',
-          }
-        })
         .match((r) => r, toErrorResult)
     })
     .catch((error: unknown) => toErrorResult(error))
