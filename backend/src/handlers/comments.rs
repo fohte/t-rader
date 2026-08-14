@@ -160,6 +160,9 @@ pub async fn update_comment(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("comment {id} not found")))?;
+    if current.resolved == payload.resolved {
+        return Ok(Json(current));
+    }
     let from = current.resolved;
     let mut active = current.into_active_model();
     active.resolved = Set(payload.resolved);

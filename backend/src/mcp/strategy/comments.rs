@@ -143,6 +143,11 @@ impl StrategyServer {
             .await
             .map_err(db_error)?
             .ok_or_else(|| McpError::resource_not_found("parent comment not found", None))?;
+        if parent.parent_id.is_some() {
+            return Err(invalid_params(
+                "cannot reply to a reply; parent_id must reference a top-level comment",
+            ));
+        }
         ensure_comment_target_owned_by(
             &self.db,
             &parent.target_kind,
@@ -388,9 +393,19 @@ mod tests {
             unresolved_only
                 .comments
                 .into_iter()
-                .map(|c| c.comment_id)
+                .map(normalize_comment)
                 .collect::<Vec<_>>(),
-            vec![open],
+            vec![CommentDto {
+                comment_id: open,
+                target_kind: "note".into(),
+                target_id: note_id,
+                parent_id: None,
+                body: "still open".into(),
+                author_kind: "human".into(),
+                author_label: "user".into(),
+                resolved: false,
+                created_at: ts_sentinel(),
+            }],
         );
 
         let resolved_only = server
@@ -409,9 +424,19 @@ mod tests {
             resolved_only
                 .comments
                 .into_iter()
-                .map(|c| c.comment_id)
+                .map(normalize_comment)
                 .collect::<Vec<_>>(),
-            vec![done],
+            vec![CommentDto {
+                comment_id: done,
+                target_kind: "note".into(),
+                target_id: note_id,
+                parent_id: None,
+                body: "already fixed".into(),
+                author_kind: "human".into(),
+                author_label: "user".into(),
+                resolved: true,
+                created_at: ts_sentinel(),
+            }],
         );
     }
 
@@ -619,6 +644,29 @@ mod tests {
             )
             .await
             .expect_err("cross-strategy parent expected to be rejected");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reply_comment_rejects_reply_to_reply(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+        let note_id = seed_foreign_note(&db, strategy_id, "note").await;
+        let root_id = seed_comment(&db, "note", note_id, None, "please fix").await;
+        let reply_id = seed_comment(&db, "note", note_id, Some(root_id), "fixed").await;
+
+        let err = server
+            .reply_comment_inner(
+                strategy_id,
+                ReplyCommentParams {
+                    strategy_id,
+                    parent_id: reply_id,
+                    body: "thanks".into(),
+                },
+            )
+            .await
+            .expect_err("reply to a reply expected to be rejected");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 }
