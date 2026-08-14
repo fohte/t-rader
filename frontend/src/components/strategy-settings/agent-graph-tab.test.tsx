@@ -80,6 +80,14 @@ function setup(
   return render(<AgentGraphTab strategyId="strat-1" />, { wrapper: Wrapper })
 }
 
+async function expectEditorValue(value: string) {
+  const editor = await screen.findByLabelText('agent_graph')
+  await waitFor(() => {
+    expect(editor).toHaveValue(value)
+  })
+  return editor
+}
+
 afterEach(() => {
   cleanup()
   active?.eject()
@@ -89,31 +97,33 @@ afterEach(() => {
 describe('AgentGraphTab', () => {
   it('GET の content を初期値として描画する', async () => {
     setup({ content: 'phases: []' })
-    const editor = await screen.findByLabelText('agent_graph')
-    await waitFor(() => {
-      expect(editor).toHaveValue('phases: []')
-    })
+    await expectEditorValue('phases: []')
   })
 
-  it('編集して保存すると、再 GET 後にエディタが新しい content と同期する', async () => {
+  it('編集すると dirty-indicator が表示される', async () => {
     const user = userEvent.setup()
     setup({ content: 'old' })
 
-    const editor = await screen.findByLabelText('agent_graph')
-    await waitFor(() => {
-      expect(editor).toHaveValue('old')
-    })
-
+    const editor = await expectEditorValue('old')
     await user.clear(editor)
     await user.type(editor, 'updated')
 
     expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
+  })
+
+  it('保存すると再 GET 後にエディタが新しい content と同期し、dirty-indicator が消える', async () => {
+    const user = userEvent.setup()
+    setup({ content: 'old' })
+
+    const editor = await expectEditorValue('old')
+    await user.clear(editor)
+    await user.type(editor, 'updated')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
       expect(screen.queryByTestId('dirty-indicator')).toBeNull()
     })
-    expect(screen.getByLabelText('agent_graph')).toHaveValue('updated')
+    await expectEditorValue('updated')
     expect(active?.store.content).toBe('updated')
   })
 
@@ -121,27 +131,17 @@ describe('AgentGraphTab', () => {
     const user = userEvent.setup()
     setup(
       { content: 'old' },
-      {
-        status: 400,
-        body: {
-          error:
-            'phase "investigate": for_each references field "missing_field" which is not defined in phase "plan"\'s output',
-        },
-      },
+      { status: 400, body: { error: 'invalid config' } },
     )
 
-    const editor = await screen.findByLabelText('agent_graph')
-    await waitFor(() => {
-      expect(editor).toHaveValue('old')
-    })
-
+    const editor = await expectEditorValue('old')
     await user.clear(editor)
     await user.type(editor, 'broken')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
       expect(screen.getByTestId('save-error').textContent).toBe(
-        'phase "investigate": for_each references field "missing_field" which is not defined in phase "plan"\'s output',
+        'invalid config',
       )
     })
   })

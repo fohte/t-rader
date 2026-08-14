@@ -64,8 +64,8 @@ function StrategySettingsPage() {
           戦略設定 — {strategy.name}
         </h1>
         <p className="text-[13px] text-[color:var(--color-text-secondary)]">
-          戦略 Agent の初期コンテキスト (AGENTS.md / skills) や trigger
-          を編集します。
+          戦略 Agent の初期コンテキスト (AGENTS.md / skills)、trigger、 agent
+          graph を編集します。
         </p>
       </header>
 
