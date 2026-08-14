@@ -6,6 +6,11 @@ import {
   parseAgentGraph,
 } from '#strategy-agent/agent-graph/parse'
 
+// zod の issues 配列は JSON 形式でメッセージ末尾に連結される。中身の文言は
+// zod のバージョンに依存するため、その部分だけプレースホルダーに正規化する。
+const normalizeZodMessage = (message: string): string =>
+  message.replace(/: \[[\s\S]*\]$/, ': <zod-issues>')
+
 describe('parseAgentGraph', () => {
   it.each([
     { name: 'an empty string', yaml: '' },
@@ -91,20 +96,8 @@ phases:
     expect(result.isErr()).toBe(true)
     const error = result._unsafeUnwrapErr()
     expect(error).toBeInstanceOf(AgentGraphParseError)
-    expect(error.message).toBe(
-      'agent_graph does not match the expected shape: ' +
-        JSON.stringify(
-          [
-            {
-              expected: 'string',
-              code: 'invalid_type',
-              path: ['phases', 0, 'prompt'],
-              message: 'Invalid input: expected string, received undefined',
-            },
-          ],
-          null,
-          2,
-        ),
+    expect(normalizeZodMessage(error.message)).toBe(
+      'agent_graph does not match the expected shape: <zod-issues>',
     )
   })
 })

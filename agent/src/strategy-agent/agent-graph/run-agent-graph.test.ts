@@ -164,14 +164,12 @@ describe('runAgentGraph', () => {
       originalPromptText: 'req',
     })
 
-    expect.soft(capturedOptions?.model).toBe(chatModelReturnValue)
-    expect.soft(capturedOptions?.tools).toEqual([toolA])
-    expect
-      .soft(capturedOptions?.systemPrompt)
-      .toBe('AGENTS\n\n# Skill: skill-a\n\nbody a')
-    expect
-      .soft(capturedOptions?.responseSchema)
-      .toEqual({ type: 'object', properties: {} })
+    expect(capturedOptions).toEqual({
+      model: chatModelReturnValue,
+      tools: [toolA],
+      systemPrompt: 'AGENTS\n\n# Skill: skill-a\n\nbody a',
+      responseSchema: { type: 'object', properties: {} },
+    })
   })
 
   it('caps for_each concurrency at max_parallel', async () => {
@@ -296,6 +294,41 @@ describe('runAgentGraph', () => {
       errorKind: 'agent_error',
     })
     expect(attempts).toBe(3)
+  })
+
+  it('propagates an invoke rejection immediately, without retrying', async () => {
+    let attempts = 0
+    const { deps } = buildDeps(() => {
+      attempts++
+      return Promise.reject(new Error('usage limit exceeded'))
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'p',
+          label: 'P',
+          model: 'm',
+          prompt: 'do p',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message: 'フェーズ「P」(p) の実行に失敗しました: usage limit exceeded',
+      errorKind: 'agent_error',
+    })
+    expect(attempts).toBe(1)
   })
 
   it('fails when for_each references a field that is not an array', async () => {

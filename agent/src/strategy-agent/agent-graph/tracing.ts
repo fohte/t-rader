@@ -17,14 +17,18 @@ export const withPhaseSpan = async <T, E>(
   const span = tracer.startSpan(name, { attributes })
   const spanContext = trace.setSpan(context.active(), span)
 
-  const result = await context.with(spanContext, fn)
-  if (result.isErr()) {
-    const error = result.error
-    span.recordException(
-      error instanceof Error ? error : new Error(String(error)),
-    )
-    span.setStatus({ code: SpanStatusCode.ERROR })
+  // eslint-disable-next-line no-restricted-syntax -- span.end() を finally で必ず呼ぶため try/finally が必要
+  try {
+    const result = await context.with(spanContext, fn)
+    if (result.isErr()) {
+      const error = result.error
+      span.recordException(
+        error instanceof Error ? error : new Error(String(error)),
+      )
+      span.setStatus({ code: SpanStatusCode.ERROR })
+    }
+    return result
+  } finally {
+    span.end()
   }
-  span.end()
-  return result
 }

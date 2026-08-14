@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import type { AgentConfig } from '#strategy-agent/agent-config-client'
 import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
+import type { CompiledPhaseAgent } from '#strategy-agent/agent-graph/run-agent-graph'
 import type {
   CompiledStrategyAgent,
   McpToolsClient,
@@ -57,6 +58,8 @@ const AGENT_CONFIG: AgentConfig = {
 interface BuildDepsOptions {
   readonly agentInvoke: CompiledStrategyAgent['invoke']
   readonly tools?: readonly DynamicStructuredTool[]
+  readonly agentGraph?: string
+  readonly buildPhaseAgentInvoke?: CompiledPhaseAgent['invoke']
 }
 
 interface Calls {
@@ -81,7 +84,10 @@ const buildDeps = (
   const deps: StrategyAgentDeps = {
     fetchAgentConfig: (strategyId) => {
       calls.fetchAgentConfigStrategyId = strategyId
-      return okAsync(AGENT_CONFIG)
+      return okAsync({
+        ...AGENT_CONFIG,
+        agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
+      })
     },
     createMcpClient: (strategyId): McpToolsClient => {
       calls.createMcpClientStrategyId = strategyId
@@ -105,12 +111,11 @@ const buildDeps = (
       }
     },
     buildPhaseAgent: () => ({
-      invoke: () =>
-        Promise.reject(
-          new Error(
-            'buildPhaseAgent should not be invoked when agent_graph is unset',
-          ),
-        ),
+      invoke: (input) =>
+        (
+          options.buildPhaseAgentInvoke ??
+          (() => Promise.resolve({ structuredResponse: {} }))
+        )(input),
     }),
   }
 
@@ -249,6 +254,47 @@ describe('runStrategyAgent', () => {
       errorKind: 'agent_error',
     })
     expect(calls.mcpClientClosed).toBe(true)
+  })
+
+  it('delegates to runAgentGraph when agent_graph is configured', async () => {
+    const { deps } = buildDeps({
+      agentGraph:
+        'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+    })
+
+    const result = await runStrategyAgent(
+      deps,
+      'strategy-1',
+      buildUserMessage('do the thing'),
+    )
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (P)',
+    })
+  })
+
+  it('fails fast on malformed agent_graph without invoking any agent', async () => {
+    const { deps } = buildDeps({
+      agentGraph: 'phases: [',
+      agentInvoke: () => Promise.reject(new Error('should not be invoked')),
+      buildPhaseAgentInvoke: () =>
+        Promise.reject(new Error('should not be invoked')),
+    })
+
+    const result = await runStrategyAgent(
+      deps,
+      'strategy-1',
+      buildUserMessage('do the thing'),
+    )
+
+    expect(result).toEqual({
+      status: 'failed',
+      message: 'agent_graph is not valid YAML',
+      errorKind: 'agent_error',
+    })
   })
 })
 

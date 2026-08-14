@@ -16,7 +16,7 @@ import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
-// 初回 + 2 回まで再試行、という製品判断 (最大3回試みて駄目ならフェーズを失敗として確定させる)。
+// 上限に達しても structured response を得られなければ、そのフェーズを失敗として確定する。
 const MAX_STRUCTURED_OUTPUT_ATTEMPTS = 3
 
 export interface BuildPhaseAgentOptions {
@@ -105,19 +105,32 @@ export const buildPhaseMessageText = (input: {
   return sections.join('\n\n---\n\n')
 }
 
+// invoke() itself rejecting (usage limit, tool failure, network error, etc.)
+// propagates immediately without retrying; only a successful invoke that
+// lacks a structured response is retried, since that's the one failure mode
+// a repeat call can plausibly fix.
 const invokePhaseWithRetry = async (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
   attemptsLeft: number = MAX_STRUCTURED_OUTPUT_ATTEMPTS,
 ): Promise<Result<Record<string, unknown>, unknown>> => {
-  const invokeResult = await agent.invoke({ messages }).then(
-    (value): Result<Record<string, unknown>, unknown> =>
-      value.structuredResponse === undefined
-        ? err(new Error('agent did not return a structured response'))
-        : ok(value.structuredResponse),
-    (error: unknown): Result<Record<string, unknown>, unknown> => err(error),
+  const invoked = await agent.invoke({ messages }).then(
+    (
+      value,
+    ): Result<{ structuredResponse?: Record<string, unknown> }, unknown> =>
+      ok(value),
+    (
+      error: unknown,
+    ): Result<{ structuredResponse?: Record<string, unknown> }, unknown> =>
+      err(error),
   )
-  if (invokeResult.isOk() || attemptsLeft <= 1) return invokeResult
+  if (invoked.isErr()) return invoked
+  if (invoked.value.structuredResponse !== undefined) {
+    return ok(invoked.value.structuredResponse)
+  }
+  if (attemptsLeft <= 1) {
+    return err(new Error('agent did not return a structured response'))
+  }
   return invokePhaseWithRetry(agent, messages, attemptsLeft - 1)
 }
 
@@ -151,8 +164,8 @@ const runForEachItems = async (
   agent: CompiledPhaseAgent,
   items: readonly unknown[],
 ): Promise<Result<unknown[], unknown>> => {
-  // ponytail: 固定サイズのチャンク分割による並列数制御。セマフォより単純で、
-  // フェーズあたりのレイテンシ差が大きくなるなら worker pool 方式に上げる。
+  // 固定サイズのチャンク分割による並列数制御。セマフォより単純だが、フェーズあたりの
+  // レイテンシ差が大きい場合は待ち時間が偏る。偏りが問題になれば worker pool 方式に置き換える。
   const chunkSize = Math.max(phase.maxParallel ?? items.length, 1)
   const outputs: unknown[] = []
 

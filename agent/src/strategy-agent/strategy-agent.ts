@@ -84,68 +84,95 @@ export interface StrategyAgentConfig {
   readonly genAiProviderName: string
 }
 
+// Shared by createDefaultBuildAgent/createDefaultBuildPhaseAgent below, which
+// differ only in which response schema they pass in. createAgent's own type
+// inference collapses `responseFormat: ReturnType<typeof toolStrategy>` to
+// `Record<string, unknown>` regardless of the schema given at each call
+// site, so this always returns that erased shape; createDefaultBuildAgent
+// narrows it back to its own fixed schema itself.
+const buildCompiledAgent = (
+  genAiProviderName: string,
+  options: {
+    model: BaseChatModel
+    tools: readonly DynamicStructuredTool[]
+    systemPrompt: string
+    responseFormat: ReturnType<typeof toolStrategy>
+  },
+): CompiledPhaseAgent => {
+  const agent = createAgent({
+    model: options.model,
+    tools: [...options.tools],
+    systemPrompt: options.systemPrompt,
+    responseFormat: options.responseFormat,
+    middleware: [
+      createGenAiTracingMiddleware({ providerName: genAiProviderName }),
+      // wrapToolCall middleware (added by the tracing middleware above for
+      // its execute_tool span) makes LangChain's ToolNode stop
+      // auto-recovering thrown tool errors into a ToolMessage, so this
+      // restores that recovery explicitly, matching ToolNode's own default
+      // handleToolErrors text (`${error}\n Please fix your mistakes.`).
+      // ToolInvocationError (tool-input schema validation failures) is
+      // passed through as-is since its message already ends with its own
+      // "fix and retry" instruction.
+      toolErrorMiddleware({
+        onError: (error) =>
+          ToolInvocationError.isInstance(error)
+            ? String(error)
+            : `${String(error)}\n Please fix your mistakes.`,
+      }),
+    ],
+  })
+  return {
+    invoke: async (input) => {
+      const result = await agent.invoke({ messages: [...input.messages] })
+      // createAgent's inferred type claims structuredResponse is always
+      // present, but at runtime the model can still fail to call the
+      // structured-output tool; the cast restores that possibility so the
+      // undefined check below isn't type-checked as unreachable.
+      const structuredResponse = result.structuredResponse as
+        Record<string, unknown> | undefined
+      // exactOptionalPropertyTypes forbids `{ structuredResponse: undefined }`
+      // for an optional property, so the key is omitted rather than set to
+      // undefined when the agent didn't return one.
+      if (structuredResponse === undefined) return {}
+      return { structuredResponse }
+    },
+  }
+}
+
 const createDefaultBuildAgent =
   (genAiProviderName: string) =>
   (options: BuildStrategyAgentOptions): CompiledStrategyAgent => {
-    const agent = createAgent({
-      model: options.model,
-      tools: [...options.tools],
-      systemPrompt: options.systemPrompt,
+    const compiled = buildCompiledAgent(genAiProviderName, {
+      ...options,
       responseFormat: toolStrategy(structuredResponseSchema),
-      middleware: [
-        createGenAiTracingMiddleware({ providerName: genAiProviderName }),
-        // wrapToolCall middleware (added by the tracing middleware above for
-        // its execute_tool span) makes LangChain's ToolNode stop
-        // auto-recovering thrown tool errors into a ToolMessage, so this
-        // restores that recovery explicitly, matching ToolNode's own default
-        // handleToolErrors text (`${error}\n Please fix your mistakes.`).
-        // ToolInvocationError (tool-input schema validation failures) is
-        // passed through as-is since its message already ends with its own
-        // "fix and retry" instruction.
-        toolErrorMiddleware({
-          onError: (error) =>
-            ToolInvocationError.isInstance(error)
-              ? String(error)
-              : `${String(error)}\n Please fix your mistakes.`,
-        }),
-      ],
     })
     return {
       invoke: async (input) => {
-        const result = await agent.invoke({ messages: [...input.messages] })
-        return { structuredResponse: result.structuredResponse }
+        const result = await compiled.invoke(input)
+        if (result.structuredResponse === undefined) return {}
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- buildCompiledAgent only knows the erased Record<string, unknown> shape (see its doc comment); narrowed back here to the schema passed to toolStrategy above.
+          structuredResponse: result.structuredResponse as z.infer<
+            typeof structuredResponseSchema
+          >,
+        }
       },
     }
   }
 
 // Same shape as createDefaultBuildAgent, but the response schema is a raw
 // JSON Schema built per-phase from agent_graph's `output` config rather than
-// the single fixed {status, message} zod schema — toolStrategy accepts both.
+// the single fixed {status, message} zod schema — toolStrategy accepts both,
+// and CompiledPhaseAgent's own structuredResponse type is already the erased
+// Record<string, unknown> shape, so no narrowing step is needed here.
 const createDefaultBuildPhaseAgent =
   (genAiProviderName: string) =>
-  (options: BuildPhaseAgentOptions): CompiledPhaseAgent => {
-    const agent = createAgent({
-      model: options.model,
-      tools: [...options.tools],
-      systemPrompt: options.systemPrompt,
+  (options: BuildPhaseAgentOptions): CompiledPhaseAgent =>
+    buildCompiledAgent(genAiProviderName, {
+      ...options,
       responseFormat: toolStrategy(options.responseSchema),
-      middleware: [
-        createGenAiTracingMiddleware({ providerName: genAiProviderName }),
-        toolErrorMiddleware({
-          onError: (error) =>
-            ToolInvocationError.isInstance(error)
-              ? String(error)
-              : `${String(error)}\n Please fix your mistakes.`,
-        }),
-      ],
     })
-    return {
-      invoke: async (input) => {
-        const result = await agent.invoke({ messages: [...input.messages] })
-        return { structuredResponse: result.structuredResponse }
-      },
-    }
-  }
 
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
@@ -244,6 +271,19 @@ export const runStrategyAgent = async (
                   skills: agentConfig.skills,
                   tools,
                   originalPromptText: extractMessageText(userMessage),
+                }).then((result) => {
+                  if (result.status === 'failed') {
+                    console.error(
+                      'strategy agent execution failed:',
+                      result.message,
+                    )
+                    captureWithFingerprint(
+                      new Error(result.message),
+                      EXECUTION_FAILED_FINGERPRINT,
+                      { extras: { strategyId } },
+                    )
+                  }
+                  return result
                 }),
                 (error) => error,
               )

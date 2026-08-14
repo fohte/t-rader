@@ -23,11 +23,15 @@ export interface ObjectJsonSchema {
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((v) => typeof v === 'string')
 
-// `output`'s convention (fixed by product design, see the PR description):
-// a field-name -> schema-fragment map. `items` follows the same convention
-// for object array elements (a field-name -> schema-fragment map, with a
-// sibling `required` key), or is itself a plain schema fragment for
-// primitive array elements (e.g. `{ type: string }`).
+// `output`'s convention: a field-name -> schema-fragment map. `items`
+// follows the same convention for object array elements (a field-name ->
+// schema-fragment map, with a sibling `required` key), or is itself a plain
+// schema fragment for primitive array elements (e.g. `{ type: string }`).
+//
+// `required` is a reserved sibling key: a phase's `output` (or an object
+// `items` map) cannot define its own field literally named `required` — it
+// will be swallowed into the schema's `required` array instead of becoming
+// a property.
 const toObjectSchema = (
   propsMap: Readonly<Record<string, unknown>>,
 ): ObjectJsonSchema => {
