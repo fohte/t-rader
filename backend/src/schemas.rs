@@ -426,6 +426,8 @@ impl PartialSchema for crate::entities::comment::Model {
             .required("author_kind")
             .property("author_label", str_prop())
             .required("author_label")
+            .property("resolved", bool_prop())
+            .required("resolved")
             .property("created_at", datetime_prop())
             .required("created_at")
             .into()

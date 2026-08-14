@@ -141,7 +141,8 @@ export interface paths {
     delete: operations['delete_comment']
     options?: never
     head?: never
-    patch?: never
+    /** コメントの resolved を更新する */
+    patch: operations['update_comment']
     trace?: never
   }
   '/api/health': {
@@ -1136,6 +1137,7 @@ export interface components {
       id: string
       /** Format: uuid */
       parent_id?: string | null
+      resolved: boolean
       /** Format: uuid */
       target_id: string
       target_kind: string
@@ -1647,6 +1649,9 @@ export interface components {
       text?: string | null
       /** Format: date-time */
       timestamp?: string | null
+    }
+    UpdateCommentRequest: {
+      resolved: boolean
     }
     UpdateCustomIndicatorRequest: {
       code?: string | null
@@ -2312,6 +2317,57 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_comment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description コメント ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateCommentRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Comment']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }

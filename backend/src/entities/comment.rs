@@ -16,6 +16,7 @@ pub struct Model {
     pub author_kind: String,
     pub author_label: String,
     pub created_at: DateTimeWithTimeZone,
+    pub resolved: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

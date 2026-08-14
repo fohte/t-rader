@@ -131,6 +131,7 @@ pub(super) async fn seed_comment(
         body: Set(body.to_string()),
         author_kind: Set("human".into()),
         author_label: Set("user".into()),
+        resolved: NotSet,
         created_at: NotSet,
     }
     .insert(db)

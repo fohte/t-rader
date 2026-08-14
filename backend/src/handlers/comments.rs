@@ -2,7 +2,10 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    TransactionTrait,
+};
 use serde::Deserialize;
 use serde_json::json;
 use utoipa::IntoParams;
@@ -12,7 +15,7 @@ use crate::AppState;
 use crate::entities::comment;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
-use crate::models::CreateCommentRequest;
+use crate::models::{CreateCommentRequest, UpdateCommentRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 
 const ALLOWED_TARGET_KIND: [&str; 2] = ["note", "annotation"];
@@ -113,6 +116,7 @@ pub async fn create_comment(
         body: Set(p.body.clone()),
         author_kind: Set(author_kind),
         author_label: Set(author_label),
+        resolved: NotSet,
         created_at: NotSet,
     };
     let txn = state.db.begin().await?;
@@ -131,6 +135,49 @@ pub async fn create_comment(
     txn.commit().await?;
 
     Ok((StatusCode::CREATED, Json(created)))
+}
+
+/// コメントの resolved を更新する
+#[utoipa::path(
+    patch,
+    path = "/api/comments/{id}",
+    tag = "comments",
+    params(("id" = Uuid, Path, description = "コメント ID")),
+    request_body = UpdateCommentRequest,
+    responses(
+        (status = 200, body = comment::Model),
+        (status = 404, body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn update_comment(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+    JsonBody(payload): JsonBody<UpdateCommentRequest>,
+) -> Result<Json<comment::Model>, AppError> {
+    let current = comment::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("comment {id} not found")))?;
+    let from = current.resolved;
+    let mut active = current.into_active_model();
+    active.resolved = Set(payload.resolved);
+
+    let txn = state.db.begin().await?;
+    let updated = active.update(&txn).await?;
+    change_history::record(
+        &txn,
+        TargetKind::Comment,
+        id,
+        Op::StatusChange,
+        json!({ "from": from, "to": payload.resolved }),
+        None,
+    )
+    .await?;
+    txn.commit().await?;
+
+    Ok(Json(updated))
 }
 
 /// コメント削除
@@ -158,4 +205,91 @@ pub async fn delete_comment(
     change_history::record(&txn, TargetKind::Comment, id, Op::Delete, json!({}), None).await?;
     txn.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use serde_json::{Value, json};
+    use sqlx::PgPool;
+
+    use crate::testing::create_test_server;
+
+    fn normalize(mut value: Value) -> Value {
+        for key in ["id", "target_id", "created_at"] {
+            if let Some(v) = value.get_mut(key) {
+                *v = Value::String(format!("<{key}>"));
+            }
+        }
+        value
+    }
+
+    async fn create_note_comment(server: &axum_test::TestServer) -> Value {
+        server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "note",
+                "target_id": uuid::Uuid::new_v4(),
+                "body": "fix this",
+            }))
+            .await
+            .json()
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn update_comment_sets_resolved(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let created = create_note_comment(&server).await;
+        let id = created["id"].as_str().expect("id");
+
+        let res = server
+            .patch(&format!("/api/comments/{id}"))
+            .json(&json!({ "resolved": true }))
+            .await;
+        res.assert_status_ok();
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "target_kind": "note",
+                "target_id": "<target_id>",
+                "parent_id": null,
+                "body": "fix this",
+                "author_kind": "human",
+                "author_label": "user",
+                "resolved": true,
+                "created_at": "<created_at>",
+            }),
+        );
+
+        let res = server
+            .patch(&format!("/api/comments/{id}"))
+            .json(&json!({ "resolved": false }))
+            .await;
+        res.assert_status_ok();
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "target_kind": "note",
+                "target_id": "<target_id>",
+                "parent_id": null,
+                "body": "fix this",
+                "author_kind": "human",
+                "author_label": "user",
+                "resolved": false,
+                "created_at": "<created_at>",
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn update_comment_missing_id_is_404(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let res = server
+            .patch(&format!("/api/comments/{}", uuid::Uuid::new_v4()))
+            .json(&json!({ "resolved": true }))
+            .await;
+        res.assert_status(StatusCode::NOT_FOUND);
+    }
 }
