@@ -1,18 +1,20 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { AgentGraphTab } from '#components/strategy-settings/agent-graph-tab'
 import { AgentsMdTab } from '#components/strategy-settings/agents-md-tab'
 import { SkillsTab } from '#components/strategy-settings/skills-tab'
 import { TriggersTab } from '#components/strategy-settings/triggers-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'agents-md' | 'skills' | 'triggers'
+type TabKey = 'agents-md' | 'skills' | 'triggers' | 'agent-graph'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'agents-md', label: 'AGENTS.md' },
   { key: 'skills', label: 'skills' },
   { key: 'triggers', label: 'triggers' },
+  { key: 'agent-graph', label: 'agent graph' },
 ]
 
 export const Route = createFileRoute('/strategies/$id/settings')({
@@ -62,8 +64,8 @@ function StrategySettingsPage() {
           戦略設定 — {strategy.name}
         </h1>
         <p className="text-[13px] text-[color:var(--color-text-secondary)]">
-          戦略 Agent の初期コンテキスト (AGENTS.md / skills) や trigger
-          を編集します。
+          戦略 Agent の初期コンテキスト (AGENTS.md / skills)、trigger、 agent
+          graph を編集します。
         </p>
       </header>
 
@@ -96,6 +98,7 @@ function StrategySettingsPage() {
         {tab === 'agents-md' && <AgentsMdTab strategyId={id} />}
         {tab === 'skills' && <SkillsTab strategyId={id} />}
         {tab === 'triggers' && <TriggersTab strategyId={id} />}
+        {tab === 'agent-graph' && <AgentGraphTab strategyId={id} />}
       </section>
     </div>
   )

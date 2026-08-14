@@ -1,7 +1,7 @@
 import Editor from '@monaco-editor/react'
 
 interface CodeEditorProps {
-  language: 'python' | 'json'
+  language: 'python' | 'json' | 'yaml'
   value: string
   onChange: (next: string) => void
   /** test 環境では Monaco を mock 済み textarea 風に差し替える。data-testid を渡す用。 */
