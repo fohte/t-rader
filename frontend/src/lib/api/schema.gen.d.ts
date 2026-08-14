@@ -1586,6 +1586,8 @@ export interface components {
       /** @description agent の最終応答テキスト (completed 時のみ) */
       result_text?: string | null
       source: string
+      /** @description フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。 */
+      steps: unknown
       /** Format: uuid */
       strategy_id: string
       /** Format: uuid */

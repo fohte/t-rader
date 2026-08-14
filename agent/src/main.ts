@@ -48,8 +48,13 @@ export const main = async (): Promise<void> => {
   })
   const executor = new TraderAgentExecutor({
     taskStore,
-    runStrategyAgent: (strategyId, userMessage) =>
-      runStrategyAgent(strategyAgentDeps, strategyId, userMessage),
+    runStrategyAgent: (strategyId, userMessage, onStepsChanged) =>
+      runStrategyAgent(
+        strategyAgentDeps,
+        strategyId,
+        userMessage,
+        onStepsChanged,
+      ),
     fetchStrategyCandidates: createStrategyCandidatesFetcher(env.MGMT_MCP_URL),
   })
   const requestHandler = new DefaultRequestHandler(

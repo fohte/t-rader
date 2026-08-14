@@ -13,7 +13,23 @@ import {
   buildPhaseMessageText,
   runAgentGraph,
 } from '#strategy-agent/agent-graph/run-agent-graph'
+import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { AgentGraphConfig } from '#strategy-agent/agent-graph/types'
+
+// NoopTracer (テスト環境では実 exporter を設定しないため) が返す固定の invalid
+// span context。@opentelemetry/api の INVALID_TRACEID/INVALID_SPANID と同じ値。
+const NOOP_TRACE_ID = '00000000000000000000000000000000'
+const NOOP_SPAN_ID = '0000000000000000'
+
+// startedAt/finishedAt は実行のたびに変わるため、比較前に固定文字列へ正規化する。
+const normalizeStepTimestamps = (
+  steps: readonly StrategyTaskStep[],
+): unknown[] =>
+  steps.map((step) => ({
+    ...step,
+    startedAt: '<started-at>',
+    ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
+  }))
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -372,6 +388,194 @@ describe('runAgentGraph', () => {
         'フェーズ「Work」(work) の実行に失敗しました: for_each の参照先 "plan.value" が配列ではありません',
       errorKind: 'agent_error',
     })
+  })
+
+  it('notifies onStepsChanged with a running step, then a completed step, for a non-for_each phase', async () => {
+    const { deps } = buildDeps(() =>
+      Promise.resolve({ structuredResponse: { value: 'A-OUT' } }),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+      ],
+    }
+    const notifications: (readonly StrategyTaskStep[])[] = []
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(notifications.map(normalizeStepTimestamps)).toEqual([
+      [
+        {
+          phaseKey: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'running',
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'completed',
+          output: { value: 'A-OUT' },
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
+  })
+
+  it('records one step per for_each item, extracting item_label via label_field', async () => {
+    const { deps } = buildDeps((call) =>
+      Promise.resolve(
+        call.messageText.includes('do plan')
+          ? {
+              structuredResponse: {
+                hypotheses: [{ title: 'H1' }, { title: 'H2' }],
+              },
+            }
+          : { structuredResponse: {} },
+      ),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { hypotheses: { type: 'array' } },
+        },
+        {
+          key: 'investigate',
+          label: 'Investigate',
+          model: 'm',
+          prompt: 'do investigate',
+          forEach: 'plan.hypotheses',
+          labelField: 'title',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+    const notifications: (readonly StrategyTaskStep[])[] = []
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    const last = notifications.at(-1)
+    expect(
+      last === undefined ? undefined : normalizeStepTimestamps(last),
+    ).toEqual([
+      {
+        phaseKey: 'plan',
+        label: 'Plan',
+        model: 'm',
+        status: 'completed',
+        output: { hypotheses: [{ title: 'H1' }, { title: 'H2' }] },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'investigate',
+        label: 'Investigate',
+        model: 'm',
+        status: 'completed',
+        item: { title: 'H1' },
+        itemLabel: 'H1',
+        output: {},
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'investigate',
+        label: 'Investigate',
+        model: 'm',
+        status: 'completed',
+        item: { title: 'H2' },
+        itemLabel: 'H2',
+        output: {},
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+    ])
+  })
+
+  it('records a failed step with an error and no output when a phase fails', async () => {
+    const { deps } = buildDeps(() => Promise.resolve({}))
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'p',
+          label: 'P',
+          model: 'm',
+          prompt: 'do p',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+    const notifications: (readonly StrategyTaskStep[])[] = []
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    const last = notifications.at(-1)
+    expect(
+      last === undefined ? undefined : normalizeStepTimestamps(last),
+    ).toEqual([
+      {
+        phaseKey: 'p',
+        label: 'P',
+        model: 'm',
+        status: 'failed',
+        error: 'agent did not return a structured response',
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+    ])
   })
 })
 

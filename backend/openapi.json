@@ -7673,7 +7673,8 @@
           "source",
           "phase",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "steps"
         ],
         "properties": {
           "a2a_task_id": {
@@ -7704,6 +7705,9 @@
           },
           "source": {
             "type": "string"
+          },
+          "steps": {
+            "description": "フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。"
           },
           "strategy_id": {
             "type": "string",

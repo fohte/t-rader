@@ -352,6 +352,7 @@ pub async fn get_strategy_task(
         result_text: view.result_text,
         created_at: view.created_at,
         updated_at: view.updated_at,
+        steps: view.steps,
     }))
 }
 
@@ -1224,6 +1225,7 @@ mod tests {
                 "phase": "running",
                 "error_summary": null,
                 "result_text": null,
+                "steps": [],
             }),
         );
     }

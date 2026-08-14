@@ -7,6 +7,7 @@ import { err, ok } from 'neverthrow'
 import { isPlainObject } from '#strategy-agent/agent-graph/json'
 import type { ObjectJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 import { buildOutputJsonSchema } from '#strategy-agent/agent-graph/output-schema'
+import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { withPhaseSpan } from '#strategy-agent/agent-graph/tracing'
 import type {
   AgentGraphConfig,
@@ -44,6 +45,9 @@ export interface RunAgentGraphContext {
   readonly skills: Readonly<Record<string, string>>
   readonly tools: readonly DynamicStructuredTool[]
   readonly originalPromptText: string
+  // 実行中のフェーズ/for_each 要素ごとの進捗を都度通知する。呼び出し側は
+  // 受け取った配列全体を steps の最新状態として扱う (差分ではない)。
+  readonly onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void
 }
 
 const errorMessage = (error: unknown): string =>
@@ -57,6 +61,55 @@ const buildFailureResult = (
   message: `フェーズ「${phase.label}」(${phase.key}) の実行に失敗しました: ${errorMessage(error)}`,
   errorKind: isUsageLimitError(error) ? 'usage_limit' : 'agent_error',
 })
+
+type StepStartInput = Omit<
+  StrategyTaskStep,
+  'status' | 'finishedAt' | 'output' | 'error'
+>
+type StepOutcome =
+  | { readonly status: 'completed'; readonly output: unknown }
+  | { readonly status: 'failed'; readonly error: string }
+
+interface StepRecorder {
+  readonly start: (step: StepStartInput) => number
+  readonly finish: (index: number, outcome: StepOutcome) => void
+}
+
+// steps 配列はここでのみ mutate する。呼び出し側 (executor) は
+// onStepsChanged で渡された配列を都度「最新の全体」として扱えばよい。
+const createStepRecorder = (
+  onStepsChanged: RunAgentGraphContext['onStepsChanged'],
+): StepRecorder => {
+  const steps: StrategyTaskStep[] = []
+  const notify = (): void => onStepsChanged?.(steps.slice())
+
+  return {
+    start: (step) => {
+      steps.push({ ...step, status: 'running' })
+      notify()
+      return steps.length - 1
+    },
+    finish: (index, outcome) => {
+      const current = steps[index]
+      if (current === undefined) return
+      steps[index] = {
+        ...current,
+        ...outcome,
+        finishedAt: new Date().toISOString(),
+      }
+      notify()
+    },
+  }
+}
+
+const extractItemLabel = (
+  item: unknown,
+  labelField: string | undefined,
+): string | undefined => {
+  if (labelField === undefined || !isPlainObject(item)) return undefined
+  const value = item[labelField]
+  return typeof value === 'string' ? value : undefined
+}
 
 const createPhaseAgent = (
   deps: RunAgentGraphDeps,
@@ -157,12 +210,44 @@ const resolveForEachItems = (
       )
 }
 
+// 1 件分の invoke を実行し、開始時に running step を記録、決着したら
+// completed/failed に更新する。for_each の各要素と、for_each でないフェーズ
+// (常に 1 件) の両方から呼ばれる。
+const invokeAndRecordStep = (
+  agent: CompiledPhaseAgent,
+  messages: readonly HumanMessage[],
+  recorder: StepRecorder,
+  stepBase: Omit<StepStartInput, 'startedAt' | 'traceId' | 'spanId'>,
+  spanName: string,
+  spanAttributes: Record<string, string | number>,
+): Promise<Result<Record<string, unknown>, unknown>> =>
+  withPhaseSpan(spanName, spanAttributes, (spanIds) => {
+    const index = recorder.start({
+      ...stepBase,
+      startedAt: new Date().toISOString(),
+      traceId: spanIds.traceId,
+      spanId: spanIds.spanId,
+    })
+    return invokePhaseWithRetry(agent, messages).then((result) => {
+      if (result.isErr()) {
+        recorder.finish(index, {
+          status: 'failed',
+          error: errorMessage(result.error),
+        })
+      } else {
+        recorder.finish(index, { status: 'completed', output: result.value })
+      }
+      return result
+    })
+  })
+
 const runForEachItems = async (
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
   priorResults: Readonly<Record<string, unknown>>,
   agent: CompiledPhaseAgent,
   items: readonly unknown[],
+  recorder: StepRecorder,
 ): Promise<Result<unknown[], unknown>> => {
   // 固定サイズのチャンク分割による並列数制御。セマフォより単純だが、フェーズあたりの
   // レイテンシ差が大きい場合は待ち時間が偏る。偏りが問題になれば worker pool 方式に置き換える。
@@ -174,20 +259,30 @@ const runForEachItems = async (
     const chunkResults = await Promise.all(
       chunk.map((item, offset) => {
         const index = start + offset
+        const itemLabel = extractItemLabel(item, phase.labelField)
         const messageText = buildPhaseMessageText({
           originalPromptText: context.originalPromptText,
           phasePrompt: phase.prompt,
           item,
           priorResults,
         })
-        return withPhaseSpan(
+        return invokeAndRecordStep(
+          agent,
+          [new HumanMessage(messageText)],
+          recorder,
+          {
+            phaseKey: phase.key,
+            label: phase.label,
+            model: phase.model,
+            item,
+            ...(itemLabel !== undefined ? { itemLabel } : {}),
+          },
           `${phase.label} (${String(index + 1)}/${String(items.length)})`,
           {
             'phase.key': phase.key,
             'phase.model': phase.model,
             'phase.item_index': index,
           },
-          () => invokePhaseWithRetry(agent, [new HumanMessage(messageText)]),
         )
       }),
     )
@@ -205,6 +300,7 @@ const runPhase = async (
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
   priorResults: Readonly<Record<string, unknown>>,
+  recorder: StepRecorder,
 ): Promise<Result<unknown, unknown>> => {
   const agent = createPhaseAgent(deps, phase, context)
 
@@ -215,10 +311,13 @@ const runPhase = async (
       item: undefined,
       priorResults,
     })
-    return withPhaseSpan(
+    return invokeAndRecordStep(
+      agent,
+      [new HumanMessage(messageText)],
+      recorder,
+      { phaseKey: phase.key, label: phase.label, model: phase.model },
       phase.label,
       { 'phase.key': phase.key, 'phase.model': phase.model },
-      () => invokePhaseWithRetry(agent, [new HumanMessage(messageText)]),
     )
   }
 
@@ -226,7 +325,14 @@ const runPhase = async (
   const itemsResult = resolveForEachItems(priorResults, refKey, refField)
   if (itemsResult.isErr()) return itemsResult
 
-  return runForEachItems(phase, context, priorResults, agent, itemsResult.value)
+  return runForEachItems(
+    phase,
+    context,
+    priorResults,
+    agent,
+    itemsResult.value,
+    recorder,
+  )
 }
 
 export const runAgentGraph = async (
@@ -235,9 +341,10 @@ export const runAgentGraph = async (
   context: RunAgentGraphContext,
 ): Promise<StrategyAgentResult> => {
   const results: Record<string, unknown> = {}
+  const recorder = createStepRecorder(context.onStepsChanged)
 
   for (const phase of config.phases) {
-    const phaseResult = await runPhase(deps, phase, context, results)
+    const phaseResult = await runPhase(deps, phase, context, results, recorder)
     if (phaseResult.isErr()) {
       return buildFailureResult(phase, phaseResult.error)
     }
