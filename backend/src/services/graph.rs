@@ -1,7 +1,8 @@
 //! ノートに埋め込むグラフィカル表現 (`note.graphs_json`) のスキーマと検証。
 //!
-//! LLM は `write_note` の `graphs` 引数に本 struct の配列を渡す。本文には
-//! `[[graph:g1]]` トークンだけを置き、座標や独自構文を書かせない。
+//! `write_note` にはまだ `graphs` 引数が無く、`validate_graphs` の呼び出し元も無い
+//! (本モジュールは型と検証ロジックのみを提供する)。配線後は LLM が `graphs` 引数に
+//! 本 struct の配列を渡し、本文には `[[graph:g1]]` トークンだけを置く想定。
 //! `#[serde(deny_unknown_fields)]` により、フィールド名の typo は
 //! `missing field` ではなく `unknown field ..., expected one of ...` として
 //! 返るため LLM が自力で直せる。
@@ -68,15 +69,18 @@ pub struct GraphEdge {
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum GraphValidationError {
-    #[error(
-        "graph {graph_id:?}: edges[{index}].{field} = {value:?} is not a known node id (known: {known})"
-    )]
+    #[error("graph {graph_id:?}: {location} = {value:?} is not a known node id (known: {known})")]
     UnknownNodeId {
         graph_id: String,
-        index: usize,
-        field: &'static str,
+        location: String,
         value: String,
         known: String,
+    },
+    #[error("graph {graph_id:?}: nodes[{index}].id = {value:?} is duplicated")]
+    DuplicateNodeId {
+        graph_id: String,
+        index: usize,
+        value: String,
     },
     #[error(
         "graph {graph_id:?}: {location}.value is set but cite is missing (add cite noting the source)"
@@ -84,14 +88,23 @@ pub enum GraphValidationError {
     MissingCite { graph_id: String, location: String },
 }
 
-/// `graphs` 全体を検証する。参照整合性 (`edges[].source` / `target` が
-/// `nodes[].id` に存在するか) と、`value` があるのに `cite` が無い場合を拒否する。
+/// `graphs` 全体を検証する。参照整合性 (`nodes[].id` の重複禁止、`nodes[].parent` /
+/// `edges[].source` / `edges[].target` が `nodes[].id` に存在するか) と、`value` が
+/// あるのに `cite` が無い場合を拒否する。
 pub fn validate_graphs(graphs: &[GraphDef]) -> Result<(), GraphValidationError> {
     graphs.iter().try_for_each(validate_graph)
 }
 
 fn validate_graph(g: &GraphDef) -> Result<(), GraphValidationError> {
+    let mut known_ids: BTreeSet<&str> = BTreeSet::new();
     for (i, n) in g.nodes.iter().enumerate() {
+        if !known_ids.insert(n.id.as_str()) {
+            return Err(GraphValidationError::DuplicateNodeId {
+                graph_id: g.id.clone(),
+                index: i,
+                value: n.id.clone(),
+            });
+        }
         if n.value.is_some() && n.cite.is_none() {
             return Err(GraphValidationError::MissingCite {
                 graph_id: g.id.clone(),
@@ -100,19 +113,15 @@ fn validate_graph(g: &GraphDef) -> Result<(), GraphValidationError> {
         }
     }
 
-    let known_ids: BTreeSet<&str> = g.nodes.iter().map(|n| n.id.as_str()).collect();
-    for (i, e) in g.edges.iter().enumerate() {
-        for (field, value) in [("source", e.source.as_str()), ("target", e.target.as_str())] {
-            if !known_ids.contains(value) {
-                return Err(GraphValidationError::UnknownNodeId {
-                    graph_id: g.id.clone(),
-                    index: i,
-                    field,
-                    value: value.to_string(),
-                    known: known_ids.iter().copied().collect::<Vec<_>>().join(", "),
-                });
-            }
+    for (i, n) in g.nodes.iter().enumerate() {
+        if let Some(parent) = n.parent.as_deref() {
+            check_known_node_id(&g.id, format!("nodes[{i}].parent"), parent, &known_ids)?;
         }
+    }
+
+    for (i, e) in g.edges.iter().enumerate() {
+        check_known_node_id(&g.id, format!("edges[{i}].source"), &e.source, &known_ids)?;
+        check_known_node_id(&g.id, format!("edges[{i}].target"), &e.target, &known_ids)?;
         if e.value.is_some() && e.cite.is_none() {
             return Err(GraphValidationError::MissingCite {
                 graph_id: g.id.clone(),
@@ -122,6 +131,23 @@ fn validate_graph(g: &GraphDef) -> Result<(), GraphValidationError> {
     }
 
     Ok(())
+}
+
+fn check_known_node_id(
+    graph_id: &str,
+    location: String,
+    value: &str,
+    known_ids: &BTreeSet<&str>,
+) -> Result<(), GraphValidationError> {
+    if known_ids.contains(value) {
+        return Ok(());
+    }
+    Err(GraphValidationError::UnknownNodeId {
+        graph_id: graph_id.to_string(),
+        location,
+        value: value.to_string(),
+        known: known_ids.iter().copied().collect::<Vec<_>>().join(", "),
+    })
 }
 
 #[cfg(test)]
@@ -240,12 +266,12 @@ mod tests {
     }
 
     #[rstest]
-    #[case::source("tsmc2", "asml", "source")]
-    #[case::target("asml", "tsmc2", "target")]
+    #[case::source("tsmc2", "asml", "edges[0].source")]
+    #[case::target("asml", "tsmc2", "edges[0].target")]
     fn test_validate_graphs_rejects_unknown_node_id(
         #[case] source: &str,
         #[case] target: &str,
-        #[case] field: &'static str,
+        #[case] location: &str,
     ) {
         let g = graph(
             vec![node("asml"), node("tel"), node("tsmc")],
@@ -256,12 +282,51 @@ mod tests {
             validate_graphs(&[g]),
             Err(GraphValidationError::UnknownNodeId {
                 graph_id: "g1".to_string(),
-                index: 0,
-                field,
+                location: location.to_string(),
                 value: "tsmc2".to_string(),
                 known: "asml, tel, tsmc".to_string(),
             }),
         );
+    }
+
+    #[rstest]
+    fn test_validate_graphs_rejects_duplicate_node_id() {
+        let g = graph(vec![node("asml"), node("tel"), node("asml")], vec![]);
+
+        assert_eq!(
+            validate_graphs(&[g]),
+            Err(GraphValidationError::DuplicateNodeId {
+                graph_id: "g1".to_string(),
+                index: 2,
+                value: "asml".to_string(),
+            }),
+        );
+    }
+
+    #[rstest]
+    fn test_validate_graphs_rejects_unknown_parent() {
+        let mut n = node("asml");
+        n.parent = Some("does-not-exist".to_string());
+        let g = graph(vec![n, node("tel")], vec![]);
+
+        assert_eq!(
+            validate_graphs(&[g]),
+            Err(GraphValidationError::UnknownNodeId {
+                graph_id: "g1".to_string(),
+                location: "nodes[0].parent".to_string(),
+                value: "does-not-exist".to_string(),
+                known: "asml, tel".to_string(),
+            }),
+        );
+    }
+
+    #[rstest]
+    fn test_validate_graphs_accepts_known_parent() {
+        let mut n = node("asml");
+        n.parent = Some("tel".to_string());
+        let g = graph(vec![n, node("tel")], vec![]);
+
+        assert_eq!(validate_graphs(&[g]), Ok(()));
     }
 
     #[rstest]
