@@ -84,12 +84,12 @@ export interface StrategyAgentConfig {
   readonly genAiProviderName: string
 }
 
-// Shared by createDefaultBuildAgent/createDefaultBuildPhaseAgent below, which
-// differ only in which response schema they pass in. createAgent's own type
-// inference collapses `responseFormat: ReturnType<typeof toolStrategy>` to
-// `Record<string, unknown>` regardless of the schema given at each call
-// site, so this always returns that erased shape; createDefaultBuildAgent
-// narrows it back to its own fixed schema itself.
+// createDefaultBuildAgent/createDefaultBuildPhaseAgent (後述) の共通処理。
+// 両者は渡す response schema が異なるだけ。createAgent 自体の型推論は
+// `responseFormat: ReturnType<typeof toolStrategy>` を呼び出し側のスキーマに
+// 関わらず `Record<string, unknown>` に collapse するため、この関数は常に
+// その erase された形を返す。createDefaultBuildAgent 側で自身の固定スキーマに
+// narrowing し直す。
 const buildCompiledAgent = (
   genAiProviderName: string,
   options: {
@@ -125,15 +125,15 @@ const buildCompiledAgent = (
   return {
     invoke: async (input) => {
       const result = await agent.invoke({ messages: [...input.messages] })
-      // createAgent's inferred type claims structuredResponse is always
-      // present, but at runtime the model can still fail to call the
-      // structured-output tool; the cast restores that possibility so the
-      // undefined check below isn't type-checked as unreachable.
+      // createAgent の推論型では structuredResponse は常に存在する扱いだが、
+      // 実行時はモデルが structured-output tool を呼び出さないこともある。
+      // このキャストでその可能性を型上に戻し、直後の undefined チェックが
+      // unreachable と判定されないようにする。
       const structuredResponse = result.structuredResponse as
         Record<string, unknown> | undefined
-      // exactOptionalPropertyTypes forbids `{ structuredResponse: undefined }`
-      // for an optional property, so the key is omitted rather than set to
-      // undefined when the agent didn't return one.
+      // exactOptionalPropertyTypes により optional property に対して
+      // `{ structuredResponse: undefined }` を渡すことは許されないため、
+      // エージェントが返さなかった場合はキー自体を省略する。
       if (structuredResponse === undefined) return {}
       return { structuredResponse }
     },
@@ -152,7 +152,7 @@ const createDefaultBuildAgent =
         const result = await compiled.invoke(input)
         if (result.structuredResponse === undefined) return {}
         return {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- buildCompiledAgent only knows the erased Record<string, unknown> shape (see its doc comment); narrowed back here to the schema passed to toolStrategy above.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- buildCompiledAgent は erase された Record<string, unknown> 形しか知らない (doc comment 参照) ため、上で toolStrategy に渡したスキーマへここで narrowing し直す。
           structuredResponse: result.structuredResponse as z.infer<
             typeof structuredResponseSchema
           >,
@@ -161,11 +161,11 @@ const createDefaultBuildAgent =
     }
   }
 
-// Same shape as createDefaultBuildAgent, but the response schema is a raw
-// JSON Schema built per-phase from agent_graph's `output` config rather than
-// the single fixed {status, message} zod schema — toolStrategy accepts both,
-// and CompiledPhaseAgent's own structuredResponse type is already the erased
-// Record<string, unknown> shape, so no narrowing step is needed here.
+// createDefaultBuildAgent と同じ形だが、response schema は固定の
+// {status, message} zod スキーマではなく、agent_graph の `output` 設定から
+// フェーズごとに組み立てた生の JSON Schema — toolStrategy はどちらも
+// 受け付ける。CompiledPhaseAgent 自身の structuredResponse 型は既に erase
+// された Record<string, unknown> 形のため、narrowing は不要。
 const createDefaultBuildPhaseAgent =
   (genAiProviderName: string) =>
   (options: BuildPhaseAgentOptions): CompiledPhaseAgent =>
@@ -260,10 +260,10 @@ export const runStrategyAgent = async (
             if (parsedGraph.isErr()) {
               return errAsync(parsedGraph.error)
             }
-            // agent_graph configured: delegate to the multi-phase
-            // orchestrator, which already resolves to a StrategyAgentResult
-            // (it never rejects, but fromPromise still funnels an
-            // unexpected throw through the same toErrorResult path below).
+            // agent_graph が設定されている場合は多段フェーズのオーケストレー
+            // ターに委譲する。これは既に StrategyAgentResult に resolve
+            // される (reject はしないが、fromPromise を通すことで想定外の
+            // throw も下の toErrorResult と同じ経路に流す)。
             if (parsedGraph.value !== undefined) {
               return ResultAsync.fromPromise(
                 runAgentGraph(deps, parsedGraph.value, {

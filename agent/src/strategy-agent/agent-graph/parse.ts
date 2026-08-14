@@ -14,8 +14,8 @@ export class AgentGraphParseError extends Error {
   }
 }
 
-// undefined means agent_graph is unset (empty string), matching backend's
-// parse_agent_graph returning Ok(None) for that case.
+// undefined は agent_graph が未設定 (空文字列) であることを表す。backend の
+// parse_agent_graph がその場合に Ok(None) を返すのと対応させている。
 export type ParsedAgentGraph = AgentGraphConfig | undefined
 
 const agentGraphPhaseSchema = z.object({

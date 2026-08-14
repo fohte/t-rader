@@ -1,7 +1,7 @@
-// `for_each`/`label_field`/`runs` follow the same "<phase_key>.<field>" /
-// free-string conventions as backend/src/services/agent_graph.rs. `runs` and
-// `label_field` carry no execution semantics here, so they're read by the
-// zod schema but not surfaced on this type.
+// `for_each`/`label_field`/`runs` は backend/src/services/agent_graph.rs と
+// 同じ "<phase_key>.<field>" / 自由文字列の規約に従う。`runs` と
+// `label_field` はここでの実行には関与しないため、zod スキーマでは
+// 読み取るがこの型には出さない。
 export interface AgentGraphPhase {
   readonly key: string
   readonly label: string

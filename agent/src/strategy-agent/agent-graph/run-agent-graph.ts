@@ -82,9 +82,9 @@ const createPhaseAgent = (
   })
 }
 
-// No semantic vocabulary here on purpose: only the generic pipeline shape
-// (original request, this phase's instructions, the current for_each item,
-// and prior phases' outputs) is surfaced to the model.
+// あえてセマンティックな語彙は含めない: モデルに渡すのは元のリクエスト、
+// このフェーズの指示、現在の for_each 対象、手前のフェーズの出力という
+// 汎用的なパイプライン構造のみ。
 export const buildPhaseMessageText = (input: {
   readonly originalPromptText: string
   readonly phasePrompt: string
@@ -105,10 +105,10 @@ export const buildPhaseMessageText = (input: {
   return sections.join('\n\n---\n\n')
 }
 
-// invoke() itself rejecting (usage limit, tool failure, network error, etc.)
-// propagates immediately without retrying; only a successful invoke that
-// lacks a structured response is retried, since that's the one failure mode
-// a repeat call can plausibly fix.
+// invoke() 自体の reject (usage limit・ツール失敗・ネットワークエラー等) は
+// 再試行せず即座に伝播する。再試行するのは invoke が成功したにもかかわらず
+// structured response を欠く場合のみで、これが再試行で解消しうる唯一の
+// 失敗モードのため。
 const invokePhaseWithRetry = async (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
@@ -134,8 +134,8 @@ const invokePhaseWithRetry = async (
   return invokePhaseWithRetry(agent, messages, attemptsLeft - 1)
 }
 
-// backend validates for_each's format at PUT time (must be "<key>.<field>"),
-// so this is a plain first-dot split rather than a validating parse.
+// for_each の形式 ("<key>.<field>") は backend が PUT 時にバリデーション
+// 済みのため、ここでは検証を伴わない単純な最初の "." での分割で済ませる。
 const splitForEach = (forEach: string): readonly [string, string] => {
   const dotIndex = forEach.indexOf('.')
   return [forEach.slice(0, dotIndex), forEach.slice(dotIndex + 1)]

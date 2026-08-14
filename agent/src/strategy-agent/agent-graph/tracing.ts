@@ -3,11 +3,10 @@ import type { Result } from 'neverthrow'
 
 const TRACER_NAME = 't-rader-agent-graph'
 
-// Mirrors @fohte/service-kit's genai-tracing-middleware: a span started here
-// and entered via context.with() becomes the ambient parent for whatever
-// chat/execute_tool spans that middleware creates inside `fn`, so a phase
-// (and each for_each item) shows up as a span in the trace tree above its
-// model calls.
+// @fohte/service-kit の genai-tracing-middleware と同じ方式: ここで開始し
+// context.with() で入った span は、`fn` 内でそのミドルウェアが生成する
+// chat/execute_tool span の暗黙の親になる。そのためフェーズ (と for_each の
+// 各要素) は、自身のモデル呼び出しの上位に span としてトレースツリーに現れる。
 export const withPhaseSpan = async <T, E>(
   name: string,
   attributes: Record<string, string | number>,
