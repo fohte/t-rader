@@ -50,6 +50,8 @@ function makeProps(
     input: '',
     status: { kind: 'idle' },
     notes: [],
+    steps: [],
+    configPhases: [],
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
@@ -118,6 +120,47 @@ describe('FloatingChatView', () => {
     expect(screen.getByText('running')).toBeInTheDocument()
     expect(screen.getByText('アナリストが分析中です…')).toBeInTheDocument()
     expect(screen.getByLabelText('メッセージ入力')).toBeDisabled()
+  })
+
+  it('polling 中に steps があるとフェーズ木を表示する', async () => {
+    const status: FloatingChatStatus = { kind: 'polling', phase: 'running' }
+    await renderInRouter(
+      <FloatingChatView
+        {...makeProps({
+          input: 'x',
+          status,
+          configPhases: [
+            { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+            {
+              key: 'investigate',
+              label: '個別調査',
+              model: 'deepseek-v4-flash',
+            },
+          ],
+          steps: [
+            {
+              phase_key: 'plan',
+              label: '調査計画',
+              model: 'claude-opus-4',
+              status: 'completed',
+              started_at: '2026-06-26T00:00:00Z',
+              finished_at: '2026-06-26T00:00:12Z',
+            },
+            {
+              phase_key: 'investigate',
+              label: '個別調査',
+              model: 'deepseek-v4-flash',
+              status: 'running',
+              item: { title: '為替影響の再評価' },
+              item_label: '為替影響の再評価',
+              started_at: '2026-06-26T00:00:12Z',
+            },
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('為替影響の再評価')).toBeInTheDocument()
   })
 
   it('completed では生成ノートへのリンクを表示する', async () => {

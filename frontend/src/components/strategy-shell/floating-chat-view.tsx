@@ -1,6 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 
+import {
+  type AgentGraphPhaseSummary,
+  TaskExecutionTree,
+  type TaskStep,
+} from '#components/strategy-shell/task-execution-tree'
 import { formatRelative } from '#lib/note-utils'
 
 export interface FloatingChatNote {
@@ -24,6 +29,9 @@ export interface FloatingChatViewProps {
   input: string
   status: FloatingChatStatus
   notes: FloatingChatNote[]
+  steps: TaskStep[]
+  configPhases: AgentGraphPhaseSummary[]
+  traceUrlTemplate?: string
   onOpen: () => void
   onClose: () => void
   onInputChange: (value: string) => void
@@ -37,6 +45,9 @@ export function FloatingChatView({
   input,
   status,
   notes,
+  steps,
+  configPhases,
+  traceUrlTemplate,
   onOpen,
   onClose,
   onInputChange,
@@ -100,6 +111,9 @@ export function FloatingChatView({
           status={status}
           notes={notes}
           strategyId={strategyId}
+          steps={steps}
+          configPhases={configPhases}
+          traceUrlTemplate={traceUrlTemplate}
         />
       </div>
       <form
@@ -140,10 +154,16 @@ function FloatingChatStatusBlock({
   status,
   notes,
   strategyId,
+  steps,
+  configPhases,
+  traceUrlTemplate,
 }: {
   status: FloatingChatStatus
   notes: FloatingChatNote[]
   strategyId: string | null
+  steps: TaskStep[]
+  configPhases: AgentGraphPhaseSummary[]
+  traceUrlTemplate?: string
 }): React.ReactElement {
   switch (status.kind) {
     case 'idle':
@@ -156,12 +176,24 @@ function FloatingChatStatusBlock({
       return <StatusLine label="submitting" message="タスクを投入しています…" />
     case 'polling':
       return (
-        <StatusLine label={status.phase} message="アナリストが分析中です…" />
+        <div className="space-y-2">
+          <StatusLine label={status.phase} message="アナリストが分析中です…" />
+          <TaskExecutionTree
+            steps={steps}
+            configPhases={configPhases}
+            traceUrlTemplate={traceUrlTemplate}
+          />
+        </div>
       )
     case 'completed':
       return (
         <div className="space-y-2">
           <StatusLine label="completed" message="分析が完了しました。" />
+          <TaskExecutionTree
+            steps={steps}
+            configPhases={configPhases}
+            traceUrlTemplate={traceUrlTemplate}
+          />
           <FloatingChatNoteList notes={notes} strategyId={strategyId} />
         </div>
       )
@@ -169,6 +201,11 @@ function FloatingChatStatusBlock({
       return (
         <div className="space-y-2">
           <StatusLine label="failed" message="タスクが失敗しました。" />
+          <TaskExecutionTree
+            steps={steps}
+            configPhases={configPhases}
+            traceUrlTemplate={traceUrlTemplate}
+          />
           {status.error_summary != null && status.error_summary !== '' && (
             <pre className="whitespace-pre-wrap border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] p-2 font-mono text-[11px] text-[color:var(--color-text-secondary)]">
               {status.error_summary}

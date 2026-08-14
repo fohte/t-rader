@@ -22,6 +22,7 @@
     "@commitlint/cli": "21.2.1",
     "@eslint/eslintrc": "3.3.6",
     "@fohte/eslint-config": "0.4.0",
+    "@ninoseki/eslint-plugin-neverthrow": "0.2.0",
     "@storybook/addon-docs": "10.2.10",
     "@storybook/addon-themes": "10.2.10",
     "@storybook/react-vite": "10.2.10",
@@ -49,7 +50,6 @@
     "tw-animate-css": "1.4.0",
     "typescript": "6.0.3",
     "vite": "7.3.6",
-    "@ninoseki/eslint-plugin-neverthrow": "0.2.0",
     "vitest": "4.1.10"
   },
   "dependencies": {
@@ -68,7 +68,8 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-error-boundary": "6.1.2",
-    "tailwind-merge": "3.6.0"
+    "tailwind-merge": "3.6.0",
+    "yaml": "2.9.0"
   },
   "imports": {
     "#*.css": "./src/*.css",
