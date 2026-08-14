@@ -1,18 +1,20 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { AgentGraphTab } from '#components/strategy-settings/agent-graph-tab'
 import { AgentsMdTab } from '#components/strategy-settings/agents-md-tab'
 import { SkillsTab } from '#components/strategy-settings/skills-tab'
 import { TriggersTab } from '#components/strategy-settings/triggers-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'agents-md' | 'skills' | 'triggers'
+type TabKey = 'agents-md' | 'skills' | 'triggers' | 'agent-graph'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'agents-md', label: 'AGENTS.md' },
   { key: 'skills', label: 'skills' },
   { key: 'triggers', label: 'triggers' },
+  { key: 'agent-graph', label: 'agent graph' },
 ]
 
 export const Route = createFileRoute('/strategies/$id/settings')({
@@ -96,6 +98,7 @@ function StrategySettingsPage() {
         {tab === 'agents-md' && <AgentsMdTab strategyId={id} />}
         {tab === 'skills' && <SkillsTab strategyId={id} />}
         {tab === 'triggers' && <TriggersTab strategyId={id} />}
+        {tab === 'agent-graph' && <AgentGraphTab strategyId={id} />}
       </section>
     </div>
   )
