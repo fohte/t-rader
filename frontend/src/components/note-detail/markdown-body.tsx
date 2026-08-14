@@ -20,9 +20,9 @@ type NoteTokenComponents = {
 const HEADING3_CLASS =
   'mt-4 mb-2 text-[14px] font-bold uppercase tracking-wider text-[color:var(--color-text-secondary)]'
 
-// property-information が `align` を非推奨属性として自動変換の対象外にするため
-// (react-markdown が生成する th/td の align prop は常に undefined になる)、
-// 生の hast node から直接読む。
+// hast-util-to-jsx-runtime の tableCellAlignToStyle (既定 true) が hast の
+// align を style.textAlign に変換して prop から落とすため、生の hast node
+// から直接読む。
 function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
   return value === 'left' || value === 'right' || value === 'center'
     ? value
@@ -66,22 +66,15 @@ export function MarkdownBody({ source, onAnno, onRef }: MarkdownBodyProps) {
       </blockquote>
     ),
     pre: ({ children }) => (
-      <pre className="my-3 overflow-x-auto border border-[color:var(--color-hairline)] bg-[color:var(--panel-inset)] p-3 font-mono text-[12.5px] leading-relaxed text-[color:var(--color-text-primary)]">
+      <pre className="my-3 overflow-x-auto border border-[color:var(--color-hairline)] bg-[color:var(--panel-inset)] p-3 font-mono text-[12.5px] leading-relaxed text-[color:var(--color-text-primary)] [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
         {children}
       </pre>
     ),
-    code: ({ node, children }) => {
-      // フェンスブロックの code は末尾に \n が付く (mdast-util-to-hast の仕様)。
-      // インラインコードとの区別はこの signal に頼るしかない。
-      const raw = node?.children[0]
-      const isBlock = raw?.type === 'text' && raw.value.endsWith('\n')
-      if (isBlock) return <code>{children}</code>
-      return (
-        <code className="border border-[color:var(--color-hairline)] bg-[color:var(--panel-inset)] px-1 py-px font-mono text-[0.88em]">
-          {children}
-        </code>
-      )
-    },
+    code: ({ children }) => (
+      <code className="border border-[color:var(--color-hairline)] bg-[color:var(--panel-inset)] px-1 py-px font-mono text-[0.88em]">
+        {children}
+      </code>
+    ),
     strong: ({ children }) => (
       <strong className="font-semibold">{children}</strong>
     ),
