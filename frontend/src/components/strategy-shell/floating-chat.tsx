@@ -90,7 +90,7 @@ export function FloatingChat(): React.ReactElement {
   const phase = taskQuery.data?.phase ?? null
   const isCompleted = phase === 'completed'
 
-  // steps は生成済み OpenAPI スキーマにまだ存在しないため、型を拡張して読む。
+  // steps は OpenAPI 生成スキーマに未反映のフィールドのため、型を拡張して読む。
   const steps = readTaskSteps(taskQuery.data)
 
   const agentGraphQuery = $api.useQuery(

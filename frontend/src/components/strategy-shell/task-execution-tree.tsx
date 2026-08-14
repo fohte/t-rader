@@ -4,9 +4,8 @@ import { parse as parseYaml } from 'yaml'
 
 import { cn } from '#lib/utils'
 
-// backend の StrategyTaskStatusResponse.steps (contract) に対応する型。
-// agent_graph の記録側 PR がまだ merge されていないため schema.gen.d.ts には
-// 未反映で、ここで手動定義している。
+// backend の StrategyTaskStatusResponse に対応する型。schema.gen.d.ts (OpenAPI
+// 生成型) に `steps` フィールドが未定義のため、ここで手動定義している。
 export interface TaskStep {
   phase_key: string
   label: string
@@ -70,10 +69,15 @@ export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
 // フラットな steps を phase_key でグルーピングし、agent_graph の設定順に木を組み直す。
 // 設定に無いフェーズ (agent_graph 変更後の古いタスク等) は steps 内の初出順で末尾に追加する。
 // steps に一件も無い設定フェーズは "pending" (待機) として表示する。
+// steps が一件も無い (タスク未実行) ときは、configPhases があっても空配列を返す。
+// これが無いと、実行済み/実行中のタスクと「まだ steps が一件も記録されていないタスク」を
+// 区別できず、後者を恒久的に「全フェーズ待機」と誤表示してしまう。
 export function buildPhaseNodes(
   configPhases: AgentGraphPhaseSummary[],
   steps: TaskStep[],
 ): PhaseNode[] {
+  if (steps.length === 0) return []
+
   const sorted = [...steps].sort((a, b) =>
     a.started_at.localeCompare(b.started_at),
   )

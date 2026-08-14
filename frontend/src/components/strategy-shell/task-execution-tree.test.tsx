@@ -44,8 +44,10 @@ describe('TaskExecutionTree', () => {
       <TaskExecutionTree
         {...makeProps({
           configPhases: [
+            { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
             { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
           ],
+          steps: [makeStep({ phase_key: 'plan' })],
         })}
       />,
     )
@@ -231,6 +233,13 @@ describe('parseAgentGraphPhases', () => {
 })
 
 describe('buildPhaseNodes', () => {
+  it('returns empty array when steps is empty, even with configured phases', () => {
+    const configPhases = [
+      { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+    ]
+    expect(buildPhaseNodes(configPhases, [])).toEqual([])
+  })
+
   it('marks configured phases with no steps as pending', () => {
     const configPhases = [
       { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
@@ -274,9 +283,18 @@ describe('buildPhaseNodes', () => {
   })
 
   it('appends phase_keys absent from config in first-seen order', () => {
-    const stale = makeStep({ phase_key: 'removed-phase', label: '旧フェーズ' })
-    expect(buildPhaseNodes([], [stale])).toEqual([
-      { kind: 'single', key: 'removed-phase', step: stale },
+    const staleFirst = makeStep({
+      phase_key: 'stale-first',
+      started_at: '2026-08-15T00:00:00Z',
+    })
+    const staleSecond = makeStep({
+      phase_key: 'stale-second',
+      started_at: '2026-08-15T00:00:01Z',
+    })
+
+    expect(buildPhaseNodes([], [staleSecond, staleFirst])).toEqual([
+      { kind: 'single', key: 'stale-first', step: staleFirst },
+      { kind: 'single', key: 'stale-second', step: staleSecond },
     ])
   })
 })
