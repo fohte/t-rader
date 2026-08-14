@@ -35,6 +35,7 @@
     "langchain": "1.5.4",
     "neverthrow": "8.2.0",
     "postgres": "3.4.9",
+    "yaml": "2.9.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

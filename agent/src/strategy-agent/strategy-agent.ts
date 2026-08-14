@@ -12,12 +12,18 @@ import {
   ToolInvocationError,
   toolStrategy,
 } from 'langchain'
-import { ResultAsync } from 'neverthrow'
+import { errAsync, ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
 import { extractMessageText } from '#a2a/message-text'
 import type { FetchAgentConfig } from '#strategy-agent/agent-config-client'
 import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
+import { parseAgentGraph } from '#strategy-agent/agent-graph/parse'
+import type {
+  BuildPhaseAgentOptions,
+  CompiledPhaseAgent,
+} from '#strategy-agent/agent-graph/run-agent-graph'
+import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -65,6 +71,9 @@ export interface StrategyAgentDeps {
   readonly buildAgent: (
     options: BuildStrategyAgentOptions,
   ) => CompiledStrategyAgent
+  readonly buildPhaseAgent: (
+    options: BuildPhaseAgentOptions,
+  ) => CompiledPhaseAgent
 }
 
 export interface StrategyAgentConfig {
@@ -75,39 +84,95 @@ export interface StrategyAgentConfig {
   readonly genAiProviderName: string
 }
 
+// createDefaultBuildAgent/createDefaultBuildPhaseAgent (後述) の共通処理。
+// 両者は渡す response schema が異なるだけ。createAgent 自体の型推論は
+// `responseFormat: ReturnType<typeof toolStrategy>` を呼び出し側のスキーマに
+// 関わらず `Record<string, unknown>` に collapse するため、この関数は常に
+// その erase された形を返す。createDefaultBuildAgent 側で自身の固定スキーマに
+// narrowing し直す。
+const buildCompiledAgent = (
+  genAiProviderName: string,
+  options: {
+    model: BaseChatModel
+    tools: readonly DynamicStructuredTool[]
+    systemPrompt: string
+    responseFormat: ReturnType<typeof toolStrategy>
+  },
+): CompiledPhaseAgent => {
+  const agent = createAgent({
+    model: options.model,
+    tools: [...options.tools],
+    systemPrompt: options.systemPrompt,
+    responseFormat: options.responseFormat,
+    middleware: [
+      createGenAiTracingMiddleware({ providerName: genAiProviderName }),
+      // wrapToolCall middleware (added by the tracing middleware above for
+      // its execute_tool span) makes LangChain's ToolNode stop
+      // auto-recovering thrown tool errors into a ToolMessage, so this
+      // restores that recovery explicitly, matching ToolNode's own default
+      // handleToolErrors text (`${error}\n Please fix your mistakes.`).
+      // ToolInvocationError (tool-input schema validation failures) is
+      // passed through as-is since its message already ends with its own
+      // "fix and retry" instruction.
+      toolErrorMiddleware({
+        onError: (error) =>
+          ToolInvocationError.isInstance(error)
+            ? String(error)
+            : `${String(error)}\n Please fix your mistakes.`,
+      }),
+    ],
+  })
+  return {
+    invoke: async (input) => {
+      const result = await agent.invoke({ messages: [...input.messages] })
+      // createAgent の推論型では structuredResponse は常に存在する扱いだが、
+      // 実行時はモデルが structured-output tool を呼び出さないこともある。
+      // このキャストでその可能性を型上に戻し、直後の undefined チェックが
+      // unreachable と判定されないようにする。
+      const structuredResponse = result.structuredResponse as
+        Record<string, unknown> | undefined
+      // exactOptionalPropertyTypes により optional property に対して
+      // `{ structuredResponse: undefined }` を渡すことは許されないため、
+      // エージェントが返さなかった場合はキー自体を省略する。
+      if (structuredResponse === undefined) return {}
+      return { structuredResponse }
+    },
+  }
+}
+
 const createDefaultBuildAgent =
   (genAiProviderName: string) =>
   (options: BuildStrategyAgentOptions): CompiledStrategyAgent => {
-    const agent = createAgent({
-      model: options.model,
-      tools: [...options.tools],
-      systemPrompt: options.systemPrompt,
+    const compiled = buildCompiledAgent(genAiProviderName, {
+      ...options,
       responseFormat: toolStrategy(structuredResponseSchema),
-      middleware: [
-        createGenAiTracingMiddleware({ providerName: genAiProviderName }),
-        // wrapToolCall middleware (added by the tracing middleware above for
-        // its execute_tool span) makes LangChain's ToolNode stop
-        // auto-recovering thrown tool errors into a ToolMessage, so this
-        // restores that recovery explicitly, matching ToolNode's own default
-        // handleToolErrors text (`${error}\n Please fix your mistakes.`).
-        // ToolInvocationError (tool-input schema validation failures) is
-        // passed through as-is since its message already ends with its own
-        // "fix and retry" instruction.
-        toolErrorMiddleware({
-          onError: (error) =>
-            ToolInvocationError.isInstance(error)
-              ? String(error)
-              : `${String(error)}\n Please fix your mistakes.`,
-        }),
-      ],
     })
     return {
       invoke: async (input) => {
-        const result = await agent.invoke({ messages: [...input.messages] })
-        return { structuredResponse: result.structuredResponse }
+        const result = await compiled.invoke(input)
+        if (result.structuredResponse === undefined) return {}
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- buildCompiledAgent は erase された Record<string, unknown> 形しか知らない (doc comment 参照) ため、上で toolStrategy に渡したスキーマへここで narrowing し直す。
+          structuredResponse: result.structuredResponse as z.infer<
+            typeof structuredResponseSchema
+          >,
+        }
       },
     }
   }
+
+// createDefaultBuildAgent と同じ形だが、response schema は固定の
+// {status, message} zod スキーマではなく、agent_graph の `output` 設定から
+// フェーズごとに組み立てた生の JSON Schema — toolStrategy はどちらも
+// 受け付ける。CompiledPhaseAgent 自身の structuredResponse 型は既に erase
+// された Record<string, unknown> 形のため、narrowing は不要。
+const createDefaultBuildPhaseAgent =
+  (genAiProviderName: string) =>
+  (options: BuildPhaseAgentOptions): CompiledPhaseAgent =>
+    buildCompiledAgent(genAiProviderName, {
+      ...options,
+      responseFormat: toolStrategy(options.responseSchema),
+    })
 
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
@@ -132,6 +197,7 @@ export const createStrategyAgentDeps = (
       },
     }),
   buildAgent: createDefaultBuildAgent(config.genAiProviderName),
+  buildPhaseAgent: createDefaultBuildPhaseAgent(config.genAiProviderName),
 })
 
 export const runStrategyAgent = async (
@@ -190,6 +256,39 @@ export const runStrategyAgent = async (
         .fetchAgentConfig(strategyId)
         .andThen((agentConfig) =>
           toolsResult.andThen((tools) => {
+            const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
+            if (parsedGraph.isErr()) {
+              return errAsync(parsedGraph.error)
+            }
+            // agent_graph が設定されている場合は多段フェーズのオーケストレー
+            // ターに委譲する。これは既に StrategyAgentResult に resolve
+            // される (reject はしないが、fromPromise を通すことで想定外の
+            // throw も下の toErrorResult と同じ経路に流す)。
+            if (parsedGraph.value !== undefined) {
+              return ResultAsync.fromPromise(
+                runAgentGraph(deps, parsedGraph.value, {
+                  agentsMd: agentConfig.agentsMd,
+                  skills: agentConfig.skills,
+                  tools,
+                  originalPromptText: extractMessageText(userMessage),
+                }).then((result) => {
+                  if (result.status === 'failed') {
+                    console.error(
+                      'strategy agent execution failed:',
+                      result.message,
+                    )
+                    captureWithFingerprint(
+                      new Error(result.message),
+                      EXECUTION_FAILED_FINGERPRINT,
+                      { extras: { strategyId } },
+                    )
+                  }
+                  return result
+                }),
+                (error) => error,
+              )
+            }
+
             const agent = deps.buildAgent({
               model: deps.createChatModel(agentConfig.model),
               tools,
@@ -200,29 +299,28 @@ export const runStrategyAgent = async (
                 messages: [new HumanMessage(extractMessageText(userMessage))],
               }),
               (error) => error,
-            )
+            ).map((invokeResult): StrategyAgentResult => {
+              if (invokeResult.structuredResponse === undefined) {
+                return {
+                  status: 'failed',
+                  message: 'agent did not return a structured response',
+                  errorKind: 'agent_error',
+                }
+              }
+              if (invokeResult.structuredResponse.status === 'completed') {
+                return {
+                  status: 'completed',
+                  message: invokeResult.structuredResponse.message,
+                }
+              }
+              return {
+                status: 'failed',
+                message: invokeResult.structuredResponse.message,
+                errorKind: 'agent_error',
+              }
+            })
           }),
         )
-        .map((invokeResult): StrategyAgentResult => {
-          if (invokeResult.structuredResponse === undefined) {
-            return {
-              status: 'failed',
-              message: 'agent did not return a structured response',
-              errorKind: 'agent_error',
-            }
-          }
-          if (invokeResult.structuredResponse.status === 'completed') {
-            return {
-              status: 'completed',
-              message: invokeResult.structuredResponse.message,
-            }
-          }
-          return {
-            status: 'failed',
-            message: invokeResult.structuredResponse.message,
-            errorKind: 'agent_error',
-          }
-        })
         .match((r) => r, toErrorResult)
     })
     .catch((error: unknown) => toErrorResult(error))
