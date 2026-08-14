@@ -1,12 +1,17 @@
 import type { Message } from '@a2a-js/sdk'
+import { createGenAiTracingMiddleware } from '@fohte/service-kit/langchain-genai'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
-import type { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { HumanMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
-import { createAgent, toolStrategy } from 'langchain'
+import {
+  createAgent,
+  toolErrorMiddleware,
+  ToolInvocationError,
+  toolStrategy,
+} from 'langchain'
 import { ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
@@ -42,10 +47,7 @@ export interface McpToolsClient {
 }
 
 export interface CompiledStrategyAgent {
-  invoke(
-    input: { messages: readonly HumanMessage[] },
-    options: { callbacks: readonly BaseCallbackHandler[] },
-  ): Promise<{
+  invoke(input: { messages: readonly HumanMessage[] }): Promise<{
     structuredResponse?: z.infer<typeof structuredResponseSchema>
   }>
 }
@@ -63,7 +65,6 @@ export interface StrategyAgentDeps {
   readonly buildAgent: (
     options: BuildStrategyAgentOptions,
   ) => CompiledStrategyAgent
-  readonly genAiCallbackHandler: BaseCallbackHandler
 }
 
 export interface StrategyAgentConfig {
@@ -71,28 +72,42 @@ export interface StrategyAgentConfig {
   readonly strategyMcpUrl: string
   readonly llmApiKey: string
   readonly llmBaseUrl?: string | undefined
-  readonly genAiCallbackHandler: BaseCallbackHandler
+  readonly genAiProviderName: string
 }
 
-const defaultBuildAgent = (
-  options: BuildStrategyAgentOptions,
-): CompiledStrategyAgent => {
-  const agent = createAgent({
-    model: options.model,
-    tools: [...options.tools],
-    systemPrompt: options.systemPrompt,
-    responseFormat: toolStrategy(structuredResponseSchema),
-  })
-  return {
-    invoke: async (input, callOptions) => {
-      const result = await agent.invoke(
-        { messages: [...input.messages] },
-        { callbacks: [...callOptions.callbacks] },
-      )
-      return { structuredResponse: result.structuredResponse }
-    },
+const createDefaultBuildAgent =
+  (genAiProviderName: string) =>
+  (options: BuildStrategyAgentOptions): CompiledStrategyAgent => {
+    const agent = createAgent({
+      model: options.model,
+      tools: [...options.tools],
+      systemPrompt: options.systemPrompt,
+      responseFormat: toolStrategy(structuredResponseSchema),
+      middleware: [
+        createGenAiTracingMiddleware({ providerName: genAiProviderName }),
+        // wrapToolCall middleware (added by the tracing middleware above for
+        // its execute_tool span) makes LangChain's ToolNode stop
+        // auto-recovering thrown tool errors into a ToolMessage, so this
+        // restores that recovery explicitly, matching ToolNode's own default
+        // handleToolErrors text (`${error}\n Please fix your mistakes.`).
+        // ToolInvocationError (tool-input schema validation failures) is
+        // passed through as-is since its message already ends with its own
+        // "fix and retry" instruction.
+        toolErrorMiddleware({
+          onError: (error) =>
+            ToolInvocationError.isInstance(error)
+              ? String(error)
+              : `${String(error)}\n Please fix your mistakes.`,
+        }),
+      ],
+    })
+    return {
+      invoke: async (input) => {
+        const result = await agent.invoke({ messages: [...input.messages] })
+        return { structuredResponse: result.structuredResponse }
+      },
+    }
   }
-}
 
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
@@ -116,8 +131,7 @@ export const createStrategyAgentDeps = (
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
       },
     }),
-  buildAgent: defaultBuildAgent,
-  genAiCallbackHandler: config.genAiCallbackHandler,
+  buildAgent: createDefaultBuildAgent(config.genAiProviderName),
 })
 
 export const runStrategyAgent = async (
@@ -182,12 +196,9 @@ export const runStrategyAgent = async (
               systemPrompt: buildSystemPrompt(agentConfig),
             })
             return ResultAsync.fromPromise(
-              agent.invoke(
-                {
-                  messages: [new HumanMessage(extractMessageText(userMessage))],
-                },
-                { callbacks: [deps.genAiCallbackHandler] },
-              ),
+              agent.invoke({
+                messages: [new HumanMessage(extractMessageText(userMessage))],
+              }),
               (error) => error,
             )
           }),
