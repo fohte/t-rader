@@ -82,16 +82,27 @@ pub enum GraphValidationError {
         index: usize,
         value: String,
     },
+    #[error("graphs[{index}].id = {value:?} is duplicated")]
+    DuplicateGraphId { index: usize, value: String },
     #[error(
         "graph {graph_id:?}: {location}.value is set but cite is missing (add cite noting the source)"
     )]
     MissingCite { graph_id: String, location: String },
 }
 
-/// `graphs` 全体を検証する。参照整合性 (`nodes[].id` の重複禁止、`nodes[].parent` /
-/// `edges[].source` / `edges[].target` が `nodes[].id` に存在するか) と、`value` が
-/// あるのに `cite` が無い場合を拒否する。
+/// `graphs` 全体を検証する。`graphs[].id` の重複禁止、参照整合性 (`nodes[].id` の
+/// 重複禁止、`nodes[].parent` / `edges[].source` / `edges[].target` が `nodes[].id`
+/// に存在するか) と、`value` があるのに `cite` が無い場合を拒否する。
 pub fn validate_graphs(graphs: &[GraphDef]) -> Result<(), GraphValidationError> {
+    let mut known_graph_ids: BTreeSet<&str> = BTreeSet::new();
+    for (i, g) in graphs.iter().enumerate() {
+        if !known_graph_ids.insert(g.id.as_str()) {
+            return Err(GraphValidationError::DuplicateGraphId {
+                index: i,
+                value: g.id.clone(),
+            });
+        }
+    }
     graphs.iter().try_for_each(validate_graph)
 }
 
@@ -299,6 +310,21 @@ mod tests {
                 graph_id: "g1".to_string(),
                 index: 2,
                 value: "asml".to_string(),
+            }),
+        );
+    }
+
+    #[rstest]
+    fn test_validate_graphs_rejects_duplicate_graph_id() {
+        let mut g2 = graph(vec![node("tel")], vec![]);
+        g2.id = "g1".to_string();
+        let g1 = graph(vec![node("asml")], vec![]);
+
+        assert_eq!(
+            validate_graphs(&[g1, g2]),
+            Err(GraphValidationError::DuplicateGraphId {
+                index: 1,
+                value: "g1".to_string(),
             }),
         );
     }

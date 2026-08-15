@@ -287,7 +287,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create."
+        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale)."
     )]
     async fn write_note(
         &self,
@@ -301,7 +301,7 @@ impl StrategyServer {
     /// ノートを読み出す
     #[tool(
         name = "read_note",
-        description = "Read a single note owned by the strategy."
+        description = "Read a single note owned by the strategy, including its graphs."
     )]
     async fn read_note(
         &self,

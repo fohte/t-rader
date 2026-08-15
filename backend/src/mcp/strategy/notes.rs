@@ -658,138 +658,89 @@ mod tests {
         assert_eq!(result.notes, vec![]);
     }
 
+    // body_md と graphs は独立に部分更新できる: 片方だけ送るともう片方は無傷。
     #[sqlx::test(migrations = false)]
-    async fn write_note_update_omitting_graphs_leaves_them_unchanged(pool: PgPool) {
+    async fn write_note_update_graphs_and_body_are_independent(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
-        let graph = sample_graph("g1");
-        let created = server
-            .write_note_inner(
-                strategy_id,
-                WriteNoteParams {
+        for (label, update_body, update_graphs, expected_body, expected_graphs) in [
+            (
+                "omit_graphs_leaves_them_unchanged",
+                Some("v2".to_string()),
+                None,
+                "v2".to_string(),
+                vec![sample_graph("g1")],
+            ),
+            (
+                "graphs_only_replaces_array_leaves_body_untouched",
+                None,
+                Some(vec![sample_graph("g2")]),
+                "orig".to_string(),
+                vec![sample_graph("g2")],
+            ),
+        ] {
+            let created = server
+                .write_note_inner(
                     strategy_id,
-                    note_id: None,
-                    title: Some("t".into()),
-                    body_md: Some("v1".into()),
-                    type_tag: None,
-                    frontmatter_json: None,
-                    graphs: Some(vec![graph.clone()]),
-                },
-            )
-            .await
-            .expect("create");
+                    WriteNoteParams {
+                        strategy_id,
+                        note_id: None,
+                        title: Some("t".into()),
+                        body_md: Some("orig".into()),
+                        type_tag: None,
+                        frontmatter_json: None,
+                        graphs: Some(vec![sample_graph("g1")]),
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: create failed: {e}"));
 
-        server
-            .write_note_inner(
-                strategy_id,
-                WriteNoteParams {
+            server
+                .write_note_inner(
                     strategy_id,
-                    note_id: Some(created.note_id),
-                    title: None,
-                    body_md: Some("v2".into()),
-                    type_tag: None,
-                    frontmatter_json: None,
-                    graphs: None,
-                },
-            )
-            .await
-            .expect("update body only");
+                    WriteNoteParams {
+                        strategy_id,
+                        note_id: Some(created.note_id),
+                        title: None,
+                        body_md: update_body,
+                        type_tag: None,
+                        frontmatter_json: None,
+                        graphs: update_graphs,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: update failed: {e}"));
 
-        let read = server
-            .read_note_inner(
-                strategy_id,
-                ReadNoteParams {
+            let read = server
+                .read_note_inner(
                     strategy_id,
+                    ReadNoteParams {
+                        strategy_id,
+                        note_id: created.note_id,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: read failed: {e}"));
+            assert_eq!(
+                normalize_note(read),
+                NoteDto {
                     note_id: created.note_id,
-                },
-            )
-            .await
-            .expect("read");
-        assert_eq!(
-            normalize_note(read),
-            NoteDto {
-                note_id: created.note_id,
-                strategy_id,
-                title: "t".into(),
-                body_md: "v2".into(),
-                frontmatter_json: serde_json::json!({}),
-                type_tag: None,
-                status: DEFAULT_NOTE_STATUS.into(),
-                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
-                created_at: ts_sentinel(),
-                updated_at: ts_sentinel(),
-                graphs: vec![graph],
-            },
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn write_note_update_with_graphs_replaces_array_and_leaves_body_untouched(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy(&db, "long").await;
-        let server = build_server(db);
-
-        let created = server
-            .write_note_inner(
-                strategy_id,
-                WriteNoteParams {
                     strategy_id,
-                    note_id: None,
-                    title: Some("t".into()),
-                    body_md: Some("orig".into()),
+                    title: "t".into(),
+                    body_md: expected_body,
+                    frontmatter_json: serde_json::json!({}),
                     type_tag: None,
-                    frontmatter_json: None,
-                    graphs: Some(vec![sample_graph("g1")]),
+                    status: DEFAULT_NOTE_STATUS.into(),
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                    graphs: expected_graphs,
                 },
-            )
-            .await
-            .expect("create");
-
-        let g2 = sample_graph("g2");
-        server
-            .write_note_inner(
-                strategy_id,
-                WriteNoteParams {
-                    strategy_id,
-                    note_id: Some(created.note_id),
-                    title: None,
-                    body_md: None,
-                    type_tag: None,
-                    frontmatter_json: None,
-                    graphs: Some(vec![g2.clone()]),
-                },
-            )
-            .await
-            .expect("update graphs only");
-
-        let read = server
-            .read_note_inner(
-                strategy_id,
-                ReadNoteParams {
-                    strategy_id,
-                    note_id: created.note_id,
-                },
-            )
-            .await
-            .expect("read");
-        assert_eq!(
-            normalize_note(read),
-            NoteDto {
-                note_id: created.note_id,
-                strategy_id,
-                title: "t".into(),
-                body_md: "orig".into(),
-                frontmatter_json: serde_json::json!({}),
-                type_tag: None,
-                status: DEFAULT_NOTE_STATUS.into(),
-                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
-                created_at: ts_sentinel(),
-                updated_at: ts_sentinel(),
-                graphs: vec![g2],
-            },
-        );
+                "case {label}",
+            );
+        }
     }
 
     /// 図のみを更新した場合も、他フィールド更新と同様に status が unread へ戻る。
