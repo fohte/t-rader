@@ -6,7 +6,7 @@ import type {
 } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { A2AError } from '@a2a-js/sdk/server'
-import { Hono } from 'hono'
+import { OpenAPIHono } from '@hono/zod-openapi'
 import { describe, expect, it } from 'vitest'
 
 import { mountInternalApiRoutes } from '#internal-api/routes'
@@ -43,8 +43,8 @@ const buildStubHandler = (
   resubscribe: notImplemented,
 })
 
-const buildApp = (requestHandler: A2ARequestHandler): Hono => {
-  const app = new Hono()
+const buildApp = (requestHandler: A2ARequestHandler): OpenAPIHono => {
+  const app = new OpenAPIHono()
   mountInternalApiRoutes(app, { requestHandler })
   return app
 }

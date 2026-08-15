@@ -31,6 +31,19 @@ export default config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
     },
   },
+  {
+    files: ['agent/src/internal-api/routes.ts'],
+    rules: {
+      // @hono/zod-openapi@1.5.2 の同梱型定義が `import z = zodModule.z;` と
+      // 参照している zodModule 自体を import しておらず、z の型が any に
+      // フォールバックするため無効化 (skipLibCheck: true でも tsc の型検査
+      // 自体は any 経由で通ってしまうが、no-unsafe-* だけは反応する)
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+    },
+  },
   // .storybook/ と vitest.config.ts は src 外にあり、相対インポートが必要な参照
   // (vitest.config.ts -> ../vite.config、preview.ts -> ../src/index.css) を含むため
   // no-restricted-imports を無効化する

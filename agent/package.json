@@ -12,6 +12,7 @@
     "build": "tsup src/index.ts src/db/migrate.ts --format esm --out-dir dist --clean",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "dump-openapi": "tsx src/dump-openapi.ts",
     "test": "conc pnpm:test:type pnpm:test:unit",
     "test:type": "tsc --noEmit",
     "test:unit": "vitest run"
@@ -20,6 +21,7 @@
     "@a2a-js/sdk": "0.3.14",
     "@fohte/service-kit": "0.1.7",
     "@hono/node-server": "2.0.12",
+    "@hono/zod-openapi": "1.5.2",
     "@langchain/core": "1.2.3",
     "@langchain/langgraph": "1.4.8",
     "@langchain/mcp-adapters": "1.1.3",
