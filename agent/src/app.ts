@@ -33,18 +33,22 @@ export const createApp = (deps: AppDeps): OpenAPIHono<BlankEnv> => {
 
   // Aggregated catch-all: an unexpected throw from any route (rather than
   // one already converted to a JSON response, like the health checks and
-  // A2AError handling below) lands here exactly once. HTTPException carries
-  // its own status (e.g. the zod-openapi body validator's 400 on malformed
-  // JSON), which a flat 500 would otherwise discard.
+  // A2AError handling below) lands here exactly once. A 4xx HTTPException
+  // (e.g. the zod-openapi body validator's 400 on malformed JSON) carries
+  // its own status, which a flat 500 would otherwise discard; a 5xx one
+  // still needs the same logging/Sentry treatment as any other failure.
   app.onError((err, c) => {
-    if (err instanceof HTTPException) {
+    if (err instanceof HTTPException && err.status < 500) {
       return c.json({ error: err.message }, err.status)
     }
     console.error('request failed:', err)
     captureWithFingerprint(err, REQUEST_FAILED_FINGERPRINT, {
       extras: { path: c.req.path, method: c.req.method },
     })
-    return c.json({ error: errorMessage(err) }, 500)
+    return c.json(
+      { error: errorMessage(err) },
+      err instanceof HTTPException ? err.status : 500,
+    )
   })
 
   // liveness/startup probe 用

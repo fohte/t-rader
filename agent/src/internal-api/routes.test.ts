@@ -92,6 +92,22 @@ describe('POST /internal/tasks', () => {
     expect(res.status).toBe(400)
   })
 
+  it('accepts a valid body sent without an explicit content-type header', async () => {
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: () => Promise.resolve(buildTask({ id: 'task-1' })),
+      }),
+    )
+    const res = await app.request('/internal/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+        prompt: 'do the thing',
+      }),
+    })
+    expect(res.status).toBe(201)
+  })
+
   it('returns 422 when strategy_id is missing', async () => {
     const app = buildApp(buildStubHandler())
     const res = await app.request('/internal/tasks', {

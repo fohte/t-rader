@@ -87,15 +87,7 @@ const stepsOf = (task: Task): unknown[] | undefined => {
   return Array.isArray(steps) ? steps : undefined
 }
 
-const toTaskResponse = (
-  task: Task,
-): {
-  task_id: string
-  state: string
-  result_text?: string
-  error_kind?: string
-  steps?: unknown[]
-} => {
+const toTaskResponse = (task: Task): z.infer<typeof taskResponseSchema> => {
   const resultText = resultTextOf(task)
   const errorKind = errorKindOf(task)
   const steps = stepsOf(task)
@@ -155,6 +147,10 @@ const getTaskRoute = createRoute({
     404: {
       content: { 'application/json': { schema: errorResponseSchema } },
       description: 'Task not found',
+    },
+    500: {
+      content: { 'application/json': { schema: errorResponseSchema } },
+      description: 'Unexpected failure while fetching the task',
     },
   },
 })
