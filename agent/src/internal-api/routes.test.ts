@@ -195,6 +195,63 @@ describe('GET /internal/tasks/:taskId', () => {
     })
   })
 
+  it('includes steps for a task carrying an agent-graph-steps artifact', async () => {
+    const app = buildApp(
+      buildStubHandler({
+        getTask: () =>
+          Promise.resolve(
+            buildTask({
+              id: 'task-5',
+              status: {
+                state: 'working',
+                timestamp: '2026-01-01T00:00:00.000Z',
+              },
+              artifacts: [
+                {
+                  artifactId: 'agent-graph-steps',
+                  name: 'agent-graph-steps',
+                  parts: [
+                    {
+                      kind: 'data',
+                      data: {
+                        steps: [
+                          {
+                            phase_key: 'plan',
+                            label: '調査計画',
+                            model: 'claude-opus-4',
+                            status: 'running',
+                            started_at: '2026-01-01T00:00:00.000Z',
+                            trace_id: 'trace-1',
+                            span_id: 'span-1',
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+      }),
+    )
+    const res = await app.request('/internal/tasks/task-5')
+    expect(await res.json()).toEqual({
+      task_id: 'task-5',
+      state: 'working',
+      steps: [
+        {
+          phase_key: 'plan',
+          label: '調査計画',
+          model: 'claude-opus-4',
+          status: 'running',
+          started_at: '2026-01-01T00:00:00.000Z',
+          trace_id: 'trace-1',
+          span_id: 'span-1',
+        },
+      ],
+    })
+  })
+
   it('returns 404 when the task does not exist', async () => {
     const app = buildApp(
       buildStubHandler({

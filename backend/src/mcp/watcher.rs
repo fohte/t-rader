@@ -158,11 +158,21 @@ async fn apply_status(
     let new_phase = phase_for_state(status.state);
     let new_error = error_summary_for(&status, &new_phase);
     let new_result_text = status.result_text.or_else(|| row.result_text.clone());
-    apply_phase_logged(db, row, new_phase, new_error, new_result_text).await
+    let new_steps = status.steps.clone().unwrap_or_else(|| row.steps.clone());
+    apply_phase_logged(db, row, new_phase, new_error, new_result_text, new_steps).await
 }
 
 async fn apply_failed(db: &DatabaseConnection, row: strategy_task::Model, message: String) -> bool {
-    apply_phase_logged(db, row, StrategyTaskPhase::Failed, Some(message), None).await
+    let steps = row.steps.clone();
+    apply_phase_logged(
+        db,
+        row,
+        StrategyTaskPhase::Failed,
+        Some(message),
+        None,
+        steps,
+    )
+    .await
 }
 
 /// `apply_phase` を呼び、失敗した場合はログを残して `false` にフォールバックする。
@@ -172,8 +182,9 @@ async fn apply_phase_logged(
     new_phase: StrategyTaskPhase,
     new_error: Option<String>,
     new_result_text: Option<String>,
+    new_steps: serde_json::Value,
 ) -> bool {
-    match apply_phase(db, row, new_phase, new_error, new_result_text).await {
+    match apply_phase(db, row, new_phase, new_error, new_result_text, new_steps).await {
         Ok(updated) => updated,
         Err(err) => {
             tracing::warn!(error = %err, "failed to update strategy_task phase");
@@ -182,19 +193,21 @@ async fn apply_phase_logged(
     }
 }
 
-/// 1 行ぶんの phase / error_summary / result_text 更新を適用する。差分が無ければ DB 書き込みを
-/// しない。主キーと変更カラムのみを `Set` した ActiveModel で UPDATE することで、prompt 等の
-/// 長文カラムを毎回書き直すのを避ける。
+/// 1 行ぶんの phase / error_summary / result_text / steps 更新を適用する。差分が無ければ DB
+/// 書き込みをしない。主キーと変更カラムのみを `Set` した ActiveModel で UPDATE することで、
+/// prompt 等の長文カラムを毎回書き直すのを避ける。
 async fn apply_phase(
     db: &DatabaseConnection,
     row: strategy_task::Model,
     new_phase: StrategyTaskPhase,
     new_error: Option<String>,
     new_result_text: Option<String>,
+    new_steps: serde_json::Value,
 ) -> Result<bool, sea_orm::DbErr> {
     if new_phase == row.phase
         && new_error == row.error_summary
         && new_result_text == row.result_text
+        && new_steps == row.steps
     {
         return Ok(false);
     }
@@ -203,6 +216,7 @@ async fn apply_phase(
         phase: Set(new_phase),
         error_summary: Set(new_error),
         result_text: Set(new_result_text),
+        steps: Set(new_steps),
         updated_at: Set(Utc::now().fixed_offset()),
         strategy_id: NotSet,
         a2a_task_id: NotSet,
@@ -296,6 +310,7 @@ mod tests {
             error_summary: Set(None),
             result_text: Set(None),
             deadline_at: Set(now + deadline_offset),
+            steps: Set(serde_json::json!([])),
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -345,6 +360,7 @@ mod tests {
         )
         .await;
 
+        let completed_steps = serde_json::json!([{"phase_key": "x", "status": "completed"}]);
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_status(
             "t-completed",
@@ -352,6 +368,7 @@ mod tests {
                 state: AgentTaskState::Completed,
                 result_text: Some("all good".to_string()),
                 error_kind: None,
+                steps: Some(completed_steps.clone()),
             },
         )
         .await;
@@ -361,6 +378,7 @@ mod tests {
                 state: AgentTaskState::Failed,
                 result_text: None,
                 error_kind: Some("usage_limit".to_string()),
+                steps: None,
             },
         )
         .await;
@@ -370,13 +388,14 @@ mod tests {
                 state: AgentTaskState::Working,
                 result_text: None,
                 error_kind: None,
+                steps: None,
             },
         )
         .await;
 
         let agent_client: SharedAgentTaskClient = fake.clone();
         let updated = run_once(&db, &agent_client).await;
-        // running は phase (Running) も error/result も変化しないので更新カウントに含まれない。
+        // running は phase (Running) も error/result/steps も変化しないので更新カウントに含まれない。
         assert_eq!(updated, 2);
 
         let completed = fetch_task(&db, completed_id).await;
@@ -387,25 +406,43 @@ mod tests {
             (
                 completed.phase,
                 completed.result_text,
-                completed.error_summary
+                completed.error_summary,
+                completed.steps,
             ),
             (
                 StrategyTaskPhase::Completed,
                 Some("all good".to_string()),
-                None
+                None,
+                completed_steps,
             ),
         );
         assert_eq!(
-            (failed.phase, failed.result_text, failed.error_summary),
+            (
+                failed.phase,
+                failed.result_text,
+                failed.error_summary,
+                failed.steps,
+            ),
             (
                 StrategyTaskPhase::Failed,
                 None,
-                Some("usage_limit".to_string())
+                Some("usage_limit".to_string()),
+                serde_json::json!([]),
             ),
         );
         assert_eq!(
-            (running.phase, running.result_text, running.error_summary),
-            (StrategyTaskPhase::Running, None, None),
+            (
+                running.phase,
+                running.result_text,
+                running.error_summary,
+                running.steps,
+            ),
+            (
+                StrategyTaskPhase::Running,
+                None,
+                None,
+                serde_json::json!([]),
+            ),
         );
     }
 
@@ -429,6 +466,7 @@ mod tests {
                 state: AgentTaskState::InputRequired,
                 result_text: None,
                 error_kind: None,
+                steps: None,
             },
         )
         .await;

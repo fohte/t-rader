@@ -168,6 +168,63 @@ describe('TraderAgentExecutor', () => {
     })
   })
 
+  it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
+    const executor = buildExecutor({
+      runStrategyAgent: (_strategyId, _userMessage, onStepsChanged) => {
+        onStepsChanged?.([
+          {
+            phaseKey: 'plan',
+            label: '調査計画',
+            model: 'claude-opus-4',
+            status: 'running',
+            startedAt: '2026-01-01T00:00:00.000Z',
+            traceId: 'trace-1',
+            spanId: 'span-1',
+          },
+        ])
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-13', 'ctx-13')
+
+    await executor.execute(requestContext, eventBus)
+
+    const artifactUpdate = eventBus.events.find(
+      (e) => e.kind === 'artifact-update',
+    )
+    expect(artifactUpdate).toEqual({
+      kind: 'artifact-update',
+      taskId: 'task-13',
+      contextId: 'ctx-13',
+      artifact: {
+        artifactId: 'agent-graph-steps',
+        name: 'agent-graph-steps',
+        parts: [
+          {
+            kind: 'data',
+            data: {
+              steps: [
+                {
+                  phase_key: 'plan',
+                  label: '調査計画',
+                  model: 'claude-opus-4',
+                  status: 'running',
+                  started_at: '2026-01-01T00:00:00.000Z',
+                  trace_id: 'trace-1',
+                  span_id: 'span-1',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+  })
+
   it('maps a failed strategy agent result to a failed task with error_kind metadata', async () => {
     const executor = buildExecutor({
       runStrategyAgent: () =>

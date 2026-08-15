@@ -19,6 +19,7 @@ const note: Note = {
   body_md:
     '## 要約\nSUMCO [[stock:3436]] は約 2 ヶ月にわたり 1,480-1,640 のレンジで推移。[[indicator:USDJPY]] と [[sector:半導体]] のモメンタムは中立。テクニカルなレンジ回帰が機能しやすい局面と判断する。',
   frontmatter_json: {},
+  graphs_json: [],
   type_tag: 'thesis',
   status: 'unread',
   trigger: 'cron',

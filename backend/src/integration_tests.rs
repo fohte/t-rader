@@ -177,6 +177,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
             state: AgentTaskState::Completed,
             result_text: Some("7203 は堅調".to_string()),
             error_kind: None,
+            steps: None,
         },
     )
     .await;
@@ -202,6 +203,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
             "phase": "completed",
             "error_summary": null,
             "result_text": "7203 は堅調",
+            "steps": [],
         }),
     );
 }

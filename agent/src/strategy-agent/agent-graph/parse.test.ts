@@ -65,6 +65,7 @@ phases:
             model: 'deepseek-v4-flash',
             prompt: '割り当てられた仮説を検証せよ',
             forEach: 'plan.hypotheses',
+            labelField: 'title',
             maxParallel: 4,
             skills: [],
             tools: ['query_data', 'write_note'],

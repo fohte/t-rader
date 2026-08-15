@@ -24,6 +24,8 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub result_text: Option<String>,
     pub deadline_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub steps: Json,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
