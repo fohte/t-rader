@@ -125,10 +125,7 @@ fn extract_refs(body: &str) -> Vec<(String, String)> {
     out
 }
 
-/// `note.graphs_json` から `nodes[].ref` を集める。`graphs_json` の書き込み経路は
-/// 現状 `validate_graphs` を経由していない (services/graph.rs 参照) が、経由するように
-/// なった前提でデシリアライズ失敗を握りつぶさず AppError として伝播させ、想定外の
-/// 状態を早期に検知できるようにしている
+/// `nodes[].ref` を集める点は `extract_refs` と同じだが、デシリアライズ失敗は握りつぶさず `AppError` として伝播する
 fn extract_graph_refs(graphs_json: &serde_json::Value) -> Result<Vec<(String, String)>, AppError> {
     let graphs: Vec<GraphDef> = serde_json::from_value(graphs_json.clone())
         .map_err(|e| AppError::Validation(format!("invalid graphs_json: {e}")))?;
