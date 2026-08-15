@@ -17,6 +17,11 @@ pub struct Model {
     pub author_label: String,
     pub created_at: DateTimeWithTimeZone,
     pub resolved: bool,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub anchor_text: Option<String>,
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    pub drifted: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

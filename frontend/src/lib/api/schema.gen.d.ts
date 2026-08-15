@@ -1128,16 +1128,22 @@ export interface components {
       label?: string | null
     }
     Comment: {
+      anchor_text?: string | null
       author_kind: string
       author_label: string
       body: string
       /** Format: date-time */
       created_at: string
+      drifted: boolean
+      /** Format: int32 */
+      end_line?: number | null
       /** Format: uuid */
       id: string
       /** Format: uuid */
       parent_id?: string | null
       resolved: boolean
+      /** Format: int32 */
+      start_line?: number | null
       /** Format: uuid */
       target_id: string
       target_kind: string
@@ -1159,6 +1165,11 @@ export interface components {
       timestamp: string
     }
     CreateCommentRequest: {
+      /**
+       * @description コメント時点で選択された本文の該当箇所全文。target_kind が "note" の場合のみ
+       *     note 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。
+       */
+      anchor_text?: string | null
       /** @description "human" | "llm"。デフォルトは "human" */
       author_kind?: string | null
       author_label?: string | null

@@ -6343,9 +6343,16 @@
           "author_kind",
           "author_label",
           "resolved",
-          "created_at"
+          "created_at",
+          "drifted"
         ],
         "properties": {
+          "anchor_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "author_kind": {
             "type": "string"
           },
@@ -6358,6 +6365,16 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "drifted": {
+            "type": "boolean"
+          },
+          "end_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           },
           "id": {
             "type": "string",
@@ -6372,6 +6389,13 @@
           },
           "resolved": {
             "type": "boolean"
+          },
+          "start_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           },
           "target_id": {
             "type": "string",
@@ -6448,6 +6472,13 @@
           "body"
         ],
         "properties": {
+          "anchor_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "コメント時点で選択された本文の該当箇所全文。target_kind が \"note\" の場合のみ\nnote 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。"
+          },
           "author_kind": {
             "type": [
               "string",
