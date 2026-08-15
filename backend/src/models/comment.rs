@@ -17,3 +17,9 @@ pub struct CreateCommentRequest {
     #[serde(default)]
     pub author_label: Option<String>,
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateCommentRequest {
+    pub resolved: bool,
+}

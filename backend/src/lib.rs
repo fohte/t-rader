@@ -248,7 +248,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(annotations::reject_annotation))
         // comments
         .routes(routes!(comments::list_comments, comments::create_comment))
-        .routes(routes!(comments::delete_comment))
+        .routes(routes!(comments::update_comment, comments::delete_comment))
         // history
         .routes(routes!(history::list_history))
         .routes(routes!(history::get_history))

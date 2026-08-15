@@ -165,6 +165,8 @@ pub struct ReadCommentsParams {
     /// "note" | "annotation"
     pub target_kind: String,
     pub target_id: Uuid,
+    /// true/false で絞り込み。省略時は全件
+    pub resolved: Option<bool>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
@@ -177,12 +179,38 @@ pub struct CommentDto {
     pub body: String,
     pub author_kind: String,
     pub author_label: String,
+    pub resolved: bool,
     pub created_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ReadCommentsResult {
     pub comments: Vec<CommentDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ResolveCommentParams {
+    pub strategy_id: Uuid,
+    pub comment_id: Uuid,
+    pub resolved: bool,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ResolveCommentResult {
+    pub comment: CommentDto,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReplyCommentParams {
+    pub strategy_id: Uuid,
+    /// 返信先コメント ID
+    pub parent_id: Uuid,
+    pub body: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ReplyCommentResult {
+    pub comment: CommentDto,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
