@@ -124,8 +124,10 @@ fn extract_refs(body: &str) -> Vec<(String, String)> {
     out
 }
 
-/// `note.graphs_json` から `nodes[].ref` を集める。書き込み時に `validate_graphs`
-/// を通過済みの値である前提のため、デシリアライズ失敗は AppError として伝播させる
+/// `note.graphs_json` から `nodes[].ref` を集める。`graphs_json` の書き込み経路は
+/// 現状 `validate_graphs` を経由していない (services/graph.rs 参照) が、経由するように
+/// なった前提でデシリアライズ失敗を握りつぶさず AppError として伝播させ、想定外の
+/// 状態を早期に検知できるようにしている
 fn extract_graph_refs(graphs_json: &serde_json::Value) -> Result<Vec<(String, String)>, AppError> {
     let graphs: Vec<GraphDef> = serde_json::from_value(graphs_json.clone())
         .map_err(|e| AppError::Validation(format!("invalid graphs_json: {e}")))?;
@@ -557,6 +559,15 @@ mod tests {
         let got = extract_graph_refs(&graphs_json).unwrap();
         let got: Vec<(&str, &str)> = got.iter().map(|(k, i)| (k.as_str(), i.as_str())).collect();
         assert_eq!(got, expected);
+    }
+
+    #[rstest]
+    fn test_extract_graph_refs_rejects_malformed_graphs_json() {
+        let got = extract_graph_refs(&json!([{"id": "g1"}])).unwrap_err();
+        assert_eq!(
+            got.to_string(),
+            "validation error: invalid graphs_json: missing field `layout`",
+        );
     }
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
