@@ -1,12 +1,19 @@
 import type { ComponentType } from 'react'
+import { ErrorBoundary } from 'react-error-boundary'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { GraphRenderer } from '#components/graph/graph-renderer'
+import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
 import { remarkNoteTokens } from '#components/note-detail/remark-note-tokens'
 import { RefChip } from '#components/strategy-shell/ref-chip'
+import type { components } from '#lib/api/schema.gen'
+
+type ApiGraphDef = components['schemas']['GraphDef']
 
 interface MarkdownBodyProps {
   source: string
+  graphs?: ApiGraphDef[]
   onAnno?: (id: string) => void
   onRef?: (token: string) => void
 }
@@ -15,6 +22,64 @@ interface MarkdownBodyProps {
 type NoteTokenComponents = {
   'note-ref': ComponentType<{ token: string }>
   'note-anno': ComponentType<{ annoId: string }>
+  'note-graph': ComponentType<{ graphId: string }>
+}
+
+// backend は Option<T> を持つフィールドを `T | null` として返す。
+// GraphRenderer が期待する型 (graph/types.ts) は `T | undefined` なので、ここで正規化する。
+function toGraphNode(n: components['schemas']['GraphNode']): GraphNode {
+  return {
+    id: n.id,
+    label: n.label,
+    ref: n.ref ?? undefined,
+    value: n.value ?? undefined,
+    cite: n.cite ?? undefined,
+    parent: n.parent ?? undefined,
+    x: n.x ?? undefined,
+    y: n.y ?? undefined,
+  }
+}
+
+function toGraphEdge(e: components['schemas']['GraphEdge']): GraphEdge {
+  return {
+    source: e.source,
+    target: e.target,
+    label: e.label ?? undefined,
+    value: e.value ?? undefined,
+    cite: e.cite ?? undefined,
+  }
+}
+
+function toGraphDef(g: ApiGraphDef): GraphDef {
+  return {
+    id: g.id,
+    layout: g.layout,
+    title: g.title ?? undefined,
+    nodes: g.nodes.map(toGraphNode),
+    edges: g.edges.map(toGraphEdge),
+  }
+}
+
+function MissingGraphNotice({ graphId }: { graphId: string }) {
+  return (
+    <div
+      role="alert"
+      className="my-3 border border-dashed border-[color:var(--color-hairline)] p-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]"
+    >
+      図 {graphId} が見つかりません
+    </div>
+  )
+}
+
+function GraphErrorFallback() {
+  return (
+    <div
+      role="alert"
+      className="my-3 border border-dashed border-[color:var(--color-hairline)] p-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]"
+    >
+      図を表示できませんでした
+    </div>
+  )
 }
 
 const HEADING3_CLASS =
@@ -29,7 +94,12 @@ function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
     : undefined
 }
 
-export function MarkdownBody({ source, onAnno, onRef }: MarkdownBodyProps) {
+export function MarkdownBody({
+  source,
+  graphs = [],
+  onAnno,
+  onRef,
+}: MarkdownBodyProps) {
   const components: Components & NoteTokenComponents = {
     h1: ({ children }) => (
       <h1 className="mt-5 mb-2.5 text-[22px] font-bold leading-tight tracking-tight">
@@ -133,6 +203,27 @@ export function MarkdownBody({ source, onAnno, onRef }: MarkdownBodyProps) {
         </span>
       </button>
     ),
+    'note-graph': ({ graphId }) => {
+      const apiDef = graphs.find((g) => g.id === graphId)
+      if (!apiDef) return <MissingGraphNotice graphId={graphId} />
+      const def = toGraphDef(apiDef)
+      return (
+        <div className="my-3">
+          {def.title != null && (
+            <div className="mb-1 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+              {def.title}
+            </div>
+          )}
+          <ErrorBoundary FallbackComponent={GraphErrorFallback}>
+            <GraphRenderer
+              def={def}
+              onOpenRef={onRef}
+              className="h-[420px] border border-[color:var(--color-hairline)]"
+            />
+          </ErrorBoundary>
+        </div>
+      )
+    },
   }
 
   return (

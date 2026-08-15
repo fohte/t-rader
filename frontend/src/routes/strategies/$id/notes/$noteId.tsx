@@ -60,6 +60,7 @@ function NoteDetailPage() {
           <NoteHeader note={note} strategyId={id} />
           <NoteDocument
             source={note.body_md}
+            graphs={note.graphs_json}
             onQuoteSelection={onQuoteSelection}
             bodyRef={bodyRef}
           />

@@ -2,15 +2,18 @@ import { type RefObject, useEffect, useRef, useState } from 'react'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
+import type { components } from '#lib/api/schema.gen'
 
 interface NoteDocumentProps {
   source: string
+  graphs?: components['schemas']['GraphDef'][]
   onQuoteSelection: (text: string) => void
   bodyRef: RefObject<HTMLDivElement | null>
 }
 
 export function NoteDocument({
   source,
+  graphs,
   onQuoteSelection,
   bodyRef,
 }: NoteDocumentProps) {
@@ -113,7 +116,7 @@ export function NoteDocument({
         </div>
       )}
       <div ref={bodyRef}>
-        <MarkdownBody source={source} />
+        <MarkdownBody source={source} graphs={graphs} />
       </div>
     </div>
   )
