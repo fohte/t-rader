@@ -1,3 +1,4 @@
+import { Position } from '@xyflow/react'
 import { ok } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 
@@ -5,10 +6,11 @@ import {
   buildFlowEdges,
   computeCiteNumbers,
   edgeStrokeWidth,
+  handlePositions,
   nodeWidth,
   validateGraphRefs,
 } from '#components/graph/graph-utils'
-import type { GraphDef, GraphNode } from '#components/graph/types'
+import type { GraphDef, GraphNode, Layout } from '#components/graph/types'
 
 describe('nodeWidth', () => {
   it.each([
@@ -32,6 +34,17 @@ describe('edgeStrokeWidth', () => {
     ['value が maxValue の半分', 50, 100, 3.25],
   ])('%s', (_label, value, maxValue, expected) => {
     expect(edgeStrokeWidth(value, maxValue)).toBe(expected)
+  })
+})
+
+describe('handlePositions', () => {
+  it.each<[Layout, { source: Position; target: Position }]>([
+    ['tree', { source: Position.Bottom, target: Position.Top }],
+    ['flow', { source: Position.Right, target: Position.Left }],
+    ['chain', { source: Position.Right, target: Position.Left }],
+    ['scatter', { source: Position.Right, target: Position.Left }],
+  ])('layout=%s のとき %o', (layout, expected) => {
+    expect(handlePositions(layout)).toEqual(expected)
   })
 })
 

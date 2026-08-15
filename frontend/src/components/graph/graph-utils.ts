@@ -1,7 +1,13 @@
+import { Position } from '@xyflow/react'
 import { err, ok, type Result } from 'neverthrow'
 
 import type { GraphFlowEdge } from '#components/graph/flow-types'
-import type { GraphDef, GraphEdge, GraphNode } from '#components/graph/types'
+import type {
+  GraphDef,
+  GraphEdge,
+  GraphNode,
+  Layout,
+} from '#components/graph/types'
 
 export const NODE_WIDTH_BASE = 160
 export const NODE_HEIGHT = 56
@@ -13,6 +19,16 @@ const EDGE_STROKE_MAX = 5
 export function nodeWidth(node: GraphNode): number {
   if (typeof node.value !== 'number') return NODE_WIDTH_BASE
   return NODE_WIDTH_BASE + Math.min(node.value, 100) * 0.8
+}
+
+/** tree のみ縦方向 (Bottom→Top)、それ以外は横方向 (Right→Left) に Handle を置く */
+export function handlePositions(layout: Layout): {
+  source: Position
+  target: Position
+} {
+  return layout === 'tree'
+    ? { source: Position.Bottom, target: Position.Top }
+    : { source: Position.Right, target: Position.Left }
 }
 
 export function edgeStrokeWidth(

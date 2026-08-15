@@ -1,23 +1,20 @@
-import { Handle, type NodeProps, Position } from '@xyflow/react'
+import { Handle, type NodeProps } from '@xyflow/react'
 
 import { CiteBadge } from '#components/graph/cite-badge'
 import type { GraphFlowNode } from '#components/graph/flow-types'
 import { useGraphRenderContext } from '#components/graph/graph-render-context'
-import { nodeWidth } from '#components/graph/graph-utils'
+import { handlePositions, nodeWidth } from '#components/graph/graph-utils'
 import { RefChip } from '#components/strategy-shell/ref-chip'
 
 const CHAIN_BAR_MAX_HEIGHT = 64
 const CHAIN_BAR_MIN_HEIGHT = 4
 
-/** nodeTypes.graphNode として登録する共通カスタムノード。6 表現すべてをこれ 1 つで賄う */
+/** nodeTypes.graphNode として登録する共通カスタムノード。layout の種類によらずこれ 1 つで描画を賄う */
 export function GraphNodeView({ data }: NodeProps<GraphFlowNode>) {
   const { layout, maxNodeValue, citeNumbers, onOpenRef } =
     useGraphRenderContext()
 
-  const handlePosition =
-    layout === 'tree'
-      ? { source: Position.Bottom, target: Position.Top }
-      : { source: Position.Right, target: Position.Left }
+  const handlePosition = handlePositions(layout)
 
   const citeNumber = data.cite != null ? citeNumbers.get(data.cite) : undefined
 

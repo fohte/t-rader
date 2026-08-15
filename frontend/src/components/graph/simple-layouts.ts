@@ -1,4 +1,3 @@
-import { Position } from '@xyflow/react'
 import { err, ok, type Result } from 'neverthrow'
 
 import type {
@@ -29,8 +28,6 @@ export function buildChainLayout(
       id: node.id,
       type: 'graphNode',
       position: { x, y: 0 },
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
       data: node,
     }
     x += nodeWidth(node) + CHAIN_GAP
@@ -100,8 +97,6 @@ export function buildScatterLayout(
       id: node.id,
       type: 'graphNode',
       position: { x: cx - nodeWidth(node) / 2, y: cy - NODE_HEIGHT / 2 },
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
       data: node,
     }
   })
