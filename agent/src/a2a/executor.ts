@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Message, Task, TaskStatusUpdateEvent } from '@a2a-js/sdk'
+import type {
+  Message,
+  Task,
+  TaskArtifactUpdateEvent,
+  TaskStatusUpdateEvent,
+} from '@a2a-js/sdk'
 import type {
   AgentExecutor,
   ExecutionEventBus,
@@ -10,6 +15,11 @@ import type {
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 
 import { extractMessageText } from '#a2a/message-text'
+import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import {
+  AGENT_GRAPH_STEPS_ARTIFACT_ID,
+  toStepJson,
+} from '#strategy-agent/agent-graph/step'
 import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
 import type { FetchStrategyCandidates } from '#strategy-resolution/mgmt-mcp-client'
 import type {
@@ -94,6 +104,7 @@ export interface TraderAgentExecutorDeps {
   runStrategyAgent: (
     strategyId: string,
     userMessage: Message,
+    onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
   ) => Promise<StrategyAgentResult>
   // Looks up the current strategy list (via the backend's management MCP)
   // to resolve a strategy_id from free text when the caller doesn't supply
@@ -237,6 +248,23 @@ export class TraderAgentExecutor implements AgentExecutor {
       promptMessage = buildPromptMessage(combinedText, taskId, contextId)
     }
 
+    // agent_graph の各フェーズ/for_each 要素の進捗を artifact-update として
+    // publish する。同じ artifactId を append: false (省略時のデフォルト) で
+    // 都度置換することで、Task.history を汚さずに Task.artifacts 経由で
+    // 永続化される。
+    const publishSteps = (steps: readonly StrategyTaskStep[]): void => {
+      eventBus.publish({
+        kind: 'artifact-update',
+        taskId,
+        contextId,
+        artifact: {
+          artifactId: AGENT_GRAPH_STEPS_ARTIFACT_ID,
+          name: AGENT_GRAPH_STEPS_ARTIFACT_ID,
+          parts: [{ kind: 'data', data: { steps: steps.map(toStepJson) } }],
+        },
+      } satisfies TaskArtifactUpdateEvent)
+    }
+
     // runStrategyAgent maps its own known failure modes to a StrategyAgentResult,
     // but an unexpected rejection (e.g. MCP client construction throwing before
     // its internal Result chain even starts) must still resolve the task
@@ -244,7 +272,11 @@ export class TraderAgentExecutor implements AgentExecutor {
     // never called.
     // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
-      const result = await this.deps.runStrategyAgent(strategyId, promptMessage)
+      const result = await this.deps.runStrategyAgent(
+        strategyId,
+        promptMessage,
+        publishSteps,
+      )
       eventBus.publish({
         kind: 'status-update',
         taskId,

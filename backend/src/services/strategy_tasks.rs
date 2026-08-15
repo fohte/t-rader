@@ -77,6 +77,7 @@ pub struct TaskStatusView {
     pub result_text: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    pub steps: serde_json::Value,
 }
 
 impl From<strategy_task::Model> for TaskStatusView {
@@ -91,6 +92,7 @@ impl From<strategy_task::Model> for TaskStatusView {
             result_text: row.result_text,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            steps: row.steps,
         }
     }
 }
@@ -141,6 +143,7 @@ pub async fn submit_task(
         error_summary: Set(None),
         result_text: Set(None),
         deadline_at: Set(deadline_at),
+        steps: Set(serde_json::json!([])),
         created_at: NotSet,
         updated_at: NotSet,
     };

@@ -74,6 +74,8 @@ pub struct AgentTaskStatus {
     pub state: AgentTaskState,
     pub result_text: Option<String>,
     pub error_kind: Option<String>,
+    /// フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。応答に無ければ `None`。
+    pub steps: Option<serde_json::Value>,
 }
 
 #[async_trait]
@@ -205,6 +207,8 @@ struct GetTaskResponse {
     result_text: Option<String>,
     #[serde(default)]
     error_kind: Option<String>,
+    #[serde(default)]
+    steps: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -279,6 +283,7 @@ impl AgentTaskClient for HttpAgentTaskClient {
             state,
             result_text: body.result_text,
             error_kind: body.error_kind,
+            steps: body.steps,
         })
     }
 }
@@ -510,6 +515,28 @@ mod tests {
         assert_eq!(status.state, AgentTaskState::Completed);
         assert_eq!(status.result_text.as_deref(), Some("done"));
         assert_eq!(status.error_kind, None);
+        assert_eq!(status.steps, None);
+    }
+
+    #[tokio::test]
+    async fn get_propagates_steps_when_present() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/internal/tasks/task-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "task_id": "task-1",
+                "state": "working",
+                "steps": [{"phase_key": "example", "status": "running"}],
+            })))
+            .mount(&server)
+            .await;
+
+        let client = http_client(&server);
+        let status = client.get("task-1").await.expect("ok");
+        assert_eq!(
+            status.steps,
+            Some(json!([{"phase_key": "example", "status": "running"}])),
+        );
     }
 
     #[tokio::test]
