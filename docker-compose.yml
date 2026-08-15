@@ -22,7 +22,8 @@ services:
 
   agent:
     build:
-      context: ./agent
+      context: .
+      dockerfile: agent/Dockerfile
       target: dev
     env_file:
       - path: .env.local
@@ -40,22 +41,23 @@ services:
     ports:
       - '127.0.0.1::8080'
     volumes:
-      - ./agent:/app
-      - agent_node_modules:/app/node_modules
+      - ./agent:/app/agent
+      - agent_node_modules:/app/agent/node_modules
     networks:
       - t-rader-net
 
   frontend:
     image: node:24.17.0-slim
     working_dir: /app
-    command: sh -c "corepack enable && pnpm install && pnpm run dev --host"
+    command: sh -c "corepack enable && pnpm --filter frontend... install && pnpm --filter frontend run dev --host"
     environment:
       VITE_API_URL: http://backend:3000
     ports:
       - '127.0.0.1::5173'
     volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
+      - .:/app
+      - root_node_modules:/app/node_modules
+      - frontend_node_modules:/app/frontend/node_modules
     depends_on:
       - backend
     networks:
@@ -64,6 +66,7 @@ services:
 volumes:
   cargo_home:
   backend_target:
+  root_node_modules:
   frontend_node_modules:
   agent_node_modules:
 

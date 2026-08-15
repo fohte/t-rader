@@ -20,9 +20,10 @@ jobs:
           - component: backend
             context: ./backend
           - component: frontend
-            context: ./frontend
+            context: .
+            dockerfile: frontend/Dockerfile
           - component: agent
-            context: ./agent
+            context: .
             dockerfile: agent/Dockerfile
 
     steps:
