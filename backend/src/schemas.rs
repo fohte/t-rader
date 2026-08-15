@@ -361,6 +361,11 @@ impl PartialSchema for crate::entities::note::Model {
             .required("created_at")
             .property("updated_at", datetime_prop())
             .required("updated_at")
+            .property(
+                "graphs_json",
+                ArrayBuilder::new().items(json_prop()).build(),
+            )
+            .required("graphs_json")
             .into()
     }
 }

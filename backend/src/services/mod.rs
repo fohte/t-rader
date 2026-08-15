@@ -2,6 +2,7 @@ pub mod agent_graph;
 pub mod backfill;
 pub mod change_history;
 pub mod custom_indicators;
+pub mod graph;
 pub mod hypotheses;
 pub mod import;
 pub mod interests;
