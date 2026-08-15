@@ -4,6 +4,7 @@
   "type": "module",
   "imports": {
     "#db": "./src/db/index.ts",
+    "#lib/api/schema.gen": "./src/lib/api/schema.gen.js",
     "#*": "./src/*.ts"
   },
   "scripts": {
@@ -14,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "test": "conc pnpm:test:type pnpm:test:unit",
     "test:type": "tsc --noEmit",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/schema.gen.d.ts && prettier --write src/lib/api/schema.gen.d.ts"
   },
   "dependencies": {
     "@a2a-js/sdk": "0.3.14",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "drizzle-kit": "0.31.10",
+    "openapi-typescript": "7.13.0",
     "tsup": "8.5.1",
     "tsx": "4.23.1"
   }

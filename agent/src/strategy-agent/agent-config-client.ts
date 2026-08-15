@@ -1,5 +1,7 @@
 import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 
+import type { components } from '#lib/api/schema.gen'
+
 export interface AgentConfig {
   readonly agentsMd: string
   readonly skills: Readonly<Record<string, string>>
@@ -15,13 +17,7 @@ export class AgentConfigFetchError extends Error {
   }
 }
 
-interface AgentConfigResponseBody {
-  agents_md: string
-  skills: Record<string, string>
-  model: string
-  small_model: string
-  agent_graph: string
-}
+type AgentConfigResponseBody = components['schemas']['AgentConfigResponse']
 
 const isRecordOfStrings = (value: unknown): value is Record<string, string> =>
   typeof value === 'object' &&
