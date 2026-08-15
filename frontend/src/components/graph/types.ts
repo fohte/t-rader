@@ -1,5 +1,5 @@
 // Rust の GraphDef/GraphNode/GraphEdge/Layout (backend) に対応する手書き型。
-// PR 2 (backend の型定義) と並行進行中のため、将来 openapi-typescript の生成型に差し替えられる前提。
+// 将来 openapi-typescript の生成型に差し替えられる前提の暫定実装。
 //
 // interface ではなく type を使うこと: React Flow の Node<T> は
 // T extends Record<string, unknown> を要求する。type エイリアスの object literal は

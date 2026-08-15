@@ -41,7 +41,7 @@ export function edgeStrokeWidth(
   )
 }
 
-/** backend の check_refs と同じ趣旨の参照検証。node.parent / edge.source / edge.target が nodes[].id に存在するか確認する */
+/** node.parent / edge.source / edge.target が nodes[].id に存在するか確認する参照検証 */
 export function validateGraphRefs(def: GraphDef): Result<void, Error> {
   const ids = new Set(def.nodes.map((n) => n.id))
 
