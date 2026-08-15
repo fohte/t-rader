@@ -66,4 +66,24 @@ describe('remarkNoteTokens', () => {
     remarkNoteTokens()(tree)
     expect(tree).toEqual(textTree('未知 [[foo:bar]] は素通り'))
   })
+
+  it('replaces a paragraph consisting solely of [[graph:g1]] with a note-graph block', () => {
+    const tree = textTree('[[graph:g1]]')
+    remarkNoteTokens()(tree)
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'noteGraphBlock',
+          data: { hName: 'note-graph', hProperties: { graphId: 'g1' } },
+        },
+      ],
+    })
+  })
+
+  it('leaves [[graph:g1]] mixed with other text in the same paragraph untouched', () => {
+    const tree = textTree('見る [[graph:g1]] こと')
+    remarkNoteTokens()(tree)
+    expect(tree).toEqual(textTree('見る [[graph:g1]] こと'))
+  })
 })

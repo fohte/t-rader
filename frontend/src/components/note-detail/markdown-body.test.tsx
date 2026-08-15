@@ -3,8 +3,19 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
+import type { components } from '#lib/api/schema.gen'
 
 afterEach(cleanup)
+
+const GRAPH_DEF: components['schemas']['GraphDef'] = {
+  id: 'g1',
+  layout: 'flow',
+  nodes: [
+    { id: 'a', label: '架空商事' },
+    { id: 'b', label: '架空物産' },
+  ],
+  edges: [{ source: 'a', target: 'b' }],
+}
 
 describe('MarkdownBody', () => {
   it('renders a gfm table with alignment', () => {
@@ -67,5 +78,36 @@ describe('MarkdownBody', () => {
   it('leaves an unknown ref prefix as literal text', () => {
     render(<MarkdownBody source="未知 [[foo:bar]] は素通り" />)
     expect(screen.getByText('未知 [[foo:bar]] は素通り')).toBeInTheDocument()
+  })
+
+  it('renders a graph in place of a standalone [[graph:xxx]] token', () => {
+    render(
+      <MarkdownBody
+        source={'業界の説明\n\n[[graph:g1]]\n\n続きの説明'}
+        graphs={[GRAPH_DEF]}
+      />,
+    )
+    expect(screen.getByText('業界の説明')).toBeInTheDocument()
+    expect(screen.getByText('架空商事')).toBeInTheDocument()
+    expect(screen.getByText('架空物産')).toBeInTheDocument()
+    expect(screen.getByText('続きの説明')).toBeInTheDocument()
+  })
+
+  it('does not nest the graph container inside a <p>', () => {
+    const { container } = render(
+      <MarkdownBody source="[[graph:g1]]" graphs={[GRAPH_DEF]} />,
+    )
+    expect(screen.getByText('架空商事').closest('p')).toBeNull()
+    expect(container.querySelector('p')).toBeNull()
+  })
+
+  it('shows a fallback instead of crashing when the referenced graph id is missing', () => {
+    render(<MarkdownBody source="[[graph:missing]]" graphs={[GRAPH_DEF]} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('missing')
+  })
+
+  it('shows a fallback when a graph token exists but graphs itself is omitted', () => {
+    render(<MarkdownBody source="[[graph:g1]]" />)
+    expect(screen.getByRole('alert')).toHaveTextContent('g1')
   })
 })

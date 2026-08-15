@@ -1297,6 +1297,47 @@ export interface components {
       /** @description エラーメッセージ */
       error: string
     }
+    GraphDef: {
+      edges: components['schemas']['GraphEdge'][]
+      id: string
+      layout: components['schemas']['Layout']
+      nodes: components['schemas']['GraphNode'][]
+      title?: string | null
+    }
+    GraphEdge: {
+      /** @description `value` の出所 (自由テキスト) */
+      cite?: string | null
+      label?: string | null
+      source: string
+      target: string
+      /**
+       * Format: double
+       * @description 線の太さ。指定するなら `cite` も必須
+       */
+      value?: number | null
+    }
+    GraphNode: {
+      /** @description `value` の出所 (自由テキスト) */
+      cite?: string | null
+      id: string
+      label: string
+      /** @description grouping 先ノードの id */
+      parent?: string | null
+      /** @description 一級参照型トークン (例: "stock:7203" / "theme:weak-jpy") */
+      ref?: string | null
+      /**
+       * Format: double
+       * @description ノードサイズ / 棒の高さ。指定するなら `cite` も必須
+       */
+      value?: number | null
+      /**
+       * Format: double
+       * @description `layout = scatter` のときだけ使う指標値 (px ではない)
+       */
+      x?: number | null
+      /** Format: double */
+      y?: number | null
+    }
     /** @description ヘルスチェックレスポンス */
     HealthResponse: {
       /** @description サービスの状態 */
@@ -1337,6 +1378,8 @@ export interface components {
       kind: string
       name: string
     }
+    /** @enum {string} */
+    Layout: 'flow' | 'tree' | 'chain' | 'scatter'
     /** @description マクロ指標の現在値 */
     MacroTick: {
       /**
@@ -1375,7 +1418,7 @@ export interface components {
       created_at: string
       created_by_kind: string
       frontmatter_json: Record<string, never>
-      graphs_json: Record<string, never>[]
+      graphs_json: components['schemas']['GraphDef'][]
       /** Format: uuid */
       id: string
       status: string

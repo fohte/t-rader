@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
+import type { components } from '#lib/api/schema.gen'
 
 const SAMPLE = `# SUMCO レンジ回帰の確度評価
 
@@ -54,4 +55,36 @@ type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
   args: { source: SAMPLE },
+}
+
+// 以下のノード/ティッカーはすべて架空のもの。実在の企業・銘柄コードとは無関係
+const GRAPH_SAMPLE = `# 架空エコシステムの業界構造メモ
+
+前工程は ACME Litho [[stock:ACME]] と Nortek Materials [[stock:NRTK]] が押さえており、
+受託製造の Fabrion Foundry [[stock:FBRN]] にほぼ集約される。
+
+[[graph:g1]]
+
+Fabrion の生産能力が QuantumX [[stock:QNTX]] の供給制約になっている点に注意。
+`
+
+const GRAPH_DEF: components['schemas']['GraphDef'] = {
+  id: 'g1',
+  layout: 'flow',
+  title: '架空エコシステムの業界構造',
+  nodes: [
+    { id: 'acme', label: 'ACME Litho', ref: 'stock:ACME' },
+    { id: 'nortek', label: 'Nortek Materials', ref: 'stock:NRTK' },
+    { id: 'fabrion', label: 'Fabrion Foundry', ref: 'stock:FBRN' },
+    { id: 'quantumx', label: 'QuantumX', ref: 'stock:QNTX' },
+  ],
+  edges: [
+    { source: 'acme', target: 'fabrion', label: '露光装置' },
+    { source: 'nortek', target: 'fabrion', label: '成膜材料' },
+    { source: 'fabrion', target: 'quantumx', label: '受託生産' },
+  ],
+}
+
+export const WithGraph: Story = {
+  args: { source: GRAPH_SAMPLE, graphs: [GRAPH_DEF] },
 }

@@ -4,8 +4,11 @@
 //! OpenAPI スキーマ定義はここで分離して管理する。
 
 use utoipa::PartialSchema;
-use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, SchemaFormat, SchemaType, Type};
+use utoipa::ToSchema;
+use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, Ref, SchemaFormat, SchemaType, Type};
 use utoipa::openapi::{KnownFormat, Object, RefOr, Schema};
+
+use crate::services::graph::GraphDef;
 
 /// 文字列プロパティ
 fn str_prop() -> Object {
@@ -343,6 +346,11 @@ impl utoipa::ToSchema for crate::entities::note::Model {
     fn name() -> std::borrow::Cow<'static, str> {
         std::borrow::Cow::Borrowed("Note")
     }
+
+    fn schemas(schemas: &mut Vec<(String, RefOr<Schema>)>) {
+        schemas.push((GraphDef::name().into_owned(), GraphDef::schema()));
+        <GraphDef as ToSchema>::schemas(schemas);
+    }
 }
 
 impl PartialSchema for crate::entities::note::Model {
@@ -371,7 +379,7 @@ impl PartialSchema for crate::entities::note::Model {
             .required("updated_at")
             .property(
                 "graphs_json",
-                ArrayBuilder::new().items(json_prop()).build(),
+                ArrayBuilder::new().items(Ref::from_schema_name(GraphDef::name())),
             )
             .required("graphs_json")
             .into()

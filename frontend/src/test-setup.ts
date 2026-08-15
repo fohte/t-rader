@@ -1,5 +1,13 @@
 import '@testing-library/jest-dom/vitest'
 
+// jsdom には ResizeObserver が無いが React Flow (GraphRenderer 内部) がコンテナ計測に使う
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.ResizeObserver = ResizeObserverStub
+
 // jsdom の Request コンストラクタは相対 URL を受け付けない。
 // 本番 (ブラウザ) では `/api/...` 相対パスをそのまま `new Request()` に渡しても
 // document.baseURI 基準で解決されるが、テストでは事前に絶対 URL 化する必要がある。
