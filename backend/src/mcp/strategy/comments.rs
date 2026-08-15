@@ -35,6 +35,10 @@ fn comment_to_dto(m: comment::Model) -> CommentDto {
         author_label: m.author_label,
         resolved: m.resolved,
         created_at: m.created_at,
+        anchor_text: m.anchor_text,
+        start_line: m.start_line,
+        end_line: m.end_line,
+        drifted: m.drifted,
     }
 }
 
@@ -166,6 +170,10 @@ impl StrategyServer {
             author_label: Set("analyst".to_string()),
             resolved: Set(false),
             created_at: NotSet,
+            anchor_text: Set(None),
+            start_line: Set(None),
+            end_line: Set(None),
+            drifted: Set(false),
         };
         let created = comment::Entity::insert(model)
             .exec_with_returning(&self.db)
@@ -233,6 +241,10 @@ mod tests {
                     author_label: "user".into(),
                     resolved: false,
                     created_at: ts_sentinel(),
+                    anchor_text: None,
+                    start_line: None,
+                    end_line: None,
+                    drifted: false,
                 },
                 CommentDto {
                     comment_id: reply,
@@ -244,6 +256,10 @@ mod tests {
                     author_label: "user".into(),
                     resolved: false,
                     created_at: ts_sentinel(),
+                    anchor_text: None,
+                    start_line: None,
+                    end_line: None,
+                    drifted: false,
                 },
             ],
         );
@@ -286,6 +302,10 @@ mod tests {
                 author_label: "user".into(),
                 resolved: false,
                 created_at: ts_sentinel(),
+                anchor_text: None,
+                start_line: None,
+                end_line: None,
+                drifted: false,
             }],
         );
     }
@@ -405,6 +425,10 @@ mod tests {
                 author_label: "user".into(),
                 resolved: false,
                 created_at: ts_sentinel(),
+                anchor_text: None,
+                start_line: None,
+                end_line: None,
+                drifted: false,
             }],
         );
 
@@ -436,6 +460,10 @@ mod tests {
                 author_label: "user".into(),
                 resolved: true,
                 created_at: ts_sentinel(),
+                anchor_text: None,
+                start_line: None,
+                end_line: None,
+                drifted: false,
             }],
         );
     }
@@ -471,6 +499,10 @@ mod tests {
                 author_label: "user".into(),
                 resolved: true,
                 created_at: ts_sentinel(),
+                anchor_text: None,
+                start_line: None,
+                end_line: None,
+                drifted: false,
             },
         );
 
@@ -497,6 +529,10 @@ mod tests {
                 author_label: "user".into(),
                 resolved: false,
                 created_at: ts_sentinel(),
+                anchor_text: None,
+                start_line: None,
+                end_line: None,
+                drifted: false,
             },
         );
     }
@@ -578,6 +614,10 @@ mod tests {
                 author_label: "analyst".into(),
                 resolved: false,
                 created_at: ts_sentinel(),
+                anchor_text: None,
+                start_line: None,
+                end_line: None,
+                drifted: false,
             },
         );
     }

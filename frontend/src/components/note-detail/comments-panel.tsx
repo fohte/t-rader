@@ -9,7 +9,7 @@ type Comment = components['schemas']['Comment']
 
 interface CommentsPanelProps {
   noteId: string
-  // 親で選択中の引用テキスト。あれば投稿時に先頭に埋め込む。
+  // 親で選択中の引用テキスト。あれば投稿時に anchor_text として送信する。
   pendingQuote: string | null
   onConsumeQuote: () => void
 }
@@ -76,24 +76,19 @@ export function CommentsPanel({
       ;(repliesByParent[c.parent_id] ??= []).push(c)
     }
   }
-  const anchoredCount = topLevel.filter((c) => c.body.startsWith('> ')).length
+  const anchoredCount = topLevel.filter((c) => c.anchor_text != null).length
 
   const submit = (): void => {
     const txt = draft.trim()
     if (txt === '' || create.isPending) return
-    const body =
-      pendingQuote != null && pendingQuote !== ''
-        ? `${pendingQuote
-            .split('\n')
-            .map((l) => `> ${l}`)
-            .join('\n')}\n\n${txt}`
-        : txt
     create.mutate(
       {
         body: {
           target_kind: 'note',
           target_id: noteId,
-          body,
+          body: txt,
+          anchor_text:
+            pendingQuote != null && pendingQuote !== '' ? pendingQuote : null,
         },
       },
       {
@@ -303,8 +298,6 @@ function CommentBody({
   isResolving: boolean
 }) {
   const isLLM = c.author_kind === 'llm'
-  // 「> 引用」プレフィクスを抽出して quote box に分離する。残りはコメント本文。
-  const quote = extractQuote(c.body)
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2 font-mono text-[11px]">
@@ -345,9 +338,20 @@ function CommentBody({
           </span>
         </div>
       </div>
-      {quote != null && (
-        <div className="whitespace-pre-wrap border-l-2 border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-2 py-1 text-[12px] italic text-[color:var(--color-text-tertiary)]">
-          “{quote.text}”
+      {c.anchor_text != null && (
+        <div
+          className={`whitespace-pre-wrap border-l-2 px-2 py-1 text-[12px] italic ${
+            c.drifted
+              ? 'border-[color:var(--color-accent-strategy)] bg-[color:var(--panel-inset)] text-[color:var(--color-accent-strategy)]'
+              : 'border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] text-[color:var(--color-text-tertiary)]'
+          }`}
+        >
+          “{c.anchor_text}”
+          {c.drifted && (
+            <div className="mt-1 not-italic">
+              ⚠ ノートが更新され、この引用は現在の本文に見つかりません
+            </div>
+          )}
         </div>
       )}
       <div
@@ -357,25 +361,8 @@ function CommentBody({
             : 'text-[color:var(--color-text-primary)]'
         }`}
       >
-        {quote?.body ?? c.body}
+        {c.body}
       </div>
     </div>
   )
-}
-
-function extractQuote(body: string): { text: string; body: string } | null {
-  const lines = body.split('\n')
-  if (lines[0] == null || !lines[0].startsWith('> ')) return null
-  let i = 0
-  const quoteLines: string[] = []
-  for (; i < lines.length; i += 1) {
-    const line = lines[i]
-    if (line == null || !line.startsWith('> ')) break
-    quoteLines.push(line.slice(2))
-  }
-  while (i < lines.length && (lines[i] ?? '').trim() === '') i += 1
-  return {
-    text: quoteLines.join('\n'),
-    body: lines.slice(i).join('\n'),
-  }
 }

@@ -59,6 +59,14 @@ fn nullable_uuid_prop() -> Object {
         .build()
 }
 
+/// nullable な i32 プロパティ
+fn nullable_i32_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(SchemaType::from_iter([Type::Integer, Type::Null]))
+        .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int32)))
+        .build()
+}
+
 /// 任意の数値 (rust_decimal::Decimal)。
 /// rust_decimal の `serde-float` で JSON 数値として出力されるため number 型にする
 fn decimal_prop() -> Object {
@@ -435,6 +443,11 @@ impl PartialSchema for crate::entities::comment::Model {
             .required("resolved")
             .property("created_at", datetime_prop())
             .required("created_at")
+            .property("anchor_text", nullable_str_prop())
+            .property("start_line", nullable_i32_prop())
+            .property("end_line", nullable_i32_prop())
+            .property("drifted", bool_prop())
+            .required("drifted")
             .into()
     }
 }

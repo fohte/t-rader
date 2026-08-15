@@ -12,11 +12,12 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::comment;
+use crate::entities::{comment, note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateCommentRequest, UpdateCommentRequest};
 use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::comment_anchor;
 
 const ALLOWED_TARGET_KIND: [&str; 2] = ["note", "annotation"];
 const ALLOWED_AUTHOR_KIND: [&str; 2] = ["human", "llm"];
@@ -107,6 +108,37 @@ pub async fn create_comment(
         }
     }
 
+    // 選択テキストが渡された場合のみアンカリングを行う。ノートは現在の本文中の
+    // 位置を検索し、annotation は行番号の概念が無いため drift も起こらない。
+    let anchor_text = p
+        .anchor_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let (anchor_text, start_line, end_line, drifted) = match anchor_text {
+        None => (None, None, None, false),
+        Some(anchor_text) => {
+            let anchor_text = anchor_text.to_string();
+            let (start_line, end_line, drifted) = match p.target_kind.as_str() {
+                "note" => {
+                    let target_note = note::Entity::find_by_id(p.target_id).one(&state.db).await?;
+                    match target_note {
+                        Some(target_note) => {
+                            match comment_anchor::locate_anchor(&target_note.body_md, &anchor_text)
+                            {
+                                Some((start, end)) => (Some(start), Some(end), false),
+                                None => (None, None, true),
+                            }
+                        }
+                        None => (None, None, true),
+                    }
+                }
+                _ => (None, None, false),
+            };
+            (Some(anchor_text), start_line, end_line, drifted)
+        }
+    };
+
     let id = Uuid::new_v4();
     let model = comment::ActiveModel {
         id: Set(id),
@@ -118,6 +150,10 @@ pub async fn create_comment(
         author_label: Set(author_label),
         resolved: NotSet,
         created_at: NotSet,
+        anchor_text: Set(anchor_text),
+        start_line: Set(start_line),
+        end_line: Set(end_line),
+        drifted: Set(drifted),
     };
     let txn = state.db.begin().await?;
     let created = comment::Entity::insert(model)
@@ -263,6 +299,10 @@ mod tests {
                 "author_label": "user",
                 "resolved": true,
                 "created_at": "<created_at>",
+                "anchor_text": null,
+                "start_line": null,
+                "end_line": null,
+                "drifted": false,
             }),
         );
 
@@ -283,6 +323,10 @@ mod tests {
                 "author_label": "user",
                 "resolved": false,
                 "created_at": "<created_at>",
+                "anchor_text": null,
+                "start_line": null,
+                "end_line": null,
+                "drifted": false,
             }),
         );
     }
@@ -295,5 +339,113 @@ mod tests {
             .json(&json!({ "resolved": true }))
             .await;
         res.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    async fn create_note(
+        server: &axum_test::TestServer,
+        strategy_id: &str,
+        body_md: &str,
+    ) -> String {
+        let created = server
+            .post("/api/notes")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "title": "note",
+                "body_md": body_md,
+            }))
+            .await;
+        created.assert_status(StatusCode::CREATED);
+        created.json::<Value>()["id"]
+            .as_str()
+            .expect("id")
+            .to_string()
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_comment_with_anchor_text_computes_start_and_end_line(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let note_id = create_note(
+            &server,
+            &strategy_id,
+            indoc::indoc! {"
+                line one
+                line two
+                line three"},
+        )
+        .await;
+
+        let res = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "note",
+                "target_id": note_id,
+                "body": "fix this line",
+                "anchor_text": "line two",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "target_kind": "note",
+                "target_id": "<target_id>",
+                "parent_id": null,
+                "body": "fix this line",
+                "author_kind": "human",
+                "author_label": "user",
+                "resolved": false,
+                "created_at": "<created_at>",
+                "anchor_text": "line two",
+                "start_line": 2,
+                "end_line": 2,
+                "drifted": false,
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_comment_with_missing_anchor_text_marks_drifted(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let note_id = create_note(
+            &server,
+            &strategy_id,
+            indoc::indoc! {"
+                line one
+                line two
+                line three"},
+        )
+        .await;
+
+        let res = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "note",
+                "target_id": note_id,
+                "body": "fix this line",
+                "anchor_text": "line that no longer exists",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "target_kind": "note",
+                "target_id": "<target_id>",
+                "parent_id": null,
+                "body": "fix this line",
+                "author_kind": "human",
+                "author_label": "user",
+                "resolved": false,
+                "created_at": "<created_at>",
+                "anchor_text": "line that no longer exists",
+                "start_line": null,
+                "end_line": null,
+                "drifted": true,
+            }),
+        );
     }
 }

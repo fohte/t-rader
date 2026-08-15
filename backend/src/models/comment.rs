@@ -16,6 +16,9 @@ pub struct CreateCommentRequest {
     pub author_kind: Option<String>,
     #[serde(default)]
     pub author_label: Option<String>,
+    /// コメント時点で選択された本文の該当箇所全文。note 更新後の位置追跡に使う。
+    #[serde(default)]
+    pub anchor_text: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

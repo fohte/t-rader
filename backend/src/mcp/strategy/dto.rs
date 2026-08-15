@@ -181,6 +181,13 @@ pub struct CommentDto {
     pub author_label: String,
     pub resolved: bool,
     pub created_at: DateTime<FixedOffset>,
+    /// コメント時点で選択された本文の該当箇所全文。
+    pub anchor_text: Option<String>,
+    /// note 本文中の現在位置 (1-indexed)。追跡できない場合は null。
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    /// 位置が当てにならなくなったかどうか (note 本文の書き換えで見失った等)。
+    pub drifted: bool,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]

@@ -58,6 +58,7 @@ impl StrategyServer {
             let current = fetch_note_owned_by(&self.db, note_id, params.strategy_id).await?;
             let mut active = current.clone().into_active_model();
             let mut touched = false;
+            let mut new_body_md = None;
             if let Some(title) = params.title {
                 let title = title.trim().to_string();
                 if title.is_empty() {
@@ -67,6 +68,7 @@ impl StrategyServer {
                 touched = true;
             }
             if let Some(body) = params.body_md {
+                new_body_md = Some(body.clone());
                 active.body_md = Set(body);
                 touched = true;
             }
@@ -88,6 +90,14 @@ impl StrategyServer {
             active.status = Set(DEFAULT_NOTE_STATUS.to_string());
             active.updated_at = Set(chrono::Utc::now().fixed_offset());
             active.update(&self.db).await.map_err(db_error)?;
+            // body_md が変わった場合のみ、紐づくコメントの位置を新しい本文に対して再計算する
+            if let Some(body_md) = new_body_md {
+                crate::services::comment_anchor::reanchor_note_comments(
+                    &self.db, note_id, &body_md,
+                )
+                .await
+                .map_err(db_error)?;
+            }
             return Ok(WriteNoteResult {
                 note_id,
                 created: false,
@@ -168,12 +178,15 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
+    use sea_orm::EntityTrait;
+
+    use crate::entities::comment;
     use crate::testing::create_test_db;
 
     use super::super::dto::{ListNotesParams, ReadNoteParams, WriteNoteParams, WriteNoteResult};
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_note, seed_foreign_note, set_note_status,
-        ts_sentinel,
+        build_server, insert_strategy, normalize_note, seed_foreign_note,
+        seed_note_comment_with_anchor, set_note_status, ts_sentinel,
     };
     use super::super::{DEFAULT_NOTE_STATUS, NoteDto, STRATEGY_AGENT_ACTOR};
 
@@ -487,6 +500,129 @@ mod tests {
         assert_eq!(
             (titles, strategies),
             (vec!["a2", "a1"], vec![strategy_a, strategy_a]),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_updating_body_md_reanchors_comment_when_found(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("note".into()),
+                    body_md: Some(
+                        indoc::indoc! {"
+                        line one
+                        line two
+                        line three"}
+                        .into(),
+                    ),
+                    type_tag: None,
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("create");
+        let comment_id = seed_note_comment_with_anchor(&db, created.note_id, "line two").await;
+
+        server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: Some(
+                        indoc::indoc! {"
+                        prefix
+                        line one
+                        line two
+                        line three"}
+                        .into(),
+                    ),
+                    type_tag: None,
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("update");
+
+        let updated_comment = comment::Entity::find_by_id(comment_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("comment exists");
+        assert_eq!(
+            (
+                updated_comment.start_line,
+                updated_comment.end_line,
+                updated_comment.drifted
+            ),
+            (Some(3), Some(3), false),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_updating_body_md_marks_drifted_when_anchor_missing(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("note".into()),
+                    body_md: Some(
+                        indoc::indoc! {"
+                        line one
+                        line two
+                        line three"}
+                        .into(),
+                    ),
+                    type_tag: None,
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("create");
+        let comment_id = seed_note_comment_with_anchor(&db, created.note_id, "line two").await;
+
+        server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: Some("completely rewritten".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                },
+            )
+            .await
+            .expect("update");
+
+        let updated_comment = comment::Entity::find_by_id(comment_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("comment exists");
+        assert_eq!(
+            (
+                updated_comment.start_line,
+                updated_comment.end_line,
+                updated_comment.drifted
+            ),
+            (None, None, true),
         );
     }
 }
