@@ -120,6 +120,7 @@ impl StrategyServer {
             created_by_kind: Set(STRATEGY_AGENT_ACTOR.to_string()),
             created_at: NotSet,
             updated_at: NotSet,
+            graphs_json: Set(serde_json::json!([])),
         };
         note::Entity::insert(model)
             .exec_without_returning(&self.db)
