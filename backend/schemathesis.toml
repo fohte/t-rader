@@ -18,10 +18,8 @@ negative_data_rejection.enabled = false
 # stateful テストでは実際のリソース ID が使われるため正しく検証される。
 positive_data_acceptance.enabled = false
 
-# chat エンドポイントは Agent の reconcile 未完了時に 503 を返す (Retry-After 想定の
-# transient unavailability) 仕様で、OpenAPI にも 503 を documented response として
-# 宣言している。schemathesis は documented response でも 5xx を server error 扱い
-# するため、この endpoint に限り 503 を許容する。
+# chat エンドポイントは agent task client 未設定時に 503 を返す仕様
+# (CI 環境では TRADER_AGENT_API_URL=disabled のため必然的に 503 になる)。
 # ref: https://github.com/schemathesis/schemathesis/issues/2539
 [[operations]]
 include-path-regex = "^/api/strategies/[^/]+/chat$"
@@ -40,6 +38,25 @@ expected-statuses = ["2xx", "4xx", 503]
 # ref: https://github.com/schemathesis/schemathesis/issues/2539
 [[operations]]
 include-path-regex = "^/api/hooks/[^/]+$"
+[operations.checks.not_a_server_error]
+expected-statuses = ["2xx", "4xx", 503]
+
+# note/annotation の reject エンドポイントは却下時に agent task を投入するため、
+# agent task client 未設定時に 503 を返す仕様
+# (CI 環境では TRADER_AGENT_API_URL=disabled のため必然的に 503 になる)。
+# ref: https://github.com/schemathesis/schemathesis/issues/2539
+#
+# TODO: このブロックは該当 endpoint の 503 を無条件に許容するため、実際の 5xx バグも
+# 隠してしまう。また reject/chat/hooks は 503 で早期 return するため fuzzing が
+# その先のロジックに到達せず coverage が無い。本来は CI で agent internal API のスタブを
+# 立てて TRADER_AGENT_API_URL を実 URL にし、この allowlist を撤去すべき。
+# スタブは backend の HttpAgentTaskClient (agent_client/client.rs) と agent の
+# internal API routes (agent/src/internal-api/routes.ts) の契約に追従し続ける必要があり、
+# 両者は現状共有スキーマを持たない手写しミラー。契約の期待値を 1 つの fixture ファイルに
+# 寄せ、agent のテスト・backend の client テスト・CI のスタブの 3 箇所が同じファイルを
+# 参照するようにすれば、この allowlist を撤去できる。
+[[operations]]
+include-path-regex = "^/api/(notes|annotations)/[^/]+/reject$"
 [operations.checks.not_a_server_error]
 expected-statuses = ["2xx", "4xx", 503]
 
