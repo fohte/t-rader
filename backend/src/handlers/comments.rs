@@ -146,6 +146,7 @@ pub async fn create_comment(
     request_body = UpdateCommentRequest,
     responses(
         (status = 200, body = comment::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
