@@ -23,6 +23,7 @@
     "eslint-plugin-storybook": "10.4.6",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "wrangler": "3.90.0"
   }
 }
