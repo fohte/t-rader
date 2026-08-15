@@ -1364,6 +1364,7 @@ export interface components {
       created_at: string
       created_by_kind: string
       frontmatter_json: Record<string, never>
+      graphs_json: Record<string, never>[]
       /** Format: uuid */
       id: string
       status: string

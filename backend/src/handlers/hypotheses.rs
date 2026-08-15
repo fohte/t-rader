@@ -284,6 +284,7 @@ mod tests {
             created_by_kind: Set("human".into()),
             created_at: NotSet,
             updated_at: NotSet,
+            graphs_json: Set(json!([])),
         }
         .insert(db)
         .await

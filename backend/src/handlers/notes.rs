@@ -224,6 +224,7 @@ pub async fn create_note(
         created_by_kind: Set(created_by),
         created_at: NotSet,
         updated_at: NotSet,
+        graphs_json: Set(json!([])),
     };
     let created = note::Entity::insert(model)
         .exec_with_returning(&txn)
@@ -562,6 +563,7 @@ mod tests {
                 "title": "タイトル",
                 "body_md": "body",
                 "frontmatter_json": {},
+                "graphs_json": [],
                 "type_tag": null,
                 "status": "rejected",
                 "trigger": null,

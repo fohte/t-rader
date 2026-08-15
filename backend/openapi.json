@@ -7090,7 +7090,8 @@
           "status",
           "created_by_kind",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "graphs_json"
         ],
         "properties": {
           "body_md": {
@@ -7105,6 +7106,12 @@
           },
           "frontmatter_json": {
             "type": "object"
+          },
+          "graphs_json": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
           },
           "id": {
             "type": "string",

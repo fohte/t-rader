@@ -774,6 +774,7 @@ mod integration_tests {
                 created_by_kind: Set("human".to_string()),
                 created_at: sea_orm::ActiveValue::NotSet,
                 updated_at: sea_orm::ActiveValue::NotSet,
+                graphs_json: Set(serde_json::json!([])),
             }
             .insert(&db)
             .await
@@ -885,6 +886,7 @@ mod integration_tests {
                 created_by_kind: Set("human".into()),
                 created_at: sea_orm::ActiveValue::NotSet,
                 updated_at: sea_orm::ActiveValue::NotSet,
+                graphs_json: Set(serde_json::json!([])),
             }
             .insert(&db)
             .await

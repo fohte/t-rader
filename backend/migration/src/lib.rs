@@ -13,6 +13,7 @@ mod m20260628_111309_add_rss_feed;
 mod m20260715_145104_strategy_task_a2a_migration;
 mod m20260717_144924_remove_strategy_agent_status;
 mod m20260810_114448_add_strategy_agent_graph;
+mod m20260814_182703_add_note_graphs_json;
 mod m20260814_183203_add_comment_resolved;
 
 pub struct Migrator;
@@ -33,6 +34,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260715_145104_strategy_task_a2a_migration::Migration),
             Box::new(m20260717_144924_remove_strategy_agent_status::Migration),
             Box::new(m20260810_114448_add_strategy_agent_graph::Migration),
+            Box::new(m20260814_182703_add_note_graphs_json::Migration),
             Box::new(m20260814_183203_add_comment_resolved::Migration),
         ]
     }
