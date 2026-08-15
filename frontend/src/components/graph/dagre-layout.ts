@@ -4,8 +4,7 @@ import dagre, {
   graphlib,
   type NodeLabel,
 } from '@dagrejs/dagre'
-import { Position } from '@xyflow/react'
-import { err, ok, type Result } from 'neverthrow'
+import { err, ok, Result } from 'neverthrow'
 
 import type { GraphFlowEdge, GraphFlowNode } from '#components/graph/flow-types'
 import {
@@ -47,24 +46,29 @@ export function buildDagreLayout(
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({ rankdir, nodesep: 40, ranksep: 90 })
 
-  for (const node of def.nodes) {
-    const isGroup = groupIds.has(node.id)
-    g.setNode(
-      node.id,
-      isGroup
-        ? { width: 0, height: 0 }
-        : { width: nodeWidth(node), height: NODE_HEIGHT },
-    )
-    if (node.parent != null) g.setParent(node.id, node.parent)
-  }
-  for (const edge of def.edges) {
-    g.setEdge(edge.source, edge.target)
-  }
-
-  dagre.layout(g)
-
-  const sourcePosition = rankdir === 'LR' ? Position.Right : Position.Bottom
-  const targetPosition = rankdir === 'LR' ? Position.Left : Position.Top
+  // dagre は循環する parent 参照 (LLM が書く JSON にネスト深さ・循環の制約は無い) を
+  // 検出すると同期的に throw する。Result に変換して呼び出し元のエラー表示に載せる
+  const runDagre = Result.fromThrowable(
+    () => {
+      for (const node of def.nodes) {
+        const isGroup = groupIds.has(node.id)
+        g.setNode(
+          node.id,
+          isGroup
+            ? { width: 0, height: 0 }
+            : { width: nodeWidth(node), height: NODE_HEIGHT },
+        )
+        if (node.parent != null) g.setParent(node.id, node.parent)
+      }
+      for (const edge of def.edges) {
+        g.setEdge(edge.source, edge.target)
+      }
+      dagre.layout(g)
+    },
+    (e) => (e instanceof Error ? e : new Error(String(e))),
+  )
+  const dagreResult = runDagre()
+  if (dagreResult.isErr()) return err(dagreResult.error)
 
   // React Flow は親ノードが子より配列内で前に来ることを要求する。LLM が書く JSON の
   // 順序に依存しないようここでソートする。
@@ -90,8 +94,6 @@ export function buildDagreLayout(
       position,
       parentId: node.parent,
       extent: node.parent != null ? 'parent' : undefined,
-      sourcePosition,
-      targetPosition,
       data: node,
       // group ノードは React Flow が親ノードの自動サイズ調整をしないため、明示が必要
       ...(isGroup ? { style: { width: abs.width, height: abs.height } } : {}),

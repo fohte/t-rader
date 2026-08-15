@@ -1,4 +1,3 @@
-import { Position } from '@xyflow/react'
 import { describe, expect, it } from 'vitest'
 
 import { buildDagreLayout } from '#components/graph/dagre-layout'
@@ -37,8 +36,6 @@ describe('buildDagreLayout', () => {
           position: { x: 0, y: 0 },
           parentId: undefined,
           extent: undefined,
-          sourcePosition: Position.Right,
-          targetPosition: Position.Left,
           data: { id: 'a', label: 'A' },
         },
         {
@@ -47,8 +44,6 @@ describe('buildDagreLayout', () => {
           position: { x: 250, y: 0 },
           parentId: undefined,
           extent: undefined,
-          sourcePosition: Position.Right,
-          targetPosition: Position.Left,
           data: { id: 'b', label: 'B' },
         },
       ],
@@ -65,7 +60,7 @@ describe('buildDagreLayout', () => {
     })
   })
 
-  it('rankdir=TB では source/target position が Bottom/Top になる', () => {
+  it('rankdir=TB では横並びではなく縦に積んで配置する', () => {
     const def: GraphDef = {
       id: 'g1',
       layout: 'tree',
@@ -78,24 +73,28 @@ describe('buildDagreLayout', () => {
     const result = buildDagreLayout(def, 'TB', new Map())
     expect(result.isOk()).toBe(true)
     if (!result.isOk()) return
-    expect(
-      result.value.nodes.map((n) => ({
-        id: n.id,
-        sourcePosition: n.sourcePosition,
-        targetPosition: n.targetPosition,
-      })),
-    ).toEqual([
-      {
-        id: 'a',
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
-      },
-      {
-        id: 'b',
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Top,
-      },
+    expect(result.value.nodes.map((n) => n.position)).toEqual([
+      { x: 0, y: 0 },
+      { x: 0, y: 146 },
     ])
+  })
+
+  it('parent が循環参照していれば err を返す (throw させない)', () => {
+    const def: GraphDef = {
+      id: 'g1',
+      layout: 'flow',
+      nodes: [
+        { id: 'a', label: 'A', parent: 'b' },
+        { id: 'b', label: 'B', parent: 'a' },
+      ],
+      edges: [],
+    }
+    const result = buildDagreLayout(def, 'LR', new Map())
+    expect(result.isErr()).toBe(true)
+    if (!result.isErr()) return
+    expect(result.error.message).toBe(
+      'Setting a as parent of b would create a cycle',
+    )
   })
 
   it('parent を持つノードは group にまとめられ、親が配列内で子より前に来る', () => {
@@ -120,8 +119,6 @@ describe('buildDagreLayout', () => {
           position: { x: 0, y: 0 },
           parentId: undefined,
           extent: undefined,
-          sourcePosition: Position.Right,
-          targetPosition: Position.Left,
           data: { id: 'group1', label: 'Group 1' },
           style: { width: 250, height: 116 },
         },
@@ -131,8 +128,6 @@ describe('buildDagreLayout', () => {
           position: { x: 45, y: 30 },
           parentId: 'group1',
           extent: 'parent',
-          sourcePosition: Position.Right,
-          targetPosition: Position.Left,
           data: { id: 'child', label: 'Child', parent: 'group1' },
         },
       ],
