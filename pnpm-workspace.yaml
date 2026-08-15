@@ -1,10 +1,19 @@
+packages:
+  - 'frontend'
+  - 'agent'
+
 allowBuilds:
   # required by vitest's transformer
   esbuild: true
+  # required by @opentelemetry/exporter-trace-otlp-proto
+  protobufjs: true
   # required by @fohte/eslint-config -> eslint-plugin-import-x for module resolution
   unrs-resolver: true
   # shadcn の transitive dep。service worker は使わないため build script を実行しない
   msw: false
+  # wrangler の transitive dep (wrangler dev 用ローカルランタイム)。CI では
+  # wrangler pages deploy のみ使い wrangler dev は使わないため build script を実行しない
+  workerd: false
 
 # Dodge short-lived supply-chain attacks (e.g. shai-hulud, tinycolor) by
 # holding off freshly published versions. Unit is minutes; 10080 = 7 days.
@@ -12,8 +21,13 @@ minimumReleaseAge: 10080
 # First-party scopes: publisher account is trusted, so skip the release-age delay.
 minimumReleaseAgeExclude:
   - '@fohte/*'
+  # Exact-pinned security-fix versions; safe to remove once each version's
+  # natural age exceeds minimumReleaseAge.
+  - '@hono/node-server@2.0.10'
+  - hono@4.12.34
 
 peerDependencyRules:
   allowedVersions:
-    # openapi-typescript@7.13.0 (latest) still declares typescript ^5.x
+    # openapi-typescript's peerDependencies still declare typescript ^5.x;
+    # remove once it's updated to allow ^6.
     'openapi-typescript>typescript': '6'

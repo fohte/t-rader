@@ -141,7 +141,8 @@ export interface paths {
     delete: operations['delete_comment']
     options?: never
     head?: never
-    patch?: never
+    /** コメントの resolved を更新する */
+    patch: operations['update_comment']
     trace?: never
   }
   '/api/health': {
@@ -1127,15 +1128,22 @@ export interface components {
       label?: string | null
     }
     Comment: {
+      anchor_text?: string | null
       author_kind: string
       author_label: string
       body: string
       /** Format: date-time */
       created_at: string
+      drifted: boolean
+      /** Format: int32 */
+      end_line?: number | null
       /** Format: uuid */
       id: string
       /** Format: uuid */
       parent_id?: string | null
+      resolved: boolean
+      /** Format: int32 */
+      start_line?: number | null
       /** Format: uuid */
       target_id: string
       target_kind: string
@@ -1157,6 +1165,11 @@ export interface components {
       timestamp: string
     }
     CreateCommentRequest: {
+      /**
+       * @description コメント時点で選択された本文の該当箇所全文。target_kind が "note" の場合のみ
+       *     note 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。
+       */
+      anchor_text?: string | null
       /** @description "human" | "llm"。デフォルトは "human" */
       author_kind?: string | null
       author_label?: string | null
@@ -1650,6 +1663,9 @@ export interface components {
       text?: string | null
       /** Format: date-time */
       timestamp?: string | null
+    }
+    UpdateCommentRequest: {
+      resolved: boolean
     }
     UpdateCustomIndicatorRequest: {
       code?: string | null
@@ -2315,6 +2331,66 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_comment: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description コメント ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateCommentRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Comment']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
         headers: {
           [name: string]: unknown
         }

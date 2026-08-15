@@ -41,10 +41,8 @@ if command -v lefthook > /dev/null 2>&1; then
   lefthook install
 fi
 
-# prettier and commitlint live in mise (see .mise.toml); install each
-# node subpackage's dependencies separately.
-(cd frontend && pnpm_install)
-(cd agent && pnpm_install)
+# Install Node.js dependencies (workspace)
+pnpm_install
 
 # Fetch Rust dependencies
 cargo fetch --manifest-path backend/Cargo.toml

@@ -1,6 +1,7 @@
 pub mod agent_graph;
 pub mod backfill;
 pub mod change_history;
+pub mod comment_anchor;
 pub mod custom_indicators;
 pub mod graph;
 pub mod hypotheses;

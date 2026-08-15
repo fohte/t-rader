@@ -8,6 +8,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::services::graph::GraphDef;
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryDataParams {
     pub strategy_id: Uuid,
@@ -45,6 +47,11 @@ pub struct WriteNoteParams {
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub type_tag: Option<Option<String>>,
     pub frontmatter_json: Option<serde_json::Value>,
+    /// ノートに埋め込む図の定義。指定すると既存の図を配列ごと置き換える
+    /// (id 単位の部分更新はできない)。省略時は既存の図を変更しない。
+    /// 各要素の `id` を本文中で `[[graph:<id>]]` として参照すること。
+    /// `value` (ノード/エッジのサイズ) を指定する場合は出典を示す `cite` も必須。
+    pub graphs: Option<Vec<GraphDef>>,
 }
 
 /// `Option<Option<T>>` を「フィールド未指定 (None)」と「null 指定 (Some(None))」に区別して受け取る
@@ -70,7 +77,7 @@ pub struct ReadNoteParams {
     pub note_id: Uuid,
 }
 
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
     pub strategy_id: Uuid,
@@ -82,6 +89,7 @@ pub struct NoteDto {
     pub created_by_kind: String,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    pub graphs: Vec<GraphDef>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -90,7 +98,7 @@ pub struct ListNotesParams {
     pub limit: Option<u32>,
 }
 
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ListNotesResult {
     pub notes: Vec<NoteDto>,
 }
@@ -165,6 +173,8 @@ pub struct ReadCommentsParams {
     /// "note" | "annotation"
     pub target_kind: String,
     pub target_id: Uuid,
+    /// true/false で絞り込み。省略時は全件
+    pub resolved: Option<bool>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
@@ -177,12 +187,45 @@ pub struct CommentDto {
     pub body: String,
     pub author_kind: String,
     pub author_label: String,
+    pub resolved: bool,
     pub created_at: DateTime<FixedOffset>,
+    /// コメント時点で選択された本文の該当箇所全文。
+    pub anchor_text: Option<String>,
+    /// note 本文中の現在位置 (1-indexed)。追跡できない場合は null。
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    /// 位置が当てにならなくなったかどうか (note 本文の書き換えで見失った等)。
+    pub drifted: bool,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ReadCommentsResult {
     pub comments: Vec<CommentDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ResolveCommentParams {
+    pub strategy_id: Uuid,
+    pub comment_id: Uuid,
+    pub resolved: bool,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ResolveCommentResult {
+    pub comment: CommentDto,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReplyCommentParams {
+    pub strategy_id: Uuid,
+    /// 返信先コメント ID
+    pub parent_id: Uuid,
+    pub body: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ReplyCommentResult {
+    pub comment: CommentDto,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

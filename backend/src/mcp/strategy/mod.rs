@@ -13,7 +13,9 @@
 //! - `list_notes`: ノート一覧を返す
 //! - `create_annotation`: アノテーションを作成する
 //! - `read_annotations`: アノテーション一覧を返す
-//! - `read_comments`: ノート / アノテーションに付いたレビューコメントを読み出す
+//! - `read_comments`: ノート / アノテーションに付いたレビューコメントを読み出す (resolved で絞り込み可)
+//! - `resolve_comment`: レビューコメントを解決済み/未解決に切り替える
+//! - `reply_comment`: レビューコメントに返信する
 //! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
 //! - `add_interest`: 戦略の関心 (derived / origin=llm) を追加する
 //! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
@@ -23,7 +25,7 @@
 //! - `dto`: 各 tool の入出力スキーマ
 //! - `notes`: ノート操作 (`write_note_inner` / `read_note_inner` / `list_notes_inner`)
 //! - `annotations`: アノテーション操作 (`create_annotation_inner` / `read_annotations_inner`)
-//! - `comments`: コメント取得 (`read_comments_inner`)
+//! - `comments`: コメント操作 (`read_comments_inner` / `resolve_comment_inner` / `reply_comment_inner`)
 //! - `data`: 価格データ取得 (`query_data_inner`)
 //! - `eval`: Python 実行 (`eval_python_inner`)
 //! - `interests`: 関心の追加 (`add_interest_inner`)
@@ -64,8 +66,9 @@ use dto::{
     AddInterestParams, AddInterestResult, CreateAnnotationParams, CreateAnnotationResult,
     EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, ListNotesParams,
     ListNotesResult, NoteDto, QueryDataParams, QueryDataResult, ReadAnnotationsParams,
-    ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadNoteParams, WriteNoteParams,
-    WriteNoteResult,
+    ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadNoteParams,
+    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
+    WriteNoteParams, WriteNoteResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -287,7 +290,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create."
+        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale)."
     )]
     async fn write_note(
         &self,
@@ -301,7 +304,7 @@ impl StrategyServer {
     /// ノートを読み出す
     #[tool(
         name = "read_note",
-        description = "Read a single note owned by the strategy."
+        description = "Read a single note owned by the strategy, including its graphs."
     )]
     async fn read_note(
         &self,
@@ -357,7 +360,7 @@ impl StrategyServer {
     /// ノート / アノテーションに付いたレビューコメントを読み出す
     #[tool(
         name = "read_comments",
-        description = "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id."
+        description = "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved."
     )]
     async fn read_comments(
         &self,
@@ -366,6 +369,34 @@ impl StrategyServer {
     ) -> Result<Json<ReadCommentsResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.read_comments_inner(sid, params).await.map(Json)
+    }
+
+    /// レビューコメントを解決済み/未解決に切り替える
+    #[tool(
+        name = "resolve_comment",
+        description = "Mark a review comment owned by the strategy as resolved or unresolved."
+    )]
+    async fn resolve_comment(
+        &self,
+        Parameters(params): Parameters<ResolveCommentParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ResolveCommentResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.resolve_comment_inner(sid, params).await.map(Json)
+    }
+
+    /// レビューコメントに返信する
+    #[tool(
+        name = "reply_comment",
+        description = "Reply to an existing review comment owned by the strategy. Posted with author_kind=llm, author_label=analyst."
+    )]
+    async fn reply_comment(
+        &self,
+        Parameters(params): Parameters<ReplyCommentParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReplyCommentResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.reply_comment_inner(sid, params).await.map(Json)
     }
 
     /// Python コードを exec Pod で実行する

@@ -126,14 +126,17 @@ cd agent && TEST_DATABASE_URL=postgres://t_rader:t_rader@localhost:<port>/t_rade
 └── .mise.toml                # ツールバージョン管理
 ```
 
-## npm スクリプト (frontend/, agent/)
+## npm スクリプト
 
 ```bash
-pnpm run dev        # 開発サーバー
-pnpm run build      # プロダクションビルド
-pnpm run test       # 型チェック + ユニットテスト
-pnpm run lint       # ESLint
-pnpm run format     # ESLint + Prettier によるフォーマット
+# frontend/, agent/ 個別
+cd frontend && pnpm run dev    # 開発サーバー
+cd frontend && pnpm run build  # プロダクションビルド
+
+# ルートから実行 (workspace 一括)
+pnpm run test    # 全 package の型チェック + ユニットテスト
+pnpm run lint     # ESLint
+pnpm run format   # ESLint + Prettier によるフォーマット
 ```
 
 ## 環境変数

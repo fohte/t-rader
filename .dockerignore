@@ -23,3 +23,6 @@ scripts
 .storybook
 storybook-static
 **/*.test.ts
+.env.local
+.env.runtime
+backend/target

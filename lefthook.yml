@@ -17,7 +17,7 @@ pre-commit:
       stage_fixed: true
 
     prettier:
-      run: mise x -- prettier --write --ignore-unknown --no-error-on-unmatched-pattern {staged_files}
+      run: pnpm exec prettier --write --ignore-unknown --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
 
     shellcheck:
@@ -67,18 +67,11 @@ pre-commit:
           esac
         done
 
-    # Non-workspace multi-package monorepo: each subpackage has its own
-    # eslint.config.js and dependencies, so lint per package from its root.
-    eslint-frontend:
+    # lefthook's default glob uses gobwas/glob without a delimiter, so
+    # '*.{js,ts,...}' also matches nested paths (e.g. frontend/src/foo.ts).
+    # A single root-level eslint config now covers every workspace package.
+    eslint:
       glob: '*.{js,ts,jsx,tsx,mjs,cjs}'
-      root: 'frontend/'
-      run: pnpm exec eslint {staged_files}
-
-    # Non-workspace multi-package monorepo: each subpackage has its own
-    # eslint.config.js and dependencies, so lint per package from its root.
-    eslint-agent:
-      glob: '*.{js,ts,jsx,tsx,mjs,cjs}'
-      root: 'agent/'
       run: pnpm exec eslint {staged_files}
 
     ast-grep:
@@ -102,4 +95,4 @@ pre-commit:
 commit-msg:
   commands:
     commitlint:
-      run: mise x -- commitlint --edit {1}
+      run: pnpm exec commitlint --edit {1}
