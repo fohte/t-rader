@@ -24,6 +24,7 @@ import type {
   CompiledPhaseAgent,
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
+import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -204,6 +205,7 @@ export const runStrategyAgent = async (
   deps: StrategyAgentDeps,
   strategyId: string,
   userMessage: Message,
+  onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
 ): Promise<StrategyAgentResult> => {
   const mcpClient = deps.createMcpClient(strategyId)
 
@@ -271,6 +273,7 @@ export const runStrategyAgent = async (
                   skills: agentConfig.skills,
                   tools,
                   originalPromptText: extractMessageText(userMessage),
+                  ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
                 }).then((result) => {
                   if (result.status === 'failed') {
                     console.error(

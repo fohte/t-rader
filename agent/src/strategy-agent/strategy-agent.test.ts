@@ -10,6 +10,7 @@ import { z } from 'zod'
 import type { AgentConfig } from '#strategy-agent/agent-config-client'
 import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
 import type { CompiledPhaseAgent } from '#strategy-agent/agent-graph/run-agent-graph'
+import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type {
   CompiledStrategyAgent,
   McpToolsClient,
@@ -46,6 +47,21 @@ const buildUserMessage = (text: string): Message => ({
   messageId: 'm1',
   parts: [{ kind: 'text', text }],
 })
+
+// NoopTracer (テスト環境では実 exporter を設定しないため) が返す固定の invalid
+// span context。@opentelemetry/api の INVALID_TRACEID/INVALID_SPANID と同じ値。
+const NOOP_TRACE_ID = '00000000000000000000000000000000'
+const NOOP_SPAN_ID = '0000000000000000'
+
+// startedAt/finishedAt は実行のたびに変わるため、比較前に固定文字列へ正規化する。
+const normalizeStepTimestamps = (
+  steps: readonly StrategyTaskStep[],
+): unknown[] =>
+  steps.map((step) => ({
+    ...step,
+    startedAt: '<started-at>',
+    ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
+  }))
 
 const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
@@ -274,6 +290,54 @@ describe('runStrategyAgent', () => {
       status: 'completed',
       message: '1フェーズの実行が完了しました (P)',
     })
+  })
+
+  it('forwards onStepsChanged through to runAgentGraph when agent_graph is configured', async () => {
+    const { deps } = buildDeps({
+      agentGraph:
+        'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+    })
+    const notifications: (readonly StrategyTaskStep[])[] = []
+
+    const result = await runStrategyAgent(
+      deps,
+      'strategy-1',
+      buildUserMessage('do the thing'),
+      (steps) => notifications.push(steps),
+    )
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (P)',
+    })
+    expect(notifications.map(normalizeStepTimestamps)).toEqual([
+      [
+        {
+          phaseKey: 'p',
+          label: 'P',
+          model: 'm',
+          status: 'running',
+          startedAt: '<started-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+      [
+        {
+          phaseKey: 'p',
+          label: 'P',
+          model: 'm',
+          status: 'completed',
+          output: {},
+          startedAt: '<started-at>',
+          finishedAt: '<finished-at>',
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ],
+    ])
   })
 
   it('fails fast on malformed agent_graph without invoking any agent', async () => {

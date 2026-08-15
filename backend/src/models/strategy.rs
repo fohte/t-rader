@@ -52,6 +52,9 @@ pub struct StrategyTaskStatusResponse {
     pub result_text: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    /// フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。
+    #[schema(value_type = serde_json::Value)]
+    pub steps: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]

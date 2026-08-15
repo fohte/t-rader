@@ -44,6 +44,7 @@ const toAgentGraphPhase = (
   model: raw.model,
   prompt: raw.prompt,
   ...(raw.for_each !== undefined ? { forEach: raw.for_each } : {}),
+  ...(raw.label_field !== undefined ? { labelField: raw.label_field } : {}),
   ...(raw.max_parallel !== undefined ? { maxParallel: raw.max_parallel } : {}),
   skills: raw.skills,
   tools: raw.tools,

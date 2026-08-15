@@ -12,6 +12,8 @@ import type { Hono } from 'hono'
 import { ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
+import { AGENT_GRAPH_STEPS_ARTIFACT_ID } from '#strategy-agent/agent-graph/step'
+
 const TASK_NOT_FOUND_ERROR_CODE = -32001
 
 const submitTaskBodySchema = z.object({
@@ -46,6 +48,18 @@ const errorKindOf = (task: Task): string | undefined => {
   return typeof raw === 'string' ? raw : undefined
 }
 
+// agent-graph-steps artifact (executor.ts が artifact-update で都度置換して
+// いる) から steps 配列を取り出す。producer 側 (StrategyTaskStep) の型で
+// 形は保証されている前提とし、要素の中身までは検証しない。
+const stepsOf = (task: Task): unknown[] | undefined => {
+  const artifact = task.artifacts?.find(
+    (a) => a.artifactId === AGENT_GRAPH_STEPS_ARTIFACT_ID,
+  )
+  const part = artifact?.parts.find((p) => p.kind === 'data')
+  const steps = part?.kind === 'data' ? part.data['steps'] : undefined
+  return Array.isArray(steps) ? steps : undefined
+}
+
 const toTaskResponse = (
   task: Task,
 ): {
@@ -53,14 +67,17 @@ const toTaskResponse = (
   state: string
   result_text?: string
   error_kind?: string
+  steps?: unknown[]
 } => {
   const resultText = resultTextOf(task)
   const errorKind = errorKindOf(task)
+  const steps = stepsOf(task)
   return {
     task_id: task.id,
     state: task.status.state,
     ...(resultText !== undefined ? { result_text: resultText } : {}),
     ...(errorKind !== undefined ? { error_kind: errorKind } : {}),
+    ...(steps !== undefined ? { steps } : {}),
   }
 }
 
