@@ -1,8 +1,5 @@
 //! ノートに埋め込むグラフィカル表現 (`note.graphs_json`) のスキーマと検証。
 //!
-//! `write_note` にはまだ `graphs` 引数が無く、`validate_graphs` の呼び出し元も無い
-//! (本モジュールは型と検証ロジックのみを提供する)。配線後は LLM が `graphs` 引数に
-//! 本 struct の配列を渡し、本文には `[[graph:g1]]` トークンだけを置く想定。
 //! `#[serde(deny_unknown_fields)]` により、フィールド名の typo は
 //! `missing field` ではなく `unknown field ..., expected one of ...` として
 //! 返るため LLM が自力で直せる。
