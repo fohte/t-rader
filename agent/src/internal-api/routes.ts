@@ -15,6 +15,14 @@ import { AGENT_GRAPH_STEPS_ARTIFACT_ID } from '#strategy-agent/agent-graph/step'
 
 const TASK_NOT_FOUND_ERROR_CODE = -32001
 
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access --
+ * @hono/zod-openapi@1.5.2 の同梱型定義が `import z = zodModule.z;` と参照している
+ * zodModule 自体を import しておらず、z の型が any にフォールバックするため
+ * (skipLibCheck: true でも tsc の型検査自体は any 経由で通ってしまうが、
+ * no-unsafe-* だけは反応する)。z を正しく型付けする代替策 (ZodType での明示注釈、
+ * z 自体の再アサート) はいずれも createRoute が要求する `.openapi()` メソッドの
+ * 型情報が失われ tsc が壊れるため採用できなかった。
+ */
 const submitTaskBodySchema = z.object({
   strategy_id: z.string().min(1),
   prompt: z.string().min(1),
@@ -47,6 +55,7 @@ const validationErrorResponseSchema = z.object({
   error: z.string(),
   issues: z.array(z.unknown()),
 })
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- スキーマ定義部分のみの回避策のためここで戻す */
 
 export interface InternalApiOptions {
   requestHandler: A2ARequestHandler
@@ -103,6 +112,11 @@ const toTaskResponse = (task: Task): z.infer<typeof taskResponseSchema> => {
 const isTaskNotFoundError = (err: unknown): boolean =>
   err instanceof A2AError && err.code === TASK_NOT_FOUND_ERROR_CODE
 
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument --
+ * 上記スキーマ定数が z の型バグにより any のままのため、それらを参照する
+ * createRoute の呼び出しと、そこから導出される c.req.valid() の戻り値の
+ * 分割代入もこのファイル末尾まで any 由来として扱われる。
+ */
 const submitTaskRoute = createRoute({
   method: 'post',
   path: '/internal/tasks',
