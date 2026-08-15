@@ -13,13 +13,15 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::entities::note;
+use crate::services::graph::{GraphDef, validate_graphs};
 
 use super::dto::{
     ListNotesParams, ListNotesResult, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
 };
 use super::{
     DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    ensure_strategy_exists, ensure_strategy_match, fetch_note_owned_by, invalid_params,
+    ensure_strategy_exists, ensure_strategy_match, fetch_note_owned_by, internal_error,
+    invalid_params,
 };
 
 fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), McpError> {
@@ -30,8 +32,16 @@ fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), McpError> {
     }
 }
 
-fn note_to_dto(m: note::Model) -> NoteDto {
-    NoteDto {
+/// 検証済みの `graphs` を `note.graphs_json` へ入れる JSON へ変換する。
+fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> {
+    serde_json::to_value(graphs)
+        .map_err(|e| internal_error(format!("failed to serialize graphs: {e}")))
+}
+
+fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
+    let graphs: Vec<GraphDef> = serde_json::from_value(m.graphs_json)
+        .map_err(|e| internal_error(format!("failed to deserialize note.graphs_json: {e}")))?;
+    Ok(NoteDto {
         note_id: m.id,
         strategy_id: m.strategy_id,
         title: m.title,
@@ -42,7 +52,8 @@ fn note_to_dto(m: note::Model) -> NoteDto {
         created_by_kind: m.created_by_kind,
         created_at: m.created_at,
         updated_at: m.updated_at,
-    }
+        graphs,
+    })
 }
 
 impl StrategyServer {
@@ -55,6 +66,9 @@ impl StrategyServer {
 
         if let Some(fm) = params.frontmatter_json.as_ref() {
             ensure_frontmatter_object(fm)?;
+        }
+        if let Some(graphs) = params.graphs.as_ref() {
+            validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
         }
 
         if let Some(note_id) = params.note_id {
@@ -83,9 +97,13 @@ impl StrategyServer {
                 active.frontmatter_json = Set(fm);
                 touched = true;
             }
+            if let Some(graphs) = params.graphs {
+                active.graphs_json = Set(graphs_to_json(graphs)?);
+                touched = true;
+            }
             if !touched {
                 return Err(invalid_params(
-                    "at least one of title / body_md / type_tag / frontmatter_json must be provided",
+                    "at least one of title / body_md / type_tag / frontmatter_json / graphs must be provided",
                 ));
             }
             // 内容が変わった時点で承認/却下時点の判断根拠は失効するため、
@@ -118,6 +136,7 @@ impl StrategyServer {
         let frontmatter_json = params
             .frontmatter_json
             .unwrap_or_else(|| serde_json::json!({}));
+        let graphs_json = graphs_to_json(params.graphs.unwrap_or_default())?;
         let id = Uuid::new_v4();
         let model = note::ActiveModel {
             id: Set(id),
@@ -132,7 +151,7 @@ impl StrategyServer {
             created_by_kind: Set(STRATEGY_AGENT_ACTOR.to_string()),
             created_at: NotSet,
             updated_at: NotSet,
-            graphs_json: Set(serde_json::json!([])),
+            graphs_json: Set(graphs_json),
         };
         note::Entity::insert(model)
             .exec_without_returning(&self.db)
@@ -152,7 +171,7 @@ impl StrategyServer {
         ensure_strategy_match(session_strategy_id, params.strategy_id)?;
 
         let row = fetch_note_owned_by(&self.db, params.note_id, params.strategy_id).await?;
-        Ok(note_to_dto(row))
+        note_to_dto(row)
     }
 
     pub(crate) async fn list_notes_inner(
@@ -170,7 +189,10 @@ impl StrategyServer {
             .await
             .map_err(db_error)?;
         Ok(ListNotesResult {
-            notes: rows.into_iter().map(note_to_dto).collect(),
+            notes: rows
+                .into_iter()
+                .map(note_to_dto)
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 }
@@ -183,6 +205,7 @@ mod tests {
     use sea_orm::EntityTrait;
 
     use crate::entities::comment;
+    use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::testing::create_test_db;
 
     use super::super::dto::{ListNotesParams, ReadNoteParams, WriteNoteParams, WriteNoteResult};
@@ -191,6 +214,53 @@ mod tests {
         seed_note_comment_with_anchor, set_note_status, ts_sentinel,
     };
     use super::super::{DEFAULT_NOTE_STATUS, NoteDto, STRATEGY_AGENT_ACTOR};
+
+    fn test_node(id: &str) -> GraphNode {
+        GraphNode {
+            id: id.to_string(),
+            label: id.to_string(),
+            r#ref: None,
+            value: None,
+            cite: None,
+            parent: None,
+            x: None,
+            y: None,
+        }
+    }
+
+    /// `a` -> `b` の 1 edge を持つ有効な graph。
+    fn sample_graph(id: &str) -> GraphDef {
+        GraphDef {
+            id: id.to_string(),
+            layout: Layout::Flow,
+            title: None,
+            nodes: vec![test_node("a"), test_node("b")],
+            edges: vec![GraphEdge {
+                source: "a".to_string(),
+                target: "b".to_string(),
+                label: None,
+                value: None,
+                cite: None,
+            }],
+        }
+    }
+
+    /// `edges[0].target` が `nodes` に存在しない、検証で弾かれるべき graph。
+    fn invalid_graph(id: &str) -> GraphDef {
+        GraphDef {
+            id: id.to_string(),
+            layout: Layout::Flow,
+            title: None,
+            nodes: vec![test_node("a")],
+            edges: vec![GraphEdge {
+                source: "a".to_string(),
+                target: "does-not-exist".to_string(),
+                label: None,
+                value: None,
+                cite: None,
+            }],
+        }
+    }
 
     #[sqlx::test(migrations = false)]
     async fn write_note_creates_then_read_note_returns_it(pool: PgPool) {
@@ -208,6 +278,7 @@ mod tests {
                     body_md: Some("body".into()),
                     type_tag: Some(Some("observation".into())),
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -238,6 +309,7 @@ mod tests {
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
+                graphs: vec![],
             },
         );
     }
@@ -261,6 +333,7 @@ mod tests {
                         body_md: Some("v1".into()),
                         type_tag: None,
                         frontmatter_json: None,
+                        graphs: None,
                     },
                 )
                 .await
@@ -279,6 +352,7 @@ mod tests {
                         body_md: Some("v2".into()),
                         type_tag: None,
                         frontmatter_json: None,
+                        graphs: None,
                     },
                 )
                 .await
@@ -315,6 +389,7 @@ mod tests {
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
                     updated_at: ts_sentinel(),
+                    graphs: vec![],
                 },
                 "case {label}",
             );
@@ -338,6 +413,7 @@ mod tests {
                     body_md: None,
                     type_tag: Some(Some("observation".into())),
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -354,6 +430,7 @@ mod tests {
                     body_md: None,
                     type_tag: Some(None),
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -409,6 +486,7 @@ mod tests {
                     body_md: None,
                     type_tag: None,
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -434,6 +512,7 @@ mod tests {
                     body_md: Some("hijack".into()),
                     type_tag: None,
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -480,6 +559,7 @@ mod tests {
                         body_md: None,
                         type_tag: None,
                         frontmatter_json: None,
+                        graphs: None,
                     },
                 )
                 .await
@@ -506,6 +586,300 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn write_note_creates_with_graphs_then_read_note_returns_them(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        let graph = sample_graph("g1");
+        let written = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("note with graph".into()),
+                    body_md: Some("[[graph:g1]]".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![graph.clone()]),
+                },
+            )
+            .await
+            .expect("write_note");
+
+        let read = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    strategy_id,
+                    note_id: written.note_id,
+                },
+            )
+            .await
+            .expect("read_note");
+
+        assert_eq!(
+            normalize_note(read),
+            NoteDto {
+                note_id: written.note_id,
+                strategy_id,
+                title: "note with graph".into(),
+                body_md: "[[graph:g1]]".into(),
+                frontmatter_json: serde_json::json!({}),
+                type_tag: None,
+                status: DEFAULT_NOTE_STATUS.into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![graph],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_rejects_invalid_graph_and_does_not_create_note(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        let err = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("broken".into()),
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![invalid_graph("g1")]),
+                },
+            )
+            .await
+            .expect_err("invalid graph expected to be rejected");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+
+        let result = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    strategy_id,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("list");
+        assert_eq!(result.notes, vec![]);
+    }
+
+    // body_md と graphs は独立に部分更新できる: 片方だけ送るともう片方は無傷。
+    #[sqlx::test(migrations = false)]
+    async fn write_note_update_graphs_and_body_are_independent(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        for (label, update_body, update_graphs, expected_body, expected_graphs) in [
+            (
+                "omit_graphs_leaves_them_unchanged",
+                Some("v2".to_string()),
+                None,
+                "v2".to_string(),
+                vec![sample_graph("g1")],
+            ),
+            (
+                "graphs_only_replaces_array_leaves_body_untouched",
+                None,
+                Some(vec![sample_graph("g2")]),
+                "orig".to_string(),
+                vec![sample_graph("g2")],
+            ),
+        ] {
+            let created = server
+                .write_note_inner(
+                    strategy_id,
+                    WriteNoteParams {
+                        strategy_id,
+                        note_id: None,
+                        title: Some("t".into()),
+                        body_md: Some("orig".into()),
+                        type_tag: None,
+                        frontmatter_json: None,
+                        graphs: Some(vec![sample_graph("g1")]),
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: create failed: {e}"));
+
+            server
+                .write_note_inner(
+                    strategy_id,
+                    WriteNoteParams {
+                        strategy_id,
+                        note_id: Some(created.note_id),
+                        title: None,
+                        body_md: update_body,
+                        type_tag: None,
+                        frontmatter_json: None,
+                        graphs: update_graphs,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: update failed: {e}"));
+
+            let read = server
+                .read_note_inner(
+                    strategy_id,
+                    ReadNoteParams {
+                        strategy_id,
+                        note_id: created.note_id,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("case {label}: read failed: {e}"));
+            assert_eq!(
+                normalize_note(read),
+                NoteDto {
+                    note_id: created.note_id,
+                    strategy_id,
+                    title: "t".into(),
+                    body_md: expected_body,
+                    frontmatter_json: serde_json::json!({}),
+                    type_tag: None,
+                    status: DEFAULT_NOTE_STATUS.into(),
+                    created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                    created_at: ts_sentinel(),
+                    updated_at: ts_sentinel(),
+                    graphs: expected_graphs,
+                },
+                "case {label}",
+            );
+        }
+    }
+
+    /// 図のみを更新した場合も、他フィールド更新と同様に status が unread へ戻る。
+    #[sqlx::test(migrations = false)]
+    async fn write_note_update_with_graphs_only_resets_status_to_unread(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("t".into()),
+                    body_md: Some("orig".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![sample_graph("g1")]),
+                },
+            )
+            .await
+            .expect("create");
+        set_note_status(&db, created.note_id, "approved").await;
+
+        server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![sample_graph("g2")]),
+                },
+            )
+            .await
+            .expect("update graphs only");
+
+        let read = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    strategy_id,
+                    note_id: created.note_id,
+                },
+            )
+            .await
+            .expect("read");
+        assert_eq!(read.status, DEFAULT_NOTE_STATUS);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_rejects_invalid_graph_on_update_and_leaves_note_unchanged(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        let graph = sample_graph("g1");
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: None,
+                    title: Some("t".into()),
+                    body_md: Some("orig".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![graph.clone()]),
+                },
+            )
+            .await
+            .expect("create");
+
+        let err = server
+            .write_note_inner(
+                strategy_id,
+                WriteNoteParams {
+                    strategy_id,
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: Some("hijacked".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![invalid_graph("g2")]),
+                },
+            )
+            .await
+            .expect_err("invalid graph on update expected to be rejected");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+
+        let read = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    strategy_id,
+                    note_id: created.note_id,
+                },
+            )
+            .await
+            .expect("read");
+        assert_eq!(
+            normalize_note(read),
+            NoteDto {
+                note_id: created.note_id,
+                strategy_id,
+                title: "t".into(),
+                body_md: "orig".into(),
+                frontmatter_json: serde_json::json!({}),
+                type_tag: None,
+                status: DEFAULT_NOTE_STATUS.into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![graph],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn write_note_updating_body_md_reanchors_comment_when_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
@@ -527,6 +901,7 @@ mod tests {
                     ),
                     type_tag: None,
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -550,6 +925,7 @@ mod tests {
                     ),
                     type_tag: None,
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -602,6 +978,7 @@ mod tests {
                     ),
                     type_tag: None,
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
@@ -618,6 +995,7 @@ mod tests {
                     body_md: Some("completely rewritten".into()),
                     type_tag: None,
                     frontmatter_json: None,
+                    graphs: None,
                 },
             )
             .await
