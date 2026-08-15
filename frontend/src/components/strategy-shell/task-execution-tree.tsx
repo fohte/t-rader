@@ -34,7 +34,9 @@ export function isTaskStep(v: unknown): v is TaskStep {
     typeof v['label'] === 'string' &&
     typeof v['model'] === 'string' &&
     typeof v['status'] === 'string' &&
-    typeof v['started_at'] === 'string'
+    typeof v['started_at'] === 'string' &&
+    typeof v['trace_id'] === 'string' &&
+    typeof v['span_id'] === 'string'
   )
 }
 

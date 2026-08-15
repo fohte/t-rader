@@ -6,6 +6,7 @@ import {
   buildPhaseNodes,
   buildTraceUrl,
   formatDuration,
+  isTaskStep,
   parseAgentGraphPhases,
   TaskExecutionTree,
   type TaskExecutionTreeProps,
@@ -34,6 +35,28 @@ function makeProps(
 ): TaskExecutionTreeProps {
   return { steps: [], configPhases: [], ...overrides }
 }
+
+describe('isTaskStep', () => {
+  it('accepts a step with all required fields', () => {
+    expect(isTaskStep(makeStep({ phase_key: 'plan' }))).toBe(true)
+  })
+
+  it.each([
+    'phase_key',
+    'label',
+    'model',
+    'status',
+    'started_at',
+    'trace_id',
+    'span_id',
+  ] as const)('rejects a step missing %s', (field) => {
+    const full: Record<string, unknown> = { ...makeStep({ phase_key: 'plan' }) }
+    const step = Object.fromEntries(
+      Object.entries(full).filter(([key]) => key !== field),
+    )
+    expect(isTaskStep(step)).toBe(false)
+  })
+})
 
 describe('TaskExecutionTree', () => {
   it('steps が空なら何も描画しない', () => {
