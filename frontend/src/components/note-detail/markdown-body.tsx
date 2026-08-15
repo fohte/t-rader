@@ -1,5 +1,5 @@
-import type { ComponentType } from 'react'
-import { ErrorBoundary } from 'react-error-boundary'
+import type { ComponentType, ReactNode } from 'react'
+import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -60,25 +60,29 @@ function toGraphDef(g: ApiGraphDef): GraphDef {
   }
 }
 
-function MissingGraphNotice({ graphId }: { graphId: string }) {
+function GraphNotice({ children }: { children: ReactNode }) {
   return (
     <div
       role="alert"
       className="my-3 border border-dashed border-[color:var(--color-hairline)] p-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]"
     >
-      図 {graphId} が見つかりません
+      {children}
     </div>
   )
 }
 
-function GraphErrorFallback() {
+function GraphErrorFallback({ resetErrorBoundary }: FallbackProps) {
   return (
-    <div
-      role="alert"
-      className="my-3 border border-dashed border-[color:var(--color-hairline)] p-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]"
-    >
+    <GraphNotice>
       図を表示できませんでした
-    </div>
+      <button
+        type="button"
+        onClick={resetErrorBoundary}
+        className="ml-2 underline hover:text-[color:var(--color-text-secondary)]"
+      >
+        再試行
+      </button>
+    </GraphNotice>
   )
 }
 
@@ -205,7 +209,8 @@ export function MarkdownBody({
     ),
     'note-graph': ({ graphId }) => {
       const apiDef = graphs.find((g) => g.id === graphId)
-      if (!apiDef) return <MissingGraphNotice graphId={graphId} />
+      if (!apiDef)
+        return <GraphNotice>図 {graphId} が見つかりません</GraphNotice>
       const def = toGraphDef(apiDef)
       return (
         <div className="my-3">
@@ -214,7 +219,10 @@ export function MarkdownBody({
               {def.title}
             </div>
           )}
-          <ErrorBoundary FallbackComponent={GraphErrorFallback}>
+          <ErrorBoundary
+            FallbackComponent={GraphErrorFallback}
+            resetKeys={[apiDef]}
+          >
             <GraphRenderer
               def={def}
               onOpenRef={onRef}

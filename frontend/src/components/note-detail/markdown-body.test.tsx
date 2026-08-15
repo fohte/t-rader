@@ -1,34 +1,12 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 
-// jsdom には ResizeObserver が無いが React Flow (GraphRenderer 内部) がコンテナ計測に使う
-class ResizeObserverStub {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-
-beforeAll(() => {
-  vi.stubGlobal('ResizeObserver', ResizeObserverStub)
-})
-afterAll(() => {
-  vi.unstubAllGlobals()
-})
 afterEach(cleanup)
 
-// 以下のノード名・ラベルはすべて架空のもの
 const GRAPH_DEF: components['schemas']['GraphDef'] = {
   id: 'g1',
   layout: 'flow',
@@ -128,8 +106,8 @@ describe('MarkdownBody', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('missing')
   })
 
-  it('renders normally when graphs is omitted', () => {
-    render(<MarkdownBody source="ただの本文" />)
-    expect(screen.getByText('ただの本文')).toBeInTheDocument()
+  it('shows a fallback when a graph token exists but graphs itself is omitted', () => {
+    render(<MarkdownBody source="[[graph:g1]]" />)
+    expect(screen.getByRole('alert')).toHaveTextContent('g1')
   })
 })

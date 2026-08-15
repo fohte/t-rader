@@ -1,30 +1,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import type { GraphDef } from '#components/graph/types'
 
-// jsdom には ResizeObserver が無いが React Flow がコンテナ計測に使う
-class ResizeObserverStub {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-
-beforeAll(() => {
-  vi.stubGlobal('ResizeObserver', ResizeObserverStub)
-})
-afterAll(() => {
-  vi.unstubAllGlobals()
-})
 afterEach(cleanup)
 
 const FLOW_DEF: GraphDef = {
