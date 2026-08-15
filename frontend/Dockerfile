@@ -3,6 +3,8 @@
 FROM node:24.17.0-slim AS builder
 WORKDIR /app
 RUN corepack enable
+# workspace member を追加したら、この block と agent/Dockerfile の deps/runtime stage
+# 両方に COPY <pkg>/package.json <pkg>/ を追記すること。
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
 COPY agent/package.json agent/

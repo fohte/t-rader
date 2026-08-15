@@ -8,6 +8,8 @@ ENV PATH=$PNPM_HOME:$PATH
 # Node.js 25+ no longer bundles Corepack: https://github.com/nodejs/corepack
 RUN npm install -g corepack@0.35.0 && npm cache clean --force && corepack enable
 
+# workspace member を追加したら、この block と runtime stage の block 両方に
+# COPY <pkg>/package.json <pkg>/ を追記すること (frontend/Dockerfile の builder stage も同様)。
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json frontend/
@@ -16,7 +18,10 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 # ローカル開発用ステージ (docker compose up agent で使用)
+# package.json (packageManager フィールド) が無いと corepack が pin されたバージョンを
+# 解決できず、最新版のダウンロードを試みてネットワーク不通時に起動が失敗する。
 FROM base AS dev
+COPY --from=deps /app/package.json ./package.json
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/agent/node_modules ./agent/node_modules
 WORKDIR /app/agent

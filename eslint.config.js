@@ -31,7 +31,9 @@ export default config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
     },
   },
-  // .storybook/ と vitest.config.ts は src 外にあり # subpath imports (src 配下の *.ts のみ解決) が届かない対象 (CSS、ルート直下の設定ファイル) を参照するため相対インポートを許可
+  // .storybook/ と vitest.config.ts は src 外にあり、相対インポートが必要な参照
+  // (vitest.config.ts -> ../vite.config、preview.ts -> ../src/index.css) を含むため
+  // no-restricted-imports を無効化する
   {
     files: ['frontend/.storybook/**/*.ts', 'frontend/vitest.config.ts'],
     rules: {

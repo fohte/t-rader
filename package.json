@@ -1,10 +1,6 @@
 {
   "name": "t-rader",
   "private": true,
-  "workspaces": [
-    "frontend",
-    "agent"
-  ],
   "packageManager": "pnpm@11.16.0",
   "type": "module",
   "scripts": {

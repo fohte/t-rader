@@ -18,12 +18,13 @@ minimumReleaseAge: 10080
 # First-party scopes: publisher account is trusted, so skip the release-age delay.
 minimumReleaseAgeExclude:
   - '@fohte/*'
-  # Renovate security update: @hono/node-server@2.0.10
+  # Exact-pinned security-fix versions; safe to remove once each version's
+  # natural age exceeds minimumReleaseAge.
   - '@hono/node-server@2.0.10'
-  # Renovate security update: hono@4.12.34
   - hono@4.12.34
 
 peerDependencyRules:
   allowedVersions:
-    # openapi-typescript@7.13.0 (latest) still declares typescript ^5.x
+    # openapi-typescript's peerDependencies still declare typescript ^5.x;
+    # remove once it's updated to allow ^6.
     'openapi-typescript>typescript': '6'
