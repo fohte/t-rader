@@ -23,6 +23,8 @@ function makeStep(
     status: 'completed',
     started_at: '2026-08-15T00:00:00Z',
     finished_at: '2026-08-15T00:00:08Z',
+    trace_id: 'trace-1',
+    span_id: 'span-1',
     ...overrides,
   }
 }
@@ -70,7 +72,7 @@ describe('TaskExecutionTree', () => {
         item: { title: '半導体サイクルの反転' },
         item_label: '半導体サイクルの反転',
         status: 'running',
-        finished_at: null,
+        finished_at: undefined,
       }),
     ]
 
@@ -273,7 +275,7 @@ describe('buildPhaseNodes', () => {
       item: { title: '半導体サイクルの反転' },
       item_label: '半導体サイクルの反転',
       status: 'running',
-      finished_at: null,
+      finished_at: undefined,
       started_at: '2026-08-15T00:00:00Z',
     })
 

@@ -118,6 +118,8 @@ export const PollingWithSteps: Story = {
                 status: 'completed',
                 started_at: '2026-06-26T07:00:00.000Z',
                 finished_at: '2026-06-26T07:00:12.400Z',
+                trace_id: 'trace-plan-0001',
+                span_id: 'span-plan-0001',
               },
               {
                 phase_key: 'investigate',
@@ -140,6 +142,8 @@ export const PollingWithSteps: Story = {
                 item: { title: '需給要因の点検' },
                 item_label: '需給要因の点検',
                 started_at: '2026-06-26T07:00:20.500Z',
+                trace_id: 'trace-investigate-0002',
+                span_id: 'span-investigate-0002',
               },
             ],
           },

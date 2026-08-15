@@ -1,25 +1,14 @@
+// backend は steps (jsonb) の中身を解釈せず素通しする契約のため、OpenAPI 生成型では
+// `unknown` になる。実際のフィールド構成を定めるのは agent 側の StrategyTaskStepJson
+// (agent/src/strategy-agent/agent-graph/step.ts) なので、型のみここから直接参照する。
+import type { StrategyTaskStepJson as TaskStep } from 'agent/strategy-agent/agent-graph/step'
 import { Result } from 'neverthrow'
 import { useState } from 'react'
 import { parse as parseYaml } from 'yaml'
 
 import { cn } from '#lib/utils'
 
-// backend の StrategyTaskStatusResponse に対応する型。schema.gen.d.ts (OpenAPI
-// 生成型) に `steps` フィールドが未定義のため、ここで手動定義している。
-export interface TaskStep {
-  phase_key: string
-  label: string
-  model: string
-  status: 'running' | 'completed' | 'failed'
-  item?: unknown
-  item_label?: string | null
-  output?: unknown
-  started_at: string
-  finished_at?: string | null
-  trace_id?: string | null
-  span_id?: string | null
-  error?: string | null
-}
+export type { TaskStep }
 
 export interface AgentGraphPhaseSummary {
   key: string
@@ -34,6 +23,19 @@ export type PhaseNode =
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
+}
+
+// steps (jsonb) は backend が中身を解釈せず素通しするため unknown で届く。必須フィールドの
+// 型だけを見て frontend 表示用の TaskStep として narrow する。
+export function isTaskStep(v: unknown): v is TaskStep {
+  return (
+    isRecord(v) &&
+    typeof v['phase_key'] === 'string' &&
+    typeof v['label'] === 'string' &&
+    typeof v['model'] === 'string' &&
+    typeof v['status'] === 'string' &&
+    typeof v['started_at'] === 'string'
+  )
 }
 
 const tryParseYaml = Result.fromThrowable((raw: string): unknown =>
@@ -130,10 +132,10 @@ export function formatDuration(
   return `${((end - start) / 1000).toFixed(1)}s`
 }
 
-// Tempo のトレース表示 URL を組み立てる。`{trace_id}`/`{span_id}` プレースホルダを
-// 差し替えるだけの単純なテンプレート方式で、実際の Grafana/Tempo の URL 形式は
-// `.env.local` の VITE_TEMPO_TRACE_URL_TEMPLATE で環境ごとに指定する。未設定なら
-// リンクを出さない。
+// トレースビューア (Tempo, Langfuse 等) の URL を組み立てる。`{trace_id}`/`{span_id}`
+// プレースホルダを差し替えるだけの単純なテンプレート方式とすることで、ビューアの種類を
+// 問わず `.env.local` の VITE_TRACE_URL_TEMPLATE で環境ごとに指定できるようにしている。
+// 未設定ならリンクを出さない。
 export function buildTraceUrl(
   template: string | undefined,
   traceId: string,
@@ -148,7 +150,7 @@ export function buildTraceUrl(
 export interface TaskExecutionTreeProps {
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
-  /** Tempo のトレース URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
+  /** トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
   traceUrlTemplate?: string
 }
 
@@ -322,10 +324,7 @@ function StepDetail({
   step: TaskStep
   traceUrlTemplate?: string
 }): React.ReactElement {
-  const traceUrl =
-    step.trace_id != null
-      ? buildTraceUrl(traceUrlTemplate, step.trace_id, step.span_id)
-      : null
+  const traceUrl = buildTraceUrl(traceUrlTemplate, step.trace_id, step.span_id)
 
   return (
     <div className="mb-2 ml-4 space-y-2 border-l border-[color:var(--color-border-strategy)] py-1 pl-3 text-[11px] text-[color:var(--color-text-secondary)]">

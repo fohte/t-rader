@@ -145,6 +145,8 @@ describe('FloatingChatView', () => {
               status: 'completed',
               started_at: '2026-06-26T00:00:00Z',
               finished_at: '2026-06-26T00:00:12Z',
+              trace_id: 'trace-plan-0001',
+              span_id: 'span-plan-0001',
             },
             {
               phase_key: 'investigate',
@@ -154,6 +156,8 @@ describe('FloatingChatView', () => {
               item: { title: '為替影響の再評価' },
               item_label: '為替影響の再評価',
               started_at: '2026-06-26T00:00:12Z',
+              trace_id: 'trace-investigate-0001',
+              span_id: 'span-investigate-0001',
             },
           ],
         })}

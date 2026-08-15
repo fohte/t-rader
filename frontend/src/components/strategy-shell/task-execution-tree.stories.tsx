@@ -39,7 +39,7 @@ const PLAN_STEP: TaskStep = {
 function investigateStep(
   title: string,
   status: TaskStep['status'],
-  finishedAt: string | null,
+  finishedAt: string | undefined,
 ): TaskStep {
   return {
     phase_key: 'investigate',
@@ -76,7 +76,7 @@ export const Running: Story = {
             'completed',
             '2026-08-15T09:00:21.100Z',
           ),
-          investigateStep('半導体サイクルの反転', 'running', null),
+          investigateStep('半導体サイクルの反転', 'running', undefined),
           investigateStep(
             '個別の材料出尽くし',
             'completed',
@@ -144,7 +144,7 @@ export const WithFailure: Story = {
             '2026-08-15T09:00:21.100Z',
           ),
           {
-            ...investigateStep('半導体サイクルの反転', 'failed', null),
+            ...investigateStep('半導体サイクルの反転', 'failed', undefined),
             finished_at: '2026-08-15T09:00:18.300Z',
             error: 'tool call timeout: query_data がタイムアウトしました',
             output: undefined,

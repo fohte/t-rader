@@ -13,7 +13,11 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    // agent の型を type-only import するためのエイリアス (別 tsconfig プロジェクトのため paths が要る)
+    "paths": {
+      "agent/*": ["../agent/src/*"]
+    }
   },
   "include": ["src", ".storybook", "vite.config.ts", "vitest.config.ts"]
 }

@@ -13,6 +13,7 @@ import {
   FloatingChatView,
 } from '#components/strategy-shell/floating-chat-view'
 import {
+  isTaskStep,
   parseAgentGraphPhases,
   type TaskStep,
 } from '#components/strategy-shell/task-execution-tree'
@@ -20,7 +21,7 @@ import { useCurrentStrategyId } from '#components/strategy-shell/use-current-str
 import { $api } from '#lib/api/client'
 
 const TRACE_URL_TEMPLATE: string | undefined = import.meta.env
-  .VITE_TEMPO_TRACE_URL_TEMPLATE
+  .VITE_TRACE_URL_TEMPLATE
 
 const POLL_INTERVAL_MS = 2000
 // ノート紐付けは現状 created_at の比較で代替している。client 時刻が backend に
@@ -90,8 +91,7 @@ export function FloatingChat(): React.ReactElement {
   const phase = taskQuery.data?.phase ?? null
   const isCompleted = phase === 'completed'
 
-  // steps は OpenAPI 生成スキーマに未反映のフィールドのため、型を拡張して読む。
-  const steps = readTaskSteps(taskQuery.data)
+  const steps = readTaskSteps(taskQuery.data?.steps)
 
   const agentGraphQuery = $api.useQuery(
     'get',
@@ -225,10 +225,8 @@ function computeStatus({
   return { kind: 'idle' }
 }
 
-function readTaskSteps(
-  data: { task_id: string; steps?: TaskStep[] } | undefined,
-): TaskStep[] {
-  return data?.steps ?? []
+function readTaskSteps(steps: unknown): TaskStep[] {
+  return Array.isArray(steps) ? steps.filter(isTaskStep) : []
 }
 
 function formatSubmitError(err: unknown): string {
