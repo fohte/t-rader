@@ -97,11 +97,10 @@ jobs:
         with:
           path: |
             ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('frontend/pnpm-lock.yaml', 'agent/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
-      - name: Install pnpm dependencies (frontend)
-        run: cd "frontend" && pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
       # TanStack Router の routeTree.gen.ts は gitignore 対象。
       # eslint の型ベースルール (no-unsafe-member-access 等) は route の generic 型に依存するため、
@@ -109,14 +108,8 @@ jobs:
       - name: Generate frontend route tree
         run: cd "frontend" && pnpm exec tsr generate
 
-      - name: Install pnpm dependencies (agent)
-        run: cd "agent" && pnpm install --frozen-lockfile
-
-      - name: Check peer dependencies (frontend)
-        run: cd "frontend" && pnpm peers check
-
-      - name: Check peer dependencies (agent)
-        run: cd "agent" && pnpm peers check
+      - name: Check peer dependencies
+        run: pnpm peers check
 
       - name: Fetch cargo dependencies (backend)
         if: steps.check-backend.outputs.has_backend == 'true'
@@ -274,10 +267,10 @@ jobs:
         with:
           path: |
             ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
-      - run: cd "frontend" && pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
       - name: Run tests
         working-directory: frontend
@@ -470,10 +463,10 @@ jobs:
         with:
           path: |
             ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('agent/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
-      - run: cd "agent" && pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
       - name: Run tests
         working-directory: agent

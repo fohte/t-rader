@@ -1,0 +1,32 @@
+{
+  "name": "t-rader",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "agent"
+  ],
+  "packageManager": "pnpm@11.16.0",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "format:eslint": "eslint --fix .",
+    "format:prettier": "prettier --write .",
+    "format": "conc -m 1 pnpm:format:eslint pnpm:format:prettier",
+    "test": "pnpm -r run test"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.1",
+    "@eslint/eslintrc": "3.3.6",
+    "@fohte/eslint-config": "0.4.0",
+    "@ninoseki/eslint-plugin-neverthrow": "0.2.0",
+    "@tsconfig/node-lts": "24.0.0",
+    "@tsconfig/strictest": "2.0.8",
+    "@types/node": "24.13.3",
+    "concurrently": "10.0.4",
+    "eslint": "10.6.0",
+    "eslint-plugin-storybook": "10.4.6",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,7 +1,6 @@
 {
   "name": "agent",
   "private": true,
-  "packageManager": "pnpm@11.16.0",
   "type": "module",
   "imports": {
     "#db": "./src/db/index.ts",
@@ -13,10 +12,6 @@
     "build": "tsup src/index.ts src/db/migrate.ts --format esm --out-dir dist --clean",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "lint": "eslint .",
-    "format:eslint": "eslint --fix .",
-    "format:prettier": "prettier --write .",
-    "format": "conc -m 1 pnpm:format:eslint pnpm:format:prettier",
     "test": "conc pnpm:test:type pnpm:test:unit",
     "test:type": "tsc --noEmit",
     "test:unit": "vitest run"
@@ -39,20 +34,8 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.2.1",
-    "@eslint/eslintrc": "3.3.6",
-    "@fohte/eslint-config": "0.4.0",
-    "@ninoseki/eslint-plugin-neverthrow": "0.2.0",
-    "@tsconfig/node-lts": "24.0.0",
-    "@tsconfig/strictest": "2.0.8",
-    "@types/node": "24.13.3",
-    "concurrently": "10.0.4",
     "drizzle-kit": "0.31.10",
-    "eslint": "10.6.0",
-    "prettier": "3.9.6",
     "tsup": "8.5.1",
-    "tsx": "4.23.1",
-    "typescript": "6.0.3",
-    "vitest": "4.1.10"
+    "tsx": "4.23.1"
   }
 }

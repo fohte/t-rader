@@ -1,6 +1,12 @@
+packages:
+  - 'frontend'
+  - 'agent'
+
 allowBuilds:
   # required by vitest's transformer
   esbuild: true
+  # required by @opentelemetry/exporter-trace-otlp-proto
+  protobufjs: true
   # required by @fohte/eslint-config -> eslint-plugin-import-x for module resolution
   unrs-resolver: true
   # shadcn の transitive dep。service worker は使わないため build script を実行しない
@@ -12,6 +18,10 @@ minimumReleaseAge: 10080
 # First-party scopes: publisher account is trusted, so skip the release-age delay.
 minimumReleaseAgeExclude:
   - '@fohte/*'
+  # Renovate security update: @hono/node-server@2.0.10
+  - '@hono/node-server@2.0.10'
+  # Renovate security update: hono@4.12.34
+  - hono@4.12.34
 
 peerDependencyRules:
   allowedVersions:

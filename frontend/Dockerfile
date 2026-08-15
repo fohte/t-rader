@@ -4,13 +4,15 @@ FROM node:24.17.0-slim AS builder
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json frontend/
+COPY agent/package.json agent/
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm run build
+RUN pnpm --filter frontend build
 
 FROM nginx:stable-alpine AS runtime
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
+COPY frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 80
 # nginx 公式イメージの docker-entrypoint.sh が /etc/nginx/templates/*.template を
 # envsubst で処理して /etc/nginx/conf.d/ に出力する。
