@@ -563,6 +563,7 @@ mod tests {
                 "title": "タイトル",
                 "body_md": "body",
                 "frontmatter_json": {},
+                "graphs_json": [],
                 "type_tag": null,
                 "status": "rejected",
                 "trigger": null,

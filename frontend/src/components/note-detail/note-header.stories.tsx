@@ -11,6 +11,7 @@ const note: Note = {
   title: 'SUMCO レンジ回帰の確度評価',
   body_md: '[[stock:3436]] [[indicator:USDJPY]] [[sector:半導体]]',
   frontmatter_json: {},
+  graphs_json: [],
   type_tag: 'thesis',
   status: 'unread',
   trigger: 'cron',
