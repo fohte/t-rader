@@ -103,13 +103,20 @@ function GraphCanvas({ def, onOpenRef }: GraphCanvasProps) {
 
   const nodes = useMemo(
     () =>
-      rawNodes.map((node) => ({
-        ...node,
-        className:
-          neighborIds == null || neighborIds.has(node.id)
-            ? HIGHLIGHT_CLASS
-            : DIMMED_CLASS,
-      })),
+      rawNodes.map((node) =>
+        // 装飾用の背景ノードは hover 判定に参加させない。wrapper 自体を
+        // pointer-events-none にしないと、内側の div だけを無効化しても
+        // wrapper (.react-flow__node) がそのままヒットしてしまう
+        node.type === 'graphScatterBackground'
+          ? { ...node, className: 'pointer-events-none' }
+          : {
+              ...node,
+              className:
+                neighborIds == null || neighborIds.has(node.id)
+                  ? HIGHLIGHT_CLASS
+                  : DIMMED_CLASS,
+            },
+      ),
     [rawNodes, neighborIds],
   )
   const edges = useMemo(
@@ -153,6 +160,10 @@ function GraphCanvas({ def, onOpenRef }: GraphCanvasProps) {
         elementsSelectable={false}
         fitView
         onNodeMouseEnter={(_, node) => {
+          // 装飾用の背景ノードを hover しても、実データノードが全て dim
+          // されてしまう (hoveredId が背景ノードの id になり、隣接ノードが
+          // 誰も見つからなくなるため) のを防ぐ
+          if (node.type === 'graphScatterBackground') return
           setHoveredId(node.id)
         }}
         onNodeMouseLeave={() => {
