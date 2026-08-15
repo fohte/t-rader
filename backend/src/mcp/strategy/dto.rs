@@ -173,6 +173,8 @@ pub struct ReadCommentsParams {
     /// "note" | "annotation"
     pub target_kind: String,
     pub target_id: Uuid,
+    /// true/false で絞り込み。省略時は全件
+    pub resolved: Option<bool>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
@@ -185,12 +187,45 @@ pub struct CommentDto {
     pub body: String,
     pub author_kind: String,
     pub author_label: String,
+    pub resolved: bool,
     pub created_at: DateTime<FixedOffset>,
+    /// コメント時点で選択された本文の該当箇所全文。
+    pub anchor_text: Option<String>,
+    /// note 本文中の現在位置 (1-indexed)。追跡できない場合は null。
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    /// 位置が当てにならなくなったかどうか (note 本文の書き換えで見失った等)。
+    pub drifted: bool,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct ReadCommentsResult {
     pub comments: Vec<CommentDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ResolveCommentParams {
+    pub strategy_id: Uuid,
+    pub comment_id: Uuid,
+    pub resolved: bool,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ResolveCommentResult {
+    pub comment: CommentDto,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReplyCommentParams {
+    pub strategy_id: Uuid,
+    /// 返信先コメント ID
+    pub parent_id: Uuid,
+    pub body: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ReplyCommentResult {
+    pub comment: CommentDto,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
