@@ -84,6 +84,7 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
         created_by_kind: Set(super::STRATEGY_AGENT_ACTOR.into()),
         created_at: NotSet,
         updated_at: NotSet,
+        graphs_json: Set(serde_json::json!([])),
     }
     .insert(db)
     .await
