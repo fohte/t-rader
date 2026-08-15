@@ -12,7 +12,7 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{comment, note};
+use crate::entities::comment;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateCommentRequest, UpdateCommentRequest};
@@ -108,8 +108,6 @@ pub async fn create_comment(
         }
     }
 
-    // 選択テキストが渡された場合のみアンカリングを行う。ノートは現在の本文中の
-    // 位置を検索し、annotation は行番号の概念が無いため drift も起こらない。
     let anchor_text = p
         .anchor_text
         .as_deref()
@@ -119,22 +117,13 @@ pub async fn create_comment(
         None => (None, None, None, false),
         Some(anchor_text) => {
             let anchor_text = anchor_text.to_string();
-            let (start_line, end_line, drifted) = match p.target_kind.as_str() {
-                "note" => {
-                    let target_note = note::Entity::find_by_id(p.target_id).one(&state.db).await?;
-                    match target_note {
-                        Some(target_note) => {
-                            match comment_anchor::locate_anchor(&target_note.body_md, &anchor_text)
-                            {
-                                Some((start, end)) => (Some(start), Some(end), false),
-                                None => (None, None, true),
-                            }
-                        }
-                        None => (None, None, true),
-                    }
-                }
-                _ => (None, None, false),
-            };
+            let (start_line, end_line, drifted) = comment_anchor::resolve_new_anchor(
+                &state.db,
+                &p.target_kind,
+                p.target_id,
+                &anchor_text,
+            )
+            .await?;
             (Some(anchor_text), start_line, end_line, drifted)
         }
     };
@@ -361,6 +350,24 @@ mod tests {
             .to_string()
     }
 
+    async fn create_annotation(server: &axum_test::TestServer, strategy_id: &str) -> String {
+        let created = server
+            .post("/api/annotations")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "target_symbol": "7203",
+                "target_kind": "observation",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "text",
+            }))
+            .await;
+        created.assert_status(StatusCode::CREATED);
+        created.json::<Value>()["id"]
+            .as_str()
+            .expect("id")
+            .to_string()
+    }
+
     #[sqlx::test(migrations = false)]
     async fn create_comment_with_anchor_text_computes_start_and_end_line(pool: PgPool) {
         let server = create_test_server(pool).await;
@@ -445,6 +452,44 @@ mod tests {
                 "start_line": null,
                 "end_line": null,
                 "drifted": true,
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_comment_on_annotation_with_anchor_text_saves_text_without_line_numbers(
+        pool: PgPool,
+    ) {
+        let server = create_test_server(pool).await;
+        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let annotation_id = create_annotation(&server, &strategy_id).await;
+
+        let res = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "annotation",
+                "target_id": annotation_id,
+                "body": "fix this",
+                "anchor_text": "some selected text",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "target_kind": "annotation",
+                "target_id": "<target_id>",
+                "parent_id": null,
+                "body": "fix this",
+                "author_kind": "human",
+                "author_label": "user",
+                "resolved": false,
+                "created_at": "<created_at>",
+                "anchor_text": "some selected text",
+                "start_line": null,
+                "end_line": null,
+                "drifted": false,
             }),
         );
     }

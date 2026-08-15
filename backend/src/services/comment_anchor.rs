@@ -1,16 +1,21 @@
 //! コメントの位置情報 (アンカー) 追跡。
 //!
-//! ノート本文中の `anchor_text` から現在の行番号を再計算する。crit の
-//! `anchor` + `start_line`/`end_line` + `drifted` 方式を踏襲する。
+//! ノート本文中の `anchor_text` から現在の行番号を再計算する。
 
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter,
+};
 
 use crate::entities::comment;
 
 /// `body_md` 中から `anchor_text` を検索し、見つかれば 1-indexed の `(start_line, end_line)` を返す。
+/// 複数箇所に一致する場合は位置を一意に決められないため `None` を返す。
 pub fn locate_anchor(body_md: &str, anchor_text: &str) -> Option<(i32, i32)> {
     if anchor_text.is_empty() {
+        return None;
+    }
+    if body_md.matches(anchor_text).count() != 1 {
         return None;
     }
     let pos = body_md.find(anchor_text)?;
@@ -19,10 +24,33 @@ pub fn locate_anchor(body_md: &str, anchor_text: &str) -> Option<(i32, i32)> {
     Some((start_line, end_line))
 }
 
+/// 新規コメント作成時、target に対する anchor_text の位置を解決する。
+/// note 以外の target_kind は行番号の概念が無いため常に (None, None, false) を返す。
+pub async fn resolve_new_anchor<C: ConnectionTrait>(
+    db: &C,
+    target_kind: &str,
+    target_id: uuid::Uuid,
+    anchor_text: &str,
+) -> Result<(Option<i32>, Option<i32>, bool), sea_orm::DbErr> {
+    if target_kind != "note" {
+        return Ok((None, None, false));
+    }
+    let target_note = crate::entities::note::Entity::find_by_id(target_id)
+        .one(db)
+        .await?;
+    Ok(match target_note {
+        Some(target_note) => match locate_anchor(&target_note.body_md, anchor_text) {
+            Some((start, end)) => (Some(start), Some(end), false),
+            None => (None, None, true),
+        },
+        None => (None, None, true),
+    })
+}
+
 /// note 本文が書き換わった際、その note に紐づくトップレベルコメント (parent_id が null かつ
 /// anchor_text が Some) の位置を新しい body_md に対して再検索し、start_line/end_line/drifted を更新する。
-pub async fn reanchor_note_comments(
-    db: &sea_orm::DatabaseConnection,
+pub async fn reanchor_note_comments<C: ConnectionTrait>(
+    db: &C,
     note_id: uuid::Uuid,
     body_md: &str,
 ) -> Result<(), sea_orm::DbErr> {
@@ -75,6 +103,10 @@ mod tests {
         a
         b
         c"}, "", None)]
+    #[case::multiple_matches(indoc::indoc! {"
+        dup
+        b
+        dup"}, "dup", None)]
     fn test_locate_anchor(
         #[case] body_md: &str,
         #[case] anchor_text: &str,

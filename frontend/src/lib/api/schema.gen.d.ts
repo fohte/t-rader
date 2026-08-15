@@ -1165,7 +1165,10 @@ export interface components {
       timestamp: string
     }
     CreateCommentRequest: {
-      /** @description コメント時点で選択された本文の該当箇所全文。note 更新後の位置追跡に使う。 */
+      /**
+       * @description コメント時点で選択された本文の該当箇所全文。target_kind が "note" の場合のみ
+       *     note 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。
+       */
       anchor_text?: string | null
       /** @description "human" | "llm"。デフォルトは "human" */
       author_kind?: string | null

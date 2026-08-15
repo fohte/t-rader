@@ -6477,7 +6477,7 @@
               "string",
               "null"
             ],
-            "description": "コメント時点で選択された本文の該当箇所全文。note 更新後の位置追跡に使う。"
+            "description": "コメント時点で選択された本文の該当箇所全文。target_kind が \"note\" の場合のみ\nnote 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。"
           },
           "author_kind": {
             "type": [

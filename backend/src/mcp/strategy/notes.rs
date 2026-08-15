@@ -6,7 +6,10 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect,
+    TransactionTrait,
+};
 use uuid::Uuid;
 
 use crate::entities::note;
@@ -89,15 +92,14 @@ impl StrategyServer {
             // 直近の status (承認/却下含む) を無条件で unread に戻す。
             active.status = Set(DEFAULT_NOTE_STATUS.to_string());
             active.updated_at = Set(chrono::Utc::now().fixed_offset());
-            active.update(&self.db).await.map_err(db_error)?;
-            // body_md が変わった場合のみ、紐づくコメントの位置を新しい本文に対して再計算する
+            let txn = self.db.begin().await.map_err(db_error)?;
+            active.update(&txn).await.map_err(db_error)?;
             if let Some(body_md) = new_body_md {
-                crate::services::comment_anchor::reanchor_note_comments(
-                    &self.db, note_id, &body_md,
-                )
-                .await
-                .map_err(db_error)?;
+                crate::services::comment_anchor::reanchor_note_comments(&txn, note_id, &body_md)
+                    .await
+                    .map_err(db_error)?;
             }
+            txn.commit().await.map_err(db_error)?;
             return Ok(WriteNoteResult {
                 note_id,
                 created: false,
@@ -185,7 +187,7 @@ mod tests {
 
     use super::super::dto::{ListNotesParams, ReadNoteParams, WriteNoteParams, WriteNoteResult};
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_note, seed_foreign_note,
+        build_server, insert_strategy, normalize_comment_model, normalize_note, seed_foreign_note,
         seed_note_comment_with_anchor, set_note_status, ts_sentinel,
     };
     use super::super::{DEFAULT_NOTE_STATUS, NoteDto, STRATEGY_AGENT_ACTOR};
@@ -559,12 +561,22 @@ mod tests {
             .expect("query")
             .expect("comment exists");
         assert_eq!(
-            (
-                updated_comment.start_line,
-                updated_comment.end_line,
-                updated_comment.drifted
-            ),
-            (Some(3), Some(3), false),
+            normalize_comment_model(updated_comment),
+            comment::Model {
+                id: comment_id,
+                target_kind: "note".into(),
+                target_id: created.note_id,
+                parent_id: None,
+                body: "please fix".into(),
+                author_kind: "human".into(),
+                author_label: "user".into(),
+                created_at: ts_sentinel(),
+                resolved: false,
+                anchor_text: Some("line two".into()),
+                start_line: Some(3),
+                end_line: Some(3),
+                drifted: false,
+            },
         );
     }
 
@@ -617,12 +629,22 @@ mod tests {
             .expect("query")
             .expect("comment exists");
         assert_eq!(
-            (
-                updated_comment.start_line,
-                updated_comment.end_line,
-                updated_comment.drifted
-            ),
-            (None, None, true),
+            normalize_comment_model(updated_comment),
+            comment::Model {
+                id: comment_id,
+                target_kind: "note".into(),
+                target_id: created.note_id,
+                parent_id: None,
+                body: "please fix".into(),
+                author_kind: "human".into(),
+                author_label: "user".into(),
+                created_at: ts_sentinel(),
+                resolved: false,
+                anchor_text: Some("line two".into()),
+                start_line: None,
+                end_line: None,
+                drifted: true,
+            },
         );
     }
 }

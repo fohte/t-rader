@@ -68,6 +68,11 @@ pub(super) fn normalize_comment(mut c: CommentDto) -> CommentDto {
     c
 }
 
+pub(super) fn normalize_comment_model(mut c: comment::Model) -> comment::Model {
+    c.created_at = ts_sentinel();
+    c
+}
+
 /// 指定戦略の所有として固定タイトルの note を seed する (cross-strategy violation 用)
 pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, title: &str) -> Uuid {
     let id = Uuid::new_v4();
