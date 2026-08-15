@@ -18,6 +18,7 @@ use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::comment_anchor;
 use crate::services::graph::GraphDef;
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
@@ -350,6 +351,7 @@ pub async fn update_note(
     let updated = active.update(&txn).await?;
     if let Some(body) = body_changed.as_deref() {
         sync_note_refs(&txn, id, body, &updated.graphs_json).await?;
+        comment_anchor::reanchor_note_comments(&txn, id, body).await?;
     }
     if !diff.is_empty() {
         change_history::record(
@@ -512,6 +514,7 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
+    use crate::entities::comment;
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
     use crate::testing::{
@@ -591,12 +594,21 @@ mod tests {
     }
 
     async fn create_test_note(server: &TestServer, strategy_id: Uuid, title: &str) -> Uuid {
+        create_test_note_with_body(server, strategy_id, title, "body").await
+    }
+
+    async fn create_test_note_with_body(
+        server: &TestServer,
+        strategy_id: Uuid,
+        title: &str,
+        body_md: &str,
+    ) -> Uuid {
         let res = server
             .post("/api/notes")
             .json(&json!({
                 "strategy_id": strategy_id,
                 "title": title,
-                "body_md": "body",
+                "body_md": body_md,
             }))
             .await;
         res.assert_status(StatusCode::CREATED);
@@ -750,6 +762,73 @@ mod tests {
                 ("stock".to_string(), "ASML".to_string()),
                 ("theme".to_string(), "weak-jpy".to_string()),
             ],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn update_note_reanchors_comment_when_body_md_changes(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let note_id = create_test_note_with_body(
+            &server,
+            strategy_id,
+            "note",
+            indoc::indoc! {"
+                line one
+                line two
+                line three"},
+        )
+        .await;
+
+        let created_comment = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "note",
+                "target_id": note_id,
+                "body": "fix this",
+                "anchor_text": "line two",
+            }))
+            .await;
+        created_comment.assert_status(StatusCode::CREATED);
+        let comment_id =
+            Uuid::parse_str(created_comment.json::<Value>()["id"].as_str().expect("id"))
+                .expect("uuid");
+
+        let res = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({
+                "body_md": indoc::indoc! {"
+                    prefix
+                    line one
+                    line two
+                    line three"},
+            }))
+            .await;
+        res.assert_status_ok();
+
+        let mut updated_comment = comment::Entity::find_by_id(comment_id)
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("comment exists");
+        updated_comment.created_at = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset();
+        assert_eq!(
+            updated_comment,
+            comment::Model {
+                id: comment_id,
+                target_kind: "note".into(),
+                target_id: note_id,
+                parent_id: None,
+                body: "fix this".into(),
+                author_kind: "human".into(),
+                author_label: "user".into(),
+                created_at: chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
+                resolved: false,
+                anchor_text: Some("line two".into()),
+                start_line: Some(3),
+                end_line: Some(3),
+                drifted: false,
+            },
         );
     }
 }

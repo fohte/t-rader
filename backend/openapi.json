@@ -807,6 +807,87 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "comments"
+        ],
+        "summary": "コメントの resolved を更新する",
+        "operationId": "update_comment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "コメント ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCommentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/health": {
@@ -6261,9 +6342,17 @@
           "body",
           "author_kind",
           "author_label",
-          "created_at"
+          "resolved",
+          "created_at",
+          "drifted"
         ],
         "properties": {
+          "anchor_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "author_kind": {
             "type": "string"
           },
@@ -6277,6 +6366,16 @@
             "type": "string",
             "format": "date-time"
           },
+          "drifted": {
+            "type": "boolean"
+          },
+          "end_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -6287,6 +6386,16 @@
               "null"
             ],
             "format": "uuid"
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "start_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
           },
           "target_id": {
             "type": "string",
@@ -6363,6 +6472,13 @@
           "body"
         ],
         "properties": {
+          "anchor_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "コメント時点で選択された本文の該当箇所全文。target_kind が \"note\" の場合のみ\nnote 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。"
+          },
           "author_kind": {
             "type": [
               "string",
@@ -7925,6 +8041,18 @@
               "null"
             ],
             "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateCommentRequest": {
+        "type": "object",
+        "required": [
+          "resolved"
+        ],
+        "properties": {
+          "resolved": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

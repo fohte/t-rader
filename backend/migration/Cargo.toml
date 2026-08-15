@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+indoc = "=2.0.7"
 sea-orm-migration = { workspace = true, features = [
     "runtime-tokio-native-tls",
     "sqlx-postgres",
