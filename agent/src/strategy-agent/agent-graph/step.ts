@@ -20,9 +20,23 @@ export interface StrategyTaskStep {
   readonly error?: string
 }
 
-export const toStepJson = (
-  step: StrategyTaskStep,
-): Record<string, unknown> => ({
+// steps に乗る wire 形式 (snake_case)。frontend はこの型を直接参照して narrow する。
+export interface StrategyTaskStepJson {
+  readonly phase_key: string
+  readonly label: string
+  readonly model: string
+  readonly status: StrategyTaskStepStatus
+  readonly item?: unknown
+  readonly item_label?: string
+  readonly output?: unknown
+  readonly started_at: string
+  readonly finished_at?: string
+  readonly trace_id: string
+  readonly span_id: string
+  readonly error?: string
+}
+
+export const toStepJson = (step: StrategyTaskStep): StrategyTaskStepJson => ({
   phase_key: step.phaseKey,
   label: step.label,
   model: step.model,

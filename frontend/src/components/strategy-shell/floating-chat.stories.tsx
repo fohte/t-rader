@@ -48,6 +48,8 @@ function makeProps(
     input: '',
     status,
     notes: [],
+    steps: [],
+    configPhases: [],
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
@@ -85,6 +87,66 @@ export const Polling: Story = {
         makeProps(
           { kind: 'polling', phase: 'running' },
           { input: 'SUMCO の足元評価' },
+        ),
+      )}
+    />
+  ),
+}
+
+export const PollingWithSteps: Story = {
+  render: () => (
+    <RouterProvider
+      router={createStoryRouter(
+        makeProps(
+          { kind: 'polling', phase: 'running' },
+          {
+            input: 'SUMCO の足元評価',
+            configPhases: [
+              { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
+              {
+                key: 'investigate',
+                label: '個別調査',
+                model: 'deepseek-v4-flash',
+              },
+              { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
+            ],
+            steps: [
+              {
+                phase_key: 'plan',
+                label: '調査計画',
+                model: 'claude-opus-4',
+                status: 'completed',
+                started_at: '2026-06-26T07:00:00.000Z',
+                finished_at: '2026-06-26T07:00:12.400Z',
+                trace_id: 'trace-plan-0001',
+                span_id: 'span-plan-0001',
+              },
+              {
+                phase_key: 'investigate',
+                label: '個別調査',
+                model: 'deepseek-v4-flash',
+                status: 'completed',
+                item: { title: '為替影響の再評価' },
+                item_label: '為替影響の再評価',
+                output: { conclusion: '影響は限定的' },
+                started_at: '2026-06-26T07:00:12.400Z',
+                finished_at: '2026-06-26T07:00:20.500Z',
+                trace_id: 'a1b2c3',
+                span_id: 'd4e5f6',
+              },
+              {
+                phase_key: 'investigate',
+                label: '個別調査',
+                model: 'deepseek-v4-flash',
+                status: 'running',
+                item: { title: '需給要因の点検' },
+                item_label: '需給要因の点検',
+                started_at: '2026-06-26T07:00:20.500Z',
+                trace_id: 'trace-investigate-0002',
+                span_id: 'span-investigate-0002',
+              },
+            ],
+          },
         ),
       )}
     />

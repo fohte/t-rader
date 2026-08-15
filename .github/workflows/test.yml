@@ -243,6 +243,7 @@ jobs:
     needs: detect-changes
     if: >-
       needs.detect-changes.outputs.frontend == 'true' ||
+      needs.detect-changes.outputs.agent == 'true' ||
       needs.detect-changes.outputs.workflow == 'true'
     runs-on: ubuntu-latest
     steps:

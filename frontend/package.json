@@ -25,7 +25,7 @@
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
     "@types/mdast": "4.0.4",
-    "@types/node": "25.2.3",
+    "@types/node": "24.13.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.2.0",
@@ -58,7 +58,8 @@
     "react-error-boundary": "6.1.2",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
-    "tailwind-merge": "3.6.0"
+    "tailwind-merge": "3.6.0",
+    "yaml": "2.9.0"
   },
   "imports": {
     "#*.css": "./src/*.css",

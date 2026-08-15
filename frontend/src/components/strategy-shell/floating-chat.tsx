@@ -12,8 +12,16 @@ import {
   type FloatingChatStatus,
   FloatingChatView,
 } from '#components/strategy-shell/floating-chat-view'
+import {
+  isTaskStep,
+  parseAgentGraphPhases,
+  type TaskStep,
+} from '#components/strategy-shell/task-execution-tree'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 import { $api } from '#lib/api/client'
+
+const TRACE_URL_TEMPLATE: string | undefined = import.meta.env
+  .VITE_TRACE_URL_TEMPLATE
 
 const POLL_INTERVAL_MS = 2000
 // ノート紐付けは現状 created_at の比較で代替している。client 時刻が backend に
@@ -82,6 +90,19 @@ export function FloatingChat(): React.ReactElement {
 
   const phase = taskQuery.data?.phase ?? null
   const isCompleted = phase === 'completed'
+
+  const steps = readTaskSteps(taskQuery.data?.steps)
+
+  const agentGraphQuery = $api.useQuery(
+    'get',
+    '/api/strategies/{id}/agent-graph',
+    { params: { path: { id: strategyId ?? '' } } },
+    { enabled: strategyId != null && currentTask != null },
+  )
+  const configPhases = useMemo(
+    () => parseAgentGraphPhases(agentGraphQuery.data?.content ?? ''),
+    [agentGraphQuery.data?.content],
+  )
 
   // 完了直後にノート一覧が古いまま残ると新規ノートが見えないため、
   // 完了タイミングでキャッシュを破棄して再取得を促す。
@@ -156,6 +177,9 @@ export function FloatingChat(): React.ReactElement {
       input={input}
       status={status}
       notes={generatedNotes}
+      steps={steps}
+      configPhases={configPhases}
+      traceUrlTemplate={TRACE_URL_TEMPLATE}
       onOpen={() => {
         openFloatingChat()
       }}
@@ -199,6 +223,10 @@ function computeStatus({
   // 見せると一瞬「未投入」表示にチラつくため pending として継続表示する。
   if (hasCurrentTask) return { kind: 'polling', phase: 'pending' }
   return { kind: 'idle' }
+}
+
+function readTaskSteps(steps: unknown): TaskStep[] {
+  return Array.isArray(steps) ? steps.filter(isTaskStep) : []
 }
 
 function formatSubmitError(err: unknown): string {
