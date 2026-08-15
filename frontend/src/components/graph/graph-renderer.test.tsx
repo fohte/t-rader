@@ -113,22 +113,28 @@ describe('GraphRenderer', () => {
     },
   )
 
-  it('hover した node の 1 hop 隣接ノードだけハイライトし、mouseLeave で元に戻す', () => {
-    const def: GraphDef = {
-      id: 'g-hover',
-      layout: 'flow',
-      nodes: [
-        { id: 'a', label: 'A' },
-        { id: 'b', label: 'B' },
-        { id: 'c', label: 'C' },
-      ],
-      edges: [{ source: 'a', target: 'b' }],
-    }
-    render(<GraphRenderer def={def} />)
+  const HOVER_DEF: GraphDef = {
+    id: 'g-hover',
+    layout: 'flow',
+    nodes: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+      { id: 'c', label: 'C' },
+    ],
+    edges: [{ source: 'a', target: 'b' }],
+  }
 
-    const nodeA = screen.getByText('A').closest('.react-flow__node')
-    const nodeB = screen.getByText('B').closest('.react-flow__node')
-    const nodeC = screen.getByText('C').closest('.react-flow__node')
+  function renderHoverNodes() {
+    render(<GraphRenderer def={HOVER_DEF} />)
+    return {
+      nodeA: screen.getByText('A').closest('.react-flow__node'),
+      nodeB: screen.getByText('B').closest('.react-flow__node'),
+      nodeC: screen.getByText('C').closest('.react-flow__node'),
+    }
+  }
+
+  it('hover した node の 1 hop 隣接ノードだけハイライトする', () => {
+    const { nodeA, nodeB, nodeC } = renderHoverNodes()
     expect(nodeA).not.toBeNull()
     expect(nodeB).not.toBeNull()
     expect(nodeC).not.toBeNull()
@@ -142,11 +148,53 @@ describe('GraphRenderer', () => {
     expect(nodeB).not.toHaveClass('opacity-30')
     expect(nodeC).toHaveClass('opacity-30', 'transition-opacity')
     expect(nodeC).not.toHaveClass('opacity-100')
+  })
 
+  it('mouseLeave で元のハイライトに戻す', () => {
+    const { nodeA, nodeB, nodeC } = renderHoverNodes()
+    expect(nodeA).not.toBeNull()
+    expect(nodeB).not.toBeNull()
+    expect(nodeC).not.toBeNull()
+    if (nodeA == null || nodeB == null || nodeC == null) return
+
+    fireEvent.mouseEnter(nodeA)
     fireEvent.mouseLeave(nodeA)
     expect(nodeA).toHaveClass('opacity-100')
     expect(nodeB).toHaveClass('opacity-100')
     expect(nodeC).toHaveClass('opacity-100')
     expect(nodeC).not.toHaveClass('opacity-30')
+  })
+
+  it('scatter layout の背景ノードは pointer-events-none で hover 判定から除外される', () => {
+    const def: GraphDef = {
+      id: 'g-scatter-hover',
+      layout: 'scatter',
+      nodes: [
+        { id: 'a', label: '点A', x: 10, y: 20 },
+        { id: 'b', label: '点B', x: 80, y: 90 },
+      ],
+      edges: [],
+    }
+    render(<GraphRenderer def={def} />)
+
+    const background = document.querySelector(
+      '.react-flow__node-graphScatterBackground',
+    )
+    const nodeA = screen.getByText('点A').closest('.react-flow__node')
+    const nodeB = screen.getByText('点B').closest('.react-flow__node')
+    expect(background).not.toBeNull()
+    expect(nodeA).not.toBeNull()
+    expect(nodeB).not.toBeNull()
+    if (background == null || nodeA == null || nodeB == null) return
+
+    expect(background).toHaveClass('pointer-events-none')
+
+    // データノードが無い領域 (= 背景ノード) を hover しても、実データノードは
+    // dim されない (hoveredId が背景ノードの id になってしまうバグの回帰確認)
+    fireEvent.mouseEnter(background)
+    expect(nodeA).toHaveClass('opacity-100')
+    expect(nodeA).not.toHaveClass('opacity-30')
+    expect(nodeB).toHaveClass('opacity-100')
+    expect(nodeB).not.toHaveClass('opacity-30')
   })
 })

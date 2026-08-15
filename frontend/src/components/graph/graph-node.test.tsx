@@ -1,8 +1,8 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { type NodeProps, ReactFlowProvider } from '@xyflow/react'
+import { ReactFlowProvider } from '@xyflow/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { GraphFlowNode } from '#components/graph/flow-types'
+import { buildNodeProps } from '#components/graph/flow-node-props.test-helper'
 import { GraphNodeView } from '#components/graph/graph-node'
 import {
   GraphRenderContextProvider,
@@ -11,23 +11,6 @@ import {
 import type { GraphNode, Layout } from '#components/graph/types'
 
 afterEach(cleanup)
-
-function buildNodeProps(data: GraphNode): NodeProps<GraphFlowNode> {
-  return {
-    id: data.id,
-    data,
-    type: 'graphNode',
-    dragging: false,
-    zIndex: 0,
-    selectable: true,
-    deletable: true,
-    selected: false,
-    draggable: true,
-    isConnectable: true,
-    positionAbsoluteX: 0,
-    positionAbsoluteY: 0,
-  }
-}
 
 // GraphNodeView は内部で Handle (@xyflow/react) を使うため ReactFlowProvider が要る
 function renderNode(
@@ -43,7 +26,7 @@ function renderNode(
   return render(
     <ReactFlowProvider>
       <GraphRenderContextProvider value={value}>
-        <GraphNodeView {...buildNodeProps(data)} />
+        <GraphNodeView {...buildNodeProps(data, 'graphNode')} />
       </GraphRenderContextProvider>
     </ReactFlowProvider>,
   )
