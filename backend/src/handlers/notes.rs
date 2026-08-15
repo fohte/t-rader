@@ -18,6 +18,7 @@ use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::graph::GraphDef;
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
 
@@ -53,13 +54,16 @@ async fn find_note_or_404(
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
 }
 
-/// note_ref を本文から都度 rebuild する: 旧 ref は DELETE で消え、本文に残るものだけ INSERT 復元する
+/// note_ref を本文 + 図から都度 rebuild する: 旧 ref は DELETE で消え、
+/// 本文または graphs[].ref に残るものだけ INSERT 復元する
 async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: Uuid,
     body_md: &str,
+    graphs_json: &serde_json::Value,
 ) -> Result<(), AppError> {
     let mut refs = extract_refs(body_md);
+    refs.extend(extract_graph_refs(graphs_json)?);
     refs.sort();
     refs.dedup();
 
@@ -96,6 +100,15 @@ async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     Ok(())
 }
 
+/// `"kind:id"` 形式の参照トークンを、`ALLOWED_REF_KINDS` に含まれ id が非空の場合のみ許可する
+fn parse_ref_token(token: &str) -> Option<(String, String)> {
+    let (kind, id) = token.split_once(':')?;
+    let kind = kind.trim();
+    let id = id.trim();
+    (ALLOWED_REF_KINDS.contains(&kind) && !id.is_empty())
+        .then(|| (kind.to_string(), id.to_string()))
+}
+
 fn extract_refs(body: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut rest = body;
@@ -103,16 +116,25 @@ fn extract_refs(body: &str) -> Vec<(String, String)> {
         rest = &rest[start + 2..];
         let Some(end) = rest.find("]]") else { break };
         let inner = &rest[..end];
-        if let Some((kind, id)) = inner.split_once(':') {
-            let kind = kind.trim();
-            let id = id.trim();
-            if ALLOWED_REF_KINDS.contains(&kind) && !id.is_empty() {
-                out.push((kind.to_string(), id.to_string()));
-            }
+        if let Some(pair) = parse_ref_token(inner) {
+            out.push(pair);
         }
         rest = &rest[end + 2..];
     }
     out
+}
+
+/// `note.graphs_json` から `nodes[].ref` を集める。書き込み時に `validate_graphs`
+/// を通過済みの値である前提のため、デシリアライズ失敗は AppError として伝播させる
+fn extract_graph_refs(graphs_json: &serde_json::Value) -> Result<Vec<(String, String)>, AppError> {
+    let graphs: Vec<GraphDef> = serde_json::from_value(graphs_json.clone())
+        .map_err(|e| AppError::Validation(format!("invalid graphs_json: {e}")))?;
+    Ok(graphs
+        .iter()
+        .flat_map(|g| g.nodes.iter())
+        .filter_map(|n| n.r#ref.as_deref())
+        .filter_map(parse_ref_token)
+        .collect())
 }
 
 /// ノート一覧
@@ -230,7 +252,7 @@ pub async fn create_note(
         .exec_with_returning(&txn)
         .await?;
 
-    sync_note_refs(&txn, id, &payload.body_md).await?;
+    sync_note_refs(&txn, id, &payload.body_md, &created.graphs_json).await?;
 
     change_history::record(
         &txn,
@@ -325,7 +347,7 @@ pub async fn update_note(
     let txn = state.db.begin().await?;
     let updated = active.update(&txn).await?;
     if let Some(body) = body_changed.as_deref() {
-        sync_note_refs(&txn, id, body).await?;
+        sync_note_refs(&txn, id, body, &updated.graphs_json).await?;
     }
     if !diff.is_empty() {
         change_history::record(
@@ -490,7 +512,10 @@ mod tests {
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
-    use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_strategy};
+    use crate::testing::{
+        create_test_server_with_db, create_test_server_with_db_and_agent_client,
+        insert_test_strategy,
+    };
 
     #[rstest]
     #[case::single("hello [[stock:7203]]", vec![("stock", "7203")])]
@@ -500,6 +525,36 @@ mod tests {
     #[case::empty("", vec![])]
     fn test_extract_refs(#[case] body: &str, #[case] expected: Vec<(&str, &str)>) {
         let got = extract_refs(body);
+        let got: Vec<(&str, &str)> = got.iter().map(|(k, i)| (k.as_str(), i.as_str())).collect();
+        assert_eq!(got, expected);
+    }
+
+    fn graph_json_with_node_ref(node_ref: Value) -> Value {
+        json!([{
+            "id": "g1",
+            "layout": "flow",
+            "title": null,
+            "nodes": [{
+                "id": "n1",
+                "label": "ASML",
+                "ref": node_ref,
+                "value": null,
+                "cite": null,
+                "parent": null,
+                "x": null,
+                "y": null,
+            }],
+            "edges": [],
+        }])
+    }
+
+    #[rstest]
+    #[case::with_ref(graph_json_with_node_ref(json!("stock:ASML")), vec![("stock", "ASML")])]
+    #[case::no_ref(graph_json_with_node_ref(Value::Null), vec![])]
+    #[case::unknown_kind_ignored(graph_json_with_node_ref(json!("foo:bar")), vec![])]
+    #[case::empty(json!([]), vec![])]
+    fn test_extract_graph_refs(#[case] graphs_json: Value, #[case] expected: Vec<(&str, &str)>) {
+        let got = extract_graph_refs(&graphs_json).unwrap();
         let got: Vec<(&str, &str)> = got.iter().map(|(k, i)| (k.as_str(), i.as_str())).collect();
         assert_eq!(got, expected);
     }
@@ -632,5 +687,58 @@ mod tests {
 
         let note = find_note_or_404(&db, note_id).await.unwrap();
         assert_eq!(note.status, "unread");
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn sync_note_refs_indexes_refs_from_both_body_and_graphs_without_duplication(
+        pool: PgPool,
+    ) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let note_id = create_test_note(&server, strategy_id, "t").await;
+
+        let graphs_json = json!([{
+            "id": "g1",
+            "layout": "flow",
+            "title": null,
+            "nodes": [
+                {
+                    "id": "n1", "label": "ASML", "ref": "stock:ASML",
+                    "value": null, "cite": null, "parent": null, "x": null, "y": null,
+                },
+                {
+                    "id": "n2", "label": "TSMC", "ref": "stock:7203",
+                    "value": null, "cite": null, "parent": null, "x": null, "y": null,
+                },
+            ],
+            "edges": [],
+        }]);
+
+        sync_note_refs(
+            &db,
+            note_id,
+            "body mentions [[stock:7203]] and [[theme:weak-jpy]]",
+            &graphs_json,
+        )
+        .await
+        .unwrap();
+
+        let mut refs = note_ref::Entity::find()
+            .filter(note_ref::Column::NoteId.eq(note_id))
+            .all(&db)
+            .await
+            .unwrap();
+        refs.sort_by(|a, b| (&a.ref_kind, &a.ref_id).cmp(&(&b.ref_kind, &b.ref_id)));
+
+        assert_eq!(
+            refs.into_iter()
+                .map(|r| (r.ref_kind, r.ref_id))
+                .collect::<Vec<_>>(),
+            vec![
+                ("stock".to_string(), "7203".to_string()),
+                ("stock".to_string(), "ASML".to_string()),
+                ("theme".to_string(), "weak-jpy".to_string()),
+            ],
+        );
     }
 }
