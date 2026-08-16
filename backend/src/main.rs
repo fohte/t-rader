@@ -17,6 +17,7 @@ use backend::data_provider::news::NewsAggregator;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
+use backend::services::litellm_client::LiteLlmClient;
 use clap::Parser;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
@@ -214,6 +215,13 @@ async fn main() -> Result<(), AppError> {
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
+    let litellm_client = LiteLlmClient::from_env();
+    if litellm_client.is_none() {
+        tracing::warn!(
+            "LLM_BASE_URL が未設定のため、litellm client を無効化して起動します (GET /api/agent-models は空配列を返す)"
+        );
+    }
+
     let state = AppState {
         db,
         data_provider,
@@ -222,6 +230,7 @@ async fn main() -> Result<(), AppError> {
         agent_webhook_token: Arc::from(agent_webhook_token),
         kata_executor,
         macro_cache: Some(macro_cache),
+        litellm_client,
     };
 
     let app = create_router(state);
