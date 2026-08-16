@@ -53,6 +53,9 @@ function TaskRunPage() {
     { params: { query: { strategy_id: id } } },
     { enabled: task != null },
   )
+  // floating-chat.tsx の generatedNotes とは別実装。あちらはクライアント時刻起点 +
+  // skew 許容 (継続中タスクの投入直後を拾うため)。ここは backend が確定させた
+  // created_at/updated_at のみで完結する境界指定で足りる。
   const generatedNotesCount = useMemo(() => {
     if (task == null) return 0
     return (notesQuery.data ?? []).filter(

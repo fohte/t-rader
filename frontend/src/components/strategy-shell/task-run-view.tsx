@@ -27,8 +27,7 @@ export interface TaskRunViewProps {
   traceUrlTemplate?: string
 }
 
-// `source` はタスクの投入経路を表す固定 enum (backend が定義する)。戦略が自由に定義する
-// セマンティック分類ではないため、ここでのハードコードは許容される。
+// source は backend が定義する投入経路の固定値
 const SOURCE_LABELS: Record<string, string> = {
   'mgmt-mcp': '管理MCP',
   frontend: 'フローティングチャット',
@@ -54,7 +53,7 @@ function formatDateTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : DATE_FORMATTER.format(d)
 }
 
-// 秒未満は切り捨て、分オーダーになりうるため `formatDuration` (秒のみ, 小数第1位まで)
+// 秒未満は四捨五入、分オーダーになりうるため `formatDuration` (秒のみ, 小数第1位まで)
 // とは別に軽量なフォーマッタを用意する。
 function formatElapsed(ms: number): string {
   const totalSec = Math.max(0, Math.round(ms / 1000))
