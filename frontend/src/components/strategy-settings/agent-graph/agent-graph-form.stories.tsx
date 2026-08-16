@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
 
@@ -42,27 +42,40 @@ function Interactive({
   errorPhaseKey?: string | null
 }) {
   const [value, setValue] = useState(initial)
+  const lastEnabledValueRef = useRef(value)
+  useEffect(() => {
+    if (value.trim() !== '') lastEnabledValueRef.current = value
+  }, [value])
   return (
     <AgentGraphForm
       value={value}
       onChange={setValue}
       errorPhaseKey={errorPhaseKey}
+      lastEnabledValueRef={lastEnabledValueRef}
     />
   )
 }
 
 export const ToggleOff: Story = {
-  args: { value: '', onChange: () => {} },
+  args: { value: '', onChange: () => {}, lastEnabledValueRef: { current: '' } },
   render: () => <Interactive initial="" />,
 }
 
 export const ToggleOn: Story = {
-  args: { value: SINGLE_PHASE, onChange: () => {} },
+  args: {
+    value: SINGLE_PHASE,
+    onChange: () => {},
+    lastEnabledValueRef: { current: SINGLE_PHASE },
+  },
   render: () => <Interactive initial={SINGLE_PHASE} />,
 }
 
 export const MultiPhaseWithForEach: Story = {
-  args: { value: MULTI_PHASE_WITH_FOR_EACH, onChange: () => {} },
+  args: {
+    value: MULTI_PHASE_WITH_FOR_EACH,
+    onChange: () => {},
+    lastEnabledValueRef: { current: MULTI_PHASE_WITH_FOR_EACH },
+  },
   render: () => <Interactive initial={MULTI_PHASE_WITH_FOR_EACH} />,
 }
 
@@ -71,6 +84,7 @@ export const WithError: Story = {
     value: MULTI_PHASE_WITH_FOR_EACH,
     onChange: () => {},
     errorPhaseKey: 'investigate',
+    lastEnabledValueRef: { current: MULTI_PHASE_WITH_FOR_EACH },
   },
   render: () => (
     <Interactive

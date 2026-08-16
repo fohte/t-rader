@@ -28,6 +28,7 @@ export function PhaseCard({
   children,
 }: PhaseCardProps) {
   const forEachField = phase.forEach?.split('.')[1]
+  const hasValidForEach = phase.forEach != null && forEachField != null
 
   const card = (
     <div
@@ -79,9 +80,9 @@ export function PhaseCard({
         </div>
       </div>
 
-      {phase.forEach != null && (
+      {hasValidForEach && (
         <div className="mt-1 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-          {referencedLabel ?? phase.forEach.split('.')[0]} が返す{' '}
+          {referencedLabel ?? phase.forEach?.split('.')[0]} が返す{' '}
           <span className="text-[color:var(--color-text-secondary)]">
             {forEachField}[]
           </span>{' '}

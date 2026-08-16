@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
@@ -29,11 +29,16 @@ function Controlled({
   errorPhaseKey?: string | null
 }) {
   const [value, setValue] = useState(initial)
+  const lastEnabledValueRef = useRef(value)
+  useEffect(() => {
+    if (value.trim() !== '') lastEnabledValueRef.current = value
+  }, [value])
   return (
     <AgentGraphForm
       value={value}
       onChange={setValue}
       errorPhaseKey={errorPhaseKey}
+      lastEnabledValueRef={lastEnabledValueRef}
     />
   )
 }

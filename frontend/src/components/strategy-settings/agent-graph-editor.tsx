@@ -37,6 +37,14 @@ export function AgentGraphEditor({
     lastInitialValueRef.current = initialValue
   }, [initialValue, value])
 
+  // フェーズ分割 off (空文字列) にする直前の内容を覚えておき、on に戻したとき復元する。
+  // AgentGraphForm 側に持たせるとフォーム/YAML ビュー切替のたびにアンマウントされて失われるため、
+  // ビュー切替を跨いで生き続けるこのコンポーネントで保持する
+  const lastEnabledValueRef = useRef(value)
+  useEffect(() => {
+    if (value.trim() !== '') lastEnabledValueRef.current = value
+  }, [value])
+
   useEffect(() => {
     if (!dirty) return
     function handler(e: BeforeUnloadEvent) {
@@ -116,6 +124,7 @@ export function AgentGraphEditor({
           value={value}
           onChange={setValue}
           errorPhaseKey={errorPhaseKey}
+          lastEnabledValueRef={lastEnabledValueRef}
         />
       ) : (
         <CodeEditor

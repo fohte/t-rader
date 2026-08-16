@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import type { RefObject } from 'react'
 
 import {
   addPhase,
@@ -18,19 +18,21 @@ interface AgentGraphFormProps {
   onChange: (next: string) => void
   /** 保存失敗時、原因になったフェーズの key (save-error.ts で抽出したもの) */
   errorPhaseKey?: string | null
+  /**
+   * フェーズ分割 off (空文字列) にする直前の内容。on に戻したとき復元する。
+   * ビュー切替 (フォーム ⇔ YAML) を跨いでも失われないよう、呼び出し側 (AgentGraphEditor) に
+   * 保持させる
+   */
+  lastEnabledValueRef: RefObject<string>
 }
 
 export function AgentGraphForm({
   value,
   onChange,
   errorPhaseKey = null,
+  lastEnabledValueRef,
 }: AgentGraphFormProps) {
   const enabled = value.trim() !== ''
-  // フェーズ分割 off (空文字列) にする直前の内容を覚えておき、on に戻したとき復元する
-  const lastEnabledValueRef = useRef(value)
-  useEffect(() => {
-    if (enabled) lastEnabledValueRef.current = value
-  }, [enabled, value])
 
   const phases = parseAgentGraphPhases(value) ?? []
   const labelByKey = new Map(phases.map((p) => [p.key, p.label]))

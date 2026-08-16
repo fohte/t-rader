@@ -107,7 +107,8 @@ describe('AgentGraphTab', () => {
     setup({ content: 'old' })
 
     const editor = await expectEditorValue('old')
-    await user.clear(editor)
+    // clear() で一時的に空文字列を経由すると「フェーズ分割 off」の正当な値として
+    // フォームビューに切り替わり YAML エディタが外れてしまうため、末尾に追記する
     await user.type(editor, 'updated')
 
     expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
@@ -138,7 +139,8 @@ describe('AgentGraphTab', () => {
     )
 
     const editor = await expectEditorValue('old')
-    await user.clear(editor)
+    // clear() で一時的に空文字列を経由すると「フェーズ分割 off」の正当な値として
+    // フォームビューに切り替わり YAML エディタが外れてしまうため、末尾に追記する
     await user.type(editor, 'broken')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
