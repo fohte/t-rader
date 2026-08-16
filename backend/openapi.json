@@ -9,6 +9,27 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/agent-models": {
+      "get": {
+        "tags": [
+          "agent_options"
+        ],
+        "summary": "戦略 Agent 設定フォームに供給するモデル一覧を取得する。\nLiteLLM Proxy が未設定、または応答不能な場合は空配列を返す (設定画面全体を壊さないため)。",
+        "operationId": "get_agent_models",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentModelsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agent-tasks/notifications": {
       "post": {
         "tags": [
@@ -44,6 +65,27 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-tools": {
+      "get": {
+        "tags": [
+          "agent_options"
+        ],
+        "summary": "戦略 MCP の tool 一覧を取得する。`#[tool(...)]` の登録情報から動的に組み立てるので、\ntool を追加してもここを手で更新する必要はない。",
+        "operationId": "get_agent_tools",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentToolsResponse"
                 }
               }
             }
@@ -6220,6 +6262,95 @@
         },
         "additionalProperties": false
       },
+      "AgentModel": {
+        "type": "object",
+        "description": "LiteLLM `/model_group/info` の必要フィールドだけを写した 1 モデル分。",
+        "required": [
+          "id",
+          "providers",
+          "supports_reasoning",
+          "supports_web_search"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "max_input_tokens": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "max_output_tokens": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "supports_reasoning": {
+            "type": "boolean"
+          },
+          "supports_web_search": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentModelsResponse": {
+        "type": "object",
+        "description": "`GET /api/agent-models` の戻り値。LiteLLM が未設定/応答不能なら `models` は空配列。",
+        "required": [
+          "models"
+        ],
+        "properties": {
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentModel"
+            }
+          }
+        }
+      },
+      "AgentTool": {
+        "type": "object",
+        "description": "戦略 MCP の tool 1 件分。",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentToolsResponse": {
+        "type": "object",
+        "description": "`GET /api/agent-tools` の戻り値。",
+        "required": [
+          "tools"
+        ],
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentTool"
+            }
+          }
+        }
+      },
       "AgentsMdBody": {
         "type": "object",
         "required": [
@@ -8734,6 +8865,10 @@
     {
       "name": "rss_feeds",
       "description": "ニュース集約対象の RSS フィード定義"
+    },
+    {
+      "name": "agent_options",
+      "description": "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"
     }
   ]
 }

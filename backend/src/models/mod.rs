@@ -1,3 +1,4 @@
+pub mod agent_options;
 pub mod annotation;
 pub mod bar;
 pub mod comment;
@@ -13,6 +14,7 @@ pub mod trade;
 pub mod trigger;
 pub mod watchlist;
 
+pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 pub use annotation::{CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar::{Bar, Timeframe};
 pub use comment::{CreateCommentRequest, UpdateCommentRequest};
