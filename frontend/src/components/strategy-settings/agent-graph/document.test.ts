@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parseDocument, Scalar } from 'yaml'
 
 import {
   addPhase,
@@ -89,16 +90,39 @@ describe('setPhaseField', () => {
   it('指定したフェーズのフィールドだけを書き換え、他はそのまま残す', () => {
     const next = setPhaseField(SAMPLE, 0, 'model', 'claude-sonnet-4')
     expect(parseAgentGraphPhases(next)).toEqual([
-      expect.objectContaining({ key: 'plan', model: 'claude-sonnet-4' }),
-      expect.objectContaining({ key: 'investigate' }),
+      {
+        key: 'plan',
+        label: '調査計画',
+        model: 'claude-sonnet-4',
+        prompt: '仮説を立てよ',
+        forEach: undefined,
+        labelField: undefined,
+        maxParallel: undefined,
+        skills: [],
+        tools: [],
+        output: {},
+      },
+      {
+        key: 'investigate',
+        label: '仮説の調査',
+        model: 'deepseek-v4-flash',
+        prompt: '割り当てられた仮説を検証せよ',
+        forEach: 'plan.hypotheses',
+        labelField: 'title',
+        maxParallel: 4,
+        skills: [],
+        tools: ['query_data', 'write_note'],
+        output: {},
+      },
     ])
-    // runs は素通しされたままであること
-    expect(next).toContain('runs: once')
+    // runs はフォームの型には出ないが、YAML 上は素通しされたままであること
+    expect(parseDocument(next).getIn(['phases', 0, 'runs'])).toBe('once')
   })
 
   it('改行を含む prompt を block literal として書き込む', () => {
     const next = setPhaseField(SAMPLE, 0, 'prompt', 'line1\nline2')
-    expect(next).toContain('prompt: |-')
+    const node = parseDocument(next).getIn(['phases', 0, 'prompt'], true)
+    expect(node instanceof Scalar && node.type).toBe(Scalar.BLOCK_LITERAL)
     expect(parseAgentGraphPhases(next)?.[0]?.prompt).toBe('line1\nline2')
   })
 })
@@ -132,7 +156,18 @@ describe('removePhase', () => {
   it('指定 index のフェーズを取り除く', () => {
     const next = removePhase(SAMPLE, 0)
     expect(parseAgentGraphPhases(next)).toEqual([
-      expect.objectContaining({ key: 'investigate' }),
+      {
+        key: 'investigate',
+        label: '仮説の調査',
+        model: 'deepseek-v4-flash',
+        prompt: '割り当てられた仮説を検証せよ',
+        forEach: 'plan.hypotheses',
+        labelField: 'title',
+        maxParallel: 4,
+        skills: [],
+        tools: ['query_data', 'write_note'],
+        output: {},
+      },
     ])
   })
 })

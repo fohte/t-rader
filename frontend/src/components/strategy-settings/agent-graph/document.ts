@@ -46,9 +46,10 @@ function toPhaseForm(v: unknown): AgentGraphPhaseForm | null {
 
 /**
  * agent_graph の YAML から編集対象のフェーズ一覧を取り出す。
- * 構文エラー、または各フェーズが key/label/model/prompt を string で持たない (フォームで
- * 扱えない形の) 場合は null を返す。呼び出し側はこれを「フォーム表示不可、YAML ビューに
- * フォールバック」の合図として使う。
+ * 構文エラー、`phases` がトップレベルに存在し配列であることを満たさない場合、または
+ * 各フェーズが key/label/model/prompt を string で持たない (フォームで扱えない形の)
+ * 場合は null を返す。呼び出し側はこれを「フォーム表示不可、YAML ビューにフォールバック」
+ * の合図として使う。
  *
  * 空文字列 (フェーズ分割 off) は空配列を返す。
  */
@@ -158,7 +159,7 @@ export function movePhase(
   })
 }
 
-/** 「+ フェーズを追加」で phases が空の状態からトグルを on にするときの初期テンプレート。 */
+/** フェーズ分割トグルを空の状態から on にするときの初期テンプレート。 */
 export const DEFAULT_AGENT_GRAPH_YAML = `phases:
   - key: phase-1
     label: 新しいフェーズ
