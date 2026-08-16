@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+  '/api/agent-models': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 戦略 Agent 設定フォームに供給するモデル一覧を取得する。
+     *     LiteLLM Proxy が未設定、または応答不能な場合は空配列を返す (設定画面全体を壊さないため)。
+     */
+    get: operations['get_agent_models']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/agent-tasks/notifications': {
     parameters: {
       query?: never
@@ -15,6 +35,26 @@ export interface paths {
     put?: never
     /** t-rader-agent からの push notification を受信する。 */
     post: operations['receive_agent_task_notification']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/agent-tools': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 戦略 MCP の tool 一覧を取得する。`#[tool(...)]` の登録情報から動的に組み立てるので、
+     *     tool を追加してもここを手で更新する必要はない。
+     */
+    get: operations['get_agent_tools']
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1073,6 +1113,30 @@ export interface components {
     AgentGraphBody: {
       content: string
     }
+    /** @description LiteLLM `/model_group/info` の必要フィールドだけを写した 1 モデル分。 */
+    AgentModel: {
+      id: string
+      /** Format: double */
+      max_input_tokens?: number | null
+      /** Format: double */
+      max_output_tokens?: number | null
+      providers: string[]
+      supports_reasoning: boolean
+      supports_web_search: boolean
+    }
+    /** @description `GET /api/agent-models` の戻り値。LiteLLM が未設定/応答不能なら `models` は空配列。 */
+    AgentModelsResponse: {
+      models: components['schemas']['AgentModel'][]
+    }
+    /** @description 戦略 MCP の tool 1 件分。 */
+    AgentTool: {
+      description?: string | null
+      name: string
+    }
+    /** @description `GET /api/agent-tools` の戻り値。 */
+    AgentToolsResponse: {
+      tools: components['schemas']['AgentTool'][]
+    }
     AgentsMdBody: {
       content: string
     }
@@ -1802,6 +1866,25 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
+  get_agent_models: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentModelsResponse']
+        }
+      }
+    }
+  }
   receive_agent_task_notification: {
     parameters: {
       query?: never
@@ -1838,6 +1921,25 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_agent_tools: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentToolsResponse']
         }
       }
     }

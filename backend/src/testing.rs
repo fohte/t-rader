@@ -41,6 +41,7 @@ fn base_state(db: DatabaseConnection) -> AppState {
         agent_webhook_token: Arc::from(TEST_AGENT_WEBHOOK_TOKEN),
         kata_executor: None,
         macro_cache: None,
+        litellm_client: None,
     }
 }
 
@@ -161,6 +162,18 @@ pub async fn create_test_server_with_kata(
     let db = create_test_db(pool).await;
     let mut state = base_state(db);
     state.kata_executor = Some(executor);
+    let router = create_router(state);
+    TestServer::new(router).expect("failed to create test server")
+}
+
+/// litellm_client を差し替えて TestServer を作成する
+pub async fn create_test_server_with_litellm(pool: PgPool, litellm_base_url: &str) -> TestServer {
+    let db = create_test_db(pool).await;
+    let mut state = base_state(db);
+    state.litellm_client = Some(
+        crate::services::litellm_client::LiteLlmClient::new(litellm_base_url, None)
+            .expect("build litellm client"),
+    );
     let router = create_router(state);
     TestServer::new(router).expect("failed to create test server")
 }

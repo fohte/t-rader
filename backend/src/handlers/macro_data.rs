@@ -168,6 +168,7 @@ mod tests {
             agent_webhook_token: std::sync::Arc::from("test-token"),
             kata_executor: None,
             macro_cache,
+            litellm_client: None,
         };
         create_router(state)
     }
