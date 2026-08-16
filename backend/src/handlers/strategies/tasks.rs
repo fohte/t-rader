@@ -168,6 +168,15 @@ mod tests {
         create_test_server, create_test_server_with_db, create_test_server_with_db_and_agent_client,
     };
 
+    /// JSON body から動的フィールド (created_at/updated_at) を除去し、
+    /// 単一の assert_eq! で残りのフィールドを比較できるようにする。
+    fn strip_timestamps(v: &mut serde_json::Value) {
+        if let Some(obj) = v.as_object_mut() {
+            obj.remove("created_at");
+            obj.remove("updated_at");
+        }
+    }
+
     async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
@@ -344,13 +353,10 @@ mod tests {
             .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))
             .await;
         res.assert_status_ok();
-        let body: serde_json::Value = res.json();
-        let mut normalized = body.clone();
-        let obj = normalized.as_object_mut().unwrap();
-        obj.remove("created_at");
-        obj.remove("updated_at");
+        let mut body: serde_json::Value = res.json();
+        strip_timestamps(&mut body);
         assert_eq!(
-            normalized,
+            body,
             json!({
                 "task_id": task_id,
                 "strategy_id": strategy_id,
@@ -429,11 +435,7 @@ mod tests {
             .await;
         res.assert_status_ok();
         let mut body: Vec<serde_json::Value> = res.json();
-        for item in &mut body {
-            let obj = item.as_object_mut().unwrap();
-            obj.remove("created_at");
-            obj.remove("updated_at");
-        }
+        body.iter_mut().for_each(strip_timestamps);
         assert_eq!(
             body,
             vec![
@@ -486,9 +488,7 @@ mod tests {
             .await;
         res.assert_status_ok();
         let mut body: Vec<serde_json::Value> = res.json();
-        let obj = body[0].as_object_mut().unwrap();
-        obj.remove("created_at");
-        obj.remove("updated_at");
+        body.iter_mut().for_each(strip_timestamps);
         assert_eq!(
             body,
             vec![json!({
