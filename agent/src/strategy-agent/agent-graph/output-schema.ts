@@ -22,20 +22,16 @@ export interface ObjectJsonSchema {
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((v) => typeof v === 'string')
 
-// `output` の規約: フィールド名 -> スキーマ断片のマップ。`items` も
-// オブジェクト配列要素では同じ規約 (フィールド名 -> スキーマ断片のマップ +
-// 同階層の `required` キー) に従い、プリミティブ配列要素の場合はそれ自体が
-// スキーマ断片そのもの (例: `{ type: string }`) になる。
-//
-// `required` は予約された同階層キー: フェーズの `output` (やオブジェクトの
-// `items` マップ) は `required` という名前のフィールドを定義できない —
-// プロパティにはならず `required` 配列に吸収されてしまう。
+// `required` はフィールド名 -> スキーマ断片のマップを値として持つキー
+// (フェーズの `output` 自身、または配列フィールドの `items`) と同階層に置く
+// 予約キー。マップの値そのものではなく、そのマップを保持するキーの兄弟として
+// 渡ってくるため、`fieldsMap` の外から引数で受け取る。
 const toObjectSchema = (
-  propsMap: Readonly<Record<string, unknown>>,
+  fieldsMap: Readonly<Record<string, unknown>>,
+  required: unknown,
 ): ObjectJsonSchema => {
-  const { required, ...fields } = propsMap
   const properties: Record<string, JsonSchemaObject> = {}
-  for (const [name, fieldSchema] of Object.entries(fields)) {
+  for (const [name, fieldSchema] of Object.entries(fieldsMap)) {
     properties[name] = toFieldSchema(fieldSchema)
   }
   return {
@@ -47,21 +43,24 @@ const toObjectSchema = (
 
 const toFieldSchema = (fieldSchema: unknown): JsonSchemaObject => {
   if (!isPlainObject(fieldSchema)) return {}
-  const { items, ...rest } = fieldSchema
+  const { items, required, ...rest } = fieldSchema
   if (items === undefined) return rest
-  return { ...rest, items: toItemsSchema(items) }
+  return { ...rest, items: toItemsSchema(items, required) }
 }
 
-const toItemsSchema = (items: unknown): JsonSchemaObject => {
+const toItemsSchema = (items: unknown, required: unknown): JsonSchemaObject => {
   if (!isPlainObject(items)) return {}
   // プリミティブ配列要素のスキーマ (例: `{ type: string }`) は自身の `type`
   // を持つが、オブジェクト配列要素のスキーマはフィールド名 -> スキーマ断片の
   // マップであり、`type` キー自体は持たない。
   return typeof items['type'] === 'string'
     ? toFieldSchema(items)
-    : toObjectSchema(items)
+    : toObjectSchema(items, required)
 }
 
 export const buildOutputJsonSchema = (
   output: Readonly<Record<string, unknown>>,
-): ObjectJsonSchema => toObjectSchema(output)
+): ObjectJsonSchema => {
+  const { required, ...fields } = output
+  return toObjectSchema(fields, required)
+}

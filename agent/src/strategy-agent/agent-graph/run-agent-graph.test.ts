@@ -188,6 +188,50 @@ describe('runAgentGraph', () => {
     })
   })
 
+  it('passes through every tool when the phase omits tools', async () => {
+    let capturedOptions: BuildPhaseAgentOptions | undefined
+    let chatModelReturnValue: BaseChatModel | undefined
+    const deps: RunAgentGraphDeps = {
+      createChatModel: () => {
+        const model = new FakeChatModel({})
+        chatModelReturnValue = model
+        return model
+      },
+      buildPhaseAgent: (options): CompiledPhaseAgent => {
+        capturedOptions = options
+        return { invoke: () => Promise.resolve({ structuredResponse: {} }) }
+      },
+    }
+    const toolA = buildFakeTool('tool_a')
+    const toolB = buildFakeTool('tool_b')
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'p',
+          label: 'P',
+          model: 'm',
+          prompt: 'do p',
+          skills: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [toolA, toolB],
+      originalPromptText: 'req',
+    })
+
+    expect(capturedOptions).toEqual({
+      model: chatModelReturnValue,
+      tools: [toolA, toolB],
+      systemPrompt: 'AGENTS',
+      responseSchema: { type: 'object', properties: {} },
+    })
+  })
+
   it('caps for_each concurrency at max_parallel', async () => {
     let active = 0
     let maxActive = 0
@@ -347,10 +391,12 @@ describe('runAgentGraph', () => {
     expect(attempts).toBe(1)
   })
 
-  it('fails when for_each references a field that is not an array', async () => {
-    const { deps } = buildDeps(() =>
-      Promise.resolve({ structuredResponse: { value: 'not-an-array' } }),
-    )
+  it('retries and then fails the source phase when for_each references a field that never becomes an array', async () => {
+    let attempts = 0
+    const { deps } = buildDeps(() => {
+      attempts++
+      return Promise.resolve({ structuredResponse: { value: 'not-an-array' } })
+    })
     const config: AgentGraphConfig = {
       phases: [
         {
@@ -385,9 +431,107 @@ describe('runAgentGraph', () => {
     expect(result).toEqual({
       status: 'failed',
       message:
-        'フェーズ「Work」(work) の実行に失敗しました: for_each の参照先 "plan.value" が配列ではありません',
+        "フェーズ「Plan」(plan) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to a non-empty array: value",
       errorKind: 'agent_error',
     })
+    expect(attempts).toBe(3)
+  })
+
+  it('retries and then fails the source phase when for_each references a field that stays an empty array', async () => {
+    let attempts = 0
+    const { deps } = buildDeps(() => {
+      attempts++
+      return Promise.resolve({ structuredResponse: { hypotheses: [] } })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { hypotheses: { type: 'array' } },
+        },
+        {
+          key: 'investigate',
+          label: 'Investigate',
+          model: 'm',
+          prompt: 'do investigate',
+          forEach: 'plan.hypotheses',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message:
+        "フェーズ「Plan」(plan) の実行に失敗しました: agent's structured response did not resolve required for_each field(s) to a non-empty array: hypotheses",
+      errorKind: 'agent_error',
+    })
+    expect(attempts).toBe(3)
+  })
+
+  it('retries the source phase until for_each resolves to a non-empty array, then runs the dependent phase', async () => {
+    let planAttempts = 0
+    const { deps } = buildDeps((call) => {
+      if (call.messageText.includes('do plan')) {
+        planAttempts++
+        return Promise.resolve(
+          planAttempts < 3
+            ? { structuredResponse: { hypotheses: [] } }
+            : { structuredResponse: { hypotheses: [{ title: 'H1' }] } },
+        )
+      }
+      return Promise.resolve({ structuredResponse: {} })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { hypotheses: { type: 'array' } },
+        },
+        {
+          key: 'investigate',
+          label: 'Investigate',
+          model: 'm',
+          prompt: 'do investigate',
+          forEach: 'plan.hypotheses',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '2フェーズの実行が完了しました (Plan → Investigate)',
+    })
+    expect(planAttempts).toBe(3)
   })
 
   it('notifies onStepsChanged with a running step, then a completed step, for a non-for_each phase', async () => {

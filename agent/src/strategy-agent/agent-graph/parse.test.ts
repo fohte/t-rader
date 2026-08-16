@@ -25,7 +25,6 @@ phases:
   - key: plan
     label: 調査計画
     model: claude-opus-4
-    runs: once
     prompt: 仮説を立てよ
     output:
       hypotheses:
@@ -51,7 +50,6 @@ phases:
             model: 'claude-opus-4',
             prompt: '仮説を立てよ',
             skills: [],
-            tools: [],
             output: {
               hypotheses: {
                 type: 'array',
@@ -69,6 +67,45 @@ phases:
             maxParallel: 4,
             skills: [],
             tools: ['query_data', 'write_note'],
+            output: {},
+          },
+        ],
+      }),
+    )
+  })
+
+  it('leaves tools undefined when omitted, distinct from an explicit empty list', () => {
+    const yaml = `
+phases:
+  - key: plan
+    label: 調査計画
+    model: claude-opus-4
+    prompt: 仮説を立てよ
+  - key: synthesize
+    label: 統合
+    model: claude-sonnet-4
+    prompt: まとめよ
+    tools: []
+`
+
+    expect(parseAgentGraph(yaml)).toEqual(
+      ok({
+        phases: [
+          {
+            key: 'plan',
+            label: '調査計画',
+            model: 'claude-opus-4',
+            prompt: '仮説を立てよ',
+            skills: [],
+            output: {},
+          },
+          {
+            key: 'synthesize',
+            label: '統合',
+            model: 'claude-sonnet-4',
+            prompt: 'まとめよ',
+            skills: [],
+            tools: [],
             output: {},
           },
         ],
