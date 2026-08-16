@@ -7,7 +7,13 @@ import {
   parseAgentGraphPhases,
   removePhase,
   setPhaseField,
+  setPhaseForEach,
+  setPhaseLabelField,
+  setPhaseMaxParallel,
 } from '#components/strategy-settings/agent-graph/document'
+import { ForEachField } from '#components/strategy-settings/agent-graph/fields/for-each-field'
+import { LabelFieldField } from '#components/strategy-settings/agent-graph/fields/label-field-field'
+import { MaxParallelField } from '#components/strategy-settings/agent-graph/fields/max-parallel-field'
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
 import { PromptField } from '#components/strategy-settings/agent-graph/fields/prompt-field'
 import { PhaseCard } from '#components/strategy-settings/agent-graph/phase-card'
@@ -98,6 +104,32 @@ export function AgentGraphForm({
                   onChange(setPhaseField(value, i, 'model', next))
                 }}
               />
+              <ForEachField
+                phases={phases}
+                index={i}
+                value={phase.forEach}
+                onChange={(next) => {
+                  onChange(setPhaseForEach(value, i, next))
+                }}
+              />
+              {phase.forEach != null && (
+                <>
+                  <LabelFieldField
+                    phases={phases}
+                    forEach={phase.forEach}
+                    value={phase.labelField}
+                    onChange={(next) => {
+                      onChange(setPhaseLabelField(value, i, next))
+                    }}
+                  />
+                  <MaxParallelField
+                    value={phase.maxParallel}
+                    onChange={(next) => {
+                      onChange(setPhaseMaxParallel(value, i, next))
+                    }}
+                  />
+                </>
+              )}
               <PromptField
                 value={phase.prompt}
                 onChange={(next) => {

@@ -12,10 +12,17 @@ const SAMPLE = `phases:
     label: 調査計画
     model: claude-opus-4
     prompt: 仮説を立てよ
+    output:
+      hypotheses:
+        type: array
+        items:
+          title: { type: string }
   - key: investigate
     label: 仮説の調査
     model: deepseek-v4-flash
     for_each: plan.hypotheses
+    label_field: title
+    max_parallel: 4
     prompt: 割り当てられた仮説を検証せよ
 `
 
@@ -135,5 +142,30 @@ describe('AgentGraphForm', () => {
   it('for_each を持つフェーズは参照元フェーズの label を説明文に使う', () => {
     render(<Controlled initial={SAMPLE} />)
     expect(screen.getByText(/調査計画 が返す/)).toBeInTheDocument()
+  })
+
+  it('for_each を持たないフェーズにはノード名・並列上限を表示しない', () => {
+    render(<Controlled initial={SAMPLE} />)
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+    expect(planCard.queryByLabelText('ノード名')).toBeNull()
+    expect(planCard.queryByLabelText('並列上限')).toBeNull()
+  })
+
+  it('for_each を持つフェーズにはノード名・並列上限を表示し、既存の値を反映する', () => {
+    render(<Controlled initial={SAMPLE} />)
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
+    expect(investigateCard.getByLabelText('実行回数')).toBeInTheDocument()
+    expect(investigateCard.getByLabelText('ノード名')).toBeInTheDocument()
+    expect(investigateCard.getByLabelText('並列上限')).toHaveValue(4)
+  })
+
+  it('並列上限を編集すると値に反映される', async () => {
+    const user = userEvent.setup()
+    render(<Controlled initial={SAMPLE} />)
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
+    const maxParallelInput = investigateCard.getByLabelText('並列上限')
+    await user.clear(maxParallelInput)
+    await user.type(maxParallelInput, '8')
+    expect(maxParallelInput).toHaveValue(8)
   })
 })

@@ -120,6 +120,58 @@ export function setPhaseField(
   })
 }
 
+// for_each / label_field は空にすると「未設定」を意味する省略可能フィールドなので、
+// 空文字列ではなくキー自体を消す (model/prompt と違い required ではない)。
+function setOptionalStringField(
+  doc: Document,
+  map: unknown,
+  field: string,
+  value: string | undefined,
+) {
+  if (!isMap(map)) return
+  if (value == null) {
+    map.delete(field)
+    return
+  }
+  setStringField(doc, map, field, value)
+}
+
+export function setPhaseForEach(
+  yamlText: string,
+  index: number,
+  forEach: string | undefined,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    setOptionalStringField(doc, seq.items[index], 'for_each', forEach)
+  })
+}
+
+export function setPhaseLabelField(
+  yamlText: string,
+  index: number,
+  labelField: string | undefined,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    setOptionalStringField(doc, seq.items[index], 'label_field', labelField)
+  })
+}
+
+export function setPhaseMaxParallel(
+  yamlText: string,
+  index: number,
+  maxParallel: number | undefined,
+): string {
+  return withDocument(yamlText, (_doc, seq) => {
+    const map = seq.items[index]
+    if (!isMap(map)) return
+    if (maxParallel == null) {
+      map.delete('max_parallel')
+      return
+    }
+    map.set('max_parallel', maxParallel)
+  })
+}
+
 function nextPhaseKey(existing: string[]): string {
   let n = existing.length + 1
   while (existing.includes(`phase-${String(n)}`)) n++

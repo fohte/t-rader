@@ -26,6 +26,9 @@ const MULTI_PHASE_WITH_FOR_EACH = `phases:
     output:
       hypotheses:
         type: array
+        items:
+          title: { type: string }
+          rationale: { type: string }
   - key: investigate
     label: 仮説の調査
     model: deepseek-v4-flash
