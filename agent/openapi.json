@@ -26,7 +26,10 @@
                     "minLength": 1
                   }
                 },
-                "required": ["strategy_id", "prompt"]
+                "required": [
+                  "strategy_id",
+                  "prompt"
+                ]
               }
             }
           }
@@ -43,7 +46,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["task_id"]
+                  "required": [
+                    "task_id"
+                  ]
                 }
               }
             }
@@ -59,7 +64,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["error"]
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
@@ -79,7 +86,10 @@
                       "items": {}
                     }
                   },
-                  "required": ["error", "issues"]
+                  "required": [
+                    "error",
+                    "issues"
+                  ]
                 }
               }
             }
@@ -95,7 +105,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["error"]
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
@@ -140,7 +152,10 @@
                       "items": {}
                     }
                   },
-                  "required": ["task_id", "state"]
+                  "required": [
+                    "task_id",
+                    "state"
+                  ]
                 }
               }
             }
@@ -156,7 +171,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["error"]
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
@@ -172,7 +189,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["error"]
+                  "required": [
+                    "error"
+                  ]
                 }
               }
             }
