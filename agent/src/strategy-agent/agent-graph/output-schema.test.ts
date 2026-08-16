@@ -10,7 +10,7 @@ describe('buildOutputJsonSchema', () => {
     })
   })
 
-  it('builds an object array field with a nested required list and a primitive array sub-field', () => {
+  it('builds an object array field with required as a sibling of items, and a primitive array sub-field', () => {
     const output = {
       hypotheses: {
         type: 'array',
@@ -23,8 +23,8 @@ describe('buildOutputJsonSchema', () => {
             description: '棄却できる観測',
             items: { type: 'string' },
           },
-          required: ['title', 'rationale'],
         },
+        required: ['title', 'rationale'],
       },
     }
 
@@ -55,6 +55,23 @@ describe('buildOutputJsonSchema', () => {
           },
         },
       },
+    })
+  })
+
+  it('applies a top-level required list sibling to the output fields themselves', () => {
+    const output = {
+      verdict: { type: 'string' },
+      summary: { type: 'string' },
+      required: ['verdict'],
+    }
+
+    expect(buildOutputJsonSchema(output)).toEqual({
+      type: 'object',
+      properties: {
+        verdict: { type: 'string' },
+        summary: { type: 'string' },
+      },
+      required: ['verdict'],
     })
   })
 

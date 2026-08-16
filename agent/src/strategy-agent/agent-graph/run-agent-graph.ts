@@ -116,9 +116,12 @@ const createPhaseAgent = (
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
 ): CompiledPhaseAgent => {
-  const filteredTools = context.tools.filter((tool) =>
-    phase.tools.includes(tool.name),
-  )
+  // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
+  const { tools: phaseTools } = phase
+  const filteredTools =
+    phaseTools === undefined
+      ? context.tools
+      : context.tools.filter((tool) => phaseTools.includes(tool.name))
   const filteredSkills: Record<string, string> = {}
   for (const name of phase.skills) {
     const body = context.skills[name]
@@ -158,13 +161,48 @@ export const buildPhaseMessageText = (input: {
   return sections.join('\n\n---\n\n')
 }
 
+// for_each の形式 ("<key>.<field>") は backend が PUT 時にバリデーション
+// 済みのため、ここでは検証を伴わない単純な最初の "." での分割で済ませる。
+const splitForEach = (forEach: string): readonly [string, string] => {
+  const dotIndex = forEach.indexOf('.')
+  return [forEach.slice(0, dotIndex), forEach.slice(dotIndex + 1)]
+}
+
+// フェーズ key -> 後続フェーズの for_each から非空配列であることを要求されて
+// いる自分の output フィールド名の集合。この集合が空でないフィールドは、
+// 構造化出力のスキーマ検証と同じ再試行ループで「非空配列を返すまで」再試行
+// する対象になる (for_each の参照先が空/欠落のまま先に進むのを防ぐため)。
+const collectRequiredArrayFields = (
+  phases: readonly AgentGraphPhase[],
+): ReadonlyMap<string, ReadonlySet<string>> => {
+  const map = new Map<string, Set<string>>()
+  for (const phase of phases) {
+    if (phase.forEach === undefined) continue
+    const [refKey, refField] = splitForEach(phase.forEach)
+    const fields = map.get(refKey) ?? new Set<string>()
+    fields.add(refField)
+    map.set(refKey, fields)
+  }
+  return map
+}
+
+const hasRequiredArrayFields = (
+  response: Record<string, unknown>,
+  requiredArrayFields: ReadonlySet<string>,
+): boolean =>
+  [...requiredArrayFields].every(
+    (field) => Array.isArray(response[field]) && response[field].length > 0,
+  )
+
 // invoke() 自体の reject (usage limit・ツール失敗・ネットワークエラー等) は
 // 再試行せず即座に伝播する。再試行するのは invoke が成功したにもかかわらず
-// structured response を欠く場合のみで、これが再試行で解消しうる唯一の
-// 失敗モードのため。
+// structured response を欠く場合と、structured response はあるが
+// requiredArrayFields (後続フェーズの for_each が要求する非空配列) を
+// 満たさない場合のみで、これが再試行で解消しうる唯一の失敗モードのため。
 const invokePhaseWithRetry = async (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
+  requiredArrayFields: ReadonlySet<string>,
   attemptsLeft: number = MAX_STRUCTURED_OUTPUT_ATTEMPTS,
 ): Promise<Result<Record<string, unknown>, unknown>> => {
   const invoked = await agent.invoke({ messages }).then(
@@ -178,22 +216,33 @@ const invokePhaseWithRetry = async (
       err(error),
   )
   if (invoked.isErr()) return invoked
-  if (invoked.value.structuredResponse !== undefined) {
-    return ok(invoked.value.structuredResponse)
+  const { structuredResponse } = invoked.value
+  if (
+    structuredResponse !== undefined &&
+    hasRequiredArrayFields(structuredResponse, requiredArrayFields)
+  ) {
+    return ok(structuredResponse)
   }
   if (attemptsLeft <= 1) {
-    return err(new Error('agent did not return a structured response'))
+    return err(
+      structuredResponse === undefined
+        ? new Error('agent did not return a structured response')
+        : new Error(
+            `agent's structured response did not resolve required for_each field(s) to a non-empty array: ${[...requiredArrayFields].join(', ')}`,
+          ),
+    )
   }
-  return invokePhaseWithRetry(agent, messages, attemptsLeft - 1)
+  return invokePhaseWithRetry(
+    agent,
+    messages,
+    requiredArrayFields,
+    attemptsLeft - 1,
+  )
 }
 
-// for_each の形式 ("<key>.<field>") は backend が PUT 時にバリデーション
-// 済みのため、ここでは検証を伴わない単純な最初の "." での分割で済ませる。
-const splitForEach = (forEach: string): readonly [string, string] => {
-  const dotIndex = forEach.indexOf('.')
-  return [forEach.slice(0, dotIndex), forEach.slice(dotIndex + 1)]
-}
-
+// 参照元フェーズ (invokePhaseWithRetry) が非空配列を返すまで再試行済みのため、
+// ここに到達した時点で参照先は本来常に妥当な非空配列のはず。このチェックは
+// その前提が崩れた場合 (参照先フェーズが存在しない等) の防御的フォールバック。
 const resolveForEachItems = (
   priorResults: Readonly<Record<string, unknown>>,
   refKey: string,
@@ -201,13 +250,19 @@ const resolveForEachItems = (
 ): Result<readonly unknown[], Error> => {
   const referenced = priorResults[refKey]
   const items = isPlainObject(referenced) ? referenced[refField] : undefined
-  return Array.isArray(items)
-    ? ok(items)
-    : err(
-        new Error(
-          `for_each の参照先 "${refKey}.${refField}" が配列ではありません`,
-        ),
-      )
+  if (!Array.isArray(items)) {
+    return err(
+      new Error(
+        `for_each の参照先 "${refKey}.${refField}" が配列ではありません`,
+      ),
+    )
+  }
+  if (items.length === 0) {
+    return err(
+      new Error(`for_each の参照先 "${refKey}.${refField}" が空配列です`),
+    )
+  }
+  return ok(items)
 }
 
 // 1 件分の invoke を実行し、開始時に running step を記録、決着したら
@@ -216,6 +271,7 @@ const resolveForEachItems = (
 const invokeAndRecordStep = (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
+  requiredArrayFields: ReadonlySet<string>,
   recorder: StepRecorder,
   stepBase: Omit<StepStartInput, 'startedAt' | 'traceId' | 'spanId'>,
   spanName: string,
@@ -228,17 +284,22 @@ const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
-    return invokePhaseWithRetry(agent, messages).then((result) => {
-      if (result.isErr()) {
-        recorder.finish(index, {
-          status: 'failed',
-          error: errorMessage(result.error),
-        })
-      } else {
-        recorder.finish(index, { status: 'completed', output: result.value })
-      }
-      return result
-    })
+    return invokePhaseWithRetry(agent, messages, requiredArrayFields).then(
+      (result) => {
+        if (result.isErr()) {
+          recorder.finish(index, {
+            status: 'failed',
+            error: errorMessage(result.error),
+          })
+        } else {
+          recorder.finish(index, {
+            status: 'completed',
+            output: result.value,
+          })
+        }
+        return result
+      },
+    )
   })
 
 const runForEachItems = async (
@@ -248,6 +309,7 @@ const runForEachItems = async (
   agent: CompiledPhaseAgent,
   items: readonly unknown[],
   recorder: StepRecorder,
+  requiredArrayFields: ReadonlySet<string>,
 ): Promise<Result<unknown[], unknown>> => {
   // 固定サイズのチャンク分割による並列数制御。セマフォより単純だが、フェーズあたりの
   // レイテンシ差が大きい場合は待ち時間が偏る。偏りが問題になれば worker pool 方式に置き換える。
@@ -269,6 +331,7 @@ const runForEachItems = async (
         return invokeAndRecordStep(
           agent,
           [new HumanMessage(messageText)],
+          requiredArrayFields,
           recorder,
           {
             phaseKey: phase.key,
@@ -301,8 +364,11 @@ const runPhase = async (
   context: RunAgentGraphContext,
   priorResults: Readonly<Record<string, unknown>>,
   recorder: StepRecorder,
+  requiredArrayFieldsByPhase: ReadonlyMap<string, ReadonlySet<string>>,
 ): Promise<Result<unknown, unknown>> => {
   const agent = createPhaseAgent(deps, phase, context)
+  const requiredArrayFields =
+    requiredArrayFieldsByPhase.get(phase.key) ?? new Set<string>()
 
   if (phase.forEach === undefined) {
     const messageText = buildPhaseMessageText({
@@ -314,6 +380,7 @@ const runPhase = async (
     return invokeAndRecordStep(
       agent,
       [new HumanMessage(messageText)],
+      requiredArrayFields,
       recorder,
       { phaseKey: phase.key, label: phase.label, model: phase.model },
       phase.label,
@@ -332,6 +399,7 @@ const runPhase = async (
     agent,
     itemsResult.value,
     recorder,
+    requiredArrayFields,
   )
 }
 
@@ -342,9 +410,17 @@ export const runAgentGraph = async (
 ): Promise<StrategyAgentResult> => {
   const results: Record<string, unknown> = {}
   const recorder = createStepRecorder(context.onStepsChanged)
+  const requiredArrayFieldsByPhase = collectRequiredArrayFields(config.phases)
 
   for (const phase of config.phases) {
-    const phaseResult = await runPhase(deps, phase, context, results, recorder)
+    const phaseResult = await runPhase(
+      deps,
+      phase,
+      context,
+      results,
+      recorder,
+      requiredArrayFieldsByPhase,
+    )
     if (phaseResult.isErr()) {
       return buildFailureResult(phase, phaseResult.error)
     }

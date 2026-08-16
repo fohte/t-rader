@@ -23,12 +23,12 @@ const agentGraphPhaseSchema = z.object({
   label: z.string(),
   model: z.string(),
   prompt: z.string(),
-  runs: z.string().optional(),
   for_each: z.string().optional(),
   label_field: z.string().optional(),
   max_parallel: z.number().optional(),
   skills: z.array(z.string()).default([]),
-  tools: z.array(z.string()).default([]),
+  // 省略 (undefined) と明示的な空配列を区別するため .default([]) は付けない。
+  tools: z.array(z.string()).optional(),
   output: z.record(z.string(), z.unknown()).default({}),
 })
 
@@ -47,7 +47,7 @@ const toAgentGraphPhase = (
   ...(raw.label_field !== undefined ? { labelField: raw.label_field } : {}),
   ...(raw.max_parallel !== undefined ? { maxParallel: raw.max_parallel } : {}),
   skills: raw.skills,
-  tools: raw.tools,
+  ...(raw.tools !== undefined ? { tools: raw.tools } : {}),
   output: raw.output,
 })
 
