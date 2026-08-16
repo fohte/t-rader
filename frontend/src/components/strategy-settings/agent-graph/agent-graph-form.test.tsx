@@ -17,6 +17,10 @@ const SAMPLE = `phases:
         type: array
         items:
           title: { type: string }
+      themes:
+        type: array
+        items:
+          title: { type: string }
   - key: investigate
     label: 仮説の調査
     model: deepseek-v4-flash
@@ -151,11 +155,17 @@ describe('AgentGraphForm', () => {
     expect(planCard.queryByLabelText('並列上限')).toBeNull()
   })
 
-  it('for_each を持つフェーズにはノード名・並列上限を表示し、既存の値を反映する', () => {
+  it('for_each を持つフェーズにはノード名・並列上限を表示する', () => {
     render(<Controlled initial={SAMPLE} />)
     const investigateCard = within(screen.getByTestId('phase-card-investigate'))
     expect(investigateCard.getByLabelText('実行回数')).toBeInTheDocument()
     expect(investigateCard.getByLabelText('ノード名')).toBeInTheDocument()
+    expect(investigateCard.getByLabelText('並列上限')).toBeInTheDocument()
+  })
+
+  it('並列上限は既存の値を反映する', () => {
+    render(<Controlled initial={SAMPLE} />)
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
     expect(investigateCard.getByLabelText('並列上限')).toHaveValue(4)
   })
 
@@ -167,5 +177,25 @@ describe('AgentGraphForm', () => {
     await user.clear(maxParallelInput)
     await user.type(maxParallelInput, '8')
     expect(maxParallelInput).toHaveValue(8)
+  })
+
+  it('実行回数を別の参照先に切り替えると、旧参照先の items に紐づくノード名の選択がリセットされる', async () => {
+    const user = userEvent.setup()
+    render(<Controlled initial={SAMPLE} />)
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
+    expect(investigateCard.getByLabelText('ノード名')).toHaveTextContent(
+      'title',
+    )
+
+    await user.click(investigateCard.getByLabelText('実行回数'))
+    await user.click(
+      await screen.findByRole('option', { name: /themes\[\] の要素ごと/ }),
+    )
+
+    expect(
+      within(screen.getByTestId('phase-card-investigate')).getByLabelText(
+        'ノード名',
+      ),
+    ).toHaveTextContent('(選択肢なし)')
   })
 })

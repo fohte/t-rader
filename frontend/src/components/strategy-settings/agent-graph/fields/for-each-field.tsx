@@ -8,8 +8,9 @@ import {
   SelectValue,
 } from '#components/ui/select'
 
-// for_each 未設定 (1 実行につき 1 回) を表す sentinel。実際の for_each の値は
-// 必ず "<phase_key>.<field>" の形でドットを含むため衝突しない。
+// for_each 未設定 (1 実行につき 1 回) を表す sentinel。このセレクトが書き込む値は必ず
+// "<phase_key>.<field>" の形でドットを含むため衝突しないが、YAML ビューで直接
+// `for_each: __once__` のようなドットの無い値を書いた場合はこの前提が崩れる。
 const ONCE_VALUE = '__once__'
 
 interface ForEachFieldProps {

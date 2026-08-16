@@ -36,8 +36,8 @@ export function getForEachOptions(
 
 /**
  * for_each が指す配列フィールドの items から string 型の property 名を列挙する。
- * items がオブジェクトの配列でない (プリミティブ配列、または参照先が存在しない) 場合は
- * 空配列を返す。
+ * 参照先が存在しない、items がプリミティブ配列、または items の全 property が string 型
+ * でない場合は空配列を返す。
  */
 export function getLabelFieldOptions(
   phases: readonly AgentGraphPhaseForm[],

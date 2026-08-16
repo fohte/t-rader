@@ -109,7 +109,13 @@ export function AgentGraphForm({
                 index={i}
                 value={phase.forEach}
                 onChange={(next) => {
-                  onChange(setPhaseForEach(value, i, next))
+                  let updated = setPhaseForEach(value, i, next)
+                  // 参照先の配列が変わると items の形も変わるので、旧参照先の
+                  // property 名が残った label_field は無効な値になりうる
+                  if (next != null && next !== phase.forEach) {
+                    updated = setPhaseLabelField(updated, i, undefined)
+                  }
+                  onChange(updated)
                 }}
               />
               {phase.forEach != null && (
