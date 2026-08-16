@@ -1,7 +1,7 @@
 //! LiteLLM Proxy の `/model_group/info` を素通しするクライアント
 //!
 //! backend が agent 設定フォームにモデル選択肢を供給するための薄いプロキシ。
-//! LiteLLM の API キーを frontend に晒さないためだけの中継で、キャッシュ以上のことはしない。
+//! LiteLLM の API キーを frontend に晒さないためだけの中継で、キャッシュはしない。
 
 use std::time::Duration;
 
@@ -79,7 +79,12 @@ impl LiteLlmClient {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let base_url = get("LLM_BASE_URL").filter(|s| !s.is_empty())?;
+        let Some(base_url) = get("LLM_BASE_URL").filter(|s| !s.is_empty()) else {
+            tracing::warn!(
+                "LLM_BASE_URL が未設定のため、litellm client を無効化します (GET /api/agent-models は空配列を返す)"
+            );
+            return None;
+        };
         let api_key = get("LLM_API_KEY").filter(|s| !s.is_empty());
         match Self::new(&base_url, api_key.as_deref()) {
             Ok(client) => Some(client),

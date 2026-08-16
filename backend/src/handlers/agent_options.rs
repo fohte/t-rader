@@ -123,30 +123,25 @@ mod tests {
         let server = create_test_server(pool).await;
         let response = server.get("/api/agent-tools").await;
         response.assert_status_ok();
-        let body = response.json::<serde_json::Value>();
-        let names: Vec<&str> = body["tools"]
-            .as_array()
-            .expect("tools array")
-            .iter()
-            .map(|t| t["name"].as_str().expect("name"))
-            .collect();
         // ToolRouter::list_all() は name の昇順でソートして返す
         assert_eq!(
-            names,
-            vec![
-                "add_interest",
-                "create_annotation",
-                "eval_indicator",
-                "eval_python",
-                "list_notes",
-                "query_data",
-                "read_annotations",
-                "read_comments",
-                "read_note",
-                "reply_comment",
-                "resolve_comment",
-                "write_note",
-            ],
+            response.json::<serde_json::Value>(),
+            serde_json::json!({
+                "tools": [
+                    {"name": "add_interest", "description": "Add a derived interest (role=derived, origin=llm) to the current strategy. Idempotent: returns created=false if the same (ref_kind, ref_id) already exists for the strategy."},
+                    {"name": "create_annotation", "description": "Create a chart annotation owned by the strategy."},
+                    {"name": "eval_indicator", "description": "Evaluate a stored indicator by name. Resolves strategy-scoped indicator first then global. Args are validated against the indicator's input_schema and stdout is validated against output_schema."},
+                    {"name": "eval_python", "description": "Run a Python snippet inside an isolated Kata Containers exec Pod and return stdout/stderr/exit_code. Network, subprocess, and persistent filesystem are denied."},
+                    {"name": "list_notes", "description": "List notes owned by the strategy, newest first."},
+                    {"name": "query_data", "description": "Fetch daily OHLCV bars for an instrument over a date range via the configured data provider."},
+                    {"name": "read_annotations", "description": "List annotations owned by the strategy. Optionally filter by target_symbol."},
+                    {"name": "read_comments", "description": "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved."},
+                    {"name": "read_note", "description": "Read a single note owned by the strategy, including its graphs."},
+                    {"name": "reply_comment", "description": "Reply to an existing review comment owned by the strategy. Posted with author_kind=llm, author_label=analyst."},
+                    {"name": "resolve_comment", "description": "Mark a review comment owned by the strategy as resolved or unresolved."},
+                    {"name": "write_note", "description": "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale)."},
+                ],
+            }),
         );
     }
 }

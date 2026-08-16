@@ -216,11 +216,6 @@ async fn main() -> Result<(), AppError> {
     );
 
     let litellm_client = LiteLlmClient::from_env();
-    if litellm_client.is_none() {
-        tracing::warn!(
-            "LLM_BASE_URL が未設定のため、litellm client を無効化して起動します (GET /api/agent-models は空配列を返す)"
-        );
-    }
 
     let state = AppState {
         db,
