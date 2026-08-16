@@ -371,7 +371,6 @@ function TreeRow({
   const { step, outputSchema } = row.content
   const label = step.item_label ?? step.label
   const duration = formatDuration(step.started_at, step.finished_at)
-  // enum バッジが取れればそれを結論として出し、無ければ従来どおりステータス文言。
   const badgeText =
     findEnumBadge(outputSchema, step.output) ?? STATUS_LABEL[step.status]
 
@@ -412,12 +411,11 @@ function TreeRow({
 }
 
 // output に note_id (文字列) があればノートへのリンクを出す。write_note が返した id を
-// そのまま output に含める、という設定側の慣習を前提にした構造的な検出であり、
-// note_id という項目名自体はコードが「戦略の語彙」として解釈しているわけではない。
+// そのまま output に含める、という設定側の慣習を前提にした構造的な検出。
 function findNoteId(output: unknown): string | null {
-  return isRecord(output) && typeof output['note_id'] === 'string'
-    ? output['note_id']
-    : null
+  if (!isRecord(output)) return null
+  const value = output['note_id']
+  return typeof value === 'string' && value !== '' ? value : null
 }
 
 export function StepDetail({

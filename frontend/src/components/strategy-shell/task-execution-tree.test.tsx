@@ -410,6 +410,19 @@ describe('StepDetail', () => {
       screen.queryByRole('link', { name: '→ ノートを開く' }),
     ).not.toBeInTheDocument()
   })
+
+  it('output の note_id が空文字列ならノートへのリンクを出さない', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      output: { verdict: 'rejected', note_id: '' },
+    })
+
+    render(<StepDetail strategyId="strategy-1" step={step} />)
+
+    expect(
+      screen.queryByRole('link', { name: '→ ノートを開く' }),
+    ).not.toBeInTheDocument()
+  })
 })
 
 describe('findEnumBadge', () => {
