@@ -102,12 +102,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # TanStack Router の routeTree.gen.ts は gitignore 対象。
-      # eslint の型ベースルール (no-unsafe-member-access 等) は route の generic 型に依存するため、
-      # lint 前に生成しておかないと CI のみ false-positive が出る。
-      - name: Generate frontend route tree
-        run: cd "frontend" && pnpm exec tsr generate
-
       - name: Check peer dependencies
         run: pnpm peers check
 
@@ -272,6 +266,27 @@ jobs:
           restore-keys: ${{ runner.os }}-pnpm-store-
 
       - run: pnpm install --frozen-lockfile
+
+      # Storybook の story は headless Playwright chromium 上で実行される。
+      # actions/cache が保存するのは ~/.cache/ms-playwright (ブラウザ本体) のみで、
+      # chromium に必要な OS 共有ライブラリ (apt パッケージ) はキャッシュ対象外のため、
+      # キャッシュヒット時も install-deps で入れ直す必要がある。
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: frontend
+        run: pnpm exec playwright install-deps chromium
 
       - name: Run tests
         working-directory: frontend

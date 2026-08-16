@@ -19,6 +19,7 @@ export default config(
           allowDefaultProject: [
             'frontend/.storybook/main.ts',
             'frontend/.storybook/preview.ts',
+            'frontend/.storybook/vitest.setup.ts',
           ],
         },
       },

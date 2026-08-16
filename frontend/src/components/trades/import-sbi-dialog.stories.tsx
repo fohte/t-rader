@@ -1,9 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { ImportSbiDialog } from '#components/trades/import-sbi-dialog'
 import type { components } from '#lib/api/schema.gen'
 
 type Strategy = components['schemas']['Strategy']
+
+const queryClient = new QueryClient()
 
 const strategies: Strategy[] = [
   {
@@ -28,6 +31,13 @@ const meta = {
   title: 'Trades/ImportSbiDialog',
   component: ImportSbiDialog,
   parameters: { layout: 'centered' },
+  decorators: [
+    (Story) => (
+      <QueryClientProvider client={queryClient}>
+        <Story />
+      </QueryClientProvider>
+    ),
+  ],
 } satisfies Meta<typeof ImportSbiDialog>
 
 export default meta
