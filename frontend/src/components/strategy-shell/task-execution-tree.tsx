@@ -3,7 +3,7 @@
 // (agent/src/strategy-agent/agent-graph/step.ts) なので、型のみここから直接参照する。
 import type { StrategyTaskStepJson as TaskStep } from 'agent/strategy-agent/agent-graph/step'
 import { Result } from 'neverthrow'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { parse as parseYaml } from 'yaml'
 
 import { cn } from '#lib/utils'
@@ -44,7 +44,6 @@ const tryParseYaml = Result.fromThrowable((raw: string): unknown =>
   parseYaml(raw),
 )
 
-// steps (jsonb) は backend が中身を解釈せず素通しするため unknown[] で届く。
 // isTaskStep を満たさない要素 (steps が空の初期状態など) は無視する。
 export function readTaskSteps(steps: unknown): TaskStep[] {
   return Array.isArray(steps) ? steps.filter(isTaskStep) : []
@@ -234,6 +233,20 @@ export function TaskExecutionTree({
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   const rows = toRows(buildPhaseNodes(configPhases, steps))
+
+  // polling で選択中の step の中身 (status/output 等) が更新されても選択行 (key) は
+  // 変わらないため、クリック時だけでなく steps 更新時にも最新の内容で呼び直す。
+  // rows は render のたびに新しい参照になるので deps には steps/configPhases を使う。
+  useEffect(() => {
+    if (onSelectStep == null) return
+    if (selectedKey == null) {
+      onSelectStep(null)
+      return
+    }
+    const row = rows.find((r) => r.key === selectedKey)
+    onSelectStep(row?.content.kind === 'step' ? row.content.step : null)
+  }, [steps, configPhases, selectedKey, onSelectStep])
+
   if (rows.length === 0) return null
 
   return (
@@ -257,15 +270,7 @@ export function TaskExecutionTree({
               row={row}
               selected={selected}
               onToggle={() => {
-                const next = selectedKey === row.key ? null : row.key
-                setSelectedKey(next)
-                if (onSelectStep != null) {
-                  onSelectStep(
-                    next != null && row.content.kind === 'step'
-                      ? row.content.step
-                      : null,
-                  )
-                }
+                setSelectedKey(selectedKey === row.key ? null : row.key)
               }}
             />
             {detailPlacement === 'inline' &&

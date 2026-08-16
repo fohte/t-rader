@@ -245,6 +245,39 @@ describe('TaskExecutionTree', () => {
     await userEvent.click(button)
     expect(onSelectStep).toHaveBeenLastCalledWith(null)
   })
+
+  it('選択中の step の内容が変わったら (同じ key のまま) onSelectStep が新しい内容で再度呼ばれる', async () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      item: { title: '円安の進行が主因' },
+      item_label: '円安の進行が主因',
+      status: 'running',
+      finished_at: undefined,
+    })
+    const onSelectStep = vi.fn()
+
+    const { rerender } = render(
+      <TaskExecutionTree {...makeProps({ steps: [step], onSelectStep })} />,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /円安の進行が主因/ }),
+    )
+    expect(onSelectStep).toHaveBeenLastCalledWith(step)
+
+    const updatedStep: TaskStep = {
+      ...step,
+      status: 'completed',
+      finished_at: '2026-08-15T00:00:08Z',
+      output: { verdict: '妥当' },
+    }
+    rerender(
+      <TaskExecutionTree
+        {...makeProps({ steps: [updatedStep], onSelectStep })}
+      />,
+    )
+
+    expect(onSelectStep).toHaveBeenLastCalledWith(updatedStep)
+  })
 })
 
 describe('StepDetail', () => {
