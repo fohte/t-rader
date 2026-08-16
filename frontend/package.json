@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "tsr generate",
     "test": "conc pnpm:test:type pnpm:test:unit",
     "test:type": "tsr generate && tsc --noEmit",
     "test:unit": "vitest run",
