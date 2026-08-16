@@ -9,7 +9,7 @@ import {
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 

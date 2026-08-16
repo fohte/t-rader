@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
+import { parseAgentGraphPhases } from '#components/strategy-settings/agent-graph/document'
 
 vi.mock(
   '@monaco-editor/react',
@@ -39,12 +40,16 @@ function Controlled({
     if (value.trim() !== '') lastEnabledValueRef.current = value
   }, [value])
   return (
-    <AgentGraphForm
-      value={value}
-      onChange={setValue}
-      errorPhaseKey={errorPhaseKey}
-      lastEnabledValueRef={lastEnabledValueRef}
-    />
+    <>
+      <AgentGraphForm
+        value={value}
+        onChange={setValue}
+        errorPhaseKey={errorPhaseKey}
+        lastEnabledValueRef={lastEnabledValueRef}
+      />
+      {/* onChange 経由で value (YAML) に実際に反映されたかをテストから検証するための出力 */}
+      <pre data-testid="yaml-value">{value}</pre>
+    </>
   )
 }
 
@@ -142,7 +147,7 @@ describe('AgentGraphForm', () => {
     expect(screen.getByText(/調査計画 が返す/)).toBeInTheDocument()
   })
 
-  it('出力スキーマを編集すると値に反映される', async () => {
+  it('出力スキーマを編集すると value (YAML) の output に反映される', async () => {
     const user = userEvent.setup()
     render(<Controlled initial={SAMPLE} />)
     const planCard = within(screen.getByTestId('phase-card-plan'))
@@ -151,9 +156,13 @@ describe('AgentGraphForm', () => {
     await user.type(outputInput, 'verdict:{enter}  type: string')
 
     expect(planCard.getByText('✓ valid')).toBeInTheDocument()
+    const yamlValue = screen.getByTestId('yaml-value').textContent
+    expect(parseAgentGraphPhases(yamlValue)?.[0]?.output).toEqual({
+      verdict: { type: 'string' },
+    })
   })
 
-  it('不正な出力スキーマは検証エラーを表示する', async () => {
+  it('不正な出力スキーマは検証エラーを表示しつつも value (YAML) には反映される', async () => {
     const user = userEvent.setup()
     render(<Controlled initial={SAMPLE} />)
     const planCard = within(screen.getByTestId('phase-card-plan'))
@@ -164,5 +173,10 @@ describe('AgentGraphForm', () => {
     expect(
       planCard.getByText(/enum は配列である必要があります/),
     ).toBeInTheDocument()
+    // 構造的な issue は警告に留め、YAML として妥当な限り value への反映はブロックしない
+    const yamlValue = screen.getByTestId('yaml-value').textContent
+    expect(parseAgentGraphPhases(yamlValue)?.[0]?.output).toEqual({
+      verdict: { enum: 'supported' },
+    })
   })
 })
