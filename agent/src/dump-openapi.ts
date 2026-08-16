@@ -27,8 +27,11 @@ const dummyRequestHandler: A2ARequestHandler = {
 const app = new OpenAPIHono()
 mountInternalApiRoutes(app, { requestHandler: dummyRequestHandler })
 
-const document = app.getOpenAPI31Document({
-  openapi: '3.1.0',
+// backend 側は progenitor で client を生成しており、progenitor は
+// OpenAPI 3.0.x までしか読めない (openapiv3 crate が 3.0.x 専用のため) ので
+// 3.1 ではなく 3.0 で出力する。
+const document = app.getOpenAPIDocument({
+  openapi: '3.0.0',
   info: {
     title: 't-rader-agent internal API',
     version: '0.0.0',
