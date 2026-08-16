@@ -14,11 +14,11 @@ export function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
       data-testid="chat-sidebar"
       className={cn(
         'overflow-hidden bg-background transition-[width] duration-300 ease-in-out',
-        isOpen ? 'w-80 border-l' : 'w-0',
+        isOpen ? 'box-content w-80 border-l' : 'w-0',
       )}
     >
       {isOpen && (
-        <div className="flex h-full w-full flex-col">
+        <div className="flex h-full w-80 flex-col">
           <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
             <h2 className="font-semibold">AI チャット</h2>
             <Button
