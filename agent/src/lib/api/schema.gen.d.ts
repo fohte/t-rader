@@ -910,6 +910,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/tasks': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の過去タスクを新しい順に一覧取得する */
+    get: operations['list_strategy_tasks']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/tasks/{task_id}': {
     parameters: {
       query?: never
@@ -1704,6 +1721,7 @@ export interface components {
       created_at: string
       error_summary?: string | null
       phase: string
+      prompt: string
       /** @description agent の最終応答テキスト (completed 時のみ) */
       result_text?: string | null
       source: string
@@ -1711,6 +1729,22 @@ export interface components {
       steps: unknown
       /** Format: uuid */
       strategy_id: string
+      /** Format: uuid */
+      task_id: string
+      /** Format: date-time */
+      updated_at: string
+    }
+    /**
+     * @description `GET /api/strategies/:id/tasks` の一覧要素。`steps`/`result_text` は一覧では
+     *     使わないため含めない。
+     */
+    StrategyTaskSummary: {
+      /** Format: date-time */
+      created_at: string
+      error_summary?: string | null
+      phase: string
+      prompt: string
+      source: string
       /** Format: uuid */
       task_id: string
       /** Format: date-time */
@@ -5458,6 +5492,54 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_strategy_tasks: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyTaskSummary'][]
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 戦略が存在しない */
       404: {
         headers: {
           [name: string]: unknown

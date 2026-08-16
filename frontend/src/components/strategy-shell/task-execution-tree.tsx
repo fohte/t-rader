@@ -3,7 +3,7 @@
 // (agent/src/strategy-agent/agent-graph/step.ts) なので、型のみここから直接参照する。
 import type { StrategyTaskStepJson as TaskStep } from 'agent/strategy-agent/agent-graph/step'
 import { Result } from 'neverthrow'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { parse as parseYaml } from 'yaml'
 
 import { cn } from '#lib/utils'
@@ -43,6 +43,11 @@ export function isTaskStep(v: unknown): v is TaskStep {
 const tryParseYaml = Result.fromThrowable((raw: string): unknown =>
   parseYaml(raw),
 )
+
+// isTaskStep を満たさない要素 (steps が空の初期状態など) は無視する。
+export function readTaskSteps(steps: unknown): TaskStep[] {
+  return Array.isArray(steps) ? steps.filter(isTaskStep) : []
+}
 
 // agent_graph の YAML から表示に必要な `key`/`label`/`model` だけを緩く取り出す。
 // 保存時に backend 側で検証済みの内容を読むだけなので、他のフィールド (for_each 等)
@@ -154,6 +159,14 @@ export interface TaskExecutionTreeProps {
   configPhases: AgentGraphPhaseSummary[]
   /** トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
   traceUrlTemplate?: string
+  /**
+   * 選択行の detail をどこに描画するか。`inline` (デフォルト) は選択行の直下に展開する
+   * (フローティングチャットでの表示)。`external` は描画せず、選択状態のハイライトのみ行う
+   * (2ペイン画面で右側の別パネルに `StepDetail` を描画するため)。
+   */
+  detailPlacement?: 'inline' | 'external'
+  /** 選択行が変わるたびに呼ばれる (選択解除時は null) */
+  onSelectStep?: (step: TaskStep | null) => void
 }
 
 const STATUS_LABEL: Record<TaskStep['status'], string> = {
@@ -214,10 +227,26 @@ export function TaskExecutionTree({
   steps,
   configPhases,
   traceUrlTemplate,
+  detailPlacement = 'inline',
+  onSelectStep,
 }: TaskExecutionTreeProps): React.ReactElement | null {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   const rows = toRows(buildPhaseNodes(configPhases, steps))
+
+  // polling で選択中の step の中身 (status/output 等) が更新されても選択行 (key) は
+  // 変わらないため、クリック時だけでなく steps 更新時にも最新の内容で呼び直す。
+  // rows は render のたびに新しい参照になるので deps には steps/configPhases を使う。
+  useEffect(() => {
+    if (onSelectStep == null) return
+    if (selectedKey == null) {
+      onSelectStep(null)
+      return
+    }
+    const row = rows.find((r) => r.key === selectedKey)
+    onSelectStep(row?.content.kind === 'step' ? row.content.step : null)
+  }, [steps, configPhases, selectedKey, onSelectStep])
+
   if (rows.length === 0) return null
 
   return (
@@ -241,15 +270,17 @@ export function TaskExecutionTree({
               row={row}
               selected={selected}
               onToggle={() => {
-                setSelectedKey((cur) => (cur === row.key ? null : row.key))
+                setSelectedKey(selectedKey === row.key ? null : row.key)
               }}
             />
-            {selected && row.content.kind === 'step' && (
-              <StepDetail
-                step={row.content.step}
-                traceUrlTemplate={traceUrlTemplate}
-              />
-            )}
+            {detailPlacement === 'inline' &&
+              selected &&
+              row.content.kind === 'step' && (
+                <StepDetail
+                  step={row.content.step}
+                  traceUrlTemplate={traceUrlTemplate}
+                />
+              )}
           </div>
         )
       })}
@@ -319,7 +350,7 @@ function TreeRow({
   )
 }
 
-function StepDetail({
+export function StepDetail({
   step,
   traceUrlTemplate,
 }: {

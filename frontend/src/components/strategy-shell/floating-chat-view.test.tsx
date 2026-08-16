@@ -25,8 +25,13 @@ async function renderInRouter(ui: React.ReactElement): Promise<void> {
     path: '/strategies/$id/notes/$noteId',
     component: () => null,
   })
+  const runRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/strategies/$id/runs/$taskId',
+    component: () => null,
+  })
   const router = createRouter({
-    routeTree: rootRoute.addChildren([noteRoute]),
+    routeTree: rootRoute.addChildren([noteRoute, runRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
   render(<RouterProvider router={router} />)
@@ -50,8 +55,7 @@ function makeProps(
     input: '',
     status: { kind: 'idle' },
     notes: [],
-    steps: [],
-    configPhases: [],
+    currentTaskId: null,
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
@@ -122,49 +126,24 @@ describe('FloatingChatView', () => {
     expect(screen.getByLabelText('メッセージ入力')).toBeDisabled()
   })
 
-  it('polling 中に steps があるとフェーズ木を表示する', async () => {
+  it('currentTaskId があれば実行詳細へのリンクを表示する', async () => {
     const status: FloatingChatStatus = { kind: 'polling', phase: 'running' }
     await renderInRouter(
       <FloatingChatView
-        {...makeProps({
-          input: 'x',
-          status,
-          configPhases: [
-            { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
-            {
-              key: 'investigate',
-              label: '個別調査',
-              model: 'deepseek-v4-flash',
-            },
-          ],
-          steps: [
-            {
-              phase_key: 'plan',
-              label: '調査計画',
-              model: 'claude-opus-4',
-              status: 'completed',
-              started_at: '2026-06-26T00:00:00Z',
-              finished_at: '2026-06-26T00:00:12Z',
-              trace_id: 'trace-plan-0001',
-              span_id: 'span-plan-0001',
-            },
-            {
-              phase_key: 'investigate',
-              label: '個別調査',
-              model: 'deepseek-v4-flash',
-              status: 'running',
-              item: { title: '為替影響の再評価' },
-              item_label: '為替影響の再評価',
-              started_at: '2026-06-26T00:00:12Z',
-              trace_id: 'trace-investigate-0001',
-              span_id: 'span-investigate-0001',
-            },
-          ],
-        })}
+        {...makeProps({ input: 'x', status, currentTaskId: 'T1' })}
       />,
     )
 
-    expect(screen.getByText('為替影響の再評価')).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /実行の詳細を見る/ })
+    expect(link).toHaveAttribute('href', '/strategies/S1/runs/T1')
+  })
+
+  it('currentTaskId が無ければ実行詳細へのリンクを出さない', async () => {
+    await renderInRouter(<FloatingChatView {...makeProps({})} />)
+
+    expect(
+      screen.queryByRole('link', { name: /実行の詳細を見る/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('completed では生成ノートへのリンクを表示する', async () => {
