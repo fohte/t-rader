@@ -4,8 +4,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use reqwest::StatusCode;
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use super::generated;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -156,8 +157,7 @@ impl AgentTaskClientConfig {
 }
 
 pub struct HttpAgentTaskClient {
-    http: reqwest::Client,
-    base_url: String,
+    client: generated::Client,
 }
 
 impl HttpAgentTaskClient {
@@ -174,108 +174,79 @@ impl HttpAgentTaskClient {
             .build()
             .map_err(|e| AgentTaskError::Init(format!("failed to build http client: {e}")))?;
 
+        let base_url = config.api_base_url.trim_end_matches('/').to_string();
         Ok(Self {
-            http,
-            base_url: config.api_base_url.trim_end_matches('/').to_string(),
+            client: generated::Client::new_with_client(&base_url, http),
         })
     }
-
-    fn tasks_url(&self) -> String {
-        format!("{}/internal/tasks", self.base_url)
-    }
-
-    fn task_url(&self, task_id: &str) -> String {
-        format!("{}/internal/tasks/{}", self.base_url, task_id)
-    }
 }
 
-#[derive(Serialize)]
-struct SubmitTaskBody<'a> {
-    strategy_id: Uuid,
-    prompt: &'a str,
-}
-
-#[derive(Deserialize)]
-struct SubmitTaskResponse {
-    task_id: String,
-}
-
-#[derive(Deserialize)]
-struct GetTaskResponse {
-    state: String,
-    #[serde(default)]
-    result_text: Option<String>,
-    #[serde(default)]
-    error_kind: Option<String>,
-    #[serde(default)]
-    steps: Option<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-struct ApiErrorResponse {
-    #[serde(default)]
-    error: Option<String>,
-}
-
-fn api_error(status: StatusCode, body: String) -> AgentTaskError {
-    let message = serde_json::from_str::<ApiErrorResponse>(&body)
-        .ok()
-        .and_then(|e| e.error)
-        .unwrap_or(body);
+/// `ErrorResponse` は progenitor が全エラーレスポンスに共通で割り当てる型
+/// (agent 側は 400/422/500/404 いずれも同じ `{error, issues?}` スキーマ)。
+fn api_error(status: StatusCode, error: generated::types::ErrorResponse) -> AgentTaskError {
     AgentTaskError::Api {
         status: status.as_u16(),
-        message,
+        message: error.error,
+    }
+}
+
+fn map_client_error(
+    err: progenitor_client::Error<generated::types::ErrorResponse>,
+) -> AgentTaskError {
+    match err {
+        progenitor_client::Error::ErrorResponse(rv) => {
+            let status = rv.status();
+            api_error(status, rv.into_inner())
+        }
+        progenitor_client::Error::CommunicationError(e) => AgentTaskError::Network(e.to_string()),
+        progenitor_client::Error::InvalidUpgrade(e) => AgentTaskError::Network(e.to_string()),
+        progenitor_client::Error::ResponseBodyError(e) => AgentTaskError::Parse(e.to_string()),
+        progenitor_client::Error::InvalidResponsePayload(_, e) => {
+            AgentTaskError::Parse(e.to_string())
+        }
+        progenitor_client::Error::InvalidRequest(msg) | progenitor_client::Error::Custom(msg) => {
+            AgentTaskError::Parse(msg)
+        }
+        progenitor_client::Error::UnexpectedResponse(response) => {
+            AgentTaskError::Parse(format!("unexpected response status: {}", response.status()))
+        }
     }
 }
 
 #[async_trait]
 impl AgentTaskClient for HttpAgentTaskClient {
     async fn submit(&self, req: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
-        let response = self
-            .http
-            .post(self.tasks_url())
-            .json(&SubmitTaskBody {
-                strategy_id: req.strategy_id,
-                prompt: &req.prompt,
-            })
-            .send()
-            .await
-            .map_err(|e| AgentTaskError::Network(e.to_string()))?;
+        let strategy_id =
+            generated::types::SubmitTaskBodyStrategyId::try_from(req.strategy_id.to_string())
+                .map_err(|e| AgentTaskError::Parse(format!("invalid strategy_id: {e}")))?;
+        let prompt = generated::types::SubmitTaskBodyPrompt::try_from(req.prompt)
+            .map_err(|e| AgentTaskError::Parse(format!("invalid prompt: {e}")))?;
+        let body = generated::types::SubmitTaskBody {
+            strategy_id,
+            prompt,
+        };
 
-        let status = response.status();
-        if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(api_error(status, text));
-        }
-        let body: SubmitTaskResponse = response
-            .json()
+        let response = self
+            .client
+            .submit_task(&body)
             .await
-            .map_err(|e| AgentTaskError::Parse(e.to_string()))?;
+            .map_err(map_client_error)?;
         Ok(AgentTaskRef {
-            task_id: body.task_id,
+            task_id: response.into_inner().task_id,
         })
     }
 
     async fn get(&self, task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
-        let response = self
-            .http
-            .get(self.task_url(task_id))
-            .send()
-            .await
-            .map_err(|e| AgentTaskError::Network(e.to_string()))?;
+        let response = self.client.get_task(task_id).await.map_err(|e| {
+            if let progenitor_client::Error::ErrorResponse(ref rv) = e
+                && rv.status() == StatusCode::NOT_FOUND
+            {
+                return AgentTaskError::NotFound(task_id.to_string());
+            }
+            map_client_error(e)
+        })?;
 
-        let status = response.status();
-        if status == StatusCode::NOT_FOUND {
-            return Err(AgentTaskError::NotFound(task_id.to_string()));
-        }
-        if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(api_error(status, text));
-        }
-        let body: GetTaskResponse = response
-            .json()
-            .await
-            .map_err(|e| AgentTaskError::Parse(e.to_string()))?;
+        let body = response.into_inner();
         let state = AgentTaskState::from_raw(&body.state).ok_or_else(|| {
             AgentTaskError::Parse(format!("unknown agent task state: {}", body.state))
         })?;
@@ -283,7 +254,7 @@ impl AgentTaskClient for HttpAgentTaskClient {
             state,
             result_text: body.result_text,
             error_kind: body.error_kind,
-            steps: body.steps,
+            steps: (!body.steps.is_empty()).then_some(serde_json::Value::Array(body.steps)),
         })
     }
 }

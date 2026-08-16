@@ -4,12 +4,14 @@ FROM rust:1.96.0-slim AS build
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev curl
-WORKDIR /app
+WORKDIR /app/backend
 
 # bind マウントでソースを参照し、cache マウントでビルドキャッシュを永続化する。
 # bind マウントは read-only のため、target ディレクトリをその外に配置する。
 # キャッシュマウントは RUN 終了後にアンマウントされるため、同じ RUN 内で cp する。
-RUN --mount=type=bind,target=. \
+# progenitor が build.rs でビルド時に agent/openapi.json を読むため、
+# bind マウントは context ルート (リポジトリ全体) を対象にする。
+RUN --mount=type=bind,target=/app \
     --mount=type=cache,target=/build/target,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git/db,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
