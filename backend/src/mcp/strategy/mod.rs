@@ -46,6 +46,7 @@ pub(super) mod notes;
 #[cfg(test)]
 mod tests_common;
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use rmcp::ErrorData as McpError;
@@ -439,6 +440,23 @@ impl StrategyServer {
     ) -> Result<Json<EvalIndicatorResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.eval_indicator_inner(sid, params).await.map(Json)
+    }
+}
+
+impl StrategyServer {
+    /// tool 一覧を (name, description) で返す。`#[tool(...)]` の登録情報をそのまま使うので、
+    /// tool を追加してもここを手で更新する必要はない。
+    pub(crate) fn list_tool_summaries() -> Vec<(String, Option<String>)> {
+        Self::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|tool| {
+                (
+                    tool.name.into_owned(),
+                    tool.description.map(Cow::into_owned),
+                )
+            })
+            .collect()
     }
 }
 
