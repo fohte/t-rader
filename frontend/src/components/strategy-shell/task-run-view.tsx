@@ -57,14 +57,16 @@ function formatDateTime(iso: string): string {
 
 // 秒未満は四捨五入、分オーダーになりうるため `formatDuration` (秒のみ, 小数第1位まで)
 // とは別に軽量なフォーマッタを用意する。
-function formatElapsed(ms: number): string {
+export function formatElapsed(ms: number): string {
   const totalSec = Math.max(0, Math.round(ms / 1000))
   const min = Math.floor(totalSec / 60)
   const sec = totalSec % 60
   return min > 0 ? `${String(min)}m${String(sec)}s` : `${String(sec)}s`
 }
 
-function computeElapsed(task: NonNullable<TaskRunViewProps['task']>): string {
+export function computeElapsed(
+  task: NonNullable<TaskRunViewProps['task']>,
+): string {
   const start = Date.parse(task.createdAt)
   const end =
     task.phase === 'pending' || task.phase === 'running'

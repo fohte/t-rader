@@ -281,11 +281,26 @@ describe('TaskExecutionTree', () => {
 })
 
 describe('StepDetail', () => {
-  it('item/output の JSON とトレースリンクを表示する', () => {
+  it('item/output を JSON で表示する', () => {
     const step = makeStep({
       phase_key: 'investigate',
       item: { title: '円安の進行が主因' },
       output: { verdict: '妥当' },
+    })
+
+    render(<StepDetail step={step} />)
+
+    expect(screen.getByText('input')).toBeInTheDocument()
+    expect(
+      screen.getByText('{ "title": "円安の進行が主因" }'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('output')).toBeInTheDocument()
+    expect(screen.getByText('{ "verdict": "妥当" }')).toBeInTheDocument()
+  })
+
+  it('traceUrlTemplate があればトレースリンクを組み立てる', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
       trace_id: 'trace-abc',
       span_id: 'span-def',
     })
@@ -297,8 +312,6 @@ describe('StepDetail', () => {
       />,
     )
 
-    expect(screen.getByText('input')).toBeInTheDocument()
-    expect(screen.getByText('output')).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: '→ トレースを開く' }),
     ).toHaveAttribute(
