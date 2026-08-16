@@ -44,5 +44,10 @@ fi
 # Install Node.js dependencies (workspace)
 pnpm_install
 
+# Generate the TanStack Router route tree so editors and lint (which run
+# type-aware checks across the whole workspace) resolve route types before
+# the first `nr dev`/`nr build`/`nr test` regenerates it.
+pnpm --filter frontend run generate:routes
+
 # Fetch Rust dependencies
 cargo fetch --manifest-path backend/Cargo.toml

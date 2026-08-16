@@ -71,9 +71,6 @@ cd frontend && nr test            # 型チェック + unit テスト
 cd frontend && nr storybook       # Storybook 開発サーバー (http://localhost:6006)
 cd frontend && nr storybook:build # Storybook 静的ビルド
 
-# routeTree.gen.ts 生成 (新規 clone/worktree で dev/build/test を未実行のまま commit する場合に実行)
-cd frontend && nr generate:routes
-
 # エージェント (A2A server)
 cd agent && nr dev  # tsx watch でローカル直接起動
 cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
