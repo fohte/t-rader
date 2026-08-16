@@ -158,6 +158,26 @@ describe('TaskExecutionTree', () => {
         status: 'completed',
         output: { verdict: 'supported' },
       }),
+    ]
+
+    render(
+      <TaskExecutionTree {...makeProps({ configPhases, steps: branches })} />,
+    )
+
+    expect(screen.getByText('supported')).toBeInTheDocument()
+    expect(screen.queryByText('完了')).not.toBeInTheDocument()
+  })
+
+  it('output がまだ無いステップは enum バッジが無いのでステータス文言を表示する', () => {
+    const configPhases = [
+      {
+        key: 'investigate',
+        label: '仮説の調査',
+        model: 'deepseek-v4-flash',
+        output: { verdict: { enum: ['supported', 'rejected'] } },
+      },
+    ]
+    const branches = [
       makeStep({
         phase_key: 'investigate',
         item: { title: '半導体サイクルの反転' },
@@ -171,9 +191,6 @@ describe('TaskExecutionTree', () => {
       <TaskExecutionTree {...makeProps({ configPhases, steps: branches })} />,
     )
 
-    expect(screen.getByText('supported')).toBeInTheDocument()
-    expect(screen.queryByText('完了')).not.toBeInTheDocument()
-    // output がまだ無いステップ (実行中) は enum 値が無いのでステータス文言のまま
     expect(screen.getByText('実行中')).toBeInTheDocument()
   })
 

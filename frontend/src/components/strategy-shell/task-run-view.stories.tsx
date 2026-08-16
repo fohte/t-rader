@@ -7,10 +7,11 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 
-import type {
-  AgentGraphPhaseSummary,
-  TaskStep,
-} from '#components/strategy-shell/task-execution-tree'
+import {
+  CONFIG_PHASES,
+  investigateStep,
+  PLAN_STEP,
+} from '#components/strategy-shell/task-execution-tree.fixtures'
 import {
   TaskRunView,
   type TaskRunViewProps,
@@ -38,64 +39,6 @@ function createStoryRouter(props: TaskRunViewProps) {
     routeTree: rootRoute.addChildren([runsListRoute, noteRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
-}
-
-const CONFIG_PHASES: AgentGraphPhaseSummary[] = [
-  { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
-  {
-    key: 'investigate',
-    label: '仮説の調査',
-    model: 'deepseek-v4-flash',
-    output: {
-      verdict: { enum: ['supported', 'rejected', 'inconclusive'] },
-      summary: { type: 'string' },
-      note_id: { type: 'string' },
-    },
-  },
-  { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
-]
-
-const PLAN_STEP: TaskStep = {
-  phase_key: 'plan',
-  label: '調査計画',
-  model: 'claude-opus-4',
-  status: 'completed',
-  output: {
-    items: ['円安の進行が主因', '半導体サイクルの反転', '個別の材料出尽くし'],
-  },
-  started_at: '2026-08-15T09:00:00.000Z',
-  finished_at: '2026-08-15T09:00:12.400Z',
-  trace_id: 'trace-plan-0001',
-  span_id: 'span-plan-0001',
-}
-
-function investigateStep(
-  title: string,
-  status: TaskStep['status'],
-  finishedAt: string | undefined,
-  verdict?: 'supported' | 'rejected' | 'inconclusive',
-  noteId?: string,
-): TaskStep {
-  return {
-    phase_key: 'investigate',
-    label: '仮説の調査',
-    model: 'deepseek-v4-flash',
-    status,
-    item: { title },
-    item_label: title,
-    output:
-      status === 'completed'
-        ? {
-            verdict: verdict ?? 'supported',
-            summary: `${title}を検証した結果`,
-            ...(noteId != null ? { note_id: noteId } : {}),
-          }
-        : undefined,
-    started_at: '2026-08-15T09:00:13.000Z',
-    finished_at: finishedAt,
-    trace_id: `trace-investigate-${title}`,
-    span_id: `span-investigate-${title}`,
-  }
 }
 
 function baseTask(
@@ -129,14 +72,13 @@ export const Running: Story = {
         task: baseTask({ phase: 'running' }),
         steps: [
           PLAN_STEP,
-          investigateStep(
-            '円安の進行が主因',
-            'completed',
-            '2026-08-15T09:00:21.100Z',
-            'supported',
-            'note-0001',
-          ),
-          investigateStep('半導体サイクルの反転', 'running', undefined),
+          investigateStep('円安の進行が主因', {
+            status: 'completed',
+            finishedAt: '2026-08-15T09:00:21.100Z',
+            verdict: 'supported',
+            noteId: 'note-0001',
+          }),
+          investigateStep('半導体サイクルの反転', { status: 'running' }),
         ],
         configPhases: CONFIG_PHASES,
         generatedNotesCount: 0,
@@ -158,20 +100,18 @@ export const Completed: Story = {
         }),
         steps: [
           PLAN_STEP,
-          investigateStep(
-            '円安の進行が主因',
-            'completed',
-            '2026-08-15T09:00:21.100Z',
-            'supported',
-            'note-0001',
-          ),
-          investigateStep(
-            '半導体サイクルの反転',
-            'completed',
-            '2026-08-15T09:00:24.900Z',
-            'rejected',
-            'note-0002',
-          ),
+          investigateStep('円安の進行が主因', {
+            status: 'completed',
+            finishedAt: '2026-08-15T09:00:21.100Z',
+            verdict: 'supported',
+            noteId: 'note-0001',
+          }),
+          investigateStep('半導体サイクルの反転', {
+            status: 'completed',
+            finishedAt: '2026-08-15T09:00:24.900Z',
+            verdict: 'rejected',
+            noteId: 'note-0002',
+          }),
         ],
         configPhases: CONFIG_PHASES,
         generatedNotesCount: 2,
@@ -193,7 +133,7 @@ export const Failed: Story = {
         steps: [
           PLAN_STEP,
           {
-            ...investigateStep('半導体サイクルの反転', 'failed', undefined),
+            ...investigateStep('半導体サイクルの反転', { status: 'failed' }),
             finished_at: '2026-08-16T09:01:18.300Z',
             error: 'tool call timeout: query_data がタイムアウトしました',
             output: undefined,
