@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -25,7 +25,7 @@ import {
 afterEach(cleanup)
 
 // Link (ノートリンク) が親ルートを要求するため、最低限のテストルーターを噛ませる
-function renderInRouter(ui: React.ReactElement) {
+async function renderInRouter(ui: React.ReactElement) {
   const rootRoute = createRootRoute({ component: () => ui })
   const noteRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -36,7 +36,12 @@ function renderInRouter(ui: React.ReactElement) {
     routeTree: rootRoute.addChildren([noteRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
-  return render(<RouterProvider router={router} />)
+  render(<RouterProvider router={router} />)
+  await waitFor(() => {
+    expect(
+      document.body.firstElementChild?.children.length ?? 0,
+    ).toBeGreaterThan(0)
+  })
 }
 
 function makeStep(
@@ -408,10 +413,10 @@ describe('StepDetail', () => {
       output: { verdict: 'rejected', note_id: 'note-abc' },
     })
 
-    renderInRouter(<StepDetail strategyId="strategy-1" step={step} />)
+    await renderInRouter(<StepDetail strategyId="strategy-1" step={step} />)
 
     expect(
-      await screen.findByRole('link', { name: '→ ノートを開く' }),
+      screen.getByRole('link', { name: '→ ノートを開く' }),
     ).toHaveAttribute('href', '/strategies/strategy-1/notes/note-abc')
   })
 
