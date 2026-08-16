@@ -4933,6 +4933,16 @@
               }
             }
           },
+          "404": {
+            "description": "戦略が存在しない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "",
             "content": {

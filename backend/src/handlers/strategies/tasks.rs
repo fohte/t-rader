@@ -3,6 +3,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use uuid::Uuid;
 
+use super::find_strategy_or_404;
 use crate::AppState;
 use crate::agent_client::AgentTaskError;
 use crate::error::{AppError, ErrorResponse};
@@ -122,6 +123,7 @@ pub async fn get_strategy_task(
     responses(
         (status = 200, body = Vec<StrategyTaskSummary>),
         (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
+        (status = 404, description = "戦略が存在しない", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -129,6 +131,7 @@ pub async fn list_strategy_tasks(
     State(state): State<AppState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
+    find_strategy_or_404(&state.db, strategy_id).await?;
     let views = strategy_tasks::list_tasks_for_strategy(&state.db, strategy_id)
         .await
         .map_err(AppError::Database)?;
@@ -457,6 +460,15 @@ mod tests {
                 }),
             ],
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_strategy_tasks_unknown_strategy_returns_404(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let res = server
+            .get("/api/strategies/00000000-0000-0000-0000-000000000000/tasks")
+            .await;
+        res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
     #[sqlx::test(migrations = false)]
