@@ -1,4 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 
 import {
   type AgentGraphPhaseSummary,
@@ -6,19 +13,41 @@ import {
   type TaskStep,
 } from '#components/strategy-shell/task-execution-tree'
 
+// ノートリンクが親ルートを要求するため、Frame 自体をルーターで包む
 function Frame({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-[color:var(--color-bg-primary)] p-6">
-      <div className="w-[420px] border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-3.5">
-        {children}
+  const rootRoute = createRootRoute({
+    component: () => (
+      <div className="min-h-screen bg-[color:var(--color-bg-primary)] p-6">
+        <div className="w-[420px] border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-3.5">
+          {children}
+        </div>
       </div>
-    </div>
-  )
+    ),
+  })
+  const noteRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/strategies/$id/notes/$noteId',
+    component: () => null,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([noteRoute]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  return <RouterProvider router={router} />
 }
 
 const CONFIG_PHASES: AgentGraphPhaseSummary[] = [
   { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
-  { key: 'investigate', label: '仮説の調査', model: 'deepseek-v4-flash' },
+  {
+    key: 'investigate',
+    label: '仮説の調査',
+    model: 'deepseek-v4-flash',
+    output: {
+      verdict: { enum: ['supported', 'rejected', 'inconclusive'] },
+      summary: { type: 'string' },
+      note_id: { type: 'string' },
+    },
+  },
   { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
 ]
 
@@ -40,6 +69,8 @@ function investigateStep(
   title: string,
   status: TaskStep['status'],
   finishedAt: string | undefined,
+  verdict?: 'supported' | 'rejected' | 'inconclusive',
+  noteId?: string,
 ): TaskStep {
   return {
     phase_key: 'investigate',
@@ -49,7 +80,13 @@ function investigateStep(
     item: { title },
     item_label: title,
     output:
-      status === 'completed' ? { verdict: '妥当', confidence: 0.7 } : undefined,
+      status === 'completed'
+        ? {
+            verdict: verdict ?? 'supported',
+            summary: `${title}を検証した結果`,
+            ...(noteId != null ? { note_id: noteId } : {}),
+          }
+        : undefined,
     started_at: '2026-08-15T09:00:13.000Z',
     finished_at: finishedAt,
     trace_id: `trace-investigate-${title}`,
@@ -65,22 +102,27 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+// merge フェーズには step を渡さないので、常に「未着手」ノードとして描画される
 export const Running: Story = {
   render: () => (
     <Frame>
       <TaskExecutionTree
+        strategyId="semi-swing"
         steps={[
           PLAN_STEP,
           investigateStep(
             '円安の進行が主因',
             'completed',
             '2026-08-15T09:00:21.100Z',
+            'supported',
+            'note-0001',
           ),
           investigateStep('半導体サイクルの反転', 'running', undefined),
           investigateStep(
             '個別の材料出尽くし',
             'completed',
             '2026-08-15T09:00:19.700Z',
+            'rejected',
           ),
         ]}
         configPhases={CONFIG_PHASES}
@@ -94,22 +136,28 @@ export const Completed: Story = {
   render: () => (
     <Frame>
       <TaskExecutionTree
+        strategyId="semi-swing"
         steps={[
           PLAN_STEP,
           investigateStep(
             '円安の進行が主因',
             'completed',
             '2026-08-15T09:00:21.100Z',
+            'supported',
+            'note-0001',
           ),
           investigateStep(
             '半導体サイクルの反転',
             'completed',
             '2026-08-15T09:00:24.900Z',
+            'rejected',
+            'note-0002',
           ),
           investigateStep(
             '個別の材料出尽くし',
             'completed',
             '2026-08-15T09:00:19.700Z',
+            'inconclusive',
           ),
           {
             phase_key: 'merge',
@@ -118,6 +166,7 @@ export const Completed: Story = {
             status: 'completed',
             output: {
               summary: '円安進行と半導体サイクル反転の複合要因と判断',
+              note_id: 'note-0003',
             },
             started_at: '2026-08-15T09:00:25.000Z',
             finished_at: '2026-08-15T09:00:33.200Z',
@@ -136,12 +185,14 @@ export const WithFailure: Story = {
   render: () => (
     <Frame>
       <TaskExecutionTree
+        strategyId="semi-swing"
         steps={[
           PLAN_STEP,
           investigateStep(
             '円安の進行が主因',
             'completed',
             '2026-08-15T09:00:21.100Z',
+            'supported',
           ),
           {
             ...investigateStep('半導体サイクルの反転', 'failed', undefined),
@@ -153,6 +204,7 @@ export const WithFailure: Story = {
             '個別の材料出尽くし',
             'completed',
             '2026-08-15T09:00:19.700Z',
+            'rejected',
           ),
         ]}
         configPhases={CONFIG_PHASES}
@@ -167,7 +219,7 @@ export const NoAgentGraph: Story = {
       <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
         agent_graph 未設定 (steps が空) — 以下、何も表示されません:
       </p>
-      <TaskExecutionTree steps={[]} configPhases={[]} />
+      <TaskExecutionTree strategyId="semi-swing" steps={[]} configPhases={[]} />
     </Frame>
   ),
 }

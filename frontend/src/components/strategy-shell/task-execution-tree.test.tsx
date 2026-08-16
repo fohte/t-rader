@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -5,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildPhaseNodes,
   buildTraceUrl,
+  findEnumBadge,
   formatDuration,
   isTaskStep,
   parseAgentGraphPhases,
@@ -15,6 +23,21 @@ import {
 } from '#components/strategy-shell/task-execution-tree'
 
 afterEach(cleanup)
+
+// Link (ノートリンク) が親ルートを要求するため、最低限のテストルーターを噛ませる
+function renderInRouter(ui: React.ReactElement) {
+  const rootRoute = createRootRoute({ component: () => ui })
+  const noteRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/strategies/$id/notes/$noteId',
+    component: () => null,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([noteRoute]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  return render(<RouterProvider router={router} />)
+}
 
 function makeStep(
   overrides: Partial<TaskStep> & Pick<TaskStep, 'phase_key'>,
@@ -34,7 +57,12 @@ function makeStep(
 function makeProps(
   overrides: Partial<TaskExecutionTreeProps> = {},
 ): TaskExecutionTreeProps {
-  return { steps: [], configPhases: [], ...overrides }
+  return {
+    steps: [],
+    configPhases: [],
+    strategyId: 'strategy-1',
+    ...overrides,
+  }
 }
 
 describe('isTaskStep', () => {
@@ -110,6 +138,42 @@ describe('TaskExecutionTree', () => {
     ).toBeInTheDocument()
     expect(screen.getAllByText('deepseek-v4-flash')).toHaveLength(2)
     expect(screen.getByText('完了')).toBeInTheDocument()
+    expect(screen.getByText('実行中')).toBeInTheDocument()
+  })
+
+  it('output スキーマに enum 項目があれば、行のバッジをステータス文言の代わりに enum 値で表示する', () => {
+    const configPhases = [
+      {
+        key: 'investigate',
+        label: '仮説の調査',
+        model: 'deepseek-v4-flash',
+        output: { verdict: { enum: ['supported', 'rejected'] } },
+      },
+    ]
+    const branches = [
+      makeStep({
+        phase_key: 'investigate',
+        item: { title: '円安の進行が主因' },
+        item_label: '円安の進行が主因',
+        status: 'completed',
+        output: { verdict: 'supported' },
+      }),
+      makeStep({
+        phase_key: 'investigate',
+        item: { title: '半導体サイクルの反転' },
+        item_label: '半導体サイクルの反転',
+        status: 'running',
+        finished_at: undefined,
+      }),
+    ]
+
+    render(
+      <TaskExecutionTree {...makeProps({ configPhases, steps: branches })} />,
+    )
+
+    expect(screen.getByText('supported')).toBeInTheDocument()
+    expect(screen.queryByText('完了')).not.toBeInTheDocument()
+    // output がまだ無いステップ (実行中) は enum 値が無いのでステータス文言のまま
     expect(screen.getByText('実行中')).toBeInTheDocument()
   })
 
@@ -288,7 +352,7 @@ describe('StepDetail', () => {
       output: { verdict: '妥当' },
     })
 
-    render(<StepDetail step={step} />)
+    render(<StepDetail strategyId="strategy-1" step={step} />)
 
     expect(screen.getByText('input')).toBeInTheDocument()
     expect(
@@ -307,6 +371,7 @@ describe('StepDetail', () => {
 
     render(
       <StepDetail
+        strategyId="strategy-1"
         step={step}
         traceUrlTemplate="https://grafana.example/trace/{trace_id}?span={span_id}"
       />,
@@ -318,6 +383,62 @@ describe('StepDetail', () => {
       'href',
       'https://grafana.example/trace/trace-abc?span=span-def',
     )
+  })
+
+  it('output に note_id があればノートへのリンクを組み立てる', async () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      output: { verdict: 'rejected', note_id: 'note-abc' },
+    })
+
+    renderInRouter(<StepDetail strategyId="strategy-1" step={step} />)
+
+    expect(
+      await screen.findByRole('link', { name: '→ ノートを開く' }),
+    ).toHaveAttribute('href', '/strategies/strategy-1/notes/note-abc')
+  })
+
+  it('output に note_id が無ければノートへのリンクを出さない', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      output: { verdict: 'rejected' },
+    })
+
+    render(<StepDetail strategyId="strategy-1" step={step} />)
+
+    expect(
+      screen.queryByRole('link', { name: '→ ノートを開く' }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('findEnumBadge', () => {
+  it('output スキーマの enum 項目に対応する値があればそれを返す', () => {
+    const outputSchema = {
+      verdict: { enum: ['supported', 'rejected', 'inconclusive'] },
+      summary: { type: 'string' },
+    }
+
+    expect(findEnumBadge(outputSchema, { verdict: 'rejected' })).toBe(
+      'rejected',
+    )
+  })
+
+  it('output スキーマが無ければ null を返す', () => {
+    expect(findEnumBadge(undefined, { verdict: 'rejected' })).toBeNull()
+  })
+
+  it('output に enum 項目の値がまだ無ければ null を返す', () => {
+    const outputSchema = { verdict: { enum: ['supported', 'rejected'] } }
+
+    expect(findEnumBadge(outputSchema, undefined)).toBeNull()
+    expect(findEnumBadge(outputSchema, { other: 'x' })).toBeNull()
+  })
+
+  it('enum 宣言の無い項目しか無ければ null を返す', () => {
+    const outputSchema = { summary: { type: 'string' } }
+
+    expect(findEnumBadge(outputSchema, { summary: 'done' })).toBeNull()
   })
 })
 
@@ -344,6 +465,32 @@ describe('parseAgentGraphPhases', () => {
     expect(parseAgentGraphPhases(yaml)).toEqual([
       { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
       { key: 'investigate', label: '調査', model: 'deepseek-v4-flash' },
+    ])
+  })
+
+  it('extracts output schema when present', () => {
+    const yaml = [
+      'phases:',
+      '  - key: investigate',
+      '    label: 調査',
+      '    model: deepseek-v4-flash',
+      '    output:',
+      '      verdict:',
+      '        enum: [supported, rejected]',
+      '      summary:',
+      '        type: string',
+    ].join('\n')
+
+    expect(parseAgentGraphPhases(yaml)).toEqual([
+      {
+        key: 'investigate',
+        label: '調査',
+        model: 'deepseek-v4-flash',
+        output: {
+          verdict: { enum: ['supported', 'rejected'] },
+          summary: { type: 'string' },
+        },
+      },
     ])
   })
 
@@ -419,6 +566,26 @@ describe('buildPhaseNodes', () => {
 
     expect(buildPhaseNodes(configPhases, [branchA, branchB])).toEqual([
       { kind: 'branch', key: 'investigate', branches: [branchB, branchA] },
+    ])
+  })
+
+  it('configPhases の output をノードの outputSchema として運ぶ', () => {
+    const outputSchema = { verdict: { enum: ['supported', 'rejected'] } }
+    const configPhases = [
+      {
+        key: 'investigate',
+        label: '調査',
+        model: 'deepseek-v4-flash',
+        output: outputSchema,
+      },
+    ]
+    const step = makeStep({
+      phase_key: 'investigate',
+      item: { title: '円安の進行が主因' },
+    })
+
+    expect(buildPhaseNodes(configPhases, [step])).toEqual([
+      { kind: 'branch', key: 'investigate', branches: [step], outputSchema },
     ])
   })
 

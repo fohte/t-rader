@@ -29,15 +29,29 @@ function createStoryRouter(props: TaskRunViewProps) {
     path: '/strategies/$id/runs',
     component: () => null,
   })
+  const noteRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/strategies/$id/notes/$noteId',
+    component: () => null,
+  })
   return createRouter({
-    routeTree: rootRoute.addChildren([runsListRoute]),
+    routeTree: rootRoute.addChildren([runsListRoute, noteRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
 }
 
 const CONFIG_PHASES: AgentGraphPhaseSummary[] = [
   { key: 'plan', label: '調査計画', model: 'claude-opus-4' },
-  { key: 'investigate', label: '仮説の調査', model: 'deepseek-v4-flash' },
+  {
+    key: 'investigate',
+    label: '仮説の調査',
+    model: 'deepseek-v4-flash',
+    output: {
+      verdict: { enum: ['supported', 'rejected', 'inconclusive'] },
+      summary: { type: 'string' },
+      note_id: { type: 'string' },
+    },
+  },
   { key: 'merge', label: '統合', model: 'claude-sonnet-4' },
 ]
 
@@ -59,6 +73,8 @@ function investigateStep(
   title: string,
   status: TaskStep['status'],
   finishedAt: string | undefined,
+  verdict?: 'supported' | 'rejected' | 'inconclusive',
+  noteId?: string,
 ): TaskStep {
   return {
     phase_key: 'investigate',
@@ -68,7 +84,13 @@ function investigateStep(
     item: { title },
     item_label: title,
     output:
-      status === 'completed' ? { verdict: '妥当', confidence: 0.7 } : undefined,
+      status === 'completed'
+        ? {
+            verdict: verdict ?? 'supported',
+            summary: `${title}を検証した結果`,
+            ...(noteId != null ? { note_id: noteId } : {}),
+          }
+        : undefined,
     started_at: '2026-08-15T09:00:13.000Z',
     finished_at: finishedAt,
     trace_id: `trace-investigate-${title}`,
@@ -111,6 +133,8 @@ export const Running: Story = {
             '円安の進行が主因',
             'completed',
             '2026-08-15T09:00:21.100Z',
+            'supported',
+            'note-0001',
           ),
           investigateStep('半導体サイクルの反転', 'running', undefined),
         ],
@@ -138,11 +162,15 @@ export const Completed: Story = {
             '円安の進行が主因',
             'completed',
             '2026-08-15T09:00:21.100Z',
+            'supported',
+            'note-0001',
           ),
           investigateStep(
             '半導体サイクルの反転',
             'completed',
             '2026-08-15T09:00:24.900Z',
+            'rejected',
+            'note-0002',
           ),
         ],
         configPhases: CONFIG_PHASES,
