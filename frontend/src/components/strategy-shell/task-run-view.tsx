@@ -25,6 +25,8 @@ export interface TaskRunViewProps {
   configPhases: AgentGraphPhaseSummary[]
   generatedNotesCount: number
   traceUrlTemplate?: string
+  /** task の取得に失敗したか (`task` が null の間、ロード中との表示を出し分けるために使う) */
+  taskLoadError?: boolean
 }
 
 // source は backend が定義する投入経路の固定値
@@ -79,6 +81,7 @@ export function TaskRunView({
   configPhases,
   generatedNotesCount,
   traceUrlTemplate,
+  taskLoadError = false,
 }: TaskRunViewProps): React.ReactElement {
   const [selectedStep, setSelectedStep] = useState<TaskStep | null>(null)
 
@@ -92,7 +95,16 @@ export function TaskRunView({
         &lt; 実行一覧に戻る
       </Link>
 
-      {task == null ? (
+      {task == null && taskLoadError ? (
+        <p className="flex items-baseline gap-2 font-mono text-[12px]">
+          <span className="uppercase tracking-wider text-[color:var(--color-accent-strategy)]">
+            error
+          </span>
+          <span className="text-[color:var(--color-text-secondary)]">
+            タスクの取得に失敗しました。
+          </span>
+        </p>
+      ) : task == null ? (
         <div className="space-y-4">
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="h-5 w-full max-w-[480px]" />

@@ -83,6 +83,7 @@ function TaskRunPage() {
       configPhases={configPhases}
       generatedNotesCount={generatedNotesCount}
       traceUrlTemplate={TRACE_URL_TEMPLATE}
+      taskLoadError={taskQuery.isError}
     />
   )
 }
