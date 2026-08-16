@@ -7,6 +7,7 @@ const config: StorybookConfig = {
     '@storybook/addon-docs',
     '@storybook/addon-themes',
     '@storybook/addon-vitest',
+    '@fohte/storybook-addon',
   ],
 }
 

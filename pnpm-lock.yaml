@@ -184,6 +184,9 @@ importers:
         specifier: 2.9.0
         version: 2.9.0
     devDependencies:
+      '@fohte/storybook-addon':
+        specifier: 0.1.0
+        version: 0.1.0(storybook@10.2.10(@testing-library/dom@10.4.1)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10)
       '@storybook/addon-docs':
         specifier: 10.2.10
         version: 10.2.10(@types/react@19.2.17)(esbuild@0.28.1)(rollup@4.62.4)(storybook@10.2.10(@testing-library/dom@10.4.1)(prettier@3.9.6)(react@19.2.8))(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -1520,6 +1523,12 @@ packages:
         optional: true
       pino-pretty:
         optional: true
+
+  '@fohte/storybook-addon@0.1.0':
+    resolution: {integrity: sha512-ehb8xSaQbDb10q1L/L7TwkQdMXbnSYceMqZmqvUNqri/OJ/D4P+Kq/6WOQg0IXfqdhrmNmNYcR8n1CdUL8hzvQ==}
+    peerDependencies:
+      storybook: ^10.0.0
+      vitest: ^4.0.0
 
   '@grpc/grpc-js@1.14.4':
     resolution: {integrity: sha512-k9Dj3DV/itK9D06Y8f190Qgop7/Ui+D0njFV3LHMPwPT75DpXLQohE9Wmz0QElrJnzsjB7KPWiKJbOl7IPDArQ==}
@@ -8469,6 +8478,12 @@ snapshots:
       - '@opentelemetry/core'
       - '@opentelemetry/exporter-trace-otlp-http'
       - supports-color
+
+  '@fohte/storybook-addon@0.1.0(storybook@10.2.10(@testing-library/dom@10.4.1)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10)':
+    dependencies:
+      neverthrow: 8.2.0
+      storybook: 10.2.10(@testing-library/dom@10.4.1)(prettier@3.9.6)(react@19.2.8)
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@4.1.10)(jsdom@28.1.0(supports-color@10.2.2))(msw@2.15.0(@types/node@24.13.3)(typescript@6.0.3))(vite@7.3.6(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.1)(yaml@2.9.0))
 
   '@grpc/grpc-js@1.14.4':
     dependencies:
