@@ -13,7 +13,7 @@ pre-commit:
     openapi-typescript:
       priority: 2
       glob: '*.rs'
-      run: cd frontend && pnpm run generate:api && cd .. && git add frontend/src/lib/api/schema.gen.d.ts
+      run: scripts/generate-openapi-types && git add frontend/src/lib/api/schema.gen.d.ts agent/src/lib/api/schema.gen.d.ts
 
     format:
       # Remove trailing whitespace and ensure final newline
