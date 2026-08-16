@@ -96,8 +96,10 @@ afterEach(() => {
 
 describe('AgentGraphTab', () => {
   it('GET の content を初期値として描画する', async () => {
-    setup({ content: 'phases: []' })
-    await expectEditorValue('phases: []')
+    // フォームで解釈できない内容にして、常に agent_graph エディタ (YAML ビュー) が
+    // 出る状態でテストする (有効なフェーズ YAML はデフォルトでフォームビューになるため)
+    setup({ content: 'sample content' })
+    await expectEditorValue('sample content')
   })
 
   it('編集すると dirty-indicator が表示される', async () => {
@@ -105,7 +107,8 @@ describe('AgentGraphTab', () => {
     setup({ content: 'old' })
 
     const editor = await expectEditorValue('old')
-    await user.clear(editor)
+    // clear() で一時的に空文字列を経由すると「フェーズ分割 off」の正当な値として
+    // フォームビューに切り替わり YAML エディタが外れてしまうため、末尾に追記する
     await user.type(editor, 'updated')
 
     expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
@@ -116,15 +119,16 @@ describe('AgentGraphTab', () => {
     setup({ content: 'old' })
 
     const editor = await expectEditorValue('old')
-    await user.clear(editor)
+    // clear() で一時的に空文字列を経由すると「フェーズ分割 off」の正当な値として
+    // フォームビューに切り替わり YAML エディタが外れてしまうため、末尾に追記する
     await user.type(editor, 'updated')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
       expect(screen.queryByTestId('dirty-indicator')).toBeNull()
     })
-    await expectEditorValue('updated')
-    expect(active?.store.content).toBe('updated')
+    await expectEditorValue('oldupdated')
+    expect(active?.store.content).toBe('oldupdated')
   })
 
   it('保存に失敗すると、サーバーが返したエラーメッセージを表示する', async () => {
@@ -135,7 +139,8 @@ describe('AgentGraphTab', () => {
     )
 
     const editor = await expectEditorValue('old')
-    await user.clear(editor)
+    // clear() で一時的に空文字列を経由すると「フェーズ分割 off」の正当な値として
+    // フォームビューに切り替わり YAML エディタが外れてしまうため、末尾に追記する
     await user.type(editor, 'broken')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
