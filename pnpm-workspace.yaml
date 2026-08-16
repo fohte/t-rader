@@ -9,7 +9,7 @@ allowBuilds:
   protobufjs: true
   # required by @fohte/eslint-config -> eslint-plugin-import-x for module resolution
   unrs-resolver: true
-  # shadcn の transitive dep。service worker は使わないため build script を実行しない
+  # vitest (@vitest/mocker) の optional peer dep。service worker は使わないため build script を実行しない
   msw: false
   # wrangler の transitive dep (wrangler dev 用ローカルランタイム)。CI では
   # wrangler pages deploy のみ使い wrangler dev は使わないため build script を実行しない
