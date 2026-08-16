@@ -1,6 +1,6 @@
 # Auto-generated files
 CHANGELOG.md
-backend/openapi.json
+**/openapi.json
 
 # Lock files
 pnpm-lock.yaml

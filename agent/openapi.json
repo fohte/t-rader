@@ -13,7 +13,9 @@
             "type": "string"
           }
         },
-        "required": ["task_id"]
+        "required": [
+          "task_id"
+        ]
       },
       "ErrorResponse": {
         "type": "object",
@@ -28,7 +30,9 @@
             }
           }
         },
-        "required": ["error"]
+        "required": [
+          "error"
+        ]
       },
       "SubmitTaskBody": {
         "type": "object",
@@ -42,7 +46,10 @@
             "minLength": 1
           }
         },
-        "required": ["strategy_id", "prompt"]
+        "required": [
+          "strategy_id",
+          "prompt"
+        ]
       },
       "GetTaskResponse": {
         "type": "object",
@@ -66,7 +73,10 @@
             }
           }
         },
-        "required": ["task_id", "state"]
+        "required": [
+          "task_id",
+          "state"
+        ]
       }
     },
     "parameters": {}
