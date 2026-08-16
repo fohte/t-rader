@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildPhaseNodes,
@@ -8,6 +8,7 @@ import {
   formatDuration,
   isTaskStep,
   parseAgentGraphPhases,
+  StepDetail,
   TaskExecutionTree,
   type TaskExecutionTreeProps,
   type TaskStep,
@@ -203,6 +204,74 @@ describe('TaskExecutionTree', () => {
     )
 
     expect(screen.getByText('tool call timeout')).toBeInTheDocument()
+  })
+
+  it('detailPlacement が external のときクリックしてもインライン detail を出さない', async () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      item: { title: '円安の進行が主因' },
+      item_label: '円安の進行が主因',
+      output: { verdict: '妥当' },
+    })
+
+    render(
+      <TaskExecutionTree
+        {...makeProps({ steps: [step], detailPlacement: 'external' })}
+      />,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /円安の進行が主因/ }),
+    )
+
+    expect(screen.queryByText('output')).not.toBeInTheDocument()
+  })
+
+  it('行の選択/選択解除のたびに onSelectStep を呼ぶ', async () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      item: { title: '円安の進行が主因' },
+      item_label: '円安の進行が主因',
+    })
+    const onSelectStep = vi.fn()
+
+    render(
+      <TaskExecutionTree {...makeProps({ steps: [step], onSelectStep })} />,
+    )
+    const button = screen.getByRole('button', { name: /円安の進行が主因/ })
+
+    await userEvent.click(button)
+    expect(onSelectStep).toHaveBeenLastCalledWith(step)
+
+    await userEvent.click(button)
+    expect(onSelectStep).toHaveBeenLastCalledWith(null)
+  })
+})
+
+describe('StepDetail', () => {
+  it('item/output の JSON とトレースリンクを表示する', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      item: { title: '円安の進行が主因' },
+      output: { verdict: '妥当' },
+      trace_id: 'trace-abc',
+      span_id: 'span-def',
+    })
+
+    render(
+      <StepDetail
+        step={step}
+        traceUrlTemplate="https://grafana.example/trace/{trace_id}?span={span_id}"
+      />,
+    )
+
+    expect(screen.getByText('input')).toBeInTheDocument()
+    expect(screen.getByText('output')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: '→ トレースを開く' }),
+    ).toHaveAttribute(
+      'href',
+      'https://grafana.example/trace/trace-abc?span=span-def',
+    )
   })
 })
 

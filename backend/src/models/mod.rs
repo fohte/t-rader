@@ -32,7 +32,7 @@ pub use refs::RefResolution;
 pub use strategy::{
     AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateStrategyRequest, SkillBody,
     SkillsBody, StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse,
-    UpdateStrategyRequest,
+    StrategyTaskSummary, UpdateStrategyRequest,
 };
 pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
 pub use trigger::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};

@@ -16,7 +16,8 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
     AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
-    StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, UpdateStrategyRequest,
+    StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,
+    UpdateStrategyRequest,
 };
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategy_tasks::{self, GetTaskError, SubmitTaskError, TaskSource, phase_str};
@@ -347,6 +348,7 @@ pub async fn get_strategy_task(
         strategy_id: view.strategy_id,
         a2a_task_id: view.a2a_task_id,
         source: view.source,
+        prompt: view.prompt,
         phase: phase_str(&view.phase).to_string(),
         error_summary: view.error_summary,
         result_text: view.result_text,
@@ -354,6 +356,41 @@ pub async fn get_strategy_task(
         updated_at: view.updated_at,
         steps: view.steps,
     }))
+}
+
+/// 戦略の過去タスクを新しい順に一覧取得する
+#[utoipa::path(
+    get,
+    path = "/api/strategies/{id}/tasks",
+    tag = "strategies",
+    params(("id" = Uuid, Path, description = "戦略 ID")),
+    responses(
+        (status = 200, body = Vec<StrategyTaskSummary>),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_strategy_tasks(
+    State(state): State<AppState>,
+    JsonPath(strategy_id): JsonPath<Uuid>,
+) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
+    let views = strategy_tasks::list_tasks_for_strategy(&state.db, strategy_id)
+        .await
+        .map_err(AppError::Database)?;
+    Ok(Json(
+        views
+            .into_iter()
+            .map(|view| StrategyTaskSummary {
+                task_id: view.task_id,
+                source: view.source,
+                prompt: view.prompt,
+                phase: phase_str(&view.phase).to_string(),
+                error_summary: view.error_summary,
+                created_at: view.created_at,
+                updated_at: view.updated_at,
+            })
+            .collect(),
+    ))
 }
 
 fn validate_skill_name(name: &str) -> Result<(), AppError> {
@@ -725,6 +762,35 @@ mod tests {
         .await
         .expect("insert strategy");
         id
+    }
+
+    /// 一覧系テスト用に created_at/updated_at を明示指定して strategy_task 行を直接 insert する。
+    /// (created_at 降順の検証には自動採番される値では順序を制御できないため)
+    async fn insert_task(
+        db: &DatabaseConnection,
+        strategy_id: Uuid,
+        prompt: &str,
+        created_at: chrono::DateTime<chrono::FixedOffset>,
+    ) -> Uuid {
+        let task_id = Uuid::new_v4();
+        strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            strategy_id: Set(strategy_id),
+            a2a_task_id: Set(None),
+            source: Set("frontend".to_string()),
+            prompt: Set(prompt.to_string()),
+            phase: Set(crate::entities::sea_orm_active_enums::StrategyTaskPhase::Completed),
+            error_summary: Set(None),
+            result_text: Set(None),
+            deadline_at: Set(created_at + chrono::Duration::minutes(15)),
+            steps: Set(json!([])),
+            created_at: Set(created_at),
+            updated_at: Set(created_at),
+        }
+        .insert(db)
+        .await
+        .expect("insert task");
+        task_id
     }
 
     #[sqlx::test(migrations = false)]
@@ -1222,6 +1288,7 @@ mod tests {
                 "strategy_id": strategy_id,
                 "a2a_task_id": a2a_task_id,
                 "source": "frontend",
+                "prompt": "p",
                 "phase": "running",
                 "error_summary": null,
                 "result_text": null,
@@ -1265,6 +1332,96 @@ mod tests {
             .get(&format!("/api/strategies/{strategy_b}/tasks/{task_id}"))
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_strategy_tasks_returns_tasks_newest_first(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+
+        let base = chrono::Utc::now().fixed_offset();
+        let task1 = insert_task(&db, strategy_id, "first", base).await;
+        let task2 = insert_task(
+            &db,
+            strategy_id,
+            "second",
+            base + chrono::Duration::seconds(1),
+        )
+        .await;
+        let task3 = insert_task(
+            &db,
+            strategy_id,
+            "third",
+            base + chrono::Duration::seconds(2),
+        )
+        .await;
+
+        let res = server
+            .get(&format!("/api/strategies/{strategy_id}/tasks"))
+            .await;
+        res.assert_status_ok();
+        let mut body: Vec<serde_json::Value> = res.json();
+        for item in &mut body {
+            let obj = item.as_object_mut().unwrap();
+            obj.remove("created_at");
+            obj.remove("updated_at");
+        }
+        assert_eq!(
+            body,
+            vec![
+                json!({
+                    "task_id": task3,
+                    "source": "frontend",
+                    "prompt": "third",
+                    "phase": "completed",
+                    "error_summary": null,
+                }),
+                json!({
+                    "task_id": task2,
+                    "source": "frontend",
+                    "prompt": "second",
+                    "phase": "completed",
+                    "error_summary": null,
+                }),
+                json!({
+                    "task_id": task1,
+                    "source": "frontend",
+                    "prompt": "first",
+                    "phase": "completed",
+                    "error_summary": null,
+                }),
+            ],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_strategy_tasks_scoped_to_strategy(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let strategy_a = insert_strategy(&db, "a").await;
+        let strategy_b = insert_strategy(&db, "b").await;
+
+        let base = chrono::Utc::now().fixed_offset();
+        let task_a = insert_task(&db, strategy_a, "for-a", base).await;
+        insert_task(&db, strategy_b, "for-b", base).await;
+
+        let res = server
+            .get(&format!("/api/strategies/{strategy_a}/tasks"))
+            .await;
+        res.assert_status_ok();
+        let mut body: Vec<serde_json::Value> = res.json();
+        let obj = body[0].as_object_mut().unwrap();
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            body,
+            vec![json!({
+                "task_id": task_a,
+                "source": "frontend",
+                "prompt": "for-a",
+                "phase": "completed",
+                "error_summary": null,
+            })],
+        );
     }
 
     #[sqlx::test(migrations = false)]

@@ -45,6 +45,17 @@ export function Header() {
       <div className="flex flex-shrink-0 items-center gap-2">
         <NavLink to="/portfolio" label="ポートフォリオ" />
         <NavLink to="/trades" label="取引履歴" />
+        {strategyId != null && (
+          <Link
+            to="/strategies/$id/runs"
+            params={{ id: strategyId }}
+            activeOptions={{ exact: false }}
+            className={NAV_INACTIVE}
+            activeProps={{ className: NAV_ACTIVE }}
+          >
+            実行
+          </Link>
+        )}
         {strategyId != null ? (
           <Link
             to="/strategies/$id/indicators"

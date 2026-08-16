@@ -26,6 +26,11 @@ function createStoryRouter(initialPath: string) {
     path: '/strategies/$id/settings',
     component: () => null,
   })
+  const runsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/strategies/$id/runs',
+    component: () => null,
+  })
   const portfolioRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/portfolio',
@@ -41,6 +46,7 @@ function createStoryRouter(initialPath: string) {
       strategiesRoute,
       strategyHomeRoute,
       settingsRoute,
+      runsRoute,
       portfolioRoute,
       tradesRoute,
     ]),
