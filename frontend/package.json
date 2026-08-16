@@ -3,15 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "tsr generate",
     "test": "conc pnpm:test:type pnpm:test:unit",
-    "test:type": "tsr generate && tsc --noEmit",
+    "test:type": "pnpm run generate:routes && tsc --noEmit",
     "test:unit": "vitest run",
     "dev": "vite",
     "build": "vite build",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
-    "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/schema.gen.d.ts && prettier --write src/lib/api/schema.gen.d.ts"
+    "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/schema.gen.d.ts && prettier --write src/lib/api/schema.gen.d.ts",
+    "generate:routes": "tsr generate"
   },
   "devDependencies": {
     "@storybook/addon-docs": "10.2.10",

@@ -109,6 +109,13 @@ jobs:
         if: steps.check-backend.outputs.has_backend == 'true'
         run: cd "backend" && cargo fetch
 
+      # eslint (lefthook) は全 workspace ファイルを対象に type-aware lint を行うため、
+      # frontend の変更有無に関わらず routeTree.gen.ts が必要 (useParams 等の型は
+      # そこでの module augmentation に依存する)。
+      - name: Generate frontend route tree
+        working-directory: frontend
+        run: pnpm run generate:routes
+
       - name: Run lefthook
         id: lefthook
         continue-on-error: true
