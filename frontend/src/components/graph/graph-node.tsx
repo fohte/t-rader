@@ -23,6 +23,7 @@ export function GraphNodeView({ data }: NodeProps<GraphFlowNode>) {
 
   return (
     <div
+      data-slot="graph-node"
       className="border-border bg-card text-card-foreground relative flex flex-col gap-1.5 rounded-md border px-3 py-2 text-sm"
       style={{ width: nodeWidth(data) }}
     >
