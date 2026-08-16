@@ -67,6 +67,7 @@ function Interactive({
         onChange={(model) => {
           setPhase({ ...phase, model })
         }}
+        models={[]}
       />
       <PromptField
         value={phase.prompt}
