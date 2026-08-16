@@ -200,6 +200,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
             "strategy_id": strategy_id,
             "a2a_task_id": a2a_task_id,
             "source": "frontend",
+            "prompt": "inspect 7203",
             "phase": "completed",
             "error_summary": null,
             "result_text": "7203 は堅調",
