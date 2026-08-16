@@ -183,8 +183,8 @@ export function formatDuration(
 
 // トレースビューア (Tempo, Langfuse 等) の URL を組み立てる。`{trace_id}`/`{span_id}`
 // プレースホルダを差し替えるだけの単純なテンプレート方式とすることで、ビューアの種類を
-// 問わず `.env.local` の VITE_TRACE_URL_TEMPLATE で環境ごとに指定できるようにしている。
-// 未設定ならリンクを出さない。
+// 問わず backend の `TRACE_URL_TEMPLATE` (GET /api/config 経由) で環境ごとに指定できる
+// ようにしている。未設定ならリンクを出さない。
 export function buildTraceUrl(
   template: string | undefined,
   traceId: string,

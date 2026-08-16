@@ -185,6 +185,23 @@ export interface paths {
     patch: operations['update_comment']
     trace?: never
   }
+  '/api/config': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** frontend が実行時に必要とする軽量な設定値をまとめて返す。DB を介さず env var を直接読む。 */
+    get: operations['get_config']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/health': {
     parameters: {
       query?: never
@@ -1228,6 +1245,14 @@ export interface components {
       /** Format: uuid */
       target_id: string
       target_kind: string
+    }
+    /** @description `GET /api/config` の戻り値。frontend に渡す軽量なランタイム設定値。 */
+    ConfigResponse: {
+      /**
+       * @description トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` プレースホルダを含む)。
+       *     `TRACE_URL_TEMPLATE` 未設定なら `null`。
+       */
+      trace_url_template?: string | null
     }
     CreateAnnotationRequest: {
       created_by_kind?: string | null
@@ -2583,6 +2608,25 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_config: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ConfigResponse']
         }
       }
     }

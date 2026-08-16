@@ -932,6 +932,27 @@
         }
       }
     },
+    "/api/config": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "frontend が実行時に必要とする軽量な設定値をまとめて返す。DB を介さず env var を直接読む。",
+        "operationId": "get_config",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "tags": [
@@ -6603,6 +6624,19 @@
           }
         }
       },
+      "ConfigResponse": {
+        "type": "object",
+        "description": "`GET /api/config` の戻り値。frontend に渡す軽量なランタイム設定値。",
+        "properties": {
+          "trace_url_template": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` プレースホルダを含む)。\n`TRACE_URL_TEMPLATE` 未設定なら `null`。"
+          }
+        }
+      },
       "CreateAnnotationRequest": {
         "type": "object",
         "required": [
@@ -8869,6 +8903,10 @@
     {
       "name": "agent_options",
       "description": "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"
+    },
+    {
+      "name": "config",
+      "description": "frontend 向けランタイム設定値"
     }
   ]
 }

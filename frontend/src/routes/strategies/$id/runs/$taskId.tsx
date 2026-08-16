@@ -8,9 +8,6 @@ import {
 import { TaskRunView } from '#components/strategy-shell/task-run-view'
 import { $api } from '#lib/api/client'
 
-const TRACE_URL_TEMPLATE: string | undefined = import.meta.env
-  .VITE_TRACE_URL_TEMPLATE
-
 const POLL_INTERVAL_MS = 2000
 
 export const Route = createFileRoute('/strategies/$id/runs/$taskId')({
@@ -40,6 +37,7 @@ function TaskRunPage() {
     '/api/strategies/{id}/agent-graph',
     { params: { path: { id } } },
   )
+  const configQuery = $api.useQuery('get', '/api/config')
   const configPhases = useMemo(
     () => parseAgentGraphPhases(agentGraphQuery.data?.content ?? ''),
     [agentGraphQuery.data?.content],
@@ -82,7 +80,7 @@ function TaskRunPage() {
       steps={steps}
       configPhases={configPhases}
       generatedNotesCount={generatedNotesCount}
-      traceUrlTemplate={TRACE_URL_TEMPLATE}
+      traceUrlTemplate={configQuery.data?.trace_url_template ?? undefined}
       taskLoadError={taskQuery.isError}
     />
   )
