@@ -1,9 +1,14 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useRef, useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
+
+vi.mock(
+  '@monaco-editor/react',
+  () => import('#components/indicators/__mocks__/monaco-editor-react'),
+)
 
 afterEach(cleanup)
 
@@ -135,5 +140,29 @@ describe('AgentGraphForm', () => {
   it('for_each を持つフェーズは参照元フェーズの label を説明文に使う', () => {
     render(<Controlled initial={SAMPLE} />)
     expect(screen.getByText(/調査計画 が返す/)).toBeInTheDocument()
+  })
+
+  it('出力スキーマを編集すると値に反映される', async () => {
+    const user = userEvent.setup()
+    render(<Controlled initial={SAMPLE} />)
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    const outputInput = planCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'verdict:{enter}  type: string')
+
+    expect(planCard.getByText('✓ valid')).toBeInTheDocument()
+  })
+
+  it('不正な出力スキーマは検証エラーを表示する', async () => {
+    const user = userEvent.setup()
+    render(<Controlled initial={SAMPLE} />)
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    const outputInput = planCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'verdict:{enter}  enum: supported')
+
+    expect(
+      planCard.getByText(/enum は配列である必要があります/),
+    ).toBeInTheDocument()
   })
 })

@@ -120,6 +120,18 @@ export function setPhaseField(
   })
 }
 
+export function setPhaseOutput(
+  yamlText: string,
+  index: number,
+  output: Record<string, unknown>,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    const map = seq.items[index]
+    if (!isMap(map)) return
+    map.set('output', doc.createNode(output))
+  })
+}
+
 function nextPhaseKey(existing: string[]): string {
   let n = existing.length + 1
   while (existing.includes(`phase-${String(n)}`)) n++

@@ -7,8 +7,10 @@ import {
   parseAgentGraphPhases,
   removePhase,
   setPhaseField,
+  setPhaseOutput,
 } from '#components/strategy-settings/agent-graph/document'
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
+import { OutputField } from '#components/strategy-settings/agent-graph/fields/output-field'
 import { PromptField } from '#components/strategy-settings/agent-graph/fields/prompt-field'
 import { PhaseCard } from '#components/strategy-settings/agent-graph/phase-card'
 
@@ -102,6 +104,12 @@ export function AgentGraphForm({
                 value={phase.prompt}
                 onChange={(next) => {
                   onChange(setPhaseField(value, i, 'prompt', next))
+                }}
+              />
+              <OutputField
+                value={phase.output}
+                onChange={(next) => {
+                  onChange(setPhaseOutput(value, i, next))
                 }}
               />
             </PhaseCard>
