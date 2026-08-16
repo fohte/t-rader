@@ -5,6 +5,7 @@
 //! t-rader-agent とやりとりする。
 
 pub mod client;
+mod generated;
 
 pub use client::{
     AgentTaskClient, AgentTaskClientConfig, AgentTaskClientConfigError,

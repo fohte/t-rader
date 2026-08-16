@@ -23,14 +23,18 @@ const TASK_NOT_FOUND_ERROR_CODE = -32001
  * z 自体の再アサート) はいずれも createRoute が要求する `.openapi()` メソッドの
  * 型情報が失われ tsc が壊れるため採用できなかった。
  */
-const submitTaskBodySchema = z.object({
-  strategy_id: z.string().min(1),
-  prompt: z.string().min(1),
-})
+const submitTaskBodySchema = z
+  .object({
+    strategy_id: z.string().min(1),
+    prompt: z.string().min(1),
+  })
+  .openapi('SubmitTaskBody')
 
-const submitTaskResponseSchema = z.object({
-  task_id: z.string(),
-})
+const submitTaskResponseSchema = z
+  .object({
+    task_id: z.string(),
+  })
+  .openapi('SubmitTaskResponse')
 
 const taskIdParamsSchema = z.object({
   taskId: z.string(),
@@ -39,22 +43,25 @@ const taskIdParamsSchema = z.object({
 // steps の要素の中身は producer 側 (StrategyTaskStep) の型で保証されている前提
 // とし、backend 同様に検証しない (backend/src/agent_client/client.rs の
 // GetTaskResponse.steps も serde_json::Value で素通ししている)。
-const taskResponseSchema = z.object({
-  task_id: z.string(),
-  state: z.string(),
-  result_text: z.string().optional(),
-  error_kind: z.string().optional(),
-  steps: z.array(z.unknown()).optional(),
-})
+const taskResponseSchema = z
+  .object({
+    task_id: z.string(),
+    state: z.string(),
+    result_text: z.string().optional(),
+    error_kind: z.string().optional(),
+    steps: z.array(z.unknown()).optional(),
+  })
+  .openapi('GetTaskResponse')
 
-const errorResponseSchema = z.object({
-  error: z.string(),
-})
-
-const validationErrorResponseSchema = z.object({
-  error: z.string(),
-  issues: z.array(z.unknown()),
-})
+// progenitor 0.14 はエラーレスポンスのスキーマが operation 内で複数種類あると
+// コード生成できない (単一型に絞れない前提の実装のため) ので、422 の issues も
+// この共通スキーマに寄せて全エラーレスポンスで型を統一する。
+const errorResponseSchema = z
+  .object({
+    error: z.string(),
+    issues: z.array(z.unknown()).optional(),
+  })
+  .openapi('ErrorResponse')
 /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- スキーマ定義部分のみの回避策のためここで戻す */
 
 export interface InternalApiOptions {
@@ -118,6 +125,7 @@ const isTaskNotFoundError = (err: unknown): boolean =>
  * 分割代入もこのファイル末尾まで any 由来として扱われる。
  */
 const submitTaskRoute = createRoute({
+  operationId: 'submitTask',
   method: 'post',
   path: '/internal/tasks',
   request: {
@@ -135,9 +143,7 @@ const submitTaskRoute = createRoute({
       description: 'Malformed JSON body',
     },
     422: {
-      content: {
-        'application/json': { schema: validationErrorResponseSchema },
-      },
+      content: { 'application/json': { schema: errorResponseSchema } },
       description: 'Request body failed validation',
     },
     500: {
@@ -148,6 +154,7 @@ const submitTaskRoute = createRoute({
 })
 
 const getTaskRoute = createRoute({
+  operationId: 'getTask',
   method: 'get',
   path: '/internal/tasks/{taskId}',
   request: {
