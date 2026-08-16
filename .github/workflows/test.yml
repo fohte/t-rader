@@ -268,8 +268,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Storybook の story は headless Playwright chromium 上で実行される。
-      # ubuntu-latest は chromium に必要な共有ライブラリは持つが、CJK フォントは
-      # 持たないため、キャッシュヒット時も install-deps でフォントパッケージを補う。
+      # actions/cache が保存するのは ~/.cache/ms-playwright (ブラウザ本体) のみで、
+      # chromium に必要な OS 共有ライブラリ (apt パッケージ) はキャッシュ対象外のため、
+      # キャッシュヒット時も install-deps で入れ直す必要がある。
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

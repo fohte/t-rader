@@ -5,7 +5,7 @@
   "scripts": {
     "prepare": "tsr generate",
     "test": "conc pnpm:test:type pnpm:test:unit",
-    "test:type": "tsc --noEmit",
+    "test:type": "tsr generate && tsc --noEmit",
     "test:unit": "vitest run",
     "dev": "vite",
     "build": "vite build",
