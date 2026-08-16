@@ -75,7 +75,7 @@ pub struct AgentTaskStatus {
     pub state: AgentTaskState,
     pub result_text: Option<String>,
     pub error_kind: Option<String>,
-    /// フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。応答に無ければ `None`。
+    /// フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。空または応答に無ければ `None`。
     pub steps: Option<serde_json::Value>,
 }
 
@@ -201,15 +201,19 @@ fn map_client_error(
         progenitor_client::Error::CommunicationError(e) => AgentTaskError::Network(e.to_string()),
         progenitor_client::Error::InvalidUpgrade(e) => AgentTaskError::Network(e.to_string()),
         progenitor_client::Error::ResponseBodyError(e) => AgentTaskError::Parse(e.to_string()),
-        progenitor_client::Error::InvalidResponsePayload(_, e) => {
-            AgentTaskError::Parse(e.to_string())
+        progenitor_client::Error::InvalidResponsePayload(bytes, e) => {
+            AgentTaskError::Parse(format!(
+                "failed to parse error response body ({}): {e}",
+                String::from_utf8_lossy(&bytes)
+            ))
         }
         progenitor_client::Error::InvalidRequest(msg) | progenitor_client::Error::Custom(msg) => {
             AgentTaskError::Parse(msg)
         }
-        progenitor_client::Error::UnexpectedResponse(response) => {
-            AgentTaskError::Parse(format!("unexpected response status: {}", response.status()))
-        }
+        progenitor_client::Error::UnexpectedResponse(response) => AgentTaskError::Api {
+            status: response.status().as_u16(),
+            message: format!("unexpected response status: {}", response.status()),
+        },
     }
 }
 

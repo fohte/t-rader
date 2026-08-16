@@ -1,5 +1,3 @@
-// build.rs はビルド時のみ実行され、失敗したら panic でビルドを止めるのが
-// cargo の想定する流儀 (プロダクションコードの unwrap_used/expect_used/panic deny の対象外)。
 #![allow(
     clippy::panic,
     clippy::expect_used,
