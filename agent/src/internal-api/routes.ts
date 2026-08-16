@@ -8,18 +8,54 @@ import type {
 } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { A2AError } from '@a2a-js/sdk/server'
-import type { Hono } from 'hono'
+import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi'
 import { ResultAsync } from 'neverthrow'
-import { z } from 'zod'
 
 import { AGENT_GRAPH_STEPS_ARTIFACT_ID } from '#strategy-agent/agent-graph/step'
 
 const TASK_NOT_FOUND_ERROR_CODE = -32001
 
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access --
+ * @hono/zod-openapi@1.5.2 の同梱型定義が `import z = zodModule.z;` と参照している
+ * zodModule 自体を import しておらず、z の型が any にフォールバックするため
+ * (skipLibCheck: true でも tsc の型検査自体は any 経由で通ってしまうが、
+ * no-unsafe-* だけは反応する)。z を正しく型付けする代替策 (ZodType での明示注釈、
+ * z 自体の再アサート) はいずれも createRoute が要求する `.openapi()` メソッドの
+ * 型情報が失われ tsc が壊れるため採用できなかった。
+ */
 const submitTaskBodySchema = z.object({
   strategy_id: z.string().min(1),
   prompt: z.string().min(1),
 })
+
+const submitTaskResponseSchema = z.object({
+  task_id: z.string(),
+})
+
+const taskIdParamsSchema = z.object({
+  taskId: z.string(),
+})
+
+// steps の要素の中身は producer 側 (StrategyTaskStep) の型で保証されている前提
+// とし、backend 同様に検証しない (backend/src/agent_client/client.rs の
+// GetTaskResponse.steps も serde_json::Value で素通ししている)。
+const taskResponseSchema = z.object({
+  task_id: z.string(),
+  state: z.string(),
+  result_text: z.string().optional(),
+  error_kind: z.string().optional(),
+  steps: z.array(z.unknown()).optional(),
+})
+
+const errorResponseSchema = z.object({
+  error: z.string(),
+})
+
+const validationErrorResponseSchema = z.object({
+  error: z.string(),
+  issues: z.array(z.unknown()),
+})
+/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- スキーマ定義部分のみの回避策のためここで戻す */
 
 export interface InternalApiOptions {
   requestHandler: A2ARequestHandler
@@ -60,15 +96,7 @@ const stepsOf = (task: Task): unknown[] | undefined => {
   return Array.isArray(steps) ? steps : undefined
 }
 
-const toTaskResponse = (
-  task: Task,
-): {
-  task_id: string
-  state: string
-  result_text?: string
-  error_kind?: string
-  steps?: unknown[]
-} => {
+const toTaskResponse = (task: Task): z.infer<typeof taskResponseSchema> => {
   const resultText = resultTextOf(task)
   const errorKind = errorKindOf(task)
   const steps = stepsOf(task)
@@ -84,53 +112,104 @@ const toTaskResponse = (
 const isTaskNotFoundError = (err: unknown): boolean =>
   err instanceof A2AError && err.code === TASK_NOT_FOUND_ERROR_CODE
 
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument --
+ * 上記スキーマ定数が z の型バグにより any のままのため、それらを参照する
+ * createRoute の呼び出しと、そこから導出される c.req.valid() の戻り値の
+ * 分割代入もこのファイル末尾まで any 由来として扱われる。
+ */
+const submitTaskRoute = createRoute({
+  method: 'post',
+  path: '/internal/tasks',
+  request: {
+    body: {
+      content: { 'application/json': { schema: submitTaskBodySchema } },
+    },
+  },
+  responses: {
+    201: {
+      content: { 'application/json': { schema: submitTaskResponseSchema } },
+      description: 'Task submitted',
+    },
+    400: {
+      content: { 'application/json': { schema: errorResponseSchema } },
+      description: 'Malformed JSON body',
+    },
+    422: {
+      content: {
+        'application/json': { schema: validationErrorResponseSchema },
+      },
+      description: 'Request body failed validation',
+    },
+    500: {
+      content: { 'application/json': { schema: errorResponseSchema } },
+      description: 'Agent did not create a task',
+    },
+  },
+})
+
+const getTaskRoute = createRoute({
+  method: 'get',
+  path: '/internal/tasks/{taskId}',
+  request: {
+    params: taskIdParamsSchema,
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: taskResponseSchema } },
+      description: 'Task status',
+    },
+    404: {
+      content: { 'application/json': { schema: errorResponseSchema } },
+      description: 'Task not found',
+    },
+    500: {
+      content: { 'application/json': { schema: errorResponseSchema } },
+      description: 'Unexpected failure while fetching the task',
+    },
+  },
+})
+
 export const mountInternalApiRoutes = (
-  app: Hono,
+  app: OpenAPIHono,
   options: InternalApiOptions,
 ): void => {
   const { requestHandler, pushNotificationConfig } = options
 
-  app.post('/internal/tasks', async (c) => {
-    const rawBodyResult = await ResultAsync.fromPromise(
-      c.req.json(),
-      () => 'invalid JSON body' as const,
-    )
-    if (rawBodyResult.isErr()) {
-      return c.json({ error: rawBodyResult.error }, 400)
-    }
+  app.openapi(
+    submitTaskRoute,
+    async (c) => {
+      const { strategy_id, prompt } = c.req.valid('json')
+      const message = buildUserMessage(strategy_id, prompt)
+      const params: MessageSendParams = {
+        message,
+        configuration: {
+          blocking: false,
+          ...(pushNotificationConfig !== undefined
+            ? { pushNotificationConfig }
+            : {}),
+        },
+      }
+      const result = await requestHandler.sendMessage(params)
+      const taskId = result.kind === 'task' ? result.id : result.taskId
 
-    const parsed = submitTaskBodySchema.safeParse(rawBodyResult.value)
-    if (!parsed.success) {
-      return c.json(
-        { error: 'invalid request body', issues: parsed.error.issues },
-        422,
-      )
-    }
+      if (taskId === undefined) {
+        return c.json({ error: 'agent did not create a task' }, 500)
+      }
+      return c.json({ task_id: taskId }, 201)
+    },
+    (result, c) => {
+      if (!result.success) {
+        return c.json(
+          { error: 'invalid request body', issues: result.error.issues },
+          422,
+        )
+      }
+      return undefined
+    },
+  )
 
-    const message = buildUserMessage(
-      parsed.data.strategy_id,
-      parsed.data.prompt,
-    )
-    const params: MessageSendParams = {
-      message,
-      configuration: {
-        blocking: false,
-        ...(pushNotificationConfig !== undefined
-          ? { pushNotificationConfig }
-          : {}),
-      },
-    }
-    const result = await requestHandler.sendMessage(params)
-    const taskId = result.kind === 'task' ? result.id : result.taskId
-
-    if (taskId === undefined) {
-      return c.json({ error: 'agent did not create a task' }, 500)
-    }
-    return c.json({ task_id: taskId }, 201)
-  })
-
-  app.get('/internal/tasks/:taskId', async (c) => {
-    const taskId = c.req.param('taskId')
+  app.openapi(getTaskRoute, async (c) => {
+    const { taskId } = c.req.valid('param')
     const taskResult = await ResultAsync.fromPromise(
       requestHandler.getTask({ id: taskId }),
       (err) => err,
@@ -144,6 +223,6 @@ export const mountInternalApiRoutes = (
       // eslint-disable-next-line no-restricted-syntax -- 上記の通り、タスク未検出以外は再送出
       throw taskResult.error
     }
-    return c.json(toTaskResponse(taskResult.value))
+    return c.json(toTaskResponse(taskResult.value), 200)
   })
 }

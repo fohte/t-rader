@@ -5,6 +5,11 @@ pre-commit:
       glob: '*.rs'
       run: cd backend && cargo run -- --dump-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json && cd .. && git add backend/openapi.json
 
+    dump-agent-openapi:
+      priority: 1
+      glob: 'agent/**/*.ts'
+      run: cd agent && pnpm run dump-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json && cd .. && git add agent/openapi.json
+
     openapi-typescript:
       priority: 2
       glob: '*.rs'

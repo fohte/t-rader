@@ -6,7 +6,7 @@ import type {
 } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { A2AError } from '@a2a-js/sdk/server'
-import { Hono } from 'hono'
+import { OpenAPIHono } from '@hono/zod-openapi'
 import { describe, expect, it } from 'vitest'
 
 import { mountInternalApiRoutes } from '#internal-api/routes'
@@ -43,8 +43,8 @@ const buildStubHandler = (
   resubscribe: notImplemented,
 })
 
-const buildApp = (requestHandler: A2ARequestHandler): Hono => {
-  const app = new Hono()
+const buildApp = (requestHandler: A2ARequestHandler): OpenAPIHono => {
+  const app = new OpenAPIHono()
   mountInternalApiRoutes(app, { requestHandler })
   return app
 }
@@ -90,6 +90,22 @@ describe('POST /internal/tasks', () => {
       body: 'not json',
     })
     expect(res.status).toBe(400)
+  })
+
+  it('accepts a valid body sent without an explicit content-type header', async () => {
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: () => Promise.resolve(buildTask({ id: 'task-1' })),
+      }),
+    )
+    const res = await app.request('/internal/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+        prompt: 'do the thing',
+      }),
+    })
+    expect(res.status).toBe(201)
   })
 
   it('returns 422 when strategy_id is missing', async () => {
