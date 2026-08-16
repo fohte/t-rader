@@ -9,6 +9,7 @@ repo_language: ja
 subpackages:
   - name: frontend
     type: node
+    spa: true
   - name: backend
     type: rust
   - name: agent
@@ -17,4 +18,3 @@ subpackages:
 type: base
 use_coverage: true
 use_release_please: false
-use_storybook: true
