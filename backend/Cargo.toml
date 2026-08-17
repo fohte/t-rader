@@ -13,6 +13,9 @@ csv = "=1.3.1"
 encoding_rs = "=0.8.35"
 jsonschema = { version = "=0.46.9", default-features = false }
 percent-encoding = "=2.3.2"
+prettyplease = "=0.2.37"
+progenitor = { version = "=0.14.0", default-features = false }
+progenitor-client = "=0.14.0"
 quick-xml = "=0.40.1"
 reqwest = { version = "=0.13.4", default-features = false }
 rmcp = "=1.7.0"
@@ -51,6 +54,7 @@ encoding_rs = { workspace = true }
 jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }
+progenitor-client = { workspace = true }
 quick-xml = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls"] }
 rmcp = { workspace = true, features = [
@@ -86,6 +90,12 @@ indoc = "=2.0.7"
 utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true, features = ["axum"] }
 uuid = { workspace = true, features = ["serde", "v4"] }
+
+[build-dependencies]
+prettyplease = { workspace = true }
+progenitor = { workspace = true }
+serde_json = { workspace = true }
+syn = "=2.0.119"
 
 [dev-dependencies]
 axum-test = { workspace = true }

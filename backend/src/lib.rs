@@ -36,11 +36,12 @@ use crate::data_provider::DataProviderKind;
 use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    agent_tasks, annotations, bars, comments, custom_indicators, history, hooks, hypotheses,
-    imports, interests, macro_data, news, notes, refs, rss_feeds, strategies, trades, triggers,
-    watchlists,
+    agent_options, agent_tasks, annotations, bars, comments, custom_indicators, history, hooks,
+    hypotheses, imports, interests, macro_data, news, notes, refs, rss_feeds, strategies, trades,
+    triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
+use crate::services::litellm_client::LiteLlmClient;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -64,6 +65,9 @@ pub struct AppState {
     pub kata_executor: Option<SharedKataExecutor>,
     /// マクロ指標の最新値 cache (Stooq 等の poll task が書き込み、handler が読む)
     pub macro_cache: Option<Arc<MacroCache>>,
+    /// LiteLLM Proxy client。`LLM_BASE_URL` 未設定時は `None` で起動し、
+    /// `GET /api/agent-models` は空配列を返す。
+    pub litellm_client: Option<LiteLlmClient>,
 }
 
 impl AppState {
@@ -105,6 +109,7 @@ impl AppState {
         (name = "macro", description = "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"),
         (name = "news", description = "ニュース (公開 RSS の集約結果と戦略への紐付け)"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
+        (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
     ),
     info(
         title = "T-Rader API",
@@ -136,6 +141,7 @@ mod app_state_tests {
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             macro_cache: None,
+            litellm_client: None,
         };
         assert!(state.data_provider().is_ok());
     }
@@ -150,6 +156,7 @@ mod app_state_tests {
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             macro_cache: None,
+            litellm_client: None,
         };
         let result = state.data_provider();
         assert!(result.is_err());
@@ -204,6 +211,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
+        .routes(routes!(strategies::list_strategy_tasks))
         .routes(routes!(
             strategies::get_agents_md,
             strategies::put_agents_md
@@ -306,6 +314,9 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             rss_feeds::update_rss_feed,
             rss_feeds::delete_rss_feed
         ))
+        // agent options (agent 設定フォームの選択肢)
+        .routes(routes!(agent_options::get_agent_models))
+        .routes(routes!(agent_options::get_agent_tools))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)

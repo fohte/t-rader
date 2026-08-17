@@ -7,6 +7,7 @@ pub mod graph;
 pub mod hypotheses;
 pub mod import;
 pub mod interests;
+pub mod litellm_client;
 pub mod news;
 pub mod rss_feed;
 pub mod strategies;

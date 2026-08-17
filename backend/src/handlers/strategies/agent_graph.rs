@@ -120,7 +120,6 @@ mod tests {
               - key: plan
                 label: 調査計画
                 model: claude-opus-4
-                runs: once
                 prompt: 仮説を立てよ
                 output:
                   hypotheses:

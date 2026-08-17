@@ -10,21 +10,25 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::agent_client::AgentTaskError;
 use crate::entities::{strategy, strategy_interest};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
     AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
-    StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, UpdateStrategyRequest,
+    UpdateStrategyRequest,
 };
 use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::strategy_tasks::{self, GetTaskError, SubmitTaskError, TaskSource, phase_str};
 
 mod agent_graph;
+mod tasks;
 
 pub use agent_graph::{
     __path_get_agent_graph, __path_put_agent_graph, get_agent_graph, put_agent_graph,
+};
+pub(crate) use tasks::map_submit_error;
+pub use tasks::{
+    __path_get_strategy_task, __path_list_strategy_tasks, __path_submit_strategy_chat,
+    get_strategy_task, list_strategy_tasks, submit_strategy_chat,
 };
 
 fn validate_name(value: &str) -> Result<String, AppError> {
@@ -254,106 +258,6 @@ pub async fn list_strategy_interests(
         .all(&state.db)
         .await?;
     Ok(Json(items))
-}
-
-pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
-    match err {
-        SubmitTaskError::EmptyPrompt => AppError::Validation("prompt must not be empty".into()),
-        SubmitTaskError::StrategyNotFound(id) => {
-            AppError::NotFound(format!("strategy {id} not found"))
-        }
-        SubmitTaskError::Database(db_err) => AppError::Database(db_err),
-        SubmitTaskError::AgentTask(AgentTaskError::NotConfigured) => {
-            AppError::ServiceUnavailable("agent task client is not configured".into())
-        }
-        SubmitTaskError::AgentTask(agent_err) => {
-            AppError::Config(format!("agent task error: {agent_err}"))
-        }
-    }
-}
-
-/// フローティングチャットから戦略 Agent にタスクを投入する
-#[utoipa::path(
-    post,
-    path = "/api/strategies/{id}/chat",
-    tag = "strategies",
-    params(("id" = Uuid, Path, description = "戦略 ID")),
-    request_body = StrategyChatRequest,
-    responses(
-        (status = 202, body = StrategyChatResponse),
-        (status = 400, description = "prompt が空 (空白のみを含む)", body = ErrorResponse),
-        (status = 404, description = "戦略が存在しない", body = ErrorResponse),
-        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
-        (status = 500, body = ErrorResponse),
-        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
-    )
-)]
-pub async fn submit_strategy_chat(
-    State(state): State<AppState>,
-    JsonPath(id): JsonPath<Uuid>,
-    JsonBody(payload): JsonBody<StrategyChatRequest>,
-) -> Result<(StatusCode, Json<StrategyChatResponse>), AppError> {
-    let submitted = strategy_tasks::submit_task(
-        &state.db,
-        &state.agent_task_client,
-        id,
-        &payload.prompt,
-        TaskSource::Frontend,
-    )
-    .await
-    .map_err(map_submit_error)?;
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(StrategyChatResponse {
-            task_id: submitted.task_id,
-            a2a_task_id: submitted.a2a_task_id,
-        }),
-    ))
-}
-
-/// 投入済み戦略タスクの phase / error_summary を取得する
-#[utoipa::path(
-    get,
-    path = "/api/strategies/{id}/tasks/{task_id}",
-    tag = "strategies",
-    params(
-        ("id" = Uuid, Path, description = "戦略 ID"),
-        ("task_id" = Uuid, Path, description = "戦略タスク ID"),
-    ),
-    responses(
-        (status = 200, body = StrategyTaskStatusResponse),
-        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
-        (status = 404, body = ErrorResponse),
-        (status = 500, body = ErrorResponse),
-    )
-)]
-pub async fn get_strategy_task(
-    State(state): State<AppState>,
-    JsonPath((strategy_id, task_id)): JsonPath<(Uuid, Uuid)>,
-) -> Result<Json<StrategyTaskStatusResponse>, AppError> {
-    let view = strategy_tasks::get_task_for_strategy(&state.db, strategy_id, task_id)
-        .await
-        .map_err(|err| match err {
-            GetTaskError::NotFound(id) => {
-                AppError::NotFound(format!("strategy task {id} not found"))
-            }
-            GetTaskError::StrategyMismatch { task_id, .. } => {
-                AppError::NotFound(format!("strategy task {task_id} not found"))
-            }
-            GetTaskError::Database(db_err) => AppError::Database(db_err),
-        })?;
-    Ok(Json(StrategyTaskStatusResponse {
-        task_id: view.task_id,
-        strategy_id: view.strategy_id,
-        a2a_task_id: view.a2a_task_id,
-        source: view.source,
-        phase: phase_str(&view.phase).to_string(),
-        error_summary: view.error_summary,
-        result_text: view.result_text,
-        created_at: view.created_at,
-        updated_at: view.updated_at,
-        steps: view.steps,
-    }))
 }
 
 fn validate_skill_name(name: &str) -> Result<(), AppError> {
@@ -686,12 +590,10 @@ pub async fn get_agent_config(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait};
+    use sea_orm::EntityTrait;
     use serde_json::json;
     use sqlx::PgPool;
 
@@ -701,31 +603,11 @@ mod tests {
         DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with, save_skills,
         skills_object,
     };
-    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::{strategy, strategy_task};
+    use crate::entities::strategy;
     use crate::testing::{
         create_strategy, create_test_server, create_test_server_with_db,
-        create_test_server_with_db_and_agent_client, create_test_server_with_state,
+        create_test_server_with_state,
     };
-
-    async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
-        let id = Uuid::new_v4();
-        strategy::ActiveModel {
-            id: Set(id),
-            name: Set(name.to_string()),
-            description: Set(None),
-            sort_order: Set(0),
-            agents_md: NotSet,
-            skills: NotSet,
-            agent_graph: NotSet,
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("insert strategy");
-        id
-    }
 
     #[sqlx::test(migrations = false)]
     async fn create_and_list_strategy(pool: PgPool) {
@@ -1078,191 +960,6 @@ mod tests {
         let server = create_test_server(pool).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/agent-config")
-            .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_creates_task_row_and_submits_to_agent(pool: PgPool) {
-        let fake = Arc::new(FakeAgentTaskClient::new());
-        fake.set_next_task_id("agent-task-1").await;
-        let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "long").await;
-
-        let res = server
-            .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": " inspect 7203 " }))
-            .await;
-        res.assert_status(axum::http::StatusCode::ACCEPTED);
-
-        let mut body: serde_json::Value = res.json();
-        let task_id = Uuid::parse_str(body["task_id"].as_str().expect("task_id")).expect("uuid");
-        body["task_id"] = json!("<uuid>");
-        assert_eq!(
-            body,
-            json!({
-                "task_id": "<uuid>",
-                "a2a_task_id": "agent-task-1",
-            }),
-        );
-
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .expect("row");
-        let row_summary = (
-            row.task_id,
-            row.strategy_id,
-            row.a2a_task_id,
-            row.source,
-            row.prompt,
-            row.phase,
-            row.error_summary,
-        );
-        assert_eq!(
-            row_summary,
-            (
-                task_id,
-                strategy_id,
-                Some("agent-task-1".to_string()),
-                "frontend".to_string(),
-                "inspect 7203".to_string(),
-                crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
-                None,
-            ),
-        );
-
-        let submitted: Vec<(Uuid, String)> = fake
-            .submitted
-            .lock()
-            .await
-            .iter()
-            .map(|s| (s.strategy_id, s.prompt.clone()))
-            .collect();
-        assert_eq!(submitted, vec![(strategy_id, "inspect 7203".to_string())]);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_unknown_strategy_returns_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
-        let res = server
-            .post("/api/strategies/00000000-0000-0000-0000-000000000000/chat")
-            .json(&json!({ "prompt": "x" }))
-            .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_empty_prompt_returns_400(pool: PgPool) {
-        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
-
-        let res = server
-            .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": "   " }))
-            .await;
-        res.assert_status(axum::http::StatusCode::BAD_REQUEST);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_agent_not_configured_returns_503(pool: PgPool) {
-        let fake = Arc::new(FakeAgentTaskClient::new());
-        fake.set_submit_error(AgentTaskError::NotConfigured).await;
-        let agent_client: SharedAgentTaskClient = fake;
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
-
-        let res = server
-            .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": "inspect 7203" }))
-            .await;
-        res.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(
-            res.json::<serde_json::Value>(),
-            json!({ "error": "agent task client is not configured" }),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_returns_phase(pool: PgPool) {
-        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
-
-        let submit = server
-            .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": "p" }))
-            .await;
-        submit.assert_status(axum::http::StatusCode::ACCEPTED);
-        let task_id = submit.json::<serde_json::Value>()["task_id"]
-            .as_str()
-            .map(|s| Uuid::parse_str(s).unwrap())
-            .expect("task_id");
-        let a2a_task_id = submit.json::<serde_json::Value>()["a2a_task_id"]
-            .as_str()
-            .expect("a2a_task_id")
-            .to_string();
-
-        let res = server
-            .get(&format!("/api/strategies/{strategy_id}/tasks/{task_id}"))
-            .await;
-        res.assert_status_ok();
-        let body: serde_json::Value = res.json();
-        let mut normalized = body.clone();
-        let obj = normalized.as_object_mut().unwrap();
-        obj.remove("created_at");
-        obj.remove("updated_at");
-        assert_eq!(
-            normalized,
-            json!({
-                "task_id": task_id,
-                "strategy_id": strategy_id,
-                "a2a_task_id": a2a_task_id,
-                "source": "frontend",
-                "phase": "running",
-                "error_summary": null,
-                "result_text": null,
-                "steps": [],
-            }),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_unknown_returns_404(pool: PgPool) {
-        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
-
-        let res = server
-            .get(&format!(
-                "/api/strategies/{strategy_id}/tasks/00000000-0000-0000-0000-000000000000"
-            ))
-            .await;
-        res.assert_status(axum::http::StatusCode::NOT_FOUND);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_strategy_mismatch_returns_404(pool: PgPool) {
-        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
-
-        let submit = server
-            .post(&format!("/api/strategies/{strategy_a}/chat"))
-            .json(&json!({ "prompt": "p" }))
-            .await;
-        submit.assert_status(axum::http::StatusCode::ACCEPTED);
-        let task_id = submit.json::<serde_json::Value>()["task_id"]
-            .as_str()
-            .map(|s| Uuid::parse_str(s).unwrap())
-            .expect("task_id");
-
-        let res = server
-            .get(&format!("/api/strategies/{strategy_b}/tasks/{task_id}"))
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }

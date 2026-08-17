@@ -1,32 +1,95 @@
 {
-  "openapi": "3.1.0",
+  "openapi": "3.0.0",
   "info": {
     "title": "t-rader-agent internal API",
     "version": "0.0.0"
   },
   "components": {
-    "schemas": {},
+    "schemas": {
+      "SubmitTaskResponse": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "SubmitTaskBody": {
+        "type": "object",
+        "properties": {
+          "strategy_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "strategy_id",
+          "prompt"
+        ]
+      },
+      "GetTaskResponse": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "result_text": {
+            "type": "string"
+          },
+          "error_kind": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
+          }
+        },
+        "required": [
+          "task_id",
+          "state"
+        ]
+      }
+    },
     "parameters": {}
   },
   "paths": {
     "/internal/tasks": {
       "post": {
+        "operationId": "submitTask",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "strategy_id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "prompt": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": ["strategy_id", "prompt"]
+                "$ref": "#/components/schemas/SubmitTaskBody"
               }
             }
           }
@@ -37,13 +100,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "task_id": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["task_id"]
+                  "$ref": "#/components/schemas/SubmitTaskResponse"
                 }
               }
             }
@@ -53,13 +110,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -69,17 +120,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": ["error", "issues"]
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -89,13 +130,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -105,6 +140,7 @@
     },
     "/internal/tasks/{taskId}": {
       "get": {
+        "operationId": "getTask",
         "parameters": [
           {
             "schema": {
@@ -121,26 +157,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "task_id": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "type": "string"
-                    },
-                    "result_text": {
-                      "type": "string"
-                    },
-                    "error_kind": {
-                      "type": "string"
-                    },
-                    "steps": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": ["task_id", "state"]
+                  "$ref": "#/components/schemas/GetTaskResponse"
                 }
               }
             }
@@ -150,13 +167,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -166,13 +177,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -180,6 +185,5 @@
         }
       }
     }
-  },
-  "webhooks": {}
+  }
 }

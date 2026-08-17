@@ -72,6 +72,7 @@ pub struct TaskStatusView {
     pub strategy_id: Uuid,
     pub a2a_task_id: Option<String>,
     pub source: String,
+    pub prompt: String,
     pub phase: StrategyTaskPhase,
     pub error_summary: Option<String>,
     pub result_text: Option<String>,
@@ -87,6 +88,7 @@ impl From<strategy_task::Model> for TaskStatusView {
             strategy_id: row.strategy_id,
             a2a_task_id: row.a2a_task_id,
             source: row.source,
+            prompt: row.prompt,
             phase: row.phase,
             error_summary: row.error_summary,
             result_text: row.result_text,
@@ -210,6 +212,24 @@ pub async fn submit_task(
         task_id,
         a2a_task_id: agent_ref.task_id,
     })
+}
+
+/// 一覧取得時の上限件数。ページネーションは今のところ無く、直近分だけを返す。
+const TASK_LIST_LIMIT: u64 = 50;
+
+/// 戦略の過去タスクを新しい順に返す (最大 `TASK_LIST_LIMIT` 件)。
+pub async fn list_tasks_for_strategy(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+) -> Result<Vec<TaskStatusView>, sea_orm::DbErr> {
+    use sea_orm::{ColumnTrait, QueryFilter, QueryOrder, QuerySelect};
+    let rows = strategy_task::Entity::find()
+        .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+        .order_by_desc(strategy_task::Column::CreatedAt)
+        .limit(TASK_LIST_LIMIT)
+        .all(db)
+        .await?;
+    Ok(rows.into_iter().map(TaskStatusView::from).collect())
 }
 
 /// strategy_id と task_id を厳密に突き合わせて strategy_task 行を返す。

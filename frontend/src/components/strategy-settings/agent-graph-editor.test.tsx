@@ -11,16 +11,29 @@ vi.mock(
 
 afterEach(cleanup)
 
+// 有効なフェーズ YAML ではない (parseAgentGraphPhases が null を返す) 単純な文字列。
+// dirty/save/beforeunload のような view に依存しない機構をテストするときは、これを使って
+// 常に YAML ビューを表示させる (form ビューがデフォルトになると agent_graph エディタが
+// 画面から消えてテストの前提が崩れるため)。
+const NOT_PHASE_YAML = 'sample'
+
+const SAMPLE_PHASES = `phases:
+  - key: plan
+    label: 調査計画
+    model: claude-opus-4
+    prompt: 仮説を立てよ
+`
+
 describe('AgentGraphEditor', () => {
   it('initialValue と一致する間は保存ボタンが disabled で dirty 表示も出ない', () => {
-    render(<AgentGraphEditor initialValue="phases: []" onSave={() => {}} />)
+    render(<AgentGraphEditor initialValue={NOT_PHASE_YAML} onSave={() => {}} />)
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
     expect(screen.queryByTestId('dirty-indicator')).toBeNull()
   })
 
   it('編集すると dirty になり、保存ボタンが押せる', async () => {
     const user = userEvent.setup()
-    render(<AgentGraphEditor initialValue="phases: []" onSave={() => {}} />)
+    render(<AgentGraphEditor initialValue={NOT_PHASE_YAML} onSave={() => {}} />)
     const editor = screen.getByLabelText('agent_graph')
     await user.type(editor, '\n')
     expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
@@ -32,10 +45,11 @@ describe('AgentGraphEditor', () => {
     const onSave = vi.fn()
     render(<AgentGraphEditor initialValue="a" onSave={onSave} />)
     const editor = screen.getByLabelText('agent_graph')
-    await user.clear(editor)
+    // clear() で一時的に空文字列を経由すると「フェーズ分割 off」の正当な値として
+    // フォームビューに切り替わり YAML エディタが外れてしまうため、末尾に追記する
     await user.type(editor, 'b')
     await user.click(screen.getByRole('button', { name: '保存' }))
-    expect(onSave).toHaveBeenCalledWith('b')
+    expect(onSave).toHaveBeenCalledWith('ab')
   })
 
   it('isSaving 中は保存ボタンが「保存中…」表示で disabled になる', async () => {
@@ -92,10 +106,47 @@ describe('AgentGraphEditor', () => {
       <AgentGraphEditor initialValue="A" onSave={() => {}} />,
     )
     const editor = screen.getByLabelText('agent_graph')
-    await user.clear(editor)
+    // clear() で一時的に空文字列を経由すると「フェーズ分割 off」の正当な値として
+    // フォームビューに切り替わり YAML エディタが外れてしまうため、末尾に追記する
     await user.type(editor, 'draft')
 
     rerender(<AgentGraphEditor initialValue="B" onSave={() => {}} />)
-    expect(screen.getByLabelText('agent_graph')).toHaveValue('draft')
+    expect(screen.getByLabelText('agent_graph')).toHaveValue('Adraft')
+  })
+
+  it('有効なフェーズ YAML はデフォルトでフォームビューを表示する', () => {
+    render(<AgentGraphEditor initialValue={SAMPLE_PHASES} onSave={() => {}} />)
+    expect(screen.getByTestId('phase-card-plan')).toBeInTheDocument()
+    expect(screen.queryByLabelText('agent_graph')).toBeNull()
+  })
+
+  it('YAML チップを押すと生 YAML エディタに切り替わる', async () => {
+    const user = userEvent.setup()
+    render(<AgentGraphEditor initialValue={SAMPLE_PHASES} onSave={() => {}} />)
+    await user.click(screen.getByRole('button', { name: 'YAML' }))
+    expect(screen.getByLabelText('agent_graph')).toHaveValue(SAMPLE_PHASES)
+    expect(screen.queryByTestId('phase-card-plan')).toBeNull()
+  })
+
+  it('壊れた YAML はフォームチップが disabled になり、常に YAML ビューになる', () => {
+    render(<AgentGraphEditor initialValue="phases: [" onSave={() => {}} />)
+    expect(screen.getByRole('button', { name: 'フォーム' })).toBeDisabled()
+    expect(screen.getByLabelText('agent_graph')).toBeInTheDocument()
+    expect(screen.getByTestId('form-unavailable-notice')).toBeInTheDocument()
+  })
+
+  it('saveError からフェーズ key を抽出し、該当カードにエラーを表示する', () => {
+    render(
+      <AgentGraphEditor
+        initialValue={SAMPLE_PHASES}
+        onSave={() => {}}
+        saveError='phase key "plan" is duplicated'
+      />,
+    )
+    expect(
+      screen
+        .getByTestId('phase-card-plan')
+        .querySelector('[data-testid="phase-error"]'),
+    ).not.toBeNull()
   })
 })
