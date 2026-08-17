@@ -135,8 +135,16 @@ function GraphCanvas({ def, onOpenRef }: GraphCanvasProps) {
 
   // グラフ形状 (layout 結果) が変わるたびに、見える範囲を追従させる。hover によるハイライト
   // 変更では再フィットしないよう、装飾前の rawNodes/rawEdges を依存に使う
+  //
+  // fitView は各ノードの measured width/height のみで fit 計算するため、edge label
+  // (SVG text) やノードの角に絶対配置される CiteBadge、nowrap な RefChip の CJK
+  // テキストなど、ノード自身の枠からはみ出す描画はここに含まれない。そのぶんを
+  // 安全マージンとして padding を通常より大きく確保する。
+  // ponytail: 実測値ベースのヒューリスティックな上限であり、はみ出し量がこれを
+  // 超えると再度 overflow しうる。根本対応するなら dagre-layout 側でノード内
+  // コンテンツ幅・edge label 幅を layout に反映する
   useEffect(() => {
-    void fitView({ duration: 200, padding: 0.2 })
+    void fitView({ duration: 200, padding: 0.4 })
   }, [rawNodes, rawEdges, fitView])
 
   if (layoutResult.isErr()) {
