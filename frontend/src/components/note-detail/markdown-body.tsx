@@ -87,8 +87,7 @@ function GraphErrorFallback({ resetErrorBoundary }: FallbackProps) {
 }
 
 const HEADING3_CLASS =
-  // eslint-disable-next-line no-restricted-syntax -- Strategy design tokens は任意値に依存する既存デザインのため
-  'mt-4 mb-2 text-[14px] font-bold uppercase tracking-wider text-[color:var(--color-text-secondary)]'
+  'mt-4 mb-2 text-sm font-bold uppercase tracking-wider text-text-secondary'
 
 // hast-util-to-jsx-runtime の tableCellAlignToStyle (既定 true) が hast の
 // align を style.textAlign に変換して prop から落とすため、生の hast node

@@ -50,14 +50,4 @@ export default config(
       'tailwindcss/no-arbitrary-value': 'off',
     },
   },
-  // .storybook/ と vitest.config.ts は src 外にあり、相対インポートが必要な参照
-  // (vitest.config.ts -> ../vite.config、preview.ts -> ../src/index.css) を含むため
-  // no-restricted-imports を無効化する
-  {
-    files: ['frontend/.storybook/**/*.ts', 'frontend/vitest.config.ts'],
-    rules: {
-      'no-restricted-imports': 'off',
-    },
-  },
-  ...storybook.configs['flat/recommended'],
 )

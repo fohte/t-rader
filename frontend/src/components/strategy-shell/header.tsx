@@ -5,12 +5,9 @@ import { StrategySwitcher } from '#components/strategy-shell/strategy-switcher'
 import { useCurrentStrategyId } from '#components/strategy-shell/use-current-strategy-id'
 
 const NAV_BASE =
-  // eslint-disable-next-line no-restricted-syntax -- Strategy design tokens は任意値に依存する既存デザインのため
-  'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-[12px]'
-// eslint-disable-next-line no-restricted-syntax -- Strategy design tokens は任意値に依存する既存デザインのため
-const NAV_INACTIVE = `${NAV_BASE} border-[color:var(--color-border-strategy)] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]`
-// eslint-disable-next-line no-restricted-syntax -- Strategy design tokens は任意値に依存する既存デザインのため
-const NAV_ACTIVE = `${NAV_BASE} border-[color:var(--color-text-tertiary)] bg-[color:var(--panel-inset)] text-[color:var(--color-text-primary)]`
+  'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-xs'
+const NAV_INACTIVE = `${NAV_BASE} border-border-strategy text-text-secondary hover:border-text-tertiary hover:text-text-primary`
+const NAV_ACTIVE = `${NAV_BASE} border-text-tertiary bg-panel-inset text-text-primary`
 
 function NavLink({ to, label }: { to: string; label: string }) {
   return (
