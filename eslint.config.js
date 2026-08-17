@@ -5,6 +5,21 @@ export default config(
   {
     typescript: { typeChecked: true },
     errorHandling: {},
+    tailwind: { cssConfigPath: 'frontend/src/index.css' },
+  },
+  ...storybook.configs['flat/recommended'],
+  {
+    // vite.config.ts/vitest.config.ts are loaded through Vite's own
+    // esbuild-based config loader, which doesn't resolve the package.json
+    // "imports" field, unlike the Rollup pipeline that bundles the app
+    // itself. .storybook/**/*.ts is loaded the same way, through
+    // Storybook's own Node-based config loader.
+    files: [
+      'frontend/.storybook/**/*.ts',
+      'frontend/vite.config.ts',
+      'frontend/vitest.config.ts',
+    ],
+    rules: { 'no-restricted-imports': 'off' },
   },
   // TanStack Router の自動生成ファイル
   { ignores: ['frontend/src/routeTree.gen.ts'] },
@@ -30,6 +45,9 @@ export default config(
     rules: {
       // TanStack Router/Query の型定義が any を返すケースがあるため無効化
       '@typescript-eslint/no-unsafe-assignment': 'off',
+      // 既存コンポーネントが Tailwind の任意値記法 (text-[13px] 等) に
+      // 広く依存しているため無効化
+      'tailwindcss/no-arbitrary-value': 'off',
     },
   },
   // .storybook/ と vitest.config.ts は src 外にあり、相対インポートが必要な参照

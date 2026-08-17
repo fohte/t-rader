@@ -18,10 +18,13 @@ export function RefChip({
   const kindJP = REF_KIND_JP[ref.kind]
 
   const baseInner =
+    // eslint-disable-next-line no-restricted-syntax -- Strategy design tokens は任意値に依存する既存デザインのため
     'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-[color:var(--color-text-primary)]'
   const underline =
+    // eslint-disable-next-line no-restricted-syntax -- Strategy design tokens は任意値に依存する既存デザインのため
     'border-b border-dotted border-[color:var(--color-text-tertiary)] pb-px'
   const pillCls =
+    // eslint-disable-next-line no-restricted-syntax -- Strategy design tokens は任意値に依存する既存デザインのため
     'border border-[color:var(--color-border-strategy)] px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
   const interactive = onOpen
