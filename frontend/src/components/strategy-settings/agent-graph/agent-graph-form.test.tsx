@@ -1,11 +1,19 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { Middleware } from 'openapi-fetch'
+import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
+import { fetchClient } from '#lib/api/client'
 
-afterEach(cleanup)
+beforeAll(() => {
+  // Radix Select が内部で参照する API は jsdom に無いためポリフィルする
+  window.HTMLElement.prototype.hasPointerCapture = () => false
+  window.HTMLElement.prototype.scrollIntoView = () => {}
+})
 
 const SAMPLE = `phases:
   - key: plan
@@ -30,6 +38,63 @@ const SAMPLE = `phases:
     prompt: 割り当てられた仮説を検証せよ
 `
 
+const MODELS = [
+  {
+    id: 'claude-opus-4',
+    providers: ['anthropic'],
+    max_input_tokens: null,
+    max_output_tokens: null,
+    supports_reasoning: true,
+    supports_web_search: false,
+  },
+  {
+    id: 'claude-sonnet-4',
+    providers: ['anthropic'],
+    max_input_tokens: null,
+    max_output_tokens: null,
+    supports_reasoning: false,
+    supports_web_search: false,
+  },
+]
+const TOOLS = [
+  { name: 'list_notes', description: null },
+  { name: 'query_data', description: null },
+]
+const SKILLS = { snapshot: '# snapshot\n', recap: '# recap\n' }
+
+function installMiddleware() {
+  const middleware: Middleware = {
+    onRequest({ request }) {
+      const { url } = request
+      if (/\/api\/agent-models(\?|$)/.test(url)) {
+        return new Response(JSON.stringify({ models: MODELS }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (/\/api\/agent-tools(\?|$)/.test(url)) {
+        return new Response(JSON.stringify({ tools: TOOLS }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (/\/api\/strategies\/[^/]+\/skills(\?|$)/.test(url)) {
+        return new Response(JSON.stringify({ skills: SKILLS }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      throw new Error(`unmocked request: ${request.method} ${url}`)
+    },
+  }
+  fetchClient.use(middleware)
+  return () => {
+    fetchClient.eject(middleware)
+  }
+}
+
+let ejectMiddleware: (() => void) | null = null
+
 // value を state で持ち、onChange で更新する controlled wrapper。実際の agent-graph-editor.tsx
 // も同様の構造で AgentGraphForm を使うため、実運用に近い形でテストする。
 function Controlled({
@@ -46,6 +111,7 @@ function Controlled({
   }, [value])
   return (
     <AgentGraphForm
+      strategyId="strat-1"
       value={value}
       onChange={setValue}
       errorPhaseKey={errorPhaseKey}
@@ -54,15 +120,35 @@ function Controlled({
   )
 }
 
+function renderForm(props: { initial: string; errorPhaseKey?: string | null }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  }
+  return render(<Controlled {...props} />, { wrapper: Wrapper })
+}
+
+beforeEach(() => {
+  ejectMiddleware = installMiddleware()
+})
+
+afterEach(() => {
+  cleanup()
+  ejectMiddleware?.()
+  ejectMiddleware = null
+})
+
 describe('AgentGraphForm', () => {
   it('value が空文字列なら分割トグルが off で表示され、カードは出ない', () => {
-    render(<Controlled initial="" />)
+    renderForm({ initial: '' })
     expect(screen.getByLabelText('フェーズ分割を有効にする')).not.toBeChecked()
     expect(screen.queryByTestId('phase-card-plan')).toBeNull()
   })
 
   it('value がフェーズを含めば分割トグルが on で、フェーズカードを表示する', () => {
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     expect(screen.getByLabelText('フェーズ分割を有効にする')).toBeChecked()
     expect(screen.getByTestId('phase-card-plan')).toBeInTheDocument()
     expect(screen.getByTestId('phase-card-investigate')).toBeInTheDocument()
@@ -70,7 +156,7 @@ describe('AgentGraphForm', () => {
 
   it('トグルを off にすると値が空文字列になり、on に戻すと復元される', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
 
     await user.click(screen.getByLabelText('フェーズ分割を有効にする'))
     expect(screen.queryByTestId('phase-card-plan')).toBeNull()
@@ -82,20 +168,15 @@ describe('AgentGraphForm', () => {
 
   it('未設定の状態でトグルを on にすると最小構成のフェーズが 1 件作られる', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial="" />)
+    renderForm({ initial: '' })
     await user.click(screen.getByLabelText('フェーズ分割を有効にする'))
     expect(screen.getAllByTestId(/^phase-card-/)).toHaveLength(1)
   })
 
-  it('モデルとプロンプトを編集すると値に反映される', async () => {
+  it('プロンプトを編集すると値に反映される', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     const planCard = within(screen.getByTestId('phase-card-plan'))
-
-    const modelInput = planCard.getByLabelText('モデル')
-    await user.clear(modelInput)
-    await user.type(modelInput, 'claude-sonnet-4')
-    expect(modelInput).toHaveValue('claude-sonnet-4')
 
     const promptInput = planCard.getByLabelText('プロンプト')
     await user.clear(promptInput)
@@ -103,16 +184,73 @@ describe('AgentGraphForm', () => {
     expect(promptInput).toHaveValue('新しいプロンプト')
   })
 
+  it('モデルを select から選ぶと値に反映される', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    const trigger = await planCard.findByRole('combobox', { name: 'モデル' })
+    expect(trigger).toHaveTextContent('claude-opus-4')
+
+    await user.click(trigger)
+    await user.click(
+      await screen.findByRole('option', { name: 'claude-sonnet-4' }),
+    )
+    expect(trigger).toHaveTextContent('claude-sonnet-4')
+  })
+
+  it('tool チップを追加・削除でき、絞り込みの有無を tools キーの有無で表現する', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    // 初期状態は tools 省略 (全 tool 使用可)
+    expect(await planCard.findByText('すべての tool')).toBeInTheDocument()
+
+    await user.click(planCard.getByRole('button', { name: '絞り込む' }))
+    expect(planCard.queryByText('すべての tool')).toBeNull()
+
+    await user.click(planCard.getByRole('button', { name: 'tool を追加' }))
+    await user.click(await screen.findByRole('button', { name: 'list_notes' }))
+    expect(planCard.getByText('list_notes')).toBeInTheDocument()
+
+    await user.click(
+      planCard.getByRole('button', { name: 'tool "list_notes" を外す' }),
+    )
+    expect(planCard.queryByText('list_notes')).toBeNull()
+
+    await user.click(planCard.getByRole('button', { name: '全 tool に戻す' }))
+    expect(await planCard.findByText('すべての tool')).toBeInTheDocument()
+  })
+
+  it('skill チップを追加・削除できる', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    // tools が未設定 (絞り込む前) の間は「+ 追加」ボタンは skills 側だけに存在する
+    await user.click(
+      await planCard.findByRole('button', { name: 'skill を追加' }),
+    )
+    await user.click(await screen.findByRole('button', { name: 'snapshot' }))
+    expect(planCard.getByText('snapshot')).toBeInTheDocument()
+
+    await user.click(
+      planCard.getByRole('button', { name: 'skill "snapshot" を外す' }),
+    )
+    expect(planCard.queryByText('snapshot')).toBeNull()
+  })
+
   it('「+ フェーズを追加」で末尾にカードが増える', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     await user.click(screen.getByRole('button', { name: '+ フェーズを追加' }))
     expect(screen.getAllByTestId(/^phase-card-/)).toHaveLength(3)
   })
 
   it('削除ボタンでカードが 1 つ減る', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     await user.click(
       screen.getByRole('button', { name: 'フェーズ 調査計画 を削除' }),
     )
@@ -122,7 +260,7 @@ describe('AgentGraphForm', () => {
 
   it('並び替えでカードの表示順が入れ替わる', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     await user.click(
       screen.getByRole('button', { name: 'フェーズ 仮説の調査 を上に移動' }),
     )
@@ -134,7 +272,7 @@ describe('AgentGraphForm', () => {
   })
 
   it('errorPhaseKey と一致するカードにだけエラーを表示する', () => {
-    render(<Controlled initial={SAMPLE} errorPhaseKey="investigate" />)
+    renderForm({ initial: SAMPLE, errorPhaseKey: 'investigate' })
     const investigateCard = screen.getByTestId('phase-card-investigate')
     const planCard = screen.getByTestId('phase-card-plan')
     expect(
@@ -144,19 +282,19 @@ describe('AgentGraphForm', () => {
   })
 
   it('for_each を持つフェーズは参照元フェーズの label を説明文に使う', () => {
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     expect(screen.getByText(/調査計画 が返す/)).toBeInTheDocument()
   })
 
   it('for_each を持たないフェーズにはノード名・並列上限を表示しない', () => {
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     const planCard = within(screen.getByTestId('phase-card-plan'))
     expect(planCard.queryByLabelText('ノード名')).toBeNull()
     expect(planCard.queryByLabelText('並列上限')).toBeNull()
   })
 
   it('for_each を持つフェーズにはノード名・並列上限を表示する', () => {
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     const investigateCard = within(screen.getByTestId('phase-card-investigate'))
     expect(investigateCard.getByLabelText('実行回数')).toBeInTheDocument()
     expect(investigateCard.getByLabelText('ノード名')).toBeInTheDocument()
@@ -164,14 +302,14 @@ describe('AgentGraphForm', () => {
   })
 
   it('並列上限は既存の値を反映する', () => {
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     const investigateCard = within(screen.getByTestId('phase-card-investigate'))
     expect(investigateCard.getByLabelText('並列上限')).toHaveValue(4)
   })
 
   it('並列上限を編集すると値に反映される', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     const investigateCard = within(screen.getByTestId('phase-card-investigate'))
     const maxParallelInput = investigateCard.getByLabelText('並列上限')
     await user.clear(maxParallelInput)
@@ -181,7 +319,7 @@ describe('AgentGraphForm', () => {
 
   it('実行回数を別の参照先に切り替えると、旧参照先の items に紐づくノード名の選択がリセットされる', async () => {
     const user = userEvent.setup()
-    render(<Controlled initial={SAMPLE} />)
+    renderForm({ initial: SAMPLE })
     const investigateCard = within(screen.getByTestId('phase-card-investigate'))
     expect(investigateCard.getByLabelText('ノード名')).toHaveTextContent(
       'title',

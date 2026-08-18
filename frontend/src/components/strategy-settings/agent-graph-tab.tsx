@@ -25,6 +25,7 @@ export function AgentGraphTab({ strategyId }: AgentGraphTabProps) {
 
   return (
     <AgentGraphEditor
+      strategyId={strategyId}
       initialValue={data?.content ?? ''}
       isSaving={mutation.isPending}
       saveError={saveError}

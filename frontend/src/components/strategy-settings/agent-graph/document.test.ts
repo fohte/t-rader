@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { parseDocument, Scalar } from 'yaml'
+import { isSeq, parseDocument, Scalar } from 'yaml'
 
 import {
   addPhase,
   movePhase,
   parseAgentGraphPhases,
   removePhase,
+  setPhaseArrayField,
   setPhaseField,
   setPhaseForEach,
   setPhaseLabelField,
@@ -50,7 +51,7 @@ describe('parseAgentGraphPhases', () => {
         labelField: undefined,
         maxParallel: undefined,
         skills: [],
-        tools: [],
+        tools: undefined,
         output: {},
       },
       {
@@ -102,7 +103,7 @@ describe('setPhaseField', () => {
         labelField: undefined,
         maxParallel: undefined,
         skills: [],
-        tools: [],
+        tools: undefined,
         output: {},
       },
       {
@@ -142,7 +143,7 @@ describe('setPhaseForEach', () => {
       labelField: undefined,
       maxParallel: undefined,
       skills: [],
-      tools: [],
+      tools: undefined,
       output: {},
     })
   })
@@ -232,6 +233,52 @@ describe('setPhaseMaxParallel', () => {
   })
 })
 
+describe('setPhaseArrayField', () => {
+  it('tools キーが無いフェーズに配列を書き込める', () => {
+    const next = setPhaseArrayField(SAMPLE, 0, 'tools', ['read_note'])
+    expect(parseAgentGraphPhases(next)?.[0]?.tools).toEqual(['read_note'])
+    // 他のフィールドは変化しない
+    expect(parseAgentGraphPhases(next)?.[0]).toEqual({
+      key: 'plan',
+      label: '調査計画',
+      model: 'claude-opus-4',
+      prompt: '仮説を立てよ',
+      forEach: undefined,
+      labelField: undefined,
+      maxParallel: undefined,
+      skills: [],
+      tools: ['read_note'],
+      output: {},
+    })
+    // 他のフェーズは変化しない
+    expect(parseAgentGraphPhases(next)?.[1]?.tools).toEqual([
+      'query_data',
+      'write_note',
+    ])
+    // runs はフォームの型には出ないが、YAML 上は素通しされたままであること
+    expect(parseDocument(next).getIn(['phases', 0, 'runs'])).toBe('once')
+  })
+
+  it('undefined を渡すと tools キー自体を削除する (全 tool 使用可に戻る)', () => {
+    const next = setPhaseArrayField(SAMPLE, 1, 'tools', undefined)
+    expect(parseAgentGraphPhases(next)?.[1]?.tools).toBeUndefined()
+    expect(parseDocument(next).getIn(['phases', 1, 'tools'])).toBeUndefined()
+  })
+
+  it('空配列は undefined と区別され、明示的な 0 個として書き込まれる', () => {
+    const next = setPhaseArrayField(SAMPLE, 1, 'tools', [])
+    expect(parseAgentGraphPhases(next)?.[1]?.tools).toEqual([])
+    const doc = parseDocument(next)
+    const node = doc.getIn(['phases', 1, 'tools'])
+    expect(isSeq(node) && node.toJS(doc)).toEqual([])
+  })
+
+  it('skills にも配列を書き込める', () => {
+    const next = setPhaseArrayField(SAMPLE, 0, 'skills', ['snapshot'])
+    expect(parseAgentGraphPhases(next)?.[0]?.skills).toEqual(['snapshot'])
+  })
+})
+
 describe('addPhase', () => {
   it('末尾に空のフェーズを追加する', () => {
     const next = addPhase(SAMPLE)
@@ -246,7 +293,7 @@ describe('addPhase', () => {
       labelField: undefined,
       maxParallel: undefined,
       skills: [],
-      tools: [],
+      tools: undefined,
       output: {},
     })
   })

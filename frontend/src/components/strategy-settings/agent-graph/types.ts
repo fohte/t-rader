@@ -15,6 +15,7 @@ export interface AgentGraphPhaseForm {
   labelField?: string
   maxParallel?: number
   skills: string[]
-  tools: string[]
+  /** 省略 (undefined) は「全 tool 使用可」、`[]` は「tool を 1 つも使えない」を表す */
+  tools?: string[]
   output: Record<string, unknown>
 }

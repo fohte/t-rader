@@ -18,11 +18,10 @@ export function RefChip({
   const kindJP = REF_KIND_JP[ref.kind]
 
   const baseInner =
-    'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-[color:var(--color-text-primary)]'
-  const underline =
-    'border-b border-dotted border-[color:var(--color-text-tertiary)] pb-px'
-  const pillCls =
-    'border border-[color:var(--color-border-strategy)] px-2 py-0.5 rounded-none'
+    // eslint-disable-next-line no-restricted-syntax -- text-[0.88em] は親要素のフォントサイズ相対値で @theme に token 化されていない
+    'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-text-primary'
+  const underline = 'border-b border-dotted border-text-tertiary pb-px'
+  const pillCls = 'border border-border-strategy px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
   const interactive = onOpen
     ? 'cursor-pointer hover:text-[color:var(--color-accent-strategy)] hover:border-[color:var(--color-accent-strategy)]'
