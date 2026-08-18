@@ -1,6 +1,7 @@
 // backend は steps (jsonb) の中身を解釈せず素通しする契約のため、OpenAPI 生成型では
 // `unknown` になる。実際のフィールド構成を定めるのは agent 側の StrategyTaskStepJson
 // (agent/src/strategy-agent/agent-graph/step.ts) なので、型のみここから直接参照する。
+import { Link } from '@tanstack/react-router'
 import type { StrategyTaskStepJson as TaskStep } from 'agent/strategy-agent/agent-graph/step'
 import { Result } from 'neverthrow'
 import { useEffect, useState } from 'react'
@@ -10,16 +11,31 @@ import { cn } from '#lib/utils'
 
 export type { TaskStep }
 
+// フェーズが output で宣言する JSON Schema 相当のゆるい構造。中身の property 名
+// (verdict 等) は戦略ごとの語彙なのでコードは解釈せず、`enum` の有無だけを見る。
+export type AgentGraphOutputSchema = Record<string, unknown>
+
 export interface AgentGraphPhaseSummary {
   key: string
   label: string
   model: string
+  output?: AgentGraphOutputSchema
 }
 
 export type PhaseNode =
   | { kind: 'pending'; key: string; label: string; model: string }
-  | { kind: 'single'; key: string; step: TaskStep }
-  | { kind: 'branch'; key: string; branches: TaskStep[] }
+  | {
+      kind: 'single'
+      key: string
+      step: TaskStep
+      outputSchema?: AgentGraphOutputSchema
+    }
+  | {
+      kind: 'branch'
+      key: string
+      branches: TaskStep[]
+      outputSchema?: AgentGraphOutputSchema
+    }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
@@ -63,13 +79,18 @@ export function parseAgentGraphPhases(yaml: string): AgentGraphPhaseSummary[] {
   const result: AgentGraphPhaseSummary[] = []
   for (const p of phases) {
     if (!isRecord(p)) continue
-    const { key, label, model } = p
+    const { key, label, model, output } = p
     if (
       typeof key === 'string' &&
       typeof label === 'string' &&
       typeof model === 'string'
     ) {
-      result.push({ key, label, model })
+      result.push({
+        key,
+        label,
+        model,
+        ...(isRecord(output) ? { output } : {}),
+      })
     }
   }
   return result
@@ -112,8 +133,8 @@ export function buildPhaseNodes(
   return keys.map((key): PhaseNode => {
     const phaseSteps = stepsByPhase.get(key) ?? []
     const first = phaseSteps[0]
+    const config = configByKey.get(key)
     if (first == null) {
-      const config = configByKey.get(key)
       return {
         kind: 'pending',
         key,
@@ -123,9 +144,30 @@ export function buildPhaseNodes(
     }
     const hasItem = phaseSteps.some((s) => s.item !== undefined)
     return hasItem
-      ? { kind: 'branch', key, branches: phaseSteps }
-      : { kind: 'single', key, step: first }
+      ? {
+          kind: 'branch',
+          key,
+          branches: phaseSteps,
+          outputSchema: config?.output,
+        }
+      : { kind: 'single', key, step: first, outputSchema: config?.output }
   })
+}
+
+// output スキーマで enum 宣言された項目のうち、実際の output に値がある最初の 1 件を
+// バッジとして返す。プロパティ名 (verdict 等) はコードから見て意味を持たない文字列で、
+// 「enum で宣言されている」という構造だけを見て機械的に拾う。
+export function findEnumBadge(
+  outputSchema: AgentGraphOutputSchema | undefined,
+  output: unknown,
+): string | null {
+  if (outputSchema == null || !isRecord(output)) return null
+  for (const [key, def] of Object.entries(outputSchema)) {
+    if (!isRecord(def) || !Array.isArray(def['enum'])) continue
+    const value = output[key]
+    if (typeof value === 'string') return value
+  }
+  return null
 }
 
 export function formatDuration(
@@ -141,8 +183,8 @@ export function formatDuration(
 
 // トレースビューア (Tempo, Langfuse 等) の URL を組み立てる。`{trace_id}`/`{span_id}`
 // プレースホルダを差し替えるだけの単純なテンプレート方式とすることで、ビューアの種類を
-// 問わず `.env.local` の VITE_TRACE_URL_TEMPLATE で環境ごとに指定できるようにしている。
-// 未設定ならリンクを出さない。
+// 問わず backend の `TRACE_URL_TEMPLATE` (GET /api/config 経由) で環境ごとに指定できる
+// ようにしている。未設定ならリンクを出さない。
 export function buildTraceUrl(
   template: string | undefined,
   traceId: string,
@@ -157,6 +199,8 @@ export function buildTraceUrl(
 export interface TaskExecutionTreeProps {
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
+  /** ノートへのリンク組み立てに使う戦略 id */
+  strategyId: string
   /** トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
   traceUrlTemplate?: string
   /**
@@ -175,6 +219,14 @@ const STATUS_LABEL: Record<TaskStep['status'], string> = {
   failed: '失敗',
 }
 
+// 色分けは step.status のみで決める。enum の値 (rejected 等) で分岐すると、
+// UI が戦略の語彙 (何が「悪い」結果か) を知ることになってしまうため禁止。
+const STATUS_COLOR: Record<TaskStep['status'], string> = {
+  running: 'text-[color:var(--color-accent-strategy)]',
+  completed: 'text-[color:var(--color-text-secondary)]',
+  failed: 'text-[color:var(--color-accent-strategy)]',
+}
+
 interface RenderRow {
   key: string
   // グループ (phase_key) が切り替わる直前に「│」の継続行を挟む
@@ -183,7 +235,7 @@ interface RenderRow {
   last: boolean
   content:
     | { kind: 'pending'; label: string; model: string }
-    | { kind: 'step'; step: TaskStep }
+    | { kind: 'step'; step: TaskStep; outputSchema?: AgentGraphOutputSchema }
 }
 
 function toRows(nodes: PhaseNode[]): RenderRow[] {
@@ -204,7 +256,11 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
         connectorBefore,
         indent: false,
         last: false,
-        content: { kind: 'step', step: node.step },
+        content: {
+          kind: 'step',
+          step: node.step,
+          outputSchema: node.outputSchema,
+        },
       })
     } else {
       node.branches.forEach((step, i) => {
@@ -213,7 +269,7 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
           connectorBefore: connectorBefore && i === 0,
           indent: true,
           last: i === node.branches.length - 1,
-          content: { kind: 'step', step },
+          content: { kind: 'step', step, outputSchema: node.outputSchema },
         })
       })
     }
@@ -226,6 +282,7 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
 export function TaskExecutionTree({
   steps,
   configPhases,
+  strategyId,
   traceUrlTemplate,
   detailPlacement = 'inline',
   onSelectStep,
@@ -277,6 +334,7 @@ export function TaskExecutionTree({
               selected &&
               row.content.kind === 'step' && (
                 <StepDetail
+                  strategyId={strategyId}
                   step={row.content.step}
                   traceUrlTemplate={traceUrlTemplate}
                 />
@@ -310,9 +368,11 @@ function TreeRow({
     )
   }
 
-  const { step } = row.content
+  const { step, outputSchema } = row.content
   const label = step.item_label ?? step.label
   const duration = formatDuration(step.started_at, step.finished_at)
+  const badgeText =
+    findEnumBadge(outputSchema, step.output) ?? STATUS_LABEL[step.status]
 
   return (
     <button
@@ -328,7 +388,7 @@ function TreeRow({
     >
       <span
         className={cn(
-          'text-[color:var(--color-accent-strategy)]',
+          STATUS_COLOR[step.status],
           step.status === 'running' && 'animate-pulse',
         )}
       >
@@ -338,8 +398,8 @@ function TreeRow({
       <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
         {step.model}
       </span>
-      <span className="text-[10px] uppercase text-[color:var(--color-text-tertiary)]">
-        {STATUS_LABEL[step.status]}
+      <span className={cn('text-[10px]', STATUS_COLOR[step.status])}>
+        {badgeText}
       </span>
       {duration != null && (
         <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
@@ -350,14 +410,25 @@ function TreeRow({
   )
 }
 
+// output に note_id (文字列) があればノートへのリンクを出す。write_note が返した id を
+// そのまま output に含める、という設定側の慣習を前提にした構造的な検出。
+function findNoteId(output: unknown): string | null {
+  if (!isRecord(output)) return null
+  const value = output['note_id']
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
 export function StepDetail({
+  strategyId,
   step,
   traceUrlTemplate,
 }: {
+  strategyId: string
   step: TaskStep
   traceUrlTemplate?: string
 }): React.ReactElement {
   const traceUrl = buildTraceUrl(traceUrlTemplate, step.trace_id, step.span_id)
+  const noteId = findNoteId(step.output)
 
   return (
     <div className="mb-2 ml-4 space-y-2 border-l border-[color:var(--color-border-strategy)] py-1 pl-3 text-[11px] text-[color:var(--color-text-secondary)]">
@@ -367,6 +438,15 @@ export function StepDetail({
       )}
       {step.status === 'failed' && step.error != null && step.error !== '' && (
         <pre className="whitespace-pre-wrap">{step.error}</pre>
+      )}
+      {noteId != null && (
+        <Link
+          to="/strategies/$id/notes/$noteId"
+          params={{ id: strategyId, noteId }}
+          className="block text-[color:var(--color-accent-strategy)] hover:underline"
+        >
+          → ノートを開く
+        </Link>
       )}
       {traceUrl != null && (
         <a

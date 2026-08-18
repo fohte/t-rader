@@ -1,11 +1,11 @@
-import '../src/index.css'
+import '#index.css'
 
 import { withThemeByClassName } from '@storybook/addon-themes'
-import type { Preview, Renderer } from 'storybook'
+import type { Preview } from '@storybook/react-vite'
 
 const preview: Preview = {
   decorators: [
-    withThemeByClassName<Renderer>({
+    withThemeByClassName({
       themes: {
         light: '',
         dark: 'dark',

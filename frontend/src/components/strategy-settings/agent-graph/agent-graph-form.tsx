@@ -6,15 +6,20 @@ import {
   movePhase,
   parseAgentGraphPhases,
   removePhase,
+  setPhaseArrayField,
   setPhaseField,
   setPhaseOutput,
 } from '#components/strategy-settings/agent-graph/document'
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
 import { OutputField } from '#components/strategy-settings/agent-graph/fields/output-field'
 import { PromptField } from '#components/strategy-settings/agent-graph/fields/prompt-field'
+import { SkillsField } from '#components/strategy-settings/agent-graph/fields/skills-field'
+import { ToolsField } from '#components/strategy-settings/agent-graph/fields/tools-field'
 import { PhaseCard } from '#components/strategy-settings/agent-graph/phase-card'
+import { $api } from '#lib/api/client'
 
 interface AgentGraphFormProps {
+  strategyId: string
   /** agent_graph の YAML 文字列。これが唯一の真実の情報源で、フォーム操作のたびに書き換える */
   value: string
   onChange: (next: string) => void
@@ -29,12 +34,24 @@ interface AgentGraphFormProps {
 }
 
 export function AgentGraphForm({
+  strategyId,
   value,
   onChange,
   errorPhaseKey = null,
   lastEnabledValueRef,
 }: AgentGraphFormProps) {
   const enabled = value.trim() !== ''
+
+  const { data: modelsData } = $api.useQuery('get', '/api/agent-models')
+  const { data: toolsData } = $api.useQuery('get', '/api/agent-tools')
+  const { data: skillsData } = $api.useQuery(
+    'get',
+    '/api/strategies/{id}/skills',
+    { params: { path: { id: strategyId } } },
+  )
+  const models = modelsData?.models ?? []
+  const tools = toolsData?.tools ?? []
+  const skillNames = Object.keys(skillsData?.skills ?? {}).sort()
 
   const phases = parseAgentGraphPhases(value) ?? []
   const labelByKey = new Map(phases.map((p) => [p.key, p.label]))
@@ -99,12 +116,27 @@ export function AgentGraphForm({
                 onChange={(next) => {
                   onChange(setPhaseField(value, i, 'model', next))
                 }}
+                models={models}
               />
               <PromptField
                 value={phase.prompt}
                 onChange={(next) => {
                   onChange(setPhaseField(value, i, 'prompt', next))
                 }}
+              />
+              <ToolsField
+                value={phase.tools}
+                onChange={(next) => {
+                  onChange(setPhaseArrayField(value, i, 'tools', next))
+                }}
+                options={tools}
+              />
+              <SkillsField
+                value={phase.skills}
+                onChange={(next) => {
+                  onChange(setPhaseArrayField(value, i, 'skills', next))
+                }}
+                options={skillNames}
               />
               <OutputField
                 value={phase.output}

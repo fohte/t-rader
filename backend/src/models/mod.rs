@@ -2,6 +2,7 @@ pub mod agent_options;
 pub mod annotation;
 pub mod bar;
 pub mod comment;
+pub mod config;
 pub mod custom_indicator;
 pub mod hypothesis;
 pub mod import;
@@ -18,6 +19,7 @@ pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsRe
 pub use annotation::{CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar::{Bar, Timeframe};
 pub use comment::{CreateCommentRequest, UpdateCommentRequest};
+pub use config::ConfigResponse;
 pub use custom_indicator::{
     CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
     UpdateCustomIndicatorRequest,
