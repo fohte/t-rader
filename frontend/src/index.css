@@ -158,6 +158,11 @@
 @theme inline {
   --font-mono-ui: var(--font-mono-ui);
   --font-mono-body: var(--font-mono-body);
+
+  /* Tailwind 標準スケールの text-xs (12px) より小さい最小段 */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 0.9375rem;
+
   --color-bg-primary: var(--color-bg-primary);
   --color-bg-secondary: var(--color-bg-secondary);
   --color-bg-tertiary: var(--color-bg-tertiary);
