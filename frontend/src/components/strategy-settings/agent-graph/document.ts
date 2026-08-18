@@ -17,6 +17,13 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((x) => typeof x === 'string')
 }
 
+// 省略 (undefined) と明示的な空配列を区別する。存在するが不正な形の場合は
+// skills と同じく [] にフォールバックする (エージェント側が実行時に弾く)
+function toOptionalStringArray(v: unknown): string[] | undefined {
+  if (v === undefined) return undefined
+  return isStringArray(v) ? v : []
+}
+
 function toPhaseForm(v: unknown): AgentGraphPhaseForm | null {
   if (!isRecord(v)) return null
   const { key, label, model, prompt } = v
@@ -39,7 +46,7 @@ function toPhaseForm(v: unknown): AgentGraphPhaseForm | null {
     maxParallel:
       typeof v['max_parallel'] === 'number' ? v['max_parallel'] : undefined,
     skills: isStringArray(v['skills']) ? v['skills'] : [],
-    tools: isStringArray(v['tools']) ? v['tools'] : [],
+    tools: toOptionalStringArray(v['tools']),
     output: isRecord(v['output']) ? v['output'] : {},
   }
 }
@@ -117,6 +124,28 @@ export function setPhaseField(
 ): string {
   return withDocument(yamlText, (doc, seq) => {
     setStringField(doc, seq.items[index], field, value)
+  })
+}
+
+/**
+ * tools/skills のような配列フィールドを書き換える。`value` が `undefined` の場合は
+ * キー自体を削除する (tools の「省略 = 全 tool 使用可」を表現するため)。`[]` は
+ * 明示的な空配列としてそのまま書き込まれ、undefined とは区別される。
+ */
+export function setPhaseArrayField(
+  yamlText: string,
+  index: number,
+  field: 'tools' | 'skills',
+  value: string[] | undefined,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    const map = seq.items[index]
+    if (!isMap(map)) return
+    if (value === undefined) {
+      map.delete(field)
+      return
+    }
+    map.set(field, doc.createNode(value))
   })
 }
 
