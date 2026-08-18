@@ -39,17 +39,26 @@ export interface GraphRendererProps {
   def: GraphDef
   onOpenRef?: (token: string) => void
   className?: string
+  // Storybook の overflow-check がトランジション途中の不定なフレームを検査して
+  // しまう (実行環境のスケジューリング差で結果がぶれる) ため、story 側からのみ 0
+  // を渡して fitView を即時反映させる
+  fitViewDuration?: number
 }
 
 export function GraphRenderer({
   def,
   onOpenRef,
   className,
+  fitViewDuration,
 }: GraphRendererProps) {
   return (
     <div className={className}>
       <ReactFlowProvider>
-        <GraphCanvas def={def} onOpenRef={onOpenRef} />
+        <GraphCanvas
+          def={def}
+          onOpenRef={onOpenRef}
+          fitViewDuration={fitViewDuration}
+        />
       </ReactFlowProvider>
     </div>
   )
@@ -58,9 +67,10 @@ export function GraphRenderer({
 interface GraphCanvasProps {
   def: GraphDef
   onOpenRef?: (token: string) => void
+  fitViewDuration?: number
 }
 
-function GraphCanvas({ def, onOpenRef }: GraphCanvasProps) {
+function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
   const { fitView } = useReactFlow()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -146,8 +156,8 @@ function GraphCanvas({ def, onOpenRef }: GraphCanvasProps) {
   // 増えなくなる。根本対応するなら dagre-layout 側でノード内コンテンツ幅・edge
   // label 幅を layout に反映する
   useEffect(() => {
-    void fitView({ duration: 200, padding: 0.7 })
-  }, [rawNodes, rawEdges, fitView])
+    void fitView({ duration: fitViewDuration ?? 200, padding: 0.7 })
+  }, [rawNodes, rawEdges, fitView, fitViewDuration])
 
   if (layoutResult.isErr()) {
     return (
