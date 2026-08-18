@@ -36,9 +36,9 @@ use crate::data_provider::DataProviderKind;
 use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    agent_options, agent_tasks, annotations, bars, comments, custom_indicators, history, hooks,
-    hypotheses, imports, interests, macro_data, news, notes, refs, rss_feeds, strategies, trades,
-    triggers, watchlists,
+    agent_options, agent_tasks, annotations, bars, comments, config, custom_indicators, history,
+    hooks, hypotheses, imports, interests, macro_data, news, notes, refs, rss_feeds, strategies,
+    trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient;
@@ -110,6 +110,7 @@ impl AppState {
         (name = "news", description = "ニュース (公開 RSS の集約結果と戦略への紐付け)"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
+        (name = "config", description = "frontend 向けランタイム設定値"),
     ),
     info(
         title = "T-Rader API",
@@ -317,6 +318,8 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         // agent options (agent 設定フォームの選択肢)
         .routes(routes!(agent_options::get_agent_models))
         .routes(routes!(agent_options::get_agent_tools))
+        // config (frontend 向けランタイム設定値)
+        .routes(routes!(config::get_config))
 }
 
 /// OpenAPI スペックを生成する (DB 接続不要)

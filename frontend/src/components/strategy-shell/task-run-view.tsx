@@ -166,6 +166,7 @@ export function TaskRunView({
                 <TaskExecutionTree
                   steps={steps}
                   configPhases={configPhases}
+                  strategyId={strategyId}
                   traceUrlTemplate={traceUrlTemplate}
                   detailPlacement="external"
                   onSelectStep={setSelectedStep}
@@ -175,6 +176,7 @@ export function TaskRunView({
             <aside className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-4">
               {selectedStep != null ? (
                 <StepDetail
+                  strategyId={strategyId}
                   step={selectedStep}
                   traceUrlTemplate={traceUrlTemplate}
                 />

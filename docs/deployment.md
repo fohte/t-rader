@@ -23,6 +23,7 @@ t-rader-backend は Kubernetes クラスタ上に Deployment + Service として
 | 条件付き          | `JQUANTS_API_KEY`        | `DATA_PROVIDER=jquants` 時のみ必要                                                                                                               | DataProvider なしで起動 (`query_data` が動かない)                                                           |
 | 条件付き          | `IBKR_BASE_URL` 等       | `DATA_PROVIDER=ibkr` 時に Gateway 接続情報を設定                                                                                                 | デフォルト値で初期化を試行                                                                                  |
 | 任意              | `BACKEND_PORT`           | listen port                                                                                                                                      | `3000` で listen                                                                                            |
+| 任意              | `TRACE_URL_TEMPLATE`     | トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` プレースホルダ)。`GET /api/config` 経由で frontend に渡る                          | トレースリンクを表示しない                                                                                  |
 
 kata-exec の追加の任意変数 (`KATA_EXEC_NAMESPACE`, `KATA_EXEC_IMAGE`, `KATA_EXEC_TOKEN`, `KATA_EXEC_DEFAULT_TIMEOUT_SECS`, `KATA_EXEC_MAX_OUTPUT_BYTES` 等) は backend のソース (`backend/src/kata_exec/`) を参照。in-cluster で動かす場合 token / CA は ServiceAccount のものを自動で読む。
 
