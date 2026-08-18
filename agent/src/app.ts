@@ -42,9 +42,9 @@ export const createApp = (deps: AppDeps): OpenAPIHono<BlankEnv> => {
       return c.json({ error: err.message }, err.status)
     }
     console.error('request failed:', err)
-    // catch-all のためエラー種別を問わず全件がここを通る。{{ default }} を
-    // 含めず固定値のみだと Sentry 側の型/stacktrace ベースの分類が無効化され、
-    // 別種のエラーが同一 issue に混ざる (issue が混ざると新規エラーの通知が飛ばない)。
+    // {{ default }} を含めず固定値のみだと Sentry 側の型/stacktrace ベースの
+    // 分類が無効化され、別種のエラーが同一 issue に混ざる
+    // (issue が混ざると新規エラーの通知が飛ばない)。
     captureWithFingerprint(err, [REQUEST_FAILED_FINGERPRINT, '{{ default }}'], {
       extras: { path: c.req.path, method: c.req.method },
     })
