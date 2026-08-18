@@ -9,8 +9,8 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 両 path とも JSON-RPC over Streamable HTTP (SSE) で通信する。`rmcp` は MCP spec [2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28) までのプロトコル世代を自動判別して同時に扱う。
 
-- **`< 2026-07-28` (レガシー)**: `initialize` → `mcp-session-id` ヘッダで以後のリクエストを継続する。t-rader-agent (`@modelcontextprotocol/sdk`) はこの世代で接続する
-- **`2026-07-28` 以降**: SEP-2567 によりセッションの概念が無くなり、リクエストごとに stateless に処理される (`mcp-session-id` は発行されない)。Cloudflare の MCP portal はこの世代で接続する。`initialize` を経ず `MCP-Protocol-Version` ヘッダのみで直接 tool を呼ぶ discover lifecycle (SEP-2575) では、SEP-2243 の `Mcp-Method`/`Mcp-Name` ヘッダも必須になる
+- **`< 2026-07-28` (レガシー)**: `initialize` → `mcp-session-id` ヘッダで以後のリクエストを継続する。t-rader-agent (`@modelcontextprotocol/sdk`) はこの世代で接続する。
+- **`2026-07-28` 以降**: SEP-2567 により session の概念が無くなり、リクエストごとに stateless に処理される (`mcp-session-id` は発行されない)。discover lifecycle (SEP-2575) を使う外部クライアントはこの世代で接続する。`initialize` を経ず `MCP-Protocol-Version` ヘッダのみで直接 tool を呼ぶ場合、SEP-2243 の `Mcp-Method` ヘッダも必須になる (`Mcp-Name` は `tools/call` など対象を名指しする method でのみ必須)。
 
 ## 管理 MCP (`/mcp/mgmt`)
 
