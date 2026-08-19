@@ -234,7 +234,10 @@ function TreeRow({
         )}
       </span>
       {subtitle != null && (
-        <span className="truncate pl-[18px] text-[10px] text-[color:var(--color-text-tertiary)]">
+        <span
+          data-testid="step-subtitle"
+          className="truncate pl-[18px] text-[10px] text-[color:var(--color-text-tertiary)]"
+        >
           {subtitle}
         </span>
       )}

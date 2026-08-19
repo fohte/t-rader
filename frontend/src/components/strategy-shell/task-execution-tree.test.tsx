@@ -228,14 +228,9 @@ describe('TaskExecutionTree', () => {
       output: { verdict: 'rejected' },
     })
 
-    const { container } = render(
-      <TaskExecutionTree {...makeProps({ steps: [step] })} />,
-    )
+    render(<TaskExecutionTree {...makeProps({ steps: [step] })} />)
 
-    expect(
-      container.querySelector('[data-testid="task-execution-tree"] button')
-        ?.children.length,
-    ).toBe(1)
+    expect(screen.queryByTestId('step-subtitle')).not.toBeInTheDocument()
   })
 
   it('running と failed で行の色が異なる', () => {
@@ -254,8 +249,10 @@ describe('TaskExecutionTree', () => {
       '[data-testid="task-execution-tree"] button span > span:first-child',
     )
 
-    expect(dots[0]?.className).toContain('--color-status-task-running')
-    expect(dots[1]?.className).toContain('--color-accent-strategy')
+    expect(dots[0]?.className).toBe(
+      'text-[color:var(--color-status-task-running)] animate-pulse',
+    )
+    expect(dots[1]?.className).toBe('text-[color:var(--color-accent-strategy)]')
   })
 
   it('ノードをクリックすると item/output の詳細が開閉する', async () => {

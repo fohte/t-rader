@@ -9,7 +9,6 @@ export {
   buildPhaseNodes,
   buildTraceUrl,
   findEnumBadge,
-  findNoteId,
   formatDuration,
   isTaskStep,
   listEnumEntries,
