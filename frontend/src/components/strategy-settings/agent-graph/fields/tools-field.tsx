@@ -12,12 +12,12 @@ interface ToolsFieldProps {
 export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-text-tertiary">
         使える tool
       </span>
       {value === undefined ? (
         <div className="flex items-center gap-2">
-          <span className="border border-dashed border-[color:var(--color-border-strategy)] px-1.5 py-0.5 font-mono text-[10.5px] text-[color:var(--color-text-tertiary)]">
+          <span className="border border-dashed border-border-strategy px-1.5 py-0.5 font-mono text-2xs text-text-tertiary">
             すべての tool
           </span>
           <button
@@ -25,7 +25,7 @@ export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
             onClick={() => {
               onChange([])
             }}
-            className="font-mono text-[11px] text-[color:var(--color-text-tertiary)] underline hover:text-[color:var(--color-text-primary)]"
+            className="font-mono text-2xs text-text-tertiary underline hover:text-text-primary"
           >
             絞り込む
           </button>
@@ -48,7 +48,7 @@ export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
               onClick={() => {
                 onChange(undefined)
               }}
-              className="font-mono text-[11px] text-[color:var(--color-text-tertiary)] underline hover:text-[color:var(--color-text-primary)]"
+              className="font-mono text-2xs text-text-tertiary underline hover:text-text-primary"
             >
               全 tool に戻す
             </button>

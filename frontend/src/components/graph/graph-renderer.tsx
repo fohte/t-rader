@@ -39,17 +39,26 @@ export interface GraphRendererProps {
   def: GraphDef
   onOpenRef?: (token: string) => void
   className?: string
+  // Storybook の overflow-check がトランジション途中の不定なフレームを検査して
+  // しまう (実行環境のスケジューリング差で結果がぶれる) ため、story 側からのみ 0
+  // を渡して fitView を即時反映させる
+  fitViewDuration?: number
 }
 
 export function GraphRenderer({
   def,
   onOpenRef,
   className,
+  fitViewDuration,
 }: GraphRendererProps) {
   return (
     <div className={className}>
       <ReactFlowProvider>
-        <GraphCanvas def={def} onOpenRef={onOpenRef} />
+        <GraphCanvas
+          def={def}
+          onOpenRef={onOpenRef}
+          fitViewDuration={fitViewDuration}
+        />
       </ReactFlowProvider>
     </div>
   )
@@ -58,9 +67,10 @@ export function GraphRenderer({
 interface GraphCanvasProps {
   def: GraphDef
   onOpenRef?: (token: string) => void
+  fitViewDuration?: number
 }
 
-function GraphCanvas({ def, onOpenRef }: GraphCanvasProps) {
+function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
   const { fitView } = useReactFlow()
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -135,9 +145,19 @@ function GraphCanvas({ def, onOpenRef }: GraphCanvasProps) {
 
   // グラフ形状 (layout 結果) が変わるたびに、見える範囲を追従させる。hover によるハイライト
   // 変更では再フィットしないよう、装飾前の rawNodes/rawEdges を依存に使う
+  //
+  // fitView は各ノードの measured width/height のみで fit 計算するため、edge label
+  // (SVG text) やノードの角に絶対配置される CiteBadge、nowrap な RefChip の CJK
+  // テキストなど、ノード自身の枠からはみ出す描画はここに含まれない。そのぶんを
+  // 安全マージンとして padding を通常より大きく確保する。
+  // ponytail: 実測値ベースのヒューリスティックな上限であり、はみ出し量がこれを
+  // 超えると再度 overflow しうる。padding の効果は <ReactFlow> の既定 minZoom (0.5)
+  // でクランプされるため、グラフ全体が横に大きくなるほど padding を上げても余白が
+  // 増えなくなる。根本対応するなら dagre-layout 側でノード内コンテンツ幅・edge
+  // label 幅を layout に反映する
   useEffect(() => {
-    void fitView({ duration: 200, padding: 0.2 })
-  }, [rawNodes, rawEdges, fitView])
+    void fitView({ duration: fitViewDuration ?? 200, padding: 0.7 })
+  }, [rawNodes, rawEdges, fitView, fitViewDuration])
 
   if (layoutResult.isErr()) {
     return (
