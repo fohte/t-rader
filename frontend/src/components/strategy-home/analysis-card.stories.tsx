@@ -1,14 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { AnalysisCard } from '#components/strategy-home/analysis-card'
 import type { components } from '#lib/api/schema.gen'
+import { createStoryRouter } from '#storybook/story-router'
 
 type Note = components['schemas']['Note']
 
@@ -29,30 +24,18 @@ const note: Note = {
   updated_at: '2026-06-07T00:00:00Z',
 }
 
-function createStoryRouter(props: { note: Note }) {
-  const rootRoute = createRootRoute({
-    component: () => (
+function createAnalysisCardRouter(props: { note: Note }) {
+  return createStoryRouter(
+    () => (
       <div className="max-w-[640px] bg-[color:var(--color-bg-primary)] p-4">
         <AnalysisCard note={props.note} strategyId="semi-swing" />
       </div>
     ),
-  })
-  const strategyHomeRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id',
-    component: () => null,
-  })
-  const noteRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/notes/$noteId',
-    component: () => null,
-  })
-  return createRouter({
-    routeTree: rootRoute.addChildren([strategyHomeRoute, noteRoute]),
-    history: createMemoryHistory({
-      initialEntries: ['/strategies/semi-swing'],
-    }),
-  })
+    {
+      paths: ['/strategies/$id', '/strategies/$id/notes/$noteId'],
+      initialPath: '/strategies/semi-swing',
+    },
+  )
 }
 
 const meta = {
@@ -64,13 +47,15 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  render: () => <RouterProvider router={createStoryRouter({ note })} />,
+  render: () => <RouterProvider router={createAnalysisCardRouter({ note })} />,
 }
 
 export const Approved: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({ note: { ...note, status: 'approved' } })}
+      router={createAnalysisCardRouter({
+        note: { ...note, status: 'approved' },
+      })}
     />
   ),
 }

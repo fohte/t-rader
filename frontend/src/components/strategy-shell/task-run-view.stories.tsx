@@ -1,11 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import {
   CONFIG_PHASES,
@@ -16,29 +10,17 @@ import {
   TaskRunView,
   type TaskRunViewProps,
 } from '#components/strategy-shell/task-run-view'
+import { createStoryRouter } from '#storybook/story-router'
 
-function createStoryRouter(props: TaskRunViewProps) {
-  const rootRoute = createRootRoute({
-    component: () => (
+function createTaskRunViewRouter(props: TaskRunViewProps) {
+  return createStoryRouter(
+    () => (
       <div className="min-h-screen bg-[color:var(--color-bg-primary)] p-6">
         <TaskRunView {...props} />
       </div>
     ),
-  })
-  const runsListRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/runs',
-    component: () => null,
-  })
-  const noteRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/notes/$noteId',
-    component: () => null,
-  })
-  return createRouter({
-    routeTree: rootRoute.addChildren([runsListRoute, noteRoute]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
+    { paths: ['/strategies/$id/runs', '/strategies/$id/notes/$noteId'] },
+  )
 }
 
 function baseTask(
@@ -67,7 +49,7 @@ type Story = StoryObj<typeof meta>
 export const Running: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({
+      router={createTaskRunViewRouter({
         strategyId: 'semi-swing',
         task: baseTask({ phase: 'running' }),
         steps: [
@@ -92,7 +74,7 @@ export const Running: Story = {
 export const Completed: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({
+      router={createTaskRunViewRouter({
         strategyId: 'semi-swing',
         task: baseTask({
           phase: 'completed',
@@ -123,7 +105,7 @@ export const Completed: Story = {
 export const Failed: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({
+      router={createTaskRunViewRouter({
         strategyId: 'semi-swing',
         task: baseTask({
           phase: 'failed',
@@ -149,7 +131,7 @@ export const Failed: Story = {
 export const NoSteps: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({
+      router={createTaskRunViewRouter({
         strategyId: 'semi-swing',
         task: baseTask({ phase: 'pending' }),
         steps: [],
@@ -163,7 +145,7 @@ export const NoSteps: Story = {
 export const Loading: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({
+      router={createTaskRunViewRouter({
         strategyId: 'semi-swing',
         task: null,
         steps: [],

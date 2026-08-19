@@ -1,23 +1,18 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import {
   type FloatingChatStatus,
   FloatingChatView,
   type FloatingChatViewProps,
 } from '#components/strategy-shell/floating-chat-view'
+import { createStoryRouter } from '#storybook/story-router'
 
 const NOOP = (): void => {}
 
-function createStoryRouter(props: FloatingChatViewProps) {
-  const rootRoute = createRootRoute({
-    component: () => (
+function createFloatingChatRouter(props: FloatingChatViewProps) {
+  return createStoryRouter(
+    () => (
       <div className="h-screen bg-[color:var(--color-bg-primary)] p-4">
         <p className="font-mono text-sm text-[color:var(--color-text-secondary)]">
           right-bottom: floating chat preview
@@ -25,21 +20,10 @@ function createStoryRouter(props: FloatingChatViewProps) {
         <FloatingChatView {...props} />
       </div>
     ),
-  })
-  const noteRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/notes/$noteId',
-    component: () => null,
-  })
-  const runRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/runs/$taskId',
-    component: () => null,
-  })
-  return createRouter({
-    routeTree: rootRoute.addChildren([noteRoute, runRoute]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
+    {
+      paths: ['/strategies/$id/notes/$noteId', '/strategies/$id/runs/$taskId'],
+    },
+  )
 }
 
 function makeProps(
@@ -73,21 +57,25 @@ type Story = StoryObj<typeof meta>
 export const Closed: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter(makeProps({ kind: 'idle' }, { open: false }))}
+      router={createFloatingChatRouter(
+        makeProps({ kind: 'idle' }, { open: false }),
+      )}
     />
   ),
 }
 
 export const Idle: Story = {
   render: () => (
-    <RouterProvider router={createStoryRouter(makeProps({ kind: 'idle' }))} />
+    <RouterProvider
+      router={createFloatingChatRouter(makeProps({ kind: 'idle' }))}
+    />
   ),
 }
 
 export const Polling: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter(
+      router={createFloatingChatRouter(
         makeProps(
           { kind: 'polling', phase: 'running' },
           { input: 'SUMCO の足元評価' },
@@ -100,7 +88,7 @@ export const Polling: Story = {
 export const PollingWithRunLink: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter(
+      router={createFloatingChatRouter(
         makeProps(
           { kind: 'polling', phase: 'running' },
           { input: 'SUMCO の足元評価', currentTaskId: 'T1' },
@@ -113,7 +101,7 @@ export const PollingWithRunLink: Story = {
 export const Completed: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter(
+      router={createFloatingChatRouter(
         makeProps(
           { kind: 'completed' },
           {
@@ -134,7 +122,7 @@ export const Completed: Story = {
 export const Failed: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter(
+      router={createFloatingChatRouter(
         makeProps({ kind: 'failed', error_summary: 'agent crashed: timeout' }),
       )}
     />
@@ -144,7 +132,7 @@ export const Failed: Story = {
 export const Error: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter(
+      router={createFloatingChatRouter(
         makeProps({
           kind: 'error',
           message: '戦略 Agent が ready ではありません',

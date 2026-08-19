@@ -1,11 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { TaskExecutionTree } from '#components/strategy-shell/task-execution-tree'
 import {
@@ -13,27 +7,20 @@ import {
   investigateStep,
   PLAN_STEP,
 } from '#components/strategy-shell/task-execution-tree.fixtures'
+import { createStoryRouter } from '#storybook/story-router'
 
 // ノートリンクが親ルートを要求するため、Frame 自体をルーターで包む
 function Frame({ children }: { children: React.ReactNode }) {
-  const rootRoute = createRootRoute({
-    component: () => (
+  const router = createStoryRouter(
+    () => (
       <div className="min-h-screen bg-[color:var(--color-bg-primary)] p-6">
         <div className="w-[420px] border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-3.5">
           {children}
         </div>
       </div>
     ),
-  })
-  const noteRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/notes/$noteId',
-    component: () => null,
-  })
-  const router = createRouter({
-    routeTree: rootRoute.addChildren([noteRoute]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
+    { paths: ['/strategies/$id/notes/$noteId'] },
+  )
   return <RouterProvider router={router} />
 }
 

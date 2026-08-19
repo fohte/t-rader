@@ -1,29 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { WatchlistItemListView } from '#components/watchlist-item-list'
-
-function createStoryRouter(children: React.ReactNode) {
-  const rootRoute = createRootRoute({
-    component: () => children,
-  })
-  const chartsRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/charts/$instrumentId',
-    component: () => <div>チャート画面</div>,
-  })
-
-  return createRouter({
-    routeTree: rootRoute.addChildren([chartsRoute]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
-}
+import { createStoryRouter } from '#storybook/story-router'
 
 const meta = {
   title: 'Components/WatchlistItemList',
@@ -62,11 +41,14 @@ const sampleNames = new Map([
 export const WithItems: Story = {
   render: () => {
     const router = createStoryRouter(
-      <WatchlistItemListView
-        items={sampleItems}
-        instrumentNames={sampleNames}
-        watchlistId="123"
-      />,
+      () => (
+        <WatchlistItemListView
+          items={sampleItems}
+          instrumentNames={sampleNames}
+          watchlistId="123"
+        />
+      ),
+      { paths: ['/charts/$instrumentId'] },
     )
     return <RouterProvider router={router} />
   },
@@ -75,11 +57,14 @@ export const WithItems: Story = {
 export const Empty: Story = {
   render: () => {
     const router = createStoryRouter(
-      <WatchlistItemListView
-        items={[]}
-        instrumentNames={new Map()}
-        watchlistId="123"
-      />,
+      () => (
+        <WatchlistItemListView
+          items={[]}
+          instrumentNames={new Map()}
+          watchlistId="123"
+        />
+      ),
+      { paths: ['/charts/$instrumentId'] },
     )
     return <RouterProvider router={router} />
   },
@@ -88,11 +73,14 @@ export const Empty: Story = {
 export const WithoutNames: Story = {
   render: () => {
     const router = createStoryRouter(
-      <WatchlistItemListView
-        items={sampleItems}
-        instrumentNames={new Map()}
-        watchlistId="123"
-      />,
+      () => (
+        <WatchlistItemListView
+          items={sampleItems}
+          instrumentNames={new Map()}
+          watchlistId="123"
+        />
+      ),
+      { paths: ['/charts/$instrumentId'] },
     )
     return <RouterProvider router={router} />
   },

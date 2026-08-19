@@ -1,18 +1,16 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { AppSidebar } from '#components/app-sidebar'
 import { SidebarInset, SidebarProvider } from '#components/ui/sidebar'
+import { createStoryRouter } from '#storybook/story-router'
 
-function createStoryRouter(initialPath: string, content: React.ReactNode) {
-  const rootRoute = createRootRoute({
-    component: () => (
+function createSidebarStoryRouter(
+  initialPath: string,
+  content: React.ReactNode,
+) {
+  return createStoryRouter(
+    () => (
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
@@ -20,37 +18,11 @@ function createStoryRouter(initialPath: string, content: React.ReactNode) {
         </SidebarInset>
       </SidebarProvider>
     ),
-  })
-  const indexRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/',
-    component: () => null,
-  })
-  const chartsRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/charts/$instrumentId',
-    component: () => null,
-  })
-  const tradesRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/trades',
-    component: () => null,
-  })
-  const notesRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/notes',
-    component: () => null,
-  })
-
-  return createRouter({
-    routeTree: rootRoute.addChildren([
-      indexRoute,
-      chartsRoute,
-      tradesRoute,
-      notesRoute,
-    ]),
-    history: createMemoryHistory({ initialEntries: [initialPath] }),
-  })
+    {
+      paths: ['/', '/charts/$instrumentId', '/trades', '/notes'],
+      initialPath,
+    },
+  )
 }
 
 const meta = {
@@ -65,28 +37,28 @@ type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
   render: () => {
-    const router = createStoryRouter('/', 'ページコンテンツ')
+    const router = createSidebarStoryRouter('/', 'ページコンテンツ')
     return <RouterProvider router={router} />
   },
 }
 
 export const OnWatchlistPage: Story = {
   render: () => {
-    const router = createStoryRouter('/', 'ウォッチリストページ')
+    const router = createSidebarStoryRouter('/', 'ウォッチリストページ')
     return <RouterProvider router={router} />
   },
 }
 
 export const OnTradesPage: Story = {
   render: () => {
-    const router = createStoryRouter('/trades', 'トレード履歴ページ')
+    const router = createSidebarStoryRouter('/trades', 'トレード履歴ページ')
     return <RouterProvider router={router} />
   },
 }
 
 export const OnNotesPage: Story = {
   render: () => {
-    const router = createStoryRouter('/notes', 'ノートページ')
+    const router = createSidebarStoryRouter('/notes', 'ノートページ')
     return <RouterProvider router={router} />
   },
 }

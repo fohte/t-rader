@@ -1,56 +1,20 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { Header } from '#components/strategy-shell/header'
+import { createStoryRouter } from '#storybook/story-router'
 
-function createStoryRouter(initialPath: string) {
-  const rootRoute = createRootRoute({ component: () => <Header /> })
-  const strategiesRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies',
-    component: () => null,
-  })
-  const strategyHomeRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id',
-    component: () => null,
-  })
-  const settingsRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/settings',
-    component: () => null,
-  })
-  const runsRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/runs',
-    component: () => null,
-  })
-  const portfolioRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/portfolio',
-    component: () => null,
-  })
-  const tradesRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/trades',
-    component: () => null,
-  })
-  return createRouter({
-    routeTree: rootRoute.addChildren([
-      strategiesRoute,
-      strategyHomeRoute,
-      settingsRoute,
-      runsRoute,
-      portfolioRoute,
-      tradesRoute,
-    ]),
-    history: createMemoryHistory({ initialEntries: [initialPath] }),
+function createHeaderRouter(initialPath: string) {
+  return createStoryRouter(() => <Header />, {
+    paths: [
+      '/strategies',
+      '/strategies/$id',
+      '/strategies/$id/settings',
+      '/strategies/$id/runs',
+      '/portfolio',
+      '/trades',
+    ],
+    initialPath,
   })
 }
 
@@ -63,15 +27,15 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const StrategyList: Story = {
-  render: () => <RouterProvider router={createStoryRouter('/strategies')} />,
+  render: () => <RouterProvider router={createHeaderRouter('/strategies')} />,
 }
 
 export const StrategyHome: Story = {
   render: () => (
-    <RouterProvider router={createStoryRouter('/strategies/semi-swing')} />
+    <RouterProvider router={createHeaderRouter('/strategies/semi-swing')} />
   ),
 }
 
 export const Portfolio: Story = {
-  render: () => <RouterProvider router={createStoryRouter('/portfolio')} />,
+  render: () => <RouterProvider router={createHeaderRouter('/portfolio')} />,
 }
