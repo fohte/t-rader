@@ -219,7 +219,7 @@ describe('AgentGraphEditor', () => {
     ).not.toBeNull()
   })
 
-  it('フォームで編集 (output 含む) → YAML ビューに切り替え → フォームに戻しても内容が保たれる', async () => {
+  it('フォームで編集した内容 (label・output 含む) が YAML ビューに反映される', async () => {
     const user = userEvent.setup()
     renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
 
@@ -247,8 +247,23 @@ describe('AgentGraphEditor', () => {
         output: { verdict: { type: 'string' } },
       },
     ])
+  })
 
+  it('YAML ビューからフォームに戻しても編集内容 (label・output 含む) が保たれる', async () => {
+    const user = userEvent.setup()
+    renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
+
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const labelInput = planCard.getByLabelText('フェーズ名')
+    await user.clear(labelInput)
+    await user.type(labelInput, '調査計画X')
+
+    const outputInput = planCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'verdict:{enter}  type: string')
+
+    await user.click(screen.getByRole('button', { name: 'YAML' }))
     await user.click(screen.getByRole('button', { name: 'フォーム' }))
+
     const planCardAfter = within(screen.getByTestId('phase-card-plan'))
     expect(planCardAfter.getByLabelText('フェーズ名')).toHaveValue('調査計画X')
     expect(planCardAfter.getByText('✓ valid')).toBeInTheDocument()

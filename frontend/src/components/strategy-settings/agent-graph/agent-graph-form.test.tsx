@@ -204,7 +204,27 @@ describe('AgentGraphForm', () => {
     expect(labelInput).toHaveValue('新しい調査計画')
 
     const yamlValue = screen.getByTestId('yaml-value').textContent
-    expect(parseAgentGraphPhases(yamlValue)?.[0]?.label).toBe('新しい調査計画')
+    expect(parseAgentGraphPhases(yamlValue)?.[0]).toEqual({
+      key: 'plan',
+      label: '新しい調査計画',
+      model: 'claude-opus-4',
+      prompt: '仮説を立てよ',
+      forEach: undefined,
+      labelField: undefined,
+      maxParallel: undefined,
+      skills: [],
+      tools: undefined,
+      output: {
+        hypotheses: {
+          type: 'array',
+          items: { title: { type: 'string' } },
+        },
+        themes: {
+          type: 'array',
+          items: { title: { type: 'string' } },
+        },
+      },
+    })
   })
 
   it('プロンプトを編集すると値に反映される', async () => {

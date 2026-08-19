@@ -24,18 +24,17 @@ const INVESTIGATE: AgentGraphPhaseForm = {
   forEach: 'plan.hypotheses',
 }
 
+const NOOP_HANDLERS = {
+  onLabelChange: () => {},
+  onMoveUp: () => {},
+  onMoveDown: () => {},
+  onRemove: () => {},
+}
+
 describe('PhaseCard', () => {
   it('番号・label・モデルを表示する', () => {
     render(
-      <PhaseCard
-        index={0}
-        total={2}
-        phase={PLAN}
-        onLabelChange={() => {}}
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
-        onRemove={() => {}}
-      >
+      <PhaseCard index={0} total={2} phase={PLAN} {...NOOP_HANDLERS}>
         <span>field</span>
       </PhaseCard>,
     )
@@ -52,10 +51,8 @@ describe('PhaseCard', () => {
         index={0}
         total={1}
         phase={PLAN}
+        {...NOOP_HANDLERS}
         onLabelChange={onLabelChange}
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
-        onRemove={() => {}}
       >
         <span>field</span>
       </PhaseCard>,
@@ -71,10 +68,7 @@ describe('PhaseCard', () => {
         total={2}
         phase={INVESTIGATE}
         referencedLabel="調査計画"
-        onLabelChange={() => {}}
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
-        onRemove={() => {}}
+        {...NOOP_HANDLERS}
       >
         <span>field</span>
       </PhaseCard>,
@@ -85,15 +79,7 @@ describe('PhaseCard', () => {
 
   it('for_each を持たないフェーズには説明文を出さない', () => {
     render(
-      <PhaseCard
-        index={0}
-        total={1}
-        phase={PLAN}
-        onLabelChange={() => {}}
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
-        onRemove={() => {}}
-      >
+      <PhaseCard index={0} total={1} phase={PLAN} {...NOOP_HANDLERS}>
         <span>field</span>
       </PhaseCard>,
     )
@@ -102,16 +88,7 @@ describe('PhaseCard', () => {
 
   it('hasError のとき phase-error を表示する', () => {
     render(
-      <PhaseCard
-        index={0}
-        total={1}
-        phase={PLAN}
-        hasError
-        onLabelChange={() => {}}
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
-        onRemove={() => {}}
-      >
+      <PhaseCard index={0} total={1} phase={PLAN} hasError {...NOOP_HANDLERS}>
         <span>field</span>
       </PhaseCard>,
     )
@@ -120,15 +97,7 @@ describe('PhaseCard', () => {
 
   it('先頭では上移動、末尾では下移動が disabled になる', () => {
     render(
-      <PhaseCard
-        index={0}
-        total={2}
-        phase={PLAN}
-        onLabelChange={() => {}}
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
-        onRemove={() => {}}
-      >
+      <PhaseCard index={0} total={2} phase={PLAN} {...NOOP_HANDLERS}>
         <span>field</span>
       </PhaseCard>,
     )
@@ -150,7 +119,7 @@ describe('PhaseCard', () => {
         index={1}
         total={3}
         phase={PLAN}
-        onLabelChange={() => {}}
+        {...NOOP_HANDLERS}
         onMoveUp={onMoveUp}
         onMoveDown={onMoveDown}
         onRemove={onRemove}
@@ -174,15 +143,7 @@ describe('PhaseCard', () => {
 
   it('children (フィールド) を描画する', () => {
     render(
-      <PhaseCard
-        index={0}
-        total={1}
-        phase={PLAN}
-        onLabelChange={() => {}}
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
-        onRemove={() => {}}
-      >
+      <PhaseCard index={0} total={1} phase={PLAN} {...NOOP_HANDLERS}>
         <span>custom field</span>
       </PhaseCard>,
     )
