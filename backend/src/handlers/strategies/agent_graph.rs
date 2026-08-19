@@ -1,22 +1,12 @@
 use axum::Json;
 use axum::extract::State;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::Set;
-use sea_orm::{IntoActiveModel, TransactionTrait};
-use serde_json::json;
 use uuid::Uuid;
 
-use super::find_strategy_or_404;
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::AgentGraphBody;
-use crate::services::agent_graph::{AgentGraphError, parse_agent_graph};
-use crate::services::change_history::{self, Op, TargetKind};
-
-fn map_agent_graph_error(err: AgentGraphError) -> AppError {
-    AppError::Validation(err.to_string())
-}
+use crate::services::agent_graph as agent_graph_svc;
 
 /// 戦略 Agent の多段フェーズ実行設定 (YAML) を取得
 #[utoipa::path(
@@ -35,10 +25,8 @@ pub async fn get_agent_graph(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<AgentGraphBody>, AppError> {
-    let row = find_strategy_or_404(&state.db, id).await?;
-    Ok(Json(AgentGraphBody {
-        content: row.agent_graph,
-    }))
+    let content = agent_graph_svc::get_agent_graph(&state.db, id).await?;
+    Ok(Json(AgentGraphBody { content }))
 }
 
 /// 戦略 Agent の多段フェーズ実行設定 (YAML) を上書き保存する。
@@ -63,30 +51,8 @@ pub async fn put_agent_graph(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<AgentGraphBody>,
 ) -> Result<Json<AgentGraphBody>, AppError> {
-    parse_agent_graph(&payload.content).map_err(map_agent_graph_error)?;
-
-    let current = find_strategy_or_404(&state.db, id).await?;
-    let prev = current.agent_graph.clone();
-    let mut active = current.into_active_model();
-    active.agent_graph = Set(payload.content.clone());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Strategy,
-        id,
-        Op::Update,
-        json!({ "agent_graph": { "from": prev, "to": payload.content } }),
-        Some("updated agent_graph".to_string()),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(Json(AgentGraphBody {
-        content: updated.agent_graph,
-    }))
+    let content = agent_graph_svc::save_agent_graph(&state.db, id, &payload.content).await?;
+    Ok(Json(AgentGraphBody { content }))
 }
 
 #[cfg(test)]
