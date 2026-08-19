@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
+import { Input } from '#components/ui/input'
 import { cn } from '#lib/utils'
 
 interface PhaseCardProps {
@@ -10,6 +11,7 @@ interface PhaseCardProps {
   /** for_each が参照するフェーズの label (説明文の表示用) */
   referencedLabel?: string
   hasError?: boolean
+  onLabelChange: (next: string) => void
   onMoveUp: () => void
   onMoveDown: () => void
   onRemove: () => void
@@ -22,6 +24,7 @@ export function PhaseCard({
   phase,
   referencedLabel,
   hasError = false,
+  onLabelChange,
   onMoveUp,
   onMoveDown,
   onRemove,
@@ -44,9 +47,14 @@ export function PhaseCard({
         <span className="flex h-[21px] w-[21px] items-center justify-center bg-[color:var(--color-bg-tertiary)] font-mono text-[11px] font-bold text-[color:var(--color-text-secondary)]">
           {index + 1}
         </span>
-        <span className="text-[13.5px] font-bold text-[color:var(--color-text-primary)]">
-          {phase.label}
-        </span>
+        <Input
+          aria-label="フェーズ名"
+          value={phase.label}
+          onChange={(e) => {
+            onLabelChange(e.target.value)
+          }}
+          className="h-auto w-40 rounded-none border-transparent bg-transparent px-1 py-0.5 font-bold text-[13.5px] text-[color:var(--color-text-primary)] hover:border-[color:var(--color-border-strategy)] focus-visible:border-[color:var(--color-border-strategy)] focus-visible:bg-[color:var(--color-bg-primary)] focus-visible:ring-0"
+        />
         <span className="border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-tertiary)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--color-text-secondary)]">
           {phase.model === '' ? '(未設定)' : phase.model}
         </span>

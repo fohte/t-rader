@@ -58,6 +58,9 @@ function Interactive({
       phase={phase}
       referencedLabel={referencedLabel}
       hasError={hasError}
+      onLabelChange={(label) => {
+        setPhase({ ...phase, label })
+      }}
       onMoveUp={() => {}}
       onMoveDown={() => {}}
       onRemove={() => {}}
@@ -84,6 +87,7 @@ export const Default: Story = {
     index: 0,
     total: 2,
     phase: PLAN_PHASE,
+    onLabelChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
@@ -98,6 +102,7 @@ export const ForEach: Story = {
     total: 2,
     phase: INVESTIGATE_PHASE,
     referencedLabel: '調査計画',
+    onLabelChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
@@ -114,6 +119,7 @@ export const WithError: Story = {
     total: 2,
     phase: PLAN_PHASE,
     hasError: true,
+    onLabelChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},
@@ -127,6 +133,7 @@ export const ModelUnset: Story = {
     index: 0,
     total: 2,
     phase: UNSET_MODEL_PHASE,
+    onLabelChange: () => {},
     onMoveUp: () => {},
     onMoveDown: () => {},
     onRemove: () => {},

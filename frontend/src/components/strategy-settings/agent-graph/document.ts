@@ -119,7 +119,7 @@ function setStringField(
 export function setPhaseField(
   yamlText: string,
   index: number,
-  field: 'model' | 'prompt',
+  field: 'label' | 'model' | 'prompt',
   value: string,
 ): string {
   return withDocument(yamlText, (doc, seq) => {

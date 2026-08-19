@@ -124,6 +124,22 @@ describe('setPhaseField', () => {
     expect(parseDocument(next).getIn(['phases', 0, 'runs'])).toBe('once')
   })
 
+  it('label を書き換えられる', () => {
+    const next = setPhaseField(SAMPLE, 0, 'label', '新しい調査計画')
+    expect(parseAgentGraphPhases(next)?.[0]).toEqual({
+      key: 'plan',
+      label: '新しい調査計画',
+      model: 'claude-opus-4',
+      prompt: '仮説を立てよ',
+      forEach: undefined,
+      labelField: undefined,
+      maxParallel: undefined,
+      skills: [],
+      tools: undefined,
+      output: {},
+    })
+  })
+
   it('改行を含む prompt を block literal として書き込む', () => {
     const next = setPhaseField(SAMPLE, 0, 'prompt', 'line1\nline2')
     const node = parseDocument(next).getIn(['phases', 0, 'prompt'], true)
@@ -356,6 +372,18 @@ describe('addPhase', () => {
   it('空文字列からフェーズを追加すると 1 件になる', () => {
     const next = addPhase('')
     expect(parseAgentGraphPhases(next)).toHaveLength(1)
+  })
+
+  it('既存の key が phase-N 形式で飛び飛びに埋まっていても衝突しない key を採番する', () => {
+    const yamlText = `phases:
+  - key: phase-2
+    label: 既存
+    model: ""
+    prompt: ""
+`
+    const next = addPhase(yamlText)
+    const keys = parseAgentGraphPhases(next)?.map((p) => p.key)
+    expect(keys).toEqual(['phase-2', 'phase-3'])
   })
 })
 

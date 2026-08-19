@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Middleware } from 'openapi-fetch'
 import type { ComponentProps, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { parseAgentGraphPhases } from '#components/strategy-settings/agent-graph/document'
 import { AgentGraphEditor } from '#components/strategy-settings/agent-graph-editor'
 import { fetchClient } from '#lib/api/client'
 
@@ -216,5 +217,55 @@ describe('AgentGraphEditor', () => {
         .getByTestId('phase-card-plan')
         .querySelector('[data-testid="phase-error"]'),
     ).not.toBeNull()
+  })
+
+  it('フォームで編集した内容 (label・output 含む) が YAML ビューに反映される', async () => {
+    const user = userEvent.setup()
+    renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
+
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const labelInput = planCard.getByLabelText('フェーズ名')
+    await user.clear(labelInput)
+    await user.type(labelInput, '調査計画X')
+
+    const outputInput = planCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'verdict:{enter}  type: string')
+
+    await user.click(screen.getByRole('button', { name: 'YAML' }))
+    const yamlEditor = screen.getByLabelText<HTMLTextAreaElement>('agent_graph')
+    expect(parseAgentGraphPhases(yamlEditor.value)).toEqual([
+      {
+        key: 'plan',
+        label: '調査計画X',
+        model: 'claude-opus-4',
+        prompt: '仮説を立てよ',
+        forEach: undefined,
+        labelField: undefined,
+        maxParallel: undefined,
+        skills: [],
+        tools: undefined,
+        output: { verdict: { type: 'string' } },
+      },
+    ])
+  })
+
+  it('YAML ビューからフォームに戻しても編集内容 (label・output 含む) が保たれる', async () => {
+    const user = userEvent.setup()
+    renderEditor({ initialValue: SAMPLE_PHASES, onSave: () => {} })
+
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const labelInput = planCard.getByLabelText('フェーズ名')
+    await user.clear(labelInput)
+    await user.type(labelInput, '調査計画X')
+
+    const outputInput = planCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'verdict:{enter}  type: string')
+
+    await user.click(screen.getByRole('button', { name: 'YAML' }))
+    await user.click(screen.getByRole('button', { name: 'フォーム' }))
+
+    const planCardAfter = within(screen.getByTestId('phase-card-plan'))
+    expect(planCardAfter.getByLabelText('フェーズ名')).toHaveValue('調査計画X')
+    expect(planCardAfter.getByText('✓ valid')).toBeInTheDocument()
   })
 })

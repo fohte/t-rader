@@ -12,9 +12,9 @@ type TabKey = 'agents-md' | 'skills' | 'triggers' | 'agent-graph'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'agents-md', label: 'AGENTS.md' },
-  { key: 'skills', label: 'skills' },
-  { key: 'triggers', label: 'triggers' },
-  { key: 'agent-graph', label: 'agent graph' },
+  { key: 'skills', label: 'Skills' },
+  { key: 'agent-graph', label: 'Agent' },
+  { key: 'triggers', label: 'Triggers' },
 ]
 
 export const Route = createFileRoute('/strategies/$id/settings')({
@@ -97,8 +97,8 @@ function StrategySettingsPage() {
       <section role="tabpanel">
         {tab === 'agents-md' && <AgentsMdTab strategyId={id} />}
         {tab === 'skills' && <SkillsTab strategyId={id} />}
-        {tab === 'triggers' && <TriggersTab strategyId={id} />}
         {tab === 'agent-graph' && <AgentGraphTab strategyId={id} />}
+        {tab === 'triggers' && <TriggersTab strategyId={id} />}
       </section>
     </div>
   )
