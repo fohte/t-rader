@@ -295,6 +295,15 @@ jobs:
         working-directory: frontend
         run: pnpm exec playwright install-deps chromium
 
+      # playwright install-deps は Chromium 実行に必要な OS 共有ライブラリのみを入れ、
+      # 日本語などの CJK フォントは対象外。未インストールのままだと headless Chromium が
+      # 日本語グリフを描画できず (tofu box)、graph edge label の実測幅がフォント依存で
+      # ぶれて overflow-check が誤って揺れる原因になる。
+      - name: Install CJK fonts for Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
       - name: Run tests
         working-directory: frontend
         run: pnpm run test

@@ -16,11 +16,12 @@ interface ModelFieldProps {
   models: AgentModel[]
 }
 
+const TRIGGER_CLASS =
+  'h-auto w-full max-w-sm justify-start rounded-none border-border-strategy bg-bg-primary py-1 font-mono text-2xs text-text-primary'
+
 export function ModelField({ value, onChange, models }: ModelFieldProps) {
   const label = (
-    <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-      モデル
-    </span>
+    <span className="pt-1.5 font-mono text-2xs text-text-tertiary">モデル</span>
   )
 
   // LiteLLM 未接続などで一覧が引けない場合は、既存の自由入力にフォールバックする
@@ -34,7 +35,7 @@ export function ModelField({ value, onChange, models }: ModelFieldProps) {
           onChange={(e) => {
             onChange(e.target.value)
           }}
-          className="h-auto w-full max-w-sm rounded-none border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] py-1 font-mono text-[11.5px] text-[color:var(--color-text-primary)]"
+          className="h-auto w-full max-w-sm rounded-none border-border-strategy bg-bg-primary py-1 font-mono text-2xs text-text-primary"
         />
       </>
     )
@@ -58,19 +59,12 @@ export function ModelField({ value, onChange, models }: ModelFieldProps) {
     <>
       {label}
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger
-          aria-label="モデル"
-          className="h-auto w-full max-w-sm justify-start rounded-none border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] py-1 font-mono text-[11.5px] text-[color:var(--color-text-primary)]"
-        >
+        <SelectTrigger aria-label="モデル" className={TRIGGER_CLASS}>
           <SelectValue placeholder="モデルを選択" />
         </SelectTrigger>
         <SelectContent>
           {options.map((m) => (
-            <SelectItem
-              key={m.id}
-              value={m.id}
-              className="font-mono text-[11.5px]"
-            >
+            <SelectItem key={m.id} value={m.id} className="font-mono text-2xs">
               {m.id}
             </SelectItem>
           ))}
