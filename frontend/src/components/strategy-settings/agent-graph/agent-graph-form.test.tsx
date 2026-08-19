@@ -36,10 +36,21 @@ const SAMPLE = `phases:
     label: 調査計画
     model: claude-opus-4
     prompt: 仮説を立てよ
+    output:
+      hypotheses:
+        type: array
+        items:
+          title: { type: string }
+      themes:
+        type: array
+        items:
+          title: { type: string }
   - key: investigate
     label: 仮説の調査
     model: deepseek-v4-flash
     for_each: plan.hypotheses
+    label_field: title
+    max_parallel: 4
     prompt: 割り当てられた仮説を検証せよ
 `
 
@@ -295,17 +306,68 @@ describe('AgentGraphForm', () => {
     expect(screen.getByText(/調査計画 が返す/)).toBeInTheDocument()
   })
 
+  it('for_each を持たないフェーズにはノード名・並列上限を表示しない', () => {
+    renderForm({ initial: SAMPLE })
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+    expect(planCard.queryByLabelText('ノード名')).toBeNull()
+    expect(planCard.queryByLabelText('並列上限')).toBeNull()
+  })
+
+  it('for_each を持つフェーズにはノード名・並列上限を表示する', () => {
+    renderForm({ initial: SAMPLE })
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
+    expect(investigateCard.getByLabelText('実行回数')).toBeInTheDocument()
+    expect(investigateCard.getByLabelText('ノード名')).toBeInTheDocument()
+    expect(investigateCard.getByLabelText('並列上限')).toBeInTheDocument()
+  })
+
+  it('並列上限は既存の値を反映する', () => {
+    renderForm({ initial: SAMPLE })
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
+    expect(investigateCard.getByLabelText('並列上限')).toHaveValue(4)
+  })
+
+  it('並列上限を編集すると値に反映される', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
+    const maxParallelInput = investigateCard.getByLabelText('並列上限')
+    await user.clear(maxParallelInput)
+    await user.type(maxParallelInput, '8')
+    expect(maxParallelInput).toHaveValue(8)
+  })
+
+  it('実行回数を別の参照先に切り替えると、旧参照先の items に紐づくノード名の選択がリセットされる', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
+    expect(investigateCard.getByLabelText('ノード名')).toHaveTextContent(
+      'title',
+    )
+
+    await user.click(investigateCard.getByLabelText('実行回数'))
+    await user.click(
+      await screen.findByRole('option', { name: /themes\[\] の要素ごと/ }),
+    )
+
+    expect(
+      within(screen.getByTestId('phase-card-investigate')).getByLabelText(
+        'ノード名',
+      ),
+    ).toHaveTextContent('(選択肢なし)')
+  })
+
   it('出力スキーマを編集すると value (YAML) の output に反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
 
-    const outputInput = planCard.getByLabelText('出力スキーマ')
+    const outputInput = investigateCard.getByLabelText('出力スキーマ')
     await user.type(outputInput, 'verdict:{enter}  type: string')
 
-    expect(planCard.getByText('✓ valid')).toBeInTheDocument()
+    expect(investigateCard.getByText('✓ valid')).toBeInTheDocument()
     const yamlValue = screen.getByTestId('yaml-value').textContent
-    expect(parseAgentGraphPhases(yamlValue)?.[0]?.output).toEqual({
+    expect(parseAgentGraphPhases(yamlValue)?.[1]?.output).toEqual({
       verdict: { type: 'string' },
     })
   })
@@ -313,17 +375,17 @@ describe('AgentGraphForm', () => {
   it('不正な出力スキーマは検証エラーを表示しつつも value (YAML) には反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })
-    const planCard = within(screen.getByTestId('phase-card-plan'))
+    const investigateCard = within(screen.getByTestId('phase-card-investigate'))
 
-    const outputInput = planCard.getByLabelText('出力スキーマ')
+    const outputInput = investigateCard.getByLabelText('出力スキーマ')
     await user.type(outputInput, 'verdict:{enter}  enum: supported')
 
     expect(
-      planCard.getByText(/enum は配列である必要があります/),
+      investigateCard.getByText(/enum は配列である必要があります/),
     ).toBeInTheDocument()
     // 構造的な issue は警告に留め、YAML として妥当な限り value への反映はブロックしない
     const yamlValue = screen.getByTestId('yaml-value').textContent
-    expect(parseAgentGraphPhases(yamlValue)?.[0]?.output).toEqual({
+    expect(parseAgentGraphPhases(yamlValue)?.[1]?.output).toEqual({
       verdict: { enum: 'supported' },
     })
   })

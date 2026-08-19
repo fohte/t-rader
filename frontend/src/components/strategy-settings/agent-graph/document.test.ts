@@ -8,6 +8,9 @@ import {
   removePhase,
   setPhaseArrayField,
   setPhaseField,
+  setPhaseForEach,
+  setPhaseLabelField,
+  setPhaseMaxParallel,
   setPhaseOutput,
 } from '#components/strategy-settings/agent-graph/document'
 
@@ -126,6 +129,108 @@ describe('setPhaseField', () => {
     const node = parseDocument(next).getIn(['phases', 0, 'prompt'], true)
     expect(node instanceof Scalar && node.type).toBe(Scalar.BLOCK_LITERAL)
     expect(parseAgentGraphPhases(next)?.[0]?.prompt).toBe('line1\nline2')
+  })
+})
+
+describe('setPhaseForEach', () => {
+  it('値を設定すると for_each が書き込まれる', () => {
+    const next = setPhaseForEach(SAMPLE, 0, 'plan.hypotheses')
+    expect(parseAgentGraphPhases(next)?.[0]).toEqual({
+      key: 'plan',
+      label: '調査計画',
+      model: 'claude-opus-4',
+      prompt: '仮説を立てよ',
+      forEach: 'plan.hypotheses',
+      labelField: undefined,
+      maxParallel: undefined,
+      skills: [],
+      tools: undefined,
+      output: {},
+    })
+  })
+
+  it('undefined を渡すと for_each キーごと消える (label_field/max_parallel は残す)', () => {
+    const next = setPhaseForEach(SAMPLE, 1, undefined)
+    expect(parseAgentGraphPhases(next)?.[1]).toEqual({
+      key: 'investigate',
+      label: '仮説の調査',
+      model: 'deepseek-v4-flash',
+      prompt: '割り当てられた仮説を検証せよ',
+      forEach: undefined,
+      labelField: 'title',
+      maxParallel: 4,
+      skills: [],
+      tools: ['query_data', 'write_note'],
+      output: {},
+    })
+  })
+})
+
+describe('setPhaseLabelField', () => {
+  it('値を設定すると label_field が書き込まれる', () => {
+    const next = setPhaseLabelField(SAMPLE, 1, 'summary')
+    expect(parseAgentGraphPhases(next)?.[1]).toEqual({
+      key: 'investigate',
+      label: '仮説の調査',
+      model: 'deepseek-v4-flash',
+      prompt: '割り当てられた仮説を検証せよ',
+      forEach: 'plan.hypotheses',
+      labelField: 'summary',
+      maxParallel: 4,
+      skills: [],
+      tools: ['query_data', 'write_note'],
+      output: {},
+    })
+  })
+
+  it('undefined を渡すと label_field キーごと消える', () => {
+    const next = setPhaseLabelField(SAMPLE, 1, undefined)
+    expect(parseAgentGraphPhases(next)?.[1]).toEqual({
+      key: 'investigate',
+      label: '仮説の調査',
+      model: 'deepseek-v4-flash',
+      prompt: '割り当てられた仮説を検証せよ',
+      forEach: 'plan.hypotheses',
+      labelField: undefined,
+      maxParallel: 4,
+      skills: [],
+      tools: ['query_data', 'write_note'],
+      output: {},
+    })
+  })
+})
+
+describe('setPhaseMaxParallel', () => {
+  it('値を設定すると max_parallel が書き込まれる', () => {
+    const next = setPhaseMaxParallel(SAMPLE, 1, 8)
+    expect(parseAgentGraphPhases(next)?.[1]).toEqual({
+      key: 'investigate',
+      label: '仮説の調査',
+      model: 'deepseek-v4-flash',
+      prompt: '割り当てられた仮説を検証せよ',
+      forEach: 'plan.hypotheses',
+      labelField: 'title',
+      maxParallel: 8,
+      skills: [],
+      tools: ['query_data', 'write_note'],
+      output: {},
+    })
+  })
+
+  it('undefined を渡すと max_parallel キーごと消える', () => {
+    const next = setPhaseMaxParallel(SAMPLE, 1, undefined)
+    expect(parseAgentGraphPhases(next)?.[1]).toEqual({
+      key: 'investigate',
+      label: '仮説の調査',
+      model: 'deepseek-v4-flash',
+      prompt: '割り当てられた仮説を検証せよ',
+      forEach: 'plan.hypotheses',
+      labelField: 'title',
+      maxParallel: undefined,
+      skills: [],
+      tools: ['query_data', 'write_note'],
+      output: {},
+    })
   })
 })
 

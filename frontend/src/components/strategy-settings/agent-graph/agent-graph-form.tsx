@@ -8,8 +8,14 @@ import {
   removePhase,
   setPhaseArrayField,
   setPhaseField,
+  setPhaseForEach,
+  setPhaseLabelField,
+  setPhaseMaxParallel,
   setPhaseOutput,
 } from '#components/strategy-settings/agent-graph/document'
+import { ForEachField } from '#components/strategy-settings/agent-graph/fields/for-each-field'
+import { LabelFieldField } from '#components/strategy-settings/agent-graph/fields/label-field-field'
+import { MaxParallelField } from '#components/strategy-settings/agent-graph/fields/max-parallel-field'
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
 import { OutputField } from '#components/strategy-settings/agent-graph/fields/output-field'
 import { PromptField } from '#components/strategy-settings/agent-graph/fields/prompt-field'
@@ -118,6 +124,38 @@ export function AgentGraphForm({
                 }}
                 models={models}
               />
+              <ForEachField
+                phases={phases}
+                index={i}
+                value={phase.forEach}
+                onChange={(next) => {
+                  let updated = setPhaseForEach(value, i, next)
+                  // 参照先の配列が変わると items の形も変わるので、旧参照先の
+                  // property 名が残った label_field は無効な値になりうる
+                  if (next != null && next !== phase.forEach) {
+                    updated = setPhaseLabelField(updated, i, undefined)
+                  }
+                  onChange(updated)
+                }}
+              />
+              {phase.forEach != null && (
+                <>
+                  <LabelFieldField
+                    phases={phases}
+                    forEach={phase.forEach}
+                    value={phase.labelField}
+                    onChange={(next) => {
+                      onChange(setPhaseLabelField(value, i, next))
+                    }}
+                  />
+                  <MaxParallelField
+                    value={phase.maxParallel}
+                    onChange={(next) => {
+                      onChange(setPhaseMaxParallel(value, i, next))
+                    }}
+                  />
+                </>
+              )}
               <PromptField
                 value={phase.prompt}
                 onChange={(next) => {
