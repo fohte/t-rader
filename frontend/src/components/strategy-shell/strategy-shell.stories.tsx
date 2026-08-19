@@ -1,44 +1,32 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  Outlet,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { Outlet, RouterProvider } from '@tanstack/react-router'
 
 import { StrategyShell } from '#components/strategy-shell/strategy-shell'
+import { createStoryRouter } from '#storybook/story-router'
 
-function createStoryRouter(initialPath: string) {
-  const rootRoute = createRootRoute({
-    component: () => (
+const PLACEHOLDER_PATHS = [
+  { path: '/strategies', label: '戦略一覧 placeholder' },
+  { path: '/strategies/$id', label: '戦略ホーム placeholder' },
+  { path: '/portfolio', label: 'ポートフォリオ placeholder' },
+  { path: '/trades', label: '取引履歴 placeholder' },
+].map(({ path, label }) => ({
+  path,
+  component: () => (
+    <div className="font-mono text-sm text-[color:var(--color-text-secondary)]">
+      {label}
+    </div>
+  ),
+}))
+
+function createStrategyShellRouter(initialPath: string) {
+  return createStoryRouter(
+    () => (
       <StrategyShell>
         <Outlet />
       </StrategyShell>
     ),
-  })
-  const placeholders = [
-    { path: '/strategies', label: '戦略一覧 placeholder' },
-    { path: '/strategies/$id', label: '戦略ホーム placeholder' },
-    { path: '/portfolio', label: 'ポートフォリオ placeholder' },
-    { path: '/trades', label: '取引履歴 placeholder' },
-  ]
-  const children = placeholders.map((p) =>
-    createRoute({
-      getParentRoute: () => rootRoute,
-      path: p.path,
-      component: () => (
-        <div className="font-mono text-sm text-[color:var(--color-text-secondary)]">
-          {p.label}
-        </div>
-      ),
-    }),
+    { paths: PLACEHOLDER_PATHS, initialPath },
   )
-  return createRouter({
-    routeTree: rootRoute.addChildren(children),
-    history: createMemoryHistory({ initialEntries: [initialPath] }),
-  })
 }
 
 const meta = {
@@ -50,11 +38,15 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  render: () => <RouterProvider router={createStoryRouter('/strategies')} />,
+  render: () => (
+    <RouterProvider router={createStrategyShellRouter('/strategies')} />
+  ),
 }
 
 export const StrategyHome: Story = {
   render: () => (
-    <RouterProvider router={createStoryRouter('/strategies/semi-swing')} />
+    <RouterProvider
+      router={createStrategyShellRouter('/strategies/semi-swing')}
+    />
   ),
 }

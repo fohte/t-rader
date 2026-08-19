@@ -4,6 +4,7 @@
   "type": "module",
   "imports": {
     "#*.css": "./src/*.css",
+    "#storybook/story-router": "./.storybook/story-router.js",
     "#*": "./src/*.js"
   },
   "scripts": {

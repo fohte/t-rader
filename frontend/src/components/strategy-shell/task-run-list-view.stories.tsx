@@ -1,34 +1,21 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
 
 import {
   TaskRunListView,
   type TaskRunListViewProps,
 } from '#components/strategy-shell/task-run-list-view'
+import { createStoryRouter } from '#storybook/story-router'
 
-function createStoryRouter(props: TaskRunListViewProps) {
-  const rootRoute = createRootRoute({
-    component: () => (
+function createTaskRunListViewRouter(props: TaskRunListViewProps) {
+  return createStoryRouter(
+    () => (
       <div className="min-h-screen bg-[color:var(--color-bg-primary)] p-6">
         <TaskRunListView {...props} />
       </div>
     ),
-  })
-  const taskRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/strategies/$id/runs/$taskId',
-    component: () => null,
-  })
-  return createRouter({
-    routeTree: rootRoute.addChildren([taskRoute]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
+    { paths: ['/strategies/$id/runs/$taskId'] },
+  )
 }
 
 const meta = {
@@ -42,7 +29,7 @@ type Story = StoryObj<typeof meta>
 export const List: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({
+      router={createTaskRunListViewRouter({
         strategyId: 'semi-swing',
         tasks: [
           {
@@ -75,7 +62,10 @@ export const List: Story = {
 export const Loading: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({ strategyId: 'semi-swing', tasks: null })}
+      router={createTaskRunListViewRouter({
+        strategyId: 'semi-swing',
+        tasks: null,
+      })}
     />
   ),
 }
@@ -83,7 +73,10 @@ export const Loading: Story = {
 export const Empty: Story = {
   render: () => (
     <RouterProvider
-      router={createStoryRouter({ strategyId: 'semi-swing', tasks: [] })}
+      router={createTaskRunListViewRouter({
+        strategyId: 'semi-swing',
+        tasks: [],
+      })}
     />
   ),
 }
