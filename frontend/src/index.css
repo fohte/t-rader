@@ -152,6 +152,9 @@
   --status-unread: #ef4444;
   --status-rejected: #71717a;
 
+  /* Task execution status (running は failed の赤と衝突しないよう別色にする) */
+  --status-task-running: #fbbf24;
+
   --radius-none: 0;
 }
 
@@ -179,6 +182,7 @@
   --color-status-approved: var(--status-approved);
   --color-status-unread: var(--status-unread);
   --color-status-rejected: var(--status-rejected);
+  --color-status-task-running: var(--status-task-running);
 }
 
 @layer base {

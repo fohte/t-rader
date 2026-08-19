@@ -15,8 +15,10 @@ import {
   findEnumBadge,
   formatDuration,
   isTaskStep,
+  listEnumEntries,
   parseAgentGraphPhases,
   StepDetail,
+  stepSubtitle,
   TaskExecutionTree,
   type TaskExecutionTreeProps,
   type TaskStep,
@@ -199,6 +201,63 @@ describe('TaskExecutionTree', () => {
     expect(screen.getByText('実行中')).toBeInTheDocument()
   })
 
+  it('running ステップは2行目に "実行中…" を表示する', () => {
+    const step = makeStep({ phase_key: 'investigate', status: 'running' })
+
+    render(<TaskExecutionTree {...makeProps({ steps: [step] })} />)
+
+    expect(screen.getByText('実行中…')).toBeInTheDocument()
+  })
+
+  it('failed ステップは2行目に error を表示する', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      status: 'failed',
+      error: 'tool call timeout',
+    })
+
+    render(<TaskExecutionTree {...makeProps({ steps: [step] })} />)
+
+    expect(screen.getByText('tool call timeout')).toBeInTheDocument()
+  })
+
+  it('completed で note_id が無いステップは2行目を出さない', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      status: 'completed',
+      output: { verdict: 'rejected' },
+    })
+
+    const { container } = render(
+      <TaskExecutionTree {...makeProps({ steps: [step] })} />,
+    )
+
+    expect(
+      container.querySelector('[data-testid="task-execution-tree"] button')
+        ?.children.length,
+    ).toBe(1)
+  })
+
+  it('running と failed で行の色が異なる', () => {
+    const runningStep = makeStep({
+      phase_key: 'investigate',
+      status: 'running',
+    })
+    const failedStep = makeStep({ phase_key: 'other', status: 'failed' })
+
+    const { container } = render(
+      <TaskExecutionTree
+        {...makeProps({ steps: [runningStep, failedStep] })}
+      />,
+    )
+    const dots = container.querySelectorAll(
+      '[data-testid="task-execution-tree"] button span > span:first-child',
+    )
+
+    expect(dots[0]?.className).toContain('--color-status-task-running')
+    expect(dots[1]?.className).toContain('--color-accent-strategy')
+  })
+
   it('ノードをクリックすると item/output の詳細が開閉する', async () => {
     const step = makeStep({
       phase_key: 'investigate',
@@ -289,7 +348,9 @@ describe('TaskExecutionTree', () => {
       screen.getByRole('button', { name: /半導体サイクルの反転/ }),
     )
 
-    expect(screen.getByText('tool call timeout')).toBeInTheDocument()
+    expect(
+      screen.getByText('tool call timeout', { selector: 'pre' }),
+    ).toBeInTheDocument()
   })
 
   it('detailPlacement が external のときクリックしてもインライン detail を出さない', async () => {
@@ -326,7 +387,10 @@ describe('TaskExecutionTree', () => {
     const button = screen.getByRole('button', { name: /円安の進行が主因/ })
 
     await userEvent.click(button)
-    expect(onSelectStep).toHaveBeenLastCalledWith(step)
+    expect(onSelectStep).toHaveBeenLastCalledWith({
+      step,
+      outputSchema: undefined,
+    })
 
     await userEvent.click(button)
     expect(onSelectStep).toHaveBeenLastCalledWith(null)
@@ -348,7 +412,10 @@ describe('TaskExecutionTree', () => {
     await userEvent.click(
       screen.getByRole('button', { name: /円安の進行が主因/ }),
     )
-    expect(onSelectStep).toHaveBeenLastCalledWith(step)
+    expect(onSelectStep).toHaveBeenLastCalledWith({
+      step,
+      outputSchema: undefined,
+    })
 
     const updatedStep: TaskStep = {
       ...step,
@@ -362,11 +429,79 @@ describe('TaskExecutionTree', () => {
       />,
     )
 
-    expect(onSelectStep).toHaveBeenLastCalledWith(updatedStep)
+    expect(onSelectStep).toHaveBeenLastCalledWith({
+      step: updatedStep,
+      outputSchema: undefined,
+    })
   })
 })
 
 describe('StepDetail', () => {
+  it('フェーズ/モデル/所要を kv ブロックに表示する', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      label: '仮説の調査',
+      model: 'deepseek-v4-flash',
+      started_at: '2026-08-15T00:00:00Z',
+      finished_at: '2026-08-15T00:00:28.700Z',
+    })
+
+    render(<StepDetail strategyId="strategy-1" step={step} />)
+
+    expect(screen.getByText('フェーズ')).toBeInTheDocument()
+    expect(screen.getByText('仮説の調査')).toBeInTheDocument()
+    expect(screen.getByText('モデル')).toBeInTheDocument()
+    expect(screen.getByText('deepseek-v4-flash')).toBeInTheDocument()
+    expect(screen.getByText('所要')).toBeInTheDocument()
+    expect(screen.getByText('28.7s')).toBeInTheDocument()
+  })
+
+  it('所要が未確定 (未完了) なら — を表示する', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      status: 'running',
+      finished_at: undefined,
+    })
+
+    render(<StepDetail strategyId="strategy-1" step={step} />)
+
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('outputSchema の enum 項目を項目名をラベルに値とともに表示する', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      output: { verdict: 'rejected', summary: 'done' },
+    })
+    const outputSchema = {
+      verdict: { enum: ['supported', 'rejected'] },
+      summary: { type: 'string' },
+    }
+
+    render(
+      <StepDetail
+        strategyId="strategy-1"
+        step={step}
+        outputSchema={outputSchema}
+      />,
+    )
+
+    expect(screen.getByText('verdict')).toBeInTheDocument()
+    expect(screen.getByText('rejected')).toBeInTheDocument()
+    expect(screen.queryByText('summary')).not.toBeInTheDocument()
+  })
+
+  it('outputSchema が無ければ enum 行を出さない', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      output: { verdict: 'rejected' },
+    })
+
+    render(<StepDetail strategyId="strategy-1" step={step} />)
+
+    expect(screen.queryByText('rejected')).not.toBeInTheDocument()
+  })
+
   it('item/output を JSON で表示する', () => {
     const step = makeStep({
       phase_key: 'investigate',
@@ -474,6 +609,77 @@ describe('findEnumBadge', () => {
     const outputSchema = { summary: { type: 'string' } }
 
     expect(findEnumBadge(outputSchema, { summary: 'done' })).toBeNull()
+  })
+})
+
+describe('listEnumEntries', () => {
+  it('enum 項目のうち値があるものすべてを項目名をラベルとして返す', () => {
+    const outputSchema = {
+      verdict: { enum: ['supported', 'rejected'] },
+      confidence: { enum: ['high', 'low'] },
+      summary: { type: 'string' },
+    }
+    const output = { verdict: 'rejected', confidence: 'high', summary: 'x' }
+
+    expect(listEnumEntries(outputSchema, output)).toEqual([
+      { label: 'verdict', value: 'rejected' },
+      { label: 'confidence', value: 'high' },
+    ])
+  })
+
+  it('outputSchema が無ければ空配列を返す', () => {
+    expect(listEnumEntries(undefined, { verdict: 'rejected' })).toEqual([])
+  })
+
+  it('output に値がまだ無い項目は含めない', () => {
+    const outputSchema = { verdict: { enum: ['supported', 'rejected'] } }
+
+    expect(listEnumEntries(outputSchema, undefined)).toEqual([])
+    expect(listEnumEntries(outputSchema, { other: 'x' })).toEqual([])
+  })
+})
+
+describe('stepSubtitle', () => {
+  it('running なら "実行中…" を返す', () => {
+    const step = makeStep({ phase_key: 'investigate', status: 'running' })
+
+    expect(stepSubtitle(step)).toBe('実行中…')
+  })
+
+  it('failed かつ error があれば error を返す', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      status: 'failed',
+      error: 'tool call timeout',
+    })
+
+    expect(stepSubtitle(step)).toBe('tool call timeout')
+  })
+
+  it('failed で error が無ければ null を返す', () => {
+    const step = makeStep({ phase_key: 'investigate', status: 'failed' })
+
+    expect(stepSubtitle(step)).toBeNull()
+  })
+
+  it('completed で output に note_id があれば "ノートを作成" を返す', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      status: 'completed',
+      output: { note_id: 'note-abc' },
+    })
+
+    expect(stepSubtitle(step)).toBe('ノートを作成')
+  })
+
+  it('completed で output に note_id が無ければ null を返す', () => {
+    const step = makeStep({
+      phase_key: 'investigate',
+      status: 'completed',
+      output: { verdict: 'rejected' },
+    })
+
+    expect(stepSubtitle(step)).toBeNull()
   })
 })
 

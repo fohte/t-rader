@@ -1,36 +1,55 @@
 import { Link } from '@tanstack/react-router'
 
 import {
+  type AgentGraphOutputSchema,
   buildTraceUrl,
+  findNoteId,
+  formatDuration,
+  listEnumEntries,
   type TaskStep,
 } from '#components/strategy-shell/task-execution-tree/model'
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null
-}
-
-// output に note_id (文字列) があればノートへのリンクを出す。write_note が返した id を
-// そのまま output に含める、という設定側の慣習を前提にした構造的な検出。
-function findNoteId(output: unknown): string | null {
-  if (!isRecord(output)) return null
-  const value = output['note_id']
-  return typeof value === 'string' && value !== '' ? value : null
-}
 
 export function StepDetail({
   strategyId,
   step,
+  outputSchema,
   traceUrlTemplate,
 }: {
   strategyId: string
   step: TaskStep
+  outputSchema?: AgentGraphOutputSchema
   traceUrlTemplate?: string
 }): React.ReactElement {
   const traceUrl = buildTraceUrl(traceUrlTemplate, step.trace_id, step.span_id)
   const noteId = findNoteId(step.output)
+  const duration = formatDuration(step.started_at, step.finished_at)
+  const enumEntries = listEnumEntries(outputSchema, step.output)
 
   return (
     <div className="mb-2 ml-4 space-y-2 border-l border-[color:var(--color-border-strategy)] py-1 pl-3 text-[11px] text-[color:var(--color-text-secondary)]">
+      <div className="grid grid-cols-[64px_1fr] gap-x-2.5 gap-y-1">
+        <span>フェーズ</span>
+        <b className="font-semibold text-[color:var(--color-text-primary)]">
+          {step.label}
+        </b>
+        <span>モデル</span>
+        <b className="font-semibold text-[color:var(--color-text-primary)]">
+          {step.model}
+        </b>
+        <span>所要</span>
+        <b className="font-semibold text-[color:var(--color-text-primary)]">
+          {duration ?? '—'}
+        </b>
+        {enumEntries.flatMap((entry) => [
+          <span key={`${entry.label}-label`}>{entry.label}</span>,
+          <b
+            key={`${entry.label}-value`}
+            className="font-semibold text-[color:var(--color-text-primary)]"
+          >
+            {entry.value}
+          </b>,
+        ])}
+      </div>
       {step.item !== undefined && <JsonBlock label="input" value={step.item} />}
       {step.output !== undefined && (
         <JsonBlock label="output" value={step.output} />

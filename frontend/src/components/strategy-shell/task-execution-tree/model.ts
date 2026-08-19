@@ -150,20 +150,42 @@ export function buildPhaseNodes(
   })
 }
 
-// output スキーマで enum 宣言された項目のうち、実際の output に値がある最初の 1 件を
-// バッジとして返す。プロパティ名 (verdict 等) はコードから見て意味を持たない文字列で、
+export interface EnumEntry {
+  label: string
+  value: string
+}
+
+// output スキーマで enum 宣言された項目のうち、実際の output に値がある項目をすべて返す。
+// プロパティ名 (verdict 等) はコードから見て意味を持たない文字列で、
 // 「enum で宣言されている」という構造だけを見て機械的に拾う。
+export function listEnumEntries(
+  outputSchema: AgentGraphOutputSchema | undefined,
+  output: unknown,
+): EnumEntry[] {
+  if (outputSchema == null || !isRecord(output)) return []
+  const entries: EnumEntry[] = []
+  for (const [key, def] of Object.entries(outputSchema)) {
+    if (!isRecord(def) || !Array.isArray(def['enum'])) continue
+    const value = output[key]
+    if (typeof value === 'string') entries.push({ label: key, value })
+  }
+  return entries
+}
+
+// 最初の 1 件だけを行のバッジとして使う。
 export function findEnumBadge(
   outputSchema: AgentGraphOutputSchema | undefined,
   output: unknown,
 ): string | null {
-  if (outputSchema == null || !isRecord(output)) return null
-  for (const [key, def] of Object.entries(outputSchema)) {
-    if (!isRecord(def) || !Array.isArray(def['enum'])) continue
-    const value = output[key]
-    if (typeof value === 'string') return value
-  }
-  return null
+  return listEnumEntries(outputSchema, output)[0]?.value ?? null
+}
+
+// output に note_id (文字列) があればノートへのリンクを出す。write_note が返した id を
+// そのまま output に含める、という設定側の慣習を前提にした構造的な検出。
+export function findNoteId(output: unknown): string | null {
+  if (!isRecord(output)) return null
+  const value = output['note_id']
+  return typeof value === 'string' && value !== '' ? value : null
 }
 
 export function formatDuration(
@@ -175,6 +197,17 @@ export function formatDuration(
   const end = Date.parse(finishedAt)
   if (Number.isNaN(start) || Number.isNaN(end)) return null
   return `${((end - start) / 1000).toFixed(1)}s`
+}
+
+// ノードの2行目に出す短い要約。steps に記録されている構造 (status/output.note_id) だけから
+// 機械的に導けるものに限る。tool 呼び出し回数や output の意味内容の要約は記録されておらず
+// 導けないため、それ以外のケースは何も返さない (無理に補わない)。
+export function stepSubtitle(step: TaskStep): string | null {
+  if (step.status === 'running') return '実行中…'
+  if (step.status === 'failed') {
+    return step.error != null && step.error !== '' ? step.error : null
+  }
+  return findNoteId(step.output) != null ? 'ノートを作成' : null
 }
 
 // トレースビューア (Tempo, Langfuse 等) の URL を組み立てる。`{trace_id}`/`{span_id}`

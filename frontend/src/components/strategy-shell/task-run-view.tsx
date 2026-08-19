@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
 import {
+  type AgentGraphOutputSchema,
   type AgentGraphPhaseSummary,
   StepDetail,
   TaskExecutionTree,
@@ -85,7 +86,10 @@ export function TaskRunView({
   traceUrlTemplate,
   taskLoadError = false,
 }: TaskRunViewProps): React.ReactElement {
-  const [selectedStep, setSelectedStep] = useState<TaskStep | null>(null)
+  const [selectedStep, setSelectedStep] = useState<{
+    step: TaskStep
+    outputSchema?: AgentGraphOutputSchema
+  } | null>(null)
 
   return (
     <div className="space-y-4 font-sans text-[color:var(--color-text-primary)]">
@@ -177,7 +181,8 @@ export function TaskRunView({
               {selectedStep != null ? (
                 <StepDetail
                   strategyId={strategyId}
-                  step={selectedStep}
+                  step={selectedStep.step}
+                  outputSchema={selectedStep.outputSchema}
                   traceUrlTemplate={traceUrlTemplate}
                 />
               ) : (

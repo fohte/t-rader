@@ -7,6 +7,7 @@ import {
   findEnumBadge,
   formatDuration,
   type PhaseNode,
+  stepSubtitle,
   type TaskStep,
 } from '#components/strategy-shell/task-execution-tree/model'
 import { StepDetail } from '#components/strategy-shell/task-execution-tree/step-detail'
@@ -26,7 +27,9 @@ export interface TaskExecutionTreeProps {
    */
   detailPlacement?: 'inline' | 'external'
   /** 選択行が変わるたびに呼ばれる (選択解除時は null) */
-  onSelectStep?: (step: TaskStep | null) => void
+  onSelectStep?: (
+    selection: { step: TaskStep; outputSchema?: AgentGraphOutputSchema } | null,
+  ) => void
 }
 
 const STATUS_LABEL: Record<TaskStep['status'], string> = {
@@ -38,7 +41,7 @@ const STATUS_LABEL: Record<TaskStep['status'], string> = {
 // 色分けは step.status のみで決める。enum の値 (rejected 等) で分岐すると、
 // UI が戦略の語彙 (何が「悪い」結果か) を知ることになってしまうため禁止。
 const STATUS_COLOR: Record<TaskStep['status'], string> = {
-  running: 'text-[color:var(--color-accent-strategy)]',
+  running: 'text-[color:var(--color-status-task-running)]',
   completed: 'text-[color:var(--color-text-secondary)]',
   failed: 'text-[color:var(--color-accent-strategy)]',
 }
@@ -117,7 +120,11 @@ export function TaskExecutionTree({
       return
     }
     const row = rows.find((r) => r.key === selectedKey)
-    onSelectStep(row?.content.kind === 'step' ? row.content.step : null)
+    onSelectStep(
+      row?.content.kind === 'step'
+        ? { step: row.content.step, outputSchema: row.content.outputSchema }
+        : null,
+    )
   }, [steps, configPhases, selectedKey, onSelectStep])
 
   if (rows.length === 0) return null
@@ -152,6 +159,7 @@ export function TaskExecutionTree({
                 <StepDetail
                   strategyId={strategyId}
                   step={row.content.step}
+                  outputSchema={row.content.outputSchema}
                   traceUrlTemplate={traceUrlTemplate}
                 />
               )}
@@ -189,6 +197,7 @@ function TreeRow({
   const duration = formatDuration(step.started_at, step.finished_at)
   const badgeText =
     findEnumBadge(outputSchema, step.output) ?? STATUS_LABEL[step.status]
+  const subtitle = stepSubtitle(step)
 
   return (
     <button
@@ -196,30 +205,37 @@ function TreeRow({
       onClick={onToggle}
       aria-expanded={selected}
       className={cn(
-        'flex w-full items-baseline gap-2 py-1 text-left',
+        'flex w-full flex-col gap-0.5 py-1 text-left',
         selected
           ? 'text-[color:var(--color-text-primary)]'
           : 'text-[color:var(--color-text-secondary)] hover:text-[color:var(--color-text-primary)]',
       )}
     >
-      <span
-        className={cn(
-          STATUS_COLOR[step.status],
-          step.status === 'running' && 'animate-pulse',
-        )}
-      >
-        {prefix}●
-      </span>
-      <span className="flex-1 truncate">{label}</span>
-      <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
-        {step.model}
-      </span>
-      <span className={cn('text-[10px]', STATUS_COLOR[step.status])}>
-        {badgeText}
-      </span>
-      {duration != null && (
+      <span className="flex items-baseline gap-2">
+        <span
+          className={cn(
+            STATUS_COLOR[step.status],
+            step.status === 'running' && 'animate-pulse',
+          )}
+        >
+          {prefix}●
+        </span>
+        <span className="flex-1 truncate">{label}</span>
         <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
-          {duration}
+          {step.model}
+        </span>
+        <span className={cn('text-[10px]', STATUS_COLOR[step.status])}>
+          {badgeText}
+        </span>
+        {duration != null && (
+          <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
+            {duration}
+          </span>
+        )}
+      </span>
+      {subtitle != null && (
+        <span className="truncate pl-[18px] text-[10px] text-[color:var(--color-text-tertiary)]">
+          {subtitle}
         </span>
       )}
     </button>
