@@ -26,6 +26,25 @@ const preview: Preview = {
         '.react-flow',
         '.react-flow__renderer',
         '.react-flow__pane',
+        // react-flow のエッジラベルはブラウザのテキスト計測がサブピクセル単位で
+        // 揺れ、scrollWidth が clientWidth をわずかに (数 px 未満) 上回ることがある。
+        // 表示上はクリップされず読めているため実害のあるレイアウト崩れではない
+        '.react-flow__edge-text',
+        // Monaco Editor は独自のスクロール実装を持つ。.monaco-scrollable-element
+        // (overflow: hidden) の子である .lines-content は
+        // position: absolute; width/height: 16777216px に固定される
+        // (レイアウト確定後も常にこの値。Chrome の描画上限 16777216px を使った
+        // 仮想スクロール実装のため。
+        // https://stackoverflow.com/questions/38905916/content-in-google-chrome-larger-than-16777216-px-not-being-rendered)。
+        // これが .monaco-scrollable-element 自身の scrollWidth に常に現れ、その子の
+        // カスタムスクロールバー (.scrollbar) も同じ理由で scrollWidth が
+        // clientWidth を超える。.overflow-guard はこれらをまとめて overflow: hidden
+        // で clip する外側のラッパーで、レイアウト未確定時に一時的に overflow を
+        // 報告することがある。いずれも Monaco の設計上の値・挙動であり、実害のある
+        // レイアウト崩れではない
+        '.monaco-editor .overflow-guard',
+        '.monaco-editor .monaco-scrollable-element',
+        '.monaco-scrollable-element > .scrollbar',
       ],
     },
   },

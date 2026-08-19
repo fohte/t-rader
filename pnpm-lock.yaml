@@ -156,6 +156,9 @@ importers:
       mdast-util-find-and-replace:
         specifier: 3.0.2
         version: 3.0.2
+      monaco-editor:
+        specifier: 0.56.0
+        version: 0.56.0
       neverthrow:
         specifier: 8.2.0
         version: 8.2.0
