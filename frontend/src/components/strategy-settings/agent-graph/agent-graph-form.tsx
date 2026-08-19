@@ -11,11 +11,13 @@ import {
   setPhaseForEach,
   setPhaseLabelField,
   setPhaseMaxParallel,
+  setPhaseOutput,
 } from '#components/strategy-settings/agent-graph/document'
 import { ForEachField } from '#components/strategy-settings/agent-graph/fields/for-each-field'
 import { LabelFieldField } from '#components/strategy-settings/agent-graph/fields/label-field-field'
 import { MaxParallelField } from '#components/strategy-settings/agent-graph/fields/max-parallel-field'
 import { ModelField } from '#components/strategy-settings/agent-graph/fields/model-field'
+import { OutputField } from '#components/strategy-settings/agent-graph/fields/output-field'
 import { PromptField } from '#components/strategy-settings/agent-graph/fields/prompt-field'
 import { SkillsField } from '#components/strategy-settings/agent-graph/fields/skills-field'
 import { ToolsField } from '#components/strategy-settings/agent-graph/fields/tools-field'
@@ -173,6 +175,12 @@ export function AgentGraphForm({
                   onChange(setPhaseArrayField(value, i, 'skills', next))
                 }}
                 options={skillNames}
+              />
+              <OutputField
+                value={phase.output}
+                onChange={(next) => {
+                  onChange(setPhaseOutput(value, i, next))
+                }}
               />
             </PhaseCard>
           ))}

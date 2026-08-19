@@ -9,7 +9,7 @@ import {
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
@@ -165,6 +165,18 @@ export function setPhaseMaxParallel(
 ): string {
   return withDocument(yamlText, (_doc, seq) => {
     setOptionalField(seq.items[index], 'max_parallel', maxParallel)
+  })
+}
+
+export function setPhaseOutput(
+  yamlText: string,
+  index: number,
+  output: Record<string, unknown>,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    const map = seq.items[index]
+    if (!isMap(map)) return
+    map.set('output', doc.createNode(output))
   })
 }
 
