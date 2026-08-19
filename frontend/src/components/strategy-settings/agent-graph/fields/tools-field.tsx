@@ -9,9 +9,6 @@ interface ToolsFieldProps {
   options: AgentTool[]
 }
 
-const LINK_BUTTON_CLASS =
-  'font-mono text-2xs text-text-tertiary underline hover:text-text-primary'
-
 export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
   return (
     <>
@@ -28,7 +25,7 @@ export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
             onClick={() => {
               onChange([])
             }}
-            className={LINK_BUTTON_CLASS}
+            className="font-mono text-2xs text-text-tertiary underline hover:text-text-primary"
           >
             絞り込む
           </button>
@@ -51,7 +48,7 @@ export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
               onClick={() => {
                 onChange(undefined)
               }}
-              className={LINK_BUTTON_CLASS}
+              className="font-mono text-2xs text-text-tertiary underline hover:text-text-primary"
             >
               全 tool に戻す
             </button>

@@ -16,9 +16,6 @@ interface ModelFieldProps {
   models: AgentModel[]
 }
 
-const TRIGGER_CLASS =
-  'h-auto w-full max-w-sm justify-start rounded-none border-border-strategy bg-bg-primary py-1 font-mono text-2xs text-text-primary'
-
 export function ModelField({ value, onChange, models }: ModelFieldProps) {
   const label = (
     <span className="pt-1.5 font-mono text-2xs text-text-tertiary">モデル</span>
@@ -59,7 +56,10 @@ export function ModelField({ value, onChange, models }: ModelFieldProps) {
     <>
       {label}
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger aria-label="モデル" className={TRIGGER_CLASS}>
+        <SelectTrigger
+          aria-label="モデル"
+          className="h-auto w-full max-w-sm justify-start rounded-none border-border-strategy bg-bg-primary py-1 font-mono text-2xs text-text-primary"
+        >
           <SelectValue placeholder="モデルを選択" />
         </SelectTrigger>
         <SelectContent>

@@ -9,7 +9,7 @@ import {
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
@@ -124,6 +124,18 @@ export function setPhaseField(
 ): string {
   return withDocument(yamlText, (doc, seq) => {
     setStringField(doc, seq.items[index], field, value)
+  })
+}
+
+export function setPhaseOutput(
+  yamlText: string,
+  index: number,
+  output: Record<string, unknown>,
+): string {
+  return withDocument(yamlText, (doc, seq) => {
+    const map = seq.items[index]
+    if (!isMap(map)) return
+    map.set('output', doc.createNode(output))
   })
 }
 

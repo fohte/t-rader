@@ -8,6 +8,7 @@ import {
   removePhase,
   setPhaseArrayField,
   setPhaseField,
+  setPhaseOutput,
 } from '#components/strategy-settings/agent-graph/document'
 
 const SAMPLE = `phases:
@@ -125,6 +126,60 @@ describe('setPhaseField', () => {
     const node = parseDocument(next).getIn(['phases', 0, 'prompt'], true)
     expect(node instanceof Scalar && node.type).toBe(Scalar.BLOCK_LITERAL)
     expect(parseAgentGraphPhases(next)?.[0]?.prompt).toBe('line1\nline2')
+  })
+})
+
+describe('setPhaseOutput', () => {
+  it('指定したフェーズの output だけを書き換え、他フィールド・他フェーズはそのまま残す', () => {
+    const next = setPhaseOutput(SAMPLE, 0, {
+      hypotheses: {
+        type: 'array',
+        items: { title: { type: 'string' } },
+        required: ['title'],
+      },
+    })
+    expect(parseAgentGraphPhases(next)).toEqual([
+      {
+        key: 'plan',
+        label: '調査計画',
+        model: 'claude-opus-4',
+        prompt: '仮説を立てよ',
+        forEach: undefined,
+        labelField: undefined,
+        maxParallel: undefined,
+        skills: [],
+        tools: undefined,
+        output: {
+          hypotheses: {
+            type: 'array',
+            items: { title: { type: 'string' } },
+            required: ['title'],
+          },
+        },
+      },
+      {
+        key: 'investigate',
+        label: '仮説の調査',
+        model: 'deepseek-v4-flash',
+        prompt: '割り当てられた仮説を検証せよ',
+        forEach: 'plan.hypotheses',
+        labelField: 'title',
+        maxParallel: 4,
+        skills: [],
+        tools: ['query_data', 'write_note'],
+        output: {},
+      },
+    ])
+    // runs はフォームの型には出ないが、YAML 上は素通しされたままであること
+    expect(parseDocument(next).getIn(['phases', 0, 'runs'])).toBe('once')
+  })
+
+  it('空オブジェクトを書き込むと output は空になる', () => {
+    const withOutput = setPhaseOutput(SAMPLE, 0, {
+      verdict: { type: 'string' },
+    })
+    const cleared = setPhaseOutput(withOutput, 0, {})
+    expect(parseAgentGraphPhases(cleared)?.[0]?.output).toEqual({})
   })
 })
 

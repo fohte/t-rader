@@ -4,10 +4,24 @@ import userEvent from '@testing-library/user-event'
 import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
+import { parseAgentGraphPhases } from '#components/strategy-settings/agent-graph/document'
 import { fetchClient } from '#lib/api/client'
+
+vi.mock(
+  '@monaco-editor/react',
+  () => import('#components/indicators/__mocks__/monaco-editor-react'),
+)
 
 beforeAll(() => {
   // Radix Select が内部で参照する API は jsdom に無いためポリフィルする
@@ -99,13 +113,17 @@ function Controlled({
     if (value.trim() !== '') lastEnabledValueRef.current = value
   }, [value])
   return (
-    <AgentGraphForm
-      strategyId="strat-1"
-      value={value}
-      onChange={setValue}
-      errorPhaseKey={errorPhaseKey}
-      lastEnabledValueRef={lastEnabledValueRef}
-    />
+    <>
+      <AgentGraphForm
+        strategyId="strat-1"
+        value={value}
+        onChange={setValue}
+        errorPhaseKey={errorPhaseKey}
+        lastEnabledValueRef={lastEnabledValueRef}
+      />
+      {/* onChange 経由で value (YAML) に実際に反映されたかをテストから検証するための出力 */}
+      <pre data-testid="yaml-value">{value}</pre>
+    </>
   )
 }
 
@@ -273,5 +291,38 @@ describe('AgentGraphForm', () => {
   it('for_each を持つフェーズは参照元フェーズの label を説明文に使う', () => {
     renderForm({ initial: SAMPLE })
     expect(screen.getByText(/調査計画 が返す/)).toBeInTheDocument()
+  })
+
+  it('出力スキーマを編集すると value (YAML) の output に反映される', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    const outputInput = planCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'verdict:{enter}  type: string')
+
+    expect(planCard.getByText('✓ valid')).toBeInTheDocument()
+    const yamlValue = screen.getByTestId('yaml-value').textContent
+    expect(parseAgentGraphPhases(yamlValue)?.[0]?.output).toEqual({
+      verdict: { type: 'string' },
+    })
+  })
+
+  it('不正な出力スキーマは検証エラーを表示しつつも value (YAML) には反映される', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    const outputInput = planCard.getByLabelText('出力スキーマ')
+    await user.type(outputInput, 'verdict:{enter}  enum: supported')
+
+    expect(
+      planCard.getByText(/enum は配列である必要があります/),
+    ).toBeInTheDocument()
+    // 構造的な issue は警告に留め、YAML として妥当な限り value への反映はブロックしない
+    const yamlValue = screen.getByTestId('yaml-value').textContent
+    expect(parseAgentGraphPhases(yamlValue)?.[0]?.output).toEqual({
+      verdict: { enum: 'supported' },
+    })
   })
 })
