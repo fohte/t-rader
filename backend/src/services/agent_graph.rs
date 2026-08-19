@@ -1,7 +1,16 @@
 use std::collections::BTreeSet;
 
+use sea_orm::ActiveValue::Set;
+use sea_orm::{
+    ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use uuid::Uuid;
+
+use crate::entities::strategy;
+use crate::error::AppError;
+use crate::services::change_history::{self, Op, TargetKind};
 
 /// 戦略ごとの多段フェーズ実行設定。
 ///
@@ -128,12 +137,61 @@ fn validate_for_each(
     Ok(())
 }
 
+/// 戦略の `agent_graph` YAML を取得する。未設定なら空文字列。
+pub async fn get_agent_graph(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+) -> Result<String, AppError> {
+    let row = strategy::Entity::find_by_id(strategy_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("strategy {strategy_id} not found")))?;
+    Ok(row.agent_graph)
+}
+
+/// 戦略の `agent_graph` YAML を検証した上で保存し、change_history に記録する。
+/// HTTP (`PUT /api/strategies/{id}/agent-graph`) と管理 MCP (`put_strategy_agent_config`) の
+/// 共通経路。検証・DB 更新・履歴記録を 1 トランザクションにまとめる。
+pub async fn save_agent_graph(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+    content: &str,
+) -> Result<String, AppError> {
+    parse_agent_graph(content).map_err(|e| AppError::Validation(e.to_string()))?;
+
+    let current = strategy::Entity::find_by_id(strategy_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("strategy {strategy_id} not found")))?;
+    let prev = current.agent_graph.clone();
+    let mut active = current.into_active_model();
+    active.agent_graph = Set(content.to_string());
+    active.updated_at = Set(chrono::Utc::now().fixed_offset());
+
+    let txn = db.begin().await?;
+    let updated = active.update(&txn).await?;
+    change_history::record(
+        &txn,
+        TargetKind::Strategy,
+        strategy_id,
+        Op::Update,
+        serde_json::json!({ "agent_graph": { "from": prev, "to": content } }),
+        Some("updated agent_graph".to_string()),
+    )
+    .await?;
+    txn.commit().await?;
+
+    Ok(updated.agent_graph)
+}
+
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
     use rstest::rstest;
+    use sqlx::PgPool;
 
     use super::*;
+    use crate::testing::{create_test_db, insert_test_strategy};
 
     #[rstest]
     fn parse_empty_string_is_unset() {
@@ -332,5 +390,59 @@ mod tests {
                 referenced: "plan".to_string(),
             })
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_agent_graph_defaults_to_empty_string(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+
+        let content = get_agent_graph(&db, strategy_id).await.unwrap();
+        assert_eq!(content, "");
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_agent_graph_rejects_unknown_strategy(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let err = get_agent_graph(&db, Uuid::new_v4()).await.unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn save_then_get_round_trips_valid_yaml(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let yaml = indoc! {"
+            phases:
+              - key: plan
+                label: 調査計画
+                model: claude-opus-4
+                prompt: 仮説を立てよ
+        "};
+
+        let saved = save_agent_graph(&db, strategy_id, yaml).await.unwrap();
+        assert_eq!(saved, yaml);
+        assert_eq!(get_agent_graph(&db, strategy_id).await.unwrap(), yaml);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn save_invalid_yaml_rejects_and_leaves_row_unchanged(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+
+        let err = save_agent_graph(&db, strategy_id, "phases: [")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)));
+        assert_eq!(get_agent_graph(&db, strategy_id).await.unwrap(), "");
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn save_agent_graph_rejects_unknown_strategy(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let err = save_agent_graph(&db, Uuid::new_v4(), "phases: []")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)));
     }
 }

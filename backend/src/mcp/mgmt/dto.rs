@@ -148,3 +148,25 @@ pub struct DeleteRssFeedParams {
 pub struct DeleteRssFeedResult {
     pub id: Uuid,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetStrategyAgentConfigParams {
+    pub strategy_id: Uuid,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct GetStrategyAgentConfigResult {
+    pub yaml: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct PutStrategyAgentConfigParams {
+    pub strategy_id: Uuid,
+    pub yaml: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct PutStrategyAgentConfigResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+}

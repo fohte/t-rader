@@ -1,10 +1,12 @@
 //! 管理 MCP server の tool 実装
 //!
-//! personal-bot から呼び出される。tool は以下の 9 種:
+//! personal-bot から呼び出される。tool は以下の 11 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
 //! - `get_strategy_task_status`
+//! - `get_strategy_agent_config`
+//! - `put_strategy_agent_config`
 //! - `list_recent_notes`
 //! - `list_recent_annotations`
 //! - `list_rss_feeds`
@@ -17,6 +19,8 @@
 //! - `dto`: 各 tool の入出力スキーマ
 //! - `strategies`: 戦略一覧・タスク投入・タスク status
 //!   (`list_strategies_inner` / `submit_strategy_task_inner` / `get_strategy_task_status_inner`)
+//! - `agent_graph`: 戦略の多段フェーズ実行設定 (agent_graph YAML) 取得・保存
+//!   (`get_strategy_agent_config_inner` / `put_strategy_agent_config_inner`)
 //! - `rss_feeds`: RSS フィード CRUD
 //!   (`list_rss_feeds_inner` / `create_rss_feed_inner` / `update_rss_feed_inner` / `delete_rss_feed_inner`)
 //! - `notes_annotations`: 直近ノート・アノテーション一覧
@@ -25,6 +29,7 @@
 //! 本モジュールは tool wrapper (`#[tool_router]` / `#[tool_handler]`) と
 //! 共通のエラー変換ヘルパを担う。
 
+mod agent_graph;
 pub(super) mod dto;
 mod notes_annotations;
 mod rss_feeds;
@@ -44,10 +49,11 @@ use crate::agent_client::SharedAgentTaskClient;
 // `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
 pub use dto::SubmitStrategyTaskParams;
 use dto::{
-    CreateRssFeedParams, DeleteRssFeedParams, DeleteRssFeedResult, GetStrategyTaskStatusParams,
-    GetStrategyTaskStatusResult, ListRecentAnnotationsResult, ListRecentNotesResult,
-    ListRecentParams, ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult, RssFeedSummary,
-    SubmitStrategyTaskResult, UpdateRssFeedParams,
+    CreateRssFeedParams, DeleteRssFeedParams, DeleteRssFeedResult, GetStrategyAgentConfigParams,
+    GetStrategyAgentConfigResult, GetStrategyTaskStatusParams, GetStrategyTaskStatusResult,
+    ListRecentAnnotationsResult, ListRecentNotesResult, ListRecentParams, ListRssFeedsParams,
+    ListRssFeedsResult, ListStrategiesResult, PutStrategyAgentConfigParams,
+    PutStrategyAgentConfigResult, RssFeedSummary, SubmitStrategyTaskResult, UpdateRssFeedParams,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -118,6 +124,30 @@ impl MgmtServer {
         Parameters(params): Parameters<GetStrategyTaskStatusParams>,
     ) -> Result<Json<GetStrategyTaskStatusResult>, McpError> {
         self.get_strategy_task_status_inner(params).await.map(Json)
+    }
+
+    /// 戦略の多段フェーズ実行設定 (agent_graph YAML) を取得する
+    #[tool(
+        name = "get_strategy_agent_config",
+        description = "Get the multi-phase execution config (agent_graph YAML) for a strategy. Returns an empty string if unset."
+    )]
+    async fn get_strategy_agent_config(
+        &self,
+        Parameters(params): Parameters<GetStrategyAgentConfigParams>,
+    ) -> Result<Json<GetStrategyAgentConfigResult>, McpError> {
+        self.get_strategy_agent_config_inner(params).await.map(Json)
+    }
+
+    /// 戦略の多段フェーズ実行設定 (agent_graph YAML) を検証した上で保存する
+    #[tool(
+        name = "put_strategy_agent_config",
+        description = "Validate and save the multi-phase execution config (agent_graph YAML) for a strategy, going through the same validation and history recording as the settings UI. On a validation failure (broken YAML, a duplicate phase key, or a bad for_each reference) this returns ok=false with human-readable error messages instead of failing the tool call, so the caller can read them, fix the YAML, and retry."
+    )]
+    async fn put_strategy_agent_config(
+        &self,
+        Parameters(params): Parameters<PutStrategyAgentConfigParams>,
+    ) -> Result<Json<PutStrategyAgentConfigResult>, McpError> {
+        self.put_strategy_agent_config_inner(params).await.map(Json)
     }
 
     /// 戦略 id + 件数で最新ノートメタを返す
