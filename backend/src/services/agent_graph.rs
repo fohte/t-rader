@@ -151,7 +151,9 @@ pub async fn get_agent_graph(
 
 /// 戦略の `agent_graph` YAML を検証した上で保存し、change_history に記録する。
 /// HTTP (`PUT /api/strategies/{id}/agent-graph`) と管理 MCP (`put_strategy_agent_config`) の
-/// 共通経路。検証・DB 更新・履歴記録を 1 トランザクションにまとめる。
+/// 共通経路。検証は事前に完了させ、DB 更新と履歴記録のみを 1 トランザクションにまとめる。
+/// change_history の actor は呼び出し元によらず AGENTS.md 更新と同じく "human"/"user" 固定
+/// (`change_history::record` の仕様どおり)。MCP 経由の変更を区別する actor 種別は未対応。
 pub async fn save_agent_graph(
     db: &DatabaseConnection,
     strategy_id: Uuid,

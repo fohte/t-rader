@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(result.a2a_task_id, "agent-task-1");
         let task_id = result.task_id;
 
-        // agent_client に渡された投入内容の集合は、戻り値の task_id を採用したもの 1 件
+        // agent_client への投入は前後の空白を trim した prompt で 1 件だけ記録される
         let submitted: Vec<(uuid::Uuid, String)> = fake
             .submitted
             .lock()

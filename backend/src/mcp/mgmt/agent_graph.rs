@@ -125,8 +125,7 @@ mod tests {
             }))
             .await
             .expect("tool call itself must succeed");
-        assert!(!result.ok);
-        assert!(!result.errors.is_empty());
+        assert_eq!((result.ok, result.errors.len()), (false, 1));
     }
 
     #[sqlx::test(migrations = false)]
