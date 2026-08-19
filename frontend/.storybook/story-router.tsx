@@ -8,8 +8,8 @@ import {
 type StoryRoutePath =
   string | { path: string; component: () => React.ReactNode }
 
-// Link や navigate が参照するパスを routeTree に登録するためだけのヘルパー。
-// root route が Outlet を使わない story では子 route の component は描画されない。
+// paths の各エントリは Link/navigate が参照するパスを routeTree に登録する。
+// component を渡した場合、root route が Outlet を描画する story でのみそれが実際に表示される。
 export function createStoryRouter(
   component: () => React.ReactNode,
   options: { paths?: StoryRoutePath[]; initialPath?: string } = {},
