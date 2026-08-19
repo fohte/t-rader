@@ -274,6 +274,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Get Playwright version
+        id: playwright-version
+        working-directory: frontend
+        run: echo "version=$(pnpm exec playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+      # ~/.cache/ms-playwright の中身 (Chromium 本体等) は playwright パッケージの
+      # バージョンにのみ依存するため、key は lockfile hash ではなくバージョンで切る。
       # Storybook の story は headless Playwright chromium 上で実行される。
       # actions/cache が保存するのは ~/.cache/ms-playwright (ブラウザ本体) のみで、
       # chromium に必要な OS 共有ライブラリ (apt パッケージ) はキャッシュ対象外のため、
@@ -283,7 +290,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'

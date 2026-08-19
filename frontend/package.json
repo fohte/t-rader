@@ -30,6 +30,7 @@
     "lightweight-charts": "5.2.0",
     "lucide-react": "0.577.0",
     "mdast-util-find-and-replace": "3.0.2",
+    "monaco-editor": "0.56.0",
     "neverthrow": "8.2.0",
     "openapi-fetch": "0.17.0",
     "openapi-react-query": "0.5.4",

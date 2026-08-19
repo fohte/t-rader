@@ -19,6 +19,8 @@ vi.mock(
   '@monaco-editor/react',
   () => import('#components/indicators/__mocks__/monaco-editor-react'),
 )
+// monaco-setup は実物の monaco-editor を import するため jsdom では評価できない
+vi.mock('#components/indicators/monaco-setup', () => ({}))
 
 interface IndicatorRow {
   indicator_id: string
