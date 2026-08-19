@@ -1,3 +1,5 @@
+import '#components/indicators/monaco-setup'
+
 import Editor from '@monaco-editor/react'
 
 interface CodeEditorProps {
