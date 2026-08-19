@@ -31,6 +31,7 @@ describe('PhaseCard', () => {
         index={0}
         total={2}
         phase={PLAN}
+        onLabelChange={() => {}}
         onMoveUp={() => {}}
         onMoveDown={() => {}}
         onRemove={() => {}}
@@ -39,8 +40,28 @@ describe('PhaseCard', () => {
       </PhaseCard>,
     )
     expect(screen.getByText('1')).toBeInTheDocument()
-    expect(screen.getByText('調査計画')).toBeInTheDocument()
+    expect(screen.getByLabelText('フェーズ名')).toHaveValue('調査計画')
     expect(screen.getByText('claude-opus-4')).toBeInTheDocument()
+  })
+
+  it('フェーズ名を編集すると onLabelChange が呼ばれる', async () => {
+    const user = userEvent.setup()
+    const onLabelChange = vi.fn()
+    render(
+      <PhaseCard
+        index={0}
+        total={1}
+        phase={PLAN}
+        onLabelChange={onLabelChange}
+        onMoveUp={() => {}}
+        onMoveDown={() => {}}
+        onRemove={() => {}}
+      >
+        <span>field</span>
+      </PhaseCard>,
+    )
+    await user.type(screen.getByLabelText('フェーズ名'), 'X')
+    expect(onLabelChange).toHaveBeenCalledWith('調査計画X')
   })
 
   it('for_each を持つフェーズは参照先ラベルと対象フィールドを含む説明文を表示する', () => {
@@ -50,6 +71,7 @@ describe('PhaseCard', () => {
         total={2}
         phase={INVESTIGATE}
         referencedLabel="調査計画"
+        onLabelChange={() => {}}
         onMoveUp={() => {}}
         onMoveDown={() => {}}
         onRemove={() => {}}
@@ -67,6 +89,7 @@ describe('PhaseCard', () => {
         index={0}
         total={1}
         phase={PLAN}
+        onLabelChange={() => {}}
         onMoveUp={() => {}}
         onMoveDown={() => {}}
         onRemove={() => {}}
@@ -84,6 +107,7 @@ describe('PhaseCard', () => {
         total={1}
         phase={PLAN}
         hasError
+        onLabelChange={() => {}}
         onMoveUp={() => {}}
         onMoveDown={() => {}}
         onRemove={() => {}}
@@ -100,6 +124,7 @@ describe('PhaseCard', () => {
         index={0}
         total={2}
         phase={PLAN}
+        onLabelChange={() => {}}
         onMoveUp={() => {}}
         onMoveDown={() => {}}
         onRemove={() => {}}
@@ -125,6 +150,7 @@ describe('PhaseCard', () => {
         index={1}
         total={3}
         phase={PLAN}
+        onLabelChange={() => {}}
         onMoveUp={onMoveUp}
         onMoveDown={onMoveDown}
         onRemove={onRemove}
@@ -152,6 +178,7 @@ describe('PhaseCard', () => {
         index={0}
         total={1}
         phase={PLAN}
+        onLabelChange={() => {}}
         onMoveUp={() => {}}
         onMoveDown={() => {}}
         onRemove={() => {}}

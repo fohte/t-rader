@@ -193,6 +193,20 @@ describe('AgentGraphForm', () => {
     expect(screen.getAllByTestId(/^phase-card-/)).toHaveLength(1)
   })
 
+  it('フェーズ名を編集すると値に反映される', async () => {
+    const user = userEvent.setup()
+    renderForm({ initial: SAMPLE })
+    const planCard = within(screen.getByTestId('phase-card-plan'))
+
+    const labelInput = planCard.getByLabelText('フェーズ名')
+    await user.clear(labelInput)
+    await user.type(labelInput, '新しい調査計画')
+    expect(labelInput).toHaveValue('新しい調査計画')
+
+    const yamlValue = screen.getByTestId('yaml-value').textContent
+    expect(parseAgentGraphPhases(yamlValue)?.[0]?.label).toBe('新しい調査計画')
+  })
+
   it('プロンプトを編集すると値に反映される', async () => {
     const user = userEvent.setup()
     renderForm({ initial: SAMPLE })

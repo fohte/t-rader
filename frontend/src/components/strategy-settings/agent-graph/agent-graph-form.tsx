@@ -107,6 +107,9 @@ export function AgentGraphForm({
                   : undefined
               }
               hasError={phase.key === errorPhaseKey}
+              onLabelChange={(next) => {
+                onChange(setPhaseField(value, i, 'label', next))
+              }}
               onMoveUp={() => {
                 onChange(movePhase(value, i, 'up'))
               }}
