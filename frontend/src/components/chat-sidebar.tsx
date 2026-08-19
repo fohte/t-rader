@@ -12,9 +12,11 @@ export function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
   return (
     <aside
       data-testid="chat-sidebar"
+      // aside 自体を box-content にして border 分を width の外側に出す。border-box のままだと
+      // inner div の w-80 と border 込みの外枠幅が 1px ずれ、常に横方向にクリップされていた
       className={cn(
         'overflow-hidden bg-background transition-[width] duration-300 ease-in-out',
-        isOpen ? 'w-80 border-l' : 'w-0',
+        isOpen ? 'box-content w-80 border-l' : 'w-0',
       )}
     >
       {isOpen && (

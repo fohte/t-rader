@@ -6,6 +6,9 @@ import type { GraphDef } from '#components/graph/types'
 const meta = {
   title: 'Graph/GraphRenderer',
   component: GraphRenderer,
+  // fitView のパン/ズームアニメーションを overflow-check が検査してしまわない
+  // よう、story では即時反映にする (本番は既定の 200ms を維持)
+  args: { fitViewDuration: 0 },
   decorators: [
     (Story) => (
       <div style={{ width: '100%', height: '500px' }}>
