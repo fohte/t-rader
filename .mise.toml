@@ -1,10 +1,14 @@
 [env]
-_.file = ['.env', '.env.runtime', '.env.local']
+# db のホストポートはランダム割り当て (全 worktree 共有) のため、mise 実行のたびに
+# scripts/db-url でポートを解決する (キャッシュしない)。_.file より前に書くことで
+# .env.local による上書きを維持している
+DATABASE_URL = "{{ exec(command=config_root ~ '/scripts/db-url') }}"
+_.file = ['.env', '.env.local']
 # Share target dir across worktrees to avoid full recompilation
 CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tasks.db-up]
-description = "DB を起動し、実ポートを反映した DATABASE_URL を .env.runtime に生成する"
+description = "DB を起動する"
 file = "scripts/db-up"
 
 [tools]

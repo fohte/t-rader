@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# DB (docker-compose.infra.yml) を起動し、ランダム割り当てされた実ポートを
-# 反映した DATABASE_URL を .env.runtime (git 管理外) に書き出す。
+# DB (docker-compose.infra.yml) を起動する。ランダム割り当てされた実ポートは
+# scripts/db-url が都度解決するので、ここではポートの記録は行わない。
 #
 # Usage:
 #   mise run db-up
@@ -11,24 +11,4 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-dc() {
-  docker compose -f docker-compose.infra.yml "$@"
-}
-
-dc up -d --wait
-
-host_port="$(dc port db 5432 | tr -d '\r')"
-port="${host_port##*:}"
-
-# デフォルト値の二重管理を避けるため、実際に起動中のコンテナから読み取る
-# (docker-compose.infra.yml の environment: に渡された値が正)
-postgres_user="$(dc exec -T db printenv POSTGRES_USER | tr -d '\r')"
-postgres_password="$(dc exec -T db printenv POSTGRES_PASSWORD | tr -d '\r')"
-postgres_db="$(dc exec -T db printenv POSTGRES_DB | tr -d '\r')"
-
-cat > .env.runtime << EOF
-# mise run db-up が自動生成するファイル。直接編集しないこと。
-DATABASE_URL=postgres://${postgres_user}:${postgres_password}@127.0.0.1:${port}/${postgres_db}
-EOF
-
-echo "Generated .env.runtime (db port: ${port})"
+docker compose -f docker-compose.infra.yml up -d --wait

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#
+# DB (docker-compose.infra.yml) の実ポートを反映した DATABASE_URL を stdout に出す。
+# .mise.toml の [env] から exec() で毎回呼ばれる想定。DB が停止していても
+# [env] 全体のパースを壊さないよう、ポート解決に失敗しても常に成功終了する。
+#
+# Usage:
+#   scripts/db-url
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
+port="$(docker compose -f docker-compose.infra.yml port db 5432 2> /dev/null | tr -d '\r' | sed 's/.*://')" || port=''
+
+echo "postgres://t_rader:t_rader@127.0.0.1:${port:-0}/t_rader_development"
