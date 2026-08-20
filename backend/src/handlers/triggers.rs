@@ -1,9 +1,6 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -11,89 +8,7 @@ use crate::entities::trigger;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};
-
-fn validate_template(value: &str) -> Result<String, AppError> {
-    let trimmed = value.trim().to_string();
-    if trimmed.is_empty() {
-        return Err(AppError::Validation(
-            "prompt_template must not be empty".into(),
-        ));
-    }
-    Ok(trimmed)
-}
-
-fn validate_event_match(event_match: Option<&serde_json::Value>) -> Result<(), AppError> {
-    match event_match {
-        Some(v) if !v.is_object() && !v.is_null() => Err(AppError::Validation(
-            "event_match must be an object or null".into(),
-        )),
-        _ => Ok(()),
-    }
-}
-
-fn validate_create(payload: &CreateTriggerRequest) -> Result<(), AppError> {
-    validate_event_match(payload.event_match.as_ref())?;
-    match payload.kind {
-        TriggerKind::Cron => {
-            if payload
-                .schedule
-                .as_deref()
-                .map(str::trim)
-                .map(str::is_empty)
-                .unwrap_or(true)
-            {
-                return Err(AppError::Validation(
-                    "schedule is required for kind=cron".into(),
-                ));
-            }
-            if payload.hook_slug.is_some() {
-                return Err(AppError::Validation(
-                    "hook_slug must be omitted for kind=cron".into(),
-                ));
-            }
-        }
-        TriggerKind::Hook => {
-            if payload
-                .hook_slug
-                .as_deref()
-                .map(str::trim)
-                .map(str::is_empty)
-                .unwrap_or(true)
-            {
-                return Err(AppError::Validation(
-                    "hook_slug is required for kind=hook".into(),
-                ));
-            }
-            if payload.schedule.is_some() {
-                return Err(AppError::Validation(
-                    "schedule must be omitted for kind=hook".into(),
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn find_strategy_or_404(db: &sea_orm::DatabaseConnection, id: Uuid) -> Result<(), AppError> {
-    let exists = crate::entities::strategy::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .is_some();
-    if !exists {
-        return Err(AppError::NotFound(format!("strategy {id} not found")));
-    }
-    Ok(())
-}
-
-async fn find_trigger_or_404(
-    db: &sea_orm::DatabaseConnection,
-    trigger_id: Uuid,
-) -> Result<trigger::Model, AppError> {
-    trigger::Entity::find_by_id(trigger_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("trigger {trigger_id} not found")))
-}
+use crate::services::trigger_crud as trigger_crud_svc;
 
 /// 戦略の trigger 一覧
 #[utoipa::path(
@@ -116,15 +31,7 @@ pub async fn list_strategy_triggers(
     JsonPath(id): JsonPath<Uuid>,
     JsonQuery(query): JsonQuery<ListTriggersQuery>,
 ) -> Result<Json<Vec<trigger::Model>>, AppError> {
-    find_strategy_or_404(&state.db, id).await?;
-    let mut find = trigger::Entity::find().filter(trigger::Column::StrategyId.eq(id));
-    if let Some(kind) = query.kind {
-        find = find.filter(trigger::Column::Kind.eq(kind.as_str()));
-    }
-    let items = find
-        .order_by_asc(trigger::Column::CreatedAt)
-        .all(&state.db)
-        .await?;
+    let items = trigger_crud_svc::list_triggers(&state.db, id, query.kind).await?;
     Ok(Json(items))
 }
 
@@ -149,26 +56,7 @@ pub async fn create_strategy_trigger(
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateTriggerRequest>,
 ) -> Result<(StatusCode, Json<trigger::Model>), AppError> {
-    validate_create(&payload)?;
-    let prompt_template = validate_template(&payload.prompt_template)?;
-    find_strategy_or_404(&state.db, strategy_id).await?;
-
-    let model = trigger::ActiveModel {
-        trigger_id: Set(Uuid::new_v4()),
-        strategy_id: Set(strategy_id),
-        kind: Set(payload.kind.as_str().to_string()),
-        schedule: Set(payload.schedule.map(|s| s.trim().to_string())),
-        hook_slug: Set(payload.hook_slug.map(|s| s.trim().to_string())),
-        event_match: Set(payload.event_match),
-        prompt_template: Set(prompt_template),
-        enabled: Set(payload.enabled.unwrap_or(true)),
-        last_fired_at: NotSet,
-        created_at: NotSet,
-        updated_at: NotSet,
-    };
-    let created = trigger::Entity::insert(model)
-        .exec_with_returning(&state.db)
-        .await?;
+    let created = trigger_crud_svc::create_trigger(&state.db, strategy_id, payload).await?;
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -189,7 +77,7 @@ pub async fn get_trigger(
     State(state): State<AppState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<Json<trigger::Model>, AppError> {
-    let model = find_trigger_or_404(&state.db, trigger_id).await?;
+    let model = trigger_crud_svc::get_trigger(&state.db, trigger_id).await?;
     Ok(Json(model))
 }
 
@@ -214,46 +102,7 @@ pub async fn update_trigger(
     JsonPath(trigger_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateTriggerRequest>,
 ) -> Result<Json<trigger::Model>, AppError> {
-    let current = find_trigger_or_404(&state.db, trigger_id).await?;
-    let mut active = current.clone().into_active_model();
-
-    if let Some(schedule) = payload.schedule {
-        if current.kind != TriggerKind::Cron.as_str() {
-            return Err(AppError::Validation(
-                "schedule can only be set when kind=cron".into(),
-            ));
-        }
-        let trimmed = schedule.trim().to_string();
-        if trimmed.is_empty() {
-            return Err(AppError::Validation("schedule must not be empty".into()));
-        }
-        active.schedule = Set(Some(trimmed));
-    }
-    if let Some(hook_slug) = payload.hook_slug {
-        if current.kind != TriggerKind::Hook.as_str() {
-            return Err(AppError::Validation(
-                "hook_slug can only be set when kind=hook".into(),
-            ));
-        }
-        let trimmed = hook_slug.trim().to_string();
-        if trimmed.is_empty() {
-            return Err(AppError::Validation("hook_slug must not be empty".into()));
-        }
-        active.hook_slug = Set(Some(trimmed));
-    }
-    if let Some(event_match) = payload.event_match {
-        validate_event_match(Some(&event_match))?;
-        active.event_match = Set(Some(event_match));
-    }
-    if let Some(prompt_template) = payload.prompt_template {
-        active.prompt_template = Set(validate_template(&prompt_template)?);
-    }
-    if let Some(enabled) = payload.enabled {
-        active.enabled = Set(enabled);
-    }
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let updated = active.update(&state.db).await?;
+    let updated = trigger_crud_svc::update_trigger(&state.db, trigger_id, payload).await?;
     Ok(Json(updated))
 }
 
@@ -274,14 +123,7 @@ pub async fn delete_trigger(
     State(state): State<AppState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let result = trigger::Entity::delete_by_id(trigger_id)
-        .exec(&state.db)
-        .await?;
-    if result.rows_affected == 0 {
-        return Err(AppError::NotFound(format!(
-            "trigger {trigger_id} not found"
-        )));
-    }
+    trigger_crud_svc::delete_trigger(&state.db, trigger_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
