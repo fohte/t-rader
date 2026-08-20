@@ -18,7 +18,7 @@ use super::dto::{
     GetStrategyConfigParams, GetStrategyConfigResult, TriggerSummary, UpdateStrategyConfigParams,
     UpdateStrategyConfigResult,
 };
-use super::{MgmtServer, db_error, internal_error, invalid_params};
+use super::{MgmtServer, map_app_error};
 
 impl MgmtServer {
     pub(super) async fn get_strategy_config_inner(
@@ -203,14 +203,6 @@ fn push_agent_graph_errors(yaml: Option<&str>, errors: &mut Vec<String>) {
         && let Err(err) = agent_graph_svc::parse_agent_graph(yaml)
     {
         errors.push(err.to_string());
-    }
-}
-
-fn map_app_error(err: AppError) -> McpError {
-    match err {
-        AppError::NotFound(msg) => invalid_params(msg),
-        AppError::Database(db_err) => db_error(db_err),
-        other => internal_error(other.to_string()),
     }
 }
 

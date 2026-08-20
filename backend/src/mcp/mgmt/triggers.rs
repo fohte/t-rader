@@ -14,7 +14,7 @@ use super::dto::{
     CreateStrategyTriggerParams, CreateStrategyTriggerResult, DeleteStrategyTriggerParams,
     DeleteStrategyTriggerResult, UpdateStrategyTriggerParams, UpdateStrategyTriggerResult,
 };
-use super::{MgmtServer, db_error, internal_error, invalid_params};
+use super::{MgmtServer, map_app_error};
 
 impl MgmtServer {
     pub(super) async fn create_strategy_trigger_inner(
@@ -84,15 +84,13 @@ impl MgmtServer {
 }
 
 /// `AppError::Validation` (schedule/hook_slug の不整合など) はデータとして返し、LLM が
-/// 入力を直して再試行できるようにする。`NotFound` (存在しない strategy_id/trigger_id) は
-/// 参照ミスであり content の修正では直せないため、他の書き込み tool と同様に tool call
-/// そのものを失敗させる。
+/// 入力を直して再試行できるようにする。`NotFound` (存在しない strategy_id/trigger_id) や
+/// `Database` (hook_slug の unique 制約違反など) は参照ミスや DB 制約違反であり content の
+/// 修正だけでは直せないため、他の書き込み tool と同様に tool call そのものを失敗させる。
 fn validation_errors(err: AppError) -> Result<Vec<String>, McpError> {
     match err {
         AppError::Validation(msg) => Ok(vec![msg]),
-        AppError::NotFound(msg) => Err(invalid_params(msg)),
-        AppError::Database(db_err) => Err(db_error(db_err)),
-        other => Err(internal_error(other.to_string())),
+        other => Err(map_app_error(other)),
     }
 }
 
@@ -131,11 +129,20 @@ mod tests {
             }))
             .await
             .expect("ok");
-        assert_eq!(
-            (result.ok, result.errors.clone()),
-            (true, Vec::<String>::new()),
-        );
         let trigger_id = result.trigger_id.expect("trigger_id present");
+        assert_eq!(
+            serde_json::to_value(CreateStrategyTriggerResult {
+                trigger_id: Some(Uuid::nil()),
+                ..result
+            })
+            .unwrap(),
+            serde_json::to_value(CreateStrategyTriggerResult {
+                ok: true,
+                errors: vec![],
+                trigger_id: Some(Uuid::nil()),
+            })
+            .unwrap(),
+        );
 
         let stored = trigger_crud::get_trigger(&db, trigger_id)
             .await

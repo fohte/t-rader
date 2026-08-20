@@ -55,6 +55,7 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use sea_orm::DatabaseConnection;
 
 use crate::agent_client::SharedAgentTaskClient;
+use crate::error::AppError;
 
 // `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
 pub use dto::SubmitStrategyTaskParams;
@@ -97,6 +98,16 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
 pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
     tracing::error!(error = %err, "mgmt mcp db error");
     internal_error(format!("database error: {err}"))
+}
+
+/// `AppError::Validation` は各 tool 側で `ok=false` + `errors` として扱うため、ここでは
+/// `NotFound` / `Database` / その他だけを tool call の失敗として一律にマッピングする。
+pub(super) fn map_app_error(err: AppError) -> McpError {
+    match err {
+        AppError::NotFound(msg) => invalid_params(msg),
+        AppError::Database(db_err) => db_error(db_err),
+        other => internal_error(other.to_string()),
+    }
 }
 
 pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
@@ -190,7 +201,7 @@ impl MgmtServer {
     /// trigger を作成する
     #[tool(
         name = "create_strategy_trigger",
-        description = "Create a trigger for a strategy. kind=cron requires schedule (and forbids hook_slug); kind=hook requires hook_slug (and forbids schedule). On a validation failure this returns ok=false with all the errors it found instead of failing the tool call, so the caller can read them, fix the input, and retry; no trigger is created when any error is present."
+        description = "Create a trigger for a strategy. kind=cron requires schedule (and forbids hook_slug); kind=hook requires hook_slug (and forbids schedule). On a validation failure this returns ok=false with the first error found (checks stop at the first failure, so a retry may surface a different one) instead of failing the tool call, so the caller can read it, fix the input, and retry; no trigger is created when an error is present. A database-level conflict (e.g. a hook_slug already used by another trigger) fails the tool call instead of returning ok=false."
     )]
     async fn create_strategy_trigger(
         &self,
@@ -202,7 +213,7 @@ impl MgmtServer {
     /// trigger を部分更新する (kind / strategy_id は不変)
     #[tool(
         name = "update_strategy_trigger",
-        description = "Update only the given fields of an existing trigger. kind and strategy_id are immutable; schedule can only be set on a cron trigger and hook_slug only on a hook trigger. On a validation failure this returns ok=false with all the errors it found instead of failing the tool call, so the caller can read them, fix the input, and retry; nothing is written when any error is present."
+        description = "Update only the given fields of an existing trigger. kind and strategy_id are immutable; schedule can only be set on a cron trigger and hook_slug only on a hook trigger. On a validation failure this returns ok=false with the first error found (checks stop at the first failure, so a retry may surface a different one) instead of failing the tool call; nothing is written when an error is present. A database-level conflict (e.g. a hook_slug already used by another trigger) fails the tool call instead of returning ok=false."
     )]
     async fn update_strategy_trigger(
         &self,
