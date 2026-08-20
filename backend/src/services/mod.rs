@@ -11,6 +11,7 @@ pub mod litellm_client;
 pub mod news;
 pub mod rss_feed;
 pub mod strategies;
+pub mod strategy_config;
 pub mod strategy_tasks;
 pub mod trades;
 pub mod trigger_crud;

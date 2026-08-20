@@ -1,16 +1,13 @@
 use std::collections::BTreeSet;
 
-use sea_orm::ActiveValue::Set;
-use sea_orm::{
-    ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel, TransactionTrait,
-};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::entities::strategy;
 use crate::error::AppError;
-use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::change_history::Actor;
+use crate::services::strategy_config;
 
 /// 戦略ごとの多段フェーズ実行設定。
 ///
@@ -142,48 +139,20 @@ pub async fn get_agent_graph(
     db: &DatabaseConnection,
     strategy_id: Uuid,
 ) -> Result<String, AppError> {
-    let row = strategy::Entity::find_by_id(strategy_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("strategy {strategy_id} not found")))?;
+    let row = strategy_config::find_or_404(db, strategy_id).await?;
     Ok(row.agent_graph)
 }
 
 /// 戦略の `agent_graph` YAML を検証した上で保存し、change_history に記録する。
 /// HTTP (`PUT /api/strategies/{id}/agent-graph`) と管理 MCP (`put_strategy_agent_config`) の
-/// 共通経路。検証は事前に完了させ、DB 更新と履歴記録のみを 1 トランザクションにまとめる。
-/// change_history の actor は呼び出し元によらず AGENTS.md 更新と同じく "human"/"user" 固定
-/// (`change_history::record` の仕様どおり)。MCP 経由の変更を区別する actor 種別は未対応。
+/// 共通経路。検証はここで完了させ、DB 更新と履歴記録は `services::strategy_config` に委譲する。
 pub async fn save_agent_graph(
     db: &DatabaseConnection,
     strategy_id: Uuid,
     content: &str,
 ) -> Result<String, AppError> {
     parse_agent_graph(content).map_err(|e| AppError::Validation(e.to_string()))?;
-
-    let current = strategy::Entity::find_by_id(strategy_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("strategy {strategy_id} not found")))?;
-    let prev = current.agent_graph.clone();
-    let mut active = current.into_active_model();
-    active.agent_graph = Set(content.to_string());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Strategy,
-        strategy_id,
-        Op::Update,
-        serde_json::json!({ "agent_graph": { "from": prev, "to": content } }),
-        Some("updated agent_graph".to_string()),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(updated.agent_graph)
+    strategy_config::save_agent_graph(db, Actor::Human, strategy_id, content.to_string()).await
 }
 
 #[cfg(test)]
