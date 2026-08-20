@@ -2,6 +2,8 @@ import { screenshot } from '@storycap-testrun/browser'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { page } from 'vitest/browser'
 
+import { SCREENSHOT_VIEWPORT } from './screenshot-viewport'
+
 // story の props に固定タイムスタンプを渡していても formatRelative 等の相対時刻表示は
 // 実行時刻基準で変わるため、システム時刻を固定してスクリーンショットを決定的にする
 vi.setSystemTime(new Date('2026-01-15T10:00:00+09:00'))
@@ -16,12 +18,10 @@ style.textContent = `
 `
 document.head.appendChild(style)
 
-// ponytail: 上記でも Monaco Editor を含む一部の story は撮影のたびに数十ピクセル
-// 未満 (0.006% 程度、内容ではなく canvas 描画のサブピクセル差) だけ揺れることがある。
-// Chromium 起動オプション (--disable-gpu 等) や撮影前ディレイでも解消しなかった。
-// reg-suit 側で許容する閾値を設ける方針が妥当。閾値運用は別タスク (reg-suit 導入) の責務
+// ponytail: 上記でも Monaco Editor を含む一部の story は canvas 描画のサブピクセル差
+// (0.006% 程度) により撮影のたびに数十ピクセル未満揺れることがある
 beforeEach(async () => {
-  await page.viewport(1280, 800)
+  await page.viewport(SCREENSHOT_VIEWPORT.width, SCREENSHOT_VIEWPORT.height)
 })
 
 afterEach(async (context) => {

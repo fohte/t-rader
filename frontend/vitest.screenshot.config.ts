@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createStorybookProject } from '@fohte/storybook-addon/vitest-plugin'
 import { defineConfig, mergeConfig } from 'vitest/config'
 
+import { SCREENSHOT_VIEWPORT } from './.storybook/screenshot-viewport'
 import viteConfig from './vite.config'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -17,7 +18,7 @@ export default mergeConfig(
     createStorybookProject({
       name: 'storybook-screenshot',
       rootDir: dirname,
-      viewport: { width: 1280, height: 800 },
+      viewport: SCREENSHOT_VIEWPORT,
       screenshotsSubdir: 'desktop',
       setupFiles: ['./.storybook/vitest.setup.screenshot.ts'],
     }),
