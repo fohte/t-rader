@@ -121,6 +121,7 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 - DB は `mise run db-up` で起動する (`docker compose -f docker-compose.infra.yml up -d --wait` のラッパー、全 worktree 共有)
 - db のホストポートはランダム割り当て (全 worktree 共有) のため、`DATABASE_URL` は mise 実行のたびに `scripts/db-url` で解決する (キャッシュしない)。手動でのポート確認は不要になる
 - `cargo run` 等でローカル直接起動する場合も、mise 経由で常に実ポートを反映した値が使われる
+- `scripts/db-url` は `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` の上書きを読まず、`docker-compose.infra.yml` のデフォルト値を固定で使う。これらを変更する場合は `DATABASE_URL` も `.env.local` で合わせて上書きすること
 - agent をローカル直接起動する場合は、agent 専用の論理 DB (`t_rader_agent_development`) を指す `DATABASE_URL` を `.env.local` で上書きすること (mise が解決する値は backend 用)
 
 ## Warnings

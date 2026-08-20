@@ -14,4 +14,8 @@ cd "$SCRIPT_DIR/.."
 
 port="$(docker compose -f docker-compose.infra.yml port db 5432 2> /dev/null | tr -d '\r' | sed 's/.*://')" || port=''
 
+# POSTGRES_USER/PASSWORD/DB の上書きは反映しない。実際に起動中のコンテナから読むと
+# docker compose exec が増えて cd のたびに実行するには重すぎるため、意図的に
+# docker-compose.infra.yml のデフォルト値を固定で使う。上書きしたい場合は
+# DATABASE_URL 自体を .env.local で上書きすること
 echo "postgres://t_rader:t_rader@127.0.0.1:${port:-0}/t_rader_development"
