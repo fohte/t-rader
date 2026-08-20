@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::entities::{rss_feed, trigger};
+use crate::models::TriggerKind;
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StrategySummary {
@@ -252,6 +253,81 @@ pub struct DeleteStrategyParams {
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct DeleteStrategyResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+}
+
+/// `crate::models::TriggerKind` は `schemars::JsonSchema` を derive していないため、
+/// MCP tool の入力スキーマ用に別途定義する。
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum TriggerKindParam {
+    Cron,
+    Hook,
+}
+
+impl From<TriggerKindParam> for TriggerKind {
+    fn from(value: TriggerKindParam) -> Self {
+        match value {
+            TriggerKindParam::Cron => TriggerKind::Cron,
+            TriggerKindParam::Hook => TriggerKind::Hook,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateStrategyTriggerParams {
+    pub strategy_id: Uuid,
+    pub kind: TriggerKindParam,
+    /// kind=cron 時に必須 (UTC の 5 フィールド cron 式)
+    #[serde(default)]
+    pub schedule: Option<String>,
+    /// kind=hook 時に必須 (`/api/hooks/:hook_slug` のパス識別子)
+    #[serde(default)]
+    pub hook_slug: Option<String>,
+    #[serde(default)]
+    pub event_match: Option<serde_json::Value>,
+    pub prompt_template: String,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct CreateStrategyTriggerResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trigger_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateStrategyTriggerParams {
+    pub trigger_id: Uuid,
+    #[serde(default)]
+    pub schedule: Option<String>,
+    #[serde(default)]
+    pub hook_slug: Option<String>,
+    #[serde(default)]
+    pub event_match: Option<serde_json::Value>,
+    #[serde(default)]
+    pub prompt_template: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct UpdateStrategyTriggerResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteStrategyTriggerParams {
+    pub trigger_id: Uuid,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DeleteStrategyTriggerResult {
     pub ok: bool,
     pub errors: Vec<String>,
 }

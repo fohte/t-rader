@@ -25,6 +25,9 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 | `create_strategy`          | `name`, `description?`, `agents_md?`, `skills?`, `agent_graph?`                                    | `ok`, `errors`, `strategy_id?`。検証エラーがあれば 1 件も書き込まず `ok=false` で全エラーを返す              |
 | `update_strategy_config`   | `strategy_id`, `name?`, `description?`, `agents_md?`, `skills?` (JSON Merge Patch), `agent_graph?` | `ok`, `errors`。指定フィールドのみ 1 回の呼び出しで atomic に更新する                                        |
 | `delete_strategy`          | `strategy_id`, `confirm_name`                                                                      | `ok`, `errors`。`confirm_name` が戦略名と完全一致しないと削除しない。一致すれば関連リソースごと cascade 削除 |
+| `create_strategy_trigger`  | `strategy_id`, `kind`, `schedule?`, `hook_slug?`, `event_match?`, `prompt_template`, `enabled?`    | `ok`, `errors`, `trigger_id?`。kind=cron は schedule 必須 (hook_slug 禁止)、kind=hook はその逆               |
+| `update_strategy_trigger`  | `trigger_id`, `schedule?`, `hook_slug?`, `event_match?`, `prompt_template?`, `enabled?`            | `ok`, `errors`。指定フィールドのみ更新。kind / strategy_id は不変                                            |
+| `delete_strategy_trigger`  | `trigger_id`                                                                                       | `ok`, `errors`                                                                                               |
 | `list_recent_notes`        | `strategy_id`, `limit?`                                                                            | 最新ノートのメタデータ一覧                                                                                   |
 | `list_recent_annotations`  | `strategy_id`, `limit?`                                                                            | 最新アノテーションのメタデータ一覧                                                                           |
 | `list_rss_feeds`           | `enabled_only?`                                                                                    | RSS フィード定義一覧                                                                                         |
@@ -36,7 +39,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 `create_strategy` / `update_strategy_config` / `delete_strategy` による DB 書き込みは REST (`backend/src/handlers/strategies/mod.rs`) と共通の `backend/src/services/strategy_config.rs` を経由し、`change_history` には actor `llm` / label `mgmt-mcp` で記録される。
 
-`get_strategy_config` が返す `triggers` は読み取り専用で、trigger の作成・更新・削除 tool は未実装。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
+`create_strategy_trigger` / `update_strategy_trigger` / `delete_strategy_trigger` は REST (`POST /api/strategies/{id}/triggers`, `PUT /api/triggers/{trigger_id}`, `DELETE /api/triggers/{trigger_id}`) と共通の `backend/src/services/trigger_crud.rs` を経由する。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
 
 ## 戦略実行 MCP (`/mcp/strategy`)
 

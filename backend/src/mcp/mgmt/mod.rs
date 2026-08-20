@@ -1,6 +1,6 @@
 //! 管理 MCP server の tool 実装
 //!
-//! personal-bot から呼び出される。tool は以下の 13 種:
+//! personal-bot から呼び出される。tool は以下の 16 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
@@ -9,6 +9,9 @@
 //! - `create_strategy`
 //! - `update_strategy_config`
 //! - `delete_strategy`
+//! - `create_strategy_trigger`
+//! - `update_strategy_trigger`
+//! - `delete_strategy_trigger`
 //! - `list_recent_notes`
 //! - `list_recent_annotations`
 //! - `list_rss_feeds`
@@ -25,6 +28,8 @@
 //!   取得・作成・更新・削除と、戦略に紐づく trigger の一覧取得 (読み取り専用)
 //!   (`get_strategy_config_inner` / `create_strategy_inner` / `update_strategy_config_inner` /
 //!   `delete_strategy_inner`)
+//! - `triggers`: trigger の作成・更新・削除
+//!   (`create_strategy_trigger_inner` / `update_strategy_trigger_inner` / `delete_strategy_trigger_inner`)
 //! - `rss_feeds`: RSS フィード CRUD
 //!   (`list_rss_feeds_inner` / `create_rss_feed_inner` / `update_rss_feed_inner` / `delete_rss_feed_inner`)
 //! - `notes_annotations`: 直近ノート・アノテーション一覧
@@ -38,6 +43,7 @@ mod notes_annotations;
 mod rss_feeds;
 mod strategies;
 mod strategy_config;
+mod triggers;
 
 #[cfg(test)]
 mod tests_common;
@@ -53,12 +59,14 @@ use crate::agent_client::SharedAgentTaskClient;
 // `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
 pub use dto::SubmitStrategyTaskParams;
 use dto::{
-    CreateRssFeedParams, CreateStrategyParams, CreateStrategyResult, DeleteRssFeedParams,
-    DeleteRssFeedResult, DeleteStrategyParams, DeleteStrategyResult, GetStrategyConfigParams,
-    GetStrategyConfigResult, GetStrategyTaskStatusParams, GetStrategyTaskStatusResult,
-    ListRecentAnnotationsResult, ListRecentNotesResult, ListRecentParams, ListRssFeedsParams,
-    ListRssFeedsResult, ListStrategiesResult, RssFeedSummary, SubmitStrategyTaskResult,
-    UpdateRssFeedParams, UpdateStrategyConfigParams, UpdateStrategyConfigResult,
+    CreateRssFeedParams, CreateStrategyParams, CreateStrategyResult, CreateStrategyTriggerParams,
+    CreateStrategyTriggerResult, DeleteRssFeedParams, DeleteRssFeedResult, DeleteStrategyParams,
+    DeleteStrategyResult, DeleteStrategyTriggerParams, DeleteStrategyTriggerResult,
+    GetStrategyConfigParams, GetStrategyConfigResult, GetStrategyTaskStatusParams,
+    GetStrategyTaskStatusResult, ListRecentAnnotationsResult, ListRecentNotesResult,
+    ListRecentParams, ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult, RssFeedSummary,
+    SubmitStrategyTaskResult, UpdateRssFeedParams, UpdateStrategyConfigParams,
+    UpdateStrategyConfigResult, UpdateStrategyTriggerParams, UpdateStrategyTriggerResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -177,6 +185,42 @@ impl MgmtServer {
         Parameters(params): Parameters<DeleteStrategyParams>,
     ) -> Result<Json<DeleteStrategyResult>, McpError> {
         self.delete_strategy_inner(params).await.map(Json)
+    }
+
+    /// trigger を作成する
+    #[tool(
+        name = "create_strategy_trigger",
+        description = "Create a trigger for a strategy. kind=cron requires schedule (and forbids hook_slug); kind=hook requires hook_slug (and forbids schedule). On a validation failure this returns ok=false with all the errors it found instead of failing the tool call, so the caller can read them, fix the input, and retry; no trigger is created when any error is present."
+    )]
+    async fn create_strategy_trigger(
+        &self,
+        Parameters(params): Parameters<CreateStrategyTriggerParams>,
+    ) -> Result<Json<CreateStrategyTriggerResult>, McpError> {
+        self.create_strategy_trigger_inner(params).await.map(Json)
+    }
+
+    /// trigger を部分更新する (kind / strategy_id は不変)
+    #[tool(
+        name = "update_strategy_trigger",
+        description = "Update only the given fields of an existing trigger. kind and strategy_id are immutable; schedule can only be set on a cron trigger and hook_slug only on a hook trigger. On a validation failure this returns ok=false with all the errors it found instead of failing the tool call, so the caller can read them, fix the input, and retry; nothing is written when any error is present."
+    )]
+    async fn update_strategy_trigger(
+        &self,
+        Parameters(params): Parameters<UpdateStrategyTriggerParams>,
+    ) -> Result<Json<UpdateStrategyTriggerResult>, McpError> {
+        self.update_strategy_trigger_inner(params).await.map(Json)
+    }
+
+    /// trigger を削除する
+    #[tool(
+        name = "delete_strategy_trigger",
+        description = "Delete a trigger by trigger_id."
+    )]
+    async fn delete_strategy_trigger(
+        &self,
+        Parameters(params): Parameters<DeleteStrategyTriggerParams>,
+    ) -> Result<Json<DeleteStrategyTriggerResult>, McpError> {
+        self.delete_strategy_trigger_inner(params).await.map(Json)
     }
 
     /// 戦略 id + 件数で最新ノートメタを返す
