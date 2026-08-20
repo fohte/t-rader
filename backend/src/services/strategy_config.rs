@@ -60,6 +60,8 @@ pub fn skills_object(value: &serde_json::Value) -> serde_json::Map<String, serde
 
 /// JSON Merge Patch (RFC 7396) 相当のセマンティクスで skills をマージする。patch の値が
 /// null のキーは削除し、それ以外は追加/更新する。DB には触らない純粋関数。
+/// 現在の呼び出し元 (`put_skill`) は null を渡さないため削除分岐は未使用だが、
+/// 後続 PR の `update_strategy_config` MCP tool が null によるキー削除にそのまま使う。
 pub fn apply_skills_patch(
     current: &serde_json::Value,
     patch: serde_json::Map<String, serde_json::Value>,
