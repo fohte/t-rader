@@ -16,15 +16,27 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 外部のコントロールプレーンクライアントから呼ばれる。tool 単位の認可は持たず、ネットワーク境界 (VPN / Zero Trust proxy 等) と前段認証で担保する想定。
 
-| tool                       | 入力                    | 出力 (要約)                                                                                               |
-| -------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| `list_strategies`          | (なし)                  | 戦略一覧 (`strategy_id`, `name`, `updated_at`, `unread_card_count`)                                       |
-| `submit_strategy_task`     | `strategy_id`, `prompt` | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                 |
-| `get_strategy_task_status` | `a2a_task_id`           | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等 |
-| `list_recent_notes`        | `strategy_id`, `limit?` | 最新ノートのメタデータ一覧                                                                                |
-| `list_recent_annotations`  | `strategy_id`, `limit?` | 最新アノテーションのメタデータ一覧                                                                        |
+| tool                       | 入力                                                                                               | 出力 (要約)                                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `list_strategies`          | (なし)                                                                                             | 戦略一覧 (`strategy_id`, `name`, `updated_at`, `unread_card_count`)                                          |
+| `submit_strategy_task`     | `strategy_id`, `prompt`                                                                            | `task_id`, `a2a_task_id`。DB に `strategy_task` 行を作り t-rader-agent にタスクを投入する                    |
+| `get_strategy_task_status` | `a2a_task_id`                                                                                      | `phase` (`pending` / `running` / `completed` / `failed`), `error_summary`, `result_text`, `updated_at` 等    |
+| `get_strategy_config`      | `strategy_id`                                                                                      | 戦略設定一式 (`name`, `description`, `agents_md`, `skills`, `agent_graph`) と紐づく `triggers` 一覧          |
+| `create_strategy`          | `name`, `description?`, `agents_md?`, `skills?`, `agent_graph?`                                    | `ok`, `errors`, `strategy_id?`。検証エラーがあれば 1 件も書き込まず `ok=false` で全エラーを返す              |
+| `update_strategy_config`   | `strategy_id`, `name?`, `description?`, `agents_md?`, `skills?` (JSON Merge Patch), `agent_graph?` | `ok`, `errors`。指定フィールドのみ 1 回の呼び出しで atomic に更新する                                        |
+| `delete_strategy`          | `strategy_id`, `confirm_name`                                                                      | `ok`, `errors`。`confirm_name` が戦略名と完全一致しないと削除しない。一致すれば関連リソースごと cascade 削除 |
+| `list_recent_notes`        | `strategy_id`, `limit?`                                                                            | 最新ノートのメタデータ一覧                                                                                   |
+| `list_recent_annotations`  | `strategy_id`, `limit?`                                                                            | 最新アノテーションのメタデータ一覧                                                                           |
+| `list_rss_feeds`           | `enabled_only?`                                                                                    | RSS フィード定義一覧                                                                                         |
+| `create_rss_feed`          | `source`, `display_name`, `url`, `enabled?`                                                        | 作成した RSS フィード定義                                                                                    |
+| `update_rss_feed`          | `id`, `display_name?`, `url?`, `enabled?`                                                          | 更新後の RSS フィード定義                                                                                    |
+| `delete_rss_feed`          | `id`                                                                                               | `id`。既存の `news_item` 行は残す                                                                            |
 
 `submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。クライアント実装は `backend/src/agent_client/` が SSOT。投入から決着までの共通ロジックは `backend/src/services/strategy_tasks.rs`、決着 polling は `backend/src/mcp/watcher.rs` を参照。
+
+`create_strategy` / `update_strategy_config` / `delete_strategy` による DB 書き込みは REST (`backend/src/handlers/strategies/mod.rs`) と共通の `backend/src/services/strategy_config.rs` を経由し、`change_history` には actor `llm` / label `mgmt-mcp` で記録される。
+
+`get_strategy_config` が返す `triggers` は読み取り専用で、trigger の作成・更新・削除 tool は未実装。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
 
 ## 戦略実行 MCP (`/mcp/strategy`)
 

@@ -1,5 +1,5 @@
 //! 戦略 1 行の設定 (name / description / sort_order / agents_md / skills / agent_graph) の
-//! 取得・作成・部分更新の共通経路。
+//! 取得・作成・部分更新・削除の共通経路。
 //!
 //! REST (`handlers::strategies`) と管理 MCP (`mcp::mgmt`) の両方から同じカラムへの書き込みが
 //! 発生しうるため、検証・DB 更新・change_history 記録をここに集約し、書き込み経路を 1 つに
@@ -7,7 +7,8 @@
 
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
+    TransactionTrait,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -58,6 +59,19 @@ pub fn skills_object(value: &serde_json::Value) -> serde_json::Map<String, serde
         .unwrap_or_else(serde_json::Map::new)
 }
 
+/// skills カラムの JSON オブジェクトを文字列値のみ抽出して `BTreeMap` に変換する。
+pub fn skills_to_btree(value: &serde_json::Value) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    if let Some(map) = value.as_object() {
+        for (k, v) in map {
+            if let Some(s) = v.as_str() {
+                out.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// JSON Merge Patch (RFC 7396) 相当のセマンティクスで skills をマージする。patch の値が
 /// null のキーは削除し、それ以外は追加/更新する。DB には触らない純粋関数。
 /// 現在の呼び出し元 (`put_skill`) は null を渡さないため削除分岐は未使用だが、
@@ -81,6 +95,9 @@ pub struct CreateStrategy {
     pub name: String,
     pub description: Option<String>,
     pub sort_order: i32,
+    pub agents_md: Option<String>,
+    pub skills: Option<serde_json::Value>,
+    pub agent_graph: Option<String>,
 }
 
 pub async fn create(
@@ -96,9 +113,9 @@ pub async fn create(
         name: Set(name.clone()),
         description: Set(params.description),
         sort_order: Set(params.sort_order),
-        agents_md: NotSet,
-        skills: NotSet,
-        agent_graph: NotSet,
+        agents_md: params.agents_md.map(Set).unwrap_or(NotSet),
+        skills: params.skills.map(Set).unwrap_or(NotSet),
+        agent_graph: params.agent_graph.map(Set).unwrap_or(NotSet),
         created_at: NotSet,
         updated_at: NotSet,
     };
@@ -106,13 +123,22 @@ pub async fn create(
     let created = strategy::Entity::insert(model)
         .exec_with_returning(&txn)
         .await?;
+    // DB デフォルト (agents_md/skills/agent_graph 省略時) を diff に正しく反映するため、
+    // 渡されたパラメータではなく作成後の行の実値を使う。
     change_history::record_as(
         &txn,
         actor,
         TargetKind::Strategy,
         id,
         Op::Create,
-        json!({ "name": name, "sort_order": params.sort_order }),
+        json!({
+            "name": created.name,
+            "sort_order": created.sort_order,
+            "description": created.description,
+            "agents_md": created.agents_md,
+            "skills": created.skills,
+            "agent_graph": created.agent_graph,
+        }),
         Some(format!("created strategy {name}")),
     )
     .await?;
@@ -126,6 +152,9 @@ pub struct StrategyUpdate {
     pub name: Option<String>,
     pub description: Option<String>,
     pub sort_order: Option<i32>,
+    pub agents_md: Option<String>,
+    pub skills_patch: Option<serde_json::Map<String, serde_json::Value>>,
+    pub agent_graph: Option<String>,
 }
 
 pub async fn update(
@@ -156,6 +185,28 @@ pub async fn update(
             json!({ "from": current.sort_order, "to": sort_order }),
         );
         active.sort_order = Set(sort_order);
+    }
+    if let Some(content) = payload.agents_md {
+        diff.insert(
+            "agents_md".into(),
+            json!({ "from": current.agents_md, "to": content }),
+        );
+        active.agents_md = Set(content);
+    }
+    if let Some(patch) = payload.skills_patch {
+        let merged = apply_skills_patch(&current.skills, patch);
+        diff.insert(
+            "skills".into(),
+            json!({ "from": current.skills, "to": merged }),
+        );
+        active.skills = Set(serde_json::Value::Object(merged));
+    }
+    if let Some(content) = payload.agent_graph {
+        diff.insert(
+            "agent_graph".into(),
+            json!({ "from": current.agent_graph, "to": content }),
+        );
+        active.agent_graph = Set(content);
     }
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
 
@@ -289,6 +340,63 @@ pub async fn save_agent_graph(
     Ok(updated.agent_graph)
 }
 
+/// 戦略を削除する。関連リソース (note / annotation / trade / trigger 等) は DB の
+/// `on_delete = Cascade` で連鎖削除される。
+pub async fn delete(db: &DatabaseConnection, actor: Actor, id: Uuid) -> Result<(), AppError> {
+    let txn = db.begin().await?;
+    let result = strategy::Entity::delete_by_id(id).exec(&txn).await?;
+    if result.rows_affected == 0 {
+        return Err(AppError::NotFound(format!("strategy {id} not found")));
+    }
+    change_history::record_as(
+        &txn,
+        actor,
+        TargetKind::Strategy,
+        id,
+        Op::Delete,
+        json!({}),
+        None,
+    )
+    .await?;
+    txn.commit().await?;
+    Ok(())
+}
+
+/// `expected_name` が現在の戦略名と一致する場合のみ削除する。confirm_name チェックと
+/// 削除を単一クエリの条件にまとめることで、事前チェックと削除実行の間で名前が変わる
+/// race を閉じる (呼び出し元が事前に `find_or_404` で確認していても、その後の再確認は
+/// このクエリ自体が兼ねる)。
+pub async fn delete_confirmed(
+    db: &DatabaseConnection,
+    actor: Actor,
+    id: Uuid,
+    expected_name: &str,
+) -> Result<(), AppError> {
+    let txn = db.begin().await?;
+    let result = strategy::Entity::delete_many()
+        .filter(strategy::Column::Id.eq(id))
+        .filter(strategy::Column::Name.eq(expected_name))
+        .exec(&txn)
+        .await?;
+    if result.rows_affected == 0 {
+        return Err(AppError::NotFound(format!(
+            "strategy {id} not found or name changed since confirmation"
+        )));
+    }
+    change_history::record_as(
+        &txn,
+        actor,
+        TargetKind::Strategy,
+        id,
+        Op::Delete,
+        json!({}),
+        None,
+    )
+    .await?;
+    txn.commit().await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use axum::response::IntoResponse;
@@ -372,5 +480,154 @@ mod tests {
             serde_json::Value::Object(merged),
             json!({ "scout": "new", "added": "v" }),
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_persists_agents_md_skills_and_agent_graph(pool: PgPool) {
+        let db = create_test_db(pool).await;
+
+        let created = create(
+            &db,
+            Actor::Human,
+            CreateStrategy {
+                name: "s".to_string(),
+                description: None,
+                sort_order: 0,
+                agents_md: Some("# 方針".to_string()),
+                skills: Some(json!({ "scout": "scout body" })),
+                agent_graph: Some("phases: []".to_string()),
+            },
+        )
+        .await
+        .expect("create");
+
+        let found = find_or_404(&db, created.id).await.expect("find");
+        assert_eq!(
+            (found.agents_md, found.skills, found.agent_graph),
+            (
+                "# 方針".to_string(),
+                json!({ "scout": "scout body" }),
+                "phases: []".to_string(),
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn update_applies_agents_md_skills_and_agent_graph_together(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let id = insert_test_strategy(&db, "s").await;
+        save_skills(
+            &db,
+            Actor::Human,
+            find_or_404(&db, id).await.expect("find strategy"),
+            json!({ "old": "old body" }),
+            "seed".to_string(),
+        )
+        .await
+        .expect("seed skills");
+
+        let mut skills_patch = serde_json::Map::new();
+        skills_patch.insert("old".to_string(), serde_json::Value::Null);
+        skills_patch.insert("new".to_string(), json!("new body"));
+
+        let updated = update(
+            &db,
+            Actor::Human,
+            id,
+            StrategyUpdate {
+                agents_md: Some("# 方針".to_string()),
+                skills_patch: Some(skills_patch),
+                agent_graph: Some("phases: []".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update");
+
+        assert_eq!(
+            (
+                updated.name,
+                updated.description,
+                updated.sort_order,
+                updated.agents_md,
+                updated.skills,
+                updated.agent_graph,
+            ),
+            (
+                "s".to_string(),
+                None,
+                0,
+                "# 方針".to_string(),
+                json!({ "new": "new body" }),
+                "phases: []".to_string(),
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn delete_records_change_history_with_given_actor(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let id = insert_test_strategy(&db, "s").await;
+
+        delete(&db, Actor::Llm { label: "mgmt-mcp" }, id)
+            .await
+            .expect("delete");
+
+        assert!(find_or_404(&db, id).await.is_err());
+
+        let row = crate::entities::change_history::Entity::find()
+            .one(&db)
+            .await
+            .expect("query")
+            .expect("row exists");
+        assert_eq!(
+            (
+                row.target_kind,
+                row.target_id,
+                row.actor_kind,
+                row.actor_label,
+                row.op,
+            ),
+            (
+                "strategy".to_string(),
+                id,
+                "llm".to_string(),
+                "mgmt-mcp".to_string(),
+                "delete".to_string(),
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn delete_unknown_id_returns_not_found(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let err = delete(&db, Actor::Human, Uuid::new_v4()).await.unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)));
+    }
+
+    // 実際の並行リクエストは非決定的なため、confirm 済みの名前で呼ぶ delete_confirmed の
+    // 直前に別経路で名前が変わることを、事前の rename で決定的に再現する。
+    #[sqlx::test(migrations = false)]
+    async fn delete_confirmed_rejects_when_name_changed_after_confirmation(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let id = insert_test_strategy(&db, "original").await;
+
+        update(
+            &db,
+            Actor::Human,
+            id,
+            StrategyUpdate {
+                name: Some("renamed".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("rename");
+
+        let err = delete_confirmed(&db, Actor::Human, id, "original")
+            .await
+            .expect_err("stale confirm_name must be rejected");
+        assert!(matches!(err, AppError::NotFound(_)));
+        assert!(find_or_404(&db, id).await.is_ok());
     }
 }
