@@ -1,8 +1,7 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait};
-use serde_json::json;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -13,7 +12,7 @@ use crate::models::{
     AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
     UpdateStrategyRequest,
 };
-use crate::services::change_history::{self, Actor, Op, TargetKind};
+use crate::services::change_history::Actor;
 use crate::services::strategy_config;
 
 mod agent_graph;
@@ -96,6 +95,9 @@ pub async fn create_strategy(
             name: payload.name,
             description: payload.description,
             sort_order: payload.sort_order.unwrap_or(0),
+            agents_md: None,
+            skills: None,
+            agent_graph: None,
         },
     )
     .await?;
@@ -131,6 +133,7 @@ pub async fn update_strategy(
             name: payload.name,
             description: payload.description,
             sort_order: payload.sort_order,
+            ..Default::default()
         },
     )
     .await?;
@@ -156,14 +159,7 @@ pub async fn delete_strategy(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     find_strategy_or_404(&state.db, id).await?;
-
-    let txn = state.db.begin().await?;
-    let result = strategy::Entity::delete_by_id(id).exec(&txn).await?;
-    if result.rows_affected == 0 {
-        return Err(AppError::NotFound(format!("strategy {id} not found")));
-    }
-    change_history::record(&txn, TargetKind::Strategy, id, Op::Delete, json!({}), None).await?;
-    txn.commit().await?;
+    strategy_config::delete(&state.db, Actor::Human, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -192,18 +188,6 @@ pub async fn list_strategy_interests(
         .all(&state.db)
         .await?;
     Ok(Json(items))
-}
-
-fn skills_to_btree(value: &serde_json::Value) -> std::collections::BTreeMap<String, String> {
-    let mut out = std::collections::BTreeMap::new();
-    if let Some(map) = value.as_object() {
-        for (k, v) in map {
-            if let Some(s) = v.as_str() {
-                out.insert(k.clone(), s.to_string());
-            }
-        }
-    }
-    out
 }
 
 /// 戦略 Agent の AGENTS.md (方針 / 制約 markdown) を取得
@@ -273,7 +257,7 @@ pub async fn get_skills(
 ) -> Result<Json<SkillsBody>, AppError> {
     let row = find_strategy_or_404(&state.db, id).await?;
     Ok(Json(SkillsBody {
-        skills: skills_to_btree(&row.skills),
+        skills: strategy_config::skills_to_btree(&row.skills),
     }))
 }
 
@@ -317,7 +301,7 @@ pub async fn put_skills(
     )
     .await?;
     Ok(Json(SkillsBody {
-        skills: skills_to_btree(&updated.skills),
+        skills: strategy_config::skills_to_btree(&updated.skills),
     }))
 }
 
@@ -433,7 +417,7 @@ pub async fn get_agent_config(
     let (model, small_model) = agent_model_settings();
     Ok(Json(AgentConfigResponse {
         agents_md: row.agents_md,
-        skills: skills_to_btree(&row.skills),
+        skills: strategy_config::skills_to_btree(&row.skills),
         model,
         small_model,
         agent_graph: row.agent_graph,

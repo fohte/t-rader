@@ -1,11 +1,13 @@
 //! 管理 MCP tool の入出力スキーマ。
 
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, FixedOffset};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::rss_feed;
+use crate::entities::{rss_feed, trigger};
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StrategySummary {
@@ -149,24 +151,107 @@ pub struct DeleteRssFeedResult {
     pub id: Uuid,
 }
 
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct TriggerSummary {
+    pub trigger_id: Uuid,
+    pub kind: String,
+    pub schedule: Option<String>,
+    pub hook_slug: Option<String>,
+    pub event_match: Option<serde_json::Value>,
+    pub prompt_template: String,
+    pub enabled: bool,
+    pub last_fired_at: Option<DateTime<FixedOffset>>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl From<trigger::Model> for TriggerSummary {
+    fn from(m: trigger::Model) -> Self {
+        Self {
+            trigger_id: m.trigger_id,
+            kind: m.kind,
+            schedule: m.schedule,
+            hook_slug: m.hook_slug,
+            event_match: m.event_match,
+            prompt_template: m.prompt_template,
+            enabled: m.enabled,
+            last_fired_at: m.last_fired_at,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct GetStrategyAgentConfigParams {
+pub struct GetStrategyConfigParams {
     pub strategy_id: Uuid,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct GetStrategyAgentConfigResult {
-    pub yaml: String,
+pub struct GetStrategyConfigResult {
+    pub strategy_id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub agents_md: String,
+    pub skills: BTreeMap<String, String>,
+    pub agent_graph: String,
+    pub triggers: Vec<TriggerSummary>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct PutStrategyAgentConfigParams {
-    pub strategy_id: Uuid,
-    pub yaml: String,
+pub struct CreateStrategyParams {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub agents_md: Option<String>,
+    /// skill 名 -> 本文 (markdown)。指定されたものが初期値としてそのまま保存される。
+    #[serde(default)]
+    pub skills: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub agent_graph: Option<String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
-pub struct PutStrategyAgentConfigResult {
+pub struct CreateStrategyResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateStrategyConfigParams {
+    pub strategy_id: Uuid,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub agents_md: Option<String>,
+    /// JSON Merge Patch セマンティクス: 値が null のキーは削除、それ以外は追加/更新。
+    /// 未指定のキーは変更しない。
+    #[serde(default)]
+    pub skills: Option<BTreeMap<String, Option<String>>>,
+    #[serde(default)]
+    pub agent_graph: Option<String>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct UpdateStrategyConfigResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DeleteStrategyParams {
+    pub strategy_id: Uuid,
+    /// 戦略名の完全一致が必須。cascade 削除の対象を取り違えないための確認用。
+    pub confirm_name: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DeleteStrategyResult {
     pub ok: bool,
     pub errors: Vec<String>,
 }
