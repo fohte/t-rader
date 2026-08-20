@@ -1,11 +1,21 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 
 import { WatchlistItemListView } from '#components/watchlist-item-list'
 import { createStoryRouter } from '#storybook/story-router'
 
+const queryClient = new QueryClient()
+
 const meta = {
   title: 'Components/WatchlistItemList',
+  decorators: [
+    (Story) => (
+      <QueryClientProvider client={queryClient}>
+        <Story />
+      </QueryClientProvider>
+    ),
+  ],
 } satisfies Meta
 
 export default meta

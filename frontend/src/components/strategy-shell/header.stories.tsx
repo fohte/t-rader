@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router'
 
 import { Header } from '#components/strategy-shell/header'
 import { createStoryRouter } from '#storybook/story-router'
+import { StrategySwitcherQueryDecorator } from '#storybook/strategy-switcher-mock'
 
 function createHeaderRouter(initialPath: string) {
   return createStoryRouter(() => <Header />, {
@@ -21,6 +22,13 @@ function createHeaderRouter(initialPath: string) {
 const meta = {
   title: 'StrategyShell/Header',
   parameters: { layout: 'fullscreen' },
+  decorators: [
+    (Story) => (
+      <StrategySwitcherQueryDecorator>
+        <Story />
+      </StrategySwitcherQueryDecorator>
+    ),
+  ],
 } satisfies Meta
 
 export default meta

@@ -3,6 +3,7 @@ import { Outlet, RouterProvider } from '@tanstack/react-router'
 
 import { StrategyShell } from '#components/strategy-shell/strategy-shell'
 import { createStoryRouter } from '#storybook/story-router'
+import { StrategySwitcherQueryDecorator } from '#storybook/strategy-switcher-mock'
 
 const PLACEHOLDER_PATHS = [
   { path: '/strategies', label: '戦略一覧 placeholder' },
@@ -32,6 +33,13 @@ function createStrategyShellRouter(initialPath: string) {
 const meta = {
   title: 'StrategyShell/StrategyShell',
   parameters: { layout: 'fullscreen' },
+  decorators: [
+    (Story) => (
+      <StrategySwitcherQueryDecorator>
+        <Story />
+      </StrategySwitcherQueryDecorator>
+    ),
+  ],
 } satisfies Meta
 
 export default meta
