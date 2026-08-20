@@ -7,8 +7,10 @@ const meta = {
   title: 'Graph/GraphRenderer',
   component: GraphRenderer,
   // fitView のパン/ズームアニメーションを overflow-check が検査してしまわない
-  // よう、story では即時反映にする (本番は既定の 200ms を維持)
-  args: { fitViewDuration: 0 },
+  // よう、story では即時反映にする (本番は既定の 200ms を維持)。
+  // className: react-flow は `.react-flow { height: 100% }` で親の高さを継承する。
+  // 未指定だと decorator の固定高さ div から高さが伝播せず 0 に潰れ、何も描画されない
+  args: { fitViewDuration: 0, className: 'h-full' },
   decorators: [
     (Story) => (
       <div style={{ width: '100%', height: '500px' }}>
