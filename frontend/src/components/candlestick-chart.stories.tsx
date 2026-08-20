@@ -5,8 +5,18 @@ import type { components } from '#lib/api/schema.gen'
 
 type Bar = components['schemas']['Bar']
 
+/** [0, 1) の疑似乱数を返す。スクリーンショットの決定性のため Math.random() の代わりに使う */
+function createRandom(seed: number): () => number {
+  let state = seed
+  return () => {
+    state = (state * 1103515245 + 12345) & 0x7fffffff
+    return state / 0x7fffffff
+  }
+}
+
 /** サンプルデータを生成する */
 function generateSampleBars(count: number): Bar[] {
+  const random = createRandom(1)
   const bars: Bar[] = []
   let price = 1500
 
@@ -14,11 +24,11 @@ function generateSampleBars(count: number): Bar[] {
     const date = new Date(2025, 0, 1)
     date.setDate(date.getDate() + i)
 
-    const open = price + (Math.random() - 0.5) * 50
-    const close = open + (Math.random() - 0.5) * 60
-    const high = Math.max(open, close) + Math.random() * 30
-    const low = Math.min(open, close) - Math.random() * 30
-    const volume = Math.floor(100000 + Math.random() * 500000)
+    const open = price + (random() - 0.5) * 50
+    const close = open + (random() - 0.5) * 60
+    const high = Math.max(open, close) + random() * 30
+    const low = Math.min(open, close) - random() * 30
+    const volume = Math.floor(100000 + random() * 500000)
 
     bars.push({
       instrument_id: '7203',
