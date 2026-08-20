@@ -75,6 +75,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          packageManager: pnpm
           command: pages project create t-rader-frontend-storybook --production-branch=main
         continue-on-error: true
 
@@ -84,7 +86,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy frontend/storybook-static --project-name=t-rader-frontend-storybook --branch=${{ github.head_ref || 'main' }} --commit-dirty=true
+          workingDirectory: frontend
+          packageManager: pnpm
+          command: pages deploy storybook-static --project-name=t-rader-frontend-storybook --branch=${{ github.head_ref || 'main' }} --commit-dirty=true
 
       - name: Comment preview URL on PR
         if: github.event_name == 'pull_request'
