@@ -169,6 +169,10 @@ Every presentational component under `src/components/` should have a co-located 
 
 When you need to check how a component looks or behaves in a given state, write or update its story and view it via the `storybook` script (`storybook dev`) before starting a dev server and driving a browser manually.
 
+## Story のルーターコンテキスト
+
+TanStack Router に依存する component (`useRouter()` 等を呼ぶもの) の story では、`#storybook/story-router` の `createStoryRouter` でルーターコンテキストを提供すること。
+
 ## Test code rules
 
 ### Assert on the whole output with a single equality check
