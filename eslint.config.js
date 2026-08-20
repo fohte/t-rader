@@ -12,12 +12,13 @@ export default config(
     // vite.config.ts/vitest.config.ts are loaded through Vite's own
     // esbuild-based config loader, which doesn't resolve the package.json
     // "imports" field, unlike the Rollup pipeline that bundles the app
-    // itself. .storybook/vitest.setup.ts imports its sibling
-    // .storybook/preview.ts by relative path because there's no "imports"
-    // alias for it: only src/ has a generic "#*" pattern, while .storybook
-    // entries (e.g. #storybook/story-router) are defined one file at a time.
+    // itself. .storybook/vitest.setup*.ts import their siblings (e.g.
+    // .storybook/preview.ts, .storybook/screenshot-viewport.ts) by relative
+    // path because there's no "imports" alias for them: only src/ has a
+    // generic "#*" pattern, while .storybook entries (e.g.
+    // #storybook/story-router) are defined one file at a time.
     files: [
-      'frontend/.storybook/vitest.setup.ts',
+      'frontend/.storybook/vitest.setup*.ts',
       'frontend/vite.config.ts',
       'frontend/vitest.config.ts',
       'frontend/vitest.screenshot.config.ts',
