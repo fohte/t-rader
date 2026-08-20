@@ -12,30 +12,26 @@ jobs:
   detect-changes:
     runs-on: ubuntu-slim
     outputs:
-      frontend: ${{ steps.changes-frontend.outputs.any_changed }}
-      workflow: ${{ steps.changes-workflow.outputs.any_changed }}
+      changed: ${{ steps.changes.outputs.any_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
 
-      - name: Check for frontend changes
+      - name: Check for changes
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
-        id: changes-frontend
+        id: changes
         with:
-          files: frontend/**
-
-      - name: Check for workflow changes
-        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
-        id: changes-workflow
-        with:
-          files: .github/workflows/vrt.yml
+          files: |
+            frontend/**
+            .github/workflows/vrt.yml
+            package.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
 
   capture:
     needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.frontend == 'true' ||
-      needs.detect-changes.outputs.workflow == 'true'
+    if: needs.detect-changes.outputs.changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
