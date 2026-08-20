@@ -5,6 +5,7 @@
   "imports": {
     "#*.css": "./src/*.css",
     "#storybook/story-router": "./.storybook/story-router.js",
+    "#storybook/strategy-switcher-mock": "./.storybook/strategy-switcher-mock.js",
     "#*": "./src/*.js"
   },
   "scripts": {
