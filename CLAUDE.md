@@ -164,6 +164,16 @@ function parseConfig(raw: string): Result<Config, ConfigError> {
 
 Use `ResultAsync.fromPromise()` or `Result.fromThrowable()` to interop with a throwing API without a local try/catch. If the throw-based contract genuinely can't be wrapped that way, catch the exception, wrap it in a `BoundaryError` subclass (see `src/errors.ts`), and rethrow it — `no-restricted-syntax` bans `try`/`throw` as separate selectors, so both the `try` and the `throw` need their own `eslint-disable-next-line no-restricted-syntax` comment explaining why.
 
+## Storybook
+
+### Write a story for every presentational component
+
+Every presentational component under `src/components/` should have a co-located `.stories.tsx` file matching the component's filename (e.g. `src/components/card.tsx` pairs with `src/components/card.stories.tsx`). If a source file exports multiple components, give each one its own `<component-name>.stories.tsx` file instead of matching the source filename. Write one story per meaningful state/variant of the component.
+
+### Prefer Storybook over manual browser checks
+
+When you need to check how a component looks or behaves in a given state, write or update its story and view it via the `storybook` script (`storybook dev`) before starting a dev server and driving a browser manually.
+
 ## Test code rules
 
 ### Assert on the whole output with a single equality check
