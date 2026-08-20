@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
+    "storybook:screenshot": "vitest run --config vitest.screenshot.config.ts",
     "generate:api": "openapi-typescript ../backend/openapi.json -o src/lib/api/schema.gen.d.ts && prettier --write src/lib/api/schema.gen.d.ts",
     "generate:routes": "tsr generate"
   },
@@ -46,11 +47,12 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@fohte/storybook-addon": "0.1.2",
+    "@fohte/storybook-addon": "0.1.3",
     "@storybook/addon-docs": "10.4.6",
     "@storybook/addon-themes": "10.4.6",
     "@storybook/addon-vitest": "10.4.6",
     "@storybook/react-vite": "10.4.6",
+    "@storycap-testrun/browser": "2.1.1",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query-devtools": "5.91.3",
     "@tanstack/router-cli": "1.167.21",

@@ -19,5 +19,11 @@
       "agent/*": ["../agent/src/*"]
     }
   },
-  "include": ["src", ".storybook", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "src",
+    ".storybook",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "vitest.screenshot.config.ts"
+  ]
 }
