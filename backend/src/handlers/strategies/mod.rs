@@ -1,11 +1,7 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -17,7 +13,8 @@ use crate::models::{
     AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
     UpdateStrategyRequest,
 };
-use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::change_history::{self, Actor, Op, TargetKind};
+use crate::services::strategy_config;
 
 mod agent_graph;
 mod tasks;
@@ -31,23 +28,7 @@ pub use tasks::{
     get_strategy_task, list_strategy_tasks, submit_strategy_chat,
 };
 
-fn validate_name(value: &str) -> Result<String, AppError> {
-    let trimmed = value.trim().to_string();
-    if trimmed.is_empty() {
-        return Err(AppError::Validation("name must not be empty".into()));
-    }
-    Ok(trimmed)
-}
-
-pub(super) async fn find_strategy_or_404(
-    db: &sea_orm::DatabaseConnection,
-    id: Uuid,
-) -> Result<strategy::Model, AppError> {
-    strategy::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("strategy {id} not found")))
-}
+pub(super) use strategy_config::find_or_404 as find_strategy_or_404;
 
 /// 戦略一覧
 #[utoipa::path(
@@ -108,35 +89,16 @@ pub async fn create_strategy(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateStrategyRequest>,
 ) -> Result<(StatusCode, Json<strategy::Model>), AppError> {
-    let name = validate_name(&payload.name)?;
-    let id = Uuid::new_v4();
-    let sort_order = payload.sort_order.unwrap_or(0);
-
-    let model = strategy::ActiveModel {
-        id: Set(id),
-        name: Set(name.clone()),
-        description: Set(payload.description.clone()),
-        sort_order: Set(sort_order),
-        agents_md: NotSet,
-        skills: NotSet,
-        agent_graph: NotSet,
-        created_at: NotSet,
-        updated_at: NotSet,
-    };
-    let txn = state.db.begin().await?;
-    let created = strategy::Entity::insert(model)
-        .exec_with_returning(&txn)
-        .await?;
-    change_history::record(
-        &txn,
-        TargetKind::Strategy,
-        id,
-        Op::Create,
-        json!({ "name": name, "sort_order": sort_order }),
-        Some(format!("created strategy {name}")),
+    let created = strategy_config::create(
+        &state.db,
+        Actor::Human,
+        strategy_config::CreateStrategy {
+            name: payload.name,
+            description: payload.description,
+            sort_order: payload.sort_order.unwrap_or(0),
+        },
     )
     .await?;
-    txn.commit().await?;
 
     Ok((StatusCode::CREATED, Json(created)))
 }
@@ -161,45 +123,17 @@ pub async fn update_strategy(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateStrategyRequest>,
 ) -> Result<Json<strategy::Model>, AppError> {
-    let current = find_strategy_or_404(&state.db, id).await?;
-    let mut active = current.clone().into_active_model();
-    let mut diff = serde_json::Map::new();
-
-    if let Some(name) = payload.name.as_ref() {
-        let name = validate_name(name)?;
-        diff.insert("name".into(), json!({ "from": current.name, "to": name }));
-        active.name = Set(name);
-    }
-    if let Some(description) = payload.description.as_ref() {
-        diff.insert(
-            "description".into(),
-            json!({ "from": current.description, "to": description }),
-        );
-        active.description = Set(Some(description.clone()));
-    }
-    if let Some(sort_order) = payload.sort_order {
-        diff.insert(
-            "sort_order".into(),
-            json!({ "from": current.sort_order, "to": sort_order }),
-        );
-        active.sort_order = Set(sort_order);
-    }
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    if !diff.is_empty() {
-        change_history::record(
-            &txn,
-            TargetKind::Strategy,
-            id,
-            Op::Update,
-            serde_json::Value::Object(diff),
-            None,
-        )
-        .await?;
-    }
-    txn.commit().await?;
+    let updated = strategy_config::update(
+        &state.db,
+        Actor::Human,
+        id,
+        strategy_config::StrategyUpdate {
+            name: payload.name,
+            description: payload.description,
+            sort_order: payload.sort_order,
+        },
+    )
+    .await?;
 
     Ok(Json(updated))
 }
@@ -260,33 +194,6 @@ pub async fn list_strategy_interests(
     Ok(Json(items))
 }
 
-fn validate_skill_name(name: &str) -> Result<(), AppError> {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return Err(AppError::Validation("skill name must not be empty".into()));
-    };
-    if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
-        return Err(AppError::Validation(
-            "skill name must start with [a-z0-9]".into(),
-        ));
-    }
-    for c in chars {
-        if !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-') {
-            return Err(AppError::Validation(
-                "skill name must match ^[a-z0-9][a-z0-9_-]*$".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn skills_object(value: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
-    value
-        .as_object()
-        .cloned()
-        .unwrap_or_else(serde_json::Map::new)
-}
-
 fn skills_to_btree(value: &serde_json::Value) -> std::collections::BTreeMap<String, String> {
     let mut out = std::collections::BTreeMap::new();
     if let Some(map) = value.as_object() {
@@ -297,34 +204,6 @@ fn skills_to_btree(value: &serde_json::Value) -> std::collections::BTreeMap<Stri
         }
     }
     out
-}
-
-async fn save_skills(
-    state: &AppState,
-    current: strategy::Model,
-    skills: serde_json::Value,
-    op_desc: String,
-) -> Result<strategy::Model, AppError> {
-    let id = current.id;
-    let prev_skills = current.skills.clone();
-    let mut active = current.into_active_model();
-    active.skills = Set(skills.clone());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Strategy,
-        id,
-        Op::Update,
-        json!({ "skills": { "from": prev_skills, "to": skills } }),
-        Some(op_desc),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(updated)
 }
 
 /// 戦略 Agent の AGENTS.md (方針 / 制約 markdown) を取得
@@ -370,28 +249,9 @@ pub async fn put_agents_md(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<AgentsMdBody>,
 ) -> Result<Json<AgentsMdBody>, AppError> {
-    let current = find_strategy_or_404(&state.db, id).await?;
-    let prev = current.agents_md.clone();
-    let mut active = current.into_active_model();
-    active.agents_md = Set(payload.content.clone());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Strategy,
-        id,
-        Op::Update,
-        json!({ "agents_md": { "from": prev, "to": payload.content } }),
-        Some("updated agents_md".to_string()),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(Json(AgentsMdBody {
-        content: updated.agents_md,
-    }))
+    let content =
+        strategy_config::save_agents_md(&state.db, Actor::Human, id, payload.content).await?;
+    Ok(Json(AgentsMdBody { content }))
 }
 
 /// 戦略 Agent の skills 全件取得
@@ -438,18 +298,19 @@ pub async fn put_skills(
     JsonBody(payload): JsonBody<SkillsBody>,
 ) -> Result<Json<SkillsBody>, AppError> {
     for name in payload.skills.keys() {
-        validate_skill_name(name).map_err(|err| match err {
+        strategy_config::validate_skill_name(name).map_err(|err| match err {
             AppError::Validation(msg) => AppError::Validation(format!("skill {name:?}: {msg}")),
             other => other,
         })?;
     }
-    let current = find_strategy_or_404(&state.db, id).await?;
+    let current = strategy_config::find_or_404(&state.db, id).await?;
     let mut map = serde_json::Map::new();
     for (k, v) in &payload.skills {
         map.insert(k.clone(), serde_json::Value::String(v.clone()));
     }
-    let updated = save_skills(
-        &state,
+    let updated = strategy_config::save_skills(
+        &state.db,
+        Actor::Human,
         current,
         serde_json::Value::Object(map),
         "replaced all skills".to_string(),
@@ -483,17 +344,19 @@ pub async fn put_skill(
     JsonPath((id, name)): JsonPath<(Uuid, String)>,
     JsonBody(payload): JsonBody<SkillBody>,
 ) -> Result<Json<SkillBody>, AppError> {
-    validate_skill_name(&name)?;
-    let current = find_strategy_or_404(&state.db, id).await?;
-    let mut map = skills_object(&current.skills);
-    map.insert(
+    strategy_config::validate_skill_name(&name)?;
+    let current = strategy_config::find_or_404(&state.db, id).await?;
+    let mut patch = serde_json::Map::new();
+    patch.insert(
         name.clone(),
         serde_json::Value::String(payload.content.clone()),
     );
-    save_skills(
-        &state,
+    let merged = strategy_config::apply_skills_patch(&current.skills, patch);
+    strategy_config::save_skills(
+        &state.db,
+        Actor::Human,
         current,
-        serde_json::Value::Object(map),
+        serde_json::Value::Object(merged),
         format!("updated skill {name}"),
     )
     .await?;
@@ -522,19 +385,8 @@ pub async fn delete_skill(
     State(state): State<AppState>,
     JsonPath((id, name)): JsonPath<(Uuid, String)>,
 ) -> Result<StatusCode, AppError> {
-    validate_skill_name(&name)?;
-    let current = find_strategy_or_404(&state.db, id).await?;
-    let mut map = skills_object(&current.skills);
-    if map.remove(&name).is_none() {
-        return Err(AppError::NotFound(format!("skill {name} not found")));
-    }
-    save_skills(
-        &state,
-        current,
-        serde_json::Value::Object(map),
-        format!("deleted skill {name}"),
-    )
-    .await?;
+    strategy_config::validate_skill_name(&name)?;
+    strategy_config::delete_skill(&state.db, Actor::Human, id, &name).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -593,21 +445,14 @@ mod tests {
     use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::EntityTrait;
     use serde_json::json;
     use sqlx::PgPool;
 
     use uuid::Uuid;
 
-    use super::{
-        DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with, save_skills,
-        skills_object,
-    };
+    use super::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with};
     use crate::entities::strategy;
-    use crate::testing::{
-        create_strategy, create_test_server, create_test_server_with_db,
-        create_test_server_with_state,
-    };
+    use crate::testing::{create_strategy, create_test_server, create_test_server_with_db};
 
     #[sqlx::test(migrations = false)]
     async fn create_and_list_strategy(pool: PgPool) {
@@ -764,59 +609,6 @@ mod tests {
             .delete(&format!("/api/strategies/{id}/skills/missing"))
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
-    }
-
-    // 実際の並行リクエストは非決定的なため、read (find_by_id) と update (save_skills) の
-    // 間に別経路で削除を挟むことで、handler 内で本来並行削除が起こるタイミングを決定的に再現する。
-    #[sqlx::test(migrations = false)]
-    async fn save_skills_returns_404_when_strategy_deleted_concurrently(pool: PgPool) {
-        use axum::response::IntoResponse;
-
-        let (state, server) = create_test_server_with_state(pool).await;
-        let id_str = create_strategy(&server, "s").await;
-        let id: Uuid = id_str.parse().expect("uuid");
-
-        server
-            .put(&format!("/api/strategies/{id}/skills/scout"))
-            .json(&json!({ "content": "first" }))
-            .await
-            .assert_status_ok();
-
-        let current = strategy::Entity::find_by_id(id)
-            .one(&state.db)
-            .await
-            .expect("find strategy")
-            .expect("strategy exists");
-
-        strategy::Entity::delete_by_id(id)
-            .exec(&state.db)
-            .await
-            .expect("delete strategy");
-
-        let mut map = skills_object(&current.skills);
-        map.remove("scout");
-        let err = save_skills(
-            &state,
-            current,
-            serde_json::Value::Object(map),
-            "deleted skill scout".to_string(),
-        )
-        .await
-        .expect_err("update against a deleted row must fail");
-
-        let response = err.into_response();
-        let status = response.status();
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read body");
-        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
-        assert_eq!(
-            (status, body),
-            (
-                axum::http::StatusCode::NOT_FOUND,
-                json!({ "error": "resource not found" }),
-            )
-        );
     }
 
     #[sqlx::test(migrations = false)]

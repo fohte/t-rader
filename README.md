@@ -31,7 +31,7 @@ mise install
 # 環境変数の設定
 cp .env.example .env
 
-# DB を起動 (初回のみ。全 worktree で共有される)。実ポートを反映した .env.runtime も生成される
+# DB を起動 (初回のみ。全 worktree で共有される)
 mise run db-up
 
 # アプリ (backend, frontend, agent) を起動
@@ -102,7 +102,7 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 # agent 単体でテスト実行 (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
 cd agent && pnpm test
 
-# DB 統合テストを含めて実行する場合。ポートは .env.runtime の DATABASE_URL か
+# DB 統合テストを含めて実行する場合。ポートは
 # `docker compose -f docker-compose.infra.yml port db 5432` で確認する
 cd agent && TEST_DATABASE_URL=postgres://t_rader:t_rader@localhost:<port>/t_rader_agent_test pnpm test
 ```
@@ -143,10 +143,10 @@ pnpm run format   # ESLint + Prettier によるフォーマット
 
 | 変数                     | 説明                                                                                                                                                                                                                                       | デフォルト                   |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| `DATABASE_URL`           | PostgreSQL 接続 URL (`mise run db-up` が実ポートを反映して `.env.runtime` に自動生成する)                                                                                                                                                  | -                            |
-| `POSTGRES_USER`          | DB ユーザー名                                                                                                                                                                                                                              | `t_rader`                    |
-| `POSTGRES_PASSWORD`      | DB パスワード                                                                                                                                                                                                                              | `t_rader`                    |
-| `POSTGRES_DB`            | DB 名                                                                                                                                                                                                                                      | `t_rader_development`        |
+| `DATABASE_URL`           | PostgreSQL 接続 URL (`.mise.toml` の `[env]` が `scripts/db-url` を都度実行して解決する)                                                                                                                                                   | -                            |
+| `POSTGRES_USER`          | DB ユーザー名 (`docker-compose.infra.yml` の db コンテナ起動にのみ反映される。`scripts/db-url` は上書きを読まないため、変更する場合は `DATABASE_URL` も `.env.local` で合わせて上書きすること)                                             | `t_rader`                    |
+| `POSTGRES_PASSWORD`      | DB パスワード (同上)                                                                                                                                                                                                                       | `t_rader`                    |
+| `POSTGRES_DB`            | DB 名 (同上)                                                                                                                                                                                                                               | `t_rader_development`        |
 | `BACKEND_PORT`           | backend プロセスのリッスンポート (`cargo run` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                                                                   | `3000`                       |
 | `TRADER_AGENT_PORT`      | agent プロセスのリッスンポート (`pnpm dev` 直接実行時や本番で使用。docker compose 経由のホスト側ポートはランダム割り当てのため無関係)                                                                                                      | `8080`                       |
 | `TRADER_AGENT_URL`       | agent が自身の A2A Agent Card に載せる URL                                                                                                                                                                                                 | -                            |

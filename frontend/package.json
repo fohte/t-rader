@@ -68,6 +68,8 @@
     "@vitest/browser": "4.1.10",
     "@vitest/browser-playwright": "4.1.10",
     "jsdom": "28.1.0",
+    "msw": "2.15.0",
+    "msw-storybook-addon": "3.0.0",
     "openapi-typescript": "7.13.0",
     "playwright": "1.62.1",
     "reg-publish-s3-plugin": "0.14.4",
