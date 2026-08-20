@@ -93,6 +93,7 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 - `agent/src/strategy-resolution/resolve-strategy.ts` - 戦略候補一覧から自由文の対象戦略を決定的な文字列類似度で解決するロジック
 - `agent/src/internal-api/routes.ts` - backend 向け internal API (`POST /internal/tasks`, `GET /internal/tasks/{task_id}`)
 - `agent/drizzle/` - drizzle-orm マイグレーション (起動時に自動実行)
+- `frontend/.storybook/story-router.tsx` - TanStack Router に依存する component の story にルーターコンテキストを提供する `createStoryRouter` (`#storybook/story-router` としてエイリアス解決)
 
 ## Migrations
 
@@ -127,12 +128,6 @@ cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TE
 
 - SeaORM は実行時に SQL を構築するため、Docker ビルド時の DB 接続は不要 (旧 `SQLX_OFFLINE` は廃止済み)
 - clippy で `unwrap_used`, `expect_used`, `panic` が deny。本番コードでは `?` と `map_err` を使うこと
-
-## Storybook
-
-- フロントエンドの UI コンポーネントを作成・変更した際は、対応する Story ファイル (`*.stories.tsx`) も作成・更新すること
-- Story ファイルはコンポーネントと同じディレクトリに配置する (例: `src/components/ui/button.stories.tsx`)
-- TanStack Router に依存するコンポーネントは `#storybook/story-router` の `createStoryRouter` でルーターコンテキストを提供する
 
 ## Code organization rules
 
@@ -173,6 +168,10 @@ Every presentational component under `src/components/` should have a co-located 
 ### Prefer Storybook over manual browser checks
 
 When you need to check how a component looks or behaves in a given state, write or update its story and view it via the `storybook` script (`storybook dev`) before starting a dev server and driving a browser manually.
+
+## Story のルーターコンテキスト
+
+TanStack Router に依存する component (`useRouter()` 等を呼ぶもの) の story では、`#storybook/story-router` の `createStoryRouter` でルーターコンテキストを提供すること。
 
 ## Test code rules
 
