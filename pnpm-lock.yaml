@@ -197,8 +197,8 @@ importers:
         version: 2.9.0
     devDependencies:
       '@fohte/storybook-addon':
-        specifier: 0.1.2
-        version: 0.1.2(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10)
+        specifier: 0.1.3
+        version: 0.1.3(@storybook/addon-vitest@10.4.6(@vitest/browser-playwright@4.1.10)(@vitest/browser@4.1.10(msw@2.15.0(@types/node@24.13.3)(typescript@6.0.3))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))(vitest@4.1.10))(@vitest/runner@4.1.10)(react@19.2.8)(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10))(@storycap-testrun/browser@2.1.1(@vitest/browser-playwright@4.1.10))(@vitest/browser-playwright@4.1.10)(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10)
       '@storybook/addon-docs':
         specifier: 10.4.6
         version: 10.4.6(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(esbuild@0.28.1)(rollup@4.62.4)(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))
@@ -211,6 +211,9 @@ importers:
       '@storybook/react-vite':
         specifier: 10.4.6
         version: 10.4.6(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(esbuild@0.28.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(rollup@4.62.4)(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(supports-color@10.2.2)(typescript@6.0.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))
+      '@storycap-testrun/browser':
+        specifier: 2.1.1
+        version: 2.1.1(@vitest/browser-playwright@4.1.10)
       '@tailwindcss/vite':
         specifier: 4.3.3
         version: 4.3.3(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))
@@ -1524,11 +1527,21 @@ packages:
       pino-pretty:
         optional: true
 
-  '@fohte/storybook-addon@0.1.2':
-    resolution: {integrity: sha512-SeLqhR/srhcBs4vcRf4+nVOXZ4QK9KzLLkFJo+28MDfEQlRoMBdhtT4wmthyZ7TwGfv4w54gg/MckCX5EA6wZg==}
+  '@fohte/storybook-addon@0.1.3':
+    resolution: {integrity: sha512-tt5uZFIP28rTjAEH+eFVUFXh9s2L2tKxs/WJ1JHTIwDfvkf86bF1G3iGYlpHloMDYHdOlYjMct+L58XkF6M7oA==}
     peerDependencies:
+      '@storybook/addon-vitest': ^10.0.0
+      '@storycap-testrun/browser': ^2.0.0
+      '@vitest/browser-playwright': ^4.0.0
       storybook: ^10.0.0
       vitest: ^4.0.0
+    peerDependenciesMeta:
+      '@storybook/addon-vitest':
+        optional: true
+      '@storycap-testrun/browser':
+        optional: true
+      '@vitest/browser-playwright':
+        optional: true
 
   '@grpc/grpc-js@1.14.4':
     resolution: {integrity: sha512-k9Dj3DV/itK9D06Y8f190Qgop7/Ui+D0njFV3LHMPwPT75DpXLQohE9Wmz0QElrJnzsjB7KPWiKJbOl7IPDArQ==}
@@ -3638,6 +3651,14 @@ packages:
         optional: true
       typescript:
         optional: true
+
+  '@storycap-testrun/browser@2.1.1':
+    resolution: {integrity: sha512-LQpkmPExjdojELXNzw98IBgWnX2LYkCRzZ4gyBvUk+4ut1vNCOQhbMrT6dhRa/h31OdP/E2utoJXHoITYQKjTw==}
+    peerDependencies:
+      '@vitest/browser-playwright': '*'
+
+  '@storycap-testrun/internal@2.1.1':
+    resolution: {integrity: sha512-+B+bx8C9ylqVCNJJ6cU3Zrwd+zmjUA4frKrvXUwTUOH1an5DJPYoPELFuwADLoBhCvkiCLqaPabdlmn5j8xcVw==}
 
   '@tailwindcss/node@4.3.3':
     resolution: {integrity: sha512-/T8IKEsf9VTU6tLjgC7+sv2mOPtQxzE2jMw7u4Tt40Tx+QSZxpzh95/H6cMKoja9XuW7iMdLJYBB0o9G1CaAgg==}
@@ -8716,11 +8737,15 @@ snapshots:
       - '@opentelemetry/exporter-trace-otlp-http'
       - supports-color
 
-  '@fohte/storybook-addon@0.1.2(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10)':
+  '@fohte/storybook-addon@0.1.3(@storybook/addon-vitest@10.4.6(@vitest/browser-playwright@4.1.10)(@vitest/browser@4.1.10(msw@2.15.0(@types/node@24.13.3)(typescript@6.0.3))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))(vitest@4.1.10))(@vitest/runner@4.1.10)(react@19.2.8)(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10))(@storycap-testrun/browser@2.1.1(@vitest/browser-playwright@4.1.10))(@vitest/browser-playwright@4.1.10)(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10)':
     dependencies:
       neverthrow: 8.2.0
       storybook: 10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8)
       vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@4.1.10)(jsdom@28.1.0(supports-color@10.2.2))(msw@2.15.0(@types/node@24.13.3)(typescript@6.0.3))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))
+    optionalDependencies:
+      '@storybook/addon-vitest': 10.4.6(@vitest/browser-playwright@4.1.10)(@vitest/browser@4.1.10(msw@2.15.0(@types/node@24.13.3)(typescript@6.0.3))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))(vitest@4.1.10))(@vitest/runner@4.1.10)(react@19.2.8)(storybook@10.4.6(@testing-library/dom@10.4.1)(@types/react@19.2.18)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.10)
+      '@storycap-testrun/browser': 2.1.1(@vitest/browser-playwright@4.1.10)
+      '@vitest/browser-playwright': 4.1.10(msw@2.15.0(@types/node@24.13.3)(typescript@6.0.3))(playwright@1.62.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))(vitest@4.1.10)
 
   '@grpc/grpc-js@1.14.4':
     dependencies:
@@ -10977,6 +11002,13 @@ snapshots:
       typescript: 6.0.3
     transitivePeerDependencies:
       - supports-color
+
+  '@storycap-testrun/browser@2.1.1(@vitest/browser-playwright@4.1.10)':
+    dependencies:
+      '@storycap-testrun/internal': 2.1.1
+      '@vitest/browser-playwright': 4.1.10(msw@2.15.0(@types/node@24.13.3)(typescript@6.0.3))(playwright@1.62.1)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.11)(yaml@2.9.0))(vitest@4.1.10)
+
+  '@storycap-testrun/internal@2.1.1': {}
 
   '@tailwindcss/node@4.3.3':
     dependencies:
