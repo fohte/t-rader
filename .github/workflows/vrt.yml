@@ -62,7 +62,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: fohte/storybook-vrt-workflows/vrt-capture@9335e3288ddcbc09c348c736868bdae28d9db33e # v0.1.1
+      - uses: fohte/storybook-vrt-workflows/vrt-capture@b00e0f55e330d098c0d7f57b8f8b5ccab19b37dd # v0.1.2
         with:
           project: storybook-screenshot
           shard: 1
@@ -110,7 +110,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: fohte/storybook-vrt-workflows/vrt-report@9335e3288ddcbc09c348c736868bdae28d9db33e # v0.1.1
+      - uses: fohte/storybook-vrt-workflows/vrt-report@b00e0f55e330d098c0d7f57b8f8b5ccab19b37dd # v0.1.2
         with:
           package-dir: frontend
           screenshots-dir: __screenshots__/desktop
