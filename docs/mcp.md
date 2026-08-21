@@ -80,7 +80,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 ## `MCP_ALLOWED_HOSTS`
 
-`rmcp` の Streamable HTTP transport は DNS rebinding 対策として `Host` ヘッダの allowlist を持つ。既定値は `localhost` / `127.0.0.1` / `::1` のみで、Kubernetes Service DNS 経由のアクセスは 403 で弾かれる。
+`rmcp` の Streamable HTTP transport は DNS rebinding 対策として `Host` ヘッダの allowlist を持つ。既定値は `localhost` / `127.0.0.1` / `::1` のみで、この allowlist に無い `Host` ヘッダで届いたリクエストは全て 403 で弾かれる。判定対象は Ingress/Tunnel がそのまま転送してくる `Host` ヘッダ (または HTTP/2 の `:authority`) の実値で、`X-Forwarded-Host` 等は参照しない。
 
 `MCP_ALLOWED_HOSTS` 環境変数 (カンマ区切り) で allowlist を拡張する。
 
@@ -90,6 +90,7 @@ MCP_ALLOWED_HOSTS=<backend-service-fqdn>,<other-host>
 
 - port を含めずホスト名だけを書けば任意 port を許容する。
 - 空白は trim し、空エントリは無視する。
-- in-cluster 配備時は backend Service の DNS 名を必ず追加すること。追加しないと外部の MCP クライアントからの接続が全て 403 で弾かれる。
+- in-cluster 配備時は backend Service の DNS 名を必ず追加すること。追加しないと t-rader-agent など in-cluster クライアントからの接続が全て 403 で弾かれる。
+- `/mcp/mgmt` を Ingress/Tunnel 経由で外部公開する場合は、その公開ホスト名も追加すること。追加しないと外部の MCP クライアントからの接続が全て 403 で弾かれる (`/mcp/mgmt` と `/mcp/strategy` は allowlist を共有するため、追加した公開ホスト名は両方に適用される)。
 
 具体的な配備時の env / RBAC は [`docs/deployment.md`](./deployment.md) を参照。
