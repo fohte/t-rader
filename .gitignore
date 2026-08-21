@@ -1,4 +1,5 @@
 .env.local
+.env.runtime
 
 # Logs
 logs
