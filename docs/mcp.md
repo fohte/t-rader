@@ -92,5 +92,6 @@ MCP_ALLOWED_HOSTS=<backend-service-fqdn>,<other-host>
 - 空白は trim し、空エントリは無視する。
 - in-cluster 配備時は backend Service の DNS 名を必ず追加すること。追加しないと t-rader-agent など in-cluster クライアントからの接続が全て 403 で弾かれる。
 - `/mcp/mgmt` を Ingress/Tunnel 経由で外部公開する場合は、その公開ホスト名も追加すること。追加しないと外部の MCP クライアントからの接続が全て 403 で弾かれる (`/mcp/mgmt` と `/mcp/strategy` は allowlist を共有するため、追加した公開ホスト名は両方に適用される)。
+- この allowlist は DNS rebinding 対策であり認証機構ではない。外部公開する場合は Ingress/Tunnel 側で bearer token や IdP 連携などの実認証を別途課すこと。パス単位のルーティング制限をしないと、`/mcp/mgmt` 用に追加した公開ホスト名で `eval_python` を含む `/mcp/strategy` にも到達できてしまう。
 
 具体的な配備時の env / RBAC は [`docs/deployment.md`](./deployment.md) を参照。
