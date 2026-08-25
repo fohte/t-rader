@@ -137,7 +137,7 @@ export function CreateInterestDialog({
             <div className="space-y-2">
               <label
                 htmlFor="interest-ref-kind"
-                className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+                className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
               >
                 ref_kind
               </label>
@@ -147,7 +147,7 @@ export function CreateInterestDialog({
                 onChange={(e) => {
                   setForm({ ...form, refKind: parseRefKind(e.target.value) })
                 }}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-[12px]"
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
               >
                 {REF_KINDS.map((k) => (
                   <option key={k} value={k}>
@@ -159,7 +159,7 @@ export function CreateInterestDialog({
             <div className="space-y-2">
               <label
                 htmlFor="interest-ref-id"
-                className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+                className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
               >
                 ref_id
               </label>
@@ -178,7 +178,7 @@ export function CreateInterestDialog({
             <div className="space-y-2">
               <label
                 htmlFor="interest-role"
-                className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+                className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
               >
                 role
               </label>
@@ -188,7 +188,7 @@ export function CreateInterestDialog({
                 onChange={(e) => {
                   setForm({ ...form, role: parseRole(e.target.value) })
                 }}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-[12px]"
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
@@ -200,7 +200,7 @@ export function CreateInterestDialog({
             <div className="space-y-2">
               <label
                 htmlFor="interest-origin"
-                className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+                className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
               >
                 origin
               </label>
@@ -210,7 +210,7 @@ export function CreateInterestDialog({
                 onChange={(e) => {
                   setForm({ ...form, origin: parseOrigin(e.target.value) })
                 }}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-[12px]"
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
               >
                 {ORIGINS.map((o) => (
                   <option key={o} value={o}>
@@ -223,7 +223,7 @@ export function CreateInterestDialog({
           {formError != null && (
             <p
               data-testid="create-interest-error"
-              className="text-[12px] text-[color:var(--color-accent-strategy)]"
+              className="text-xs text-primary"
             >
               {formError}
             </p>

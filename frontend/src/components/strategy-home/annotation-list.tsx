@@ -22,13 +22,11 @@ export function AnnotationList({
 }: AnnotationListProps) {
   if (items.length === 0) return null
   return (
-    <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <div className="border-b border-[color:var(--color-hairline)] px-3.5 py-2 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+    <div className="border border-border bg-card">
+      <div className="border-b border-border px-3.5 py-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         チャートのアノテーション · {items.length}
         {symbol != null && (
-          <span className="ml-2 text-[color:var(--color-text-secondary)]">
-            {symbol}
-          </span>
+          <span className="ml-2 text-muted-foreground-strong">{symbol}</span>
         )}
       </div>
       {items.map((a) => {
@@ -36,17 +34,17 @@ export function AnnotationList({
         return (
           <div
             key={a.id}
-            className={`flex items-start gap-3 border-b border-[color:var(--color-hairline)] px-3.5 py-2.5 last:border-b-0 hover:bg-[color:var(--panel-inset)] ${
-              isSelected ? 'bg-[color:var(--panel-inset)]' : ''
+            className={`flex items-start gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-strong ${
+              isSelected ? 'bg-surface-strong' : ''
             }`}
           >
             <button
               type="button"
               onClick={() => onSelectAnnotation?.(a.id)}
-              className={`mt-0.5 inline-grid h-5 min-w-[28px] flex-shrink-0 cursor-pointer place-items-center border px-1 font-mono text-[10px] ${
+              className={`mt-0.5 inline-grid h-5 min-w-7 flex-shrink-0 cursor-pointer place-items-center border px-1 font-mono text-[10px] ${
                 isSelected
-                  ? 'border-[color:var(--color-accent-strategy)] bg-[color:var(--color-accent-strategy)] text-[color:var(--panel)]'
-                  : 'border-[color:var(--color-accent-strategy)] text-[color:var(--color-accent-strategy)]'
+                  ? 'border-primary bg-primary text-card'
+                  : 'border-primary text-primary'
               }`}
               aria-label={`アノテーション ${a.label} を選択`}
             >
@@ -58,19 +56,19 @@ export function AnnotationList({
                 onClick={() => onSelectAnnotation?.(a.id)}
                 className="w-full cursor-pointer text-left"
               >
-                <span className="line-clamp-2 block text-[13px] text-[color:var(--color-text-primary)]">
+                <span className="line-clamp-2 block text-[13px] text-foreground">
                   {a.text}
                 </span>
               </button>
-              <div className="mt-1 flex items-center gap-2 font-mono text-[11px]">
-                <span className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-1 text-[10px] uppercase text-[color:var(--color-text-secondary)]">
+              <div className="mt-1 flex items-center gap-2 font-mono text-2xs">
+                <span className="border border-border bg-surface-strong px-1 text-[10px] uppercase text-muted-foreground-strong">
                   {a.target_kind}
                 </span>
                 <StatusPill status={a.status} />
                 <Link
                   to="/strategies/$id/annotations/$annoId"
                   params={{ id: strategyId, annoId: a.id }}
-                  className="text-[color:var(--color-accent-strategy)] hover:underline"
+                  className="text-primary hover:underline"
                 >
                   → 詳細
                 </Link>
@@ -78,7 +76,7 @@ export function AnnotationList({
                   <Link
                     to="/strategies/$id/notes/$noteId"
                     params={{ id: strategyId, noteId: a.linked_note_id }}
-                    className="text-[color:var(--color-accent-strategy)] hover:underline"
+                    className="text-primary hover:underline"
                   >
                     → note を開く
                   </Link>

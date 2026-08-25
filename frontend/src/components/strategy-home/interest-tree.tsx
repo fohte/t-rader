@@ -73,9 +73,9 @@ export function InterestTree({ strategyId }: InterestTreeProps) {
   }
 
   return (
-    <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <div className="flex items-baseline justify-between border-b border-[color:var(--color-hairline)] px-3.5 py-2">
-        <h3 className="font-mono text-[12px] font-bold uppercase tracking-wider text-[color:var(--color-text-primary)]">
+    <section className="border border-border bg-card">
+      <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           関心ツリー
         </h3>
         <button
@@ -83,7 +83,7 @@ export function InterestTree({ strategyId }: InterestTreeProps) {
           onClick={() => {
             setDialogOpen(true)
           }}
-          className="font-mono text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+          className="font-mono text-2xs text-muted-foreground hover:text-primary"
         >
           + 追加
         </button>
@@ -94,7 +94,7 @@ export function InterestTree({ strategyId }: InterestTreeProps) {
         ) : isError ? (
           <p
             data-testid="interest-list-error"
-            className="font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+            className="font-mono text-xs text-primary"
           >
             関心一覧の取得に失敗しました
           </p>
@@ -103,15 +103,13 @@ export function InterestTree({ strategyId }: InterestTreeProps) {
             {listError != null && (
               <p
                 data-testid="interest-list-error"
-                className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]"
+                className="font-mono text-2xs text-primary"
               >
                 {listError}
               </p>
             )}
             {seeds.length === 0 && derived.length === 0 ? (
-              <div className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
-                —
-              </div>
+              <div className="font-mono text-xs text-muted-foreground">—</div>
             ) : (
               <>
                 {seeds.length > 0 && (
@@ -159,7 +157,7 @@ function Section({
 }) {
   return (
     <div>
-      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         {title}
       </div>
       <ul className="flex flex-col gap-1.5">{children}</ul>
@@ -180,7 +178,7 @@ function InterestRow({
       className="flex items-center gap-2"
     >
       <RefChip token={`${interest.ref_kind}:${interest.ref_id}`} />
-      <span className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
         {ORIGIN_LABEL[interest.origin] ?? interest.origin}
       </span>
       <button
@@ -189,7 +187,7 @@ function InterestRow({
           onDelete(interest)
         }}
         aria-label={`関心 ${interest.ref_kind}:${interest.ref_id} を削除`}
-        className="ml-auto font-mono text-[10px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+        className="ml-auto font-mono text-[10px] text-muted-foreground hover:text-primary"
       >
         削除
       </button>

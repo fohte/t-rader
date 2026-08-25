@@ -21,15 +21,13 @@ export function AnalysisCard({ note, strategyId }: AnalysisCardProps) {
 
   return (
     <div
-      className={`flex flex-col gap-2.5 border bg-[color:var(--panel)] p-3.5 transition-colors hover:border-[color:var(--color-text-tertiary)] ${
-        unread
-          ? 'border-[color:var(--color-accent-strategy)]/50'
-          : 'border-[color:var(--color-border-strategy)]'
+      className={`flex flex-col gap-2.5 border bg-card p-3.5 transition-colors hover:border-muted-foreground ${
+        unread ? 'border-primary/50' : 'border-border'
       }`}
     >
       <div className="flex items-center gap-2 text-[10px]">
         {note.type_tag != null && note.type_tag !== '' && (
-          <span className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-1.5 py-px font-mono uppercase tracking-wider text-[color:var(--color-text-secondary)]">
+          <span className="border border-border bg-surface-strong px-1.5 py-px font-mono uppercase tracking-wider text-muted-foreground-strong">
             {note.type_tag}
           </span>
         )}
@@ -42,20 +40,18 @@ export function AnalysisCard({ note, strategyId }: AnalysisCardProps) {
         params={{ id: strategyId, noteId: note.id }}
         className="block"
       >
-        <h4 className="text-[15px] font-bold leading-tight text-[color:var(--color-text-primary)] hover:text-[color:var(--color-accent-strategy)]">
+        <h4 className="text-[15px] font-bold leading-tight text-foreground hover:text-primary">
           {note.title}
         </h4>
       </Link>
       {snippet !== '' && (
-        <p className="line-clamp-3 text-[13px] leading-relaxed text-[color:var(--color-text-secondary)]">
+        <p className="line-clamp-3 text-[13px] leading-relaxed text-muted-foreground-strong">
           {snippet}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--color-hairline)] pt-2.5 font-mono text-[11px]">
-        <span className="text-[color:var(--color-text-tertiary)]">
-          <span className="text-[color:var(--color-accent-strategy)]">
-            &gt;{' '}
-          </span>
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2.5 font-mono text-2xs">
+        <span className="text-muted-foreground">
+          <span className="text-primary">&gt; </span>
           {note.created_by_kind === 'llm' ? 'analyst' : note.created_by_kind}
         </span>
         {refs.length > 0 && (
@@ -73,14 +69,12 @@ export function AnalysisCard({ note, strategyId }: AnalysisCardProps) {
             openFloatingChat(`「${note.title}」について補足して`)
           }}
           title="このノートについてアナリストに聞く"
-          className="inline-flex items-center gap-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] px-2 py-0.5 text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-accent-strategy)] hover:text-[color:var(--color-accent-strategy)]"
+          className="inline-flex items-center gap-1 border border-border bg-bg-secondary px-2 py-0.5 text-muted-foreground-strong hover:border-primary hover:text-primary"
         >
-          <span className="font-bold text-[color:var(--color-accent-strategy)]">
-            &gt;_
-          </span>
+          <span className="font-bold text-primary">&gt;_</span>
           聞く
         </button>
-        <span className="text-[color:var(--color-text-tertiary)]">
+        <span className="text-muted-foreground">
           {formatRelative(note.updated_at)}
         </span>
       </div>

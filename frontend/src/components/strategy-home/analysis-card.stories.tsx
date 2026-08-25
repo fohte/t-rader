@@ -27,7 +27,7 @@ const note: Note = {
 function createAnalysisCardRouter(props: { note: Note }) {
   return createStoryRouter(
     () => (
-      <div className="max-w-[640px] bg-[color:var(--color-bg-primary)] p-4">
+      <div className="max-w-[640px] bg-background p-4">
         <AnalysisCard note={props.note} strategyId="semi-swing" />
       </div>
     ),

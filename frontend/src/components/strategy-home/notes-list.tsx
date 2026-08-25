@@ -13,17 +13,17 @@ interface NotesListProps {
 
 export function NotesList({ strategyId, notes }: NotesListProps) {
   return (
-    <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <div className="flex items-baseline justify-between border-b border-[color:var(--color-hairline)] px-3.5 py-2">
-        <h3 className="font-mono text-[12px] font-bold uppercase tracking-wider text-[color:var(--color-text-primary)]">
+    <section className="border border-border bg-card">
+      <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           ノート一覧
         </h3>
-        <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+        <span className="font-mono text-2xs text-muted-foreground">
           {notes.length}
         </span>
       </div>
       {notes.length === 0 ? (
-        <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+        <div className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
           —
         </div>
       ) : (
@@ -33,19 +33,19 @@ export function NotesList({ strategyId, notes }: NotesListProps) {
               key={n.id}
               to="/strategies/$id/notes/$noteId"
               params={{ id: strategyId, noteId: n.id }}
-              className="flex flex-col gap-1 border-b border-[color:var(--color-hairline)] px-3.5 py-2.5 last:border-b-0 hover:bg-[color:var(--panel-inset)]"
+              className="flex flex-col gap-1 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-strong"
             >
-              <span className="line-clamp-2 text-[13px] text-[color:var(--color-text-primary)]">
+              <span className="line-clamp-2 text-[13px] text-foreground">
                 {n.title}
               </span>
-              <span className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+              <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
                 {n.type_tag != null && n.type_tag !== '' && (
-                  <span className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-1 text-[10px] uppercase text-[color:var(--color-text-secondary)]">
+                  <span className="border border-border bg-surface-strong px-1 text-[10px] uppercase text-muted-foreground-strong">
                     {n.type_tag}
                   </span>
                 )}
                 <StatusPill status={n.status} />
-                <span className="ml-auto text-[color:var(--color-text-tertiary)]">
+                <span className="ml-auto text-muted-foreground">
                   {formatRelative(n.updated_at)}
                 </span>
               </span>

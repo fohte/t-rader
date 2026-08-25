@@ -80,7 +80,7 @@ export function CreateStrategyDialog({
           <div className="space-y-2">
             <label
               htmlFor="strategy-name"
-              className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               戦略名 *
             </label>
@@ -98,7 +98,7 @@ export function CreateStrategyDialog({
           <div className="space-y-2">
             <label
               htmlFor="strategy-description"
-              className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               説明
             </label>
@@ -110,13 +110,11 @@ export function CreateStrategyDialog({
                 setDescription(e.target.value)
               }}
               placeholder="この戦略の狙い、対象、期間など"
-              className="w-full border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] px-3 py-2 text-[13px] text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
+              className="w-full border border-border bg-bg-secondary px-3 py-2 text-[13px] text-foreground outline-none focus:border-muted-foreground"
             />
           </div>
           {createMutation.isError && (
-            <p className="text-[12px] text-[color:var(--color-accent-strategy)]">
-              作成に失敗しました
-            </p>
+            <p className="text-xs text-primary">作成に失敗しました</p>
           )}
           <DialogFooter>
             <Button
