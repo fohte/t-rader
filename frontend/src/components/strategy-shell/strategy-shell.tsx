@@ -8,7 +8,7 @@ export function StrategyShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <Header />
       <main className="flex-1">
-        <div className="mx-auto w-full max-w-[1280px] px-3 pb-20 pt-5 md:px-5 md:pt-6">
+        <div className="mx-auto w-full max-w-7xl px-3 pb-20 pt-5 md:px-5 md:pt-6">
           {children}
         </div>
       </main>

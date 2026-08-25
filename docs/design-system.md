@@ -166,6 +166,13 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 
+44px を超えて丸め対象外になった値のうち、viewport 単位を含むなど `--spacing` の倍数で表現できないものは、`--spacing-<name>` として named token を追加し、この節に追記すること。
+
+| Token                   | 値                      | Tailwind utility        | 用途                                                                   |
+| ----------------------- | ----------------------- | ----------------------- | ---------------------------------------------------------------------- |
+| `--floating-chat-max-w` | `calc(100vw - 1.75rem)` | `max-w-floating-chat-w` | floating chat panel の最大幅 (viewport 幅から左右マージン分を引く)     |
+| `--floating-chat-max-h` | `calc(100vh - 6.25rem)` | `max-h-floating-chat-h` | floating chat panel の最大高さ (viewport 高さから上下マージン分を引く) |
+
 ## Non-goals
 
 このドキュメントはトークン契約であって、既存画面の一括 restyle ではない。

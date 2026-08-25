@@ -29,8 +29,8 @@ function PhaseBadge({ phase }: { phase: string }) {
     <span
       className={
         phase === 'failed'
-          ? 'font-mono text-[10px] uppercase tracking-wider text-primary'
-          : 'font-mono text-[10px] uppercase tracking-wider text-muted-foreground'
+          ? 'font-mono text-2xs uppercase tracking-wider text-primary'
+          : 'font-mono text-2xs uppercase tracking-wider text-muted-foreground'
       }
     >
       {PHASE_LABEL[phase] ?? phase}
@@ -69,14 +69,14 @@ export function TaskRunListView({
             params={{ id: strategyId, taskId: t.taskId }}
             className="flex items-center gap-3 border border-border bg-card px-3.5 py-2.5 hover:border-primary"
           >
-            <span className="flex-1 truncate text-[13px] text-foreground">
+            <span className="flex-1 truncate text-sm text-foreground">
               {t.prompt}
             </span>
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-2xs text-muted-foreground">
               {sourceLabel(t.source)}
             </span>
             <PhaseBadge phase={t.phase} />
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-2xs text-muted-foreground">
               {formatRelative(t.createdAt)}
             </span>
           </Link>

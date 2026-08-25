@@ -183,8 +183,8 @@ function TreeRow({
       <div className="flex items-baseline gap-2 py-1 text-muted-foreground">
         <span>{prefix}○</span>
         <span className="flex-1 truncate">{row.content.label}</span>
-        <span className="text-[10px]">{row.content.model}</span>
-        <span className="text-[10px]">待機</span>
+        <span className="text-2xs">{row.content.model}</span>
+        <span className="text-2xs">待機</span>
       </div>
     )
   }
@@ -218,18 +218,18 @@ function TreeRow({
           {prefix}●
         </span>
         <span className="flex-1 truncate">{label}</span>
-        <span className="text-[10px] text-muted-foreground">{step.model}</span>
-        <span className={cn('text-[10px]', STATUS_COLOR[step.status])}>
+        <span className="text-2xs text-muted-foreground">{step.model}</span>
+        <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
           {badgeText}
         </span>
         {duration != null && (
-          <span className="text-[10px] text-muted-foreground">{duration}</span>
+          <span className="text-2xs text-muted-foreground">{duration}</span>
         )}
       </span>
       {subtitle != null && (
         <span
           data-testid="step-subtitle"
-          className="truncate pl-5 text-[10px] text-muted-foreground"
+          className="truncate pl-5 text-2xs text-muted-foreground"
         >
           {subtitle}
         </span>

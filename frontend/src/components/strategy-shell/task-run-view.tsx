@@ -111,14 +111,14 @@ export function TaskRunView({
       ) : task == null ? (
         <div className="space-y-4">
           <Skeleton className="h-8 w-2/3" />
-          <Skeleton className="h-5 w-full max-w-[480px]" />
-          <Skeleton className="h-[88px] w-full" />
-          <Skeleton className="h-[320px] w-full" />
+          <Skeleton className="h-5 w-full max-w-120" />
+          <Skeleton className="h-22 w-full" />
+          <Skeleton className="h-80 w-full" />
         </div>
       ) : (
         <>
           <header>
-            <h1 className="mb-1.5 text-[22px] font-bold leading-tight tracking-tight">
+            <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
               {task.prompt}
             </h1>
             <p className="font-mono text-2xs text-muted-foreground">
@@ -155,7 +155,10 @@ export function TaskRunView({
               </pre>
             )}
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div
+            // grid-cols-[minmax(0,1fr)_360px] は可変幅+固定幅の grid-template-columns で、対応する非 arbitrary な scale utility が存在しない
+            className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]"
+          >
             <div className="border border-border bg-card p-4">
               {steps.length === 0 ? (
                 <p className="font-mono text-xs text-muted-foreground">

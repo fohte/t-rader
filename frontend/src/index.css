@@ -78,6 +78,10 @@
   /* running は failed の赤と衝突しないよう別色にする */
   --status-task-running: #fbbf24;
 
+  /* t-rader 固有: floating chat panel の viewport 制約付き最大サイズ */
+  --floating-chat-max-w: calc(100vw - 1.75rem);
+  --floating-chat-max-h: calc(100vh - 6.25rem);
+
   /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
    * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
@@ -152,6 +156,8 @@
   --color-status-unread: var(--status-unread);
   --color-status-rejected: var(--status-rejected);
   --color-status-task-running: var(--status-task-running);
+  --spacing-floating-chat-w: var(--floating-chat-max-w);
+  --spacing-floating-chat-h: var(--floating-chat-max-h);
 
   /* 互換エイリアス (utility 経由の既存参照を維持) */
   --color-bg-primary: var(--color-bg-primary);

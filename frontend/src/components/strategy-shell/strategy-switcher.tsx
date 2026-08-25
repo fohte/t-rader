@@ -37,14 +37,14 @@ export function StrategySwitcher() {
               key={s.id}
               to="/strategies/$id"
               params={{ id: s.id }}
-              className={`relative flex flex-shrink-0 cursor-pointer items-center gap-2 border px-3.5 py-1.5 font-mono text-[13px] ${
+              className={`relative flex flex-shrink-0 cursor-pointer items-center gap-2 border px-3.5 py-1.5 font-mono text-sm ${
                 active
                   ? 'border-border border-b-card bg-card text-foreground'
                   : 'border-transparent text-muted-foreground-strong hover:bg-surface-strong hover:text-foreground'
               }`}
             >
               {active && (
-                <span className="absolute inset-x-[-1px] top-[-1px] h-0.5 bg-primary" />
+                <span className="absolute -inset-x-px -top-px h-0.5 bg-primary" />
               )}
               {s.name}
               <UnreadBadge count={unread} />
@@ -82,7 +82,7 @@ function MobileStrategyDropdown({
         onClick={() => {
           setOpen((v) => !v)
         }}
-        className="flex w-full items-center justify-between gap-2 border border-border bg-surface-strong px-3 py-1.5 font-mono text-[13px] text-foreground"
+        className="flex w-full items-center justify-between gap-2 border border-border bg-surface-strong px-3 py-1.5 font-mono text-sm text-foreground"
       >
         <span className="truncate">{current?.name ?? '戦略を選択'}</span>
         <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
@@ -100,7 +100,7 @@ function MobileStrategyDropdown({
                 onClick={() => {
                   setOpen(false)
                 }}
-                className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 font-mono text-[13px] text-muted-foreground-strong last:border-b-0 hover:bg-surface-strong hover:text-foreground"
+                className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 font-mono text-sm text-muted-foreground-strong last:border-b-0 hover:bg-surface-strong hover:text-foreground"
               >
                 <span className="truncate">{s.name}</span>
                 <UnreadBadge count={unreadByStrategy.get(s.id) ?? 0} />

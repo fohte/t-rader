@@ -32,8 +32,8 @@ export function Header() {
         className="inline-flex flex-shrink-0 items-baseline gap-2 font-mono"
         title="戦略一覧へ"
       >
-        <span className="text-[19px] font-bold text-primary">&gt;</span>
-        <span className="hidden text-[17px] font-medium tracking-tight text-foreground md:inline">
+        <span className="text-xl font-bold text-primary">&gt;</span>
+        <span className="hidden text-lg font-medium tracking-tight text-foreground md:inline">
           t-rader
         </span>
       </Link>

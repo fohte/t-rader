@@ -14,7 +14,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const router = createStoryRouter(
     () => (
       <div className="min-h-screen bg-background p-6">
-        <div className="w-[420px] border border-border bg-bg-secondary p-3.5">
+        <div className="w-105 border border-border bg-bg-secondary p-3.5">
           {children}
         </div>
       </div>

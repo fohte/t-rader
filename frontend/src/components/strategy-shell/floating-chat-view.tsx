@@ -52,7 +52,7 @@ export function FloatingChatView({
         onClick={onOpen}
         title="アナリストを呼ぶ (on-demand)"
         aria-label="アナリストを呼ぶ"
-        className="fixed bottom-5 right-5 z-[60] grid h-12 w-12 cursor-pointer place-items-center border border-primary bg-bg-secondary font-mono text-[22px] font-bold text-primary hover:bg-primary hover:text-white"
+        className="fixed bottom-5 right-5 z-[60] grid h-12 w-12 cursor-pointer place-items-center border border-primary bg-bg-secondary font-mono text-2xl font-bold text-primary hover:bg-primary hover:text-white"
       >
         &gt;_
       </button>
@@ -70,10 +70,10 @@ export function FloatingChatView({
     <div
       role="dialog"
       aria-label="on-demand session"
-      className="fixed bottom-5 right-5 z-[60] flex h-[580px] max-h-[calc(100vh-100px)] w-[420px] max-w-[calc(100vw-28px)] flex-col border border-border bg-bg-secondary"
+      className="fixed bottom-5 right-5 z-[60] flex h-145 max-h-floating-chat-h w-105 max-w-floating-chat-w flex-col border border-border bg-bg-secondary"
     >
       <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5">
-        <span className="flex items-baseline gap-1.5 font-mono text-[13px] font-bold">
+        <span className="flex items-baseline gap-1.5 font-mono text-sm font-bold">
           <span className="text-primary">&gt;_</span>
           <span>on-demand session</span>
         </span>
@@ -86,10 +86,10 @@ export function FloatingChatView({
           <X className="size-4" />
         </button>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-3.5 text-[13px] text-muted-foreground-strong">
+      <div className="flex-1 space-y-3 overflow-y-auto p-3.5 text-sm text-muted-foreground-strong">
         {seed != null && (
           <div className="border border-border bg-background p-3">
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <div className="mb-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
               seed
             </div>
             <p className="leading-relaxed text-foreground">{seed}</p>
@@ -127,7 +127,7 @@ export function FloatingChatView({
           }}
           disabled={inputDisabled}
           placeholder={placeholder}
-          className="flex-1 border border-border bg-background px-2.5 py-2 font-mono text-[13px] text-foreground outline-none disabled:opacity-60"
+          className="flex-1 border border-border bg-background px-2.5 py-2 font-mono text-sm text-foreground outline-none disabled:opacity-60"
         />
         <button
           type="submit"
@@ -226,7 +226,7 @@ function FloatingChatNoteList({
             className="flex items-baseline gap-2 border border-border bg-background px-2.5 py-1.5 hover:border-primary"
           >
             <span className="flex-1 text-xs text-foreground">{n.title}</span>
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="font-mono text-2xs text-muted-foreground">
               {formatRelative(n.updated_at)}
             </span>
           </Link>
