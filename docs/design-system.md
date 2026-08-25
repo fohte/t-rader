@@ -168,9 +168,8 @@ border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px
 
 ## Layout (t-rader 固有)
 
-`--spacing` の丸めでは表現できない画面固有の `grid-template-columns` は、コンポーネント側で
-個別に named token として `:root` に追加し、`grid-cols-(--token-name)` (Tailwind v4 の custom
-property shorthand) で参照する。bracket 記法の arbitrary value にはしない。
+`--spacing` の丸めでは表現できない画面固有の `grid-template-columns` は、コンポーネント側で個別に named token として `:root` に追加し、`grid-cols-(--token-name)` (Tailwind v4 の custom property shorthand) で参照する。
+bracket 記法の arbitrary value にはしない。
 
 | Token                           | 値                     | 用途                                    |
 | ------------------------------- | ---------------------- | --------------------------------------- |
