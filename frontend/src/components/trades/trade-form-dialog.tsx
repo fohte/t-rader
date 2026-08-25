@@ -356,19 +356,15 @@ export function TradeFormDialog({
           </div>
 
           {valid && (
-            <div className="font-mono text-[12px] text-[color:var(--color-text-secondary)]">
+            <div className="font-mono text-xs text-muted-foreground-strong">
               約定代金{' '}
-              <span className="text-[color:var(--color-text-primary)]">
+              <span className="text-foreground">
                 {formatYen(qtyNum * priceNum)}
               </span>
             </div>
           )}
 
-          {error != null && (
-            <p className="text-[12px] text-[color:var(--color-accent-strategy)]">
-              {error}
-            </p>
-          )}
+          {error != null && <p className="text-xs text-primary">{error}</p>}
 
           <DialogFooter>
             <Button
@@ -401,7 +397,7 @@ function Field({
 }) {
   return (
     <label className={`flex flex-col gap-1 ${className ?? ''}`}>
-      <span className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+      <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       {children}
@@ -427,7 +423,7 @@ function SelectNative({
       onChange={(e) => {
         onChange(e.target.value)
       }}
-      className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-[color:var(--color-text-primary)] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+      className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -448,9 +444,7 @@ function SideButton({
   onClick: () => void
 }) {
   const baseColor =
-    side === 'buy'
-      ? 'border-[color:var(--color-up)] text-[color:var(--color-up)]'
-      : 'border-[color:var(--color-down)] text-[color:var(--color-down)]'
+    side === 'buy' ? 'border-up text-up' : 'border-down text-down'
   const activeBg =
     side === 'buy'
       ? 'bg-[color:var(--color-up-dim)]'
@@ -459,7 +453,7 @@ function SideButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 border px-3 py-1.5 font-mono text-[12px] ${baseColor} ${
+      className={`flex-1 border px-3 py-1.5 font-mono text-xs ${baseColor} ${
         active ? activeBg : 'bg-transparent opacity-60 hover:opacity-100'
       }`}
     >
