@@ -54,7 +54,7 @@ function StrategyPerformancePage() {
     {
       label: '手数料',
       value: formatYen(feesTotal),
-      cls: 'text-[color:var(--color-text-secondary)]',
+      cls: 'text-muted-foreground-strong',
     },
     { label: '決済回数', value: sellsCount.toLocaleString() },
     { label: 'トレード件数', value: trades.length.toLocaleString() },
@@ -73,30 +73,30 @@ function StrategyPerformancePage() {
 
   if (strategy == null) {
     return (
-      <div className="font-mono text-[13px] text-[color:var(--color-text-tertiary)]">
+      <div className="font-mono text-[13px] text-muted-foreground">
         戦略が見つかりませんでした。
       </div>
     )
   }
 
   return (
-    <div className="space-y-5 font-sans text-[color:var(--color-text-primary)]">
+    <div className="space-y-5 font-sans text-foreground">
       <div>
         <Link
           to="/strategies/$id"
           params={{ id }}
-          className="font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+          className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
           &lt; {strategy.name} に戻る
         </Link>
       </div>
 
       <header>
-        <h1 className="mb-1.5 text-[24px] font-bold leading-tight tracking-tight">
+        <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
           戦略成績 — {strategy.name}
         </h1>
         {strategy.description != null && strategy.description !== '' && (
-          <p className="max-w-[720px] text-[14px] leading-relaxed text-[color:var(--color-text-secondary)]">
+          <p className="max-w-[720px] text-sm leading-relaxed text-muted-foreground-strong">
             {strategy.description}
           </p>
         )}
@@ -110,13 +110,11 @@ function StrategyPerformancePage() {
 
       <section className="space-y-2">
         <div className="flex items-baseline justify-between">
-          <h2 className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-            <span className="mr-2 text-[color:var(--color-accent-strategy)]">
-              &gt;
-            </span>
+          <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+            <span className="mr-2 text-primary">&gt;</span>
             保有ポジション
           </h2>
-          <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+          <span className="font-mono text-2xs text-muted-foreground">
             {openPositions.length} 銘柄
           </span>
         </div>
@@ -129,13 +127,11 @@ function StrategyPerformancePage() {
 
       <section className="space-y-2">
         <div className="flex items-baseline justify-between">
-          <h2 className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-            <span className="mr-2 text-[color:var(--color-accent-strategy)]">
-              &gt;
-            </span>
+          <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+            <span className="mr-2 text-primary">&gt;</span>
             トレード
           </h2>
-          <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+          <span className="font-mono text-2xs text-muted-foreground">
             {trades.length} 件
           </span>
         </div>
@@ -152,7 +148,7 @@ function StrategyPerformancePage() {
       <div>
         <Link
           to="/trades"
-          className="font-mono text-[13px] text-[color:var(--color-accent-strategy)] hover:underline"
+          className="font-mono text-[13px] text-primary hover:underline"
         >
           取引履歴で編集する →
         </Link>

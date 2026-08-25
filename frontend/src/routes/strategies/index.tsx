@@ -30,15 +30,13 @@ function StrategyListPage() {
   }, [unreadNotes])
 
   return (
-    <div className="font-sans text-[color:var(--color-text-primary)]">
+    <div className="font-sans text-foreground">
       <div className="mb-8 max-w-[720px]">
         <h1 className="mb-3 text-[26px] font-bold tracking-tight">
-          <span className="font-mono font-bold text-[color:var(--color-accent-strategy)]">
-            &gt;
-          </span>{' '}
+          <span className="font-mono font-bold text-primary">&gt;</span>{' '}
           戦略を選ぶ
         </h1>
-        <p className="text-[14px] leading-relaxed text-[color:var(--color-text-secondary)]">
+        <p className="text-sm leading-relaxed text-muted-foreground-strong">
           各戦略は永続ワークスペース。LLM
           がアナリスト役として監視対象を広げ、ノートとアノテーションを産出します。あなたは時々開いてレビューします。
         </p>
@@ -52,12 +50,10 @@ function StrategyListPage() {
         </div>
       ) : (
         <>
-          <div className="mb-2.5 flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-            <span className="text-[color:var(--color-accent-strategy)]">
-              &gt;
-            </span>
+          <div className="mb-2.5 flex items-baseline gap-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+            <span className="text-primary">&gt;</span>
             <span>strategies</span>
-            <span className="text-[color:var(--color-text-secondary)]">
+            <span className="text-muted-foreground-strong">
               {strategies?.length ?? 0} 件
             </span>
           </div>
@@ -69,33 +65,33 @@ function StrategyListPage() {
                   key={s.id}
                   to="/strategies/$id"
                   params={{ id: s.id }}
-                  className="flex min-h-[188px] cursor-pointer flex-col gap-3.5 border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-4 transition-colors hover:border-[color:var(--color-text-tertiary)]"
+                  className="flex min-h-[188px] cursor-pointer flex-col gap-3.5 border border-border bg-card p-4 transition-colors hover:border-muted-foreground"
                 >
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0">
-                      <div className="truncate font-mono text-[16px] font-bold leading-tight">
+                      <div className="truncate font-mono text-base font-bold leading-tight">
                         {s.name}
                       </div>
                     </div>
                     {unread > 0 && (
-                      <span className="inline-grid h-5 min-w-[20px] flex-shrink-0 place-items-center bg-[color:var(--color-accent-strategy)] px-1.5 font-mono text-[11px] text-white">
+                      <span className="inline-grid h-5 min-w-5 flex-shrink-0 place-items-center bg-primary px-1.5 font-mono text-2xs text-white">
                         {unread}
                       </span>
                     )}
                   </div>
                   {s.description != null && s.description !== '' && (
-                    <p className="line-clamp-3 text-[13px] leading-relaxed text-[color:var(--color-text-secondary)]">
+                    <p className="line-clamp-3 text-[13px] leading-relaxed text-muted-foreground-strong">
                       {s.description}
                     </p>
                   )}
-                  <div className="mt-auto flex items-center justify-between border-t border-[color:var(--color-hairline)] pt-3 font-mono text-[11px]">
-                    <span className="text-[color:var(--color-text-tertiary)]">
+                  <div className="mt-auto flex items-center justify-between border-t border-border pt-3 font-mono text-2xs">
+                    <span className="text-muted-foreground">
                       更新 {formatRelative(s.updated_at)}
                     </span>
-                    <span className="text-[color:var(--color-text-secondary)]">
+                    <span className="text-muted-foreground-strong">
                       {unread > 0 ? (
                         <>
-                          <span className="font-bold text-[color:var(--color-accent-strategy)]">
+                          <span className="font-bold text-primary">
                             {unread}
                           </span>{' '}
                           件 未レビュー
@@ -113,13 +109,11 @@ function StrategyListPage() {
               onClick={() => {
                 setCreating(true)
               }}
-              className="flex min-h-[188px] cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-[color:var(--color-border-strategy)] bg-transparent p-4 text-center text-[color:var(--color-text-tertiary)] hover:border-[color:var(--color-accent-strategy)] hover:text-[color:var(--color-accent-strategy)]"
+              className="flex min-h-[188px] cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-border bg-transparent p-4 text-center text-muted-foreground hover:border-primary hover:text-primary"
             >
               <Plus className="size-6" />
               <div className="font-mono text-[13px]">新しい戦略を作る</div>
-              <div className="font-mono text-[11px]">
-                シード関心は後から追加
-              </div>
+              <div className="font-mono text-2xs">シード関心は後から追加</div>
             </button>
           </div>
         </>

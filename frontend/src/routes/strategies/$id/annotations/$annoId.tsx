@@ -91,12 +91,12 @@ function AnnotationDetailPage() {
 
   if (annotation == null) {
     return (
-      <div className="font-mono text-[13px] text-[color:var(--color-text-tertiary)]">
+      <div className="font-mono text-[13px] text-muted-foreground">
         アノテーションが見つかりませんでした。{' '}
         <Link
           to="/strategies/$id"
           params={{ id }}
-          className="text-[color:var(--color-accent-strategy)] hover:underline"
+          className="text-primary hover:underline"
         >
           戦略ホームに戻る
         </Link>
@@ -137,23 +137,23 @@ function AnnotationDetailPage() {
   }
 
   return (
-    <div className="space-y-5 font-sans text-[color:var(--color-text-primary)]">
+    <div className="space-y-5 font-sans text-foreground">
       <div>
         <Link
           to="/strategies/$id"
           params={{ id }}
-          className="inline-flex items-center gap-1 font-mono text-[12px] text-[color:var(--color-text-secondary)] hover:text-[color:var(--color-accent-strategy)]"
+          className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground-strong hover:text-primary"
         >
           ← 戦略ホームに戻る
         </Link>
       </div>
 
-      <header className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-5">
+      <header className="border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="inline-grid h-6 min-w-[32px] place-items-center border border-[color:var(--color-accent-strategy)] px-1 font-mono text-[11px] text-[color:var(--color-accent-strategy)]">
+          <span className="inline-grid h-6 min-w-8 place-items-center border border-primary px-1 font-mono text-2xs text-primary">
             ANNOTATION
           </span>
-          <span className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-1.5 py-px font-mono text-[10px] uppercase text-[color:var(--color-text-secondary)]">
+          <span className="border border-border bg-surface-strong px-1.5 py-px font-mono text-[10px] uppercase text-muted-foreground-strong">
             {annotation.target_kind}
           </span>
           <StatusPill status={annotation.status} />
@@ -161,11 +161,11 @@ function AnnotationDetailPage() {
         <p className="mb-4 whitespace-pre-wrap text-[15px] leading-relaxed">
           {annotation.text}
         </p>
-        <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-[12px] text-[color:var(--color-text-secondary)] sm:grid-cols-[120px_minmax(0,1fr)]">
+        <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-[120px_minmax(0,1fr)]">
           <dt>銘柄</dt>
           <dd>
             {stockRef.name}
-            <span className="ml-2 text-[color:var(--color-text-tertiary)]">
+            <span className="ml-2 text-muted-foreground">
               {annotation.target_symbol}
             </span>
           </dd>
@@ -183,11 +183,11 @@ function AnnotationDetailPage() {
           <dd>{formatDateTime(annotation.created_at)}</dd>
         </dl>
         {annotation.linked_note_id != null && (
-          <div className="mt-4 border-t border-[color:var(--color-hairline)] pt-3">
+          <div className="mt-4 border-t border-border pt-3">
             <Link
               to="/strategies/$id/notes/$noteId"
               params={{ id, noteId: annotation.linked_note_id }}
-              className="inline-flex items-center gap-1 font-mono text-[12px] text-[color:var(--color-accent-strategy)] hover:underline"
+              className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
             >
               → 紐づくノートを開く
             </Link>
@@ -195,16 +195,16 @@ function AnnotationDetailPage() {
         )}
       </header>
 
-      <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-5">
+      <section className="border border-border bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             レビュー
           </h2>
           <StatusPill status={annotation.status} />
         </div>
-        <p className="mb-3 font-mono text-[12px] text-[color:var(--color-text-secondary)]">
+        <p className="mb-3 font-mono text-xs text-muted-foreground-strong">
           現在:{' '}
-          <strong className="text-[color:var(--color-text-primary)]">
+          <strong className="text-foreground">
             {annotation.status === 'approved'
               ? '承認済み'
               : annotation.status === 'rejected'
@@ -219,7 +219,7 @@ function AnnotationDetailPage() {
             disabled={
               approveMutation.isPending || annotation.status === 'approved'
             }
-            className="cursor-pointer border border-[color:var(--color-accent-strategy)] bg-[color:var(--color-accent-strategy)] px-3 py-1.5 font-mono text-[12px] text-[color:var(--panel)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="cursor-pointer border border-primary bg-primary px-3 py-1.5 font-mono text-xs text-card hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             ✓ 承認
           </button>
@@ -229,33 +229,28 @@ function AnnotationDetailPage() {
             disabled={
               rejectMutation.isPending || annotation.status === 'rejected'
             }
-            className="cursor-pointer border border-[color:var(--color-status-rejected)] px-3 py-1.5 font-mono text-[12px] text-[color:var(--color-status-rejected)] hover:bg-[color:var(--panel-inset)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="cursor-pointer border border-status-rejected px-3 py-1.5 font-mono text-xs text-status-rejected hover:bg-surface-strong disabled:cursor-not-allowed disabled:opacity-50"
           >
             ✕ 却下
           </button>
         </div>
         {(approveMutation.error != null || rejectMutation.error != null) && (
-          <p className="mt-2 font-mono text-[11px] text-[color:var(--color-status-rejected)]">
+          <p className="mt-2 font-mono text-2xs text-status-rejected">
             操作に失敗しました。時間を置いて再試行してください。
           </p>
         )}
       </section>
 
-      <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-5">
-        <h2 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+      <section className="border border-border bg-card p-5">
+        <h2 className="mb-3 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
           コメント · {comments?.length ?? 0}
         </h2>
         <div className="space-y-3">
           {(comments ?? []).map((c) => (
-            <div
-              key={c.id}
-              className="border-l-2 border-[color:var(--color-border-strategy)] pl-3"
-            >
-              <div className="mb-1 flex items-center gap-2 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-                <span className="text-[color:var(--color-text-primary)]">
-                  {c.author_label}
-                </span>
-                <span className="border border-[color:var(--color-border-strategy)] px-1 text-[9px] uppercase">
+            <div key={c.id} className="border-l-2 border-border pl-3">
+              <div className="mb-1 flex items-center gap-2 font-mono text-2xs text-muted-foreground">
+                <span className="text-foreground">{c.author_label}</span>
+                <span className="border border-border px-1 text-[9px] uppercase">
                   {c.author_kind}
                 </span>
                 <span>{formatDateTime(c.created_at)}</span>
@@ -266,7 +261,7 @@ function AnnotationDetailPage() {
             </div>
           ))}
           {(comments == null || comments.length === 0) && (
-            <p className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+            <p className="font-mono text-xs text-muted-foreground">
               まだコメントはありません。
             </p>
           )}
@@ -279,61 +274,59 @@ function AnnotationDetailPage() {
               setCommentDraft(e.target.value)
             }}
             placeholder="コメントを追加"
-            className="flex-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-2 py-1.5 font-mono text-[12px] outline-none focus:border-[color:var(--color-accent-strategy)]"
+            className="flex-1 border border-border bg-surface-strong px-2 py-1.5 font-mono text-xs outline-none focus:border-primary"
           />
           <button
             type="submit"
             disabled={
               commentDraft.trim() === '' || createCommentMutation.isPending
             }
-            className="cursor-pointer border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-3 py-1.5 font-mono text-[12px] hover:border-[color:var(--color-accent-strategy)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="cursor-pointer border border-border bg-surface-strong px-3 py-1.5 font-mono text-xs hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             送信
           </button>
         </form>
         {createCommentMutation.error != null && (
-          <p className="mt-2 font-mono text-[11px] text-[color:var(--color-status-rejected)]">
+          <p className="mt-2 font-mono text-2xs text-status-rejected">
             送信に失敗しました。時間を置いて再試行してください。
           </p>
         )}
       </section>
 
-      <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-5">
-        <h2 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+      <section className="border border-border bg-card p-5">
+        <h2 className="mb-3 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
           変更履歴 · {history?.length ?? 0}
         </h2>
-        <div className="space-y-2 font-mono text-[12px]">
+        <div className="space-y-2 font-mono text-xs">
           {(history ?? []).map((h) => (
             <div
               key={h.id}
-              className="flex flex-wrap items-baseline gap-2 border-b border-[color:var(--color-hairline)] pb-1.5 last:border-b-0"
+              className="flex flex-wrap items-baseline gap-2 border-b border-border pb-1.5 last:border-b-0"
             >
-              <span className="text-[color:var(--color-text-tertiary)]">
+              <span className="text-muted-foreground">
                 {formatDateTime(h.created_at)}
               </span>
               <span
                 className={
                   h.actor_kind === 'human'
-                    ? 'text-[color:var(--color-text-primary)]'
-                    : 'text-[color:var(--color-text-secondary)]'
+                    ? 'text-foreground'
+                    : 'text-muted-foreground-strong'
                 }
               >
                 {h.actor_label}
               </span>
-              <span className="border border-[color:var(--color-border-strategy)] px-1 text-[10px] uppercase text-[color:var(--color-text-secondary)]">
+              <span className="border border-border px-1 text-[10px] uppercase text-muted-foreground-strong">
                 {h.op}
               </span>
               {h.summary != null && h.summary !== '' && (
-                <span className="text-[color:var(--color-text-secondary)]">
+                <span className="text-muted-foreground-strong">
                   {h.summary}
                 </span>
               )}
             </div>
           ))}
           {(history == null || history.length === 0) && (
-            <p className="text-[color:var(--color-text-tertiary)]">
-              変更履歴はありません。
-            </p>
+            <p className="text-muted-foreground">変更履歴はありません。</p>
           )}
         </div>
       </section>

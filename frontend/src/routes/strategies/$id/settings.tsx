@@ -42,7 +42,7 @@ function StrategySettingsPage() {
 
   if (strategy == null) {
     return (
-      <div className="font-mono text-[13px] text-[color:var(--color-text-tertiary)]">
+      <div className="font-mono text-[13px] text-muted-foreground">
         戦略が見つかりませんでした。
       </div>
     )
@@ -54,16 +54,16 @@ function StrategySettingsPage() {
         <Link
           to="/strategies/$id"
           params={{ id }}
-          className="font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+          className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
           &lt; {strategy.name} に戻る
         </Link>
       </div>
       <header>
-        <h1 className="mb-1 text-[24px] font-bold leading-tight tracking-tight">
+        <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">
           戦略設定 — {strategy.name}
         </h1>
-        <p className="text-[13px] text-[color:var(--color-text-secondary)]">
+        <p className="text-[13px] text-muted-foreground-strong">
           戦略 Agent の初期コンテキスト (AGENTS.md / skills)、trigger、 agent
           graph を編集します。
         </p>
@@ -72,7 +72,7 @@ function StrategySettingsPage() {
       <div
         role="tablist"
         aria-label="戦略設定タブ"
-        className="flex items-center gap-1 border-b border-[color:var(--color-hairline)]"
+        className="flex items-center gap-1 border-b border-border"
       >
         {TABS.map((t) => {
           const active = tab === t.key
@@ -85,7 +85,7 @@ function StrategySettingsPage() {
               onClick={() => {
                 setTab(t.key)
               }}
-              className="border-b-2 px-3 py-1.5 font-mono text-[12px] uppercase tracking-wider data-[active=true]:border-[color:var(--color-accent-strategy)] data-[active=true]:text-[color:var(--color-accent-strategy)] data-[active=false]:border-transparent data-[active=false]:text-[color:var(--color-text-tertiary)]"
+              className="border-b-2 px-3 py-1.5 font-mono text-xs uppercase tracking-wider data-[active=true]:border-primary data-[active=true]:text-primary data-[active=false]:border-transparent data-[active=false]:text-muted-foreground"
               data-active={active}
             >
               {t.label}
