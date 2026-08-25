@@ -19,27 +19,25 @@ export function RefChip({
 
   const baseInner =
     // eslint-disable-next-line no-restricted-syntax -- text-[0.88em] は親要素のフォントサイズ相対値で @theme に token 化されていない
-    'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-text-primary'
-  const underline = 'border-b border-dotted border-text-tertiary pb-px'
-  const pillCls = 'border border-border-strategy px-2 py-0.5 rounded-none'
+    'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-foreground'
+  const underline = 'border-b border-dotted border-muted-foreground pb-px'
+  const pillCls = 'border border-border px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
   const interactive = onOpen
-    ? 'cursor-pointer hover:text-[color:var(--color-accent-strategy)] hover:border-[color:var(--color-accent-strategy)]'
+    ? 'cursor-pointer hover:text-primary hover:border-primary'
     : ''
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
 
   const inner = (
     <>
       {showKind && (
-        <span className="text-[0.78em] tracking-wide text-[color:var(--color-text-tertiary)]">
+        <span className="text-[0.78em] tracking-wide text-muted-foreground">
           {kindJP}
         </span>
       )}
       <span>{ref.name}</span>
       {ref.sub != null && ref.sub !== '' && (
-        <span className="text-[0.85em] text-[color:var(--color-text-tertiary)]">
-          {ref.sub}
-        </span>
+        <span className="text-[0.85em] text-muted-foreground">{ref.sub}</span>
       )}
     </>
   )

@@ -26,25 +26,19 @@ export function StepDetail({
   const enumEntries = listEnumEntries(outputSchema, step.output)
 
   return (
-    <div className="mb-2 ml-4 space-y-2 border-l border-[color:var(--color-border-strategy)] py-1 pl-3 text-[11px] text-[color:var(--color-text-secondary)]">
+    <div className="mb-2 ml-4 space-y-2 border-l border-border py-1 pl-3 text-2xs text-muted-foreground-strong">
       <div className="grid grid-cols-[64px_1fr] gap-x-2.5 gap-y-1">
         <span>フェーズ</span>
-        <b className="font-semibold text-[color:var(--color-text-primary)]">
-          {step.label}
-        </b>
+        <b className="font-semibold text-foreground">{step.label}</b>
         <span>モデル</span>
-        <b className="font-semibold text-[color:var(--color-text-primary)]">
-          {step.model}
-        </b>
+        <b className="font-semibold text-foreground">{step.model}</b>
         <span>所要</span>
-        <b className="font-semibold text-[color:var(--color-text-primary)]">
-          {duration ?? '—'}
-        </b>
+        <b className="font-semibold text-foreground">{duration ?? '—'}</b>
         {enumEntries.flatMap((entry) => [
           <span key={`${entry.label}-label`}>{entry.label}</span>,
           <b
             key={`${entry.label}-value`}
-            className="font-semibold text-[color:var(--color-text-primary)]"
+            className="font-semibold text-foreground"
           >
             {entry.value}
           </b>,
@@ -61,7 +55,7 @@ export function StepDetail({
         <Link
           to="/strategies/$id/notes/$noteId"
           params={{ id: strategyId, noteId }}
-          className="block text-[color:var(--color-accent-strategy)] hover:underline"
+          className="block text-primary hover:underline"
         >
           → ノートを開く
         </Link>
@@ -71,7 +65,7 @@ export function StepDetail({
           href={traceUrl}
           target="_blank"
           rel="noreferrer"
-          className="block text-[color:var(--color-accent-strategy)] hover:underline"
+          className="block text-primary hover:underline"
         >
           → トレースを開く
         </a>
@@ -89,7 +83,7 @@ function JsonBlock({
 }): React.ReactElement {
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+      <div className="mb-1 text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
       <pre className="overflow-x-auto whitespace-pre-wrap break-all">

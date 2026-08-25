@@ -29,8 +29,8 @@ function PhaseBadge({ phase }: { phase: string }) {
     <span
       className={
         phase === 'failed'
-          ? 'font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-accent-strategy)]'
-          : 'font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]'
+          ? 'font-mono text-2xs uppercase tracking-wider text-primary'
+          : 'font-mono text-2xs uppercase tracking-wider text-muted-foreground'
       }
     >
       {PHASE_LABEL[phase] ?? phase}
@@ -54,7 +54,7 @@ export function TaskRunListView({
 
   if (tasks.length === 0) {
     return (
-      <p className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+      <p className="font-mono text-xs text-muted-foreground">
         過去のタスクはまだありません。
       </p>
     )
@@ -67,16 +67,16 @@ export function TaskRunListView({
           <Link
             to="/strategies/$id/runs/$taskId"
             params={{ id: strategyId, taskId: t.taskId }}
-            className="flex items-center gap-3 border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] px-3.5 py-2.5 hover:border-[color:var(--color-accent-strategy)]"
+            className="flex items-center gap-3 border border-border bg-card px-3.5 py-2.5 hover:border-primary"
           >
-            <span className="flex-1 truncate text-[13px] text-[color:var(--color-text-primary)]">
+            <span className="flex-1 truncate text-sm text-foreground">
               {t.prompt}
             </span>
-            <span className="font-mono text-[10px] text-[color:var(--color-text-tertiary)]">
+            <span className="font-mono text-2xs text-muted-foreground">
               {sourceLabel(t.source)}
             </span>
             <PhaseBadge phase={t.phase} />
-            <span className="font-mono text-[10px] text-[color:var(--color-text-tertiary)]">
+            <span className="font-mono text-2xs text-muted-foreground">
               {formatRelative(t.createdAt)}
             </span>
           </Link>

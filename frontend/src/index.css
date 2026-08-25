@@ -78,6 +78,10 @@
   /* running は failed の赤と衝突しないよう別色にする */
   --status-task-running: #fbbf24;
 
+  /* t-rader 固有: floating chat panel の viewport 制約付き最大サイズ */
+  --floating-chat-max-w: calc(100vw - 1.75rem);
+  --floating-chat-max-h: calc(100vh - 6.25rem);
+
   /*
    * t-rader 固有: spacing scale (4px grid) にも Tailwind 標準の w/h スケール
    * にも属さない固定サイズ。要素自体が 44px を超えるため grid 丸め対象外
@@ -174,6 +178,8 @@
   --color-status-unread: var(--status-unread);
   --color-status-rejected: var(--status-rejected);
   --color-status-task-running: var(--status-task-running);
+  --spacing-floating-chat-w: var(--floating-chat-max-w);
+  --spacing-floating-chat-h: var(--floating-chat-max-h);
   --height-note-graph: var(--note-graph-height);
 
   /* 互換エイリアス (utility 経由の既存参照を維持) */
@@ -186,6 +192,15 @@
   --color-panel: var(--panel);
   --color-panel-inset: var(--panel-inset);
   --color-hairline: var(--hairline);
+}
+
+/*
+ * z-index には --theme namespace (--z-*) がなく、@theme では標準スケール
+ * (z-0 〜 z-50, z-auto) を超える段を追加できない。@utility でその段だけを
+ * 個別の named utility として定義する。
+ */
+@utility z-floating-chat {
+  z-index: 60;
 }
 
 @layer base {

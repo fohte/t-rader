@@ -41,9 +41,9 @@ const STATUS_LABEL: Record<TaskStep['status'], string> = {
 // 色分けは step.status のみで決める。enum の値 (rejected 等) で分岐すると、
 // UI が戦略の語彙 (何が「悪い」結果か) を知ることになってしまうため禁止。
 const STATUS_COLOR: Record<TaskStep['status'], string> = {
-  running: 'text-[color:var(--color-status-task-running)]',
-  completed: 'text-[color:var(--color-text-secondary)]',
-  failed: 'text-[color:var(--color-accent-strategy)]',
+  running: 'text-status-task-running',
+  completed: 'text-muted-foreground-strong',
+  failed: 'text-primary',
 }
 
 interface RenderRow {
@@ -131,7 +131,7 @@ export function TaskExecutionTree({
 
   return (
     <div
-      className="space-y-0 font-mono text-[12px]"
+      className="space-y-0 font-mono text-xs"
       data-testid="task-execution-tree"
     >
       {rows.map((row) => {
@@ -139,10 +139,7 @@ export function TaskExecutionTree({
         return (
           <div key={row.key}>
             {row.connectorBefore && (
-              <div
-                aria-hidden
-                className="pl-[7px] text-[color:var(--color-text-tertiary)]"
-              >
+              <div aria-hidden className="pl-2 text-muted-foreground">
                 │
               </div>
             )}
@@ -183,11 +180,11 @@ function TreeRow({
 
   if (row.content.kind === 'pending') {
     return (
-      <div className="flex items-baseline gap-2 py-1 text-[color:var(--color-text-tertiary)]">
+      <div className="flex items-baseline gap-2 py-1 text-muted-foreground">
         <span>{prefix}○</span>
         <span className="flex-1 truncate">{row.content.label}</span>
-        <span className="text-[10px]">{row.content.model}</span>
-        <span className="text-[10px]">待機</span>
+        <span className="text-2xs">{row.content.model}</span>
+        <span className="text-2xs">待機</span>
       </div>
     )
   }
@@ -207,8 +204,8 @@ function TreeRow({
       className={cn(
         'flex w-full flex-col gap-0.5 py-1 text-left',
         selected
-          ? 'text-[color:var(--color-text-primary)]'
-          : 'text-[color:var(--color-text-secondary)] hover:text-[color:var(--color-text-primary)]',
+          ? 'text-foreground'
+          : 'text-muted-foreground-strong hover:text-foreground',
       )}
     >
       <span className="flex items-baseline gap-2">
@@ -221,22 +218,18 @@ function TreeRow({
           {prefix}●
         </span>
         <span className="flex-1 truncate">{label}</span>
-        <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
-          {step.model}
-        </span>
-        <span className={cn('text-[10px]', STATUS_COLOR[step.status])}>
+        <span className="text-2xs text-muted-foreground">{step.model}</span>
+        <span className={cn('text-2xs', STATUS_COLOR[step.status])}>
           {badgeText}
         </span>
         {duration != null && (
-          <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
-            {duration}
-          </span>
+          <span className="text-2xs text-muted-foreground">{duration}</span>
         )}
       </span>
       {subtitle != null && (
         <span
           data-testid="step-subtitle"
-          className="truncate pl-[18px] text-[10px] text-[color:var(--color-text-tertiary)]"
+          className="truncate pl-5 text-2xs text-muted-foreground"
         >
           {subtitle}
         </span>

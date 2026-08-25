@@ -142,20 +142,23 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
 
-半端な `text-[Npx]` を見つけたら、以下の表で最寄りの段へ丸めること。
+`text-[Npx]` の arbitrary value は、以下の表で標準スケールへ丸めること。
+Spacing scale と同じく同点は切り上げ、±1px の視覚的なズレは許容する。
 
-| 現状の arbitrary value | 丸め先            | 理由                                |
-| ---------------------- | ----------------- | ----------------------------------- |
-| `text-[10px]`          | `text-2xs` (11px) | 11px に最も近い既存段               |
-| `text-[10.5px]`        | `text-2xs` (11px) | 同上                                |
-| `text-[11.5px]`        | `text-xs` (12px)  | 11px と 12px の中間、同点は切り上げ |
-| `text-[12.5px]`        | `text-xs` (12px)  | 12px に最も近い既存段               |
-| `text-[13px]`          | `text-sm` (14px)  | 12px と 14px の中間、同点は切り上げ |
-| `text-[13.5px]`        | `text-sm` (14px)  | 14px に最も近い既存段               |
+| 現状の arbitrary value | 丸め先            | 理由                                                        |
+| ---------------------- | ----------------- | ----------------------------------------------------------- |
+| `10px`                 | `text-2xs` (11px) | `text-2xs` に最も近い                                       |
+| `10.5px`               | `text-2xs` (11px) | `text-2xs` に最も近い                                       |
+| `11.5px`               | `text-xs` (12px)  | `text-2xs`(11px) と `text-xs`(12px) の中間、同点は切り上げ  |
+| `12.5px`               | `text-xs` (12px)  | `text-xs` に最も近い                                        |
+| `13px`                 | `text-sm` (14px)  | `text-xs`(12px) と `text-sm`(14px) の中間、同点は切り上げ   |
+| `13.5px`               | `text-sm` (14px)  | `text-sm` に最も近い                                        |
+| `17px`                 | `text-lg` (18px)  | `text-base`(16px) と `text-lg`(18px) の中間、同点は切り上げ |
+| `19px`                 | `text-xl` (20px)  | `text-lg`(18px) と `text-xl`(20px) の中間、同点は切り上げ   |
+| `22px`                 | `text-2xl` (24px) | `text-xl`(20px) と `text-2xl`(24px) の中間、同点は切り上げ  |
 
-±1px の視覚的なズレは許容する。
-許容しないのは要素間の順序関係が崩れることで、表を機械的に適用する前に確認すること。
-
+丸めても許容しないのは、隣接する要素との相対的なサイズ関係 (親ラベルより小さい従属バッジ等) が崩れることで、表を機械的に適用する前に確認すること。
+`9px` のように `text-2xs` (11px) より丸め先が離れすぎ、かつ隣接要素との意図的なサイズ差を保つために必要な値は、丸めずに arbitrary value のまま据え置く。
 markdown 本文中の任意の位置 (見出し内含む) に埋め込まれるインライン要素 (`[[stock:xxx]]` 等の ref chip、注釈バッジ等) の `text-[N.NNem]` は例外で丸めない。
 埋め込み先ごとに周辺テキストへ追従させる意図の相対値であり、固定の `text-*` トークンに丸めると見出し内で不自然に縮小する。
 
@@ -184,9 +187,28 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、まず Tailw
 ±1px の視覚的なズレは許容する。
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
+`grid-template-columns` の複合トラック定義 (例: `grid-cols-[64px_1fr]`、`grid-cols-[minmax(0,1fr)_360px]`) も、固定幅と可変幅を 1 つの utility で表現する対応先が存在しないため対象外。
+親要素のフォントサイズに対する相対値 (例: `text-[0.78em]`) も、Tailwind の `--text-*` namespace が絶対値前提のため対象外。
 ring-width (`ring`、`ring-<N>`) も同様に対象外。
 border-width と同じく Tailwind の固定スケールが `<N>px` に直接解決するため、既存の Tailwind utility (`ring-3` など) をそのまま使う。
+`z-*` (z-index) はこの表の対象外。
+Tailwind v4 は `z-index` に `@theme` namespace を持たず、`z-0`/`z-10`/.../`z-50`/`z-auto` の固定スケールしか提供しないため。
+
+既定スケール内に収まる arbitrary value は最も近い段に丸め、同点は切り上げる。
+ただし隣接して重なり得る要素どうしが同じ段になり重なり順が不定になる場合は、意図した重なり順を保てる段を選ぶこと (例: `z-[25]` は `z-20`/`z-30` の中間だが、`z-30` に丸めると同じ場に浮く StrategySwitcher のドロップダウン (既存の `z-30`) と同値になるため、`z-20` に丸める)。
+
+既定スケールを超えるレイヤーが本当に必要な場合 (例: shadcn/Radix overlay 系が使う `z-50` より常に上に表示する必要がある floating panel) は、`frontend/src/index.css` に `@utility` で個別の named utility を追加すること (例: `@utility z-floating-chat { z-index: 60; }`)。
+
+丸め先の標準スケール段が隣接要素と同じサイズになり、意図的なサイズ差 (親ラベルより小さい従属バッジ等) が失われる場合も丸めない。
+例: `text-[9px]` の stale バッジは `text-2xs` (11px) に丸めると親ラベルと同サイズになり階層が消えるため据え置く。
+
 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする (例: `--note-graph-height` → `h-note-graph`)。
+44px を超えて丸め対象外になった値のうち、viewport 単位を含むなど `--spacing` の倍数で表現できないものは、同様に `:root` に素の名前 (例: `--floating-chat-max-w`) で token を定義したうえで、`@theme inline` 側に `--spacing-<name>` として re-export し、この節の表に追記すること。
+
+| Token                   | 値                      | Tailwind utility        | 用途                                                                   |
+| ----------------------- | ----------------------- | ----------------------- | ---------------------------------------------------------------------- |
+| `--floating-chat-max-w` | `calc(100vw - 1.75rem)` | `max-w-floating-chat-w` | floating chat panel の最大幅 (viewport 幅から左右マージン分を引く)     |
+| `--floating-chat-max-h` | `calc(100vh - 6.25rem)` | `max-h-floating-chat-h` | floating chat panel の最大高さ (viewport 高さから上下マージン分を引く) |
 
 ## Layout
 

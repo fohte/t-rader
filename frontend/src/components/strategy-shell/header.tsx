@@ -6,8 +6,8 @@ import { useCurrentStrategyId } from '#components/strategy-shell/use-current-str
 
 const NAV_BASE =
   'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-xs'
-const NAV_INACTIVE = `${NAV_BASE} border-border-strategy text-text-secondary hover:border-text-tertiary hover:text-text-primary`
-const NAV_ACTIVE = `${NAV_BASE} border-text-tertiary bg-panel-inset text-text-primary`
+const NAV_INACTIVE = `${NAV_BASE} border-border text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground`
+const NAV_ACTIVE = `${NAV_BASE} border-muted-foreground bg-surface-strong text-foreground`
 
 function NavLink({ to, label }: { to: string; label: string }) {
   return (
@@ -26,16 +26,14 @@ export function Header() {
   const strategyId = useCurrentStrategyId()
 
   return (
-    <header className="sticky top-0 z-[25] flex items-center gap-3 border-b border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] px-3 py-2 md:gap-4 md:px-5 md:py-3">
+    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background px-3 py-2 md:gap-4 md:px-5 md:py-3">
       <Link
         to="/strategies"
         className="inline-flex flex-shrink-0 items-baseline gap-2 font-mono"
         title="戦略一覧へ"
       >
-        <span className="text-[19px] font-bold text-[color:var(--color-accent-strategy)]">
-          &gt;
-        </span>
-        <span className="hidden text-[17px] font-medium tracking-tight text-[color:var(--color-text-primary)] md:inline">
+        <span className="text-xl font-bold text-primary">&gt;</span>
+        <span className="hidden text-lg font-medium tracking-tight text-foreground md:inline">
           t-rader
         </span>
       </Link>
