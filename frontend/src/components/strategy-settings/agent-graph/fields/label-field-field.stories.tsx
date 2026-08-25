@@ -88,6 +88,22 @@ export const Selected: Story = {
   ),
 }
 
+export const StaleValue: Story = {
+  args: {
+    phases: [PLAN],
+    forEach: 'plan.hypotheses',
+    value: 'removed_field',
+    onChange: () => {},
+  },
+  render: () => (
+    <Interactive
+      phases={[PLAN]}
+      forEach="plan.hypotheses"
+      initial="removed_field"
+    />
+  ),
+}
+
 export const NoOptions: Story = {
   args: {
     phases: [PLAN_WITH_PRIMITIVE_ARRAY],
