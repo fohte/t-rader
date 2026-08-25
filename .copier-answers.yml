@@ -8,12 +8,12 @@ project_name: t-rader
 repo_id: ''
 repo_language: ja
 subpackages:
--   name: frontend
+  - name: frontend
     spa: true
     type: node
--   name: backend
+  - name: backend
     type: rust
--   name: agent
+  - name: agent
     type: node
     web_app: true
 type: base
