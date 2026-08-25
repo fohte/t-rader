@@ -74,7 +74,7 @@ function FilterButton({
       }`}
     >
       <span>{label}</span>
-      <span className="text-[10px] text-muted-foreground">{count}</span>
+      <span className="text-2xs text-muted-foreground">{count}</span>
     </button>
   )
 }

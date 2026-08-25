@@ -47,9 +47,9 @@ export function TradesTable({
 
   return (
     <div className="overflow-x-auto border border-border bg-card">
-      <table className="w-full min-w-[820px] font-mono text-xs">
+      <table className="w-full min-w-205 font-mono text-xs">
         <thead>
-          <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border text-2xs uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-2 text-left font-normal">日付</th>
             <th className="px-3 py-2 text-left font-normal">銘柄</th>
             <th className="px-3 py-2 text-center font-normal">売買</th>
@@ -81,7 +81,7 @@ export function TradesTable({
                       {stockName ?? t.symbol}
                     </span>
                     {stockName != null && (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-2xs text-muted-foreground">
                         {t.symbol}
                       </span>
                     )}
@@ -104,7 +104,7 @@ export function TradesTable({
                     {strategyName}
                   </td>
                 )}
-                <td className="px-3 py-2 text-center text-[10px] text-muted-foreground">
+                <td className="px-3 py-2 text-center text-2xs text-muted-foreground">
                   {SOURCE_LABEL[t.source] ?? t.source}
                 </td>
                 <td className="px-3 py-2 text-right">
@@ -145,7 +145,7 @@ function SideBadge({ side }: { side: string }) {
   const cls = isBuy ? 'border-up text-up' : 'border-down text-down'
   return (
     <span
-      className={`inline-grid h-5 min-w-6 place-items-center border px-1 text-[10px] ${cls}`}
+      className={`inline-grid h-5 min-w-6 place-items-center border px-1 text-2xs ${cls}`}
     >
       {isBuy ? '買' : '売'}
     </span>
