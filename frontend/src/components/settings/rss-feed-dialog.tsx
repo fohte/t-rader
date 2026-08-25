@@ -121,7 +121,7 @@ export function RssFeedDialog({
           <div className="space-y-2">
             <label
               htmlFor="rss-source"
-              className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               source (slug, 不変) *
             </label>
@@ -142,7 +142,7 @@ export function RssFeedDialog({
           <div className="space-y-2">
             <label
               htmlFor="rss-display-name"
-              className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               表示名 *
             </label>
@@ -159,7 +159,7 @@ export function RssFeedDialog({
           <div className="space-y-2">
             <label
               htmlFor="rss-url"
-              className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               URL *
             </label>
@@ -185,16 +185,12 @@ export function RssFeedDialog({
             />
             <label
               htmlFor="rss-enabled"
-              className="font-mono text-[12px] text-[color:var(--color-text-secondary)]"
+              className="font-mono text-xs text-muted-foreground-strong"
             >
               有効 (集約対象)
             </label>
           </div>
-          {error != null && (
-            <p className="text-[12px] text-[color:var(--color-accent-strategy)]">
-              {error}
-            </p>
-          )}
+          {error != null && <p className="text-xs text-primary">{error}</p>}
           <DialogFooter>
             <Button
               type="button"
