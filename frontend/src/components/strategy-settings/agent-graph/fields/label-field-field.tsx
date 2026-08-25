@@ -25,7 +25,7 @@ export function LabelFieldField({
 
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         ノード名
       </span>
       <Select
@@ -35,7 +35,7 @@ export function LabelFieldField({
       >
         <SelectTrigger
           aria-label="ノード名"
-          className="h-auto w-full max-w-[160px] rounded-none border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] py-1 font-mono text-[11.5px] text-[color:var(--color-text-primary)]"
+          className="h-auto w-full max-w-[160px] rounded-none border-border bg-background py-1 font-mono text-[11.5px] text-foreground"
         >
           <SelectValue placeholder="(選択肢なし)" />
         </SelectTrigger>

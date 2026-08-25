@@ -50,7 +50,7 @@ function Interactive({
 }) {
   const [value, setValue] = useState(initial)
   return (
-    <div className="grid grid-cols-[108px_1fr] items-start gap-x-3 gap-y-2 text-[12px]">
+    <div className="grid grid-cols-[108px_1fr] items-start gap-x-3 gap-y-2 text-xs">
       <ForEachField
         phases={phases}
         index={index}

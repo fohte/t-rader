@@ -296,7 +296,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
     return (
       <p
         data-testid="trigger-list-error"
-        className="font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+        className="font-mono text-xs text-primary"
       >
         trigger 一覧の取得に失敗しました
         {error instanceof Error ? `: ${error.message}` : ''}
@@ -317,18 +317,15 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
         {listError != null && (
           <p
             data-testid="trigger-list-error"
-            className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]"
+            className="font-mono text-2xs text-primary"
           >
             {listError}
           </p>
         )}
 
-        <ul
-          data-testid="trigger-list"
-          className="border border-[color:var(--color-hairline)]"
-        >
+        <ul data-testid="trigger-list" className="border border-border">
           {triggers.length === 0 && (
-            <li className="px-3 py-2 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+            <li className="px-3 py-2 font-mono text-xs text-muted-foreground">
               trigger がまだありません
             </li>
           )}
@@ -337,7 +334,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
             return (
               <li
                 key={t.trigger_id}
-                className="flex items-center gap-1 border-b border-[color:var(--color-hairline)] px-1 last:border-b-0"
+                className="flex items-center gap-1 border-b border-border px-1 last:border-b-0"
               >
                 <button
                   type="button"
@@ -345,15 +342,13 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
                     selectTrigger(t.trigger_id)
                   }}
                   data-active={selectedId === t.trigger_id && !isCreate}
-                  className="flex-1 truncate px-2 py-1.5 text-left font-mono text-[12px] hover:bg-[color:var(--panel-inset)] data-[active=true]:text-[color:var(--color-accent-strategy)]"
+                  className="flex-1 truncate px-2 py-1.5 text-left font-mono text-xs hover:bg-surface-strong data-[active=true]:text-primary"
                 >
                   <span className="uppercase">{t.kind}</span>
-                  <span className="ml-2 text-[color:var(--color-text-tertiary)]">
-                    {label}
-                  </span>
+                  <span className="ml-2 text-muted-foreground">{label}</span>
                 </button>
                 <label
-                  className="flex items-center px-1 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+                  className="flex items-center px-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
                   title={t.enabled ? '有効' : '無効'}
                 >
                   <input
@@ -371,7 +366,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
                     handleDelete(t)
                   }}
                   aria-label={`trigger ${t.kind} ${label} を削除`}
-                  className="px-2 py-1 font-mono text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+                  className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-primary"
                 >
                   削除
                 </button>
@@ -383,7 +378,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
 
       <section>
         {!editing ? (
-          <p className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+          <p className="font-mono text-xs text-muted-foreground">
             左の一覧から trigger を選択するか、新規追加してください。
           </p>
         ) : (
@@ -438,7 +433,7 @@ function TriggerForm({
     >
       <div className="space-y-1.5">
         <label
-          className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+          className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           htmlFor="trigger-kind"
         >
           kind
@@ -450,13 +445,13 @@ function TriggerForm({
           onChange={(e) => {
             update('kind', parseKind(e.target.value))
           }}
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-[12px]"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
         >
           <option value="cron">cron</option>
           <option value="hook">hook</option>
         </select>
         {mode === 'edit' && (
-          <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+          <p className="font-mono text-2xs text-muted-foreground">
             kind は作成後に変更できません。
           </p>
         )}
@@ -465,7 +460,7 @@ function TriggerForm({
       {form.kind === 'cron' ? (
         <div className="space-y-1.5">
           <label
-            className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+            className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
             htmlFor="trigger-schedule"
           >
             schedule (cron 式 UTC)
@@ -482,7 +477,7 @@ function TriggerForm({
       ) : (
         <div className="space-y-1.5">
           <label
-            className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+            className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
             htmlFor="trigger-hook-slug"
           >
             hook_slug (POST /api/hooks/:slug)
@@ -501,7 +496,7 @@ function TriggerForm({
       {form.kind === 'hook' && (
         <div className="space-y-1.5">
           <label
-            className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+            className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
             htmlFor="trigger-event-match"
           >
             event_match (JSON、空欄なら無条件)
@@ -514,14 +509,14 @@ function TriggerForm({
               update('eventMatch', e.target.value)
             }}
             rows={4}
-            className="w-full resize-y border border-input bg-transparent p-2 font-mono text-[12px]"
+            className="w-full resize-y border border-input bg-transparent p-2 font-mono text-xs"
           />
         </div>
       )}
 
       <div className="space-y-1.5">
         <label
-          className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+          className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           htmlFor="trigger-prompt"
         >
           prompt_template
@@ -534,12 +529,12 @@ function TriggerForm({
             update('promptTemplate', e.target.value)
           }}
           rows={6}
-          className="w-full resize-y border border-input bg-transparent p-2 font-mono text-[12px]"
+          className="w-full resize-y border border-input bg-transparent p-2 font-mono text-xs"
         />
       </div>
 
       <label
-        className="flex items-center gap-2 font-mono text-[12px]"
+        className="flex items-center gap-2 font-mono text-xs"
         htmlFor="trigger-enabled"
       >
         <input
@@ -556,7 +551,7 @@ function TriggerForm({
       {formError != null && (
         <p
           data-testid="trigger-form-error"
-          className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]"
+          className="font-mono text-2xs text-primary"
         >
           {formError}
         </p>

@@ -73,14 +73,14 @@ export function AgentGraphEditor({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+        <label className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
           agent_graph
         </label>
         <div className="flex items-center gap-3">
           {dirty && (
             <span
               data-testid="dirty-indicator"
-              className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]"
+              className="font-mono text-2xs text-primary"
             >
               未保存の変更あり
             </span>
@@ -114,7 +114,7 @@ export function AgentGraphEditor({
       {!formAvailable && (
         <p
           data-testid="form-unavailable-notice"
-          className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]"
+          className="font-mono text-2xs text-muted-foreground"
         >
           YAML の構文が壊れているためフォーム表示に切り替えられません。YAML
           を直接修正してください。
@@ -151,7 +151,7 @@ export function AgentGraphEditor({
         {saveError != null && (
           <span
             data-testid="save-error"
-            className="whitespace-pre-wrap font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+            className="whitespace-pre-wrap font-mono text-xs text-primary"
           >
             {saveError}
           </span>
@@ -165,7 +165,7 @@ function viewChipClass(active: boolean) {
   return cn(
     'border px-2 py-0.5 font-mono text-[10.5px]',
     active
-      ? 'border-[color:var(--color-accent-strategy)] bg-[color:var(--color-bg-tertiary)] text-[color:var(--color-accent-strategy)]'
-      : 'border-[color:var(--color-border-strategy)] text-[color:var(--color-text-tertiary)] disabled:opacity-30',
+      ? 'border-primary bg-bg-tertiary text-primary'
+      : 'border-border text-muted-foreground disabled:opacity-30',
   )
 }

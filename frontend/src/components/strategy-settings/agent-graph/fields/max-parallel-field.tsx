@@ -8,7 +8,7 @@ interface MaxParallelFieldProps {
 export function MaxParallelField({ value, onChange }: MaxParallelFieldProps) {
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         並列上限
       </span>
       <Input
@@ -21,7 +21,7 @@ export function MaxParallelField({ value, onChange }: MaxParallelFieldProps) {
             e.target.value === '' ? undefined : Number(e.target.value)
           onChange(next == null || Number.isNaN(next) ? undefined : next)
         }}
-        className="h-auto w-20 rounded-none border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] py-1 font-mono text-[11.5px] text-[color:var(--color-text-primary)]"
+        className="h-auto w-20 rounded-none border-border bg-background py-1 font-mono text-[11.5px] text-foreground"
       />
     </>
   )
