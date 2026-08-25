@@ -6,12 +6,19 @@ import {
   configureUnhandledApiRequestCheck,
   reportUnhandledApiRequest,
 } from '@fohte/storybook-addon/preview'
-import { withThemeByClassName } from '@storybook/addon-themes'
 import type { Preview } from '@storybook/react-vite'
 import { setupWorker } from 'msw/browser'
 import { mswLoader } from 'msw-storybook-addon/csf3'
 
 configureUnhandledApiRequestCheck({ pathPrefixes: ['/api/'] })
+
+// index.html は class="dark" を静的に持つが、Storybook の preview iframe には
+// 対応物がない。decorator の useEffect で付与すると、useEffect はマウント済みの
+// 子要素の effect より後に実行されるため、DOM の class を直接読んで初期化する
+// コンポーネント (candlestick-chart 等) がマウント時点でまだ class 無し状態を
+// 見てしまう。モジュール評価時点 (どの story のマウントより前) に同期的に
+// 付与することでこれを避ける。
+document.documentElement.classList.add('dark')
 
 // @fohte/storybook-addon publishes only a `./preview` subpath export (no
 // preset/manager entry), so listing it in main.ts's `addons` never wires its
@@ -64,15 +71,6 @@ const preview: Preview = {
       ],
     },
   },
-  decorators: [
-    withThemeByClassName({
-      themes: {
-        light: '',
-        dark: 'dark',
-      },
-      defaultTheme: 'light',
-    }),
-  ],
   loaders: [
     mswLoader(async () => {
       const worker = setupWorker()
