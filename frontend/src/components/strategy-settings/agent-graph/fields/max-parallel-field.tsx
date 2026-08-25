@@ -21,7 +21,7 @@ export function MaxParallelField({ value, onChange }: MaxParallelFieldProps) {
             e.target.value === '' ? undefined : Number(e.target.value)
           onChange(next == null || Number.isNaN(next) ? undefined : next)
         }}
-        className="h-auto w-20 rounded-none border-border bg-background py-1 font-mono text-[11.5px] text-foreground"
+        className="h-auto w-20 rounded-none border-border bg-background py-1 font-mono text-xs text-foreground"
       />
     </>
   )

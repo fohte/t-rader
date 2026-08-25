@@ -163,7 +163,7 @@ export function AgentGraphEditor({
 
 function viewChipClass(active: boolean) {
   return cn(
-    'border px-2 py-0.5 font-mono text-[10.5px]',
+    'border px-2 py-0.5 font-mono text-2xs',
     active
       ? 'border-primary bg-bg-tertiary text-primary'
       : 'border-border text-muted-foreground disabled:opacity-30',

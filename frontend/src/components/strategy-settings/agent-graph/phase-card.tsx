@@ -51,9 +51,9 @@ export function PhaseCard({
           onChange={(e) => {
             onLabelChange(e.target.value)
           }}
-          className="h-auto w-40 rounded-none border-transparent bg-transparent px-1 py-0.5 font-bold text-[13.5px] text-foreground hover:border-border focus-visible:border-border focus-visible:bg-background focus-visible:ring-0"
+          className="h-auto w-40 rounded-none border-transparent bg-transparent px-1 py-0.5 font-bold text-sm text-foreground hover:border-border focus-visible:border-border focus-visible:bg-background focus-visible:ring-0"
         />
-        <span className="border border-border bg-bg-tertiary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground-strong">
+        <span className="border border-border bg-bg-tertiary px-1.5 py-0.5 font-mono text-2xs text-muted-foreground-strong">
           {phase.model === '' ? '(未設定)' : phase.model}
         </span>
         <div className="ml-auto flex items-center gap-1">
@@ -103,7 +103,7 @@ export function PhaseCard({
         </div>
       )}
 
-      <div className="mt-2.5 grid grid-cols-[108px_1fr] items-start gap-x-3 gap-y-2 text-xs">
+      <div className="mt-2.5 grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
         {children}
       </div>
     </div>
@@ -112,7 +112,7 @@ export function PhaseCard({
   if (phase.forEach == null) return card
 
   return (
-    <div className="grid grid-cols-[22px_1fr]">
+    <div className="grid grid-cols-(--grid-cols-foreach-indent)">
       <div
         aria-hidden
         className="mb-6 ml-2.5 border-b border-l border-border"

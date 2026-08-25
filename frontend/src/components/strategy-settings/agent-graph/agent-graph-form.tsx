@@ -77,7 +77,7 @@ export function AgentGraphForm({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-muted-foreground-strong">
+        <label className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground-strong">
           <input
             type="checkbox"
             aria-label="フェーズ分割を有効にする"

@@ -44,7 +44,7 @@ export function OutputField({ value, onChange }: OutputFieldProps) {
         出力スキーマ
       </span>
       <div className="border border-border">
-        <div className="flex items-center gap-2 border-b border-border bg-bg-tertiary px-2 py-1 font-mono text-[10.5px] text-muted-foreground">
+        <div className="flex items-center gap-2 border-b border-border bg-bg-tertiary px-2 py-1 font-mono text-2xs text-muted-foreground">
           <span>output (JSON Schema)</span>
           <span
             className={

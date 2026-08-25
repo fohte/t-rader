@@ -41,7 +41,7 @@ export function ForEachField({
       >
         <SelectTrigger
           aria-label="実行回数"
-          className="h-auto w-full max-w-sm rounded-none border-border bg-background py-1 font-mono text-[11.5px] text-foreground"
+          className="h-auto w-full max-w-sm rounded-none border-border bg-background py-1 font-mono text-xs text-foreground"
         >
           <SelectValue />
         </SelectTrigger>

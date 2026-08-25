@@ -35,7 +35,7 @@ export function LabelFieldField({
       >
         <SelectTrigger
           aria-label="ノード名"
-          className="h-auto w-full max-w-[160px] rounded-none border-border bg-background py-1 font-mono text-[11.5px] text-foreground"
+          className="h-auto w-full max-w-40 rounded-none border-border bg-background py-1 font-mono text-xs text-foreground"
         >
           <SelectValue placeholder="(選択肢なし)" />
         </SelectTrigger>

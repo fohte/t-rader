@@ -31,7 +31,7 @@ export function ChipList({
       {values.map((name) => (
         <span
           key={name}
-          className="inline-flex items-center gap-1 border border-border bg-bg-tertiary px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground-strong"
+          className="inline-flex items-center gap-1 border border-border bg-bg-tertiary px-1.5 py-0.5 font-mono text-2xs text-muted-foreground-strong"
         >
           {name}
           <button
@@ -51,7 +51,7 @@ export function ChipList({
           <button
             type="button"
             aria-label={addAriaLabel}
-            className="border border-dashed border-border px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground hover:text-foreground"
+            className="border border-dashed border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
           >
             + 追加
           </button>
@@ -71,7 +71,7 @@ export function ChipList({
                       onAdd(name)
                       setOpen(false)
                     }}
-                    className="w-full truncate px-2 py-1 text-left font-mono text-[11.5px] hover:bg-surface-strong"
+                    className="w-full truncate px-2 py-1 text-left font-mono text-xs hover:bg-surface-strong"
                   >
                     {name}
                   </button>

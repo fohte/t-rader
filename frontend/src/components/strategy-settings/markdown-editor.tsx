@@ -78,7 +78,7 @@ export function MarkdownEditor({
               setValue(e.target.value)
             }}
             style={{ minHeight: `${String(minHeight)}px` }}
-            className="w-full resize-y border border-border bg-bg-secondary p-3 font-mono text-[12.5px] leading-relaxed text-foreground outline-none focus:border-muted-foreground"
+            className="w-full resize-y border border-border bg-bg-secondary p-3 font-mono text-xs leading-relaxed text-foreground outline-none focus:border-muted-foreground"
           />
         </div>
         <div className="space-y-1.5">

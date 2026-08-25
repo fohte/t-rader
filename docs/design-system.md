@@ -142,6 +142,18 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
 
+arbitrary value 置換 PR で半端な `text-[Npx]` を見つけたら、以下の表で最寄りの段へ丸めること。
+
+| 現状の arbitrary value | 丸め先            | 理由                  |
+| ---------------------- | ----------------- | --------------------- |
+| `text-[10px]`          | `text-2xs` (11px) | 11px に最も近い既存段 |
+| `text-[10.5px]`        | `text-2xs` (11px) | 同上                  |
+| `text-[11.5px]`        | `text-xs` (12px)  | 12px に最も近い既存段 |
+| `text-[12.5px]`        | `text-xs` (12px)  | 同上                  |
+| `text-[13.5px]`        | `text-sm` (14px)  | 14px に最も近い既存段 |
+
+±1px の視覚的なズレは許容する。許容しないのは要素間の順序関係が崩れることで、表を機械的に適用する前に確認すること。
+
 ## Spacing scale
 
 `--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
@@ -165,6 +177,17 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 ±1px の視覚的なズレは許容する。
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
+
+## Layout
+
+`--spacing` の丸めでは意味が壊れる固有の寸法 (非対称 2 カラムの grid track 等) は、`:root` にプレーンな CSS カスタムプロパティとして個別追加し、Tailwind v4 の `grid-cols-(<custom-property>)` 構文 (`grid-template-columns: var(<custom-property>)` の糖衣構文) で参照する。`@theme` への登録は不要で、`grid-cols-[...]` のような bracket 構文ではないため `no-arbitrary-value` の対象にもならない。
+
+| Token                          | 値                     | 用途                                         |
+| ------------------------------ | ---------------------- | -------------------------------------------- |
+| `--grid-cols-field-label`      | `108px 1fr`            | ラベル列 + 値列の 2 カラムフィールドグリッド |
+| `--grid-cols-foreach-indent`   | `22px 1fr`             | forEach ツリーのインデント表現               |
+| `--grid-cols-skills-sidebar`   | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン         |
+| `--grid-cols-triggers-sidebar` | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン       |
 
 ## Non-goals
 

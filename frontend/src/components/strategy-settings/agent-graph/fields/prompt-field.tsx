@@ -16,7 +16,7 @@ export function PromptField({ value, onChange }: PromptFieldProps) {
           onChange(e.target.value)
         }}
         rows={3}
-        className="w-full resize-y border border-border bg-background p-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground-strong outline-none focus:border-muted-foreground"
+        className="w-full resize-y border border-border bg-background p-2 font-mono text-xs leading-relaxed text-muted-foreground-strong outline-none focus:border-muted-foreground"
       />
     </>
   )

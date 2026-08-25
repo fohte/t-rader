@@ -289,7 +289,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
   }
 
   if (isPending) {
-    return <Skeleton className="h-[320px] w-full" />
+    return <Skeleton className="h-80 w-full" />
   }
 
   if (isError) {
@@ -308,7 +308,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
   const isCreate = mode === 'create'
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-(--grid-cols-triggers-sidebar)">
       <aside className="space-y-3">
         <Button type="button" onClick={startCreate}>
           + 新しい trigger
@@ -348,7 +348,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
                   <span className="ml-2 text-muted-foreground">{label}</span>
                 </button>
                 <label
-                  className="flex items-center px-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
+                  className="flex items-center px-1 font-mono text-2xs uppercase tracking-wider text-muted-foreground"
                   title={t.enabled ? '有効' : '無効'}
                 >
                   <input

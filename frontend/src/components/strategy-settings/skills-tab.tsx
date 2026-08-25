@@ -121,11 +121,11 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
   }
 
   if (isPending) {
-    return <Skeleton className="h-[320px] w-full" />
+    return <Skeleton className="h-80 w-full" />
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-(--grid-cols-skills-sidebar)">
       <aside className="space-y-3">
         <div className="space-y-1.5">
           <label
@@ -187,7 +187,7 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
                   setSaveError(null)
                 }}
                 data-active={selected === name}
-                className="flex-1 truncate px-2 py-1.5 text-left font-mono text-[12.5px] hover:bg-surface-strong data-[active=true]:text-primary"
+                className="flex-1 truncate px-2 py-1.5 text-left font-mono text-xs hover:bg-surface-strong data-[active=true]:text-primary"
               >
                 {name}
               </button>
