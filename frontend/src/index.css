@@ -217,8 +217,8 @@
 /*
  * transition-property には --theme namespace がなく、単一プロパティであっても
  * bracket 構文 (transition-[width] 等) は no-arbitrary-value の対象になる。
- * shadcn Sidebar / chat-sidebar の折りたたみアニメーションが使う組み合わせを
- * 個別の named utility にする。
+ * shadcn Sidebar / chat-sidebar の折りたたみアニメーションや input/select の
+ * focus 遷移が使う組み合わせを個別の named utility にする。
  */
 @utility transition-width {
   transition-property: width;
@@ -231,6 +231,9 @@
 }
 @utility transition-margin-opacity {
   transition-property: margin, opacity;
+}
+@utility transition-colors-shadow {
+  transition-property: color, box-shadow;
 }
 
 @layer base {

@@ -154,7 +154,7 @@ transition-property のように `@theme` namespace を持たないプロパテ�
 
 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする (例: `--note-graph-height` → `h-note-graph`)。
 44px を超えて丸め対象外になった値のうち、viewport 単位を含むなど `--spacing` の倍数で表現できないものは、同様に `:root` に素の名前 (例: `--floating-chat-max-w`) で token を定義したうえで、`@theme inline` 側に `--spacing-<name>` として re-export し、この節の表に追記すること。
-同じパターンで、shadcn Dialog の viewport 端マージン (`--dialog-inset`) や Sidebar の派生幅 (`--sidebar-width-icon-inset`/`--sidebar-width-icon-inset-bordered`/`--sidebar-width-negative`) も `:root` に計算値の named token として定義してある。
+一方、`@theme inline` への re-export が不要で、後述の Layout 節と同じ `(<custom-property>)` 構文 (例: `max-w-(--dialog-inset)`) で直接参照するだけで済む値もある。shadcn Dialog の viewport 端マージン (`--dialog-inset`) や Sidebar の派生幅 (`--sidebar-width-icon-inset`/`--sidebar-width-icon-inset-bordered`/`--sidebar-width-negative`) がこれに該当し、`:root` に計算値の named token として定義してあるのみで、re-export や表への追記はしていない。
 box-shadow も同様に named token 化する場合があり、shadcn Sidebar の outline variant 用に `@theme inline` で `--shadow-sidebar-border`/`--shadow-sidebar-accent` を定義してある。
 
 | Token                   | 値                      | Tailwind utility        | 用途                                                                   |
