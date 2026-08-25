@@ -64,7 +64,7 @@ function GraphNotice({ children }: { children: ReactNode }) {
   return (
     <div
       role="alert"
-      className="my-3 border border-dashed border-[color:var(--color-hairline)] p-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]"
+      className="my-3 border border-dashed border-border p-3 font-mono text-xs text-muted-foreground"
     >
       {children}
     </div>
@@ -78,7 +78,7 @@ function GraphErrorFallback({ resetErrorBoundary }: FallbackProps) {
       <button
         type="button"
         onClick={resetErrorBoundary}
-        className="ml-2 underline hover:text-[color:var(--color-text-secondary)]"
+        className="ml-2 underline hover:text-muted-foreground-strong"
       >
         再試行
       </button>
@@ -106,12 +106,12 @@ export function MarkdownBody({
 }: MarkdownBodyProps) {
   const components: Components & NoteTokenComponents = {
     h1: ({ children }) => (
-      <h1 className="mt-5 mb-2.5 text-[22px] font-bold leading-tight tracking-tight">
+      <h1 className="mt-5 mb-2.5 text-2xl font-bold leading-tight tracking-tight">
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 className="mt-6 mb-2.5 text-[17px] font-bold leading-tight tracking-tight">
+      <h2 className="mt-6 mb-2.5 text-lg font-bold leading-tight tracking-tight">
         {children}
       </h2>
     ),
@@ -120,32 +120,35 @@ export function MarkdownBody({
     h5: ({ children }) => <h5 className={HEADING3_CLASS}>{children}</h5>,
     h6: ({ children }) => <h6 className={HEADING3_CLASS}>{children}</h6>,
     p: ({ children }) => (
-      <p className="my-2.5 text-[14px] leading-[1.75] text-[color:var(--color-text-primary)]">
+      <p className="my-2.5 text-sm leading-relaxed text-foreground">
         {children}
       </p>
     ),
     ul: ({ children }) => (
-      <ul className="my-2.5 ml-5 list-disc space-y-1 text-[14px] leading-[1.7]">
+      <ul className="my-2.5 ml-5 list-disc space-y-1 text-sm leading-relaxed">
         {children}
       </ul>
     ),
     ol: ({ children }) => (
-      <ol className="my-2.5 ml-5 list-decimal space-y-1 text-[14px] leading-[1.7]">
+      <ol className="my-2.5 ml-5 list-decimal space-y-1 text-sm leading-relaxed">
         {children}
       </ol>
     ),
     blockquote: ({ children }) => (
-      <blockquote className="my-3 border-l-2 border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] py-1.5 pl-3 text-[13.5px] text-[color:var(--color-text-secondary)]">
+      <blockquote className="my-3 border-l-2 border-border bg-surface-strong py-1.5 pl-3 text-sm text-muted-foreground-strong">
         {children}
       </blockquote>
     ),
     pre: ({ children }) => (
-      <pre className="my-3 overflow-x-auto border border-[color:var(--color-hairline)] bg-[color:var(--panel-inset)] p-3 font-mono text-[12.5px] leading-relaxed text-[color:var(--color-text-primary)] [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
+      <pre className="my-3 overflow-x-auto border border-border bg-surface-strong p-3 font-mono text-xs leading-relaxed text-foreground [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-xs">
         {children}
       </pre>
     ),
     code: ({ children }) => (
-      <code className="border border-[color:var(--color-hairline)] bg-[color:var(--panel-inset)] px-1 py-px font-mono text-[0.88em]">
+      // text-[0.88em] は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
+      // ため、周辺テキストに追従する相対値のまま残す。固定トークンに丸めると
+      // 見出し内で不自然に縮小する。
+      <code className="border border-border bg-surface-strong px-1 py-px font-mono text-[0.88em]">
         {children}
       </code>
     ),
@@ -157,30 +160,26 @@ export function MarkdownBody({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-[color:var(--color-accent-strategy)] hover:underline"
+        className="text-primary hover:underline"
       >
         {children}
       </a>
     ),
     table: ({ children }) => (
-      <div className="my-3 overflow-x-auto border border-[color:var(--color-hairline)]">
-        <table className="w-full border-collapse text-[13px]">{children}</table>
+      <div className="my-3 overflow-x-auto border border-border">
+        <table className="w-full border-collapse text-sm">{children}</table>
       </div>
     ),
     thead: ({ children }) => (
-      <thead className="border-b border-[color:var(--color-border-strategy)]">
-        {children}
-      </thead>
+      <thead className="border-b border-border">{children}</thead>
     ),
     tr: ({ children }) => (
-      <tr className="border-b border-[color:var(--color-hairline)] last:border-b-0">
-        {children}
-      </tr>
+      <tr className="border-b border-border last:border-b-0">{children}</tr>
     ),
     th: ({ children, node }) => (
       <th
         align={cellAlign(node?.properties.align)}
-        className="px-3 py-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+        className="px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wider text-muted-foreground"
       >
         {children}
       </th>
@@ -188,7 +187,7 @@ export function MarkdownBody({
     td: ({ children, node }) => (
       <td
         align={cellAlign(node?.properties.align)}
-        className="px-3 py-1.5 text-[color:var(--color-text-primary)]"
+        className="px-3 py-1.5 text-foreground"
       >
         {children}
       </td>
@@ -199,12 +198,12 @@ export function MarkdownBody({
         type="button"
         onClick={() => onAnno?.(annoId)}
         title={`annotation ${annoId}`}
-        className="inline-flex items-baseline gap-1 border border-[color:var(--color-accent-strategy)]/40 bg-[color:var(--panel-inset)] px-1.5 py-px font-mono text-[0.82em] text-[color:var(--color-accent-strategy)] hover:bg-[color:var(--color-accent-strategy)]/15"
+        // text-[0.82em] も同様に markdown 中の任意の位置に埋め込まれるため、
+        // 周辺テキストに追従する相対値のまま残す。
+        className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-[0.82em] text-primary hover:bg-primary/15"
       >
         <span className="font-bold">{annoId}</span>
-        <span className="text-[0.85em] text-[color:var(--color-text-tertiary)]">
-          annotation
-        </span>
+        <span className="text-[0.85em] text-muted-foreground">annotation</span>
       </button>
     ),
     'note-graph': ({ graphId }) => {
@@ -215,7 +214,7 @@ export function MarkdownBody({
       return (
         <div className="my-3">
           {def.title != null && (
-            <div className="mb-1 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+            <div className="mb-1 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
               {def.title}
             </div>
           )}
@@ -226,7 +225,7 @@ export function MarkdownBody({
             <GraphRenderer
               def={def}
               onOpenRef={onRef}
-              className="h-[420px] border border-[color:var(--color-hairline)]"
+              className="h-note-graph border border-border"
             />
           </ErrorBoundary>
         </div>
@@ -235,7 +234,7 @@ export function MarkdownBody({
   }
 
   return (
-    <div className="text-[color:var(--color-text-primary)]">
+    <div className="text-foreground">
       <Markdown
         remarkPlugins={[remarkGfm, remarkNoteTokens]}
         components={components}

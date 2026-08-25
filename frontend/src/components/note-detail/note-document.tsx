@@ -79,7 +79,7 @@ export function NoteDocument({
             left: `${String(sel.x)}px`,
             top: `${String(sel.y - 8)}px`,
           }}
-          className="absolute z-30 -translate-x-1/2 -translate-y-full border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-1 font-mono text-[12px] shadow-lg"
+          className="absolute z-30 -translate-x-1/2 -translate-y-full border border-border bg-bg-secondary p-1 font-mono text-xs shadow-lg"
         >
           <button
             type="button"
@@ -90,9 +90,9 @@ export function NoteDocument({
               onQuoteSelection(sel.text)
               setSel(null)
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 text-[color:var(--color-text-primary)] hover:bg-[color:var(--panel-inset)]"
+            className="inline-flex items-center gap-1 px-2 py-1 text-foreground hover:bg-surface-strong"
           >
-            <span className="text-[color:var(--color-accent-strategy)]">+</span>
+            <span className="text-primary">+</span>
             コメント
           </button>
           <button
@@ -106,11 +106,9 @@ export function NoteDocument({
               )
               setSel(null)
             }}
-            className="inline-flex items-center gap-1 px-2 py-1 text-[color:var(--color-text-primary)] hover:bg-[color:var(--panel-inset)]"
+            className="inline-flex items-center gap-1 px-2 py-1 text-foreground hover:bg-surface-strong"
           >
-            <span className="text-[color:var(--color-accent-strategy)]">
-              &gt;_
-            </span>
+            <span className="text-primary">&gt;_</span>
             アナリストに聞く
           </button>
         </div>

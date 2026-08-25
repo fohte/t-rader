@@ -156,6 +156,9 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 ±1px の視覚的なズレは許容する。
 許容しないのは要素間の順序関係が崩れることで、表を機械的に適用する前に確認すること。
 
+markdown 本文中の任意の位置 (見出し内含む) に埋め込まれるインライン要素 (`[[stock:xxx]]` 等の ref chip、注釈バッジ等) の `text-[N.NNem]` は例外で丸めない。
+埋め込み先ごとに周辺テキストへ追従させる意図の相対値であり、固定の `text-*` トークンに丸めると見出し内で不自然に縮小する。
+
 ## Spacing scale
 
 `--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
@@ -183,6 +186,7 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、まず Tailw
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 ring-width (`ring`、`ring-<N>`) も同様に対象外。
 border-width と同じく Tailwind の固定スケールが `<N>px` に直接解決するため、既存の Tailwind utility (`ring-3` など) をそのまま使う。
+丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする (例: `--note-graph-height` → `h-note-graph`)。
 
 ## Layout
 
