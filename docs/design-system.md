@@ -144,15 +144,16 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 arbitrary value 置換 PR で半端な `text-[Npx]` を見つけたら、以下の表で最寄りの段へ丸めること。
 
-| 現状の arbitrary value | 丸め先            | 理由                  |
-| ---------------------- | ----------------- | --------------------- |
-| `text-[10px]`          | `text-2xs` (11px) | 11px に最も近い既存段 |
-| `text-[10.5px]`        | `text-2xs` (11px) | 同上                  |
-| `text-[11.5px]`        | `text-xs` (12px)  | 12px に最も近い既存段 |
-| `text-[12.5px]`        | `text-xs` (12px)  | 同上                  |
-| `text-[13.5px]`        | `text-sm` (14px)  | 14px に最も近い既存段 |
+| 現状の arbitrary value | 丸め先            | 理由                                |
+| ---------------------- | ----------------- | ----------------------------------- |
+| `text-[10px]`          | `text-2xs` (11px) | 11px に最も近い既存段               |
+| `text-[10.5px]`        | `text-2xs` (11px) | 同上                                |
+| `text-[11.5px]`        | `text-xs` (12px)  | 11px と 12px の中間、同点は切り上げ |
+| `text-[12.5px]`        | `text-xs` (12px)  | 12px に最も近い既存段               |
+| `text-[13.5px]`        | `text-sm` (14px)  | 14px に最も近い既存段               |
 
-±1px の視覚的なズレは許容する。許容しないのは要素間の順序関係が崩れることで、表を機械的に適用する前に確認すること。
+±1px の視覚的なズレは許容する。
+許容しないのは要素間の順序関係が崩れることで、表を機械的に適用する前に確認すること。
 
 ## Spacing scale
 
@@ -180,7 +181,8 @@ border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px
 
 ## Layout
 
-`--spacing` の丸めでは意味が壊れる固有の寸法 (非対称 2 カラムの grid track 等) は、`:root` にプレーンな CSS カスタムプロパティとして個別追加し、Tailwind v4 の `grid-cols-(<custom-property>)` 構文 (`grid-template-columns: var(<custom-property>)` の糖衣構文) で参照する。`@theme` への登録は不要で、`grid-cols-[...]` のような bracket 構文ではないため `no-arbitrary-value` の対象にもならない。
+`--spacing` の丸めでは意味が壊れる固有の寸法 (非対称 2 カラムの grid track 等) は、`:root` にプレーンな CSS カスタムプロパティとして個別追加し、Tailwind v4 の `grid-cols-(<custom-property>)` 構文 (`grid-template-columns: var(<custom-property>)` の糖衣構文) で参照する。
+`@theme` への登録は不要で、`grid-cols-[...]` のような bracket 構文ではないため `no-arbitrary-value` の対象にもならない。
 
 | Token                          | 値                     | 用途                                         |
 | ------------------------------ | ---------------------- | -------------------------------------------- |
