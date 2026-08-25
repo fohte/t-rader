@@ -16,7 +16,7 @@ const HYPOTHESIS_STATUS_COLOR: Record<string, string> = {
   unverified: 'var(--color-status-unread)',
   supported: 'var(--color-status-approved)',
   refuted: 'var(--color-down)',
-  obsolete: 'var(--color-text-tertiary)',
+  obsolete: 'var(--muted-foreground)',
 }
 
 interface HypothesisStatusPillProps {
@@ -29,7 +29,7 @@ export function HypothesisStatusPill({
   className = '',
 }: HypothesisStatusPillProps) {
   const label = HYPOTHESIS_STATUS_LABEL[status] ?? status
-  const color = HYPOTHESIS_STATUS_COLOR[status] ?? 'var(--color-text-tertiary)'
+  const color = HYPOTHESIS_STATUS_COLOR[status] ?? 'var(--muted-foreground)'
   return (
     <span
       data-testid="hypothesis-status-pill"

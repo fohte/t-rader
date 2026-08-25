@@ -18,8 +18,7 @@ export function RefChip({
   const kindJP = REF_KIND_JP[ref.kind]
 
   const baseInner =
-    // eslint-disable-next-line no-restricted-syntax -- text-[0.88em] は親要素のフォントサイズ相対値で @theme に token 化されていない
-    'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-foreground'
+    'inline-flex items-baseline gap-1 font-mono text-em-88 leading-tight whitespace-nowrap text-foreground'
   const underline = 'border-b border-dotted border-muted-foreground pb-px'
   const pillCls = 'border border-border px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
@@ -31,13 +30,13 @@ export function RefChip({
   const inner = (
     <>
       {showKind && (
-        <span className="text-[0.78em] tracking-wide text-muted-foreground">
+        <span className="text-em-78 tracking-wide text-muted-foreground">
           {kindJP}
         </span>
       )}
       <span>{ref.name}</span>
       {ref.sub != null && ref.sub !== '' && (
-        <span className="text-[0.85em] text-muted-foreground">{ref.sub}</span>
+        <span className="text-em-85 text-muted-foreground">{ref.sub}</span>
       )}
     </>
   )

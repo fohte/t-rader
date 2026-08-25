@@ -55,7 +55,7 @@ function NoteDetailPage() {
       >
         &lt; 戦略ホームに戻る
       </Link>
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="border border-border bg-card px-5 py-5">
           <NoteHeader note={note} strategyId={id} />
           <NoteDocument

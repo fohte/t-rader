@@ -161,7 +161,7 @@ function AnnotationDetailPage() {
         <p className="mb-4 whitespace-pre-wrap text-base leading-relaxed">
           {annotation.text}
         </p>
-        <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-[120px_minmax(0,1fr)]">
+        <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-(--grid-cols-annotation-fields)">
           <dt>銘柄</dt>
           <dd>
             {stockRef.name}

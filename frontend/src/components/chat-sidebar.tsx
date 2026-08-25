@@ -17,7 +17,7 @@ export function ChatSidebar({ isOpen, onClose }: ChatSidebarProps) {
       // transition は width のみに絞る。transition-all にすると border-l の出現に伴う
       // border-left-width の 0→1px 変化もアニメーションしてしまい、意図した snap 挙動が崩れる
       className={cn(
-        'overflow-hidden bg-background transition-[width] duration-300 ease-in-out',
+        'overflow-hidden bg-background transition-width duration-300 ease-in-out',
         isOpen ? 'box-content w-80 border-l' : 'w-0',
       )}
     >

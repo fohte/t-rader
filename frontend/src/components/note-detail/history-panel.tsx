@@ -41,7 +41,7 @@ export function HistoryPanel({ noteId }: HistoryPanelProps) {
             return (
               <div
                 key={h.id}
-                className="grid grid-cols-[auto_auto_1fr] items-baseline gap-2 px-3.5 py-2 font-mono text-2xs"
+                className="grid grid-cols-(--grid-cols-history-entry) items-baseline gap-2 px-3.5 py-2 font-mono text-2xs"
               >
                 <span className="text-muted-foreground">
                   {formatRelative(h.created_at)}

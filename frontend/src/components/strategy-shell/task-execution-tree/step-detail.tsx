@@ -27,7 +27,7 @@ export function StepDetail({
 
   return (
     <div className="mb-2 ml-4 space-y-2 border-l border-border py-1 pl-3 text-2xs text-muted-foreground-strong">
-      <div className="grid grid-cols-[64px_1fr] gap-x-2.5 gap-y-1">
+      <div className="grid grid-cols-(--grid-cols-step-detail) gap-x-2.5 gap-y-1">
         <span>フェーズ</span>
         <b className="font-semibold text-foreground">{step.label}</b>
         <span>モデル</span>
