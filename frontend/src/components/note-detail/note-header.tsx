@@ -15,28 +15,18 @@ export function NoteHeader({ note, strategyId }: NoteHeaderProps) {
   const isLLM = note.created_by_kind === 'llm'
 
   return (
-    <header className="mb-5 border-b border-[color:var(--color-hairline)] pb-4">
-      <div className="mb-3 border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-3 py-2 font-mono text-[11.5px] leading-relaxed text-[color:var(--color-text-secondary)]">
-        <span className="text-[color:var(--color-text-tertiary)]">type:</span>{' '}
-        <span className="text-[color:var(--color-text-primary)]">
-          {note.type_tag ?? '—'}
-        </span>{' '}
-        <span className="text-[color:var(--color-text-tertiary)]">status:</span>{' '}
-        <span className="text-[color:var(--color-text-primary)]">
-          {note.status}
-        </span>{' '}
-        <span className="text-[color:var(--color-text-tertiary)]">
-          strategy:
-        </span>{' '}
-        <span className="text-[color:var(--color-text-primary)]">
-          {strategyId}
-        </span>
+    <header className="mb-5 border-b border-border pb-4">
+      <div className="mb-3 border border-border bg-surface-strong px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground-strong">
+        <span className="text-muted-foreground">type:</span>{' '}
+        <span className="text-foreground">{note.type_tag ?? '—'}</span>{' '}
+        <span className="text-muted-foreground">status:</span>{' '}
+        <span className="text-foreground">{note.status}</span>{' '}
+        <span className="text-muted-foreground">strategy:</span>{' '}
+        <span className="text-foreground">{strategyId}</span>
         {refs.length > 0 && (
           <>
             <br />
-            <span className="text-[color:var(--color-text-tertiary)]">
-              refs:
-            </span>{' '}
+            <span className="text-muted-foreground">refs:</span>{' '}
             <span className="inline-flex flex-wrap items-center gap-1.5 align-baseline">
               {refs.map((r) => (
                 <RefChip key={r} token={r} />
@@ -45,13 +35,13 @@ export function NoteHeader({ note, strategyId }: NoteHeaderProps) {
           </>
         )}
       </div>
-      <h1 className="mb-2 text-[26px] font-bold leading-tight tracking-tight text-[color:var(--color-text-primary)]">
+      <h1 className="mb-2 text-2xl font-bold leading-tight tracking-tight text-foreground">
         {note.title}
       </h1>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-2xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span
-            className={`font-bold ${isLLM ? 'text-[color:var(--color-accent-strategy)]' : 'text-[color:var(--color-text-primary)]'}`}
+            className={`font-bold ${isLLM ? 'text-primary' : 'text-foreground'}`}
           >
             &gt;
           </span>
