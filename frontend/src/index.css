@@ -79,9 +79,10 @@
   --status-task-running: #fbbf24;
 
   /*
-   * 互換エイリアス。#122 で導入した旧トークン名を、上記の tq 由来の新トークンを
-   * 指すエイリアスとして残す。既存の参照を壊さず後続 PR (arbitrary value の
-   * 置換) を並列で進めるためのもの。後続 PR が全て merge されたら削除する。
+   * 互換エイリアス。strategy tokens 導入時に定義した旧トークン名を、上記の
+   * tq 由来の新トークンを指すエイリアスとして残す。既存の参照を壊さず後続 PR
+   * (arbitrary value の置換) を並列で進めるためのもの。後続 PR が全て
+   * merge されたら削除する。
    */
   --color-bg-primary: var(--background);
   --color-text-primary: var(--foreground);
@@ -136,6 +137,8 @@
   --color-surface-strong: var(--surface-strong);
   --color-muted-foreground-strong: var(--muted-foreground-strong);
 
+  /* Tailwind 既定の font-mono utility (既存呼び出し箇所) にも新フォントを効かせる */
+  --font-mono: var(--font-mono-ui);
   --font-mono-ui: var(--font-mono-ui);
   --font-mono-body: var(--font-mono-body);
 

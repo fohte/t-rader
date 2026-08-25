@@ -1,26 +1,23 @@
 # Design system
 
-t-rader フロントエンドのデザインシステムのトークン契約。ニアモノクロダーク +
-赤アクセント 1 色 + monospace UI chrome という構成は、同じ作者が管理する
-[tq](https://github.com/fohte/tq) と土台を共有しており、トークン名・値もでき
-る限り tq に揃えている。将来 2 リポジトリのデザインシステムを共通パッケージ
-に切り出す計画があり、このドキュメントとトークン構成はその前提になる。
+t-rader フロントエンドのデザインシステムのトークン契約。
+ニアモノクロダーク + 赤アクセント 1 色 + monospace UI chrome という構成は、同じ作者が管理する [tq](https://github.com/fohte/tq) と土台を共有しており、トークン名と値もできる限り tq に揃えている。
+tq と構造を揃えておくことで、両リポジトリ間の差分を把握・吸収するコストを下げる狙いがある。
 
-このドキュメントの値の出典は `frontend/src/index.css` の `:root` /
-`@theme inline` ブロック。ドキュメントと実装が食い違った場合は実装が正で、
-同じ PR でこのドキュメントを直す。
+このドキュメントの値の出典は `frontend/src/index.css` の `:root` / `@theme inline` ブロック。
+ドキュメントと実装が食い違った場合は実装が正で、同じ PR でこのドキュメントを直す。
 
 ## Design tokens
 
-すべてのトークンは `:root` 直下にのみ定義する。light 用パレットは存在しない
-(`frontend/index.html` が `class="dark"` 固定でテーマ切り替えもないため)。
+すべてのトークンは `:root` 直下にのみ定義する。
+light 用パレットは存在しない (`frontend/index.html` が `class="dark"` 固定でテーマ切り替えもないため)。
 
 ### Surfaces
 
 | Token                  | 値        | Tailwind utility    | 用途                                        |
 | ---------------------- | --------- | ------------------- | ------------------------------------------- |
 | `--background`         | `#0a0a0a` | `bg-background`     | ページ背景                                  |
-| `--card`               | `#141414` | `bg-card`           | カード・ポップオーバーなど一段上げた面      |
+| `--card`               | `#141414` | `bg-card`           | カードやポップオーバーなど一段上げた面      |
 | `--popover`            | `#141414` | `bg-popover`        | ポップオーバー/メニュー面 (`--card` と同値) |
 | `--secondary`          | `#141414` | `bg-secondary`      | secondary fill                              |
 | `--muted`              | `#141414` | `bg-muted`          | muted fill (hover 背景など)                 |
@@ -41,8 +38,8 @@ t-rader フロントエンドのデザインシステムのトークン契約。
 | `--secondary-foreground`    | `#fafafa` | `text-secondary-foreground`    | `--secondary` 面上のテキスト                           |
 | `--accent-foreground`       | `#fafafa` | `text-accent-foreground`       | `--accent` 面上のテキスト                              |
 
-グレー階調 (明るい順): `--foreground` → `--muted-foreground-strong` →
-`--muted-foreground`。新しいグレー値を作らず、既存のいずれかの階調を使うこと。
+グレー階調は明るい順に `--foreground`、`--muted-foreground-strong`、`--muted-foreground` と並ぶ。
+新しいグレー値を作らず、既存のいずれかの階調を使うこと。
 
 ### Borders
 
@@ -55,7 +52,7 @@ t-rader フロントエンドのデザインシステムのトークン契約。
 
 | Token                  | 値        | Tailwind utility                                 | 用途                                                                      |
 | ---------------------- | --------- | ------------------------------------------------ | ------------------------------------------------------------------------- |
-| `--primary`            | `#ef4444` | `text-primary` / `bg-primary` / `border-primary` | 唯一の赤アクセント。強調テキスト・アイコン・focus 等の punctuation に使う |
+| `--primary`            | `#ef4444` | `text-primary` / `bg-primary` / `border-primary` | 唯一の赤アクセント。強調テキスト、アイコン、focus など punctuation に使う |
 | `--primary-foreground` | `#fafafa` | `text-primary-foreground`                        | `bg-primary` 上のテキスト                                                 |
 | `--destructive`        | `#ef4444` | `text-destructive` / `border-destructive`        | `--primary` と同じ赤 (accent と danger を同じ 1 色で表現する)             |
 | `--ring`               | `#ef4444` | `ring-ring`                                      | focus ring 色                                                             |
@@ -75,7 +72,8 @@ t-rader フロントエンドのデザインシステムのトークン契約。
 
 ### 株価の方向 (t-rader 固有)
 
-tq に対応物はない。日本の慣習に合わせて上げを赤、下げを青にしている。
+tq に対応物はない。
+日本の慣習に合わせて上げを赤、下げを青にしている。
 
 | Token              | 値        | Tailwind utility        | 用途               |
 | ------------------ | --------- | ----------------------- | ------------------ |
@@ -84,7 +82,7 @@ tq に対応物はない。日本の慣習に合わせて上げを赤、下げ�
 | `--color-down`     | `#3f9fe0` | `text-down` / `bg-down` | 下げ               |
 | `--color-down-dim` | `#234152` | (var 参照のみ)          | 下げの控えめな塗り |
 
-### レビュー・タスク実行ステータス (t-rader 固有)
+### レビューとタスク実行のステータス (t-rader 固有)
 
 tq に対応物はない。
 
@@ -97,17 +95,14 @@ tq に対応物はない。
 
 ### Radius
 
-`--radius` は `0.625rem` (tq は `0rem`)。tq と揃えるかどうかは全画面の見た目に
-関わる別種の変更になるため、このトークン整理 PR のスコープ外としている。
+`--radius` は `0.625rem` (tq は `0rem`)。
+tq と揃えるかどうかは全画面の見た目に関わる別種の変更になるため、このトークン整理 PR のスコープ外としている。
 
 ## 互換エイリアス
 
-strategy tokens 導入時に定義した旧トークン名は、上記の新トークンを指す
-エイリアスとして残っている。役割は同じで名前だけが違う。
-アーティファクト種別ごとの arbitrary value 置換 PR が並列に進む間、
-`index.css` を一切変更せずに済むようにするための互換レイヤーで、それらの PR
-がすべて merge されたら削除し、`eslint.config.js` の
-`tailwindcss/no-arbitrary-value: 'off'` も外す。
+strategy tokens 導入時に定義した旧トークン名は、上記の新トークンを指すエイリアスとして残っている。
+役割は同じで名前だけが違う。
+アーティファクト種別ごとの arbitrary value 置換 PR が並列に進む間、`index.css` を一切変更せずに済むようにするための互換レイヤーで、それらの PR がすべて merge されたら削除し、`eslint.config.js` の `tailwindcss/no-arbitrary-value: 'off'` も外す。
 
 | 旧トークン名              | 新トークン (エイリアス先)   |
 | ------------------------- | --------------------------- |
@@ -121,42 +116,38 @@ strategy tokens 導入時に定義した旧トークン名は、上記の新ト�
 | `--panel-inset`           | `--surface-strong`          |
 | `--hairline`              | `--border`                  |
 
-新規コードは旧トークン名ではなく上記表の新トークン名 (または対応する
-Tailwind utility) を使うこと。
+新規コードは旧トークン名ではなく上記表の新トークン名 (または対応する Tailwind utility) を使うこと。
 
 ## Fonts
 
 | Role        | CSS 変数           | フォントスタック                                                                                    | Tailwind utility                | 用途                                   |
 | ----------- | ------------------ | --------------------------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------- |
 | Sans        | `--font-sans`      | Inter, Helvetica Neue, Arial, Hiragino Kaku Gothic ProN, Noto Sans JP, sans-serif                   | `font-sans` (html に適用、既定) | 本文                                   |
-| Mono (UI)   | `--font-mono-ui`   | JetBrains Mono Variable, IBM Plex Mono, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace | `font-mono-ui`                  | UI chrome (ラベル、数値、コード的表示) |
+| Mono (UI)   | `--font-mono-ui`   | JetBrains Mono Variable, IBM Plex Mono, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace | `font-mono` / `font-mono-ui`    | UI chrome (ラベル、数値、コード的表示) |
 | Mono (body) | `--font-mono-body` | `--font-mono-ui` と同じ                                                                             | `font-mono-body`                | mono な本文                            |
 
-`JetBrains Mono Variable` / `IBM Plex Mono` は `@fontsource-variable/jetbrains-mono`
-/ `@fontsource/ibm-plex-mono` (400/500/600) を `frontend/src/index.css` の
-`@import` で読み込んでいる。フォールバックにのみ頼らないこと。
+`--font-mono` (Tailwind 既定の utility) は `--font-mono-ui` のエイリアスにしてある。
+既存コードの `font-mono` 呼び出し (300 箇所超) を書き換えずに新フォントへ切り替えるため。
+
+`JetBrains Mono Variable` / `IBM Plex Mono` は `@fontsource-variable/jetbrains-mono` / `@fontsource/ibm-plex-mono` (400/500/600) を `frontend/src/index.css` の `@import` で読み込んでいる。
+フォールバックにのみ頼らないこと。
 
 ## Typography scale
 
-Tailwind 標準の `text-*` スケールに加え、それより小さい段が 1 つだけある:
+Tailwind 標準の `text-*` スケールに加え、それより小さい段が 1 つだけある。
 
 | Token        | 値                                                 | Tailwind utility | 用途                               |
 | ------------ | -------------------------------------------------- | ---------------- | ---------------------------------- |
 | `--text-2xs` | `0.6875rem` (11px)、line-height `0.9375rem` (15px) | `text-2xs`       | 最小段の mono UI chrome (ラベル等) |
 
-新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認する
-こと。
+新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
 
 ## Spacing scale
 
-`--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、
-`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
+`--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
 
-arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表で機械的に
-グリッド上の段へ丸めること。対象は `gap-` / `p`・`px`・`py`・`pt`・`pr`・`pb`・`pl`
-/ `m`・`mx`・`my`・`mt`・`mr`・`mb`・`ml` / `w`・`h`・`min-w`・`min-h`・`max-w`・`max-h`
-(ただし要素自体のサイズが 44px を超える場合はグリッド丸めの対象外で、個別に
-名前付きトークンを検討する)。
+arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表で機械的にグリッド上の段へ丸めること。
+対象は `gap-`、`p`/`px`/`py`/`pt`/`pr`/`pb`/`pl`、`m`/`mx`/`my`/`mt`/`mr`/`mb`/`ml`、`w`/`h`/`min-w`/`min-h`/`max-w`/`max-h` (ただし要素自体のサイズが 44px を超える場合はグリッド丸めの対象外で、個別に名前付きトークンを検討する)。
 
 | 現状の arbitrary value | 丸め先       | 理由                                                          |
 | ---------------------- | ------------ | ------------------------------------------------------------- |
@@ -171,19 +162,16 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 | `41px`                 | `10` (40px)  | 40px の方が近い (44px は tap target サイズとして意味が変わる) |
 | `44px`                 | `11` (44px)  | すでにグリッド上 (`11 × 4px`)。bracket を外すだけ             |
 
-±1px の視覚的なズレは許容する。許容しないのは順序関係 (見出し vs 本文など) が
-崩れること — 表を機械的に適用する前に確認すること。border-width (`border`,
-`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の
-対象外。
+±1px の視覚的なズレは許容する。
+許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
+border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 
 ## Non-goals
 
 このドキュメントはトークン契約であって、既存画面の一括 restyle ではない。
-以下は意図的にスコープ外:
+以下は意図的にスコープ外としている。
 
-- 既存コンポーネントの arbitrary value をトークンに置き換える作業 (ディレクトリ
-  単位の後続 PR で進める)
-- `eslint.config.js` の `tailwindcss/no-arbitrary-value: 'off'` を外して lint
-  で強制すること (後続 PR がすべて merge された後の最後の PR で行う)
+- 既存コンポーネントの arbitrary value をトークンに置き換える作業 (ディレクトリ単位の後続 PR で進める)
+- `eslint.config.js` の `tailwindcss/no-arbitrary-value: 'off'` を外して lint で強制すること (後続 PR がすべて merge された後の最後の PR で行う)
 - tq の primitives (`Panel` / `Chip` / `TabStrip` 等) の移植
 - `--radius` を tq (`0rem`) に揃えること
