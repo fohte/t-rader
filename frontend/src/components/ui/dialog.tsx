@@ -43,6 +43,7 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  initialFocus,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
@@ -55,21 +56,28 @@ function DialogContent({
       <DialogPrimitive.Popup
         ref={popupRef}
         data-slot="dialog-content"
-        // Radix の FocusScope は dialog open 時の初回オートフォーカスでのみ
-        // input の全選択 (focus(el, { select: true }) 相当) を行っていた。Base UI の
-        // initialFocus はフォーカス対象の解決のみで選択状態までは制御できないため、
-        // 初回フォーカス時の 1 回だけ focusin を監視して select() する
-        initialFocus={() => {
-          popupRef.current?.addEventListener(
-            'focusin',
-            (event) => {
-              if (event.target instanceof HTMLInputElement) {
-                event.target.select()
-              }
-            },
-            { once: true },
-          )
-          return true
+        // dialog 表示時の初期フォーカス先で input のテキストを全選択する。native
+        // autoFocus は Base UI の initialFocus (FloatingFocusManager の layout
+        // effect) より先に発火するため、その場合は activeElement を直接 select() し、
+        // そうでなければ Base UI がフォーカスを移すのを focusin で待つ
+        initialFocus={(openType) => {
+          const select = (el: EventTarget | Element | null) => {
+            if (el instanceof HTMLInputElement) el.select()
+          }
+          if (popupRef.current?.contains(document.activeElement) === true) {
+            select(document.activeElement)
+          } else {
+            popupRef.current?.addEventListener(
+              'focusin',
+              (event) => {
+                select(event.target)
+              },
+              { once: true },
+            )
+          }
+          return typeof initialFocus === 'function'
+            ? initialFocus(openType)
+            : (initialFocus ?? true)
         }}
         className={cn(
           'bg-background data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 outline-none sm:max-w-lg',
