@@ -93,7 +93,7 @@ function PortfolioPage() {
           <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
             ポートフォリオ
           </h1>
-          <p className="max-w-[720px] text-sm leading-relaxed text-muted-foreground-strong">
+          <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
             戦略横断の全体ビュー。現金比率・全保有・全体損益を把握します。LLM
             もこのコンテキストを参照します。
           </p>
@@ -111,12 +111,12 @@ function PortfolioPage() {
       </header>
 
       {summaryPending ? (
-        <Skeleton className="h-[88px] w-full" />
+        <Skeleton className="h-22 w-full" />
       ) : (
         <StatRow stats={stats} />
       )}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-portfolio-layout)">
         <section className="space-y-2">
           <div className="flex items-baseline justify-between">
             <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
@@ -128,7 +128,7 @@ function PortfolioPage() {
             </span>
           </div>
           {summaryPending ? (
-            <Skeleton className="h-[160px] w-full" />
+            <Skeleton className="h-40 w-full" />
           ) : (
             <PositionsTable positions={openPositions} stocks={stocks} />
           )}
@@ -158,7 +158,7 @@ function PortfolioPage() {
       <div>
         <Link
           to="/trades"
-          className="font-mono text-[13px] text-primary hover:underline"
+          className="font-mono text-sm text-primary hover:underline"
         >
           取引履歴をすべて見る →
         </Link>

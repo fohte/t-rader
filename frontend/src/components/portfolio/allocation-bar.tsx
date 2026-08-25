@@ -60,7 +60,7 @@ export function AllocationBar({ segments }: { segments: AllocationSegment[] }) {
               <span className="tabular-nums text-muted-foreground-strong">
                 {formatYen(seg.value)}
               </span>
-              <span className="w-[52px] text-right tabular-nums text-muted-foreground">
+              <span className="w-13 text-right tabular-nums text-muted-foreground">
                 {pct.toFixed(1)}%
               </span>
             </li>

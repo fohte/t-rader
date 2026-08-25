@@ -99,7 +99,7 @@ function TradesPage() {
           <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
             取引履歴
           </h1>
-          <p className="max-w-[720px] text-sm leading-relaxed text-muted-foreground-strong">
+          <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
             全戦略横断の約定記録。入力ソースは証券会社 API / CSV 取込 /
             手入力に非依存のモデル。成績・保有はここから導出します。
           </p>
@@ -123,7 +123,7 @@ function TradesPage() {
       </header>
 
       {tradesPending ? (
-        <Skeleton className="h-[88px] w-full" />
+        <Skeleton className="h-22 w-full" />
       ) : (
         <TradeStats
           realizedPnl={summary?.realized_pnl ?? 0}
@@ -145,7 +145,7 @@ function TradesPage() {
       )}
 
       {tradesPending ? (
-        <Skeleton className="h-[200px] w-full" />
+        <Skeleton className="h-50 w-full" />
       ) : (
         <TradesTable
           trades={shown}

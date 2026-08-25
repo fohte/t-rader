@@ -78,9 +78,9 @@ tq に対応物はない。
 | Token              | 値        | Tailwind utility        | 用途               |
 | ------------------ | --------- | ----------------------- | ------------------ |
 | `--color-up`       | `#ef5350` | `text-up` / `bg-up`     | 上げ               |
-| `--color-up-dim`   | `#5a2a2a` | (var 参照のみ)          | 上げの控えめな塗り |
+| `--color-up-dim`   | `#5a2a2a` | `bg-up-dim`             | 上げの控えめな塗り |
 | `--color-down`     | `#3f9fe0` | `text-down` / `bg-down` | 下げ               |
-| `--color-down-dim` | `#234152` | (var 参照のみ)          | 下げの控えめな塗り |
+| `--color-down-dim` | `#234152` | `bg-down-dim`           | 下げの控えめな塗り |
 
 ### レビューとタスク実行のステータス (t-rader 固有)
 
@@ -150,6 +150,7 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 | `text-[10.5px]`        | `text-2xs` (11px) | 同上                                |
 | `text-[11.5px]`        | `text-xs` (12px)  | 11px と 12px の中間、同点は切り上げ |
 | `text-[12.5px]`        | `text-xs` (12px)  | 12px に最も近い既存段               |
+| `text-[13px]`          | `text-sm` (14px)  | 12px と 14px の中間、同点は切り上げ |
 | `text-[13.5px]`        | `text-sm` (14px)  | 14px に最も近い既存段               |
 
 ±1px の視覚的なズレは許容する。
@@ -159,8 +160,10 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 `--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
 
-arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表で機械的にグリッド上の段へ丸めること。
-対象は `gap-`、`p`/`px`/`py`/`pt`/`pr`/`pb`/`pl`、`m`/`mx`/`my`/`mt`/`mr`/`mb`/`ml`、`w`/`h`/`min-w`/`min-h`/`max-w`/`max-h` (ただし要素自体のサイズが 44px を超える場合はグリッド丸めの対象外で、個別に名前付きトークンを検討する)。
+arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、まず Tailwind の既存 utility に完全一致しないか確認すること。
+`w`/`h`/`min-w`/`min-h`/`max-w`/`max-h`/`p`/`m`/`gap` 系は `calc(var(--spacing) * N)` で解決するため、4px の倍数は `N` に何段でもそのまま置換できる (例: `h-[160px]` → `h-40`)。
+トークン追加は不要。
+完全一致しない値だけ、以下の表で機械的にグリッド上の段へ丸めること (ただし要素自体のサイズが 44px を超える場合はグリッド丸めの対象外で、個別に名前付きトークンを検討する。4px グリッドに完全一致する値でも、サイドバー幅のように名前を与えることで文脈上の意味が明確になる場合は同様に検討してよい)。
 
 | 現状の arbitrary value | 丸め先       | 理由                                                          |
 | ---------------------- | ------------ | ------------------------------------------------------------- |
@@ -178,21 +181,23 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 ±1px の視覚的なズレは許容する。
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
-
-44px を超える値のうち `Npx / 4` が整数になるもの (4px グリッドに正確に一致するもの) は、Tailwind v4 の動的 spacing scale (`h-<N>` = `calc(var(--spacing) * N)`) がブラケットなしでそのまま使えるため、bracket を外すだけでよい。
-個別の名前付きトークンを検討すべきなのは、4px グリッドに乗らない値、またはサイドバー幅のように名前を与えることで文脈上の意味が明確になる値に限る。
+ring-width (`ring`、`ring-<N>`) も同様に対象外。
+border-width と同じく Tailwind の固定スケールが `<N>px` に直接解決するため、既存の Tailwind utility (`ring-3` など) をそのまま使う。
 
 ## Layout
 
 `--spacing` の丸めでは意味が壊れる固有の寸法 (非対称 2 カラムの grid track 等) は、`:root` にプレーンな CSS カスタムプロパティとして個別追加し、Tailwind v4 の `grid-cols-(<custom-property>)` 構文 (`grid-template-columns: var(<custom-property>)` の糖衣構文) で参照する。
 `@theme` への登録は不要で、`grid-cols-[...]` のような bracket 構文ではないため `no-arbitrary-value` の対象にもならない。
 
-| Token                          | 値                     | 用途                                         |
-| ------------------------------ | ---------------------- | -------------------------------------------- |
-| `--grid-cols-field-label`      | `108px 1fr`            | ラベル列 + 値列の 2 カラムフィールドグリッド |
-| `--grid-cols-foreach-indent`   | `22px 1fr`             | forEach ツリーのインデント表現               |
-| `--grid-cols-skills-sidebar`   | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン         |
-| `--grid-cols-triggers-sidebar` | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン       |
+例: `grid-cols-[minmax(0,1fr)_360px]` → `grid-cols-(--grid-cols-portfolio-layout)`
+
+| Token                          | 値                     | 用途                                                                         |
+| ------------------------------ | ---------------------- | ---------------------------------------------------------------------------- |
+| `--grid-cols-portfolio-layout` | `minmax(0, 1fr) 360px` | ポートフォリオ画面の保有銘柄セクション + アロケーションの 2 カラムレイアウト |
+| `--grid-cols-field-label`      | `108px 1fr`            | ラベル列 + 値列の 2 カラムフィールドグリッド                                 |
+| `--grid-cols-foreach-indent`   | `22px 1fr`             | forEach ツリーのインデント表現                                               |
+| `--grid-cols-skills-sidebar`   | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン                                         |
+| `--grid-cols-triggers-sidebar` | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン                                       |
 
 ## Non-goals
 
