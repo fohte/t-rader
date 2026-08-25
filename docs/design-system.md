@@ -142,7 +142,8 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
 
-`text-[Npx]` の arbitrary value は、以下の表で標準スケールへ丸めること。Spacing scale と同じく同点は切り上げ、±1px の視覚的なズレは許容する。
+`text-[Npx]` の arbitrary value は、以下の表で標準スケールへ丸めること。
+Spacing scale と同じく同点は切り上げ、±1px の視覚的なズレは許容する。
 
 | 現状の arbitrary value | 丸め先            | 理由                                                        |
 | ---------------------- | ----------------- | ----------------------------------------------------------- |
@@ -179,7 +180,13 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 `grid-template-columns` の複合トラック定義 (例: `grid-cols-[64px_1fr]`、`grid-cols-[minmax(0,1fr)_360px]`) も、固定幅と可変幅を 1 つの utility で表現する対応先が存在しないため対象外。
 親要素のフォントサイズに対する相対値 (例: `text-[0.78em]`) も、Tailwind の `--text-*` namespace が絶対値前提のため対象外。
-`z-*` (z-index) はこの表の対象外。Tailwind v4 は `z-index` に `@theme` namespace (`--z-*`) を持たず、`z-0`/`z-10`/.../`z-50`/`z-auto` の固定スケールしか提供しないため。既定スケールを超えるレイヤーが本当に必要な場合 (例: shadcn/Radix overlay 系が使う `z-50` より常に上に表示する必要がある floating panel) は、`frontend/src/index.css` に `@utility` で個別の named utility を追加すること (例: `@utility z-floating-chat { z-index: 60; }`)。
+`z-*` (z-index) はこの表の対象外。
+Tailwind v4 は `z-index` に `@theme` namespace を持たず、`z-0`/`z-10`/.../`z-50`/`z-auto` の固定スケールしか提供しないため。
+
+既定スケール内に収まる arbitrary value は最も近い段に丸め、同点は切り上げる。
+ただし隣接して重なり得る要素どうしが同じ段になり重なり順が不定になる場合は、意図した重なり順を保てる段を選ぶこと (例: `z-[25]` は `z-20`/`z-30` の中間だが、`z-30` に丸めると同じ場に浮く StrategySwitcher のドロップダウン (既存の `z-30`) と同値になるため、`z-20` に丸める)。
+
+既定スケールを超えるレイヤーが本当に必要な場合 (例: shadcn/Radix overlay 系が使う `z-50` より常に上に表示する必要がある floating panel) は、`frontend/src/index.css` に `@utility` で個別の named utility を追加すること (例: `@utility z-floating-chat { z-index: 60; }`)。
 
 丸め先の標準スケール段が隣接要素と同じサイズになり、意図的なサイズ差 (親ラベルより小さい従属バッジ等) が失われる場合も丸めない。
 例: `text-[9px]` の stale バッジは `text-2xs` (11px) に丸めると親ラベルと同サイズになり階層が消えるため据え置く。
