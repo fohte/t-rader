@@ -145,7 +145,10 @@ export function MarkdownBody({
       </pre>
     ),
     code: ({ children }) => (
-      <code className="border border-border bg-surface-strong px-1 py-px font-mono text-xs">
+      // text-[0.88em] は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
+      // ため、周辺テキストに追従する相対値のまま残す。固定トークンに丸めると
+      // 見出し内で不自然に縮小する。
+      <code className="border border-border bg-surface-strong px-1 py-px font-mono text-[0.88em]">
         {children}
       </code>
     ),
@@ -195,10 +198,12 @@ export function MarkdownBody({
         type="button"
         onClick={() => onAnno?.(annoId)}
         title={`annotation ${annoId}`}
-        className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-2xs text-primary hover:bg-primary/15"
+        // text-[0.82em] も同様に markdown 中の任意の位置に埋め込まれるため、
+        // 周辺テキストに追従する相対値のまま残す。
+        className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-[0.82em] text-primary hover:bg-primary/15"
       >
         <span className="font-bold">{annoId}</span>
-        <span className="text-2xs text-muted-foreground">annotation</span>
+        <span className="text-[0.85em] text-muted-foreground">annotation</span>
       </button>
     ),
     'note-graph': ({ graphId }) => {

@@ -142,6 +142,9 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
 
+markdown 本文中の任意の位置 (見出し内含む) に埋め込まれるインライン要素 (`[[stock:xxx]]` 等の ref chip、注釈バッジ等) の `text-[N.NNem]` は例外で丸めない。
+埋め込み先ごとに周辺テキストへ追従させる意図の相対値であり、固定の `text-*` トークンに丸めると見出し内で不自然に縮小する。
+
 ## Spacing scale
 
 `--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
@@ -170,10 +173,10 @@ border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px
 
 `w`/`h`/`max-w` 等が 44px を超える場合は上の grid 丸め表の対象外だが、それでも極力 arbitrary value を残さない。
 
-1. まず Tailwind 既定の `max-w-*`/`w-*` スケール (rem 刻み、`--spacing` の 4px grid とは別系統) に同点切り上げで丸められないか確認する。
-   例: `max-w-[720px]` は `max-w-2xl`(672px) と `max-w-3xl`(768px) の中間で同点、切り上げて `max-w-3xl` を使う
+1. まず Tailwind 既定の `max-w-*`/`w-*` スケール (rem 刻み、`--spacing` の 4px grid とは別系統) に同点切り上げで丸められないか確認する。`h-*` には対応する named スケールが無いため、この手順は対象外で手順 2 に進む。
+   例: `max-w-[720px]` は `max-w-2xl`(672px) と `max-w-3xl`(768px) の中間で同点、切り上げて `max-w-3xl` を使う。
 2. 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に t-rader 固有の named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする。
-   例: ノート本文内のグラフ埋め込み高さは `--note-graph-height: 26.25rem` (420px) を追加し、`h-note-graph` として参照する
+   例: ノート本文内のグラフ埋め込み高さは `--note-graph-height: 26.25rem` (420px) を追加し、`h-note-graph` として参照する。
 
 ## Non-goals
 
