@@ -47,15 +47,17 @@ export function ChipList({
         </span>
       ))}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label={addAriaLabel}
-            className="border border-dashed border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
-          >
-            + 追加
-          </button>
-        </PopoverTrigger>
+        <PopoverTrigger
+          render={
+            <button
+              type="button"
+              aria-label={addAriaLabel}
+              className="border border-dashed border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
+            >
+              + 追加
+            </button>
+          }
+        />
         <PopoverContent className="w-48 p-1" align="start">
           {remaining.length === 0 ? (
             <p className="px-2 py-1 font-mono text-2xs text-muted-foreground">

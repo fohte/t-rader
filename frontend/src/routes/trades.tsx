@@ -84,11 +84,11 @@ function TradesPage() {
   }
 
   return (
-    <div className="space-y-5 font-sans text-[color:var(--color-text-primary)]">
+    <div className="space-y-5 font-sans text-foreground">
       <div>
         <Link
           to="/strategies"
-          className="font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+          className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
           &lt; 戦略一覧に戻る
         </Link>
@@ -96,10 +96,10 @@ function TradesPage() {
 
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
-          <h1 className="mb-1.5 text-[24px] font-bold leading-tight tracking-tight">
+          <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
             取引履歴
           </h1>
-          <p className="max-w-[720px] text-[14px] leading-relaxed text-[color:var(--color-text-secondary)]">
+          <p className="max-w-[720px] text-sm leading-relaxed text-muted-foreground-strong">
             全戦略横断の約定記録。入力ソースは証券会社 API / CSV 取込 /
             手入力に非依存のモデル。成績・保有はここから導出します。
           </p>
@@ -141,9 +141,7 @@ function TradesPage() {
       />
 
       {deleteError != null && (
-        <p className="text-[12px] text-[color:var(--color-accent-strategy)]">
-          {deleteError}
-        </p>
+        <p className="text-xs text-primary">{deleteError}</p>
       )}
 
       {tradesPending ? (
