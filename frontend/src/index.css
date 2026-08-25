@@ -84,6 +84,10 @@
    * grid-cols-(--foo) 構文で参照する (see docs/design-system.md)。
    */
   --grid-cols-portfolio-layout: minmax(0, 1fr) 360px;
+  --grid-cols-field-label: 108px 1fr;
+  --grid-cols-foreach-indent: 22px 1fr;
+  --grid-cols-skills-sidebar: 240px minmax(0, 1fr);
+  --grid-cols-triggers-sidebar: 280px minmax(0, 1fr);
 
   /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の

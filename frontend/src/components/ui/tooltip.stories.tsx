@@ -26,9 +26,9 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   render: () => (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="outline">ホバーしてください</Button>
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={<Button variant="outline">ホバーしてください</Button>}
+      />
       <TooltipContent>
         <p>ツールチップの内容</p>
       </TooltipContent>

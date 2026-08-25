@@ -41,7 +41,7 @@ export const WithItems: Story = {
   },
   decorators: [
     (Story) => (
-      <div className="w-[320px]">
+      <div className="w-80">
         <Story />
       </div>
     ),
@@ -52,7 +52,7 @@ export const Empty: Story = {
   args: { isPending: false, items: [] },
   decorators: [
     (Story) => (
-      <div className="w-[320px]">
+      <div className="w-80">
         <Story />
       </div>
     ),
@@ -63,7 +63,7 @@ export const Loading: Story = {
   args: { isPending: true, items: null },
   decorators: [
     (Story) => (
-      <div className="w-[320px]">
+      <div className="w-80">
         <Story />
       </div>
     ),

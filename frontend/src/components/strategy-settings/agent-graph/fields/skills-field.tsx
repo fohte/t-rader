@@ -9,7 +9,7 @@ interface SkillsFieldProps {
 export function SkillsField({ value, onChange, options }: SkillsFieldProps) {
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         skills
       </span>
       <ChipList

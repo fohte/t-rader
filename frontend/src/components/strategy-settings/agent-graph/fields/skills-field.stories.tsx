@@ -16,7 +16,7 @@ type Story = StoryObj<typeof meta>
 function Interactive({ initial }: { initial: string[] }) {
   const [value, setValue] = useState(initial)
   return (
-    <div className="grid grid-cols-[108px_1fr] items-start gap-x-3 gap-y-2 text-[12px]">
+    <div className="grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
       <SkillsField value={value} onChange={setValue} options={OPTIONS} />
     </div>
   )

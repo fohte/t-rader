@@ -33,7 +33,7 @@ export function HypothesisStatusPill({
   return (
     <span
       data-testid="hypothesis-status-pill"
-      className={`inline-flex items-center gap-1.5 border border-[color:var(--color-border-strategy)] px-1.5 py-px font-mono text-[10px] text-[color:var(--color-text-secondary)] ${className}`}
+      className={`inline-flex items-center gap-1.5 border border-border px-1.5 py-px font-mono text-2xs text-muted-foreground-strong ${className}`}
     >
       <span
         className="inline-block size-1.5 rounded-full"
