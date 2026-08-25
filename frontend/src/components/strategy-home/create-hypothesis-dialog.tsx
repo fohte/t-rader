@@ -124,7 +124,7 @@ export function CreateHypothesisDialog({
                 setBody(e.target.value)
               }}
               placeholder="主張の根拠と検証方法"
-              className="w-full border border-border bg-bg-secondary px-3 py-2 font-mono text-[12.5px] text-foreground outline-none focus:border-muted-foreground"
+              className="w-full border border-border bg-bg-secondary px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-muted-foreground"
             />
           </div>
           {formError != null && (

@@ -86,7 +86,7 @@ export function ChartPanel({
 
   if (symbol == null) {
     return (
-      <div className="grid h-[420px] place-items-center border border-border bg-card font-mono text-xs text-muted-foreground">
+      <div className="grid h-105 place-items-center border border-border bg-card font-mono text-xs text-muted-foreground">
         シード関心に銘柄が登録されていません
       </div>
     )
@@ -118,7 +118,7 @@ export function ChartPanel({
             }`}
           >
             <span>{s.name}</span>
-            <span className="text-[10px] text-muted-foreground">{s.code}</span>
+            <span className="text-2xs text-muted-foreground">{s.code}</span>
           </button>
         ))}
         <span className="mx-1 h-5 w-px self-center bg-border" />
@@ -150,7 +150,7 @@ export function ChartPanel({
           </span>
         )}
       </div>
-      <div className="h-[420px]">
+      <div className="h-105">
         {isPending ? (
           <div className="grid h-full place-items-center font-mono text-xs text-muted-foreground">
             読み込み中…

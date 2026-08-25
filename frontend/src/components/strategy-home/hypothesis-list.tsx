@@ -59,7 +59,7 @@ export function HypothesisList({ strategyId }: HypothesisListProps) {
               params={{ id: strategyId, hypothesisId: h.hypothesis_id }}
               className="flex flex-col gap-1 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-strong"
             >
-              <span className="line-clamp-2 text-[13px] text-foreground">
+              <span className="line-clamp-2 text-sm text-foreground">
                 {h.title}
               </span>
               <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">

@@ -40,7 +40,7 @@ export function RelatedMacroView({
           戦略関連マクロ
         </h3>
         {staleSince != null && ticks != null && (
-          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             stale
           </span>
         )}
@@ -74,7 +74,7 @@ function renderBody(items: MacroTick[], unavailable: boolean) {
             key={m.symbol}
             className="flex flex-col gap-0.5 bg-card px-3 py-2.5"
           >
-            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
               {m.symbol}
             </div>
             <div className="font-mono text-sm tabular-nums text-foreground">

@@ -110,7 +110,7 @@ export function CreateStrategyDialog({
                 setDescription(e.target.value)
               }}
               placeholder="この戦略の狙い、対象、期間など"
-              className="w-full border border-border bg-bg-secondary px-3 py-2 text-[13px] text-foreground outline-none focus:border-muted-foreground"
+              className="w-full border border-border bg-bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:border-muted-foreground"
             />
           </div>
           {createMutation.isError && (

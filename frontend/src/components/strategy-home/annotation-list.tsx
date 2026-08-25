@@ -41,7 +41,7 @@ export function AnnotationList({
             <button
               type="button"
               onClick={() => onSelectAnnotation?.(a.id)}
-              className={`mt-0.5 inline-grid h-5 min-w-7 flex-shrink-0 cursor-pointer place-items-center border px-1 font-mono text-[10px] ${
+              className={`mt-0.5 inline-grid h-5 min-w-7 flex-shrink-0 cursor-pointer place-items-center border px-1 font-mono text-2xs ${
                 isSelected
                   ? 'border-primary bg-primary text-card'
                   : 'border-primary text-primary'
@@ -56,12 +56,12 @@ export function AnnotationList({
                 onClick={() => onSelectAnnotation?.(a.id)}
                 className="w-full cursor-pointer text-left"
               >
-                <span className="line-clamp-2 block text-[13px] text-foreground">
+                <span className="line-clamp-2 block text-sm text-foreground">
                   {a.text}
                 </span>
               </button>
               <div className="mt-1 flex items-center gap-2 font-mono text-2xs">
-                <span className="border border-border bg-surface-strong px-1 text-[10px] uppercase text-muted-foreground-strong">
+                <span className="border border-border bg-surface-strong px-1 text-2xs uppercase text-muted-foreground-strong">
                   {a.target_kind}
                 </span>
                 <StatusPill status={a.status} />

@@ -22,7 +22,7 @@ export function StatusPill({ status, className = '' }: StatusPillProps) {
   const color = STATUS_COLOR[status] ?? 'var(--color-text-tertiary)'
   return (
     <span
-      className={`inline-flex items-center gap-1.5 border border-border px-1.5 py-px font-mono text-[10px] text-muted-foreground-strong ${className}`}
+      className={`inline-flex items-center gap-1.5 border border-border px-1.5 py-px font-mono text-2xs text-muted-foreground-strong ${className}`}
     >
       <span
         className="inline-block size-1.5 rounded-full"

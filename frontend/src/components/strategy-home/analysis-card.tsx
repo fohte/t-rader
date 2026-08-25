@@ -25,7 +25,7 @@ export function AnalysisCard({ note, strategyId }: AnalysisCardProps) {
         unread ? 'border-primary/50' : 'border-border'
       }`}
     >
-      <div className="flex items-center gap-2 text-[10px]">
+      <div className="flex items-center gap-2 text-2xs">
         {note.type_tag != null && note.type_tag !== '' && (
           <span className="border border-border bg-surface-strong px-1.5 py-px font-mono uppercase tracking-wider text-muted-foreground-strong">
             {note.type_tag}
@@ -40,12 +40,12 @@ export function AnalysisCard({ note, strategyId }: AnalysisCardProps) {
         params={{ id: strategyId, noteId: note.id }}
         className="block"
       >
-        <h4 className="text-[15px] font-bold leading-tight text-foreground hover:text-primary">
+        <h4 className="text-base font-bold leading-tight text-foreground hover:text-primary">
           {note.title}
         </h4>
       </Link>
       {snippet !== '' && (
-        <p className="line-clamp-3 text-[13px] leading-relaxed text-muted-foreground-strong">
+        <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground-strong">
           {snippet}
         </p>
       )}

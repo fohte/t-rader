@@ -60,11 +60,11 @@ function renderBody(items: NewsItem[] | null, isPending: boolean) {
             href={n.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block text-[13px] leading-snug text-foreground hover:text-primary"
+            className="block text-sm leading-snug text-foreground hover:text-primary"
           >
             {n.title}
           </a>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             <span>{n.source}</span>
             <span>·</span>
             <time dateTime={n.published_at}>{formatTime(n.published_at)}</time>

@@ -157,7 +157,7 @@ function Section({
 }) {
   return (
     <div>
-      <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+      <div className="mb-1.5 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         {title}
       </div>
       <ul className="flex flex-col gap-1.5">{children}</ul>
@@ -178,7 +178,7 @@ function InterestRow({
       className="flex items-center gap-2"
     >
       <RefChip token={`${interest.ref_kind}:${interest.ref_id}`} />
-      <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
         {ORIGIN_LABEL[interest.origin] ?? interest.origin}
       </span>
       <button
@@ -187,7 +187,7 @@ function InterestRow({
           onDelete(interest)
         }}
         aria-label={`関心 ${interest.ref_kind}:${interest.ref_id} を削除`}
-        className="ml-auto font-mono text-[10px] text-muted-foreground hover:text-primary"
+        className="ml-auto font-mono text-2xs text-muted-foreground hover:text-primary"
       >
         削除
       </button>

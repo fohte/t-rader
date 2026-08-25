@@ -35,12 +35,12 @@ export function NotesList({ strategyId, notes }: NotesListProps) {
               params={{ id: strategyId, noteId: n.id }}
               className="flex flex-col gap-1 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-strong"
             >
-              <span className="line-clamp-2 text-[13px] text-foreground">
+              <span className="line-clamp-2 text-sm text-foreground">
                 {n.title}
               </span>
               <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
                 {n.type_tag != null && n.type_tag !== '' && (
-                  <span className="border border-border bg-surface-strong px-1 text-[10px] uppercase text-muted-foreground-strong">
+                  <span className="border border-border bg-surface-strong px-1 text-2xs uppercase text-muted-foreground-strong">
                     {n.type_tag}
                   </span>
                 )}
