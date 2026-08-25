@@ -51,7 +51,7 @@ export function HypothesisDetailPage({
       <div className="space-y-4">
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-10 w-2/3" />
-        <Skeleton className="h-[320px] w-full" />
+        <Skeleton className="h-80 w-full" />
       </div>
     )
   }
@@ -76,7 +76,7 @@ export function HypothesisDetailPage({
       >
         &lt; 戦略ホームに戻る
       </Link>
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--hypothesis-detail-grid-cols)">
         <article className="border border-border bg-card px-5 py-5">
           <HypothesisEditor
             initialTitle={hypothesis.title}

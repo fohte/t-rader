@@ -354,7 +354,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_1fr]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--indicators-list-grid-cols)">
         <aside className="space-y-2 border-r border-border pr-4">
           <Button
             type="button"
@@ -366,7 +366,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
             <Plus className="size-3.5" /> 新規 indicator
           </Button>
           {isPending ? (
-            <Skeleton className="h-[120px] w-full" />
+            <Skeleton className="h-30 w-full" />
           ) : (
             <ul
               data-testid="indicator-list"

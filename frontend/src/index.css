@@ -79,6 +79,13 @@
   --status-task-running: #fbbf24;
 
   /*
+   * t-rader 固有: --spacing の丸めでは表現できない画面固有の grid-template-columns。
+   * grid-cols-(--token-name) (Tailwind v4 の custom property shorthand) で参照する。
+   */
+  --indicators-list-grid-cols: 260px 1fr;
+  --hypothesis-detail-grid-cols: minmax(0, 1fr) 280px;
+
+  /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
    * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
    */

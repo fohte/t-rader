@@ -99,7 +99,7 @@ function RssFeedsSettingsPage() {
       </header>
 
       {isPending ? (
-        <Skeleton className="h-[200px] w-full" />
+        <Skeleton className="h-50 w-full" />
       ) : (feeds ?? []).length === 0 ? (
         <div className="border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           まだフィードが登録されていません。「フィードを追加」から登録してください。
@@ -125,7 +125,7 @@ function RssFeedsSettingsPage() {
                   <td className="px-3 py-2 text-muted-foreground-strong">
                     {feed.source}
                   </td>
-                  <td className="max-w-[320px] truncate px-3 py-2 text-muted-foreground-strong">
+                  <td className="max-w-80 truncate px-3 py-2 text-muted-foreground-strong">
                     <a
                       href={feed.url}
                       target="_blank"

@@ -18,7 +18,7 @@ export function CiteBadge({ number, cite, className }: CiteBadgeProps) {
             e.stopPropagation()
           }}
           className={cn(
-            'border-border bg-surface-strong text-muted-foreground-strong hover:text-foreground hover:border-primary flex size-4 items-center justify-center rounded-full border font-mono text-[9px] leading-none',
+            'border-border bg-surface-strong text-muted-foreground-strong hover:text-foreground hover:border-primary flex size-4 items-center justify-center rounded-full border font-mono text-2xs leading-none',
             className,
           )}
         >

@@ -166,6 +166,17 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 
+## Layout (t-rader 固有)
+
+`--spacing` の丸めでは表現できない画面固有の `grid-template-columns` は、コンポーネント側で
+個別に named token として `:root` に追加し、`grid-cols-(--token-name)` (Tailwind v4 の custom
+property shorthand) で参照する。bracket 記法の arbitrary value にはしない。
+
+| Token                           | 値                     | 用途                                    |
+| ------------------------------- | ---------------------- | --------------------------------------- |
+| `--indicators-list-grid-cols`   | `260px 1fr`            | indicators ページの indicator 一覧幅    |
+| `--hypothesis-detail-grid-cols` | `minmax(0, 1fr) 280px` | hypothesis 詳細ページの status aside 幅 |
+
 ## Non-goals
 
 このドキュメントはトークン契約であって、既存画面の一括 restyle ではない。

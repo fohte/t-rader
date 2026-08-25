@@ -96,7 +96,7 @@ function ChartPage() {
           {toolbar}
         </div>
         <div className="flex min-h-0 flex-1 gap-4">
-          <Skeleton className="h-[600px] w-full" />
+          <Skeleton className="h-150 w-full" />
           <ChartMarketDepthPanel
             instrumentId={instrumentId}
             isOpen={isMarketDepthOpen}
@@ -133,7 +133,7 @@ function ChartPage() {
         {toolbar}
       </div>
       <div className="flex min-h-0 flex-1 gap-4">
-        <CandlestickChart bars={data ?? []} className="h-[600px] w-full" />
+        <CandlestickChart bars={data ?? []} className="h-150 w-full" />
         <ChartMarketDepthPanel
           instrumentId={instrumentId}
           isOpen={isMarketDepthOpen}
