@@ -71,17 +71,19 @@ function ChartPage() {
       <TimeframeSelector value={timeframe} onChange={setTimeframe} />
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={isMarketDepthOpen ? 'default' : 'outline'}
-              size="icon-sm"
-              onClick={toggleMarketDepth}
-              aria-label="板情報・歩み値パネルの表示切替"
-              aria-pressed={isMarketDepthOpen}
-            >
-              <Columns2Icon />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={isMarketDepthOpen ? 'default' : 'outline'}
+                size="icon-sm"
+                onClick={toggleMarketDepth}
+                aria-label="板情報・歩み値パネルの表示切替"
+                aria-pressed={isMarketDepthOpen}
+              >
+                <Columns2Icon />
+              </Button>
+            }
+          />
           <TooltipContent>板情報・歩み値</TooltipContent>
         </Tooltip>
       </TooltipProvider>

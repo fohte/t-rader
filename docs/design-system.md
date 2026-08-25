@@ -142,6 +142,19 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
 
+半端な `text-[Npx]` を見つけたら、以下の表で最寄りの段へ丸めること。
+
+| 現状の arbitrary value | 丸め先            | 理由                                |
+| ---------------------- | ----------------- | ----------------------------------- |
+| `text-[10px]`          | `text-2xs` (11px) | 11px に最も近い既存段               |
+| `text-[10.5px]`        | `text-2xs` (11px) | 同上                                |
+| `text-[11.5px]`        | `text-xs` (12px)  | 11px と 12px の中間、同点は切り上げ |
+| `text-[12.5px]`        | `text-xs` (12px)  | 12px に最も近い既存段               |
+| `text-[13.5px]`        | `text-sm` (14px)  | 14px に最も近い既存段               |
+
+±1px の視覚的なズレは許容する。
+許容しないのは要素間の順序関係が崩れることで、表を機械的に適用する前に確認すること。
+
 markdown 本文中の任意の位置 (見出し内含む) に埋め込まれるインライン要素 (`[[stock:xxx]]` 等の ref chip、注釈バッジ等) の `text-[N.NNem]` は例外で丸めない。
 埋め込み先ごとに周辺テキストへ追従させる意図の相対値であり、固定の `text-*` トークンに丸めると見出し内で不自然に縮小する。
 
@@ -173,10 +186,23 @@ border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px
 
 `w`/`h`/`max-w` 等が 44px を超える場合は上の grid 丸め表の対象外だが、それでも極力 arbitrary value を残さない。
 
-1. まず Tailwind 既定の `max-w-*`/`w-*` スケール (rem 刻み、`--spacing` の 4px grid とは別系統) に同点切り上げで丸められないか確認する。`h-*` には対応する named スケールが無いため、この手順は対象外で手順 2 に進む。
+1. `Npx / 4` が整数になるもの (4px グリッドに正確に一致するもの) は、Tailwind v4 の動的 spacing scale (`h-<N>` = `calc(var(--spacing) * N)`) がブラケットなしでそのまま使えるため、bracket を外すだけでよい。
+2. グリッドに乗らない場合は、まず Tailwind 既定の `max-w-*`/`w-*` スケール (rem 刻み、`--spacing` の 4px grid とは別系統) に同点切り上げで丸められないか確認する。`h-*` には対応する named スケールが無いため、この手順は対象外で手順 3 に進む。
    例: `max-w-[720px]` は `max-w-2xl`(672px) と `max-w-3xl`(768px) の中間で同点、切り上げて `max-w-3xl` を使う。
-2. 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に t-rader 固有の named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする。
+3. 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど)、またはサイドバー幅のように名前を与えることで文脈上の意味が明確になる値は、`index.css` の `:root` に t-rader 固有の named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする。
    例: ノート本文内のグラフ埋め込み高さは `--note-graph-height: 26.25rem` (420px) を追加し、`h-note-graph` として参照する。
+
+## Layout
+
+`--spacing` の丸めでは意味が壊れる固有の寸法 (非対称 2 カラムの grid track 等) は、`:root` にプレーンな CSS カスタムプロパティとして個別追加し、Tailwind v4 の `grid-cols-(<custom-property>)` 構文 (`grid-template-columns: var(<custom-property>)` の糖衣構文) で参照する。
+`@theme` への登録は不要で、`grid-cols-[...]` のような bracket 構文ではないため `no-arbitrary-value` の対象にもならない。
+
+| Token                          | 値                     | 用途                                         |
+| ------------------------------ | ---------------------- | -------------------------------------------- |
+| `--grid-cols-field-label`      | `108px 1fr`            | ラベル列 + 値列の 2 カラムフィールドグリッド |
+| `--grid-cols-foreach-indent`   | `22px 1fr`             | forEach ツリーのインデント表現               |
+| `--grid-cols-skills-sidebar`   | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン         |
+| `--grid-cols-triggers-sidebar` | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン       |
 
 ## Non-goals
 

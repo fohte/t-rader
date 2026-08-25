@@ -24,7 +24,7 @@ export const PortfolioOverview: Story = {
       {
         label: '実現損益 (累計)',
         value: '+¥124,500',
-        cls: 'text-[color:var(--color-up)]',
+        cls: 'text-up',
       },
       { label: '保有銘柄', value: '5' },
     ],
@@ -37,12 +37,12 @@ export const Performance: Story = {
       {
         label: '実現損益',
         value: '−¥38,200',
-        cls: 'text-[color:var(--color-down)]',
+        cls: 'text-down',
       },
       {
         label: '手数料',
         value: '¥4,820',
-        cls: 'text-[color:var(--color-text-secondary)]',
+        cls: 'text-muted-foreground-strong',
       },
       { label: '決済回数', value: '12' },
       { label: 'トレード件数', value: '28' },

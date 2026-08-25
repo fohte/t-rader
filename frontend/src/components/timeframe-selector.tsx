@@ -61,10 +61,8 @@ export function TimeframeSelector({
           if (isDisabled) {
             return (
               <Tooltip key={tf.value}>
-                <TooltipTrigger asChild>
-                  {/* disabled なボタンはイベントを受け取れないため span でラップ */}
-                  <span>{button}</span>
-                </TooltipTrigger>
+                {/* disabled なボタンはイベントを受け取れないため span でラップ */}
+                <TooltipTrigger render={<span>{button}</span>} />
                 <TooltipContent>近日対応予定</TooltipContent>
               </Tooltip>
             )
