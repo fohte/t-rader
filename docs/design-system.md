@@ -179,6 +179,9 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 
+44px を超える値のうち `Npx / 4` が整数になるもの (4px グリッドに正確に一致するもの) は、Tailwind v4 の動的 spacing scale (`h-<N>` = `calc(var(--spacing) * N)`) がブラケットなしでそのまま使えるため、bracket を外すだけでよい。
+個別の名前付きトークンを検討すべきなのは、4px グリッドに乗らない値、またはサイドバー幅のように名前を与えることで文脈上の意味が明確になる値に限る。
+
 ## Layout
 
 `--spacing` の丸めでは意味が壊れる固有の寸法 (非対称 2 カラムの grid track 等) は、`:root` にプレーンな CSS カスタムプロパティとして個別追加し、Tailwind v4 の `grid-cols-(<custom-property>)` 構文 (`grid-template-columns: var(<custom-property>)` の糖衣構文) で参照する。
