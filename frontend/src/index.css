@@ -79,10 +79,8 @@
   --status-task-running: #fbbf24;
 
   /*
-   * 互換エイリアス。strategy tokens 導入時に定義した旧トークン名を、上記の
-   * tq 由来の新トークンを指すエイリアスとして残す。既存の参照を壊さず後続 PR
-   * (arbitrary value の置換) を並列で進めるためのもの。後続 PR が全て
-   * merge されたら削除する。
+   * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
+   * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
    */
   --color-bg-primary: var(--background);
   --color-text-primary: var(--foreground);
