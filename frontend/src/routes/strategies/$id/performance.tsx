@@ -65,15 +65,15 @@ function StrategyPerformancePage() {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-5 w-full max-w-[480px]" />
-        <Skeleton className="h-[200px] w-full" />
+        <Skeleton className="h-5 w-full max-w-120" />
+        <Skeleton className="h-50 w-full" />
       </div>
     )
   }
 
   if (strategy == null) {
     return (
-      <div className="font-mono text-[13px] text-muted-foreground">
+      <div className="font-mono text-sm text-muted-foreground">
         戦略が見つかりませんでした。
       </div>
     )
@@ -96,14 +96,14 @@ function StrategyPerformancePage() {
           戦略成績 — {strategy.name}
         </h1>
         {strategy.description != null && strategy.description !== '' && (
-          <p className="max-w-[720px] text-sm leading-relaxed text-muted-foreground-strong">
+          <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
             {strategy.description}
           </p>
         )}
       </header>
 
       {summaryPending ? (
-        <Skeleton className="h-[88px] w-full" />
+        <Skeleton className="h-22 w-full" />
       ) : (
         <StatRow stats={stats} />
       )}
@@ -119,7 +119,7 @@ function StrategyPerformancePage() {
           </span>
         </div>
         {summaryPending ? (
-          <Skeleton className="h-[160px] w-full" />
+          <Skeleton className="h-40 w-full" />
         ) : (
           <PositionsTable positions={openPositions} stocks={stocks} />
         )}
@@ -148,7 +148,7 @@ function StrategyPerformancePage() {
       <div>
         <Link
           to="/trades"
-          className="font-mono text-[13px] text-primary hover:underline"
+          className="font-mono text-sm text-primary hover:underline"
         >
           取引履歴で編集する →
         </Link>

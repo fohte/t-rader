@@ -82,15 +82,15 @@ function StrategyHomePage() {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-5 w-full max-w-[480px]" />
-        <Skeleton className="h-[400px] w-full" />
+        <Skeleton className="h-5 w-full max-w-120" />
+        <Skeleton className="h-100 w-full" />
       </div>
     )
   }
 
   if (strategy == null) {
     return (
-      <div className="font-mono text-[13px] text-muted-foreground">
+      <div className="font-mono text-sm text-muted-foreground">
         戦略が見つかりませんでした。
       </div>
     )
@@ -104,7 +104,7 @@ function StrategyHomePage() {
             {strategy.name}
           </h1>
           {strategy.description != null && strategy.description !== '' && (
-            <p className="max-w-[720px] text-sm leading-relaxed text-muted-foreground-strong">
+            <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
               {strategy.description}
             </p>
           )}

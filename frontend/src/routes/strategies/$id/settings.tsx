@@ -35,14 +35,14 @@ function StrategySettingsPage() {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-[320px] w-full" />
+        <Skeleton className="h-80 w-full" />
       </div>
     )
   }
 
   if (strategy == null) {
     return (
-      <div className="font-mono text-[13px] text-muted-foreground">
+      <div className="font-mono text-sm text-muted-foreground">
         戦略が見つかりませんでした。
       </div>
     )
@@ -63,7 +63,7 @@ function StrategySettingsPage() {
         <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">
           戦略設定 — {strategy.name}
         </h1>
-        <p className="text-[13px] text-muted-foreground-strong">
+        <p className="text-sm text-muted-foreground-strong">
           戦略 Agent の初期コンテキスト (AGENTS.md / skills)、trigger、 agent
           graph を編集します。
         </p>

@@ -33,14 +33,14 @@ function NoteDetailPage() {
       <div className="space-y-4">
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-10 w-2/3" />
-        <Skeleton className="h-[480px] w-full" />
+        <Skeleton className="h-120 w-full" />
       </div>
     )
   }
 
   if (note == null) {
     return (
-      <div className="font-mono text-[13px] text-muted-foreground">
+      <div className="font-mono text-sm text-muted-foreground">
         ノートが見つかりませんでした。
       </div>
     )

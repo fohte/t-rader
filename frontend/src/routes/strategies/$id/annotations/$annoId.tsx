@@ -83,15 +83,15 @@ function AnnotationDetailPage() {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-5 w-full max-w-[480px]" />
-        <Skeleton className="h-[200px] w-full" />
+        <Skeleton className="h-5 w-full max-w-120" />
+        <Skeleton className="h-50 w-full" />
       </div>
     )
   }
 
   if (annotation == null) {
     return (
-      <div className="font-mono text-[13px] text-muted-foreground">
+      <div className="font-mono text-sm text-muted-foreground">
         アノテーションが見つかりませんでした。{' '}
         <Link
           to="/strategies/$id"
@@ -153,12 +153,12 @@ function AnnotationDetailPage() {
           <span className="inline-grid h-6 min-w-8 place-items-center border border-primary px-1 font-mono text-2xs text-primary">
             ANNOTATION
           </span>
-          <span className="border border-border bg-surface-strong px-1.5 py-px font-mono text-[10px] uppercase text-muted-foreground-strong">
+          <span className="border border-border bg-surface-strong px-1.5 py-px font-mono text-2xs uppercase text-muted-foreground-strong">
             {annotation.target_kind}
           </span>
           <StatusPill status={annotation.status} />
         </div>
-        <p className="mb-4 whitespace-pre-wrap text-[15px] leading-relaxed">
+        <p className="mb-4 whitespace-pre-wrap text-base leading-relaxed">
           {annotation.text}
         </p>
         <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-[120px_minmax(0,1fr)]">
@@ -250,12 +250,12 @@ function AnnotationDetailPage() {
             <div key={c.id} className="border-l-2 border-border pl-3">
               <div className="mb-1 flex items-center gap-2 font-mono text-2xs text-muted-foreground">
                 <span className="text-foreground">{c.author_label}</span>
-                <span className="border border-border px-1 text-[9px] uppercase">
+                <span className="border border-border px-1 text-2xs uppercase">
                   {c.author_kind}
                 </span>
                 <span>{formatDateTime(c.created_at)}</span>
               </div>
-              <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">
                 {c.body}
               </p>
             </div>
@@ -315,7 +315,7 @@ function AnnotationDetailPage() {
               >
                 {h.actor_label}
               </span>
-              <span className="border border-border px-1 text-[10px] uppercase text-muted-foreground-strong">
+              <span className="border border-border px-1 text-2xs uppercase text-muted-foreground-strong">
                 {h.op}
               </span>
               {h.summary != null && h.summary !== '' && (

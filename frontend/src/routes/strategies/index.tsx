@@ -31,8 +31,8 @@ function StrategyListPage() {
 
   return (
     <div className="font-sans text-foreground">
-      <div className="mb-8 max-w-[720px]">
-        <h1 className="mb-3 text-[26px] font-bold tracking-tight">
+      <div className="mb-8 max-w-180">
+        <h1 className="mb-3 text-2xl font-bold tracking-tight">
           <span className="font-mono font-bold text-primary">&gt;</span>{' '}
           戦略を選ぶ
         </h1>
@@ -44,9 +44,9 @@ function StrategyListPage() {
 
       {isPending ? (
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-          <Skeleton className="h-[188px]" />
-          <Skeleton className="h-[188px]" />
-          <Skeleton className="h-[188px]" />
+          <Skeleton className="h-47" />
+          <Skeleton className="h-47" />
+          <Skeleton className="h-47" />
         </div>
       ) : (
         <>
@@ -65,7 +65,7 @@ function StrategyListPage() {
                   key={s.id}
                   to="/strategies/$id"
                   params={{ id: s.id }}
-                  className="flex min-h-[188px] cursor-pointer flex-col gap-3.5 border border-border bg-card p-4 transition-colors hover:border-muted-foreground"
+                  className="flex min-h-47 cursor-pointer flex-col gap-3.5 border border-border bg-card p-4 transition-colors hover:border-muted-foreground"
                 >
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0">
@@ -80,7 +80,7 @@ function StrategyListPage() {
                     )}
                   </div>
                   {s.description != null && s.description !== '' && (
-                    <p className="line-clamp-3 text-[13px] leading-relaxed text-muted-foreground-strong">
+                    <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground-strong">
                       {s.description}
                     </p>
                   )}
@@ -109,10 +109,10 @@ function StrategyListPage() {
               onClick={() => {
                 setCreating(true)
               }}
-              className="flex min-h-[188px] cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-border bg-transparent p-4 text-center text-muted-foreground hover:border-primary hover:text-primary"
+              className="flex min-h-47 cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-border bg-transparent p-4 text-center text-muted-foreground hover:border-primary hover:text-primary"
             >
               <Plus className="size-6" />
-              <div className="font-mono text-[13px]">新しい戦略を作る</div>
+              <div className="font-mono text-sm">新しい戦略を作る</div>
               <div className="font-mono text-2xs">シード関心は後から追加</div>
             </button>
           </div>
