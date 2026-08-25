@@ -195,13 +195,15 @@ border-width と同じく Tailwind の固定スケールが `<N>px` に直接解
 
 例: `grid-cols-[minmax(0,1fr)_360px]` → `grid-cols-(--grid-cols-portfolio-layout)`
 
-| Token                          | 値                     | 用途                                                                         |
-| ------------------------------ | ---------------------- | ---------------------------------------------------------------------------- |
-| `--grid-cols-portfolio-layout` | `minmax(0, 1fr) 360px` | ポートフォリオ画面の保有銘柄セクション + アロケーションの 2 カラムレイアウト |
-| `--grid-cols-field-label`      | `108px 1fr`            | ラベル列 + 値列の 2 カラムフィールドグリッド                                 |
-| `--grid-cols-foreach-indent`   | `22px 1fr`             | forEach ツリーのインデント表現                                               |
-| `--grid-cols-skills-sidebar`   | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン                                         |
-| `--grid-cols-triggers-sidebar` | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン                                       |
+| Token                           | 値                     | 用途                                                                         |
+| ------------------------------- | ---------------------- | ---------------------------------------------------------------------------- |
+| `--grid-cols-portfolio-layout`  | `minmax(0, 1fr) 360px` | ポートフォリオ画面の保有銘柄セクション + アロケーションの 2 カラムレイアウト |
+| `--grid-cols-field-label`       | `108px 1fr`            | ラベル列 + 値列の 2 カラムフィールドグリッド                                 |
+| `--grid-cols-foreach-indent`    | `22px 1fr`             | forEach ツリーのインデント表現                                               |
+| `--grid-cols-skills-sidebar`    | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン                                         |
+| `--grid-cols-triggers-sidebar`  | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン                                       |
+| `--grid-cols-indicators-list`   | `260px 1fr`            | indicators ページの indicator 一覧幅                                         |
+| `--grid-cols-hypothesis-detail` | `minmax(0, 1fr) 280px` | hypothesis 詳細ページの status aside 幅                                      |
 
 ## Non-goals
 

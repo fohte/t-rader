@@ -59,7 +59,7 @@ export function HypothesisEditor({
       <div className="space-y-1.5">
         <label
           htmlFor="hypothesis-title-input"
-          className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+          className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
         >
           title
         </label>
@@ -75,7 +75,7 @@ export function HypothesisEditor({
         <div className="space-y-1.5">
           <label
             htmlFor="hypothesis-body-source"
-            className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+            className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           >
             body
           </label>
@@ -86,17 +86,17 @@ export function HypothesisEditor({
               setBody(e.target.value)
             }}
             rows={10}
-            className="w-full resize-y border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-3 font-mono text-[12.5px] leading-relaxed text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
+            className="w-full resize-y border border-border bg-bg-secondary p-3 font-mono text-xs leading-relaxed text-foreground outline-none focus:border-muted-foreground"
           />
         </div>
         <div className="space-y-1.5">
-          <span className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             preview
           </span>
           <div
             data-testid="hypothesis-body-preview"
             style={{ minHeight: '240px' }}
-            className="overflow-auto border border-[color:var(--color-hairline)] bg-[color:var(--color-bg-secondary)] px-4 py-2"
+            className="overflow-auto border border-border bg-bg-secondary px-4 py-2"
           >
             <MarkdownBody source={body} />
           </div>
@@ -113,7 +113,7 @@ export function HypothesisEditor({
         {(validationError != null || saveError != null) && (
           <span
             data-testid="hypothesis-editor-error"
-            className="font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+            className="font-mono text-xs text-primary"
           >
             {validationError ?? saveError}
           </span>

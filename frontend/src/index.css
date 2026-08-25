@@ -95,6 +95,8 @@
   --grid-cols-foreach-indent: 22px 1fr;
   --grid-cols-skills-sidebar: 240px minmax(0, 1fr);
   --grid-cols-triggers-sidebar: 280px minmax(0, 1fr);
+  --grid-cols-indicators-list: 260px 1fr;
+  --grid-cols-hypothesis-detail: minmax(0, 1fr) 280px;
 
   /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の

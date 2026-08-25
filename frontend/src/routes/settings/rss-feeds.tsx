@@ -79,17 +79,17 @@ function RssFeedsSettingsPage() {
       <div>
         <Link
           to="/strategies"
-          className="font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+          className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
           &lt; 戦略一覧に戻る
         </Link>
       </div>
       <header className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="mb-1 text-[24px] font-bold leading-tight tracking-tight">
+          <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">
             設定 — RSS フィード
           </h1>
-          <p className="text-[13px] text-[color:var(--color-text-secondary)]">
+          <p className="text-sm text-muted-foreground-strong">
             ニュース集約 (1 時間ごと) が読みに行く公開 RSS の一覧を管理します。
           </p>
         </div>
@@ -99,15 +99,15 @@ function RssFeedsSettingsPage() {
       </header>
 
       {isPending ? (
-        <Skeleton className="h-[200px] w-full" />
+        <Skeleton className="h-50 w-full" />
       ) : (feeds ?? []).length === 0 ? (
-        <div className="border border-dashed border-[color:var(--color-border-strategy)] p-6 text-center text-[13px] text-[color:var(--color-text-tertiary)]">
+        <div className="border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
           まだフィードが登録されていません。「フィードを追加」から登録してください。
         </div>
       ) : (
-        <div className="overflow-x-auto border border-[color:var(--color-border-strategy)]">
-          <table className="w-full font-mono text-[12px]">
-            <thead className="bg-[color:var(--panel-inset)] text-[color:var(--color-text-tertiary)]">
+        <div className="overflow-x-auto border border-border">
+          <table className="w-full font-mono text-xs">
+            <thead className="bg-surface-strong text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left">表示名</th>
                 <th className="px-3 py-2 text-left">source</th>
@@ -118,17 +118,14 @@ function RssFeedsSettingsPage() {
             </thead>
             <tbody>
               {(feeds ?? []).map((feed) => (
-                <tr
-                  key={feed.id}
-                  className="border-t border-[color:var(--color-hairline)]"
-                >
-                  <td className="px-3 py-2 text-[color:var(--color-text-primary)]">
+                <tr key={feed.id} className="border-t border-border">
+                  <td className="px-3 py-2 text-foreground">
                     {feed.display_name}
                   </td>
-                  <td className="px-3 py-2 text-[color:var(--color-text-secondary)]">
+                  <td className="px-3 py-2 text-muted-foreground-strong">
                     {feed.source}
                   </td>
-                  <td className="max-w-[320px] truncate px-3 py-2 text-[color:var(--color-text-secondary)]">
+                  <td className="max-w-80 truncate px-3 py-2 text-muted-foreground-strong">
                     <a
                       href={feed.url}
                       target="_blank"
