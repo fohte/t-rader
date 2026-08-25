@@ -1,8 +1,97 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+@import '@fontsource-variable/jetbrains-mono';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
 
 @custom-variant dark (&:is(.dark *));
+
+/*
+ * Single dark palette: light theme is unused (index.html hardcodes
+ * class="dark" and no theme toggle exists), so all tokens live directly on
+ * :root instead of duplicating them under a separate .dark block.
+ * Values are aligned with tq (https://github.com/fohte/tq) — see
+ * docs/design-system.md.
+ */
+:root {
+  --radius: 0.625rem;
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #141414;
+  --card-foreground: #fafafa;
+  --popover: #141414;
+  --popover-foreground: #fafafa;
+  --primary: #ef4444;
+  --primary-foreground: #fafafa;
+  --secondary: #141414;
+  --secondary-foreground: #fafafa;
+  --muted: #141414;
+  --muted-foreground: #71717a;
+  --accent: #141414;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --border: #2a2a2a;
+  --input: #2a2a2a;
+  --ring: #ef4444;
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #ef4444;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #141414;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #2a2a2a;
+  --sidebar-ring: #ef4444;
+
+  /* Extra tiers the shadcn set has no slot for — see docs/design-system.md */
+  --surface-strong: #1f1f1f;
+  --muted-foreground-strong: #a1a1aa;
+
+  --font-mono-ui:
+    'JetBrains Mono Variable', 'IBM Plex Mono', 'SFMono-Regular', Consolas,
+    'Liberation Mono', Menlo, monospace;
+  --font-mono-body: var(--font-mono-ui);
+  --font-sans:
+    'Inter', 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN',
+    'Noto Sans JP', sans-serif;
+
+  /* t-rader 固有: shadcn の3段では表現しない背景の中間段 */
+  --color-bg-secondary: #0f0f0f;
+  --color-bg-tertiary: #1a1a1a;
+
+  /* t-rader 固有: 株価の方向 (日本の慣習で上げが赤) */
+  --color-up: #ef5350;
+  --color-up-dim: #5a2a2a;
+  --color-down: #3f9fe0;
+  --color-down-dim: #234152;
+
+  /* t-rader 固有: レビューステータス */
+  --status-approved: #4ea1a1;
+  --status-unread: #ef4444;
+  --status-rejected: #71717a;
+  /* running は failed の赤と衝突しないよう別色にする */
+  --status-task-running: #fbbf24;
+
+  /*
+   * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
+   * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
+   */
+  --color-bg-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground-strong);
+  --color-text-tertiary: var(--muted-foreground);
+  --color-border-strategy: var(--border);
+  --color-accent-strategy: var(--primary);
+  --panel: var(--card);
+  --panel-inset: var(--surface-strong);
+  --hairline: var(--border);
+}
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -43,122 +132,11 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-}
+  --color-surface-strong: var(--surface-strong);
+  --color-muted-foreground-strong: var(--muted-foreground-strong);
 
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-
-/* ============================================================================
-   Strategy design tokens (t-rader redesign)
-   Near-monochrome surfaces + one accent red, mono for chrome/numbers.
-   ============================================================================ */
-:root {
-  --font-mono-ui:
-    'JetBrains Mono', 'IBM Plex Mono', 'SFMono-Regular', Consolas,
-    'Liberation Mono', Menlo, monospace;
-  --font-mono-body: var(--font-mono-ui);
-  --font-sans:
-    'Inter', 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN',
-    'Noto Sans JP', sans-serif;
-
-  /* Brand 3-stop surface ramp + panel/inset/hairline */
-  --color-bg-primary: #0a0a0a;
-  --color-bg-secondary: #0f0f0f;
-  --color-bg-tertiary: #1a1a1a;
-  --color-text-primary: #f4f4f5;
-  --color-text-secondary: #a1a1aa;
-  --color-text-tertiary: #71717a;
-  --color-border-strategy: #2a2a2a;
-  --color-accent-strategy: #ef4444;
-
-  --panel: #121212;
-  --panel-inset: #1a1a1a;
-  --hairline: #222222;
-
-  /* Price direction (JP convention by default) */
-  --color-up: #ef5350;
-  --color-up-dim: #5a2a2a;
-  --color-down: #3f9fe0;
-  --color-down-dim: #234152;
-
-  /* Review status */
-  --status-approved: #4ea1a1;
-  --status-unread: #ef4444;
-  --status-rejected: #71717a;
-
-  /* Task execution status (running は failed の赤と衝突しないよう別色にする) */
-  --status-task-running: #fbbf24;
-
-  --radius-none: 0;
-}
-
-@theme inline {
+  /* Tailwind 既定の font-mono utility (既存呼び出し箇所) にも新フォントを効かせる */
+  --font-mono: var(--font-mono-ui);
   --font-mono-ui: var(--font-mono-ui);
   --font-mono-body: var(--font-mono-body);
 
@@ -166,9 +144,17 @@
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 0.9375rem;
 
-  --color-bg-primary: var(--color-bg-primary);
   --color-bg-secondary: var(--color-bg-secondary);
   --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-up: var(--color-up);
+  --color-down: var(--color-down);
+  --color-status-approved: var(--status-approved);
+  --color-status-unread: var(--status-unread);
+  --color-status-rejected: var(--status-rejected);
+  --color-status-task-running: var(--status-task-running);
+
+  /* 互換エイリアス (utility 経由の既存参照を維持) */
+  --color-bg-primary: var(--color-bg-primary);
   --color-text-primary: var(--color-text-primary);
   --color-text-secondary: var(--color-text-secondary);
   --color-text-tertiary: var(--color-text-tertiary);
@@ -177,12 +163,6 @@
   --color-panel: var(--panel);
   --color-panel-inset: var(--panel-inset);
   --color-hairline: var(--hairline);
-  --color-up: var(--color-up);
-  --color-down: var(--color-down);
-  --color-status-approved: var(--status-approved);
-  --color-status-unread: var(--status-unread);
-  --color-status-rejected: var(--status-rejected);
-  --color-status-task-running: var(--status-task-running);
 }
 
 @layer base {
