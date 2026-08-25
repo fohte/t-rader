@@ -31,21 +31,13 @@ export function RefChip({
   const inner = (
     <>
       {showKind && (
-        <span
-          // text-[0.78em] は親要素のフォントサイズ相対値で @theme に token 化されていない
-          className="text-[0.78em] tracking-wide text-muted-foreground"
-        >
+        <span className="text-[0.78em] tracking-wide text-muted-foreground">
           {kindJP}
         </span>
       )}
       <span>{ref.name}</span>
       {ref.sub != null && ref.sub !== '' && (
-        <span
-          // text-[0.85em] は親要素のフォントサイズ相対値で @theme に token 化されていない
-          className="text-[0.85em] text-muted-foreground"
-        >
-          {ref.sub}
-        </span>
+        <span className="text-[0.85em] text-muted-foreground">{ref.sub}</span>
       )}
     </>
   )

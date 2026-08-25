@@ -30,7 +30,7 @@ export function MacroStripView({
         <span>macro</span>
         {staleSince != null && ticks != null && (
           <span
-            className="ml-1 border border-border px-1 text-2xs text-muted-foreground"
+            className="ml-1 border border-border px-1 text-[9px] text-muted-foreground"
             title={`最終更新失敗 since ${staleSince}`}
           >
             stale

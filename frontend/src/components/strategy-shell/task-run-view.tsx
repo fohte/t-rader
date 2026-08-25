@@ -155,10 +155,7 @@ export function TaskRunView({
               </pre>
             )}
 
-          <div
-            // grid-cols-[minmax(0,1fr)_360px] は可変幅+固定幅の grid-template-columns で、対応する非 arbitrary な scale utility が存在しない
-            className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]"
-          >
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="border border-border bg-card p-4">
               {steps.length === 0 ? (
                 <p className="font-mono text-xs text-muted-foreground">
