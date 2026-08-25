@@ -44,6 +44,7 @@ function DialogContent({
   children,
   showCloseButton = true,
   initialFocus,
+  ref,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
@@ -54,13 +55,40 @@ function DialogContent({
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Popup
-        ref={popupRef}
+        ref={(node) => {
+          popupRef.current = node
+          if (typeof ref === 'function') {
+            return ref(node)
+          }
+          if (ref) {
+            ref.current = node
+          }
+        }}
         data-slot="dialog-content"
         // dialog 表示時の初期フォーカス先で input のテキストを全選択する。native
         // autoFocus は Base UI の initialFocus (FloatingFocusManager の layout
         // effect) より先に発火するため、その場合は activeElement を直接 select() し、
-        // そうでなければ Base UI がフォーカスを移すのを focusin で待つ
+        // そうでなければ Base UI がフォーカスを移すのを focusin で待つ。caller が
+        // initialFocus を指定しない場合の touch 時のデフォルト挙動 (仮想キーボード
+        // 抑止のため popup 自体にフォーカス) は Base UI 内部の defaultInitialFocus と
+        // 同じロジックで再現し、initialFocus={false} (フォーカス移動なし) の契約も
+        // 尊重して select 用のリスナーを仕込まない
         initialFocus={(openType) => {
+          const resolved =
+            typeof initialFocus === 'function'
+              ? initialFocus(openType)
+              : typeof initialFocus === 'boolean'
+                ? initialFocus
+                : initialFocus !== undefined
+                  ? initialFocus.current
+                  : openType === 'touch'
+                    ? popupRef.current
+                    : true
+
+          if (resolved === false) {
+            return resolved
+          }
+
           const select = (el: EventTarget | Element | null) => {
             if (el instanceof HTMLInputElement) el.select()
           }
@@ -75,9 +103,7 @@ function DialogContent({
               { once: true },
             )
           }
-          return typeof initialFocus === 'function'
-            ? initialFocus(openType)
-            : (initialFocus ?? true)
+          return resolved
         }}
         className={cn(
           'bg-background data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 outline-none sm:max-w-lg',
