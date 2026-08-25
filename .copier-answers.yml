@@ -5,7 +5,7 @@ description: 個人向け日本株投資プラットフォーム
 is_public: true
 monorepo_node_workspace: true
 project_name: t-rader
-repo_id: ''
+repo_id: '1157895826'
 repo_language: ja
 subpackages:
   - name: frontend
