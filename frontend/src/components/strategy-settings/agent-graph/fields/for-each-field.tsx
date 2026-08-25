@@ -27,6 +27,7 @@ export function ForEachField({
   onChange,
 }: ForEachFieldProps) {
   const options = getForEachOptions(phases, index)
+  const items = [{ value: ONCE_VALUE, label: '1 実行につき 1 回' }, ...options]
 
   return (
     <>
@@ -34,9 +35,12 @@ export function ForEachField({
         実行回数
       </span>
       <Select
+        items={items}
         value={value ?? ONCE_VALUE}
         onValueChange={(next) => {
-          onChange(next === ONCE_VALUE ? undefined : next)
+          // Base UI の Select.onValueChange は null を渡しうるため、sentinel と同様に
+          // 未設定 (undefined) として扱う
+          onChange(next == null || next === ONCE_VALUE ? undefined : next)
         }}
       >
         <SelectTrigger

@@ -30,7 +30,10 @@ export function LabelFieldField({
       </span>
       <Select
         value={value}
-        onValueChange={onChange}
+        onValueChange={(next) => {
+          // Base UI の Select.onValueChange は null を渡しうるため undefined に正規化する
+          onChange(next ?? undefined)
+        }}
         disabled={options.length === 0}
       >
         <SelectTrigger
