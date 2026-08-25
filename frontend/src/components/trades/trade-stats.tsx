@@ -26,25 +26,25 @@ export function TradeStats({
     {
       label: '手数料 (累計)',
       value: formatYen(feesTotal),
-      cls: 'text-[color:var(--color-text-secondary)]',
+      cls: 'text-muted-foreground-strong',
     },
     { label: '取引回数', value: tradeCount.toLocaleString() },
     { label: '保有銘柄', value: openPositions.toLocaleString() },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden border border-[color:var(--color-border-strategy)] bg-[color:var(--color-border-strategy)] sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-px overflow-hidden border border-border bg-border sm:grid-cols-4">
       {stats.map((s) => (
         <div
           key={s.label}
-          className="flex flex-col gap-1 bg-[color:var(--panel)] px-3.5 py-2.5"
+          className="flex flex-col gap-1 bg-card px-3.5 py-2.5"
         >
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
             {s.label}
           </span>
           <span
-            className={`font-mono text-[18px] font-bold tabular-nums ${
-              s.cls ?? 'text-[color:var(--color-text-primary)]'
+            className={`font-mono text-lg font-bold tabular-nums ${
+              s.cls ?? 'text-foreground'
             }`}
           >
             {s.value}
