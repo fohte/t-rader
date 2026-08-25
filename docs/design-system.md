@@ -166,6 +166,15 @@ arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、以下の表
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 
+### 44px 超のサイズ
+
+`w`/`h`/`max-w` 等が 44px を超える場合は上の grid 丸め表の対象外だが、それでも極力 arbitrary value を残さない。
+
+1. まず Tailwind 既定の `max-w-*`/`w-*` スケール (rem 刻み、`--spacing` の 4px grid とは別系統) に同点切り上げで丸められないか確認する。
+   例: `max-w-[720px]` は `max-w-2xl`(672px) と `max-w-3xl`(768px) の中間で同点、切り上げて `max-w-3xl` を使う
+2. 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に t-rader 固有の named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする。
+   例: ノート本文内のグラフ埋め込み高さは `--note-graph-height: 26.25rem` (420px) を追加し、`h-note-graph` として参照する
+
 ## Non-goals
 
 このドキュメントはトークン契約であって、既存画面の一括 restyle ではない。

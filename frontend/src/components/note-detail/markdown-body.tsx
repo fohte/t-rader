@@ -140,12 +140,12 @@ export function MarkdownBody({
       </blockquote>
     ),
     pre: ({ children }) => (
-      <pre className="my-3 overflow-x-auto border border-border bg-surface-strong p-3 font-mono text-xs leading-relaxed text-foreground [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-[1em]">
+      <pre className="my-3 overflow-x-auto border border-border bg-surface-strong p-3 font-mono text-xs leading-relaxed text-foreground [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0 [&>code]:text-xs">
         {children}
       </pre>
     ),
     code: ({ children }) => (
-      <code className="border border-border bg-surface-strong px-1 py-px font-mono text-[0.88em]">
+      <code className="border border-border bg-surface-strong px-1 py-px font-mono text-xs">
         {children}
       </code>
     ),
@@ -195,10 +195,10 @@ export function MarkdownBody({
         type="button"
         onClick={() => onAnno?.(annoId)}
         title={`annotation ${annoId}`}
-        className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-[0.82em] text-primary hover:bg-primary/15"
+        className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-2xs text-primary hover:bg-primary/15"
       >
         <span className="font-bold">{annoId}</span>
-        <span className="text-[0.85em] text-muted-foreground">annotation</span>
+        <span className="text-2xs text-muted-foreground">annotation</span>
       </button>
     ),
     'note-graph': ({ graphId }) => {
@@ -220,7 +220,7 @@ export function MarkdownBody({
             <GraphRenderer
               def={def}
               onOpenRef={onRef}
-              className="h-[420px] border border-border"
+              className="h-note-graph border border-border"
             />
           </ErrorBoundary>
         </div>

@@ -79,6 +79,13 @@
   --status-task-running: #fbbf24;
 
   /*
+   * t-rader 固有: spacing scale (4px grid) にも Tailwind 標準の w/h スケール
+   * にも属さない固定サイズ。要素自体が 44px を超えるため grid 丸め対象外
+   * (docs/design-system.md の Spacing scale 参照)。
+   */
+  --note-graph-height: 26.25rem; /* 420px: ノート本文内の埋め込みグラフの高さ */
+
+  /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
    * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
    */
@@ -152,6 +159,7 @@
   --color-status-unread: var(--status-unread);
   --color-status-rejected: var(--status-rejected);
   --color-status-task-running: var(--status-task-running);
+  --height-note-graph: var(--note-graph-height);
 
   /* 互換エイリアス (utility 経由の既存参照を維持) */
   --color-bg-primary: var(--color-bg-primary);
