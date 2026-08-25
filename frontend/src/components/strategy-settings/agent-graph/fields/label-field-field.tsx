@@ -29,7 +29,6 @@ export function LabelFieldField({
         ノード名
       </span>
       <Select
-        items={options.map((field) => ({ value: field, label: field }))}
         value={value}
         onValueChange={(next) => {
           // Base UI の Select.onValueChange は null を渡しうるため undefined に正規化する
