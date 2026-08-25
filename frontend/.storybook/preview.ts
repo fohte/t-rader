@@ -67,10 +67,9 @@ const preview: Preview = {
   decorators: [
     withThemeByClassName({
       themes: {
-        light: '',
         dark: 'dark',
       },
-      defaultTheme: 'light',
+      defaultTheme: 'dark',
     }),
   ],
   loaders: [
