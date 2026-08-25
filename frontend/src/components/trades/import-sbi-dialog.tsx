@@ -225,7 +225,7 @@ export function ImportSbiDialog({
 
             <div className="max-h-[420px] overflow-auto rounded border border-border">
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-[color:var(--color-bg-elevated)] text-left text-muted-foreground-strong">
+                <thead className="sticky top-0 bg-bg-tertiary text-left text-muted-foreground-strong">
                   <tr>
                     <th className="px-2 py-1.5">除外</th>
                     <th className="px-2 py-1.5">日付</th>
@@ -244,7 +244,7 @@ export function ImportSbiDialog({
                       key={`${String(r.row_index)}-${r.symbol}`}
                       className={
                         r.is_duplicate
-                          ? 'bg-[color:var(--color-bg-elevated)]/40 text-muted-foreground'
+                          ? 'bg-bg-tertiary/40 text-muted-foreground'
                           : ''
                       }
                     >
