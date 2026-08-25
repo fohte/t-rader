@@ -13,8 +13,8 @@ const NOOP = (): void => {}
 function createFloatingChatRouter(props: FloatingChatViewProps) {
   return createStoryRouter(
     () => (
-      <div className="h-screen bg-[color:var(--color-bg-primary)] p-4">
-        <p className="font-mono text-sm text-[color:var(--color-text-secondary)]">
+      <div className="h-screen bg-background p-4">
+        <p className="font-mono text-sm text-muted-foreground-strong">
           right-bottom: floating chat preview
         </p>
         <FloatingChatView {...props} />

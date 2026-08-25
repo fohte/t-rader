@@ -92,21 +92,19 @@ export function TaskRunView({
   } | null>(null)
 
   return (
-    <div className="space-y-4 font-sans text-[color:var(--color-text-primary)]">
+    <div className="space-y-4 font-sans text-foreground">
       <Link
         to="/strategies/$id/runs"
         params={{ id: strategyId }}
-        className="inline-flex items-center gap-1 font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+        className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
       >
         &lt; 実行一覧に戻る
       </Link>
 
       {task == null && taskLoadError ? (
-        <p className="flex items-baseline gap-2 font-mono text-[12px]">
-          <span className="uppercase tracking-wider text-[color:var(--color-accent-strategy)]">
-            error
-          </span>
-          <span className="text-[color:var(--color-text-secondary)]">
+        <p className="flex items-baseline gap-2 font-mono text-xs">
+          <span className="uppercase tracking-wider text-primary">error</span>
+          <span className="text-muted-foreground-strong">
             タスクの取得に失敗しました。
           </span>
         </p>
@@ -123,7 +121,7 @@ export function TaskRunView({
             <h1 className="mb-1.5 text-[22px] font-bold leading-tight tracking-tight">
               {task.prompt}
             </h1>
-            <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+            <p className="font-mono text-2xs text-muted-foreground">
               {sourceLabel(task.source)} から投入 ·{' '}
               {formatDateTime(task.createdAt)} · 経過 {computeElapsed(task)}
             </p>
@@ -135,10 +133,7 @@ export function TaskRunView({
                 {
                   label: 'PHASE',
                   value: task.phase.toUpperCase(),
-                  cls:
-                    task.phase === 'failed'
-                      ? 'text-[color:var(--color-accent-strategy)]'
-                      : undefined,
+                  cls: task.phase === 'failed' ? 'text-primary' : undefined,
                 },
                 {
                   label: 'ステップ',
@@ -155,15 +150,15 @@ export function TaskRunView({
           {task.phase === 'failed' &&
             task.errorSummary != null &&
             task.errorSummary !== '' && (
-              <pre className="whitespace-pre-wrap border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] p-2 font-mono text-[11px] text-[color:var(--color-text-secondary)]">
+              <pre className="whitespace-pre-wrap border border-border bg-background p-2 font-mono text-2xs text-muted-foreground-strong">
                 {task.errorSummary}
               </pre>
             )}
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-4">
+            <div className="border border-border bg-card p-4">
               {steps.length === 0 ? (
-                <p className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+                <p className="font-mono text-xs text-muted-foreground">
                   実行記録がありません。
                 </p>
               ) : (
@@ -177,7 +172,7 @@ export function TaskRunView({
                 />
               )}
             </div>
-            <aside className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-4">
+            <aside className="border border-border bg-card p-4">
               {selectedStep != null ? (
                 <StepDetail
                   strategyId={strategyId}
@@ -186,7 +181,7 @@ export function TaskRunView({
                   traceUrlTemplate={traceUrlTemplate}
                 />
               ) : (
-                <p className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+                <p className="font-mono text-xs text-muted-foreground">
                   ステップを選択してください。
                 </p>
               )}

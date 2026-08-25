@@ -13,7 +13,7 @@ const PLACEHOLDER_PATHS = [
 ].map(({ path, label }) => ({
   path,
   component: () => (
-    <div className="font-mono text-sm text-[color:var(--color-text-secondary)]">
+    <div className="font-mono text-sm text-muted-foreground-strong">
       {label}
     </div>
   ),

@@ -24,15 +24,13 @@ export function MacroStripView({
   isPending,
 }: MacroStripViewProps) {
   return (
-    <div className="flex items-stretch overflow-x-auto border-b border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] font-mono [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="flex flex-shrink-0 items-center gap-1.5 border-r border-[color:var(--color-border-strategy)] px-3.5 text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-        <span className="font-bold text-[color:var(--color-accent-strategy)]">
-          ##
-        </span>
+    <div className="flex items-stretch overflow-x-auto border-b border-border bg-bg-secondary font-mono [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex flex-shrink-0 items-center gap-1.5 border-r border-border px-3.5 text-2xs uppercase tracking-wider text-muted-foreground">
+        <span className="font-bold text-primary">##</span>
         <span>macro</span>
         {staleSince != null && ticks != null && (
           <span
-            className="ml-1 border border-[color:var(--color-hairline)] px-1 text-[9px] text-[color:var(--color-text-tertiary)]"
+            className="ml-1 border border-border px-1 text-[9px] text-muted-foreground"
             title={`最終更新失敗 since ${staleSince}`}
           >
             stale
@@ -53,14 +51,14 @@ function renderBody({
 }) {
   if (isPending && ticks == null) {
     return (
-      <div className="flex flex-shrink-0 items-center px-4 py-1.5 text-[11px] text-[color:var(--color-text-tertiary)]">
+      <div className="flex flex-shrink-0 items-center px-4 py-1.5 text-2xs text-muted-foreground">
         loading…
       </div>
     )
   }
   if (ticks == null) {
     return (
-      <div className="flex flex-shrink-0 items-center px-4 py-1.5 text-[11px] text-[color:var(--color-text-tertiary)]">
+      <div className="flex flex-shrink-0 items-center px-4 py-1.5 text-2xs text-muted-foreground">
         N/A
       </div>
     )
@@ -70,17 +68,17 @@ function renderBody({
     return (
       <div
         key={t.symbol}
-        className="flex flex-shrink-0 items-baseline gap-2 border-r border-[color:var(--color-hairline)] px-4 py-1.5"
+        className="flex flex-shrink-0 items-baseline gap-2 border-r border-border px-4 py-1.5"
         title={t.symbol}
       >
-        <span className="text-[11px] tracking-wide text-[color:var(--color-text-tertiary)]">
+        <span className="text-2xs tracking-wide text-muted-foreground">
           {t.symbol}
         </span>
-        <span className="font-mono text-[13px] tabular-nums text-[color:var(--color-text-primary)]">
+        <span className="font-mono text-[13px] tabular-nums text-foreground">
           {t.value}
         </span>
         <span
-          className={`text-[11px] tabular-nums ${isUp ? 'text-[color:var(--color-up)]' : 'text-[color:var(--color-down)]'}`}
+          className={`text-2xs tabular-nums ${isUp ? 'text-up' : 'text-down'}`}
         >
           {isUp ? '+' : ''}
           {t.pct.toFixed(2)}%

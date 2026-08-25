@@ -8,17 +8,14 @@ export function EmptyPlaceholder({
   description,
 }: EmptyPlaceholderProps) {
   return (
-    <div className="font-sans text-[color:var(--color-text-primary)]">
+    <div className="font-sans text-foreground">
       <h1 className="mb-3 text-[22px] font-bold">
-        <span className="font-mono font-bold text-[color:var(--color-accent-strategy)]">
-          #
-        </span>{' '}
-        {title}
+        <span className="font-mono font-bold text-primary">#</span> {title}
       </h1>
-      <p className="max-w-[640px] text-[14px] leading-relaxed text-[color:var(--color-text-secondary)]">
+      <p className="max-w-[640px] text-sm leading-relaxed text-muted-foreground-strong">
         {description}
       </p>
-      <div className="mt-6 inline-flex items-center gap-2 border border-dashed border-[color:var(--color-border-strategy)] px-3 py-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <div className="mt-6 inline-flex items-center gap-2 border border-dashed border-border px-3 py-1.5 font-mono text-2xs text-muted-foreground">
         未実装
       </div>
     </div>

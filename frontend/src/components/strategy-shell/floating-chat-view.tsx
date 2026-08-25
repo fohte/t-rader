@@ -52,7 +52,7 @@ export function FloatingChatView({
         onClick={onOpen}
         title="アナリストを呼ぶ (on-demand)"
         aria-label="アナリストを呼ぶ"
-        className="fixed bottom-5 right-5 z-[60] grid h-12 w-12 cursor-pointer place-items-center border border-[color:var(--color-accent-strategy)] bg-[color:var(--color-bg-secondary)] font-mono text-[22px] font-bold text-[color:var(--color-accent-strategy)] hover:bg-[color:var(--color-accent-strategy)] hover:text-white"
+        className="fixed bottom-5 right-5 z-[60] grid h-12 w-12 cursor-pointer place-items-center border border-primary bg-bg-secondary font-mono text-[22px] font-bold text-primary hover:bg-primary hover:text-white"
       >
         &gt;_
       </button>
@@ -70,33 +70,29 @@ export function FloatingChatView({
     <div
       role="dialog"
       aria-label="on-demand session"
-      className="fixed bottom-5 right-5 z-[60] flex h-[580px] max-h-[calc(100vh-100px)] w-[420px] max-w-[calc(100vw-28px)] flex-col border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)]"
+      className="fixed bottom-5 right-5 z-[60] flex h-[580px] max-h-[calc(100vh-100px)] w-[420px] max-w-[calc(100vw-28px)] flex-col border border-border bg-bg-secondary"
     >
-      <div className="flex items-center gap-2.5 border-b border-[color:var(--color-border-strategy)] px-3.5 py-2.5">
+      <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5">
         <span className="flex items-baseline gap-1.5 font-mono text-[13px] font-bold">
-          <span className="text-[color:var(--color-accent-strategy)]">
-            &gt;_
-          </span>
+          <span className="text-primary">&gt;_</span>
           <span>on-demand session</span>
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="閉じる"
-          className="ml-auto cursor-pointer text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+          className="ml-auto cursor-pointer text-muted-foreground hover:text-foreground"
         >
           <X className="size-4" />
         </button>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-3.5 text-[13px] text-[color:var(--color-text-secondary)]">
+      <div className="flex-1 space-y-3 overflow-y-auto p-3.5 text-[13px] text-muted-foreground-strong">
         {seed != null && (
-          <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] p-3">
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <div className="border border-border bg-background p-3">
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               seed
             </div>
-            <p className="leading-relaxed text-[color:var(--color-text-primary)]">
-              {seed}
-            </p>
+            <p className="leading-relaxed text-foreground">{seed}</p>
           </div>
         )}
         <FloatingChatStatusBlock
@@ -108,7 +104,7 @@ export function FloatingChatView({
           <Link
             to="/strategies/$id/runs/$taskId"
             params={{ id: strategyId, taskId: currentTaskId }}
-            className="block font-mono text-[11px] text-[color:var(--color-accent-strategy)] hover:underline"
+            className="block font-mono text-2xs text-primary hover:underline"
           >
             → 実行の詳細を見る
           </Link>
@@ -120,11 +116,9 @@ export function FloatingChatView({
           if (submitDisabled) return
           onSubmit()
         }}
-        className="flex items-center gap-2 border-t border-[color:var(--color-border-strategy)] px-3.5 py-3"
+        className="flex items-center gap-2 border-t border-border px-3.5 py-3"
       >
-        <span className="font-mono font-bold text-[color:var(--color-accent-strategy)]">
-          &gt;
-        </span>
+        <span className="font-mono font-bold text-primary">&gt;</span>
         <input
           aria-label="メッセージ入力"
           value={input}
@@ -133,13 +127,13 @@ export function FloatingChatView({
           }}
           disabled={inputDisabled}
           placeholder={placeholder}
-          className="flex-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] px-2.5 py-2 font-mono text-[13px] text-[color:var(--color-text-primary)] outline-none disabled:opacity-60"
+          className="flex-1 border border-border bg-background px-2.5 py-2 font-mono text-[13px] text-foreground outline-none disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={submitDisabled}
           aria-label="送信"
-          className="border border-[color:var(--color-accent-strategy)] bg-[color:var(--color-bg-primary)] px-3 py-2 font-mono text-[12px] font-bold text-[color:var(--color-accent-strategy)] hover:bg-[color:var(--color-accent-strategy)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[color:var(--color-bg-primary)] disabled:hover:text-[color:var(--color-accent-strategy)]"
+          className="border border-primary bg-background px-3 py-2 font-mono text-xs font-bold text-primary hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background disabled:hover:text-primary"
         >
           send
         </button>
@@ -182,7 +176,7 @@ function FloatingChatStatusBlock({
         <div className="space-y-2">
           <StatusLine label="failed" message="タスクが失敗しました。" />
           {status.error_summary != null && status.error_summary !== '' && (
-            <pre className="whitespace-pre-wrap border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] p-2 font-mono text-[11px] text-[color:var(--color-text-secondary)]">
+            <pre className="whitespace-pre-wrap border border-border bg-background p-2 font-mono text-2xs text-muted-foreground-strong">
               {status.error_summary}
             </pre>
           )}
@@ -201,13 +195,9 @@ function StatusLine({
   message: string
 }): React.ReactElement {
   return (
-    <p className="flex items-baseline gap-2 font-mono text-[12px]">
-      <span className="uppercase tracking-wider text-[color:var(--color-accent-strategy)]">
-        {label}
-      </span>
-      <span className="text-[color:var(--color-text-secondary)]">
-        {message}
-      </span>
+    <p className="flex items-baseline gap-2 font-mono text-xs">
+      <span className="uppercase tracking-wider text-primary">{label}</span>
+      <span className="text-muted-foreground-strong">{message}</span>
     </p>
   )
 }
@@ -221,7 +211,7 @@ function FloatingChatNoteList({
 }): React.ReactElement {
   if (strategyId == null || notes.length === 0) {
     return (
-      <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <p className="font-mono text-2xs text-muted-foreground">
         生成ノートはまだ取得できていません。
       </p>
     )
@@ -233,12 +223,10 @@ function FloatingChatNoteList({
           <Link
             to="/strategies/$id/notes/$noteId"
             params={{ id: strategyId, noteId: n.id }}
-            className="flex items-baseline gap-2 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] px-2.5 py-1.5 hover:border-[color:var(--color-accent-strategy)]"
+            className="flex items-baseline gap-2 border border-border bg-background px-2.5 py-1.5 hover:border-primary"
           >
-            <span className="flex-1 text-[12px] text-[color:var(--color-text-primary)]">
-              {n.title}
-            </span>
-            <span className="font-mono text-[10px] text-[color:var(--color-text-tertiary)]">
+            <span className="flex-1 text-xs text-foreground">{n.title}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">
               {formatRelative(n.updated_at)}
             </span>
           </Link>

@@ -39,12 +39,12 @@ export function StrategySwitcher() {
               params={{ id: s.id }}
               className={`relative flex flex-shrink-0 cursor-pointer items-center gap-2 border px-3.5 py-1.5 font-mono text-[13px] ${
                 active
-                  ? 'border-[color:var(--color-border-strategy)] border-b-[color:var(--panel)] bg-[color:var(--panel)] text-[color:var(--color-text-primary)]'
-                  : 'border-transparent text-[color:var(--color-text-secondary)] hover:bg-[color:var(--panel-inset)] hover:text-[color:var(--color-text-primary)]'
+                  ? 'border-border border-b-card bg-card text-foreground'
+                  : 'border-transparent text-muted-foreground-strong hover:bg-surface-strong hover:text-foreground'
               }`}
             >
               {active && (
-                <span className="absolute inset-x-[-1px] top-[-1px] h-0.5 bg-[color:var(--color-accent-strategy)]" />
+                <span className="absolute inset-x-[-1px] top-[-1px] h-0.5 bg-primary" />
               )}
               {s.name}
               <UnreadBadge count={unread} />
@@ -82,15 +82,15 @@ function MobileStrategyDropdown({
         onClick={() => {
           setOpen((v) => !v)
         }}
-        className="flex w-full items-center justify-between gap-2 border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-3 py-1.5 font-mono text-[13px] text-[color:var(--color-text-primary)]"
+        className="flex w-full items-center justify-between gap-2 border border-border bg-surface-strong px-3 py-1.5 font-mono text-[13px] text-foreground"
       >
         <span className="truncate">{current?.name ?? '戦略を選択'}</span>
-        <ChevronDown className="size-3.5 shrink-0 text-[color:var(--color-text-tertiary)]" />
+        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
       </button>
       {open && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-full z-30 mt-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)]"
+          className="absolute left-0 right-0 top-full z-30 mt-1 border border-border bg-bg-secondary"
         >
           {strategies.map((s) => (
             <li key={s.id}>
@@ -100,7 +100,7 @@ function MobileStrategyDropdown({
                 onClick={() => {
                   setOpen(false)
                 }}
-                className="flex items-center justify-between gap-2 border-b border-[color:var(--color-hairline)] px-3 py-2 font-mono text-[13px] text-[color:var(--color-text-secondary)] last:border-b-0 hover:bg-[color:var(--panel-inset)] hover:text-[color:var(--color-text-primary)]"
+                className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 font-mono text-[13px] text-muted-foreground-strong last:border-b-0 hover:bg-surface-strong hover:text-foreground"
               >
                 <span className="truncate">{s.name}</span>
                 <UnreadBadge count={unreadByStrategy.get(s.id) ?? 0} />

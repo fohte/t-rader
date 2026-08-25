@@ -15,7 +15,7 @@ import { createStoryRouter } from '#storybook/story-router'
 function createTaskRunViewRouter(props: TaskRunViewProps) {
   return createStoryRouter(
     () => (
-      <div className="min-h-screen bg-[color:var(--color-bg-primary)] p-6">
+      <div className="min-h-screen bg-background p-6">
         <TaskRunView {...props} />
       </div>
     ),

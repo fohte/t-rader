@@ -249,10 +249,8 @@ describe('TaskExecutionTree', () => {
       '[data-testid="task-execution-tree"] button span > span:first-child',
     )
 
-    expect(dots[0]?.className).toBe(
-      'text-[color:var(--color-status-task-running)] animate-pulse',
-    )
-    expect(dots[1]?.className).toBe('text-[color:var(--color-accent-strategy)]')
+    expect(dots[0]?.className).toBe('text-status-task-running animate-pulse')
+    expect(dots[1]?.className).toBe('text-primary')
   })
 
   it('ノードをクリックすると item/output の詳細が開閉する', async () => {

@@ -13,8 +13,8 @@ import { createStoryRouter } from '#storybook/story-router'
 function Frame({ children }: { children: React.ReactNode }) {
   const router = createStoryRouter(
     () => (
-      <div className="min-h-screen bg-[color:var(--color-bg-primary)] p-6">
-        <div className="w-[420px] border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-3.5">
+      <div className="min-h-screen bg-background p-6">
+        <div className="w-[420px] border border-border bg-bg-secondary p-3.5">
           {children}
         </div>
       </div>
@@ -139,7 +139,7 @@ export const WithFailure: Story = {
 export const NoAgentGraph: Story = {
   render: () => (
     <Frame>
-      <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <p className="font-mono text-2xs text-muted-foreground">
         agent_graph 未設定 (steps が空) — 以下、何も表示されません:
       </p>
       <TaskExecutionTree strategyId="semi-swing" steps={[]} configPhases={[]} />

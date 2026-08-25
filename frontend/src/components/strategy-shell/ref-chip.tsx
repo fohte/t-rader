@@ -24,22 +24,20 @@ export function RefChip({
   const pillCls = 'border border-border-strategy px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
   const interactive = onOpen
-    ? 'cursor-pointer hover:text-[color:var(--color-accent-strategy)] hover:border-[color:var(--color-accent-strategy)]'
+    ? 'cursor-pointer hover:text-primary hover:border-primary'
     : ''
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
 
   const inner = (
     <>
       {showKind && (
-        <span className="text-[0.78em] tracking-wide text-[color:var(--color-text-tertiary)]">
+        <span className="text-[0.78em] tracking-wide text-muted-foreground">
           {kindJP}
         </span>
       )}
       <span>{ref.name}</span>
       {ref.sub != null && ref.sub !== '' && (
-        <span className="text-[0.85em] text-[color:var(--color-text-tertiary)]">
-          {ref.sub}
-        </span>
+        <span className="text-[0.85em] text-muted-foreground">{ref.sub}</span>
       )}
     </>
   )
