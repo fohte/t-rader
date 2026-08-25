@@ -39,6 +39,51 @@ function DialogOverlay({
   )
 }
 
+type InitialFocusProp = DialogPrimitive.Popup.Props['initialFocus']
+type InitialFocusResolver = Extract<
+  InitialFocusProp,
+  (...args: never[]) => unknown
+>
+type InteractionType = Parameters<InitialFocusResolver>[0]
+type ResolvedFocus = ReturnType<InitialFocusResolver>
+
+// caller の initialFocus 指定 (未指定/boolean/RefObject/関数) を Base UI に返せる
+// 値に解決する。関数版の戻り値は boolean | HTMLElement | null | void のみで
+// RefObject は返せないため、RefObject の場合は .current を返す。未指定時の
+// touch 時のデフォルト挙動 (仮想キーボード抑止のため popup 自体にフォーカス) は
+// Base UI 内部の defaultInitialFocus と同じロジックで再現する
+function resolveInitialFocus(
+  initialFocus: InitialFocusProp,
+  openType: InteractionType,
+  popupEl: HTMLDivElement | null,
+): ResolvedFocus {
+  if (typeof initialFocus === 'function') return initialFocus(openType)
+  if (typeof initialFocus === 'boolean') return initialFocus
+  if (initialFocus !== undefined) return initialFocus.current
+  return openType === 'touch' ? popupEl : true
+}
+
+// dialog 表示時の初期フォーカス先で input のテキストを全選択する。native
+// autoFocus は Base UI の initialFocus (FloatingFocusManager の layout effect)
+// より先に発火するため、その場合は activeElement を直接 select() し、そうで
+// なければ Base UI がフォーカスを移すのを focusin で待つ
+function armSelectOnFocus(popupEl: HTMLDivElement | null) {
+  const select = (el: EventTarget | Element | null) => {
+    if (el instanceof HTMLInputElement) el.select()
+  }
+  if (popupEl?.contains(document.activeElement) === true) {
+    select(document.activeElement)
+  } else {
+    popupEl?.addEventListener(
+      'focusin',
+      (event) => {
+        select(event.target)
+      },
+      { once: true },
+    )
+  }
+}
+
 function DialogContent({
   className,
   children,
@@ -65,44 +110,19 @@ function DialogContent({
           }
         }}
         data-slot="dialog-content"
-        // dialog 表示時の初期フォーカス先で input のテキストを全選択する。native
-        // autoFocus は Base UI の initialFocus (FloatingFocusManager の layout
-        // effect) より先に発火するため、その場合は activeElement を直接 select() し、
-        // そうでなければ Base UI がフォーカスを移すのを focusin で待つ。caller が
-        // initialFocus を指定しない場合の touch 時のデフォルト挙動 (仮想キーボード
-        // 抑止のため popup 自体にフォーカス) は Base UI 内部の defaultInitialFocus と
-        // 同じロジックで再現し、initialFocus={false} (フォーカス移動なし) の契約も
-        // 尊重して select 用のリスナーを仕込まない
         initialFocus={(openType) => {
-          const resolved =
-            typeof initialFocus === 'function'
-              ? initialFocus(openType)
-              : typeof initialFocus === 'boolean'
-                ? initialFocus
-                : initialFocus !== undefined
-                  ? initialFocus.current
-                  : openType === 'touch'
-                    ? popupRef.current
-                    : true
-
-          if (resolved === false) {
+          const resolved = resolveInitialFocus(
+            initialFocus,
+            openType,
+            popupRef.current,
+          )
+          // resolved === undefined (関数が値を返さない) も Base UI 側では
+          // false と同様「フォーカス移動なし」として扱われるため、ここでも
+          // select 用のリスナーを仕込まずに素通しする
+          if (resolved === false || resolved === undefined) {
             return resolved
           }
-
-          const select = (el: EventTarget | Element | null) => {
-            if (el instanceof HTMLInputElement) el.select()
-          }
-          if (popupRef.current?.contains(document.activeElement) === true) {
-            select(document.activeElement)
-          } else {
-            popupRef.current?.addEventListener(
-              'focusin',
-              (event) => {
-                select(event.target)
-              },
-              { once: true },
-            )
-          }
+          armSelectOnFocus(popupRef.current)
           return resolved
         }}
         className={cn(
