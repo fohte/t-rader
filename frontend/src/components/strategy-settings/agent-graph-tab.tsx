@@ -20,7 +20,7 @@ export function AgentGraphTab({ strategyId }: AgentGraphTabProps) {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   if (isPending) {
-    return <Skeleton className="h-[320px] w-full" />
+    return <Skeleton className="h-80 w-full" />
   }
 
   return (

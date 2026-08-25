@@ -142,6 +142,19 @@ Tailwind 標準の `text-*` スケールに加え、それより小さい段が 
 
 新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
 
+半端な `text-[Npx]` を見つけたら、以下の表で最寄りの段へ丸めること。
+
+| 現状の arbitrary value | 丸め先            | 理由                                |
+| ---------------------- | ----------------- | ----------------------------------- |
+| `text-[10px]`          | `text-2xs` (11px) | 11px に最も近い既存段               |
+| `text-[10.5px]`        | `text-2xs` (11px) | 同上                                |
+| `text-[11.5px]`        | `text-xs` (12px)  | 11px と 12px の中間、同点は切り上げ |
+| `text-[12.5px]`        | `text-xs` (12px)  | 12px に最も近い既存段               |
+| `text-[13.5px]`        | `text-sm` (14px)  | 14px に最も近い既存段               |
+
+±1px の視覚的なズレは許容する。
+許容しないのは要素間の順序関係が崩れることで、表を機械的に適用する前に確認すること。
+
 ## Spacing scale
 
 `--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
@@ -168,6 +181,18 @@ border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px
 
 44px を超える値のうち `Npx / 4` が整数になるもの (4px グリッドに正確に一致するもの) は、Tailwind v4 の動的 spacing scale (`h-<N>` = `calc(var(--spacing) * N)`) がブラケットなしでそのまま使えるため、bracket を外すだけでよい。
 個別の名前付きトークンを検討すべきなのは、4px グリッドに乗らない値、またはサイドバー幅のように名前を与えることで文脈上の意味が明確になる値に限る。
+
+## Layout
+
+`--spacing` の丸めでは意味が壊れる固有の寸法 (非対称 2 カラムの grid track 等) は、`:root` にプレーンな CSS カスタムプロパティとして個別追加し、Tailwind v4 の `grid-cols-(<custom-property>)` 構文 (`grid-template-columns: var(<custom-property>)` の糖衣構文) で参照する。
+`@theme` への登録は不要で、`grid-cols-[...]` のような bracket 構文ではないため `no-arbitrary-value` の対象にもならない。
+
+| Token                          | 値                     | 用途                                         |
+| ------------------------------ | ---------------------- | -------------------------------------------- |
+| `--grid-cols-field-label`      | `108px 1fr`            | ラベル列 + 値列の 2 カラムフィールドグリッド |
+| `--grid-cols-foreach-indent`   | `22px 1fr`             | forEach ツリーのインデント表現               |
+| `--grid-cols-skills-sidebar`   | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン         |
+| `--grid-cols-triggers-sidebar` | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン       |
 
 ## Non-goals
 

@@ -77,7 +77,7 @@ export function AgentGraphForm({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <label className="flex items-center gap-1.5 font-mono text-[11.5px] text-[color:var(--color-text-secondary)]">
+        <label className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground-strong">
           <input
             type="checkbox"
             aria-label="フェーズ分割を有効にする"
@@ -88,7 +88,7 @@ export function AgentGraphForm({
           />
           フェーズ分割を有効にする
         </label>
-        <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+        <span className="font-mono text-2xs text-muted-foreground">
           off にすると単一フェーズ (現行の挙動) で実行されます
         </span>
       </div>
@@ -192,7 +192,7 @@ export function AgentGraphForm({
             onClick={() => {
               onChange(addPhase(value))
             }}
-            className="w-full border border-dashed border-[color:var(--color-border-strategy)] py-1.5 font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+            className="w-full border border-dashed border-border py-1.5 font-mono text-xs text-muted-foreground hover:text-foreground"
           >
             + フェーズを追加
           </button>

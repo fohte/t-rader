@@ -58,14 +58,14 @@ export function MarkdownEditor({
           <div className="flex items-center justify-between">
             <label
               htmlFor="markdown-source"
-              className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+              className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
             >
               source
             </label>
             {dirty && (
               <span
                 data-testid="dirty-indicator"
-                className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]"
+                className="font-mono text-2xs text-primary"
               >
                 未保存の変更あり
               </span>
@@ -78,19 +78,19 @@ export function MarkdownEditor({
               setValue(e.target.value)
             }}
             style={{ minHeight: `${String(minHeight)}px` }}
-            className="w-full resize-y border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] p-3 font-mono text-[12.5px] leading-relaxed text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
+            className="w-full resize-y border border-border bg-bg-secondary p-3 font-mono text-xs leading-relaxed text-foreground outline-none focus:border-muted-foreground"
           />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+            <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
               preview
             </span>
           </div>
           <div
             data-testid="markdown-preview"
             style={{ minHeight: `${String(minHeight)}px` }}
-            className="overflow-auto border border-[color:var(--color-hairline)] bg-[color:var(--color-bg-secondary)] px-4 py-2"
+            className="overflow-auto border border-border bg-bg-secondary px-4 py-2"
           >
             <MarkdownBody source={value} />
           </div>
@@ -105,9 +105,7 @@ export function MarkdownEditor({
           {isSaving ? '保存中…' : '保存'}
         </Button>
         {saveError != null && (
-          <span className="font-mono text-[12px] text-[color:var(--color-accent-strategy)]">
-            {saveError}
-          </span>
+          <span className="font-mono text-xs text-primary">{saveError}</span>
         )}
       </div>
     </div>

@@ -67,16 +67,14 @@ function FilterButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 border px-2.5 py-1 font-mono text-[12px] ${
+      className={`inline-flex items-center gap-1.5 border px-2.5 py-1 font-mono text-xs ${
         active
-          ? 'border-[color:var(--color-text-tertiary)] bg-[color:var(--panel-inset)] text-[color:var(--color-text-primary)]'
-          : 'border-[color:var(--color-border-strategy)] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]'
+          ? 'border-muted-foreground bg-surface-strong text-foreground'
+          : 'border-border text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground'
       }`}
     >
       <span>{label}</span>
-      <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
-        {count}
-      </span>
+      <span className="text-[10px] text-muted-foreground">{count}</span>
     </button>
   )
 }

@@ -41,7 +41,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// PhaseCard のフィールドグリッド (grid-cols-[108px_1fr]) を再現し、実際の見え方に合わせる
+// PhaseCard のフィールドグリッド (grid-cols-(--grid-cols-field-label)) を再現し、実際の見え方に合わせる
 function Interactive({
   initial,
   models,
@@ -51,7 +51,7 @@ function Interactive({
 }) {
   const [value, setValue] = useState(initial)
   return (
-    <div className="grid grid-cols-[108px_1fr] items-start gap-x-3 gap-y-2 text-[12px]">
+    <div className="grid grid-cols-(--grid-cols-field-label) items-start gap-x-3 gap-y-2 text-xs">
       <ModelField value={value} onChange={setValue} models={models} />
     </div>
   )
