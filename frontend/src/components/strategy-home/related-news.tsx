@@ -26,9 +26,9 @@ interface RelatedNewsViewProps {
 
 export function RelatedNewsView({ items, isPending }: RelatedNewsViewProps) {
   return (
-    <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <div className="flex items-baseline justify-between border-b border-[color:var(--color-hairline)] px-3.5 py-2">
-        <h3 className="font-mono text-[12px] font-bold uppercase tracking-wider text-[color:var(--color-text-primary)]">
+    <section className="border border-border bg-card">
+      <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           関連ニュース
         </h3>
       </div>
@@ -40,38 +40,38 @@ export function RelatedNewsView({ items, isPending }: RelatedNewsViewProps) {
 function renderBody(items: NewsItem[] | null, isPending: boolean) {
   if (isPending) {
     return (
-      <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+      <div className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
         loading...
       </div>
     )
   }
   if (items == null || items.length === 0) {
     return (
-      <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+      <div className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
         —
       </div>
     )
   }
   return (
-    <ul className="divide-y divide-[color:var(--color-hairline)]">
+    <ul className="divide-y divide-border">
       {items.map((n) => (
         <li key={n.id} className="px-3.5 py-2.5">
           <a
             href={n.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="block text-[13px] leading-snug text-[color:var(--color-text-primary)] hover:text-[color:var(--color-accent-strategy)]"
+            className="block text-sm leading-snug text-foreground hover:text-primary"
           >
             {n.title}
           </a>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             <span>{n.source}</span>
             <span>·</span>
             <time dateTime={n.published_at}>{formatTime(n.published_at)}</time>
             {n.matched_refs.length > 0 && (
               <>
                 <span>·</span>
-                <span className="normal-case text-[color:var(--color-text-secondary)]">
+                <span className="normal-case text-muted-foreground-strong">
                   {n.matched_refs
                     .map((r) => r.matched_term)
                     .filter((v, i, a) => a.indexOf(v) === i)

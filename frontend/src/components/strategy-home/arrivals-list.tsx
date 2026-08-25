@@ -66,16 +66,16 @@ export function ArrivalsList({
 
   return (
     <section>
-      <div className="mb-2 flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-        <span className="text-[color:var(--color-accent-strategy)]">&gt;</span>
+      <div className="mb-2 flex items-baseline gap-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+        <span className="text-primary">&gt;</span>
         <span>新着</span>
-        <span className="text-[color:var(--color-text-secondary)]">
+        <span className="text-muted-foreground-strong">
           {since == null
             ? `${String(arrivals.length)} 件`
             : `前回開いてから ${String(arrivals.length)} 件`}
         </span>
       </div>
-      <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
+      <div className="border border-border bg-card">
         {arrivals.slice(0, MAX_VISIBLE).map((a) => {
           const target =
             a.kind === 'annotation'
@@ -97,15 +97,15 @@ export function ArrivalsList({
               key={`${a.kind}:${a.id}`}
               to={target.to}
               params={target.params}
-              className="flex items-center gap-3 border-b border-[color:var(--color-hairline)] px-3.5 py-2.5 last:border-b-0 hover:bg-[color:var(--panel-inset)]"
+              className="flex items-center gap-3 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-strong"
             >
-              <span className="w-[90px] flex-shrink-0 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+              <span className="w-23 flex-shrink-0 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
                 {a.kind === 'note' ? 'NOTE' : 'ANNOTATION'}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] text-[color:var(--color-text-primary)]">
+              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                 {a.label}
               </span>
-              <span className="flex-shrink-0 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+              <span className="flex-shrink-0 font-mono text-2xs text-muted-foreground">
                 {formatRelative(a.updatedAt)}
               </span>
             </Link>
