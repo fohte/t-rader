@@ -79,6 +79,16 @@
   --status-task-running: #fbbf24;
 
   /*
+   * t-rader 固有: 非対称 2 カラムのグリッドトラック。spacing scale への
+   * 丸めでは意味が壊れる固有の寸法のため個別トークン化する。
+   * grid-cols-(--foo) 構文で参照する (see docs/design-system.md)。
+   */
+  --grid-cols-field-label: 108px 1fr;
+  --grid-cols-foreach-indent: 22px 1fr;
+  --grid-cols-skills-sidebar: 240px minmax(0, 1fr);
+  --grid-cols-triggers-sidebar: 280px minmax(0, 1fr);
+
+  /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
    * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
    */

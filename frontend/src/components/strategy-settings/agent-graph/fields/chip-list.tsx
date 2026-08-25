@@ -31,7 +31,7 @@ export function ChipList({
       {values.map((name) => (
         <span
           key={name}
-          className="inline-flex items-center gap-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-tertiary)] px-1.5 py-0.5 font-mono text-[10.5px] text-[color:var(--color-text-secondary)]"
+          className="inline-flex items-center gap-1 border border-border bg-bg-tertiary px-1.5 py-0.5 font-mono text-2xs text-muted-foreground-strong"
         >
           {name}
           <button
@@ -40,7 +40,7 @@ export function ChipList({
             onClick={() => {
               onRemove(name)
             }}
-            className="text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+            className="text-muted-foreground hover:text-primary"
           >
             ×
           </button>
@@ -52,7 +52,7 @@ export function ChipList({
             <button
               type="button"
               aria-label={addAriaLabel}
-              className="border border-dashed border-[color:var(--color-border-strategy)] px-1.5 py-0.5 font-mono text-[10.5px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+              className="border border-dashed border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground hover:text-foreground"
             >
               + 追加
             </button>
@@ -60,7 +60,7 @@ export function ChipList({
         />
         <PopoverContent className="w-48 p-1" align="start">
           {remaining.length === 0 ? (
-            <p className="px-2 py-1 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+            <p className="px-2 py-1 font-mono text-2xs text-muted-foreground">
               追加できる候補がありません
             </p>
           ) : (
@@ -73,7 +73,7 @@ export function ChipList({
                       onAdd(name)
                       setOpen(false)
                     }}
-                    className="w-full truncate px-2 py-1 text-left font-mono text-[11.5px] hover:bg-[color:var(--panel-inset)]"
+                    className="w-full truncate px-2 py-1 text-left font-mono text-xs hover:bg-surface-strong"
                   >
                     {name}
                   </button>

@@ -40,16 +40,16 @@ export function OutputField({ value, onChange }: OutputFieldProps) {
 
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         出力スキーマ
       </span>
-      <div className="border border-[color:var(--color-border-strategy)]">
-        <div className="flex items-center gap-2 border-b border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-tertiary)] px-2 py-1 font-mono text-[10.5px] text-[color:var(--color-text-tertiary)]">
+      <div className="border border-border">
+        <div className="flex items-center gap-2 border-b border-border bg-bg-tertiary px-2 py-1 font-mono text-2xs text-muted-foreground">
           <span>output (JSON Schema)</span>
           <span
             className={
               firstIssue != null
-                ? 'ml-auto text-[color:var(--color-accent-strategy)]'
+                ? 'ml-auto text-primary'
                 : 'ml-auto text-emerald-400'
             }
           >

@@ -31,7 +31,7 @@ export function ForEachField({
 
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         実行回数
       </span>
       <Select
@@ -45,7 +45,7 @@ export function ForEachField({
       >
         <SelectTrigger
           aria-label="実行回数"
-          className="h-auto w-full max-w-sm rounded-none border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] py-1 font-mono text-[11.5px] text-[color:var(--color-text-primary)]"
+          className="h-auto w-full max-w-sm rounded-none border-border bg-background py-1 font-mono text-xs text-foreground"
         >
           <SelectValue />
         </SelectTrigger>
