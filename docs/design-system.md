@@ -98,26 +98,6 @@ tq に対応物はない。
 `--radius` は `0.625rem` (tq は `0rem`)。
 tq と揃えるかどうかは全画面の見た目に関わる別種の変更になるため、このトークン整理 PR のスコープ外としている。
 
-## 互換エイリアス
-
-strategy tokens 導入時に定義した旧トークン名は、上記の新トークンを指すエイリアスとして残っている。
-役割は同じで名前だけが違う。
-アーティファクト種別ごとの arbitrary value 置換 PR が並列に進む間、`index.css` を一切変更せずに済むようにするための互換レイヤーで、それらの PR がすべて merge されたら削除し、`eslint.config.js` の `tailwindcss/no-arbitrary-value: 'off'` も外す。
-
-| 旧トークン名              | 新トークン (エイリアス先)   |
-| ------------------------- | --------------------------- |
-| `--color-bg-primary`      | `--background`              |
-| `--color-text-primary`    | `--foreground`              |
-| `--color-text-secondary`  | `--muted-foreground-strong` |
-| `--color-text-tertiary`   | `--muted-foreground`        |
-| `--color-border-strategy` | `--border`                  |
-| `--color-accent-strategy` | `--primary`                 |
-| `--panel`                 | `--card`                    |
-| `--panel-inset`           | `--surface-strong`          |
-| `--hairline`              | `--border`                  |
-
-新規コードは旧トークン名ではなく上記表の新トークン名 (または対応する Tailwind utility) を使うこと。
-
 ## Fonts
 
 | Role        | CSS 変数           | フォントスタック                                                                                    | Tailwind utility                | 用途                                   |
@@ -126,69 +106,41 @@ strategy tokens 導入時に定義した旧トークン名は、上記の新ト�
 | Mono (UI)   | `--font-mono-ui`   | JetBrains Mono Variable, IBM Plex Mono, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace | `font-mono` / `font-mono-ui`    | UI chrome (ラベル、数値、コード的表示) |
 | Mono (body) | `--font-mono-body` | `--font-mono-ui` と同じ                                                                             | `font-mono-body`                | mono な本文                            |
 
-`--font-mono` (Tailwind 既定の utility) は `--font-mono-ui` のエイリアスにしてある。
-既存コードの `font-mono` 呼び出し (300 箇所超) を書き換えずに新フォントへ切り替えるため。
+`--font-mono` (Tailwind 既定の utility) は `--font-mono-ui` のエイリアスになっている。
 
 `JetBrains Mono Variable` / `IBM Plex Mono` は `@fontsource-variable/jetbrains-mono` / `@fontsource/ibm-plex-mono` (400/500/600) を `frontend/src/index.css` の `@import` で読み込んでいる。
 フォールバックにのみ頼らないこと。
 
 ## Typography scale
 
-Tailwind 標準の `text-*` スケールに加え、それより小さい段が 1 つだけある。
+Tailwind 標準の `text-*` スケールに加え、それより小さい段が 2 つある。
 
-| Token        | 値                                                 | Tailwind utility | 用途                               |
-| ------------ | -------------------------------------------------- | ---------------- | ---------------------------------- |
-| `--text-2xs` | `0.6875rem` (11px)、line-height `0.9375rem` (15px) | `text-2xs`       | 最小段の mono UI chrome (ラベル等) |
+| Token        | 値                                                 | Tailwind utility | 用途                                                      |
+| ------------ | -------------------------------------------------- | ---------------- | --------------------------------------------------------- |
+| `--text-2xs` | `0.6875rem` (11px)、line-height `0.9375rem` (15px) | `text-2xs`       | 最小段の mono UI chrome (ラベル等)                        |
+| `--text-3xs` | `0.5625rem` (9px)、line-height なし (継承)         | `text-3xs`       | 隣接ラベルとの階層差を保つための最小段 (例: stale バッジ) |
 
-新しい `--text-*` の段を追加する前に、既存の `text-2xs` で表現できないか確認すること。
-
-`text-[Npx]` の arbitrary value は、以下の表で標準スケールへ丸めること。
-Spacing scale と同じく同点は切り上げ、±1px の視覚的なズレは許容する。
-
-| 現状の arbitrary value | 丸め先            | 理由                                                        |
-| ---------------------- | ----------------- | ----------------------------------------------------------- |
-| `10px`                 | `text-2xs` (11px) | `text-2xs` に最も近い                                       |
-| `10.5px`               | `text-2xs` (11px) | `text-2xs` に最も近い                                       |
-| `11.5px`               | `text-xs` (12px)  | `text-2xs`(11px) と `text-xs`(12px) の中間、同点は切り上げ  |
-| `12.5px`               | `text-xs` (12px)  | `text-xs` に最も近い                                        |
-| `13px`                 | `text-sm` (14px)  | `text-xs`(12px) と `text-sm`(14px) の中間、同点は切り上げ   |
-| `13.5px`               | `text-sm` (14px)  | `text-sm` に最も近い                                        |
-| `17px`                 | `text-lg` (18px)  | `text-base`(16px) と `text-lg`(18px) の中間、同点は切り上げ |
-| `19px`                 | `text-xl` (20px)  | `text-lg`(18px) と `text-xl`(20px) の中間、同点は切り上げ   |
-| `22px`                 | `text-2xl` (24px) | `text-xl`(20px) と `text-2xl`(24px) の中間、同点は切り上げ  |
+新しい `--text-*` の段を追加する前に、既存の `text-2xs`/`text-3xs` で表現できないか確認すること。
 
 丸めても許容しないのは、隣接する要素との相対的なサイズ関係 (親ラベルより小さい従属バッジ等) が崩れることで、表を機械的に適用する前に確認すること。
-`9px` のように `text-2xs` (11px) より丸め先が離れすぎ、かつ隣接要素との意図的なサイズ差を保つために必要な値は、丸めずに arbitrary value のまま据え置く。
-markdown 本文中の任意の位置 (見出し内含む) に埋め込まれるインライン要素 (`[[stock:xxx]]` 等の ref chip、注釈バッジ等) の `text-[N.NNem]` は例外で丸めない。
+markdown 本文中の任意の位置 (見出し内含む) に埋め込まれるインライン要素 (`[[stock:xxx]]` 等の ref chip、注釈バッジ等) の相対サイズは例外で固定の `text-*` に丸めない。
 埋め込み先ごとに周辺テキストへ追従させる意図の相対値であり、固定の `text-*` トークンに丸めると見出し内で不自然に縮小する。
+このケースは `--text-em-*` named utility (`text-em-88`/`text-em-85`/`text-em-82`/`text-em-78`) として定義してあり、新しい値が必要になった場合は同じ命名規則 (`text-em-<百分率の整数値>`) で追加すること。
 
 ## Spacing scale
 
 `--spacing` は上書きしておらず、Tailwind 既定のグリッド (0.25rem = 4px 刻み、`0.5`/`1.5`/`2.5`/`3.5` の半段を含む) をそのまま使う。
 
-arbitrary value 置換 PR で `[Npx]` 系の値を見つけたら、まず Tailwind の既存 utility に完全一致しないか確認すること。
+`[Npx]` 系の値を見つけたら、まず Tailwind の既存 utility に完全一致しないか確認すること。
 `w`/`h`/`min-w`/`min-h`/`max-w`/`max-h`/`p`/`m`/`gap` 系は `calc(var(--spacing) * N)` で解決するため、4px の倍数は `N` に何段でもそのまま置換できる (例: `h-[160px]` → `h-40`)。
 トークン追加は不要。
-完全一致しない値だけ、以下の表で機械的にグリッド上の段へ丸めること (ただし要素自体のサイズが 44px を超える場合はグリッド丸めの対象外で、個別に名前付きトークンを検討する。4px グリッドに完全一致する値でも、サイドバー幅のように名前を与えることで文脈上の意味が明確になる場合は同様に検討してよい)。
-
-| 現状の arbitrary value | 丸め先       | 理由                                                          |
-| ---------------------- | ------------ | ------------------------------------------------------------- |
-| `3px`                  | `1` (4px)    | `0.5`(2px) と `1`(4px) の中間、同点は切り上げ                 |
-| `5px`                  | `1.5` (6px)  | `1`(4px) と `1.5`(6px) の中間、同点は切り上げ                 |
-| `7px`                  | `2` (8px)    | `1.5`(6px) と `2`(8px) の中間、同点は切り上げ                 |
-| `9px`                  | `2.5` (10px) | `2`(8px) と `2.5`(10px) の中間、同点は切り上げ                |
-| `11px`                 | `3` (12px)   | `2.5`(10px) と `3`(12px) の中間、同点は切り上げ               |
-| `13px`                 | `3.5` (14px) | `3`(12px) と `3.5`(14px) の中間、同点は切り上げ               |
-| `18px`                 | `5` (20px)   | `4`(16px) と `5`(20px) の中間、同点は切り上げ                 |
-| `22px`                 | `6` (24px)   | `5`(20px) と `6`(24px) の中間、同点は切り上げ                 |
-| `41px`                 | `10` (40px)  | 40px の方が近い (44px は tap target サイズとして意味が変わる) |
-| `44px`                 | `11` (44px)  | すでにグリッド上 (`11 × 4px`)。bracket を外すだけ             |
+完全一致しない値は、既定のグリッド上の最も近い段に丸めること (ただし要素自体のサイズが 44px を超える場合はグリッド丸めの対象外で、個別に名前付きトークンを検討する。4px グリッドに完全一致する値でも、サイドバー幅のように名前を与えることで文脈上の意味が明確になる場合は同様に検討してよい)。
 
 ±1px の視覚的なズレは許容する。
 許容しないのは順序関係 (見出し vs 本文など) が崩れることで、表を機械的に適用する前に確認すること。
 border-width (`border`、`border-<N>`) は `--spacing` 由来ではなく `<N>px` に直接解決するため、この表の対象外。
 `grid-template-columns` の複合トラック定義 (例: `grid-cols-[64px_1fr]`、`grid-cols-[minmax(0,1fr)_360px]`) も、固定幅と可変幅を 1 つの utility で表現する対応先が存在しないため対象外。
-親要素のフォントサイズに対する相対値 (例: `text-[0.78em]`) も、Tailwind の `--text-*` namespace が絶対値前提のため対象外。
+親要素のフォントサイズに対する相対値 (例: `text-em-78`) も 4px グリッドの対象外で、前述の Typography scale の `--text-em-*` named utility で表現する。
 ring-width (`ring`、`ring-<N>`) も同様に対象外。
 border-width と同じく Tailwind の固定スケールが `<N>px` に直接解決するため、既存の Tailwind utility (`ring-3` など) をそのまま使う。
 `z-*` (z-index) はこの表の対象外。
@@ -198,12 +150,12 @@ Tailwind v4 は `z-index` に `@theme` namespace を持たず、`z-0`/`z-10`/...
 ただし隣接して重なり得る要素どうしが同じ段になり重なり順が不定になる場合は、意図した重なり順を保てる段を選ぶこと (例: `z-[25]` は `z-20`/`z-30` の中間だが、`z-30` に丸めると同じ場に浮く StrategySwitcher のドロップダウン (既存の `z-30`) と同値になるため、`z-20` に丸める)。
 
 既定スケールを超えるレイヤーが本当に必要な場合 (例: shadcn/Radix overlay 系が使う `z-50` より常に上に表示する必要がある floating panel) は、`frontend/src/index.css` に `@utility` で個別の named utility を追加すること (例: `@utility z-floating-chat { z-index: 60; }`)。
-
-丸め先の標準スケール段が隣接要素と同じサイズになり、意図的なサイズ差 (親ラベルより小さい従属バッジ等) が失われる場合も丸めない。
-例: `text-[9px]` の stale バッジは `text-2xs` (11px) に丸めると親ラベルと同サイズになり階層が消えるため据え置く。
+transition-property のように `@theme` namespace を持たないプロパティも同様に bracket 構文 (`transition-[width]` 等) が `no-arbitrary-value` の対象になるため、必要な組み合わせを `@utility` で個別の named utility として定義する (例: `transition-width`/`transition-position-width`/`transition-size`/`transition-margin-opacity`)。
 
 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする (例: `--note-graph-height` → `h-note-graph`)。
 44px を超えて丸め対象外になった値のうち、viewport 単位を含むなど `--spacing` の倍数で表現できないものは、同様に `:root` に素の名前 (例: `--floating-chat-max-w`) で token を定義したうえで、`@theme inline` 側に `--spacing-<name>` として re-export し、この節の表に追記すること。
+一方、`@theme inline` への re-export が不要で、後述の Layout 節と同じ `(<custom-property>)` 構文 (例: `max-w-(--dialog-inset)`) で直接参照するだけで済む値もある。shadcn Dialog の viewport 端マージン (`--dialog-inset`) や Sidebar の派生幅 (`--sidebar-width-icon-inset`/`--sidebar-width-icon-inset-bordered`/`--sidebar-width-negative`) がこれに該当し、`:root` に計算値の named token として定義してあるのみで、re-export や表への追記はしていない。
+box-shadow も同様に named token 化する場合があり、shadcn Sidebar の outline variant 用に `@theme inline` で `--shadow-sidebar-border`/`--shadow-sidebar-accent` を定義してある。
 
 | Token                   | 値                      | Tailwind utility        | 用途                                                                   |
 | ----------------------- | ----------------------- | ----------------------- | ---------------------------------------------------------------------- |
@@ -226,13 +178,17 @@ Tailwind v4 は `z-index` に `@theme` namespace を持たず、`z-0`/`z-10`/...
 | `--grid-cols-triggers-sidebar`  | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン                                       |
 | `--grid-cols-indicators-list`   | `260px 1fr`            | indicators ページの indicator 一覧幅                                         |
 | `--grid-cols-hypothesis-detail` | `minmax(0, 1fr) 280px` | hypothesis 詳細ページの status aside 幅                                      |
+| `--grid-cols-annotation-fields` | `120px minmax(0, 1fr)` | 戦略アノテーション詳細ページのフィールド一覧 (dl) のラベル列 + 値列          |
+| `--grid-cols-note-detail`       | `minmax(0, 1fr) 340px` | ノート詳細ページの本文 + サイドパネルの 2 カラムレイアウト                   |
+| `--grid-cols-strategy-home`     | `minmax(0, 1fr) 320px` | 戦略ホームページのチャート + サイドパネルの 2 カラムレイアウト               |
+| `--grid-cols-task-run`          | `minmax(0, 1fr) 360px` | 戦略タスク実行ビューの本文 + サイドパネルの 2 カラムレイアウト               |
+| `--grid-cols-step-detail`       | `64px 1fr`             | タスク実行ステップ詳細のラベル列 + 値列                                      |
+| `--grid-cols-history-entry`     | `auto auto 1fr`        | ノート変更履歴の 1 行 (時刻 + 種別 + 概要) の 3 カラムレイアウト             |
 
 ## Non-goals
 
 このドキュメントはトークン契約であって、既存画面の一括 restyle ではない。
 以下は意図的にスコープ外としている。
 
-- 既存コンポーネントの arbitrary value をトークンに置き換える作業 (ディレクトリ単位の後続 PR で進める)
-- `eslint.config.js` の `tailwindcss/no-arbitrary-value: 'off'` を外して lint で強制すること (後続 PR がすべて merge された後の最後の PR で行う)
 - tq の primitives (`Panel` / `Chip` / `TabStrip` 等) の移植
 - `--radius` を tq (`0rem`) に揃えること

@@ -101,20 +101,25 @@
   --grid-cols-triggers-sidebar: 280px minmax(0, 1fr);
   --grid-cols-indicators-list: 260px 1fr;
   --grid-cols-hypothesis-detail: minmax(0, 1fr) 280px;
+  --grid-cols-annotation-fields: 120px minmax(0, 1fr);
+  --grid-cols-note-detail: minmax(0, 1fr) 340px;
+  --grid-cols-strategy-home: minmax(0, 1fr) 320px;
+  --grid-cols-task-run: minmax(0, 1fr) 360px;
+  --grid-cols-step-detail: 64px 1fr;
+  --grid-cols-history-entry: auto auto 1fr;
+
+  /* shadcn Dialog: viewport 端に接しないための sm 未満での max-width */
+  --dialog-inset: calc(100% - 2rem);
 
   /*
-   * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
-   * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
+   * shadcn Sidebar: SidebarProvider/Sidebar が inline style で設定する
+   * --sidebar-width / --sidebar-width-icon から導出する計算値。
    */
-  --color-bg-primary: var(--background);
-  --color-text-primary: var(--foreground);
-  --color-text-secondary: var(--muted-foreground-strong);
-  --color-text-tertiary: var(--muted-foreground);
-  --color-border-strategy: var(--border);
-  --color-accent-strategy: var(--primary);
-  --panel: var(--card);
-  --panel-inset: var(--surface-strong);
-  --hairline: var(--border);
+  --sidebar-width-icon-inset: calc(var(--sidebar-width-icon) + 1rem);
+  --sidebar-width-icon-inset-bordered: calc(
+    var(--sidebar-width-icon) + 1rem + 2px
+  );
+  --sidebar-width-negative: calc(var(--sidebar-width) * -1);
 }
 
 @theme inline {
@@ -167,6 +172,19 @@
   /* Tailwind 標準スケールの text-xs (12px) より小さい最小段 */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 0.9375rem;
+  /* text-2xs よりさらに小さい、隣接ラベルとの階層差を保つための最小段 */
+  --text-3xs: 0.5625rem;
+
+  /*
+   * markdown 本文中の任意の位置 (見出し内含む) に埋め込まれる ref chip /
+   * annotation バッジ用の、親フォントサイズに対する相対サイズ。固定の text-*
+   * に丸めると見出し内で不自然に縮小するため、周辺テキストに追従する em 値の
+   * まま named utility にする。
+   */
+  --text-em-88: 0.88em;
+  --text-em-85: 0.85em;
+  --text-em-82: 0.82em;
+  --text-em-78: 0.78em;
 
   --color-bg-secondary: var(--color-bg-secondary);
   --color-bg-tertiary: var(--color-bg-tertiary);
@@ -182,16 +200,9 @@
   --spacing-floating-chat-h: var(--floating-chat-max-h);
   --height-note-graph: var(--note-graph-height);
 
-  /* 互換エイリアス (utility 経由の既存参照を維持) */
-  --color-bg-primary: var(--color-bg-primary);
-  --color-text-primary: var(--color-text-primary);
-  --color-text-secondary: var(--color-text-secondary);
-  --color-text-tertiary: var(--color-text-tertiary);
-  --color-border-strategy: var(--color-border-strategy);
-  --color-accent-strategy: var(--color-accent-strategy);
-  --color-panel: var(--panel);
-  --color-panel-inset: var(--panel-inset);
-  --color-hairline: var(--hairline);
+  /* shadcn Sidebar の outline variant: box-shadow で 1px 枠を表現する */
+  --shadow-sidebar-border: 0 0 0 1px var(--sidebar-border);
+  --shadow-sidebar-accent: 0 0 0 1px var(--sidebar-accent);
 }
 
 /*
@@ -201,6 +212,28 @@
  */
 @utility z-floating-chat {
   z-index: 60;
+}
+
+/*
+ * transition-property には --theme namespace がなく、単一プロパティであっても
+ * bracket 構文 (transition-[width] 等) は no-arbitrary-value の対象になる。
+ * shadcn Sidebar / chat-sidebar の折りたたみアニメーションや input/select の
+ * focus 遷移が使う組み合わせを個別の named utility にする。
+ */
+@utility transition-width {
+  transition-property: width;
+}
+@utility transition-position-width {
+  transition-property: left, right, width;
+}
+@utility transition-size {
+  transition-property: width, height, padding;
+}
+@utility transition-margin-opacity {
+  transition-property: margin, opacity;
+}
+@utility transition-colors-shadow {
+  transition-property: color, box-shadow;
 }
 
 @layer base {

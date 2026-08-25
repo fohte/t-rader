@@ -55,9 +55,6 @@ export default config(
     rules: {
       // TanStack Router/Query の型定義が any を返すケースがあるため無効化
       '@typescript-eslint/no-unsafe-assignment': 'off',
-      // 既存コンポーネントが Tailwind の任意値記法 (text-[13px] 等) に
-      // 広く依存しているため無効化
-      'tailwindcss/no-arbitrary-value': 'off',
     },
   },
 )

@@ -87,7 +87,7 @@ function GraphErrorFallback({ resetErrorBoundary }: FallbackProps) {
 }
 
 const HEADING3_CLASS =
-  'mt-4 mb-2 text-sm font-bold uppercase tracking-wider text-text-secondary'
+  'mt-4 mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground-strong'
 
 // hast-util-to-jsx-runtime の tableCellAlignToStyle (既定 true) が hast の
 // align を style.textAlign に変換して prop から落とすため、生の hast node
@@ -145,10 +145,10 @@ export function MarkdownBody({
       </pre>
     ),
     code: ({ children }) => (
-      // text-[0.88em] は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
+      // text-em-88 は markdown 中の任意の位置 (見出し内含む) に埋め込まれる
       // ため、周辺テキストに追従する相対値のまま残す。固定トークンに丸めると
       // 見出し内で不自然に縮小する。
-      <code className="border border-border bg-surface-strong px-1 py-px font-mono text-[0.88em]">
+      <code className="border border-border bg-surface-strong px-1 py-px font-mono text-em-88">
         {children}
       </code>
     ),
@@ -198,12 +198,12 @@ export function MarkdownBody({
         type="button"
         onClick={() => onAnno?.(annoId)}
         title={`annotation ${annoId}`}
-        // text-[0.82em] も同様に markdown 中の任意の位置に埋め込まれるため、
+        // text-em-82 も同様に markdown 中の任意の位置に埋め込まれるため、
         // 周辺テキストに追従する相対値のまま残す。
-        className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-[0.82em] text-primary hover:bg-primary/15"
+        className="inline-flex items-baseline gap-1 border border-primary/40 bg-surface-strong px-1.5 py-px font-mono text-em-82 text-primary hover:bg-primary/15"
       >
         <span className="font-bold">{annoId}</span>
-        <span className="text-[0.85em] text-muted-foreground">annotation</span>
+        <span className="text-em-85 text-muted-foreground">annotation</span>
       </button>
     ),
     'note-graph': ({ graphId }) => {

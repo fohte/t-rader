@@ -155,7 +155,7 @@ export function TaskRunView({
               </pre>
             )}
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-task-run)">
             <div className="border border-border bg-card p-4">
               {steps.length === 0 ? (
                 <p className="font-mono text-xs text-muted-foreground">

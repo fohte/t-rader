@@ -12,12 +12,12 @@ interface ToolsFieldProps {
 export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
   return (
     <>
-      <span className="pt-1.5 font-mono text-2xs text-text-tertiary">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         使える tool
       </span>
       {value === undefined ? (
         <div className="flex items-center gap-2">
-          <span className="border border-dashed border-border-strategy px-1.5 py-0.5 font-mono text-2xs text-text-tertiary">
+          <span className="border border-dashed border-border px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
             すべての tool
           </span>
           <button
@@ -25,7 +25,7 @@ export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
             onClick={() => {
               onChange([])
             }}
-            className="font-mono text-2xs text-text-tertiary underline hover:text-text-primary"
+            className="font-mono text-2xs text-muted-foreground underline hover:text-foreground"
           >
             絞り込む
           </button>
@@ -48,7 +48,7 @@ export function ToolsField({ value, onChange, options }: ToolsFieldProps) {
               onClick={() => {
                 onChange(undefined)
               }}
-              className="font-mono text-2xs text-text-tertiary underline hover:text-text-primary"
+              className="font-mono text-2xs text-muted-foreground underline hover:text-foreground"
             >
               全 tool に戻す
             </button>
