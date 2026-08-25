@@ -78,11 +78,11 @@ function PortfolioPage() {
   ]
 
   return (
-    <div className="space-y-5 font-sans text-[color:var(--color-text-primary)]">
+    <div className="space-y-5 font-sans text-foreground">
       <div>
         <Link
           to="/strategies"
-          className="font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+          className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
           &lt; 戦略一覧に戻る
         </Link>
@@ -90,10 +90,10 @@ function PortfolioPage() {
 
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
-          <h1 className="mb-1.5 text-[24px] font-bold leading-tight tracking-tight">
+          <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
             ポートフォリオ
           </h1>
-          <p className="max-w-[720px] text-[14px] leading-relaxed text-[color:var(--color-text-secondary)]">
+          <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
             戦略横断の全体ビュー。現金比率・全保有・全体損益を把握します。LLM
             もこのコンテキストを参照します。
           </p>
@@ -111,26 +111,24 @@ function PortfolioPage() {
       </header>
 
       {summaryPending ? (
-        <Skeleton className="h-[88px] w-full" />
+        <Skeleton className="h-22 w-full" />
       ) : (
         <StatRow stats={stats} />
       )}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-portfolio-layout)">
         <section className="space-y-2">
           <div className="flex items-baseline justify-between">
-            <h2 className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-              <span className="mr-2 text-[color:var(--color-accent-strategy)]">
-                &gt;
-              </span>
+            <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+              <span className="mr-2 text-primary">&gt;</span>
               保有銘柄
             </h2>
-            <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+            <span className="font-mono text-2xs text-muted-foreground">
               {openPositions.length} 銘柄
             </span>
           </div>
           {summaryPending ? (
-            <Skeleton className="h-[160px] w-full" />
+            <Skeleton className="h-40 w-full" />
           ) : (
             <PositionsTable positions={openPositions} stocks={stocks} />
           )}
@@ -138,23 +136,21 @@ function PortfolioPage() {
 
         <section className="space-y-2">
           <div className="flex items-baseline justify-between">
-            <h2 className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-              <span className="mr-2 text-[color:var(--color-accent-strategy)]">
-                &gt;
-              </span>
+            <h2 className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+              <span className="mr-2 text-primary">&gt;</span>
               アロケーション
             </h2>
-            <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+            <span className="font-mono text-2xs text-muted-foreground">
               現金 {cashRatio.toFixed(1)}% / 投資 {investedRatio.toFixed(1)}%
             </span>
           </div>
-          <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] p-4">
+          <div className="border border-border bg-card p-4">
             <AllocationBar segments={allocation} />
           </div>
         </section>
       </div>
 
-      <p className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <p className="font-mono text-2xs text-muted-foreground">
         # 現在値の取得は未対応のため、評価額・アロケーションは取得簿価
         (cost_basis) で計算しています。
       </p>
@@ -162,7 +158,7 @@ function PortfolioPage() {
       <div>
         <Link
           to="/trades"
-          className="font-mono text-[13px] text-[color:var(--color-accent-strategy)] hover:underline"
+          className="font-mono text-sm text-primary hover:underline"
         >
           取引履歴をすべて見る →
         </Link>

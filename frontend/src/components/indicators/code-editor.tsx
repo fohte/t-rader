@@ -25,7 +25,7 @@ export function CodeEditor({
   return (
     <div
       data-testid={testId}
-      className="border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)]"
+      className="border border-border bg-bg-secondary"
       style={{ height: `${String(height)}px` }}
     >
       <Editor

@@ -51,7 +51,7 @@ export function HypothesisDetailPage({
       <div className="space-y-4">
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-10 w-2/3" />
-        <Skeleton className="h-[320px] w-full" />
+        <Skeleton className="h-80 w-full" />
       </div>
     )
   }
@@ -60,7 +60,7 @@ export function HypothesisDetailPage({
     return (
       <div
         data-testid="hypothesis-detail-error"
-        className="font-mono text-[13px] text-[color:var(--color-accent-strategy)]"
+        className="font-mono text-sm text-primary"
       >
         仮説が見つからないか、取得に失敗しました。
       </div>
@@ -68,16 +68,16 @@ export function HypothesisDetailPage({
   }
 
   return (
-    <div className="space-y-4 font-sans text-[color:var(--color-text-primary)]">
+    <div className="space-y-4 font-sans text-foreground">
       <Link
         to="/strategies/$id"
         params={{ id: strategyId }}
-        className="inline-flex items-center gap-1 font-mono text-[12px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+        className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
       >
         &lt; 戦略ホームに戻る
       </Link>
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <article className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] px-5 py-5">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-hypothesis-detail)">
+        <article className="border border-border bg-card px-5 py-5">
           <HypothesisEditor
             initialTitle={hypothesis.title}
             initialBody={hypothesis.body}

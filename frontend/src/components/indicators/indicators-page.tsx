@@ -341,21 +341,21 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="mb-1 text-[24px] font-bold leading-tight tracking-tight">
+        <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">
           カスタムインジケーター
-          <span className="ml-2 font-mono text-[12px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <span className="ml-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
             ({scope})
           </span>
         </h1>
-        <p className="text-[13px] text-[color:var(--color-text-secondary)]">
+        <p className="text-sm text-muted-foreground-strong">
           {scope === 'strategy'
             ? '戦略 scope の indicator は同名のグローバル indicator を覆い、戦略実行時に優先されます。'
             : 'グローバル scope の indicator は全戦略から参照されます。同名の戦略 scope indicator があれば覆われます。'}
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_1fr]">
-        <aside className="space-y-2 border-r border-[color:var(--color-hairline)] pr-4">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-indicators-list)">
+        <aside className="space-y-2 border-r border-border pr-4">
           <Button
             type="button"
             onClick={() => {
@@ -366,11 +366,11 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
             <Plus className="size-3.5" /> 新規 indicator
           </Button>
           {isPending ? (
-            <Skeleton className="h-[120px] w-full" />
+            <Skeleton className="h-30 w-full" />
           ) : (
             <ul
               data-testid="indicator-list"
-              className="space-y-0.5 font-mono text-[13px]"
+              className="space-y-0.5 font-mono text-sm"
             >
               {indicators.map((i) => {
                 const active = selectedId === i.indicator_id
@@ -385,7 +385,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
                         })
                       }}
                       data-active={active}
-                      className="w-full truncate border border-transparent px-2 py-1 text-left data-[active=true]:border-[color:var(--color-text-tertiary)] data-[active=true]:bg-[color:var(--panel-inset)]"
+                      className="w-full truncate border border-transparent px-2 py-1 text-left data-[active=true]:border-muted-foreground data-[active=true]:bg-surface-strong"
                     >
                       {i.name}
                     </button>
@@ -393,7 +393,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
                 )
               })}
               {indicators.length === 0 && (
-                <li className="px-2 py-1 text-[color:var(--color-text-tertiary)]">
+                <li className="px-2 py-1 text-muted-foreground">
                   まだ indicator がありません
                 </li>
               )}
@@ -403,7 +403,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
 
         <section>
           {selectedId == null && !isCreating ? (
-            <div className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+            <div className="font-mono text-xs text-muted-foreground">
               左から indicator を選択するか、「新規
               indicator」を押してください。
             </div>

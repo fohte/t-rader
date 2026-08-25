@@ -55,7 +55,14 @@ export function ModelField({ value, onChange, models }: ModelFieldProps) {
   return (
     <>
       {label}
-      <Select value={value} onValueChange={onChange}>
+      <Select
+        value={value}
+        onValueChange={(next) => {
+          // Base UI の Select.onValueChange は null を渡しうるが、この Select は常にいずれかの
+          // モデルが選択された状態のため null は無視する
+          if (next != null) onChange(next)
+        }}
+      >
         <SelectTrigger
           aria-label="モデル"
           className="h-auto w-full max-w-sm justify-start rounded-none border-border-strategy bg-bg-primary py-1 font-mono text-2xs text-text-primary"

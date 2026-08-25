@@ -51,7 +51,7 @@ export function CashBalanceDialog({
         <div className="space-y-2 py-2">
           <label
             htmlFor="cash-balance-input"
-            className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+            className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           >
             現金 (¥)
           </label>

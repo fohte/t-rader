@@ -121,16 +121,16 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
   }
 
   if (isPending) {
-    return <Skeleton className="h-[320px] w-full" />
+    return <Skeleton className="h-80 w-full" />
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-(--grid-cols-skills-sidebar)">
       <aside className="space-y-3">
         <div className="space-y-1.5">
           <label
             htmlFor="new-skill-name"
-            className="block font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+            className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           >
             新しい skill
           </label>
@@ -162,26 +162,23 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
           {newNameError != null && (
             <p
               data-testid="new-skill-error"
-              className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]"
+              className="font-mono text-2xs text-primary"
             >
               {newNameError}
             </p>
           )}
         </div>
 
-        <ul
-          data-testid="skill-list"
-          className="border border-[color:var(--color-hairline)]"
-        >
+        <ul data-testid="skill-list" className="border border-border">
           {names.length === 0 && (
-            <li className="px-3 py-2 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+            <li className="px-3 py-2 font-mono text-xs text-muted-foreground">
               skill がまだありません
             </li>
           )}
           {names.map((name) => (
             <li
               key={name}
-              className="flex items-center justify-between border-b border-[color:var(--color-hairline)] px-1 last:border-b-0"
+              className="flex items-center justify-between border-b border-border px-1 last:border-b-0"
             >
               <button
                 type="button"
@@ -190,7 +187,7 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
                   setSaveError(null)
                 }}
                 data-active={selected === name}
-                className="flex-1 truncate px-2 py-1.5 text-left font-mono text-[12.5px] hover:bg-[color:var(--panel-inset)] data-[active=true]:text-[color:var(--color-accent-strategy)]"
+                className="flex-1 truncate px-2 py-1.5 text-left font-mono text-xs hover:bg-surface-strong data-[active=true]:text-primary"
               >
                 {name}
               </button>
@@ -200,7 +197,7 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
                   handleDelete(name)
                 }}
                 aria-label={`skill "${name}" を削除`}
-                className="px-2 py-1 font-mono text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+                className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-primary"
               >
                 削除
               </button>
@@ -211,7 +208,7 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
 
       <section>
         {selected == null ? (
-          <p className="font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+          <p className="font-mono text-xs text-muted-foreground">
             左の一覧から skill を選択するか、新しく追加してください。
           </p>
         ) : (

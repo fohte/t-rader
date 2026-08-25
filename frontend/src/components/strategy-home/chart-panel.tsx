@@ -86,7 +86,7 @@ export function ChartPanel({
 
   if (symbol == null) {
     return (
-      <div className="grid h-[420px] place-items-center border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+      <div className="grid h-105 place-items-center border border-border bg-card font-mono text-xs text-muted-foreground">
         シード関心に銘柄が登録されていません
       </div>
     )
@@ -102,8 +102,8 @@ export function ChartPanel({
   const isUp = chg >= 0
 
   return (
-    <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-[color:var(--color-hairline)] p-2.5">
+    <div className="border border-border bg-card">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border p-2.5">
         {symbols.map((s, i) => (
           <button
             key={s.code}
@@ -111,19 +111,17 @@ export function ChartPanel({
             onClick={() => {
               setSymIdx(i)
             }}
-            className={`flex items-baseline gap-1.5 border px-2 py-1 font-mono text-[12px] ${
+            className={`flex items-baseline gap-1.5 border px-2 py-1 font-mono text-xs ${
               i === symIdx
-                ? 'border-[color:var(--color-text-tertiary)] bg-[color:var(--panel-inset)] text-[color:var(--color-text-primary)]'
-                : 'border-[color:var(--color-border-strategy)] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-text-tertiary)]'
+                ? 'border-muted-foreground bg-surface-strong text-foreground'
+                : 'border-border text-muted-foreground-strong hover:border-muted-foreground'
             }`}
           >
             <span>{s.name}</span>
-            <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
-              {s.code}
-            </span>
+            <span className="text-2xs text-muted-foreground">{s.code}</span>
           </button>
         ))}
-        <span className="mx-1 h-5 w-px self-center bg-[color:var(--color-hairline)]" />
+        <span className="mx-1 h-5 w-px self-center bg-border" />
         {(['1D', '1W', '1M'] as const).map((t) => (
           <button
             key={t}
@@ -131,38 +129,30 @@ export function ChartPanel({
             onClick={() => {
               setTf(t)
             }}
-            className={`border px-2 py-1 font-mono text-[12px] ${
+            className={`border px-2 py-1 font-mono text-xs ${
               t === tf
-                ? 'border-[color:var(--color-text-tertiary)] bg-[color:var(--panel-inset)] text-[color:var(--color-text-primary)]'
-                : 'border-[color:var(--color-border-strategy)] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-text-tertiary)]'
+                ? 'border-muted-foreground bg-surface-strong text-foreground'
+                : 'border-border text-muted-foreground-strong hover:border-muted-foreground'
             }`}
           >
             {t}
           </button>
         ))}
         {last != null && (
-          <span className="ml-auto flex items-baseline gap-2 font-mono text-[12px] tabular-nums">
-            <span
-              className={
-                isUp
-                  ? 'text-[color:var(--color-up)]'
-                  : 'text-[color:var(--color-down)]'
-              }
-            >
+          <span className="ml-auto flex items-baseline gap-2 font-mono text-xs tabular-nums">
+            <span className={isUp ? 'text-up' : 'text-down'}>
               ¥{last.close.toLocaleString()}
             </span>
-            <span
-              className={`text-[11px] ${isUp ? 'text-[color:var(--color-up)]' : 'text-[color:var(--color-down)]'}`}
-            >
+            <span className={`text-2xs ${isUp ? 'text-up' : 'text-down'}`}>
               {isUp ? '▲' : '▼'} {Math.abs(chg).toFixed(1)} ({isUp ? '+' : ''}
               {pct.toFixed(2)}%)
             </span>
           </span>
         )}
       </div>
-      <div className="h-[420px]">
+      <div className="h-105">
         {isPending ? (
-          <div className="grid h-full place-items-center font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+          <div className="grid h-full place-items-center font-mono text-xs text-muted-foreground">
             読み込み中…
           </div>
         ) : bars && bars.length > 0 ? (
@@ -174,7 +164,7 @@ export function ChartPanel({
             className="h-full w-full"
           />
         ) : (
-          <div className="grid h-full place-items-center font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+          <div className="grid h-full place-items-center font-mono text-xs text-muted-foreground">
             データなし
           </div>
         )}

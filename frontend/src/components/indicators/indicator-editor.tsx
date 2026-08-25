@@ -127,7 +127,7 @@ export function IndicatorEditor({
         <div className="space-y-1">
           <label
             htmlFor="indicator-name"
-            className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+            className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           >
             name
           </label>
@@ -138,19 +138,19 @@ export function IndicatorEditor({
             onChange={(e) => {
               patch({ name: e.target.value })
             }}
-            className="w-64 font-mono text-[13px]"
+            className="w-64 font-mono text-sm"
           />
         </div>
         <div
           data-testid="indicator-scope"
-          className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+          className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
         >
           scope: {scope}
         </div>
         {dirty && (
           <span
             data-testid="dirty-indicator"
-            className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]"
+            className="font-mono text-2xs text-primary"
           >
             未保存の変更あり
           </span>
@@ -160,7 +160,7 @@ export function IndicatorEditor({
       <div className="space-y-1.5">
         <label
           htmlFor="indicator-description"
-          className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]"
+          className="font-mono text-2xs uppercase tracking-wider text-muted-foreground"
         >
           description
         </label>
@@ -170,12 +170,12 @@ export function IndicatorEditor({
           onChange={(e) => {
             patch({ description: e.target.value })
           }}
-          className="w-full font-mono text-[13px]"
+          className="w-full font-mono text-sm"
         />
       </div>
 
       <div className="space-y-1.5">
-        <div className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+        <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
           code (Python)
         </div>
         <CodeEditor
@@ -192,7 +192,7 @@ export function IndicatorEditor({
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="space-y-1.5">
-          <div className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             input_schema (JSON Schema)
           </div>
           <CodeEditor
@@ -207,7 +207,7 @@ export function IndicatorEditor({
           />
         </div>
         <div className="space-y-1.5">
-          <div className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             output_schema (JSON Schema)
           </div>
           <CodeEditor
@@ -232,20 +232,18 @@ export function IndicatorEditor({
           {isSaving ? '保存中…' : '保存'}
         </Button>
         {saveError != null && (
-          <span className="font-mono text-[12px] text-[color:var(--color-accent-strategy)]">
-            {saveError}
-          </span>
+          <span className="font-mono text-xs text-primary">{saveError}</span>
         )}
       </div>
 
-      <div className="space-y-2 border-t border-[color:var(--color-hairline)] pt-4">
-        <div className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+      <div className="space-y-2 border-t border-border pt-4">
+        <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
           preview
         </div>
         <div className="space-y-1.5">
           <label
             htmlFor="indicator-args"
-            className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]"
+            className="font-mono text-2xs text-muted-foreground"
           >
             args (JSON)
           </label>
@@ -269,7 +267,7 @@ export function IndicatorEditor({
           {preview.error != null && (
             <span
               data-testid="preview-error"
-              className="font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+              className="font-mono text-xs text-primary"
             >
               {preview.error}
             </span>
@@ -279,14 +277,14 @@ export function IndicatorEditor({
         {preview.result != null && (
           <div
             data-testid="preview-result"
-            className="space-y-2 border border-[color:var(--color-hairline)] bg-[color:var(--color-bg-secondary)] p-3"
+            className="space-y-2 border border-border bg-bg-secondary p-3"
           >
-            <div className="flex items-center gap-4 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+            <div className="flex items-center gap-4 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
               <span>
                 exit_code:{' '}
                 <span
                   data-testid="preview-exit-code"
-                  className="text-[color:var(--color-text-primary)]"
+                  className="text-foreground"
                 >
                   {preview.result.exit_code}
                 </span>
@@ -294,12 +292,12 @@ export function IndicatorEditor({
             </div>
             {preview.result.output !== null && (
               <div>
-                <div className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+                <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
                   output
                 </div>
                 <pre
                   data-testid="preview-output"
-                  className="overflow-auto whitespace-pre-wrap font-mono text-[12px] text-[color:var(--color-text-primary)]"
+                  className="overflow-auto whitespace-pre-wrap font-mono text-xs text-foreground"
                 >
                   {JSON.stringify(preview.result.output, null, 2)}
                 </pre>
@@ -307,12 +305,12 @@ export function IndicatorEditor({
             )}
             {preview.result.stdout !== '' && (
               <div>
-                <div className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+                <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
                   stdout
                 </div>
                 <pre
                   data-testid="preview-stdout"
-                  className="overflow-auto whitespace-pre-wrap font-mono text-[12px] text-[color:var(--color-text-primary)]"
+                  className="overflow-auto whitespace-pre-wrap font-mono text-xs text-foreground"
                 >
                   {preview.result.stdout}
                 </pre>
@@ -320,12 +318,12 @@ export function IndicatorEditor({
             )}
             {preview.result.stderr !== '' && (
               <div>
-                <div className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+                <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
                   stderr
                 </div>
                 <pre
                   data-testid="preview-stderr"
-                  className="overflow-auto whitespace-pre-wrap font-mono text-[12px] text-[color:var(--color-accent-strategy)]"
+                  className="overflow-auto whitespace-pre-wrap font-mono text-xs text-primary"
                 >
                   {preview.result.stderr}
                 </pre>

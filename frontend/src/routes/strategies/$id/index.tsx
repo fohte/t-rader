@@ -82,29 +82,29 @@ function StrategyHomePage() {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-5 w-full max-w-[480px]" />
-        <Skeleton className="h-[400px] w-full" />
+        <Skeleton className="h-5 w-full max-w-120" />
+        <Skeleton className="h-100 w-full" />
       </div>
     )
   }
 
   if (strategy == null) {
     return (
-      <div className="font-mono text-[13px] text-[color:var(--color-text-tertiary)]">
+      <div className="font-mono text-sm text-muted-foreground">
         戦略が見つかりませんでした。
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 font-sans text-[color:var(--color-text-primary)]">
+    <div className="space-y-6 font-sans text-foreground">
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
-          <h1 className="mb-1.5 text-[24px] font-bold leading-tight tracking-tight">
+          <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
             {strategy.name}
           </h1>
           {strategy.description != null && strategy.description !== '' && (
-            <p className="max-w-[720px] text-[14px] leading-relaxed text-[color:var(--color-text-secondary)]">
+            <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
               {strategy.description}
             </p>
           )}
@@ -123,7 +123,7 @@ function StrategyHomePage() {
         <Link
           to="/strategies/$id/performance"
           params={{ id }}
-          className="inline-flex flex-shrink-0 items-center gap-1.5 self-start border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-3 py-1.5 font-mono text-[12px] text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-accent-strategy)] hover:text-[color:var(--color-accent-strategy)]"
+          className="inline-flex flex-shrink-0 items-center gap-1.5 self-start border border-border bg-surface-strong px-3 py-1.5 font-mono text-xs text-muted-foreground-strong hover:border-primary hover:text-primary"
         >
           戦略成績 →
         </Link>
@@ -155,22 +155,18 @@ function StrategyHomePage() {
           />
 
           <section>
-            <div className="mb-2 flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
-              <span className="text-[color:var(--color-accent-strategy)]">
-                &gt;
-              </span>
+            <div className="mb-2 flex items-baseline gap-2 font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+              <span className="text-primary">&gt;</span>
               <span>分析カードフィード</span>
-              <span className="text-[color:var(--color-text-secondary)]">
+              <span className="text-muted-foreground-strong">
                 LLM 産出物 · 新しい順
               </span>
             </div>
             {sortedNotes.length === 0 ? (
-              <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] px-4 py-6 text-center font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+              <div className="border border-border bg-card px-4 py-6 text-center font-mono text-xs text-muted-foreground">
                 まだ産出物がありません。右下の{' '}
-                <span className="text-[color:var(--color-accent-strategy)]">
-                  &gt;_
-                </span>{' '}
-                から on-demand セッションを起動してください。
+                <span className="text-primary">&gt;_</span> から on-demand
+                セッションを起動してください。
               </div>
             ) : (
               <div className="space-y-3">

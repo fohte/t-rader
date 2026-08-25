@@ -39,17 +39,17 @@ export function TradesTable({
 
   if (trades.length === 0) {
     return (
-      <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] px-4 py-8 text-center font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+      <div className="border border-border bg-card px-4 py-8 text-center font-mono text-xs text-muted-foreground">
         取引がありません。「+ 取引を追加」から手入力できます。
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <table className="w-full min-w-[820px] font-mono text-[12px]">
+    <div className="overflow-x-auto border border-border bg-card">
+      <table className="w-full min-w-205 font-mono text-xs">
         <thead>
-          <tr className="border-b border-[color:var(--color-border-strategy)] text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <tr className="border-b border-border text-2xs uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-2 text-left font-normal">日付</th>
             <th className="px-3 py-2 text-left font-normal">銘柄</th>
             <th className="px-3 py-2 text-center font-normal">売買</th>
@@ -70,18 +70,18 @@ export function TradesTable({
             return (
               <tr
                 key={t.id}
-                className="border-b border-[color:var(--color-hairline)] last:border-b-0 hover:bg-[color:var(--panel-inset)]"
+                className="border-b border-border last:border-b-0 hover:bg-surface-strong"
               >
-                <td className="px-3 py-2 tabular-nums text-[color:var(--color-text-secondary)]">
+                <td className="px-3 py-2 tabular-nums text-muted-foreground-strong">
                   {t.date}
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[color:var(--color-text-primary)]">
+                    <span className="text-foreground">
                       {stockName ?? t.symbol}
                     </span>
                     {stockName != null && (
-                      <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
+                      <span className="text-2xs text-muted-foreground">
                         {t.symbol}
                       </span>
                     )}
@@ -100,11 +100,11 @@ export function TradesTable({
                   {formatYen(t.qty * t.price)}
                 </td>
                 {showStrategy && (
-                  <td className="px-3 py-2 text-[color:var(--color-text-secondary)]">
+                  <td className="px-3 py-2 text-muted-foreground-strong">
                     {strategyName}
                   </td>
                 )}
-                <td className="px-3 py-2 text-center text-[10px] text-[color:var(--color-text-tertiary)]">
+                <td className="px-3 py-2 text-center text-2xs text-muted-foreground">
                   {SOURCE_LABEL[t.source] ?? t.source}
                 </td>
                 <td className="px-3 py-2 text-right">
@@ -142,12 +142,10 @@ export function TradesTable({
 
 function SideBadge({ side }: { side: string }) {
   const isBuy = side === 'buy'
-  const cls = isBuy
-    ? 'border-[color:var(--color-up)] text-[color:var(--color-up)]'
-    : 'border-[color:var(--color-down)] text-[color:var(--color-down)]'
+  const cls = isBuy ? 'border-up text-up' : 'border-down text-down'
   return (
     <span
-      className={`inline-grid h-5 min-w-[24px] place-items-center border px-1 text-[10px] ${cls}`}
+      className={`inline-grid h-5 min-w-6 place-items-center border px-1 text-2xs ${cls}`}
     >
       {isBuy ? '買' : '売'}
     </span>

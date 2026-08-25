@@ -22,10 +22,10 @@ export function TriggerTag({
   const glyph = GLYPH[trigger] ?? '·'
   return (
     <span
-      className={`inline-flex items-center gap-1 font-mono text-[10px] tracking-wide text-[color:var(--color-text-tertiary)] ${className}`}
+      className={`inline-flex items-center gap-1 font-mono text-2xs tracking-wide text-muted-foreground ${className}`}
       title={trigger}
     >
-      <span className="text-[color:var(--color-accent-strategy)]">{glyph}</span>
+      <span className="text-primary">{glyph}</span>
       <span>{label ?? trigger}</span>
     </span>
   )

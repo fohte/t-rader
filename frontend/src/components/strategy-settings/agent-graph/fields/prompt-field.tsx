@@ -6,7 +6,7 @@ interface PromptFieldProps {
 export function PromptField({ value, onChange }: PromptFieldProps) {
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         プロンプト
       </span>
       <textarea
@@ -16,7 +16,7 @@ export function PromptField({ value, onChange }: PromptFieldProps) {
           onChange(e.target.value)
         }}
         rows={3}
-        className="w-full resize-y border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] p-2 font-mono text-[11.5px] leading-relaxed text-[color:var(--color-text-secondary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
+        className="w-full resize-y border border-border bg-background p-2 font-mono text-xs leading-relaxed text-muted-foreground-strong outline-none focus:border-muted-foreground"
       />
     </>
   )

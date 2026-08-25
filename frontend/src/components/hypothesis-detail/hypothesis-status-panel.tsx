@@ -34,9 +34,9 @@ export function HypothesisStatusPanel({
   }
 
   return (
-    <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <header className="flex items-center justify-between border-b border-[color:var(--color-hairline)] px-3.5 py-2">
-        <h3 className="font-mono text-[12px] font-bold uppercase tracking-wider text-[color:var(--color-text-primary)]">
+    <section className="border border-border bg-card">
+      <header className="flex items-center justify-between border-b border-border px-3.5 py-2">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           status
         </h3>
         <HypothesisStatusPill status={status} />
@@ -49,7 +49,7 @@ export function HypothesisStatusPanel({
           onChange={(e) => {
             handleChange(e.target.value)
           }}
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-[12px]"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
         >
           {HYPOTHESIS_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -58,7 +58,7 @@ export function HypothesisStatusPanel({
           ))}
         </select>
         {updateMutation.isError && (
-          <p className="mt-2 font-mono text-[11px] text-[color:var(--color-accent-strategy)]">
+          <p className="mt-2 font-mono text-2xs text-primary">
             status の更新に失敗しました
           </p>
         )}

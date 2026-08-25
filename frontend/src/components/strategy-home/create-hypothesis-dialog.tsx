@@ -95,7 +95,7 @@ export function CreateHypothesisDialog({
           <div className="space-y-2">
             <label
               htmlFor="hypothesis-title"
-              className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               title *
             </label>
@@ -112,7 +112,7 @@ export function CreateHypothesisDialog({
           <div className="space-y-2">
             <label
               htmlFor="hypothesis-body"
-              className="block font-mono text-[11px] uppercase tracking-wide text-[color:var(--color-text-tertiary)]"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
             >
               body (Markdown) *
             </label>
@@ -124,13 +124,13 @@ export function CreateHypothesisDialog({
                 setBody(e.target.value)
               }}
               placeholder="主張の根拠と検証方法"
-              className="w-full border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-secondary)] px-3 py-2 font-mono text-[12.5px] text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
+              className="w-full border border-border bg-bg-secondary px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-muted-foreground"
             />
           </div>
           {formError != null && (
             <p
               data-testid="create-hypothesis-error"
-              className="text-[12px] text-[color:var(--color-accent-strategy)]"
+              className="text-xs text-primary"
             >
               {formError}
             </p>

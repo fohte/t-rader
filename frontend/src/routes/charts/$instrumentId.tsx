@@ -71,17 +71,19 @@ function ChartPage() {
       <TimeframeSelector value={timeframe} onChange={setTimeframe} />
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant={isMarketDepthOpen ? 'default' : 'outline'}
-              size="icon-sm"
-              onClick={toggleMarketDepth}
-              aria-label="板情報・歩み値パネルの表示切替"
-              aria-pressed={isMarketDepthOpen}
-            >
-              <Columns2Icon />
-            </Button>
-          </TooltipTrigger>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={isMarketDepthOpen ? 'default' : 'outline'}
+                size="icon-sm"
+                onClick={toggleMarketDepth}
+                aria-label="板情報・歩み値パネルの表示切替"
+                aria-pressed={isMarketDepthOpen}
+              >
+                <Columns2Icon />
+              </Button>
+            }
+          />
           <TooltipContent>板情報・歩み値</TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -96,7 +98,7 @@ function ChartPage() {
           {toolbar}
         </div>
         <div className="flex min-h-0 flex-1 gap-4">
-          <Skeleton className="h-[600px] w-full" />
+          <Skeleton className="h-150 w-full" />
           <ChartMarketDepthPanel
             instrumentId={instrumentId}
             isOpen={isMarketDepthOpen}
@@ -133,7 +135,7 @@ function ChartPage() {
         {toolbar}
       </div>
       <div className="flex min-h-0 flex-1 gap-4">
-        <CandlestickChart bars={data ?? []} className="h-[600px] w-full" />
+        <CandlestickChart bars={data ?? []} className="h-150 w-full" />
         <ChartMarketDepthPanel
           instrumentId={instrumentId}
           isOpen={isMarketDepthOpen}
