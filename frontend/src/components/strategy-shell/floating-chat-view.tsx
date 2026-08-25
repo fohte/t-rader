@@ -52,7 +52,7 @@ export function FloatingChatView({
         onClick={onOpen}
         title="アナリストを呼ぶ (on-demand)"
         aria-label="アナリストを呼ぶ"
-        className="fixed bottom-5 right-5 z-[60] grid h-12 w-12 cursor-pointer place-items-center border border-primary bg-bg-secondary font-mono text-2xl font-bold text-primary hover:bg-primary hover:text-white"
+        className="fixed bottom-5 right-5 z-floating-chat grid h-12 w-12 cursor-pointer place-items-center border border-primary bg-bg-secondary font-mono text-2xl font-bold text-primary hover:bg-primary hover:text-white"
       >
         &gt;_
       </button>
@@ -70,7 +70,7 @@ export function FloatingChatView({
     <div
       role="dialog"
       aria-label="on-demand session"
-      className="fixed bottom-5 right-5 z-[60] flex h-145 max-h-floating-chat-h w-105 max-w-floating-chat-w flex-col border border-border bg-bg-secondary"
+      className="fixed bottom-5 right-5 z-floating-chat flex h-145 max-h-floating-chat-h w-105 max-w-floating-chat-w flex-col border border-border bg-bg-secondary"
     >
       <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-2.5">
         <span className="flex items-baseline gap-1.5 font-mono text-sm font-bold">

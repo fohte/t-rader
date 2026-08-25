@@ -26,7 +26,7 @@ export function Header() {
   const strategyId = useCurrentStrategyId()
 
   return (
-    <header className="sticky top-0 z-[25] flex items-center gap-3 border-b border-border bg-background px-3 py-2 md:gap-4 md:px-5 md:py-3">
+    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background px-3 py-2 md:gap-4 md:px-5 md:py-3">
       <Link
         to="/strategies"
         className="inline-flex flex-shrink-0 items-baseline gap-2 font-mono"

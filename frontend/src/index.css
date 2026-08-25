@@ -171,6 +171,15 @@
   --color-hairline: var(--hairline);
 }
 
+/*
+ * z-index には --theme namespace (--z-*) がなく、@theme では標準スケール
+ * (z-0 〜 z-50, z-auto) を超える段を追加できない。@utility でその段だけを
+ * 個別の named utility として定義する。
+ */
+@utility z-floating-chat {
+  z-index: 60;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
