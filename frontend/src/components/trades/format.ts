@@ -12,9 +12,9 @@ export function formatYen(value: number, signed = false): string {
 }
 
 export function pnlColorClass(value: number): string {
-  if (value > 0) return 'text-[color:var(--color-up)]'
-  if (value < 0) return 'text-[color:var(--color-down)]'
-  return 'text-[color:var(--color-text-secondary)]'
+  if (value > 0) return 'text-up'
+  if (value < 0) return 'text-down'
+  return 'text-muted-foreground-strong'
 }
 
 export const SOURCE_LABEL: Record<string, string> = {

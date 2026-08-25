@@ -20,42 +20,42 @@ export function HistoryPanel({ noteId }: HistoryPanelProps) {
   const rows = history ?? []
 
   return (
-    <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <header className="border-b border-[color:var(--color-hairline)] px-3.5 py-2">
-        <h3 className="font-mono text-[12px] font-bold uppercase tracking-wider text-[color:var(--color-text-primary)]">
+    <section className="border border-border bg-card">
+      <header className="border-b border-border px-3.5 py-2">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           変更履歴
         </h3>
       </header>
       {isPending ? (
-        <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+        <div className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
           読み込み中…
         </div>
       ) : rows.length === 0 ? (
-        <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+        <div className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
           —
         </div>
       ) : (
-        <div className="divide-y divide-[color:var(--color-hairline)]">
+        <div className="divide-y divide-border">
           {rows.map((h) => {
             const isLLM = h.actor_kind === 'llm'
             return (
               <div
                 key={h.id}
-                className="grid grid-cols-[auto_auto_1fr] items-baseline gap-2 px-3.5 py-2 font-mono text-[11px]"
+                className="grid grid-cols-[auto_auto_1fr] items-baseline gap-2 px-3.5 py-2 font-mono text-2xs"
               >
-                <span className="text-[color:var(--color-text-tertiary)]">
+                <span className="text-muted-foreground">
                   {formatRelative(h.created_at)}
                 </span>
                 <span
-                  className={`border px-1 text-[10px] ${
+                  className={`border px-1 text-2xs ${
                     isLLM
-                      ? 'border-[color:var(--color-accent-strategy)] text-[color:var(--color-accent-strategy)]'
-                      : 'border-[color:var(--color-text-tertiary)] text-[color:var(--color-text-primary)]'
+                      ? 'border-primary text-primary'
+                      : 'border-muted-foreground text-foreground'
                   }`}
                 >
                   {isLLM ? 'LLM' : h.actor_label}
                 </span>
-                <span className="text-[color:var(--color-text-secondary)]">
+                <span className="text-muted-foreground-strong">
                   {h.summary != null && h.summary !== ''
                     ? h.summary
                     : (OP_LABEL[h.op] ?? h.op)}

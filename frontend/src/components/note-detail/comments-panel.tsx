@@ -102,23 +102,23 @@ export function CommentsPanel({
   }
 
   return (
-    <section className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <header className="flex items-center justify-between border-b border-[color:var(--color-hairline)] px-3.5 py-2">
-        <h3 className="font-mono text-[12px] font-bold uppercase tracking-wider text-[color:var(--color-text-primary)]">
+    <section className="border border-border bg-card">
+      <header className="flex items-center justify-between border-b border-border px-3.5 py-2">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
           コメント
         </h3>
-        <span className="font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+        <span className="font-mono text-2xs text-muted-foreground">
           {list.length}
           {anchoredCount > 0 && <> · {anchoredCount} 箇所</>}
         </span>
       </header>
-      <div className="divide-y divide-[color:var(--color-hairline)]">
+      <div className="divide-y divide-border">
         {isPending ? (
-          <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+          <div className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
             読み込み中…
           </div>
         ) : topLevel.length === 0 ? (
-          <div className="px-3.5 py-3 font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+          <div className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
             まだコメントはありません。
           </div>
         ) : (
@@ -135,23 +135,20 @@ export function CommentsPanel({
             />
           ))
         )}
-        <div className="px-3.5 py-2 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
-          <span className="text-[color:var(--color-accent-strategy)]">▚</span>{' '}
-          本文をドラッグして選択 →
+        <div className="px-3.5 py-2 font-mono text-2xs text-muted-foreground">
+          <span className="text-primary">▚</span> 本文をドラッグして選択 →
           「コメント」でその箇所にスレッドを付けられます。
         </div>
       </div>
-      <div className="space-y-2 border-t border-[color:var(--color-hairline)] px-3.5 py-3">
+      <div className="space-y-2 border-t border-border px-3.5 py-3">
         {pendingQuote != null && pendingQuote !== '' && (
-          <div className="flex items-start gap-2 border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-2 py-1.5 text-[11px] text-[color:var(--color-text-secondary)]">
-            <span className="font-mono text-[color:var(--color-accent-strategy)]">
-              ”
-            </span>
+          <div className="flex items-start gap-2 border border-border bg-surface-strong px-2 py-1.5 text-2xs text-muted-foreground-strong">
+            <span className="font-mono text-primary">”</span>
             <span className="line-clamp-2 flex-1 italic">{pendingQuote}</span>
             <button
               type="button"
               onClick={onConsumeQuote}
-              className="font-mono text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-text-primary)]"
+              className="font-mono text-muted-foreground hover:text-foreground"
               title="引用を外す"
             >
               ✕
@@ -173,21 +170,19 @@ export function CommentsPanel({
                 ? '選択箇所へのコメント'
                 : '全体コメントを追加'
             }
-            className="flex-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] px-2.5 py-1.5 font-mono text-[12px] text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
+            className="flex-1 border border-border bg-background px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-muted-foreground"
           />
           <button
             type="button"
             onClick={submit}
             disabled={draft.trim() === '' || create.isPending}
-            className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-3 py-1.5 font-mono text-[12px] text-[color:var(--color-text-primary)] hover:border-[color:var(--color-accent-strategy)] hover:text-[color:var(--color-accent-strategy)] disabled:opacity-50"
+            className="border border-border bg-surface-strong px-3 py-1.5 font-mono text-xs text-foreground hover:border-primary hover:text-primary disabled:opacity-50"
           >
             送信
           </button>
         </div>
         {create.isError && (
-          <p className="font-mono text-[11px] text-[color:var(--color-accent-strategy)]">
-            送信に失敗しました
-          </p>
+          <p className="font-mono text-2xs text-primary">送信に失敗しました</p>
         )}
       </div>
     </section>
@@ -223,17 +218,14 @@ function CommentRow({
   }
 
   return (
-    <div className="px-3.5 py-3 text-[13px]">
+    <div className="px-3.5 py-3 text-sm">
       <CommentBody
         c={comment}
         onToggleResolved={onToggleResolved}
         isResolving={resolvingId === comment.id}
       />
       {replies.map((r) => (
-        <div
-          key={r.id}
-          className="mt-2.5 border-l border-[color:var(--color-hairline)] pl-3"
-        >
+        <div key={r.id} className="mt-2.5 border-l border-border pl-3">
           <CommentBody
             c={r}
             onToggleResolved={onToggleResolved}
@@ -256,13 +248,13 @@ function CommentRow({
                 if (e.key === 'Escape') setIsReplying(false)
               }}
               placeholder="返信を入力"
-              className="flex-1 border border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] px-2 py-1 font-mono text-[11px] text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-text-tertiary)]"
+              className="flex-1 border border-border bg-background px-2 py-1 font-mono text-2xs text-foreground outline-none focus:border-muted-foreground"
             />
             <button
               type="button"
               onClick={submitReply}
               disabled={replyDraft.trim() === '' || replyPending}
-              className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] px-2 py-1 font-mono text-[11px] text-[color:var(--color-text-primary)] hover:border-[color:var(--color-accent-strategy)] hover:text-[color:var(--color-accent-strategy)] disabled:opacity-50"
+              className="border border-border bg-surface-strong px-2 py-1 font-mono text-2xs text-foreground hover:border-primary hover:text-primary disabled:opacity-50"
             >
               送信
             </button>
@@ -273,13 +265,13 @@ function CommentRow({
             onClick={() => {
               setIsReplying(true)
             }}
-            className="font-mono text-[11px] text-[color:var(--color-text-tertiary)] hover:text-[color:var(--color-accent-strategy)]"
+            className="font-mono text-2xs text-muted-foreground hover:text-primary"
           >
             返信
           </button>
         )}
         {replyError && (
-          <p className="mt-1 font-mono text-[11px] text-[color:var(--color-accent-strategy)]">
+          <p className="mt-1 font-mono text-2xs text-primary">
             送信に失敗しました
           </p>
         )}
@@ -300,24 +292,18 @@ function CommentBody({
   const isLLM = c.author_kind === 'llm'
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-2 font-mono text-[11px]">
+      <div className="flex items-center gap-2 font-mono text-2xs">
         <span
-          className={`inline-flex size-4 items-center justify-center border text-[10px] font-bold ${
+          className={`inline-flex size-4 items-center justify-center border text-2xs font-bold ${
             isLLM
-              ? 'border-[color:var(--color-accent-strategy)] text-[color:var(--color-accent-strategy)]'
-              : 'border-[color:var(--color-text-tertiary)] text-[color:var(--color-text-primary)]'
+              ? 'border-primary text-primary'
+              : 'border-muted-foreground text-foreground'
           }`}
         >
           {isLLM ? '>' : c.author_label.slice(0, 1).toUpperCase()}
         </span>
-        <span className="font-bold text-[color:var(--color-text-primary)]">
-          {c.author_label}
-        </span>
-        {isLLM && (
-          <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
-            LLM
-          </span>
-        )}
+        <span className="font-bold text-foreground">{c.author_label}</span>
+        {isLLM && <span className="text-2xs text-muted-foreground">LLM</span>}
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
@@ -325,25 +311,25 @@ function CommentBody({
               onToggleResolved(c)
             }}
             disabled={isResolving}
-            className={`border px-1.5 py-0.5 text-[10px] disabled:opacity-50 ${
+            className={`border px-1.5 py-0.5 text-2xs disabled:opacity-50 ${
               c.resolved
-                ? 'border-[color:var(--color-status-approved)] text-[color:var(--color-status-approved)]'
-                : 'border-[color:var(--color-border-strategy)] text-[color:var(--color-text-tertiary)] hover:border-[color:var(--color-accent-strategy)] hover:text-[color:var(--color-accent-strategy)]'
+                ? 'border-status-approved text-status-approved'
+                : 'border-border text-muted-foreground hover:border-primary hover:text-primary'
             }`}
           >
             {c.resolved ? '✓ 解決済み' : '未解決'}
           </button>
-          <span className="text-[color:var(--color-text-tertiary)]">
+          <span className="text-muted-foreground">
             {formatRelative(c.created_at)}
           </span>
         </div>
       </div>
       {c.anchor_text != null && (
         <div
-          className={`whitespace-pre-wrap border-l-2 px-2 py-1 text-[12px] italic ${
+          className={`whitespace-pre-wrap border-l-2 px-2 py-1 text-xs italic ${
             c.drifted
-              ? 'border-[color:var(--color-accent-strategy)] bg-[color:var(--panel-inset)] text-[color:var(--color-accent-strategy)]'
-              : 'border-[color:var(--color-border-strategy)] bg-[color:var(--panel-inset)] text-[color:var(--color-text-tertiary)]'
+              ? 'border-primary bg-surface-strong text-primary'
+              : 'border-border bg-surface-strong text-muted-foreground'
           }`}
         >
           “{c.anchor_text}”
@@ -357,8 +343,8 @@ function CommentBody({
       <div
         className={`whitespace-pre-wrap leading-relaxed ${
           c.resolved
-            ? 'text-[color:var(--color-text-tertiary)] line-through decoration-[color:var(--color-hairline)]'
-            : 'text-[color:var(--color-text-primary)]'
+            ? 'text-muted-foreground line-through decoration-border'
+            : 'text-foreground'
         }`}
       >
         {c.body}

@@ -27,21 +27,25 @@ export function ForEachField({
   onChange,
 }: ForEachFieldProps) {
   const options = getForEachOptions(phases, index)
+  const items = [{ value: ONCE_VALUE, label: '1 実行につき 1 回' }, ...options]
 
   return (
     <>
-      <span className="pt-1.5 font-mono text-[11px] text-[color:var(--color-text-tertiary)]">
+      <span className="pt-1.5 font-mono text-2xs text-muted-foreground">
         実行回数
       </span>
       <Select
+        items={items}
         value={value ?? ONCE_VALUE}
         onValueChange={(next) => {
-          onChange(next === ONCE_VALUE ? undefined : next)
+          // Base UI の Select.onValueChange は null を渡しうるため、sentinel と同様に
+          // 未設定 (undefined) として扱う
+          onChange(next == null || next === ONCE_VALUE ? undefined : next)
         }}
       >
         <SelectTrigger
           aria-label="実行回数"
-          className="h-auto w-full max-w-sm rounded-none border-[color:var(--color-border-strategy)] bg-[color:var(--color-bg-primary)] py-1 font-mono text-[11.5px] text-[color:var(--color-text-primary)]"
+          className="h-auto w-full max-w-sm rounded-none border-border bg-background py-1 font-mono text-xs text-foreground"
         >
           <SelectValue />
         </SelectTrigger>

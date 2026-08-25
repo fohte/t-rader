@@ -76,7 +76,7 @@ export function HypothesisDetailPage({
       >
         &lt; 戦略ホームに戻る
       </Link>
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--hypothesis-detail-grid-cols)">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-hypothesis-detail)">
         <article className="border border-border bg-card px-5 py-5">
           <HypothesisEditor
             initialTitle={hypothesis.title}

@@ -10,21 +10,23 @@ interface CiteBadgeProps {
 export function CiteBadge({ number, cite, className }: CiteBadgeProps) {
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          onClick={(e) => {
-            // 親ノードのクリック/ドラッグに伝播させない (ref-chip.tsx の onOpen と同じ理由)
-            e.stopPropagation()
-          }}
-          className={cn(
-            'border-border bg-surface-strong text-muted-foreground-strong hover:text-foreground hover:border-primary flex size-4 items-center justify-center rounded-full border font-mono text-2xs leading-none',
-            className,
-          )}
-        >
-          {number}
-        </button>
-      </PopoverTrigger>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => {
+              // 親ノードのクリック/ドラッグに伝播させない (ref-chip.tsx の onOpen と同じ理由)
+              e.stopPropagation()
+            }}
+            className={cn(
+              'border-border bg-surface-strong text-muted-foreground-strong hover:text-foreground hover:border-primary flex size-4 items-center justify-center rounded-full border font-mono text-2xs leading-none',
+              className,
+            )}
+          >
+            {number}
+          </button>
+        }
+      />
       <PopoverContent
         className="w-64 text-xs"
         onClick={(e) => {

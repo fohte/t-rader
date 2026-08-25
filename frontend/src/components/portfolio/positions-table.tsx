@@ -24,17 +24,17 @@ export function PositionsTable({
 
   if (sorted.length === 0) {
     return (
-      <div className="border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)] px-4 py-8 text-center font-mono text-[12px] text-[color:var(--color-text-tertiary)]">
+      <div className="border border-border bg-card px-4 py-8 text-center font-mono text-xs text-muted-foreground">
         保有ポジションなし
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto border border-[color:var(--color-border-strategy)] bg-[color:var(--panel)]">
-      <table className="w-full min-w-[640px] font-mono text-[12px]">
+    <div className="overflow-x-auto border border-border bg-card">
+      <table className="w-full min-w-160 font-mono text-xs">
         <thead>
-          <tr className="border-b border-[color:var(--color-border-strategy)] text-[10px] uppercase tracking-wider text-[color:var(--color-text-tertiary)]">
+          <tr className="border-b border-border text-2xs uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-2 text-left font-normal">銘柄</th>
             <th className="px-3 py-2 text-right font-normal">数量</th>
             <th className="px-3 py-2 text-right font-normal">平均取得</th>
@@ -48,15 +48,15 @@ export function PositionsTable({
             return (
               <tr
                 key={p.symbol}
-                className="border-b border-[color:var(--color-hairline)] last:border-b-0 hover:bg-[color:var(--panel-inset)]"
+                className="border-b border-border last:border-b-0 hover:bg-surface-strong"
               >
                 <td className="px-3 py-2">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[color:var(--color-text-primary)]">
+                    <span className="text-foreground">
                       {stockName ?? p.symbol}
                     </span>
                     {stockName != null && (
-                      <span className="text-[10px] text-[color:var(--color-text-tertiary)]">
+                      <span className="text-2xs text-muted-foreground">
                         {p.symbol}
                       </span>
                     )}

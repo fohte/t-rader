@@ -354,7 +354,7 @@ export function IndicatorsPage({ scope, strategyId }: IndicatorsPageProps) {
         </p>
       </header>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--indicators-list-grid-cols)">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-indicators-list)">
         <aside className="space-y-2 border-r border-border pr-4">
           <Button
             type="button"

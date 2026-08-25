@@ -79,11 +79,24 @@
   --status-task-running: #fbbf24;
 
   /*
-   * t-rader 固有: --spacing の丸めでは表現できない画面固有の grid-template-columns。
-   * grid-cols-(--token-name) (Tailwind v4 の custom property shorthand) で参照する。
+   * t-rader 固有: spacing scale (4px grid) にも Tailwind 標準の w/h スケール
+   * にも属さない固定サイズ。要素自体が 44px を超えるため grid 丸め対象外
+   * (docs/design-system.md の Spacing scale 参照)。
    */
-  --indicators-list-grid-cols: 260px 1fr;
-  --hypothesis-detail-grid-cols: minmax(0, 1fr) 280px;
+  --note-graph-height: 26.25rem; /* 420px: ノート本文内の埋め込みグラフの高さ */
+
+  /*
+   * t-rader 固有: 非対称 2 カラムのグリッドトラック。spacing scale への
+   * 丸めでは意味が壊れる固有の寸法のため個別トークン化する。
+   * grid-cols-(--foo) 構文で参照する (see docs/design-system.md)。
+   */
+  --grid-cols-portfolio-layout: minmax(0, 1fr) 360px;
+  --grid-cols-field-label: 108px 1fr;
+  --grid-cols-foreach-indent: 22px 1fr;
+  --grid-cols-skills-sidebar: 240px minmax(0, 1fr);
+  --grid-cols-triggers-sidebar: 280px minmax(0, 1fr);
+  --grid-cols-indicators-list: 260px 1fr;
+  --grid-cols-hypothesis-detail: minmax(0, 1fr) 280px;
 
   /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
@@ -155,10 +168,13 @@
   --color-bg-tertiary: var(--color-bg-tertiary);
   --color-up: var(--color-up);
   --color-down: var(--color-down);
+  --color-up-dim: var(--color-up-dim);
+  --color-down-dim: var(--color-down-dim);
   --color-status-approved: var(--status-approved);
   --color-status-unread: var(--status-unread);
   --color-status-rejected: var(--status-rejected);
   --color-status-task-running: var(--status-task-running);
+  --height-note-graph: var(--note-graph-height);
 
   /* 互換エイリアス (utility 経由の既存参照を維持) */
   --color-bg-primary: var(--color-bg-primary);

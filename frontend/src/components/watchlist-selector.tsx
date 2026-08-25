@@ -94,6 +94,7 @@ export function WatchlistSelectorView({
       ) : (
         <>
           <Select
+            items={watchlists.map((w) => ({ value: w.id, label: w.name }))}
             value={selectedId ?? undefined}
             onValueChange={(value) => {
               onSelect(value)
@@ -126,11 +127,13 @@ export function WatchlistSelectorView({
               open={isDeleteDialogOpen}
               onOpenChange={setIsDeleteDialogOpen}
             >
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <Trash2 className="size-4" />
-                </Button>
-              </DialogTrigger>
+              <DialogTrigger
+                render={
+                  <Button variant="outline" size="icon">
+                    <Trash2 className="size-4" />
+                  </Button>
+                }
+              />
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>ウォッチリストの削除</DialogTitle>
