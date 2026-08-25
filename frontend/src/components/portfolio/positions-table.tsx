@@ -32,9 +32,9 @@ export function PositionsTable({
 
   return (
     <div className="overflow-x-auto border border-border bg-card">
-      <table className="w-full min-w-[640px] font-mono text-xs">
+      <table className="w-full min-w-160 font-mono text-xs">
         <thead>
-          <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border text-2xs uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-2 text-left font-normal">銘柄</th>
             <th className="px-3 py-2 text-right font-normal">数量</th>
             <th className="px-3 py-2 text-right font-normal">平均取得</th>
@@ -56,7 +56,7 @@ export function PositionsTable({
                       {stockName ?? p.symbol}
                     </span>
                     {stockName != null && (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-2xs text-muted-foreground">
                         {p.symbol}
                       </span>
                     )}

@@ -170,14 +170,14 @@ export function ImportSbiDialog({
         </DialogHeader>
 
         {error != null && (
-          <p className="rounded-md border border-primary bg-primary/10 px-3 py-2 text-[13px] text-primary">
+          <p className="rounded-md border border-primary bg-primary/10 px-3 py-2 text-sm text-primary">
             {error}
           </p>
         )}
 
         {phase === 'select' || phase === 'previewing' ? (
           <div className="flex flex-col gap-3 py-2">
-            <label className="text-[13px] text-muted-foreground-strong">
+            <label className="text-sm text-muted-foreground-strong">
               CSV ファイルを選択
               <input
                 type="file"
@@ -187,7 +187,7 @@ export function ImportSbiDialog({
                   const f = e.target.files?.[0]
                   if (f != null) void handleFile(f)
                 }}
-                className="mt-1 block w-full text-[13px]"
+                className="mt-1 block w-full text-sm"
               />
             </label>
             {phase === 'previewing' && (
@@ -198,7 +198,7 @@ export function ImportSbiDialog({
 
         {(phase === 'review' || phase === 'committing') && (
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 text-[13px]">
+            <div className="flex items-center gap-3 text-sm">
               <label className="flex items-center gap-2">
                 <span className="text-muted-foreground-strong">
                   全行を戦略にまとめて割当:
@@ -223,7 +223,7 @@ export function ImportSbiDialog({
               </span>
             </div>
 
-            <div className="max-h-[420px] overflow-auto rounded border border-border">
+            <div className="max-h-105 overflow-auto rounded border border-border">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-bg-tertiary text-left text-muted-foreground-strong">
                   <tr>
@@ -320,7 +320,7 @@ export function ImportSbiDialog({
         )}
 
         {phase === 'done' && summary != null && (
-          <div className="space-y-2 py-2 text-[13px]">
+          <div className="space-y-2 py-2 text-sm">
             <p>取込が完了しました。</p>
             <ul className="list-disc pl-5">
               <li>追加: {summary.imported_count} 件</li>

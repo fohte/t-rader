@@ -79,6 +79,13 @@
   --status-task-running: #fbbf24;
 
   /*
+   * t-rader 固有: 非対称 2 カラムのグリッドトラック。spacing scale への
+   * 丸めでは意味が壊れる固有の寸法のため個別トークン化する。
+   * grid-cols-(--foo) 構文で参照する (see docs/design-system.md)。
+   */
+  --grid-cols-portfolio-layout: minmax(0, 1fr) 360px;
+
+  /*
    * 互換エイリアス。旧トークン名を新トークン名へのエイリアスとして残し、既存の
    * 参照が壊れないようにする。全ての参照が新トークン名に移行したら削除してよい。
    */
@@ -148,6 +155,8 @@
   --color-bg-tertiary: var(--color-bg-tertiary);
   --color-up: var(--color-up);
   --color-down: var(--color-down);
+  --color-up-dim: var(--color-up-dim);
+  --color-down-dim: var(--color-down-dim);
   --color-status-approved: var(--status-approved);
   --color-status-unread: var(--status-unread);
   --color-status-rejected: var(--status-rejected);

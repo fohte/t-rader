@@ -21,7 +21,7 @@ export function StatRow({ stats }: { stats: StatItem[] }) {
           key={s.label}
           className="flex flex-col gap-1 bg-card px-3.5 py-2.5"
         >
-          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
             {s.label}
           </span>
           <span
