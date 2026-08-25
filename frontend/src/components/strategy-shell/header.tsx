@@ -6,8 +6,8 @@ import { useCurrentStrategyId } from '#components/strategy-shell/use-current-str
 
 const NAV_BASE =
   'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap border px-2.5 py-1 font-mono text-xs'
-const NAV_INACTIVE = `${NAV_BASE} border-border-strategy text-text-secondary hover:border-text-tertiary hover:text-text-primary`
-const NAV_ACTIVE = `${NAV_BASE} border-text-tertiary bg-panel-inset text-text-primary`
+const NAV_INACTIVE = `${NAV_BASE} border-border text-muted-foreground-strong hover:border-muted-foreground hover:text-foreground`
+const NAV_ACTIVE = `${NAV_BASE} border-muted-foreground bg-surface-strong text-foreground`
 
 function NavLink({ to, label }: { to: string; label: string }) {
   return (

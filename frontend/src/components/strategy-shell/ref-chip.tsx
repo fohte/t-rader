@@ -19,9 +19,9 @@ export function RefChip({
 
   const baseInner =
     // eslint-disable-next-line no-restricted-syntax -- text-[0.88em] は親要素のフォントサイズ相対値で @theme に token 化されていない
-    'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-text-primary'
-  const underline = 'border-b border-dotted border-text-tertiary pb-px'
-  const pillCls = 'border border-border-strategy px-2 py-0.5 rounded-none'
+    'inline-flex items-baseline gap-1 font-mono text-[0.88em] leading-tight whitespace-nowrap text-foreground'
+  const underline = 'border-b border-dotted border-muted-foreground pb-px'
+  const pillCls = 'border border-border px-2 py-0.5 rounded-none'
   const wrapper = pill ? pillCls : underline
   const interactive = onOpen
     ? 'cursor-pointer hover:text-primary hover:border-primary'
