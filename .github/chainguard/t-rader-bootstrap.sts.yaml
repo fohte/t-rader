@@ -1,0 +1,6 @@
+issuer: https://token.actions.githubusercontent.com
+subject_pattern: ^repo:fohte@11088009/t-rader@1157895826:ref:refs/heads/.+$
+claim_pattern:
+  job_workflow_ref: ^fohte/t-rader/\.github/workflows/bootstrap\.yml@[^@]+$
+permissions:
+  contents: write
