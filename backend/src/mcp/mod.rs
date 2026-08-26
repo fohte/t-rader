@@ -1,6 +1,6 @@
 //! MCP (Model Context Protocol) サーバーの実装
 //!
-//! - `/mcp/mgmt`: personal-bot などのコントロールプレーンが叩く管理 MCP
+//! - `/mcp/mgmt`: 上流のコントロールプレーンが叩く管理 MCP
 //! - `/mcp/strategy`: 戦略 Agent が叩く戦略実行 MCP
 
 pub mod mgmt;
