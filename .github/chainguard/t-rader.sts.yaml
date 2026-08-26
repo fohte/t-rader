@@ -1,5 +1,5 @@
 issuer: https://token.actions.githubusercontent.com
-subject_pattern: ^repo:fohte@11088009/t-rader@1157895826:ref:refs/heads/.+$
+subject_pattern: ^repo:fohte@11088009/t-rader@1157895826:(ref:refs/heads/.+|pull_request)$
 claim_pattern:
   job_workflow_ref: ^fohte/t-rader/\.github/workflows/test\.yml@[^@]+$
 permissions:
