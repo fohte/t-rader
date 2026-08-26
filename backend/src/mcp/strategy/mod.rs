@@ -277,7 +277,8 @@ impl StrategyServer {
     /// 銘柄 + 期間で日足バーデータを取得する
     #[tool(
         name = "query_data",
-        description = "Fetch daily OHLCV bars for an instrument over a date range via the configured data provider."
+        description = "Fetch daily OHLCV bars for an instrument over a date range via the configured data provider.",
+        annotations(read_only_hint = true)
     )]
     async fn query_data(
         &self,
@@ -305,7 +306,8 @@ impl StrategyServer {
     /// ノートを読み出す
     #[tool(
         name = "read_note",
-        description = "Read a single note owned by the strategy, including its graphs."
+        description = "Read a single note owned by the strategy, including its graphs.",
+        annotations(read_only_hint = true)
     )]
     async fn read_note(
         &self,
@@ -319,7 +321,8 @@ impl StrategyServer {
     /// 戦略のノート一覧を返す (新しい順)
     #[tool(
         name = "list_notes",
-        description = "List notes owned by the strategy, newest first."
+        description = "List notes owned by the strategy, newest first.",
+        annotations(read_only_hint = true)
     )]
     async fn list_notes(
         &self,
@@ -347,7 +350,8 @@ impl StrategyServer {
     /// 戦略のアノテーション一覧を返す
     #[tool(
         name = "read_annotations",
-        description = "List annotations owned by the strategy. Optionally filter by target_symbol."
+        description = "List annotations owned by the strategy. Optionally filter by target_symbol.",
+        annotations(read_only_hint = true)
     )]
     async fn read_annotations(
         &self,
@@ -361,7 +365,8 @@ impl StrategyServer {
     /// ノート / アノテーションに付いたレビューコメントを読み出す
     #[tool(
         name = "read_comments",
-        description = "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved."
+        description = "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved.",
+        annotations(read_only_hint = true)
     )]
     async fn read_comments(
         &self,
@@ -473,6 +478,42 @@ impl ServerHandler for StrategyServer {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    #[test]
+    fn read_only_hint_matches_read_write_split() {
+        let read_only_hints: std::collections::BTreeMap<String, Option<bool>> =
+            StrategyServer::tool_router()
+                .list_all()
+                .into_iter()
+                .map(|tool| {
+                    (
+                        tool.name.into_owned(),
+                        tool.annotations.and_then(|a| a.read_only_hint),
+                    )
+                })
+                .collect();
+
+        assert_eq!(
+            read_only_hints,
+            [
+                ("add_interest", None),
+                ("create_annotation", None),
+                ("eval_indicator", None),
+                ("eval_python", None),
+                ("list_notes", Some(true)),
+                ("query_data", Some(true)),
+                ("read_annotations", Some(true)),
+                ("read_comments", Some(true)),
+                ("read_note", Some(true)),
+                ("reply_comment", None),
+                ("resolve_comment", None),
+                ("write_note", None),
+            ]
+            .into_iter()
+            .map(|(name, hint)| (name.to_string(), hint))
+            .collect::<std::collections::BTreeMap<_, _>>(),
+        );
+    }
 
     #[rstest]
     #[case::default(None, 50)]

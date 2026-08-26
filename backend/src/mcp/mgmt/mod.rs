@@ -120,7 +120,8 @@ impl MgmtServer {
     /// 戦略一覧 (id / 名前 / 最終更新 / 未読カード数)
     #[tool(
         name = "list_strategies",
-        description = "List all strategies with id, name, last updated time, and unread card count."
+        description = "List all strategies with id, name, last updated time, and unread card count.",
+        annotations(read_only_hint = true)
     )]
     async fn list_strategies(&self) -> Result<Json<ListStrategiesResult>, McpError> {
         self.list_strategies_inner().await.map(Json)
@@ -141,7 +142,8 @@ impl MgmtServer {
     /// 投入済み戦略タスクの status を返す
     #[tool(
         name = "get_strategy_task_status",
-        description = "Get the current status (phase / error summary) of a previously submitted strategy task."
+        description = "Get the current status (phase / error summary) of a previously submitted strategy task.",
+        annotations(read_only_hint = true)
     )]
     async fn get_strategy_task_status(
         &self,
@@ -153,7 +155,8 @@ impl MgmtServer {
     /// 戦略の設定 (name/description/agents_md/skills/agent_graph) と trigger 一覧を取得する
     #[tool(
         name = "get_strategy_config",
-        description = "Get a strategy's full config: name, description, agents_md, skills, agent_graph, and its triggers."
+        description = "Get a strategy's full config: name, description, agents_md, skills, agent_graph, and its triggers.",
+        annotations(read_only_hint = true)
     )]
     async fn get_strategy_config(
         &self,
@@ -237,7 +240,8 @@ impl MgmtServer {
     /// 戦略 id + 件数で最新ノートメタを返す
     #[tool(
         name = "list_recent_notes",
-        description = "Return the most recent notes (id / title / status / created_by_kind) for a strategy."
+        description = "Return the most recent notes (id / title / status / created_by_kind) for a strategy.",
+        annotations(read_only_hint = true)
     )]
     async fn list_recent_notes(
         &self,
@@ -249,7 +253,8 @@ impl MgmtServer {
     /// RSS フィード一覧
     #[tool(
         name = "list_rss_feeds",
-        description = "List RSS feed definitions used by the news aggregator. Pass enabled_only=true to return only feeds currently being polled."
+        description = "List RSS feed definitions used by the news aggregator. Pass enabled_only=true to return only feeds currently being polled.",
+        annotations(read_only_hint = true)
     )]
     async fn list_rss_feeds(
         &self,
@@ -297,7 +302,8 @@ impl MgmtServer {
     /// 戦略 id + 件数で最新アノテーションメタを返す
     #[tool(
         name = "list_recent_annotations",
-        description = "Return the most recent annotations for a strategy."
+        description = "Return the most recent annotations for a strategy.",
+        annotations(read_only_hint = true)
     )]
     async fn list_recent_annotations(
         &self,
@@ -328,5 +334,45 @@ mod tests {
     #[case::over_max_caps(Some(1000), 100)]
     fn clamps_limit(#[case] input: Option<u32>, #[case] expected: u64) {
         assert_eq!(clamp_limit(input), expected);
+    }
+
+    #[test]
+    fn read_only_hint_matches_read_write_split() {
+        let read_only_hints: std::collections::BTreeMap<String, Option<bool>> =
+            MgmtServer::tool_router()
+                .list_all()
+                .into_iter()
+                .map(|tool| {
+                    (
+                        tool.name.into_owned(),
+                        tool.annotations.and_then(|a| a.read_only_hint),
+                    )
+                })
+                .collect();
+
+        assert_eq!(
+            read_only_hints,
+            [
+                ("create_rss_feed", None),
+                ("create_strategy", None),
+                ("create_strategy_trigger", None),
+                ("delete_rss_feed", None),
+                ("delete_strategy", None),
+                ("delete_strategy_trigger", None),
+                ("get_strategy_config", Some(true)),
+                ("get_strategy_task_status", Some(true)),
+                ("list_recent_annotations", Some(true)),
+                ("list_recent_notes", Some(true)),
+                ("list_rss_feeds", Some(true)),
+                ("list_strategies", Some(true)),
+                ("submit_strategy_task", None),
+                ("update_rss_feed", None),
+                ("update_strategy_config", None),
+                ("update_strategy_trigger", None),
+            ]
+            .into_iter()
+            .map(|(name, hint)| (name.to_string(), hint))
+            .collect::<std::collections::BTreeMap<_, _>>(),
+        );
     }
 }
