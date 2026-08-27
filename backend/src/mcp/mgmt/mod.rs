@@ -1,6 +1,6 @@
 //! 管理 MCP server の tool 実装
 //!
-//! personal-bot から呼び出される。tool は以下の 16 種:
+//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 16 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`

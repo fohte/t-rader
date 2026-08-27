@@ -24,7 +24,7 @@ pub const DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
 /// 戦略タスクの起源。`strategy_task.source` に保存される文字列。
 #[derive(Debug, Clone, Copy)]
 pub enum TaskSource {
-    /// 管理 MCP 経由 (personal-bot / Slack)
+    /// 管理 MCP 経由 (上流のコントロールプレーン)
     MgmtMcp,
     /// フロントエンド (フローティングチャット)
     Frontend,
