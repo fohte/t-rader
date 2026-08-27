@@ -145,3 +145,6 @@ lcov.info
 
 # TanStack Router generated route tree
 frontend/src/routeTree.gen.ts
+
+# lefthook の dump-openapi ステップが cargo run / pnpm run 失敗時に残す中間ファイル
+openapi.json.tmp
