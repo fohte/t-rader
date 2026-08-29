@@ -2,14 +2,15 @@ name: VRT
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  detect-changes:
+  detect-changes-frontend:
     runs-on: ubuntu-slim
     outputs:
       changed: ${{ steps.changes.outputs.any_changed }}
@@ -29,20 +30,20 @@ jobs:
             pnpm-lock.yaml
             pnpm-workspace.yaml
 
-  capture:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.changed == 'true'
+  capture-frontend:
+    needs: detect-changes-frontend
+    if: needs.detect-changes-frontend.outputs.changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+      - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
-          version: 2026.7.15
+          version: 2026.7.12
 
-      # corepack creates the pnpm executable inside mise's node install bin
+      # corepack creates the pnpm executable inside mise's node install
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.
       - run: |
           corepack enable
@@ -60,37 +61,42 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --filter "frontend..." --frozen-lockfile
 
+      # project must match the `name` passed to createStorybookProject() in
+      # vitest.screenshot.config.ts, and stay unique across every vrt_pkgs
+      # entry -- vrt-capture's upload-artifact step names the artifact
+      # `vrt-screenshots-<project>-<shard>`, and a workflow run can't upload
+      # two artifacts with the same name.
       - uses: fohte/storybook-vrt-workflows/vrt-capture@b00e0f55e330d098c0d7f57b8f8b5ccab19b37dd # v0.1.2
         with:
-          project: storybook-screenshot
+          project: storybook-screenshot-frontend
           shard: 1
           shards: 1
           capture-script: storybook:screenshot
           package-dir: frontend
           screenshots-dir: __screenshots__/desktop
 
-  report:
-    needs: capture
+  report-frontend:
+    needs: capture-frontend
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
       statuses: write
-    # Overlapping runs for the same ref would otherwise race to publish to the
-    # same R2 key at once -- most importantly two main pushes racing to
+    # Overlapping runs for the same ref would otherwise race to publish to
+    # the same R2 key at once -- most importantly two main pushes racing to
     # update the single `baseline/actual/` key, where each run's diff was
     # computed against a baseline the other run is concurrently mutating.
     concurrency:
-      group: vrt-report-${{ (github.ref == 'refs/heads/main') && 'push' || 'pr' }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+      group: vrt-report-frontend-${{ (github.ref == 'refs/heads/main') && 'push' || 'pr' }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+      - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
-          version: 2026.7.15
+          version: 2026.7.12
 
       - run: |
           corepack enable
@@ -110,6 +116,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Only one `<project_name>-vrt` R2 bucket is provisioned per repo, and
+      # vrt-report's storage keys (baseline/, branch/<branch>/) carry no
+      # per-project segment -- if more than one vrt_pkgs entry exists, their
+      # reports overwrite each other in this bucket. Keep vrt: true on a
+      # single subpackage until fohte/storybook-vrt-workflows adds a key
+      # prefix input.
       - uses: fohte/storybook-vrt-workflows/vrt-report@b00e0f55e330d098c0d7f57b8f8b5ccab19b37dd # v0.1.2
         with:
           package-dir: frontend

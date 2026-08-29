@@ -173,6 +173,16 @@ When you need to check how a component looks or behaves in a given state, write 
 
 TanStack Router に依存する component (`useRouter()` 等を呼ぶもの) の story では、`#storybook/story-router` の `createStoryRouter` でルーターコンテキストを提供すること。
 
+## Visual Regression Testing (VRT)
+
+### Understand why the `vrt` check fails
+
+The `vrt` CI check renders Storybook stories to screenshots and compares them against the `main` baseline with reg-suit. A failure ("Visual differences detected") means the pixel diff exceeded reg-suit's `matchingThreshold`, not that something is broken — open the reg-suit report link posted on the PR and compare the actual/expected/diff images to judge whether the change is intentional.
+
+### Never add the `vrt-approved` label yourself
+
+The `vrt-approval` workflow treats the `vrt-approved` label as confirmation that a human reviewed the diff images and approved them. Only a human can make that visual judgment, so after inspecting the diff, ask the user to review it and add the label themselves — do not add it yourself even if the diff looks correct.
+
 ## Test code rules
 
 ### Assert on the whole output with a single equality check
