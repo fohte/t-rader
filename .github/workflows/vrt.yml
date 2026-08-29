@@ -41,7 +41,7 @@ jobs:
 
       - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
-          version: 2026.7.12
+          version: 2026.7.15
 
       # corepack creates the pnpm executable inside mise's node install
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.
@@ -91,7 +91,7 @@ jobs:
 
       - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
-          version: 2026.7.12
+          version: 2026.7.15
 
       - run: |
           corepack enable
