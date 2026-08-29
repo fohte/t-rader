@@ -11,6 +11,7 @@ subpackages:
 -   name: frontend
     spa: true
     type: node
+    vrt: true
 -   name: backend
     type: rust
 -   name: agent
