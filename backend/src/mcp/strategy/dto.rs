@@ -46,7 +46,7 @@ pub struct WriteNoteParams {
     /// `null` を明示すると既存タグを NULL に更新する。フィールド省略時は変更しない。
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub type_tag: Option<Option<String>>,
-    pub frontmatter_json: Option<serde_json::Value>,
+    pub frontmatter_json: Option<serde_json::Map<String, serde_json::Value>>,
     /// ノートに埋め込む図の定義。指定すると既存の図を配列ごと置き換える
     /// (id 単位の部分更新はできない)。省略時は既存の図を変更しない。
     /// 各要素の `id` を本文中で `[[graph:<id>]]` として参照すること。
@@ -83,7 +83,7 @@ pub struct NoteDto {
     pub strategy_id: Uuid,
     pub title: String,
     pub body_md: String,
-    pub frontmatter_json: serde_json::Value,
+    pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
     pub type_tag: Option<String>,
     pub status: String,
     pub created_by_kind: String,
@@ -255,6 +255,7 @@ pub struct EvalIndicatorParams {
     /// 評価する indicator の name。戦略 scope に同名があれば優先、無ければ global を採用する。
     pub name: String,
     /// indicator の `input_schema` (JSON Schema) で validation される引数オブジェクト。
+    #[schemars(schema_with = "crate::mcp::any_json_schema")]
     pub args: serde_json::Value,
     /// wall-clock 上限 (秒)。MCP 層の上限値を超える指定は invalid_params で拒否する。
     pub timeout_secs: Option<u32>,
@@ -273,6 +274,8 @@ pub struct EvalIndicatorResult {
     /// exec Pod が exit_code != 0 で終わった場合は null (stderr / exit_code を見ること)。
     /// stdout 最終行が JSON として parse できない / output_schema に合致しない場合は
     /// MCP エラー (invalid_params) で失敗するため、本フィールドには到達しない。
+    #[serde(default)]
+    #[schemars(schema_with = "crate::mcp::any_json_schema")]
     pub output: Option<serde_json::Value>,
     pub stdout: String,
     pub stderr: String,

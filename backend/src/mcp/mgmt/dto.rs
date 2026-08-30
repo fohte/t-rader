@@ -158,6 +158,8 @@ pub struct TriggerSummary {
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
+    #[serde(default)]
+    #[schemars(schema_with = "crate::mcp::any_json_schema")]
     pub event_match: Option<serde_json::Value>,
     pub prompt_template: String,
     pub enabled: bool,
@@ -286,6 +288,7 @@ pub struct CreateStrategyTriggerParams {
     #[serde(default)]
     pub hook_slug: Option<String>,
     #[serde(default)]
+    #[schemars(schema_with = "crate::mcp::any_json_schema")]
     pub event_match: Option<serde_json::Value>,
     pub prompt_template: String,
     #[serde(default)]
@@ -308,6 +311,7 @@ pub struct UpdateStrategyTriggerParams {
     #[serde(default)]
     pub hook_slug: Option<String>,
     #[serde(default)]
+    #[schemars(schema_with = "crate::mcp::any_json_schema")]
     pub event_match: Option<serde_json::Value>,
     #[serde(default)]
     pub prompt_template: Option<String>,
