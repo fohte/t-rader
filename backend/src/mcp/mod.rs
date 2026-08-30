@@ -125,8 +125,8 @@ pub(crate) fn assert_no_boolean_property_schemas(tool: &rmcp::model::Tool) {
                 );
             }
         }
-        for child in obj.values() {
-            walk(child, path);
+        for (key, child) in obj {
+            walk(child, &format!("{path}.{key}"));
         }
     }
 
