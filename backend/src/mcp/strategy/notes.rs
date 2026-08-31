@@ -24,14 +24,6 @@ use super::{
     invalid_params,
 };
 
-fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), McpError> {
-    if fm.is_object() {
-        Ok(())
-    } else {
-        Err(invalid_params("frontmatter_json must be a JSON object"))
-    }
-}
-
 /// 検証済みの `graphs` を `note.graphs_json` へ入れる JSON へ変換する。
 fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> {
     serde_json::to_value(graphs)
@@ -41,12 +33,17 @@ fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> 
 fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
     let graphs: Vec<GraphDef> = serde_json::from_value(m.graphs_json)
         .map_err(|e| internal_error(format!("failed to deserialize note.graphs_json: {e}")))?;
+    let frontmatter_json = m
+        .frontmatter_json
+        .as_object()
+        .cloned()
+        .ok_or_else(|| internal_error("note.frontmatter_json is not a JSON object"))?;
     Ok(NoteDto {
         note_id: m.id,
         strategy_id: m.strategy_id,
         title: m.title,
         body_md: m.body_md,
-        frontmatter_json: m.frontmatter_json,
+        frontmatter_json,
         type_tag: m.type_tag,
         status: m.status,
         created_by_kind: m.created_by_kind,
@@ -64,9 +61,6 @@ impl StrategyServer {
     ) -> Result<WriteNoteResult, McpError> {
         ensure_strategy_match(session_strategy_id, params.strategy_id)?;
 
-        if let Some(fm) = params.frontmatter_json.as_ref() {
-            ensure_frontmatter_object(fm)?;
-        }
         if let Some(graphs) = params.graphs.as_ref() {
             validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
         }
@@ -94,7 +88,7 @@ impl StrategyServer {
                 touched = true;
             }
             if let Some(fm) = params.frontmatter_json {
-                active.frontmatter_json = Set(fm);
+                active.frontmatter_json = Set(fm.into());
                 touched = true;
             }
             if let Some(graphs) = params.graphs {
@@ -133,9 +127,8 @@ impl StrategyServer {
             .ok_or_else(|| invalid_params("title is required when creating a new note"))?
             .to_string();
         let body_md = params.body_md.unwrap_or_default();
-        let frontmatter_json = params
-            .frontmatter_json
-            .unwrap_or_else(|| serde_json::json!({}));
+        let frontmatter_json: serde_json::Value =
+            params.frontmatter_json.unwrap_or_default().into();
         let graphs_json = graphs_to_json(params.graphs.unwrap_or_default())?;
         let id = Uuid::new_v4();
         let model = note::ActiveModel {
@@ -303,7 +296,7 @@ mod tests {
                 strategy_id,
                 title: "first note".into(),
                 body_md: "body".into(),
-                frontmatter_json: serde_json::json!({}),
+                frontmatter_json: serde_json::Map::new(),
                 type_tag: Some("observation".into()),
                 status: DEFAULT_NOTE_STATUS.into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -383,7 +376,7 @@ mod tests {
                     strategy_id,
                     title: "original".into(),
                     body_md: "v2".into(),
-                    frontmatter_json: serde_json::json!({}),
+                    frontmatter_json: serde_json::Map::new(),
                     type_tag: None,
                     status: DEFAULT_NOTE_STATUS.into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -626,7 +619,7 @@ mod tests {
                 strategy_id,
                 title: "note with graph".into(),
                 body_md: "[[graph:g1]]".into(),
-                frontmatter_json: serde_json::json!({}),
+                frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
                 status: DEFAULT_NOTE_STATUS.into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -745,7 +738,7 @@ mod tests {
                     strategy_id,
                     title: "t".into(),
                     body_md: expected_body,
-                    frontmatter_json: serde_json::json!({}),
+                    frontmatter_json: serde_json::Map::new(),
                     type_tag: None,
                     status: DEFAULT_NOTE_STATUS.into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
@@ -868,7 +861,7 @@ mod tests {
                 strategy_id,
                 title: "t".into(),
                 body_md: "orig".into(),
-                frontmatter_json: serde_json::json!({}),
+                frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
                 status: DEFAULT_NOTE_STATUS.into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),

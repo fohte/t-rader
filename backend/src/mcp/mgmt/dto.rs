@@ -158,7 +158,8 @@ pub struct TriggerSummary {
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
-    pub event_match: Option<serde_json::Value>,
+    /// `services::trigger_crud::validate_event_match` が書き込み時に object または null のみに制限する。
+    pub event_match: Option<serde_json::Map<String, serde_json::Value>>,
     pub prompt_template: String,
     pub enabled: bool,
     pub last_fired_at: Option<DateTime<FixedOffset>>,
@@ -173,7 +174,7 @@ impl From<trigger::Model> for TriggerSummary {
             kind: m.kind,
             schedule: m.schedule,
             hook_slug: m.hook_slug,
-            event_match: m.event_match,
+            event_match: m.event_match.and_then(|v| v.as_object().cloned()),
             prompt_template: m.prompt_template,
             enabled: m.enabled,
             last_fired_at: m.last_fired_at,
@@ -286,7 +287,7 @@ pub struct CreateStrategyTriggerParams {
     #[serde(default)]
     pub hook_slug: Option<String>,
     #[serde(default)]
-    pub event_match: Option<serde_json::Value>,
+    pub event_match: Option<serde_json::Map<String, serde_json::Value>>,
     pub prompt_template: String,
     #[serde(default)]
     pub enabled: Option<bool>,
@@ -308,7 +309,7 @@ pub struct UpdateStrategyTriggerParams {
     #[serde(default)]
     pub hook_slug: Option<String>,
     #[serde(default)]
-    pub event_match: Option<serde_json::Value>,
+    pub event_match: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(default)]
     pub prompt_template: Option<String>,
     #[serde(default)]

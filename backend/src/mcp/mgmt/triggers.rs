@@ -25,7 +25,7 @@ impl MgmtServer {
             kind: params.kind.into(),
             schedule: params.schedule,
             hook_slug: params.hook_slug,
-            event_match: params.event_match,
+            event_match: params.event_match.map(Into::into),
             prompt_template: params.prompt_template,
             enabled: params.enabled,
         };
@@ -50,7 +50,7 @@ impl MgmtServer {
         let payload = UpdateTriggerRequest {
             schedule: params.schedule,
             hook_slug: params.hook_slug,
-            event_match: params.event_match,
+            event_match: params.event_match.map(Into::into),
             prompt_template: params.prompt_template,
             enabled: params.enabled,
         };

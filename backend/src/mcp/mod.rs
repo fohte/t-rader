@@ -94,6 +94,54 @@ fn build_config(
     config
 }
 
+/// 制約なしの JSON 値を表す schema。
+///
+/// schemars は `serde_json::Value` を JSON Schema の真偽値リテラル `true` として出力するが、
+/// MCP クライアント (`@modelcontextprotocol/sdk` の zod スキーマ) は `properties.*` の値が
+/// object であることを要求し boolean を reject するため、`#[schemars(schema_with = "...")]`
+/// でこの空 object schema `{}` (意味は `true` と同じく無制約) を代わりに使う。
+pub(crate) fn any_json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::Map::new().into()
+}
+
+/// tool の input/output スキーマの `properties` 直下 (ネストした `$defs` を含む) に、
+/// 裸の JSON boolean スキーマ (`true`/`false`) が存在しないことを検証する。
+///
+/// schemars は制約なしの型 (`serde_json::Value` 等) をこの形で出力するが、MCP クライアント
+/// (`@modelcontextprotocol/sdk` の zod スキーマ) はプロパティ値が object であることを要求し
+/// boolean を reject する。`mcp::strategy` / `mcp::mgmt` の各 tool_router テストから呼ぶ。
+#[cfg(test)]
+pub(crate) fn assert_no_boolean_property_schemas(tool: &rmcp::model::Tool) {
+    fn walk(value: &serde_json::Value, path: &str) {
+        let serde_json::Value::Object(obj) = value else {
+            return;
+        };
+        if let Some(serde_json::Value::Object(properties)) = obj.get("properties") {
+            for (key, prop_schema) in properties {
+                assert!(
+                    !prop_schema.is_boolean(),
+                    "{path}.properties.{key} is a bare JSON boolean schema; MCP clients reject \
+                     this, use a concrete object type or #[schemars(schema_with = ...)] instead"
+                );
+            }
+        }
+        for (key, child) in obj {
+            walk(child, &format!("{path}.{key}"));
+        }
+    }
+
+    walk(
+        &serde_json::Value::Object(tool.input_schema.as_ref().clone()),
+        &format!("{}.inputSchema", tool.name),
+    );
+    if let Some(output_schema) = &tool.output_schema {
+        walk(
+            &serde_json::Value::Object(output_schema.as_ref().clone()),
+            &format!("{}.outputSchema", tool.name),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use axum_test::TestServer;

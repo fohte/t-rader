@@ -336,6 +336,16 @@ mod tests {
         assert_eq!(clamp_limit(input), expected);
     }
 
+    /// 生成された JSON Schema が MCP クライアント (zod ベースの SDK) に拒否される裸の
+    /// boolean スキーマを含まないことの回帰テスト。`serde_json::Value` 型のフィールドが
+    /// 将来追加されても機械的に検出できる。
+    #[test]
+    fn tool_schemas_have_no_boolean_property_schemas() {
+        for tool in MgmtServer::tool_router().list_all() {
+            crate::mcp::assert_no_boolean_property_schemas(&tool);
+        }
+    }
+
     #[test]
     fn read_only_hint_matches_read_write_split() {
         let read_only_hints: std::collections::BTreeMap<String, Option<bool>> =

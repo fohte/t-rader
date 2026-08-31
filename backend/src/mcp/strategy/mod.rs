@@ -515,6 +515,16 @@ mod tests {
         );
     }
 
+    /// 生成された JSON Schema が MCP クライアント (zod ベースの SDK) に拒否される裸の
+    /// boolean スキーマを含まないことの回帰テスト。`serde_json::Value` 型のフィールドが
+    /// 将来追加されても機械的に検出できる。
+    #[test]
+    fn tool_schemas_have_no_boolean_property_schemas() {
+        for tool in StrategyServer::tool_router().list_all() {
+            crate::mcp::assert_no_boolean_property_schemas(&tool);
+        }
+    }
+
     #[rstest]
     #[case::default(None, 50)]
     #[case::custom(Some(10), 10)]
