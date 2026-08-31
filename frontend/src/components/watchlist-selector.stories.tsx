@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { WatchlistSelectorView } from '#components/watchlist-selector'
+import { openSelect } from '#storybook/open-select'
 
 const meta = {
   title: 'Components/WatchlistSelector',
@@ -53,6 +54,9 @@ export const NoSelection: Story = {
     onCreateSubmit: () => {},
     onDelete: () => {},
   },
+  play: async ({ canvasElement }) => {
+    await openSelect(canvasElement)
+  },
 }
 
 export const SingleWatchlist: Story = {
@@ -64,6 +68,9 @@ export const SingleWatchlist: Story = {
     isDeleting: false,
     onCreateSubmit: () => {},
     onDelete: () => {},
+  },
+  play: async ({ canvasElement }) => {
+    await openSelect(canvasElement)
   },
 }
 

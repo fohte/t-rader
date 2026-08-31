@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { ForEachField } from '#components/strategy-settings/agent-graph/fields/for-each-field'
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
+import { openSelect } from '#storybook/open-select'
 
 const meta = {
   title: 'StrategySettings/AgentGraph/ForEachField',
@@ -76,6 +77,9 @@ export const WithArrayOption: Story = {
   render: () => (
     <Interactive phases={[PLAN, INVESTIGATE]} index={1} initial={undefined} />
   ),
+  play: async ({ canvasElement }) => {
+    await openSelect(canvasElement)
+  },
 }
 
 export const Selected: Story = {
