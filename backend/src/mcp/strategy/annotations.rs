@@ -50,6 +50,10 @@ impl StrategyServer {
         if target_symbol.is_empty() {
             return Err(invalid_params("target_symbol must not be empty"));
         }
+        let target_kind = params.target_kind.trim().to_string();
+        if target_kind.is_empty() {
+            return Err(invalid_params("target_kind must not be empty"));
+        }
         if params.text.trim().is_empty() {
             return Err(invalid_params("text must not be empty"));
         }
@@ -67,7 +71,7 @@ impl StrategyServer {
             id: Set(id),
             strategy_id: Set(session_strategy_id),
             target_symbol: Set(target_symbol),
-            target_kind: Set(params.target_kind),
+            target_kind: Set(target_kind),
             timestamp: Set(params.timestamp),
             price: Set(price),
             text: Set(params.text),
@@ -128,6 +132,7 @@ mod tests {
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
 
+    // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
     #[sqlx::test(migrations = false)]
     async fn create_annotation_then_read_annotations(pool: PgPool) {
         let db = create_test_db(pool).await;
@@ -140,7 +145,7 @@ mod tests {
                 strategy_id,
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
-                    target_kind: "signal".into(),
+                    target_kind: "custom-tag".into(),
                     timestamp: ts,
                     price: Some(25000.0),
                     text: "breakout".into(),
@@ -153,7 +158,7 @@ mod tests {
             annotation_id: created.annotation.annotation_id,
             strategy_id,
             target_symbol: "7203".into(),
-            target_kind: "signal".into(),
+            target_kind: "custom-tag".into(),
             timestamp: ts,
             price: Some(25000.0),
             text: "breakout".into(),
@@ -187,6 +192,28 @@ mod tests {
                 annotations: vec![expected],
             },
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_annotation_rejects_empty_target_kind(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        let server = build_server(db);
+        let err = server
+            .create_annotation_inner(
+                strategy_id,
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "  ".into(),
+                    timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
+                    price: None,
+                    text: "x".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect_err("empty target_kind expected to be rejected");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
     #[sqlx::test(migrations = false)]
