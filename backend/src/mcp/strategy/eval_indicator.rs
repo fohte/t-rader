@@ -20,8 +20,7 @@ use crate::services::custom_indicators::resolve_indicator;
 use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
 use super::{
     EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_STDIN_BYTES, EXEC_MAX_TIMEOUT_SECS, StrategyServer,
-    check_exec_upper_bound, ensure_strategy_match, internal_error, invalid_params,
-    kata_exec_to_mcp_err,
+    check_exec_upper_bound, internal_error, invalid_params, kata_exec_to_mcp_err,
 };
 
 /// JSON Schema validation の失敗種別。stored schema 自体の不正と instance の不一致を
@@ -39,8 +38,6 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: EvalIndicatorParams,
     ) -> Result<EvalIndicatorResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         let name = params.name.trim();
         if name.is_empty() {
             return Err(invalid_params("name must not be empty"));
@@ -251,9 +248,8 @@ mod tests {
         (server, shared)
     }
 
-    fn params(strategy_id: Uuid, name: &str, args: serde_json::Value) -> EvalIndicatorParams {
+    fn params(name: &str, args: serde_json::Value) -> EvalIndicatorParams {
         EvalIndicatorParams {
-            strategy_id,
             name: name.into(),
             args,
             timeout_secs: None,
@@ -287,7 +283,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let out = server
-            .eval_indicator_inner(sid, params(sid, "rsi", json!({"period": 14})))
+            .eval_indicator_inner(sid, params("rsi", json!({"period": 14})))
             .await
             .expect("eval");
 
@@ -350,7 +346,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let out = server
-            .eval_indicator_inner(sid, params(sid, "rsi", json!({})))
+            .eval_indicator_inner(sid, params("rsi", json!({})))
             .await
             .expect("eval");
         assert_eq!(
@@ -387,7 +383,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let err = server
-            .eval_indicator_inner(s_a, params(s_a, "only-b", json!({})))
+            .eval_indicator_inner(s_a, params("only-b", json!({})))
             .await
             .expect_err("expected not found");
         assert_eq!(
@@ -395,32 +391,6 @@ mod tests {
             (
                 rmcp::model::ErrorCode::RESOURCE_NOT_FOUND,
                 "indicator 'only-b' not found",
-            ),
-        );
-        assert!(executor.requests.lock().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn eval_indicator_rejects_strategy_mismatch() {
-        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
-        let session = Uuid::new_v4();
-        let other = Uuid::new_v4();
-
-        let executor = Arc::new(FakeKataExecutor::new());
-        let (server, _shared) = build_server(db, executor.clone());
-
-        let err = server
-            .eval_indicator_inner(session, params(other, "rsi", json!({})))
-            .await
-            .expect_err("mismatch");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!(
-                    "forbidden: strategy_id boundary violation (session={session}, arg={other})"
-                )
-                .as_str(),
             ),
         );
         assert!(executor.requests.lock().await.is_empty());
@@ -449,7 +419,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let err = server
-            .eval_indicator_inner(sid, params(sid, "rsi", json!({"period": "not-int"})))
+            .eval_indicator_inner(sid, params("rsi", json!({"period": "not-int"})))
             .await
             .expect_err("expected validation error");
         assert_eq!(
@@ -491,7 +461,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let out = server
-            .eval_indicator_inner(sid, params(sid, "rsi", json!({})))
+            .eval_indicator_inner(sid, params("rsi", json!({})))
             .await
             .expect("rejection is conveyed as result, not error");
         assert_eq!(
@@ -533,7 +503,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let err = server
-            .eval_indicator_inner(sid, params(sid, "rsi", json!({})))
+            .eval_indicator_inner(sid, params("rsi", json!({})))
             .await
             .expect_err("expected output parse error");
         assert_eq!(
@@ -572,7 +542,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let err = server
-            .eval_indicator_inner(sid, params(sid, "rsi", json!({})))
+            .eval_indicator_inner(sid, params("rsi", json!({})))
             .await
             .expect_err("expected output schema mismatch");
         assert_eq!(
@@ -607,7 +577,7 @@ mod tests {
         let (server, _shared) = build_server(db, executor.clone());
 
         let err = server
-            .eval_indicator_inner(sid, params(sid, "rsi", json!({})))
+            .eval_indicator_inner(sid, params("rsi", json!({})))
             .await
             .expect_err("expected internal error");
         assert_eq!(
@@ -653,7 +623,6 @@ mod tests {
             .eval_indicator_inner(
                 sid,
                 EvalIndicatorParams {
-                    strategy_id: sid,
                     name: name.into(),
                     args: json!({}),
                     timeout_secs,

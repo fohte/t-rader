@@ -9,19 +9,14 @@ use uuid::Uuid;
 use crate::data_provider::{DataProvider, DateRange};
 
 use super::dto::{BarDto, QueryDataParams, QueryDataResult};
-use super::{
-    StrategyServer, data_provider_error, decimal_to_f64, ensure_strategy_match, internal_error,
-    invalid_params,
-};
+use super::{StrategyServer, data_provider_error, decimal_to_f64, internal_error, invalid_params};
 
 impl StrategyServer {
     pub(crate) async fn query_data_inner(
         &self,
-        session_strategy_id: Uuid,
+        _session_strategy_id: Uuid,
         params: QueryDataParams,
     ) -> Result<QueryDataResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         let instrument_id = params.instrument_id.trim().to_string();
         if instrument_id.is_empty() {
             return Err(invalid_params("instrument_id must not be empty"));
@@ -77,7 +72,7 @@ mod tests {
 
     use super::super::StrategyServer;
     use super::super::dto::QueryDataParams;
-    use super::super::tests_common::{build_server, insert_strategy};
+    use super::super::tests_common::insert_strategy;
 
     #[sqlx::test(migrations = false)]
     async fn query_data_returns_bars_from_mock_ibkr(pool: PgPool) {
@@ -116,7 +111,6 @@ mod tests {
             .query_data_inner(
                 strategy_id,
                 QueryDataParams {
-                    strategy_id,
                     instrument_id: "7203".into(),
                     from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
                     to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
@@ -139,26 +133,5 @@ mod tests {
                 ],
             ),
         );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn query_data_rejects_session_mismatch(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let session = insert_strategy(&db, "a").await;
-        let other = insert_strategy(&db, "b").await;
-        let server = build_server(db);
-        let err = server
-            .query_data_inner(
-                session,
-                QueryDataParams {
-                    strategy_id: other,
-                    instrument_id: "7203".into(),
-                    from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
-                    to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
-                },
-            )
-            .await
-            .expect_err("boundary violation expected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 }

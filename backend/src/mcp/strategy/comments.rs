@@ -1,8 +1,7 @@
 //! コメント取得の inner method 実装。
 //!
-//! 戦略境界の二重検査は [`super::ensure_strategy_match`] と、対象 (note /
-//! annotation) の所有権検査 ([`super::fetch_note_owned_by`] /
-//! [`super::fetch_annotation_owned_by`]) が担う。
+//! 戦略境界の検査は、対象 (note / annotation) の所有権検査
+//! ([`super::fetch_note_owned_by`] / [`super::fetch_annotation_owned_by`]) が担う。
 
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -18,8 +17,8 @@ use super::dto::{
     ResolveCommentParams, ResolveCommentResult,
 };
 use super::{
-    STRATEGY_AGENT_ACTOR, StrategyServer, db_error, ensure_strategy_match,
-    fetch_annotation_owned_by, fetch_note_owned_by, internal_error, invalid_params,
+    STRATEGY_AGENT_ACTOR, StrategyServer, db_error, fetch_annotation_owned_by, fetch_note_owned_by,
+    internal_error, invalid_params,
 };
 
 const ALLOWED_COMMENT_TARGET_KIND: [&str; 2] = ["note", "annotation"];
@@ -71,14 +70,12 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         match params.target_kind.as_str() {
             "note" => {
-                fetch_note_owned_by(&self.db, params.target_id, params.strategy_id).await?;
+                fetch_note_owned_by(&self.db, params.target_id, session_strategy_id).await?;
             }
             "annotation" => {
-                fetch_annotation_owned_by(&self.db, params.target_id, params.strategy_id).await?;
+                fetch_annotation_owned_by(&self.db, params.target_id, session_strategy_id).await?;
             }
             other => {
                 return Err(invalid_params(format!(
@@ -108,8 +105,6 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ResolveCommentParams,
     ) -> Result<ResolveCommentResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         let current = comment::Entity::find_by_id(params.comment_id)
             .one(&self.db)
             .await
@@ -119,7 +114,7 @@ impl StrategyServer {
             &self.db,
             &current.target_kind,
             current.target_id,
-            params.strategy_id,
+            session_strategy_id,
         )
         .await?;
 
@@ -136,8 +131,6 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ReplyCommentParams,
     ) -> Result<ReplyCommentResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         if params.body.trim().is_empty() {
             return Err(invalid_params("body must not be empty"));
         }
@@ -156,7 +149,7 @@ impl StrategyServer {
             &self.db,
             &parent.target_kind,
             parent.target_id,
-            params.strategy_id,
+            session_strategy_id,
         )
         .await?;
 
@@ -215,7 +208,6 @@ mod tests {
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    strategy_id,
                     target_kind: "note".into(),
                     target_id: note_id,
                     resolved: None,
@@ -277,7 +269,6 @@ mod tests {
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    strategy_id,
                     target_kind: "annotation".into(),
                     target_id: annotation_id,
                     resolved: None,
@@ -320,7 +311,6 @@ mod tests {
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    strategy_id,
                     target_kind: "garbage".into(),
                     target_id: uuid::Uuid::new_v4(),
                     resolved: None,
@@ -343,7 +333,6 @@ mod tests {
             .read_comments_inner(
                 strategy_a,
                 ReadCommentsParams {
-                    strategy_id: strategy_a,
                     target_kind: "note".into(),
                     target_id: note_id,
                     resolved: None,
@@ -366,7 +355,6 @@ mod tests {
             .read_comments_inner(
                 strategy_a,
                 ReadCommentsParams {
-                    strategy_id: strategy_a,
                     target_kind: "annotation".into(),
                     target_id: annotation_id,
                     resolved: None,
@@ -389,7 +377,6 @@ mod tests {
             .resolve_comment_inner(
                 strategy_id,
                 ResolveCommentParams {
-                    strategy_id,
                     comment_id: done,
                     resolved: true,
                 },
@@ -401,7 +388,6 @@ mod tests {
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    strategy_id,
                     target_kind: "note".into(),
                     target_id: note_id,
                     resolved: Some(false),
@@ -436,7 +422,6 @@ mod tests {
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    strategy_id,
                     target_kind: "note".into(),
                     target_id: note_id,
                     resolved: Some(true),
@@ -480,7 +465,6 @@ mod tests {
             .resolve_comment_inner(
                 strategy_id,
                 ResolveCommentParams {
-                    strategy_id,
                     comment_id,
                     resolved: true,
                 },
@@ -510,7 +494,6 @@ mod tests {
             .resolve_comment_inner(
                 strategy_id,
                 ResolveCommentParams {
-                    strategy_id,
                     comment_id,
                     resolved: false,
                 },
@@ -547,7 +530,6 @@ mod tests {
             .resolve_comment_inner(
                 strategy_id,
                 ResolveCommentParams {
-                    strategy_id,
                     comment_id: uuid::Uuid::new_v4(),
                     resolved: true,
                 },
@@ -570,7 +552,6 @@ mod tests {
             .resolve_comment_inner(
                 strategy_a,
                 ResolveCommentParams {
-                    strategy_id: strategy_a,
                     comment_id,
                     resolved: true,
                 },
@@ -592,7 +573,6 @@ mod tests {
             .reply_comment_inner(
                 strategy_id,
                 ReplyCommentParams {
-                    strategy_id,
                     parent_id,
                     body: "fixed in the latest revision".into(),
                 },
@@ -634,7 +614,6 @@ mod tests {
             .reply_comment_inner(
                 strategy_id,
                 ReplyCommentParams {
-                    strategy_id,
                     parent_id,
                     body: "   ".into(),
                 },
@@ -654,7 +633,6 @@ mod tests {
             .reply_comment_inner(
                 strategy_id,
                 ReplyCommentParams {
-                    strategy_id,
                     parent_id: uuid::Uuid::new_v4(),
                     body: "fixed".into(),
                 },
@@ -677,7 +655,6 @@ mod tests {
             .reply_comment_inner(
                 strategy_a,
                 ReplyCommentParams {
-                    strategy_id: strategy_a,
                     parent_id,
                     body: "fixed".into(),
                 },
@@ -700,7 +677,6 @@ mod tests {
             .reply_comment_inner(
                 strategy_id,
                 ReplyCommentParams {
-                    strategy_id,
                     parent_id: reply_id,
                     body: "thanks".into(),
                 },

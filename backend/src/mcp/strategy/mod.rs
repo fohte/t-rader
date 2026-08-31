@@ -1,8 +1,8 @@
 //! 戦略実行 MCP server の tool 実装
 //!
 //! 各戦略の t-rader-agent から呼ばれる。接続コンテキストに `x-strategy-id`
-//! HTTP ヘッダで自身の strategy_id を持ち込み、tool 引数の strategy_id と一致しない
-//! 呼び出しは MCP 層で拒否する (戦略境界)。さらに対象リソース (note / annotation)
+//! HTTP ヘッダで自身の strategy_id を持ち込み、全 tool はこの値のみを戦略境界として
+//! 使う (tool 引数に strategy_id は含まれない)。さらに対象リソース (note / annotation)
 //! の strategy_id と一致するかを Repository 層で二重検査する。
 //!
 //! tool 一覧:
@@ -201,16 +201,6 @@ fn strategy_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Uuid, McpErr
         .get::<axum::http::request::Parts>()
         .ok_or_else(|| internal_error("missing http parts in mcp request context"))?;
     strategy_id_from_headers(&parts.headers)
-}
-
-pub(super) fn ensure_strategy_match(ctx_id: Uuid, arg_id: Uuid) -> Result<(), McpError> {
-    if ctx_id == arg_id {
-        Ok(())
-    } else {
-        Err(invalid_params(format!(
-            "forbidden: strategy_id boundary violation (session={ctx_id}, arg={arg_id})"
-        )))
-    }
 }
 
 pub(super) async fn fetch_note_owned_by(
@@ -532,21 +522,6 @@ mod tests {
     #[case::over_max_caps(Some(10_000), 200)]
     fn clamps_limit(#[case] input: Option<u32>, #[case] expected: u64) {
         assert_eq!(clamp_limit(input), expected);
-    }
-
-    #[test]
-    fn ensure_strategy_match_ok() {
-        let id = Uuid::new_v4();
-        assert!(ensure_strategy_match(id, id).is_ok());
-    }
-
-    #[test]
-    fn ensure_strategy_match_rejects_mismatch() {
-        let a = Uuid::new_v4();
-        let b = Uuid::new_v4();
-        let err =
-            ensure_strategy_match(a, b).expect_err("mismatched strategy ids expected to error");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
     fn headers_with(strategy: Option<&str>) -> axum::http::HeaderMap {

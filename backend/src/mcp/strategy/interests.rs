@@ -14,9 +14,7 @@ use crate::entities::strategy_interest;
 use crate::services::interests::{ensure_ref_kind, ensure_role};
 
 use super::dto::{AddInterestParams, AddInterestResult};
-use super::{
-    StrategyServer, db_error, ensure_strategy_exists, ensure_strategy_match, invalid_params,
-};
+use super::{StrategyServer, db_error, ensure_strategy_exists, invalid_params};
 
 /// 戦略 Agent が追加する derived interest の固定 role / origin。
 const AGENT_INTEREST_ROLE: &str = "derived";
@@ -35,7 +33,6 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: AddInterestParams,
     ) -> Result<AddInterestResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
         let ref_kind = params.ref_kind.trim();
         ensure_ref_kind(ref_kind).map_err(validation_to_mcp)?;
         // role / origin は agent 経路では固定だが、列挙の不整合に気付けるよう値域チェックは残す
@@ -44,13 +41,13 @@ impl StrategyServer {
         if ref_id.is_empty() {
             return Err(invalid_params("ref_id must not be empty"));
         }
-        ensure_strategy_exists(&self.db, params.strategy_id).await?;
+        ensure_strategy_exists(&self.db, session_strategy_id).await?;
 
         // ON CONFLICT DO NOTHING で挿入を試み、衝突時は SELECT で既存行を返す。
         // 単純な check-then-insert だと並行呼び出し時に片方が UNIQUE 違反で失敗し、
         // tool description の「idempotent」契約を破る。
         let model = strategy_interest::ActiveModel {
-            strategy_id: Set(params.strategy_id),
+            strategy_id: Set(session_strategy_id),
             ref_kind: Set(ref_kind.to_string()),
             ref_id: Set(ref_id.to_string()),
             role: Set(AGENT_INTEREST_ROLE.to_string()),
@@ -83,7 +80,7 @@ impl StrategyServer {
             // 念のため `RecordNotInserted` も同じパスで扱う。
             Err(sea_orm::DbErr::RecordNotInserted | sea_orm::DbErr::RecordNotFound(_)) => {
                 let existing = strategy_interest::Entity::find()
-                    .filter(strategy_interest::Column::StrategyId.eq(params.strategy_id))
+                    .filter(strategy_interest::Column::StrategyId.eq(session_strategy_id))
                     .filter(strategy_interest::Column::RefKind.eq(ref_kind))
                     .filter(strategy_interest::Column::RefId.eq(ref_id))
                     .one(&self.db)
@@ -127,7 +124,6 @@ mod tests {
             .add_interest_inner(
                 sid,
                 AddInterestParams {
-                    strategy_id: sid,
                     ref_kind: "stock".into(),
                     ref_id: "7203".into(),
                 },
@@ -166,7 +162,6 @@ mod tests {
                 .add_interest_inner(
                     sid,
                     AddInterestParams {
-                        strategy_id: sid,
                         ref_kind: "indicator".into(),
                         ref_id: "USDJPY".into(),
                     },
@@ -178,7 +173,6 @@ mod tests {
             .add_interest_inner(
                 sid,
                 AddInterestParams {
-                    strategy_id: sid,
                     ref_kind: "indicator".into(),
                     ref_id: "USDJPY".into(),
                 },
@@ -186,27 +180,6 @@ mod tests {
             .await
             .expect("third");
         assert!(!second.created);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn add_interest_rejects_arg_mismatch(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let a = insert_strategy(&db, "a").await;
-        let b = insert_strategy(&db, "b").await;
-        let server = build_server(db);
-
-        let err = server
-            .add_interest_inner(
-                a,
-                AddInterestParams {
-                    strategy_id: b,
-                    ref_kind: "stock".into(),
-                    ref_id: "7203".into(),
-                },
-            )
-            .await
-            .expect_err("boundary violation");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
     #[sqlx::test(migrations = false)]
@@ -219,7 +192,6 @@ mod tests {
             .add_interest_inner(
                 sid,
                 AddInterestParams {
-                    strategy_id: sid,
                     ref_kind: "bogus".into(),
                     ref_id: "x".into(),
                 },
@@ -239,7 +211,6 @@ mod tests {
             .add_interest_inner(
                 sid,
                 AddInterestParams {
-                    strategy_id: sid,
                     ref_kind: "stock".into(),
                     ref_id: "  ".into(),
                 },

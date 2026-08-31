@@ -12,7 +12,6 @@ use crate::services::graph::GraphDef;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryDataParams {
-    pub strategy_id: Uuid,
     pub instrument_id: String,
     /// 取得開始日 (YYYY-MM-DD, inclusive)
     pub from: NaiveDate,
@@ -38,7 +37,6 @@ pub struct QueryDataResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct WriteNoteParams {
-    pub strategy_id: Uuid,
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
     pub note_id: Option<Uuid>,
     pub title: Option<String>,
@@ -73,7 +71,6 @@ pub struct WriteNoteResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadNoteParams {
-    pub strategy_id: Uuid,
     pub note_id: Uuid,
 }
 
@@ -94,7 +91,6 @@ pub struct NoteDto {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListNotesParams {
-    pub strategy_id: Uuid,
     pub limit: Option<u32>,
 }
 
@@ -105,7 +101,6 @@ pub struct ListNotesResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateAnnotationParams {
-    pub strategy_id: Uuid,
     pub target_symbol: String,
     /// "signal" | "level" | "observation" | "other"
     pub target_kind: String,
@@ -138,7 +133,6 @@ pub struct CreateAnnotationResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadAnnotationsParams {
-    pub strategy_id: Uuid,
     pub target_symbol: Option<String>,
     pub limit: Option<u32>,
 }
@@ -150,7 +144,6 @@ pub struct ReadAnnotationsResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AddInterestParams {
-    pub strategy_id: Uuid,
     /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
     pub ref_kind: String,
     pub ref_id: String,
@@ -169,7 +162,6 @@ pub struct AddInterestResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCommentsParams {
-    pub strategy_id: Uuid,
     /// "note" | "annotation"
     pub target_kind: String,
     pub target_id: Uuid,
@@ -205,7 +197,6 @@ pub struct ReadCommentsResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ResolveCommentParams {
-    pub strategy_id: Uuid,
     pub comment_id: Uuid,
     pub resolved: bool,
 }
@@ -217,7 +208,6 @@ pub struct ResolveCommentResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReplyCommentParams {
-    pub strategy_id: Uuid,
     /// 返信先コメント ID
     pub parent_id: Uuid,
     pub body: String,
@@ -230,7 +220,6 @@ pub struct ReplyCommentResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct EvalPythonParams {
-    pub strategy_id: Uuid,
     /// 実行する Python コード本体 (utf-8)
     pub code: String,
     /// 実行中に Python の sys.stdin に流す入力
@@ -251,7 +240,6 @@ pub struct EvalPythonResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct EvalIndicatorParams {
-    pub strategy_id: Uuid,
     /// 評価する indicator の name。戦略 scope に同名があれば優先、無ければ global を採用する。
     pub name: String,
     /// indicator の `input_schema` (JSON Schema) で validation される引数オブジェクト。

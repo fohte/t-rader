@@ -1,7 +1,6 @@
 //! ノート操作の inner method 実装。
 //!
-//! 戦略境界の二重検査は [`super::ensure_strategy_match`] と
-//! [`super::fetch_note_owned_by`] が担う。
+//! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveModelTrait;
@@ -20,8 +19,7 @@ use super::dto::{
 };
 use super::{
     DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    ensure_strategy_exists, ensure_strategy_match, fetch_note_owned_by, internal_error,
-    invalid_params,
+    ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
 };
 
 /// 検証済みの `graphs` を `note.graphs_json` へ入れる JSON へ変換する。
@@ -59,14 +57,12 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         if let Some(graphs) = params.graphs.as_ref() {
             validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
         }
 
         if let Some(note_id) = params.note_id {
-            let current = fetch_note_owned_by(&self.db, note_id, params.strategy_id).await?;
+            let current = fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
             let mut active = current.clone().into_active_model();
             let mut touched = false;
             let mut new_body_md = None;
@@ -118,7 +114,7 @@ impl StrategyServer {
             });
         }
 
-        ensure_strategy_exists(&self.db, params.strategy_id).await?;
+        ensure_strategy_exists(&self.db, session_strategy_id).await?;
         let title = params
             .title
             .as_deref()
@@ -133,7 +129,7 @@ impl StrategyServer {
         let id = Uuid::new_v4();
         let model = note::ActiveModel {
             id: Set(id),
-            strategy_id: Set(params.strategy_id),
+            strategy_id: Set(session_strategy_id),
             title: Set(title),
             body_md: Set(body_md),
             frontmatter_json: Set(frontmatter_json),
@@ -161,9 +157,7 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
-        let row = fetch_note_owned_by(&self.db, params.note_id, params.strategy_id).await?;
+        let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
         note_to_dto(row)
     }
 
@@ -172,10 +166,8 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         let rows = note::Entity::find()
-            .filter(note::Column::StrategyId.eq(params.strategy_id))
+            .filter(note::Column::StrategyId.eq(session_strategy_id))
             .order_by_desc(note::Column::UpdatedAt)
             .limit(clamp_limit(params.limit))
             .all(&self.db)
@@ -265,7 +257,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("first note".into()),
                     body_md: Some("body".into()),
@@ -282,7 +273,6 @@ mod tests {
             .read_note_inner(
                 strategy_id,
                 ReadNoteParams {
-                    strategy_id,
                     note_id: written.note_id,
                 },
             )
@@ -320,7 +310,6 @@ mod tests {
                 .write_note_inner(
                     strategy_id,
                     WriteNoteParams {
-                        strategy_id,
                         note_id: None,
                         title: Some("original".into()),
                         body_md: Some("v1".into()),
@@ -339,7 +328,6 @@ mod tests {
                 .write_note_inner(
                     strategy_id,
                     WriteNoteParams {
-                        strategy_id,
                         note_id: Some(created.note_id),
                         title: None,
                         body_md: Some("v2".into()),
@@ -363,7 +351,6 @@ mod tests {
                 .read_note_inner(
                     strategy_id,
                     ReadNoteParams {
-                        strategy_id,
                         note_id: created.note_id,
                     },
                 )
@@ -400,7 +387,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("t".into()),
                     body_md: None,
@@ -417,7 +403,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: None,
@@ -433,7 +418,6 @@ mod tests {
             .read_note_inner(
                 strategy_id,
                 ReadNoteParams {
-                    strategy_id,
                     note_id: created.note_id,
                 },
             )
@@ -451,40 +435,14 @@ mod tests {
                 .expect("parse")
                 .type_tag
         }
-        let sid = r#""strategy_id":"00000000-0000-0000-0000-000000000000""#;
         assert_eq!(
             (
-                parse(&format!("{{{sid}}}")),
-                parse(&format!("{{{sid},\"type_tag\":null}}")),
-                parse(&format!("{{{sid},\"type_tag\":\"observation\"}}")),
+                parse("{}"),
+                parse(r#"{"type_tag":null}"#),
+                parse(r#"{"type_tag":"observation"}"#),
             ),
             (None, Some(None), Some(Some("observation".into()))),
         );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_arg_mismatch(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
-        let server = build_server(db);
-
-        let err = server
-            .write_note_inner(
-                strategy_a,
-                WriteNoteParams {
-                    strategy_id: strategy_b,
-                    note_id: None,
-                    title: Some("x".into()),
-                    body_md: None,
-                    type_tag: None,
-                    frontmatter_json: None,
-                    graphs: None,
-                },
-            )
-            .await
-            .expect_err("boundary violation expected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
     #[sqlx::test(migrations = false)]
@@ -499,7 +457,6 @@ mod tests {
             .write_note_inner(
                 strategy_a,
                 WriteNoteParams {
-                    strategy_id: strategy_a,
                     note_id: Some(note_id),
                     title: None,
                     body_md: Some("hijack".into()),
@@ -522,13 +479,7 @@ mod tests {
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
 
         let err = server
-            .read_note_inner(
-                strategy_a,
-                ReadNoteParams {
-                    strategy_id: strategy_a,
-                    note_id,
-                },
-            )
+            .read_note_inner(strategy_a, ReadNoteParams { note_id })
             .await
             .expect_err("cross-strategy read expected to fail");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
@@ -546,7 +497,6 @@ mod tests {
                 .write_note_inner(
                     sid,
                     WriteNoteParams {
-                        strategy_id: sid,
                         note_id: None,
                         title: Some(title.into()),
                         body_md: None,
@@ -560,13 +510,7 @@ mod tests {
         }
 
         let result = server
-            .list_notes_inner(
-                strategy_a,
-                ListNotesParams {
-                    strategy_id: strategy_a,
-                    limit: None,
-                },
-            )
+            .list_notes_inner(strategy_a, ListNotesParams { limit: None })
             .await
             .expect("list");
         // 戦略 B のノートは含まれず、戦略 A の 2 件のみが新しい順に並ぶ
@@ -589,7 +533,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("note with graph".into()),
                     body_md: Some("[[graph:g1]]".into()),
@@ -605,7 +548,6 @@ mod tests {
             .read_note_inner(
                 strategy_id,
                 ReadNoteParams {
-                    strategy_id,
                     note_id: written.note_id,
                 },
             )
@@ -640,7 +582,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("broken".into()),
                     body_md: None,
@@ -654,13 +595,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
 
         let result = server
-            .list_notes_inner(
-                strategy_id,
-                ListNotesParams {
-                    strategy_id,
-                    limit: None,
-                },
-            )
+            .list_notes_inner(strategy_id, ListNotesParams { limit: None })
             .await
             .expect("list");
         assert_eq!(result.notes, vec![]);
@@ -693,7 +628,6 @@ mod tests {
                 .write_note_inner(
                     strategy_id,
                     WriteNoteParams {
-                        strategy_id,
                         note_id: None,
                         title: Some("t".into()),
                         body_md: Some("orig".into()),
@@ -709,7 +643,6 @@ mod tests {
                 .write_note_inner(
                     strategy_id,
                     WriteNoteParams {
-                        strategy_id,
                         note_id: Some(created.note_id),
                         title: None,
                         body_md: update_body,
@@ -725,7 +658,6 @@ mod tests {
                 .read_note_inner(
                     strategy_id,
                     ReadNoteParams {
-                        strategy_id,
                         note_id: created.note_id,
                     },
                 )
@@ -762,7 +694,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("orig".into()),
@@ -779,7 +710,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: None,
@@ -795,7 +725,6 @@ mod tests {
             .read_note_inner(
                 strategy_id,
                 ReadNoteParams {
-                    strategy_id,
                     note_id: created.note_id,
                 },
             )
@@ -815,7 +744,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("orig".into()),
@@ -831,7 +759,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("hijacked".into()),
@@ -848,7 +775,6 @@ mod tests {
             .read_note_inner(
                 strategy_id,
                 ReadNoteParams {
-                    strategy_id,
                     note_id: created.note_id,
                 },
             )
@@ -882,7 +808,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("note".into()),
                     body_md: Some(
@@ -905,7 +830,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some(
@@ -959,7 +883,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: None,
                     title: Some("note".into()),
                     body_md: Some(
@@ -982,7 +905,6 @@ mod tests {
             .write_note_inner(
                 strategy_id,
                 WriteNoteParams {
-                    strategy_id,
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("completely rewritten".into()),
