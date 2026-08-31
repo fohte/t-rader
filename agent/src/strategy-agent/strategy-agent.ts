@@ -193,6 +193,9 @@ export const createStrategyAgentDeps = (
     new ChatOpenAI({
       apiKey: config.llmApiKey,
       model,
+      // model 引数によっては上流 backend が非ストリーミングの応答から
+      // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
+      streaming: true,
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
       },
