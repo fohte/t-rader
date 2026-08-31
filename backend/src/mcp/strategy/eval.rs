@@ -14,8 +14,7 @@ use crate::kata_exec::{ExecRequest, KataExecError};
 use super::dto::{EvalPythonParams, EvalPythonResult};
 use super::{
     EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_STDIN_BYTES, EXEC_MAX_TIMEOUT_SECS, StrategyServer,
-    check_exec_upper_bound, ensure_strategy_match, internal_error, invalid_params,
-    kata_exec_to_mcp_err,
+    check_exec_upper_bound, internal_error, invalid_params, kata_exec_to_mcp_err,
 };
 
 /// MCP 層で許容する Python コード本体のサイズ上限 (バイト)。
@@ -27,8 +26,6 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: EvalPythonParams,
     ) -> Result<EvalPythonResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         if params.code.is_empty() {
             return Err(invalid_params("code must not be empty"));
         }
@@ -114,9 +111,8 @@ mod tests {
         (server, shared)
     }
 
-    fn params(strategy_id: Uuid, code: &str) -> EvalPythonParams {
+    fn params(code: &str) -> EvalPythonParams {
         EvalPythonParams {
-            strategy_id,
             code: code.into(),
             stdin: None,
             timeout_secs: None,
@@ -138,7 +134,7 @@ mod tests {
         let sid = Uuid::new_v4();
 
         let out = server
-            .eval_python_inner(sid, params(sid, "print(1+1)"))
+            .eval_python_inner(sid, params("print(1+1)"))
             .await
             .expect("eval");
 
@@ -153,30 +149,6 @@ mod tests {
         let recorded = executor.requests.lock().await;
         assert_eq!(recorded.len(), 1);
         assert_eq!(recorded[0].code, "print(1+1)");
-    }
-
-    #[tokio::test]
-    async fn eval_python_rejects_strategy_mismatch() {
-        let executor = Arc::new(FakeKataExecutor::new());
-        let (server, _) = build_server(executor.clone());
-        let session = Uuid::new_v4();
-        let other = Uuid::new_v4();
-
-        let err = server
-            .eval_python_inner(session, params(other, "print(1)"))
-            .await
-            .expect_err("mismatch");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INVALID_PARAMS,
-                format!(
-                    "forbidden: strategy_id boundary violation (session={session}, arg={other})"
-                )
-                .as_str(),
-            ),
-        );
-        assert!(executor.requests.lock().await.is_empty());
     }
 
     #[rstest]
@@ -219,7 +191,6 @@ mod tests {
             .eval_python_inner(
                 sid,
                 EvalPythonParams {
-                    strategy_id: sid,
                     code,
                     stdin: None,
                     timeout_secs,
@@ -258,7 +229,7 @@ mod tests {
         let sid = Uuid::new_v4();
 
         let err = server
-            .eval_python_inner(sid, params(sid, "print(1)"))
+            .eval_python_inner(sid, params("print(1)"))
             .await
             .expect_err("expected mapped error");
         assert_eq!(
@@ -288,10 +259,7 @@ mod tests {
         let out = server
             .eval_python_inner(
                 sid,
-                params(
-                    sid,
-                    "import urllib.request; urllib.request.urlopen('http://x')",
-                ),
+                params("import urllib.request; urllib.request.urlopen('http://x')"),
             )
             .await
             .expect("rejection is conveyed as result, not error");
@@ -310,7 +278,7 @@ mod tests {
         let server = StrategyServer::new(mock_db(), None);
         let sid = Uuid::new_v4();
         let err = server
-            .eval_python_inner(sid, params(sid, "print(1)"))
+            .eval_python_inner(sid, params("print(1)"))
             .await
             .expect_err("not configured");
         assert_eq!(

@@ -1,7 +1,6 @@
 //! アノテーション操作の inner method 実装。
 //!
-//! 戦略境界の二重検査は [`super::ensure_strategy_match`] と
-//! [`super::fetch_note_owned_by`] が担う。
+//! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
@@ -17,8 +16,8 @@ use super::dto::{
 };
 use super::{
     ALLOWED_ANNOTATION_KINDS, DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer,
-    clamp_limit, db_error, decimal_to_f64, ensure_strategy_exists, ensure_strategy_match,
-    fetch_note_owned_by, invalid_params,
+    clamp_limit, db_error, decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by,
+    invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
@@ -48,8 +47,6 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         let target_symbol = params.target_symbol.trim().to_string();
         if target_symbol.is_empty() {
             return Err(invalid_params("target_symbol must not be empty"));
@@ -64,18 +61,18 @@ impl StrategyServer {
             return Err(invalid_params("text must not be empty"));
         }
 
-        ensure_strategy_exists(&self.db, params.strategy_id).await?;
+        ensure_strategy_exists(&self.db, session_strategy_id).await?;
 
-        // linked_note_id が指定されている場合、対象 note の strategy_id 一致を二重検査する
+        // linked_note_id が指定されている場合、対象 note の strategy_id 一致を検査する
         if let Some(linked) = params.linked_note_id {
-            fetch_note_owned_by(&self.db, linked, params.strategy_id).await?;
+            fetch_note_owned_by(&self.db, linked, session_strategy_id).await?;
         }
 
         let price = params.price.map(f64_to_decimal).transpose()?;
         let id = Uuid::new_v4();
         let model = annotation::ActiveModel {
             id: Set(id),
-            strategy_id: Set(params.strategy_id),
+            strategy_id: Set(session_strategy_id),
             target_symbol: Set(target_symbol),
             target_kind: Set(params.target_kind),
             timestamp: Set(params.timestamp),
@@ -101,10 +98,8 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ReadAnnotationsParams,
     ) -> Result<ReadAnnotationsResult, McpError> {
-        ensure_strategy_match(session_strategy_id, params.strategy_id)?;
-
         let mut q = annotation::Entity::find()
-            .filter(annotation::Column::StrategyId.eq(params.strategy_id))
+            .filter(annotation::Column::StrategyId.eq(session_strategy_id))
             .order_by_desc(annotation::Column::Timestamp);
         if let Some(sym) = params
             .target_symbol
@@ -151,7 +146,6 @@ mod tests {
             .create_annotation_inner(
                 strategy_id,
                 CreateAnnotationParams {
-                    strategy_id,
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: ts,
@@ -182,7 +176,6 @@ mod tests {
             .read_annotations_inner(
                 strategy_id,
                 ReadAnnotationsParams {
-                    strategy_id,
                     target_symbol: None,
                     limit: None,
                 },
@@ -212,7 +205,6 @@ mod tests {
             .create_annotation_inner(
                 strategy_id,
                 CreateAnnotationParams {
-                    strategy_id,
                     target_symbol: "7203".into(),
                     target_kind: "garbage".into(),
                     timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
@@ -238,7 +230,6 @@ mod tests {
             .create_annotation_inner(
                 strategy_a,
                 CreateAnnotationParams {
-                    strategy_id: strategy_a,
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
                     timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
