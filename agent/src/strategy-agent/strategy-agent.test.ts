@@ -1,11 +1,11 @@
 import type { Message } from '@a2a-js/sdk'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { SystemMessage } from '@langchain/core/messages'
+import { HumanMessage } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatOpenAI } from '@langchain/openai'
 import { errAsync, okAsync } from 'neverthrow'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
 import type { AgentConfig } from '#strategy-agent/agent-config-client'
@@ -21,24 +21,6 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
-
-// createAgent が systemPrompt (string) をどう SystemMessage に組み立てるかを
-// テストで検証するため、実際の呼び出し引数だけを捕捉するモックに差し替える。
-// 他のエクスポートは実装のまま使う (buildCompiledAgent が toolStrategy 等を
-// createAgent 呼び出し前に使っているため)。
-const { createAgentMock } = vi.hoisted(() => ({
-  createAgentMock: vi.fn<(options: { systemPrompt: unknown }) => void>(),
-}))
-vi.mock('langchain', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('langchain')>()
-  return {
-    ...actual,
-    createAgent: (options: { systemPrompt: unknown }) => {
-      createAgentMock(options)
-      return { invoke: () => Promise.resolve({}) }
-    },
-  }
-})
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -410,18 +392,44 @@ describe('createStrategyAgentDeps', () => {
     expect(model.clientConfig.baseURL).toBe('https://litellm.example.com/v1')
   })
 
-  it('wraps the system prompt in a SystemMessage so its content stays a string', () => {
+  const chatCompletionsRequestSchema = z.object({
+    messages: z.array(z.object({ role: z.string(), content: z.unknown() })),
+  })
+
+  it('sends the system prompt as string content, not an array, over the wire', async () => {
+    let requestBody: z.infer<typeof chatCompletionsRequestSchema> = {
+      messages: [],
+    }
+    const model = new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      configuration: {
+        baseURL: 'http://localhost',
+        fetch: (_url, init) => {
+          const body = init?.body
+          if (typeof body !== 'string') throw new Error('expected string body')
+          requestBody = chatCompletionsRequestSchema.parse(JSON.parse(body))
+          return Promise.resolve(new Response('', { status: 500 }))
+        },
+      },
+    })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    deps.buildAgent({
-      model: new FakeChatModel({}),
+    const agent = deps.buildAgent({
+      model,
       tools: [],
       systemPrompt: 'you are a helpful bot',
     })
+    // 実プロダクトでは 200 を返すが、ここでは request body を捕捉した時点で
+    // 目的を達成しているため、この後の失敗レスポンス処理は捨ててよい。
+    await agent
+      .invoke({ messages: [new HumanMessage('hi')] })
+      .catch(() => undefined)
 
-    const options = createAgentMock.mock.calls[0]?.[0]
-    expect(options?.systemPrompt).toEqual(
-      new SystemMessage('you are a helpful bot'),
+    const systemMessage = requestBody.messages.find(
+      (message) => message.role === 'system',
     )
+    expect(systemMessage?.content).toBe('you are a helpful bot')
   })
 })

@@ -103,11 +103,8 @@ const buildCompiledAgent = (
   const agent = createAgent({
     model: options.model,
     tools: [...options.tools],
-    // createAgent は string の systemPrompt を content parts の配列に変換して
-    // SystemMessage を組み立てる (langchain 内部の normalizeSystemPrompt)。
-    // chatgpt/* (LiteLLM 経由の Responses API bridge) は system/developer
-    // ロールで content が配列だと 400 を返すため、SystemMessage インスタンスを
-    // 渡して content を文字列のまま保つ。
+    // createAgent は string の systemPrompt を content parts 配列に変換するが、
+    // chatgpt/* は system ロールの配列 content を拒否するため文字列のまま渡す。
     systemPrompt: new SystemMessage(options.systemPrompt),
     responseFormat: options.responseFormat,
     middleware: [
