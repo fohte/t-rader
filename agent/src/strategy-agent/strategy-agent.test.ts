@@ -390,4 +390,13 @@ describe('createStrategyAgentDeps', () => {
     if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
     expect(model.clientConfig.baseURL).toBe('https://litellm.example.com/v1')
   })
+
+  it('creates a chat model with streaming enabled', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const model = deps.createChatModel('test-model')
+
+    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
+    expect(model.streaming).toBe(true)
+  })
 })
