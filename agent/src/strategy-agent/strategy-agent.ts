@@ -193,9 +193,8 @@ export const createStrategyAgentDeps = (
     new ChatOpenAI({
       apiKey: config.llmApiKey,
       model,
-      // chatgpt/* モデルの上流 (Codex backend) は非ストリーミングの
-      // Responses API 応答で output を復元できない既知の制約があるため、
-      // 常に streaming で呼ぶ。
+      // model 引数によっては上流 backend が非ストリーミングの応答から
+      // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
       streaming: true,
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
