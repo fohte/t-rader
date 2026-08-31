@@ -2,7 +2,7 @@ import type { Message } from '@a2a-js/sdk'
 import { createGenAiTracingMiddleware } from '@fohte/service-kit/langchain-genai'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { HumanMessage } from '@langchain/core/messages'
+import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
@@ -103,7 +103,12 @@ const buildCompiledAgent = (
   const agent = createAgent({
     model: options.model,
     tools: [...options.tools],
-    systemPrompt: options.systemPrompt,
+    // createAgent は string の systemPrompt を content parts の配列に変換して
+    // SystemMessage を組み立てる (langchain 内部の normalizeSystemPrompt)。
+    // chatgpt/* (LiteLLM 経由の Responses API bridge) は system/developer
+    // ロールで content が配列だと 400 を返すため、SystemMessage インスタンスを
+    // 渡して content を文字列のまま保つ。
+    systemPrompt: new SystemMessage(options.systemPrompt),
     responseFormat: options.responseFormat,
     middleware: [
       createGenAiTracingMiddleware({ providerName: genAiProviderName }),

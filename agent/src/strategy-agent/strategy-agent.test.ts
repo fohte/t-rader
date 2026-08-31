@@ -1,10 +1,11 @@
 import type { Message } from '@a2a-js/sdk'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
+import { SystemMessage } from '@langchain/core/messages'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatOpenAI } from '@langchain/openai'
 import { errAsync, okAsync } from 'neverthrow'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import type { AgentConfig } from '#strategy-agent/agent-config-client'
@@ -20,6 +21,24 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+
+// createAgent が systemPrompt (string) をどう SystemMessage に組み立てるかを
+// テストで検証するため、実際の呼び出し引数だけを捕捉するモックに差し替える。
+// 他のエクスポートは実装のまま使う (buildCompiledAgent が toolStrategy 等を
+// createAgent 呼び出し前に使っているため)。
+const { createAgentMock } = vi.hoisted(() => ({
+  createAgentMock: vi.fn<(options: { systemPrompt: unknown }) => void>(),
+}))
+vi.mock('langchain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('langchain')>()
+  return {
+    ...actual,
+    createAgent: (options: { systemPrompt: unknown }) => {
+      createAgentMock(options)
+      return { invoke: () => Promise.resolve({}) }
+    },
+  }
+})
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -389,5 +408,20 @@ describe('createStrategyAgentDeps', () => {
 
     if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
     expect(model.clientConfig.baseURL).toBe('https://litellm.example.com/v1')
+  })
+
+  it('wraps the system prompt in a SystemMessage so its content stays a string', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    deps.buildAgent({
+      model: new FakeChatModel({}),
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const options = createAgentMock.mock.calls[0]?.[0]
+    expect(options?.systemPrompt).toEqual(
+      new SystemMessage('you are a helpful bot'),
+    )
   })
 })
