@@ -61,10 +61,10 @@ importers:
     dependencies:
       '@a2a-js/sdk':
         specifier: 0.3.14
-        version: 0.3.14(@grpc/grpc-js@1.14.4)(express@5.2.1(supports-color@10.2.2))
+        version: 0.3.14(@bufbuild/protobuf@2.14.0)(@grpc/grpc-js@1.14.4)(express@5.2.1(supports-color@10.2.2))
       '@fohte/service-kit':
-        specifier: 0.1.11
-        version: 0.1.11(10210d8e011b2fd793ab2dd56dc6d610)
+        specifier: 0.1.13
+        version: 0.1.13(10210d8e011b2fd793ab2dd56dc6d610)
       '@hono/node-server':
         specifier: 2.0.12
         version: 2.0.12(hono@4.12.34)
@@ -573,6 +573,9 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@bufbuild/protobuf@2.14.0':
+    resolution: {integrity: sha512-C3UGsiCwSprE2NKIIFA3hCDlpXTMCAXRZuEVp88L1GY36Y41+rYL5fryE+nOFhp4p4JPQvdV8PQ4DWgHgeTE+w==}
 
   '@cfworker/json-schema@4.1.1':
     resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
@@ -1621,8 +1624,8 @@ packages:
       typescript:
         optional: true
 
-  '@fohte/service-kit@0.1.11':
-    resolution: {integrity: sha512-VfJ5XyQLQOaIDpOiFHTbD4Om/f7Y3D/mCYY8FRFD9s/hC4uRL9S75/Y+T21zyrIbiTwWEbWowdi6wvsH7Z1P2Q==}
+  '@fohte/service-kit@0.1.13':
+    resolution: {integrity: sha512-yEf0qwaGMaQ9iRJOTptry67baDCXyDtRLBgoPLvJU0ve5HHufM0zZee+ZcukMhZMXzZU1rVA4uhkiFHKTDQqAA==}
     peerDependencies:
       '@langchain/core': ^1.2.0
       '@opentelemetry/api': ^1.9.1
@@ -7620,10 +7623,11 @@ packages:
 
 snapshots:
 
-  '@a2a-js/sdk@0.3.14(@grpc/grpc-js@1.14.4)(express@5.2.1(supports-color@10.2.2))':
+  '@a2a-js/sdk@0.3.14(@bufbuild/protobuf@2.14.0)(@grpc/grpc-js@1.14.4)(express@5.2.1(supports-color@10.2.2))':
     dependencies:
       uuid: 11.1.1
     optionalDependencies:
+      '@bufbuild/protobuf': 2.14.0
       '@grpc/grpc-js': 1.14.4
       express: 5.2.1(supports-color@10.2.2)
 
@@ -8038,6 +8042,8 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@bufbuild/protobuf@2.14.0': {}
 
   '@cfworker/json-schema@4.1.1': {}
 
@@ -8756,8 +8762,9 @@ snapshots:
       eslint-plugin-tailwindcss: 4.2.0(eslint@10.6.0(jiti@2.7.0)(supports-color@10.2.2))(supports-color@10.2.2)(tailwindcss@4.3.3)(typescript@6.0.3)
       typescript: 6.0.3
 
-  '@fohte/service-kit@0.1.11(10210d8e011b2fd793ab2dd56dc6d610)':
+  '@fohte/service-kit@0.1.13(10210d8e011b2fd793ab2dd56dc6d610)':
     dependencies:
+      '@bufbuild/protobuf': 2.14.0
       '@opentelemetry/auto-instrumentations-node': 0.77.0(@opentelemetry/api@1.9.1)(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(supports-color@10.2.2)
       '@opentelemetry/exporter-metrics-otlp-proto': 0.219.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-trace-otlp-proto': 0.219.0(@opentelemetry/api@1.9.1)
