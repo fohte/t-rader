@@ -63,7 +63,7 @@ impl StrategyServer {
 
         ensure_strategy_exists(&self.db, session_strategy_id).await?;
 
-        // linked_note_id が指定されている場合、対象 note の strategy_id 一致を二重検査する
+        // linked_note_id が指定されている場合、対象 note の strategy_id 一致を検査する
         if let Some(linked) = params.linked_note_id {
             fetch_note_owned_by(&self.db, linked, session_strategy_id).await?;
         }
