@@ -15,9 +15,8 @@ use super::dto::{
     ReadAnnotationsResult,
 };
 use super::{
-    ALLOWED_ANNOTATION_KINDS, DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer,
-    clamp_limit, db_error, decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by,
-    invalid_params,
+    DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
+    decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by, invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
@@ -50,12 +49,6 @@ impl StrategyServer {
         let target_symbol = params.target_symbol.trim().to_string();
         if target_symbol.is_empty() {
             return Err(invalid_params("target_symbol must not be empty"));
-        }
-        if !ALLOWED_ANNOTATION_KINDS.contains(&params.target_kind.as_str()) {
-            return Err(invalid_params(format!(
-                "invalid target_kind: {} (expected one of {:?})",
-                params.target_kind, ALLOWED_ANNOTATION_KINDS
-            )));
         }
         if params.text.trim().is_empty() {
             return Err(invalid_params("text must not be empty"));
@@ -194,28 +187,6 @@ mod tests {
                 annotations: vec![expected],
             },
         );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn create_annotation_rejects_invalid_kind(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy(&db, "x").await;
-        let server = build_server(db);
-        let err = server
-            .create_annotation_inner(
-                strategy_id,
-                CreateAnnotationParams {
-                    target_symbol: "7203".into(),
-                    target_kind: "garbage".into(),
-                    timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
-                    price: None,
-                    text: "x".into(),
-                    linked_note_id: None,
-                },
-            )
-            .await
-            .expect_err("invalid kind expected to be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
     #[sqlx::test(migrations = false)]

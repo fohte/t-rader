@@ -21,7 +21,6 @@ use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
 
-const ALLOWED_TARGET_KIND: [&str; 4] = ["signal", "level", "observation", "other"];
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
 
@@ -104,12 +103,6 @@ pub async fn create_annotation(
         return Err(AppError::Validation(
             "target_symbol must not be empty".into(),
         ));
-    }
-    if !ALLOWED_TARGET_KIND.contains(&p.target_kind.as_str()) {
-        return Err(AppError::Validation(format!(
-            "invalid target_kind: {}",
-            p.target_kind
-        )));
     }
     let status = p.status.as_deref().unwrap_or("unread").to_string();
     if !ALLOWED_STATUS.contains(&status.as_str()) {
@@ -198,9 +191,6 @@ pub async fn update_annotation(
         active.target_symbol = Set(trimmed);
     }
     if let Some(v) = p.target_kind {
-        if !ALLOWED_TARGET_KIND.contains(&v.as_str()) {
-            return Err(AppError::Validation(format!("invalid target_kind: {v}")));
-        }
         diff.insert(
             "target_kind".into(),
             json!({ "from": current.target_kind, "to": v }),

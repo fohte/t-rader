@@ -102,7 +102,6 @@ pub struct ListNotesResult {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateAnnotationParams {
     pub target_symbol: String,
-    /// "signal" | "level" | "observation" | "other"
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
     pub price: Option<f64>,

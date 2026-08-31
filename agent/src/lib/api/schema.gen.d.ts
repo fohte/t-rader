@@ -1263,7 +1263,6 @@ export interface components {
       status?: string | null
       /** Format: uuid */
       strategy_id: string
-      /** @description "signal" | "level" | "observation" | "other" */
       target_kind: string
       target_symbol: string
       text: string
