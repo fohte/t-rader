@@ -6678,8 +6678,7 @@
             "format": "uuid"
           },
           "target_kind": {
-            "type": "string",
-            "description": "\"signal\" | \"level\" | \"observation\" | \"other\""
+            "type": "string"
           },
           "target_symbol": {
             "type": "string",

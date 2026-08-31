@@ -83,7 +83,6 @@ const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";
 pub(super) const DEFAULT_ANNOTATION_STATUS: &str = "unread";
-pub(super) const ALLOWED_ANNOTATION_KINDS: [&str; 4] = ["signal", "level", "observation", "other"];
 
 /// exec Pod に Python コード / indicator を渡す tool 群で共通の制限値。
 /// 個別 tool で上書きしないこと。MCP 層と Pod 層の二重で適用される。

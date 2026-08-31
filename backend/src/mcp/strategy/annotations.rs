@@ -15,9 +15,8 @@ use super::dto::{
     ReadAnnotationsResult,
 };
 use super::{
-    ALLOWED_ANNOTATION_KINDS, DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer,
-    clamp_limit, db_error, decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by,
-    invalid_params,
+    DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
+    decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by, invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
@@ -51,11 +50,9 @@ impl StrategyServer {
         if target_symbol.is_empty() {
             return Err(invalid_params("target_symbol must not be empty"));
         }
-        if !ALLOWED_ANNOTATION_KINDS.contains(&params.target_kind.as_str()) {
-            return Err(invalid_params(format!(
-                "invalid target_kind: {} (expected one of {:?})",
-                params.target_kind, ALLOWED_ANNOTATION_KINDS
-            )));
+        let target_kind = params.target_kind.trim().to_string();
+        if target_kind.is_empty() {
+            return Err(invalid_params("target_kind must not be empty"));
         }
         if params.text.trim().is_empty() {
             return Err(invalid_params("text must not be empty"));
@@ -74,7 +71,7 @@ impl StrategyServer {
             id: Set(id),
             strategy_id: Set(session_strategy_id),
             target_symbol: Set(target_symbol),
-            target_kind: Set(params.target_kind),
+            target_kind: Set(target_kind),
             timestamp: Set(params.timestamp),
             price: Set(price),
             text: Set(params.text),
@@ -135,6 +132,7 @@ mod tests {
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
 
+    // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
     #[sqlx::test(migrations = false)]
     async fn create_annotation_then_read_annotations(pool: PgPool) {
         let db = create_test_db(pool).await;
@@ -147,7 +145,7 @@ mod tests {
                 strategy_id,
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
-                    target_kind: "signal".into(),
+                    target_kind: "custom-tag".into(),
                     timestamp: ts,
                     price: Some(25000.0),
                     text: "breakout".into(),
@@ -160,7 +158,7 @@ mod tests {
             annotation_id: created.annotation.annotation_id,
             strategy_id,
             target_symbol: "7203".into(),
-            target_kind: "signal".into(),
+            target_kind: "custom-tag".into(),
             timestamp: ts,
             price: Some(25000.0),
             text: "breakout".into(),
@@ -197,7 +195,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn create_annotation_rejects_invalid_kind(pool: PgPool) {
+    async fn create_annotation_rejects_empty_target_kind(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
@@ -206,7 +204,7 @@ mod tests {
                 strategy_id,
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
-                    target_kind: "garbage".into(),
+                    target_kind: "  ".into(),
                     timestamp: "2026-06-01T00:00:00Z".parse().expect("ts"),
                     price: None,
                     text: "x".into(),
@@ -214,7 +212,7 @@ mod tests {
                 },
             )
             .await
-            .expect_err("invalid kind expected to be rejected");
+            .expect_err("empty target_kind expected to be rejected");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 

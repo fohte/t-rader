@@ -10,7 +10,6 @@ pub struct CreateAnnotationRequest {
     pub strategy_id: Uuid,
     #[schema(min_length = 1)]
     pub target_symbol: String,
-    /// "signal" | "level" | "observation" | "other"
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
     #[schema(value_type = Option<f64>)]

@@ -17,6 +17,7 @@ mod m20260814_182703_add_note_graphs_json;
 mod m20260814_183203_add_comment_resolved;
 mod m20260814_185221_add_strategy_task_steps;
 mod m20260815_060751_add_comment_anchor;
+mod m20260831_165304_drop_annotation_target_kind_check;
 
 pub struct Migrator;
 
@@ -40,6 +41,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260814_183203_add_comment_resolved::Migration),
             Box::new(m20260814_185221_add_strategy_task_steps::Migration),
             Box::new(m20260815_060751_add_comment_anchor::Migration),
+            Box::new(m20260831_165304_drop_annotation_target_kind_check::Migration),
         ]
     }
 }
