@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { userEvent, within } from 'storybook/test'
 
 import { ForEachField } from '#components/strategy-settings/agent-graph/fields/for-each-field'
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
@@ -76,6 +77,12 @@ export const WithArrayOption: Story = {
   render: () => (
     <Interactive phases={[PLAN, INVESTIGATE]} index={1} initial={undefined} />
   ),
+  // 選択肢の有無は Select を開くまで見えないため、NoPriorArrayOutput と見た目が
+  // 重複しないようトリガーを開いた状態で撮影する
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole('combobox'))
+    await within(canvasElement.ownerDocument.body).findByRole('listbox')
+  },
 }
 
 export const Selected: Story = {

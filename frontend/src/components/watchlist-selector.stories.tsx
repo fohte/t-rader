@@ -1,6 +1,15 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { userEvent, within } from 'storybook/test'
 
 import { WatchlistSelectorView } from '#components/watchlist-selector'
+
+// WatchlistSelectorView は閉じた Select トリガーしか描画せず、ウォッチリストの
+// 件数は開いた状態でしか可視化されない。Default/Empty と見た目が重複しないよう、
+// この 2 story はトリガーを開いた状態で撮影する
+async function openSelect({ canvasElement }: { canvasElement: HTMLElement }) {
+  await userEvent.click(within(canvasElement).getByRole('combobox'))
+  await within(canvasElement.ownerDocument.body).findByRole('listbox')
+}
 
 const meta = {
   title: 'Components/WatchlistSelector',
@@ -53,6 +62,7 @@ export const NoSelection: Story = {
     onCreateSubmit: () => {},
     onDelete: () => {},
   },
+  play: openSelect,
 }
 
 export const SingleWatchlist: Story = {
@@ -65,6 +75,7 @@ export const SingleWatchlist: Story = {
     onCreateSubmit: () => {},
     onDelete: () => {},
   },
+  play: openSelect,
 }
 
 export const Empty: Story = {
