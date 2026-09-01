@@ -76,6 +76,13 @@ fn decimal_prop() -> Object {
     ObjectBuilder::new().schema_type(Type::Number).build()
 }
 
+/// nullable な数値 (rust_decimal::Decimal)
+fn nullable_decimal_prop() -> Object {
+    ObjectBuilder::new()
+        .schema_type(SchemaType::from_iter([Type::Number, Type::Null]))
+        .build()
+}
+
 /// 任意の JSON 値
 fn json_prop() -> Object {
     ObjectBuilder::new().schema_type(Type::Object).build()
@@ -407,7 +414,7 @@ impl PartialSchema for crate::entities::annotation::Model {
             .required("target_kind")
             .property("timestamp", datetime_prop())
             .required("timestamp")
-            .property("price", decimal_prop())
+            .property("price", nullable_decimal_prop())
             .property("text", str_prop())
             .required("text")
             .property("status", str_prop())
