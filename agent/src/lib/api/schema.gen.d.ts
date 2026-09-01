@@ -1182,6 +1182,7 @@ export interface components {
       id: string
       /** Format: uuid */
       linked_note_id?: string | null
+      /** Format: double */
       price?: number | null
       status: string
       /** Format: uuid */
@@ -1195,13 +1196,16 @@ export interface components {
       updated_at: string
     }
     Bar: {
+      /** Format: double */
       close: number
+      /** Format: double */
       high: number
       instrument_id: string
+      /** Format: double */
       low: number
+      /** Format: double */
       open: number
-      /** @enum {string} */
-      timeframe: '1d'
+      timeframe: string
       /** Format: date-time */
       timestamp: string
       /** Format: int64 */
@@ -1212,7 +1216,7 @@ export interface components {
       actor_label: string
       /** Format: date-time */
       created_at: string
-      diff_json: Record<string, never>
+      diff_json: components['schemas']['Value']
       /** Format: uuid */
       id: string
       op: string
@@ -1388,9 +1392,9 @@ export interface components {
       description?: string | null
       /** Format: uuid */
       indicator_id: string
-      input_schema: Record<string, never>
+      input_schema: components['schemas']['Value']
       name: string
-      output_schema: Record<string, never>
+      output_schema: components['schemas']['Value']
       scope: string
       /** Format: uuid */
       strategy_id?: string | null
@@ -1522,7 +1526,7 @@ export interface components {
       /** Format: date-time */
       created_at: string
       created_by_kind: string
-      frontmatter_json: Record<string, never>
+      frontmatter_json: components['schemas']['Value']
       graphs_json: components['schemas']['GraphDef'][]
       /** Format: uuid */
       id: string
@@ -1694,12 +1698,15 @@ export interface components {
       updated_at: string
     }
     Strategy: {
+      agent_graph: string
+      agents_md: string
       /** Format: date-time */
       created_at: string
       description?: string | null
       /** Format: uuid */
       id: string
       name: string
+      skills: components['schemas']['Value']
       /** Format: int32 */
       sort_order: number
       /** Format: date-time */
@@ -1784,11 +1791,14 @@ export interface components {
       created_at: string
       /** Format: date */
       date: string
+      /** Format: double */
       fee: number
       /** Format: uuid */
       id: string
       note?: string | null
+      /** Format: double */
       price: number
+      /** Format: double */
       qty: number
       side: string
       source: string
@@ -1802,7 +1812,7 @@ export interface components {
       /** Format: date-time */
       created_at: string
       enabled: boolean
-      event_match?: Record<string, never> | null
+      event_match?: null | components['schemas']['Value']
       hook_slug?: string | null
       kind: string
       /** Format: date-time */
@@ -1897,6 +1907,7 @@ export interface components {
       prompt_template?: string | null
       schedule?: string | null
     }
+    Value: unknown
     Watchlist: {
       /** Format: date-time */
       created_at: string

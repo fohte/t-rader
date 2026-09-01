@@ -51,6 +51,8 @@ pub async fn list_bars(
         ));
     }
 
+    // Bar.timeframe の OpenAPI スキーマは entity の String 型から導出されるため許容値を含まない。
+    // 実際の許容値はこの配列と bars テーブルの CHECK 制約が正とする。
     let valid_timeframes = ["1d"];
     if !valid_timeframes.contains(&params.timeframe.as_str()) {
         return Err(AppError::Validation(format!(

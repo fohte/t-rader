@@ -3,14 +3,18 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
+)]
 #[sea_orm(table_name = "annotation")]
+#[schema(as = Annotation)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub strategy_id: Uuid,
     pub target_symbol: String,
     pub target_kind: String,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub timestamp: DateTimeWithTimeZone,
     pub price: Option<Decimal>,
     #[sea_orm(column_type = "Text")]
@@ -18,7 +22,9 @@ pub struct Model {
     pub status: String,
     pub linked_note_id: Option<Uuid>,
     pub created_by_kind: String,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
 }
 

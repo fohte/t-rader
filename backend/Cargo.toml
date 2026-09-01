@@ -83,7 +83,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 utoipa = { workspace = true, features = [
     "chrono",
     "uuid",
-    "decimal",
+    "decimal_float",
     "axum_extras",
 ] }
 indoc = "=2.0.7"

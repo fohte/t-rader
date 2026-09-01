@@ -13,23 +13,23 @@ type Trade = components['schemas']['Trade']
 const SWING_ID = '00000000-0000-0000-0000-000000000001'
 const VALUE_ID = '00000000-0000-0000-0000-000000000002'
 
+function strategyStub(id: string, name: string, sortOrder: number): Strategy {
+  return {
+    id,
+    name,
+    description: null,
+    sort_order: sortOrder,
+    agents_md: '',
+    skills: {},
+    agent_graph: '',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  }
+}
+
 const strategies: Strategy[] = [
-  {
-    id: SWING_ID,
-    name: '半導体短期スイング',
-    description: null,
-    sort_order: 0,
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
-  },
-  {
-    id: VALUE_ID,
-    name: '高配当バリュー長期',
-    description: null,
-    sort_order: 1,
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-01-01T00:00:00Z',
-  },
+  strategyStub(SWING_ID, '半導体短期スイング', 0),
+  strategyStub(VALUE_ID, '高配当バリュー長期', 1),
 ]
 
 function tradeStub(strategyId: string, id: string): Trade {

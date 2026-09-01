@@ -3,8 +3,11 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
+)]
 #[sea_orm(table_name = "hypothesis")]
+#[schema(as = Hypothesis)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub hypothesis_id: Uuid,
@@ -17,7 +20,9 @@ pub struct Model {
     pub status: String,
     pub related_note_ids: Vec<Uuid>,
     pub related_interest_ids: Vec<Uuid>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
 }
 
