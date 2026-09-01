@@ -3,14 +3,18 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
+)]
 #[sea_orm(table_name = "watchlist_items")]
+#[schema(as = WatchlistItem)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub watchlist_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub instrument_id: String,
     pub sort_order: i32,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub added_at: DateTimeWithTimeZone,
 }
 

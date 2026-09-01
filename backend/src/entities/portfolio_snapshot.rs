@@ -3,16 +3,21 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
+)]
 #[sea_orm(table_name = "portfolio_snapshot")]
+#[schema(as = PortfolioSnapshot)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub taken_at: DateTimeWithTimeZone,
     pub cash_jpy: Decimal,
     pub total_equity_jpy: Decimal,
     #[sea_orm(column_type = "JsonBinary")]
     pub positions_json: Json,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
 }
 

@@ -6421,7 +6421,8 @@
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "format": "double"
           },
           "status": {
             "type": "string"
@@ -6463,25 +6464,26 @@
         ],
         "properties": {
           "close": {
-            "type": "number"
+            "type": "number",
+            "format": "double"
           },
           "high": {
-            "type": "number"
+            "type": "number",
+            "format": "double"
           },
           "instrument_id": {
             "type": "string"
           },
           "low": {
-            "type": "number"
+            "type": "number",
+            "format": "double"
           },
           "open": {
-            "type": "number"
+            "type": "number",
+            "format": "double"
           },
           "timeframe": {
-            "type": "string",
-            "enum": [
-              "1d"
-            ]
+            "type": "string"
           },
           "timestamp": {
             "type": "string",
@@ -6517,7 +6519,7 @@
             "format": "date-time"
           },
           "diff_json": {
-            "type": "object"
+            "$ref": "#/components/schemas/Value"
           },
           "id": {
             "type": "string",
@@ -6563,8 +6565,8 @@
           "body",
           "author_kind",
           "author_label",
-          "resolved",
           "created_at",
+          "resolved",
           "drifted"
         ],
         "properties": {
@@ -7125,13 +7127,13 @@
             "format": "uuid"
           },
           "input_schema": {
-            "type": "object"
+            "$ref": "#/components/schemas/Value"
           },
           "name": {
             "type": "string"
           },
           "output_schema": {
-            "type": "object"
+            "$ref": "#/components/schemas/Value"
           },
           "scope": {
             "type": "string"
@@ -7511,7 +7513,7 @@
             "type": "string"
           },
           "frontmatter_json": {
-            "type": "object"
+            "$ref": "#/components/schemas/Value"
           },
           "graphs_json": {
             "type": "array",
@@ -8024,9 +8026,18 @@
           "name",
           "sort_order",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "agents_md",
+          "skills",
+          "agent_graph"
         ],
         "properties": {
+          "agent_graph": {
+            "type": "string"
+          },
+          "agents_md": {
+            "type": "string"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -8043,6 +8054,9 @@
           },
           "name": {
             "type": "string"
+          },
+          "skills": {
+            "$ref": "#/components/schemas/Value"
           },
           "sort_order": {
             "type": "integer",
@@ -8312,7 +8326,8 @@
             "format": "date"
           },
           "fee": {
-            "type": "number"
+            "type": "number",
+            "format": "double"
           },
           "id": {
             "type": "string",
@@ -8325,10 +8340,12 @@
             ]
           },
           "price": {
-            "type": "number"
+            "type": "number",
+            "format": "double"
           },
           "qty": {
-            "type": "number"
+            "type": "number",
+            "format": "double"
           },
           "side": {
             "type": "string"
@@ -8369,9 +8386,13 @@
             "type": "boolean"
           },
           "event_match": {
-            "type": [
-              "object",
-              "null"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Value"
+              }
             ]
           },
           "hook_slug": {
@@ -8779,6 +8800,7 @@
         },
         "additionalProperties": false
       },
+      "Value": {},
       "Watchlist": {
         "type": "object",
         "required": [

@@ -3,8 +3,11 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
+)]
 #[sea_orm(table_name = "news_item")]
+#[schema(as = NewsItem)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
@@ -16,7 +19,9 @@ pub struct Model {
     pub title: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub body_snippet: Option<String>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub published_at: DateTimeWithTimeZone,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub fetched_at: DateTimeWithTimeZone,
 }
 

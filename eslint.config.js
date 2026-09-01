@@ -32,6 +32,9 @@ export default config(
   },
   // TanStack Router の自動生成ファイル
   { ignores: ['frontend/src/routeTree.gen.ts'] },
+  // openapi-typescript の自動生成ファイル。OpenAPI スキーマの型導出の都合で
+  // `null | unknown` のような lint 対象の型が現れることがあるが、手で直す対象ではない
+  { ignores: ['**/schema.gen.d.ts'] },
   // projectService はプロセス内で一度だけ生成されるシングルトンのため、files を
   // frontend 配下に絞ると最初にパースされる ts ファイル (glob 順で frontend より前) が
   // 生成条件を決めてしまい allowDefaultProject が無視される。全 ts ファイルに適用する

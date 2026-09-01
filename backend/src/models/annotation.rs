@@ -12,7 +12,6 @@ pub struct CreateAnnotationRequest {
     pub target_symbol: String,
     pub target_kind: String,
     pub timestamp: DateTime<FixedOffset>,
-    #[schema(value_type = Option<f64>)]
     pub price: Option<Decimal>,
     pub text: String,
     pub status: Option<String>,
@@ -27,7 +26,6 @@ pub struct UpdateAnnotationRequest {
     pub target_symbol: Option<String>,
     pub target_kind: Option<String>,
     pub timestamp: Option<DateTime<FixedOffset>>,
-    #[schema(value_type = Option<f64>)]
     pub price: Option<Decimal>,
     pub text: Option<String>,
     pub linked_note_id: Option<Uuid>,

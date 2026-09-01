@@ -14,11 +14,8 @@ pub struct SbiPreviewRow {
     pub stock_name: String,
     /// "buy" | "sell"
     pub side: String,
-    #[schema(value_type = f64)]
     pub qty: Decimal,
-    #[schema(value_type = f64)]
     pub price: Decimal,
-    #[schema(value_type = f64)]
     pub fee: Decimal,
     /// 同日・同銘柄・同売買・同数量・同単価で既存取引が見つかったか
     pub is_duplicate: bool,
@@ -46,12 +43,9 @@ pub struct SbiCommitRow {
     #[serde(default)]
     pub stock_name: String,
     pub side: String,
-    #[schema(value_type = f64)]
     pub qty: Decimal,
-    #[schema(value_type = f64)]
     pub price: Decimal,
     #[serde(default)]
-    #[schema(value_type = Option<f64>)]
     pub fee: Option<Decimal>,
 }
 

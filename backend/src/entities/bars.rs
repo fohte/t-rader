@@ -3,14 +3,18 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
+)]
 #[sea_orm(table_name = "bars")]
+#[schema(as = Bar)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub instrument_id: String,
     #[sea_orm(primary_key, auto_increment = false)]
     pub timeframe: String,
     #[sea_orm(primary_key, auto_increment = false)]
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub timestamp: DateTimeWithTimeZone,
     pub open: Decimal,
     pub high: Decimal,
