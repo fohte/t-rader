@@ -66,14 +66,14 @@ cd backend/migration && cargo run -- generate <name>
 DATABASE_URL=... bash backend/scripts/generate-entities.sh
 
 # フロントエンド
-cd frontend && nr dev             # Vite 開発サーバー
-cd frontend && nr test            # 型チェック + unit テスト
-cd frontend && nr storybook       # Storybook 開発サーバー (http://localhost:6006)
-cd frontend && nr storybook:build # Storybook 静的ビルド
+cd frontend && pnpm dev             # Vite 開発サーバー
+cd frontend && pnpm test            # 型チェック + unit テスト
+cd frontend && pnpm storybook       # Storybook 開発サーバー (http://localhost:6006)
+cd frontend && pnpm storybook:build # Storybook 静的ビルド
 
 # エージェント (A2A server)
-cd agent && nr dev  # tsx watch でローカル直接起動
-cd agent && nr test # 型チェック + unit テスト (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
+cd agent && pnpm dev  # tsx watch でローカル直接起動
+cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
 ```
 
 ## Core files
