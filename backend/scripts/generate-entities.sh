@@ -11,8 +11,7 @@ sea-orm-cli generate entity \
   --model-extra-derives 'utoipa::ToSchema' \
   --enum-extra-derives 'utoipa::ToSchema'
 
-# 指定した行 (完全一致) の直前に1行挿入する。sed/perl は macOS (BSD sed / 古い perl) と
-# CI の Linux (GNU sed / 別バージョンの perl) で実装が異なるため使わず、bash 組み込みのみで行う。
+# macOS (BSD) と Linux (GNU) の sed/perl 互換性差分を回避するため bash 組み込みで処理する
 insert_before() {
   local file="$1" target="$2" insert="$3"
   local line result=""
@@ -25,7 +24,6 @@ insert_before() {
   printf '%s' "$result" > "$file"
 }
 
-# snake_case のファイル名を PascalCase に変換する (例: news_strategy_link -> NewsStrategyLink)
 pascal_case() {
   local base="$1" part first name=""
   for part in ${base//_/ }; do
@@ -33,6 +31,15 @@ pascal_case() {
     name+="${first}${part:1}"
   done
   printf '%s' "$name"
+}
+
+# lines に列挙した各行の直前に insert を挿入する (改行区切り、空行は無視)
+apply_overrides() {
+  local file="$1" lines="$2" insert="$3" target
+  while IFS= read -r target; do
+    [ -n "$target" ] || continue
+    insert_before "$file" "$target" "$insert"
+  done <<< "$lines"
 }
 
 # utoipa の ToSchema はデフォルトで struct 名をスキーマ名にするが、entity の struct は
@@ -65,13 +72,6 @@ for file in "$ENTITIES_DIR"/*.rs; do
     esac
   done < "$file"
 
-  while IFS= read -r target; do
-    [ -n "$target" ] || continue
-    insert_before "$file" "$target" "    #[schema(value_type = chrono::DateTime<chrono::Utc>)]"
-  done <<< "$dt_lines"
-
-  while IFS= read -r target; do
-    [ -n "$target" ] || continue
-    insert_before "$file" "$target" "    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]"
-  done <<< "$opt_dt_lines"
+  apply_overrides "$file" "$dt_lines" "    #[schema(value_type = chrono::DateTime<chrono::Utc>)]"
+  apply_overrides "$file" "$opt_dt_lines" "    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]"
 done
