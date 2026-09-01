@@ -1182,7 +1182,7 @@ export interface components {
       id: string
       /** Format: uuid */
       linked_note_id?: string | null
-      price?: number
+      price?: number | null
       status: string
       /** Format: uuid */
       strategy_id: string

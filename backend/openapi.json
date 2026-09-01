@@ -6418,7 +6418,10 @@
             "format": "uuid"
           },
           "price": {
-            "type": "number"
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
