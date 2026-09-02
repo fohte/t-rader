@@ -33,7 +33,7 @@ export default mergeConfig(
             browser: {
               enabled: true,
               provider: playwright({
-                launchOptions: { args: BLOCK_EXTERNAL_REQUESTS_ARGS },
+                launchOptions: { args: [...BLOCK_EXTERNAL_REQUESTS_ARGS] },
               }),
               headless: true,
               instances: [{ browser: 'chromium' }],
