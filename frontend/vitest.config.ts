@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { BLOCK_EXTERNAL_REQUESTS_ARGS } from '@fohte/storybook-addon/vitest-plugin'
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig, mergeConfig } from 'vitest/config'
@@ -31,7 +32,9 @@ export default mergeConfig(
             name: 'storybook',
             browser: {
               enabled: true,
-              provider: playwright(),
+              provider: playwright({
+                launchOptions: { args: [...BLOCK_EXTERNAL_REQUESTS_ARGS] },
+              }),
               headless: true,
               instances: [{ browser: 'chromium' }],
             },

@@ -51,7 +51,7 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@fohte/storybook-addon": "0.1.8",
+    "@fohte/storybook-addon": "0.1.9",
     "@storybook/addon-docs": "10.4.6",
     "@storybook/addon-themes": "10.4.6",
     "@storybook/addon-vitest": "10.4.6",
