@@ -99,6 +99,7 @@ mod tests {
                 created_at: sea_orm::ActiveValue::NotSet,
                 updated_at: sea_orm::ActiveValue::NotSet,
                 graphs_json: Set(serde_json::json!([])),
+                execution_id: Set(None),
             }
             .insert(&db)
             .await

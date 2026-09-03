@@ -7512,6 +7512,12 @@
           "created_by_kind": {
             "type": "string"
           },
+          "execution_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "frontmatter_json": {
             "$ref": "#/components/schemas/Value"
           },

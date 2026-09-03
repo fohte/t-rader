@@ -170,7 +170,12 @@ describe('TraderAgentExecutor', () => {
 
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({
-      runStrategyAgent: (_strategyId, _userMessage, onStepsChanged) => {
+      runStrategyAgent: (
+        _strategyId,
+        _taskId,
+        _userMessage,
+        onStepsChanged,
+      ) => {
         onStepsChanged?.([
           {
             phaseKey: 'plan',
@@ -346,7 +351,7 @@ describe('TraderAgentExecutor', () => {
     it('resolves the strategy uniquely from message content and runs it', async () => {
       const calls: { strategyId: string; text: string }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, userMessage) => {
+        runStrategyAgent: (strategyId, _taskId, userMessage) => {
           calls.push({
             strategyId,
             text: userMessage.parts
@@ -519,7 +524,7 @@ describe('TraderAgentExecutor', () => {
     it('re-resolves from the full message history when a follow-up message resumes an input-required task, without republishing the task history', async () => {
       const calls: { strategyId: string; text: string }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, userMessage) => {
+        runStrategyAgent: (strategyId, _taskId, userMessage) => {
           calls.push({
             strategyId,
             text: userMessage.parts

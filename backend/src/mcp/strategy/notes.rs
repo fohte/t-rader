@@ -55,13 +55,30 @@ impl StrategyServer {
     pub(crate) async fn write_note_inner(
         &self,
         session_strategy_id: Uuid,
+        execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
         if let Some(graphs) = params.graphs.as_ref() {
             validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
         }
 
-        if let Some(note_id) = params.note_id {
+        // 明示的な note_id が最優先。無ければ同一 execution_id の既存ノートを探し、
+        // あればそれを更新対象にする (agent 側のリトライによる重複作成を防ぐ)。
+        let effective_note_id = match params.note_id {
+            Some(note_id) => Some(note_id),
+            None => match execution_id.as_deref() {
+                Some(exec_id) => note::Entity::find()
+                    .filter(note::Column::StrategyId.eq(session_strategy_id))
+                    .filter(note::Column::ExecutionId.eq(exec_id))
+                    .one(&self.db)
+                    .await
+                    .map_err(db_error)?
+                    .map(|m| m.id),
+                None => None,
+            },
+        };
+
+        if let Some(note_id) = effective_note_id {
             let current = fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
             let mut active = current.clone().into_active_model();
             let mut touched = false;
@@ -141,6 +158,7 @@ impl StrategyServer {
             created_at: NotSet,
             updated_at: NotSet,
             graphs_json: Set(graphs_json),
+            execution_id: Set(execution_id),
         };
         note::Entity::insert(model)
             .exec_without_returning(&self.db)
@@ -256,6 +274,7 @@ mod tests {
         let written = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("first note".into()),
@@ -309,6 +328,7 @@ mod tests {
             let created = server
                 .write_note_inner(
                     strategy_id,
+                    None,
                     WriteNoteParams {
                         note_id: None,
                         title: Some("original".into()),
@@ -327,6 +347,7 @@ mod tests {
             let updated = server
                 .write_note_inner(
                     strategy_id,
+                    None,
                     WriteNoteParams {
                         note_id: Some(created.note_id),
                         title: None,
@@ -386,6 +407,7 @@ mod tests {
         let created = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("t".into()),
@@ -402,6 +424,7 @@ mod tests {
         server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: Some(created.note_id),
                     title: None,
@@ -456,6 +479,7 @@ mod tests {
         let err = server
             .write_note_inner(
                 strategy_a,
+                None,
                 WriteNoteParams {
                     note_id: Some(note_id),
                     title: None,
@@ -496,6 +520,7 @@ mod tests {
             server
                 .write_note_inner(
                     sid,
+                    None,
                     WriteNoteParams {
                         note_id: None,
                         title: Some(title.into()),
@@ -532,6 +557,7 @@ mod tests {
         let written = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("note with graph".into()),
@@ -581,6 +607,7 @@ mod tests {
         let err = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("broken".into()),
@@ -627,6 +654,7 @@ mod tests {
             let created = server
                 .write_note_inner(
                     strategy_id,
+                    None,
                     WriteNoteParams {
                         note_id: None,
                         title: Some("t".into()),
@@ -642,6 +670,7 @@ mod tests {
             server
                 .write_note_inner(
                     strategy_id,
+                    None,
                     WriteNoteParams {
                         note_id: Some(created.note_id),
                         title: None,
@@ -693,6 +722,7 @@ mod tests {
         let created = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("t".into()),
@@ -709,6 +739,7 @@ mod tests {
         server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: Some(created.note_id),
                     title: None,
@@ -743,6 +774,7 @@ mod tests {
         let created = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("t".into()),
@@ -758,6 +790,7 @@ mod tests {
         let err = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: Some(created.note_id),
                     title: None,
@@ -807,6 +840,7 @@ mod tests {
         let created = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("note".into()),
@@ -829,6 +863,7 @@ mod tests {
         server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: Some(created.note_id),
                     title: None,
@@ -882,6 +917,7 @@ mod tests {
         let created = server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: None,
                     title: Some("note".into()),
@@ -904,6 +940,7 @@ mod tests {
         server
             .write_note_inner(
                 strategy_id,
+                None,
                 WriteNoteParams {
                     note_id: Some(created.note_id),
                     title: None,
@@ -938,6 +975,284 @@ mod tests {
                 end_line: None,
                 drifted: true,
             },
+        );
+    }
+
+    /// 同一 execution_id での 2 回目の create 呼び出し (note_id 省略) は 1 回目のノートを
+    /// 更新する (agent 側のリトライによる重複作成を防ぐ)。
+    #[sqlx::test(migrations = false)]
+    async fn write_note_with_same_execution_id_collapses_onto_single_note(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        let first = server
+            .write_note_inner(
+                strategy_id,
+                Some("exec-1".into()),
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("first".into()),
+                    body_md: Some("v1".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("first write");
+        assert!(first.created);
+
+        let second = server
+            .write_note_inner(
+                strategy_id,
+                Some("exec-1".into()),
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("second".into()),
+                    body_md: Some("v2".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("second write");
+        assert_eq!(
+            second,
+            WriteNoteResult {
+                note_id: first.note_id,
+                created: false,
+            },
+        );
+
+        let read = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: first.note_id,
+                },
+            )
+            .await
+            .expect("read");
+        assert_eq!(
+            normalize_note(read),
+            NoteDto {
+                note_id: first.note_id,
+                strategy_id,
+                title: "second".into(),
+                body_md: "v2".into(),
+                frontmatter_json: serde_json::Map::new(),
+                type_tag: None,
+                status: DEFAULT_NOTE_STATUS.into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+            },
+        );
+    }
+
+    /// execution_id が異なれば別ノートとして作成される。
+    #[sqlx::test(migrations = false)]
+    async fn write_note_with_different_execution_ids_creates_distinct_notes(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        let first = server
+            .write_note_inner(
+                strategy_id,
+                Some("exec-1".into()),
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("a".into()),
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("first write");
+        let second = server
+            .write_note_inner(
+                strategy_id,
+                Some("exec-2".into()),
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("b".into()),
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("second write");
+
+        let result = server
+            .list_notes_inner(strategy_id, ListNotesParams { limit: None })
+            .await
+            .expect("list");
+        let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
+        titles.sort_unstable();
+        assert_eq!(
+            (
+                titles,
+                first.created,
+                second.created,
+                first.note_id == second.note_id
+            ),
+            (vec!["a", "b"], true, true, false),
+        );
+    }
+
+    /// execution_id を省略した場合 (ヘッダ非対応クライアント互換) は従来通り毎回別ノートを作成する。
+    #[sqlx::test(migrations = false)]
+    async fn write_note_without_execution_id_creates_distinct_notes(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        let first = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("a".into()),
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("first write");
+        let second = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("b".into()),
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("second write");
+
+        let result = server
+            .list_notes_inner(strategy_id, ListNotesParams { limit: None })
+            .await
+            .expect("list");
+        let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
+        titles.sort_unstable();
+        assert_eq!(
+            (
+                titles,
+                first.created,
+                second.created,
+                first.note_id == second.note_id
+            ),
+            (vec!["a", "b"], true, true, false),
+        );
+    }
+
+    /// 明示的な note_id は execution_id によるノート解決より常に優先される。
+    #[sqlx::test(migrations = false)]
+    async fn write_note_explicit_note_id_wins_over_execution_id_lookup(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+
+        // note B: execution_id "exec-1" に紐づく既存ノート
+        let note_b = server
+            .write_note_inner(
+                strategy_id,
+                Some("exec-1".into()),
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("note b".into()),
+                    body_md: Some("b body".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("create note b");
+
+        // note A: execution_id を持たない別ノート
+        let note_a = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("note a".into()),
+                    body_md: Some("a body".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("create note a");
+
+        // note_id: Some(note_a) かつ execution_id: Some("exec-1") (note b を指す) →
+        // 明示的な note_id が優先され note a が更新される。
+        let updated = server
+            .write_note_inner(
+                strategy_id,
+                Some("exec-1".into()),
+                WriteNoteParams {
+                    note_id: Some(note_a.note_id),
+                    title: None,
+                    body_md: Some("a body updated".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("update note a");
+        assert_eq!(
+            updated,
+            WriteNoteResult {
+                note_id: note_a.note_id,
+                created: false,
+            },
+        );
+
+        let read_a = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: note_a.note_id,
+                },
+            )
+            .await
+            .expect("read note a");
+        let read_b = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: note_b.note_id,
+                },
+            )
+            .await
+            .expect("read note b");
+        assert_eq!(
+            (
+                normalize_note(read_a).body_md,
+                normalize_note(read_b).body_md
+            ),
+            ("a body updated".to_string(), "b body".to_string()),
         );
     }
 }

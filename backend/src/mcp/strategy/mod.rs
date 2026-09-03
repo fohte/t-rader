@@ -80,6 +80,7 @@ const MAX_LIST_LIMIT: u64 = 200;
 pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
+const EXECUTION_ID_HEADER: &str = "x-execution-id";
 
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";
 pub(super) const DEFAULT_ANNOTATION_STATUS: &str = "unread";
@@ -202,6 +203,19 @@ fn strategy_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Uuid, McpErr
     strategy_id_from_headers(&parts.headers)
 }
 
+/// `x-execution-id` ヘッダから実行 ID を取り出す。任意ヘッダなので `strategy_id_from_ctx`
+/// と異なりエラーにはせず、欠落・非 ASCII・空白のみの値はすべて `None` として扱う。
+fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
+    let parts = ctx.extensions.get::<axum::http::request::Parts>()?;
+    let raw = parts.headers.get(EXECUTION_ID_HEADER)?.to_str().ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
 pub(super) async fn fetch_note_owned_by(
     db: &DatabaseConnection,
     note_id: Uuid,
@@ -281,7 +295,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale)."
+        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within a task execution: repeated create calls (omitting note_id) collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -289,7 +303,10 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<WriteNoteResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
-        self.write_note_inner(sid, params).await.map(Json)
+        let execution_id = execution_id_from_ctx(&ctx);
+        self.write_note_inner(sid, execution_id, params)
+            .await
+            .map(Json)
     }
 
     /// ノートを読み出す

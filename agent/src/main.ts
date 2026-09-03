@@ -48,10 +48,11 @@ export const main = async (): Promise<void> => {
   })
   const executor = new TraderAgentExecutor({
     taskStore,
-    runStrategyAgent: (strategyId, userMessage, onStepsChanged) =>
+    runStrategyAgent: (strategyId, taskId, userMessage, onStepsChanged) =>
       runStrategyAgent(
         strategyAgentDeps,
         strategyId,
+        taskId,
         userMessage,
         onStepsChanged,
       ),

@@ -103,6 +103,7 @@ export interface TraderAgentExecutorDeps {
   taskStore: Pick<TaskStore, 'load'>
   runStrategyAgent: (
     strategyId: string,
+    taskId: string,
     userMessage: Message,
     onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
   ) => Promise<StrategyAgentResult>
@@ -274,6 +275,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     try {
       const result = await this.deps.runStrategyAgent(
         strategyId,
+        taskId,
         promptMessage,
         publishSteps,
       )

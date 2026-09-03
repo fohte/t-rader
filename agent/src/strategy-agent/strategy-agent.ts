@@ -32,6 +32,7 @@ import { isUsageLimitError } from '#strategy-agent/usage-limit'
 const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
 const STRATEGY_ID_HEADER = 'x-strategy-id'
+const EXECUTION_ID_HEADER = 'x-execution-id'
 
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
 const MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
@@ -67,7 +68,10 @@ export interface BuildStrategyAgentOptions {
 
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
-  readonly createMcpClient: (strategyId: string) => McpToolsClient
+  readonly createMcpClient: (
+    strategyId: string,
+    taskId: string,
+  ) => McpToolsClient
   readonly createChatModel: (model: string) => BaseChatModel
   readonly buildAgent: (
     options: BuildStrategyAgentOptions,
@@ -182,12 +186,15 @@ export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
 ): StrategyAgentDeps => ({
   fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
-  createMcpClient: (strategyId) =>
+  createMcpClient: (strategyId, taskId) =>
     new MultiServerMCPClient({
       mcpServers: {
         strategy: {
           url: config.strategyMcpUrl,
-          headers: { [STRATEGY_ID_HEADER]: strategyId },
+          headers: {
+            [STRATEGY_ID_HEADER]: strategyId,
+            [EXECUTION_ID_HEADER]: taskId,
+          },
         },
       },
     }),
@@ -209,10 +216,11 @@ export const createStrategyAgentDeps = (
 export const runStrategyAgent = async (
   deps: StrategyAgentDeps,
   strategyId: string,
+  taskId: string,
   userMessage: Message,
   onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
 ): Promise<StrategyAgentResult> => {
-  const mcpClient = deps.createMcpClient(strategyId)
+  const mcpClient = deps.createMcpClient(strategyId, taskId)
 
   const closeMcpClient = (): Promise<void> =>
     mcpClient.close().catch((closeError: unknown) => {

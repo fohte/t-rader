@@ -285,6 +285,7 @@ mod tests {
             created_at: NotSet,
             updated_at: NotSet,
             graphs_json: Set(json!([])),
+            execution_id: Set(None),
         }
         .insert(db)
         .await

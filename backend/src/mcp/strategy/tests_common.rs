@@ -90,6 +90,7 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
         created_at: NotSet,
         updated_at: NotSet,
         graphs_json: Set(serde_json::json!([])),
+        execution_id: Set(None),
     }
     .insert(db)
     .await
