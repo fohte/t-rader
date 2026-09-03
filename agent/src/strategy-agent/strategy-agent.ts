@@ -25,6 +25,10 @@ import type {
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import {
+  finalTurnMiddleware,
+  MAX_MODEL_CALLS_PER_INVOKE,
+} from '#strategy-agent/final-turn-middleware'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -123,11 +127,18 @@ const buildCompiledAgent = (
             ? String(error)
             : `${String(error)}\n Please fix your mistakes.`,
       }),
+      finalTurnMiddleware,
     ],
   })
   return {
     invoke: async (input) => {
-      const result = await agent.invoke({ messages: [...input.messages] })
+      const result = await agent.invoke(
+        { messages: [...input.messages] },
+        // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
+        // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
+        // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
+        { recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3 },
+      )
       // createAgent の推論型では structuredResponse は常に存在する扱いだが、
       // 実行時はモデルが structured-output tool を呼び出さないこともある。
       // このキャストでその可能性を型上に戻し、直後の undefined チェックが
