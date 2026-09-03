@@ -25,6 +25,7 @@ phases:
   - key: plan
     label: 調査計画
     model: claude-opus-4
+    reasoning_effort: high
     prompt: 仮説を立てよ
     output:
       hypotheses:
@@ -48,6 +49,7 @@ phases:
             key: 'plan',
             label: '調査計画',
             model: 'claude-opus-4',
+            reasoningEffort: 'high',
             prompt: '仮説を立てよ',
             skills: [],
             output: {

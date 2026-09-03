@@ -25,6 +25,8 @@ pub struct AgentGraphPhase {
     pub key: String,
     pub label: String,
     pub model: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     pub prompt: String,
     #[serde(default)]
     pub for_each: Option<String>,
@@ -178,6 +180,7 @@ mod tests {
               - key: plan
                 label: 調査計画
                 model: claude-opus-4
+                reasoning_effort: high
                 prompt: 仮説を立てよ
                 output:
                   hypotheses:
@@ -203,6 +206,7 @@ mod tests {
                         key: "plan".to_string(),
                         label: "調査計画".to_string(),
                         model: "claude-opus-4".to_string(),
+                        reasoning_effort: Some("high".to_string()),
                         prompt: "仮説を立てよ".to_string(),
                         for_each: None,
                         label_field: None,
@@ -224,6 +228,7 @@ mod tests {
                         key: "investigate".to_string(),
                         label: "仮説の調査".to_string(),
                         model: "deepseek-v4-flash".to_string(),
+                        reasoning_effort: None,
                         prompt: "割り当てられた仮説を検証せよ".to_string(),
                         for_each: Some("plan.hypotheses".to_string()),
                         label_field: Some("title".to_string()),

@@ -392,6 +392,26 @@ describe('createStrategyAgentDeps', () => {
     expect(model.clientConfig.baseURL).toBe('https://litellm.example.com/v1')
   })
 
+  it('omits reasoning when no reasoning effort is given', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const model = deps.createChatModel('test-model')
+
+    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
+    expect(model.reasoning).toBeUndefined()
+  })
+
+  it('passes the reasoning effort through to the chat model', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const model = deps.createChatModel('test-model', {
+      reasoningEffort: 'high',
+    })
+
+    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
+    expect(model.reasoning).toEqual({ effort: 'high' })
+  })
+
   const chatCompletionsRequestSchema = z.object({
     messages: z.array(z.object({ role: z.string(), content: z.unknown() })),
   })

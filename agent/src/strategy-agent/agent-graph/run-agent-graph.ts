@@ -37,7 +37,10 @@ export interface RunAgentGraphDeps {
   readonly buildPhaseAgent: (
     options: BuildPhaseAgentOptions,
   ) => CompiledPhaseAgent
-  readonly createChatModel: (model: string) => BaseChatModel
+  readonly createChatModel: (
+    model: string,
+    options?: { reasoningEffort?: string },
+  ) => BaseChatModel
 }
 
 export interface RunAgentGraphContext {
@@ -128,7 +131,11 @@ const createPhaseAgent = (
     if (body !== undefined) filteredSkills[name] = body
   }
   return deps.buildPhaseAgent({
-    model: deps.createChatModel(phase.model),
+    model: deps.createChatModel(phase.model, {
+      ...(phase.reasoningEffort !== undefined
+        ? { reasoningEffort: phase.reasoningEffort }
+        : {}),
+    }),
     tools: filteredTools,
     systemPrompt: buildSystemPrompt({
       agentsMd: context.agentsMd,
