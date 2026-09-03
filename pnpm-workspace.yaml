@@ -24,6 +24,8 @@ minimumReleaseAgeExclude:
   # natural age exceeds minimumReleaseAge.
   - '@hono/node-server@2.0.10'
   - hono@4.12.34
+  # Renovate security update: wrangler@3.114.17
+  - wrangler@3.114.17
 
 peerDependencyRules:
   allowedVersions:
