@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24.17.0-slim AS builder
+FROM node:24.20.0-slim AS builder
 WORKDIR /app
 RUN corepack enable
 # workspace member を追加したら、この block と agent/Dockerfile の deps/runtime stage
