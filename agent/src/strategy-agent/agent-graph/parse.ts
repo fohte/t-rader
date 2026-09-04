@@ -22,6 +22,7 @@ const agentGraphPhaseSchema = z.object({
   key: z.string(),
   label: z.string(),
   model: z.string(),
+  reasoning_effort: z.string().optional(),
   prompt: z.string(),
   for_each: z.string().optional(),
   label_field: z.string().optional(),
@@ -42,6 +43,9 @@ const toAgentGraphPhase = (
   key: raw.key,
   label: raw.label,
   model: raw.model,
+  ...(raw.reasoning_effort !== undefined
+    ? { reasoningEffort: raw.reasoning_effort }
+    : {}),
   prompt: raw.prompt,
   ...(raw.for_each !== undefined ? { forEach: raw.for_each } : {}),
   ...(raw.label_field !== undefined ? { labelField: raw.label_field } : {}),

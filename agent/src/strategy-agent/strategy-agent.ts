@@ -72,7 +72,10 @@ export interface BuildStrategyAgentOptions {
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
   readonly createMcpClient: (strategyId: string) => McpToolsClient
-  readonly createChatModel: (model: string) => BaseChatModel
+  readonly createChatModel: (
+    model: string,
+    options?: { reasoningEffort?: string },
+  ) => BaseChatModel
   readonly buildAgent: (
     options: BuildStrategyAgentOptions,
   ) => CompiledStrategyAgent
@@ -188,6 +191,12 @@ const createDefaultBuildPhaseAgent =
       responseFormat: toolStrategy(options.responseSchema),
     })
 
+type ReasoningEffort = NonNullable<
+  NonNullable<
+    NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['reasoning']
+  >['effort']
+>
+
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
@@ -202,7 +211,7 @@ export const createStrategyAgentDeps = (
         },
       },
     }),
-  createChatModel: (model) =>
+  createChatModel: (model, options) =>
     new ChatOpenAI({
       apiKey: config.llmApiKey,
       model,
@@ -212,6 +221,14 @@ export const createStrategyAgentDeps = (
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
       },
+      ...(options?.reasoningEffort !== undefined
+        ? {
+            reasoning: {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent_graph 由来の reasoningEffort は model と同じ自由文字列として持ち回っており、ChatOpenAI 側のリテラル型に合わせ込むための意図的な narrowing。
+              effort: options.reasoningEffort as ReasoningEffort,
+            },
+          }
+        : {}),
     }),
   buildAgent: createDefaultBuildAgent(config.genAiProviderName),
   buildPhaseAgent: createDefaultBuildPhaseAgent(config.genAiProviderName),

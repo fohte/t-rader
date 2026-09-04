@@ -372,12 +372,16 @@ describe('createStrategyAgentDeps', () => {
     genAiProviderName: 'opencode',
   }
 
+  const expectChatOpenAI = (model: BaseChatModel) => {
+    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
+    return model
+  }
+
   it('creates a chat model defaulted to the OpenCode Go base URL', () => {
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const model = deps.createChatModel('test-model')
+    const model = expectChatOpenAI(deps.createChatModel('test-model'))
 
-    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
     expect(model.clientConfig.baseURL).toBe('https://opencode.ai/zen/go/v1')
   })
 
@@ -387,10 +391,27 @@ describe('createStrategyAgentDeps', () => {
       llmBaseUrl: 'https://litellm.example.com/v1',
     })
 
-    const model = deps.createChatModel('test-model')
+    const model = expectChatOpenAI(deps.createChatModel('test-model'))
 
-    if (!(model instanceof ChatOpenAI)) throw new Error('expected ChatOpenAI')
     expect(model.clientConfig.baseURL).toBe('https://litellm.example.com/v1')
+  })
+
+  it('omits reasoning when no reasoning effort is given', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const model = expectChatOpenAI(deps.createChatModel('test-model'))
+
+    expect(model.reasoning).toBeUndefined()
+  })
+
+  it('passes the reasoning effort through to the chat model', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const model = expectChatOpenAI(
+      deps.createChatModel('test-model', { reasoningEffort: 'high' }),
+    )
+
+    expect(model.reasoning).toEqual({ effort: 'high' })
   })
 
   const chatCompletionsRequestSchema = z.object({
