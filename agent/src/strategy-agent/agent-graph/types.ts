@@ -4,6 +4,7 @@ export interface AgentGraphPhase {
   readonly key: string
   readonly label: string
   readonly model: string
+  readonly reasoningEffort?: string
   readonly prompt: string
   readonly forEach?: string
   readonly labelField?: string

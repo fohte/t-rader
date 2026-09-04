@@ -143,6 +143,55 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it('passes the phase reasoning effort through to createChatModel, omitting it when unset', async () => {
+    const createChatModelCalls: {
+      model: string
+      options: { reasoningEffort?: string } | undefined
+    }[] = []
+    const deps: RunAgentGraphDeps = {
+      createChatModel: (model, options) => {
+        createChatModelCalls.push({ model, options })
+        return new FakeChatModel({})
+      },
+      buildPhaseAgent: (): CompiledPhaseAgent => ({
+        invoke: () => Promise.resolve({ structuredResponse: {} }),
+      }),
+    }
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'withEffort',
+          label: 'With effort',
+          model: 'model-a',
+          reasoningEffort: 'high',
+          prompt: 'do a',
+          skills: [],
+          output: {},
+        },
+        {
+          key: 'withoutEffort',
+          label: 'Without effort',
+          model: 'model-b',
+          prompt: 'do b',
+          skills: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(createChatModelCalls).toEqual([
+      { model: 'model-a', options: { reasoningEffort: 'high' } },
+      { model: 'model-b', options: {} },
+    ])
+  })
+
   it('filters tools and skills down to what the phase declares', async () => {
     let capturedOptions: BuildPhaseAgentOptions | undefined
     let chatModelReturnValue: BaseChatModel | undefined

@@ -25,6 +25,10 @@ import type {
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import {
+  finalTurnMiddleware,
+  MAX_MODEL_CALLS_PER_INVOKE,
+} from '#strategy-agent/final-turn-middleware'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -72,7 +76,10 @@ export interface StrategyAgentDeps {
     strategyId: string,
     taskId: string,
   ) => McpToolsClient
-  readonly createChatModel: (model: string) => BaseChatModel
+  readonly createChatModel: (
+    model: string,
+    options?: { reasoningEffort?: string },
+  ) => BaseChatModel
   readonly buildAgent: (
     options: BuildStrategyAgentOptions,
   ) => CompiledStrategyAgent
@@ -127,11 +134,18 @@ const buildCompiledAgent = (
             ? String(error)
             : `${String(error)}\n Please fix your mistakes.`,
       }),
+      finalTurnMiddleware,
     ],
   })
   return {
     invoke: async (input) => {
-      const result = await agent.invoke({ messages: [...input.messages] })
+      const result = await agent.invoke(
+        { messages: [...input.messages] },
+        // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
+        // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
+        // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
+        { recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3 },
+      )
       // createAgent の推論型では structuredResponse は常に存在する扱いだが、
       // 実行時はモデルが structured-output tool を呼び出さないこともある。
       // このキャストでその可能性を型上に戻し、直後の undefined チェックが
@@ -181,6 +195,12 @@ const createDefaultBuildPhaseAgent =
       responseFormat: toolStrategy(options.responseSchema),
     })
 
+type ReasoningEffort = NonNullable<
+  NonNullable<
+    NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['reasoning']
+  >['effort']
+>
+
 // Real wiring for production use; tests inject StrategyAgentDeps directly.
 export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
@@ -198,7 +218,7 @@ export const createStrategyAgentDeps = (
         },
       },
     }),
-  createChatModel: (model) =>
+  createChatModel: (model, options) =>
     new ChatOpenAI({
       apiKey: config.llmApiKey,
       model,
@@ -208,6 +228,14 @@ export const createStrategyAgentDeps = (
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
       },
+      ...(options?.reasoningEffort !== undefined
+        ? {
+            reasoning: {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- agent_graph 由来の reasoningEffort は model と同じ自由文字列として持ち回っており、ChatOpenAI 側のリテラル型に合わせ込むための意図的な narrowing。
+              effort: options.reasoningEffort as ReasoningEffort,
+            },
+          }
+        : {}),
     }),
   buildAgent: createDefaultBuildAgent(config.genAiProviderName),
   buildPhaseAgent: createDefaultBuildPhaseAgent(config.genAiProviderName),
