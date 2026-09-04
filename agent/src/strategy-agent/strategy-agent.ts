@@ -180,9 +180,6 @@ const createDefaultBuildPhaseAgent =
       responseFormat: toolStrategy(options.responseSchema),
     })
 
-// agent_graph YAML の reasoning_effort は model と同様の自由文字列 (SDK 側の許容値は
-// バージョンごとに増減する) として持ち回るため、ChatOpenAI の reasoning.effort が要求する
-// リテラル型にはここでのみ合わせ込む。
 type ReasoningEffort = NonNullable<
   NonNullable<
     NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['reasoning']
