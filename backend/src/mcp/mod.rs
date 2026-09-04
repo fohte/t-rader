@@ -20,6 +20,7 @@ use sea_orm::DatabaseConnection;
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::DataProviderKind;
 use crate::kata_exec::SharedKataExecutor;
+use crate::services::litellm_client::LiteLlmClient;
 pub use mgmt::MgmtServer;
 pub use store::PostgresSessionStore;
 pub use strategy::StrategyServer;
@@ -33,6 +34,7 @@ pub fn router(
     agent_client: SharedAgentTaskClient,
     data_provider: Option<Arc<DataProviderKind>>,
     kata_executor: Option<SharedKataExecutor>,
+    litellm_client: Option<LiteLlmClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let session_store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(db.clone()));
@@ -46,7 +48,8 @@ pub fn router(
     let strategy = StreamableHttpService::new(
         move || {
             Ok(StrategyServer::new(db.clone(), data_provider.clone())
-                .with_kata_executor(kata_executor.clone()))
+                .with_kata_executor(kata_executor.clone())
+                .with_litellm_client(litellm_client.clone()))
         },
         LocalSessionManager::default().into(),
         build_config(session_store, &extra_allowed_hosts),
@@ -244,8 +247,15 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_agent_client(), None, None, Vec::new()))
-            .expect("failed to build test server");
+        let server = TestServer::new(router(
+            db,
+            test_agent_client(),
+            None,
+            None,
+            None,
+            Vec::new(),
+        ))
+        .expect("failed to build test server");
 
         let response = server
             .post(path)
@@ -286,8 +296,15 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_agent_client(), None, None, Vec::new()))
-            .expect("failed to build test server");
+        let server = TestServer::new(router(
+            db,
+            test_agent_client(),
+            None,
+            None,
+            None,
+            Vec::new(),
+        ))
+        .expect("failed to build test server");
 
         let response = server
             .post("/mcp/mgmt")
@@ -352,6 +369,7 @@ mod tests {
                 test_agent_client(),
                 None,
                 None,
+                None,
                 Vec::new(),
             ))
             .expect("failed to build server A");
@@ -369,6 +387,7 @@ mod tests {
         let server_b = TestServer::new(router(
             db.clone(),
             test_agent_client(),
+            None,
             None,
             None,
             Vec::new(),
@@ -434,8 +453,15 @@ mod tests {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
         };
-        let server = TestServer::new(router(db, test_agent_client(), None, None, Vec::new()))
-            .expect("failed to build test server");
+        let server = TestServer::new(router(
+            db,
+            test_agent_client(),
+            None,
+            None,
+            None,
+            Vec::new(),
+        ))
+        .expect("failed to build test server");
 
         let response = server
             .post("/mcp/mgmt")
@@ -457,6 +483,7 @@ mod tests {
         let server = TestServer::new(router(
             db,
             test_agent_client(),
+            None,
             None,
             None,
             vec!["t-rader-backend.t-rader.svc.cluster.local".to_string()],

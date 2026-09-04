@@ -314,12 +314,14 @@ mod tests {
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::testing::create_test_db;
 
-    use super::super::dto::{ListNotesParams, ReadNoteParams, WriteNoteParams, WriteNoteResult};
+    use super::super::dto::{
+        ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
+    };
     use super::super::tests_common::{
         build_server, insert_strategy, normalize_comment_model, normalize_note, seed_foreign_note,
         seed_note_comment_with_anchor, set_note_status, ts_sentinel,
     };
-    use super::super::{DEFAULT_NOTE_STATUS, NoteDto, STRATEGY_AGENT_ACTOR};
+    use super::super::{DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR};
 
     fn test_node(id: &str) -> GraphNode {
         GraphNode {

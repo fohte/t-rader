@@ -332,6 +332,7 @@ pub fn create_router(state: AppState) -> Router {
     let agent_task_client = state.agent_task_client.clone();
     let data_provider = state.data_provider.clone();
     let kata_executor = state.kata_executor.clone();
+    let litellm_client = state.litellm_client.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
     router
@@ -342,6 +343,7 @@ pub fn create_router(state: AppState) -> Router {
             agent_task_client,
             data_provider,
             kata_executor,
+            litellm_client,
             mcp::allowed_hosts_from_env(),
         ))
 }

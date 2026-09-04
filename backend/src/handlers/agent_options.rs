@@ -134,6 +134,7 @@ mod tests {
                     {"name": "eval_python", "description": "Run a Python snippet inside an isolated Kata Containers exec Pod and return stdout/stderr/exit_code. Network, subprocess, and persistent filesystem are denied."},
                     {"name": "list_notes", "description": "List notes owned by the strategy, newest first."},
                     {"name": "query_data", "description": "Fetch daily OHLCV bars for an instrument over a date range via the configured data provider."},
+                    {"name": "query_media", "description": "Fetch a video or audio URL (YouTube links are well supported; other public https:// URLs are best-effort) and answer prompt about its content via Gemini, returning free-form text. Use for source material with no text equivalent, such as a YouTube video."},
                     {"name": "read_annotations", "description": "List annotations owned by the strategy. Optionally filter by target_symbol."},
                     {"name": "read_comments", "description": "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved."},
                     {"name": "read_note", "description": "Read a single note owned by the strategy, including its graphs."},

@@ -1,15 +1,19 @@
-//! LiteLLM Proxy の `/model_group/info` を素通しするクライアント
+//! LiteLLM Proxy を叩く薄いクライアント
 //!
-//! backend が agent 設定フォームにモデル選択肢を供給するための薄いプロキシ。
+//! - `/model_group/info`: backend が agent 設定フォームにモデル選択肢を供給するための素通しプロキシ
+//! - `/v1/chat/completions`: MCP tool (`query_media` 等) が Gemini 等のモデルを呼ぶための経路
+//!
 //! LiteLLM の API キーを frontend に晒さないためだけの中継で、キャッシュはしない。
 
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::models::AgentModel;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
+/// chat completion はマルチモーダル入力の解析を伴い得るため、admin API より長い上限を使う。
+const CHAT_COMPLETION_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, thiserror::Error)]
 pub enum LiteLlmError {
@@ -58,6 +62,51 @@ impl From<ModelGroupInfo> for AgentModel {
             supports_web_search: m.supports_web_search,
         }
     }
+}
+
+/// OpenAI Chat Completions 互換のメッセージ。`query_media` のようなマルチモーダル入力
+/// (`ContentPart::File`) を送るのに必要な最小限のフィールドのみ持つ。
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatMessage {
+    pub role: &'static str,
+    pub content: Vec<ContentPart>,
+}
+
+/// メッセージの content part。`file` は Gemini の `fileData` (fileUri) に変換される
+/// (LiteLLM 側の変換)。`file_id` には YouTube 動画 URL 等の公開 URL を渡す。
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentPart {
+    Text { text: String },
+    File { file: FilePart },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FilePart {
+    pub file_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatCompletionRequest<'a> {
+    model: &'a str,
+    messages: &'a [ChatMessage],
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionResponse {
+    #[serde(default)]
+    choices: Vec<ChatCompletionChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionChoice {
+    message: ChatCompletionResponseMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionResponseMessage {
+    #[serde(default)]
+    content: Option<String>,
 }
 
 /// LiteLLM Proxy client。`LLM_BASE_URL` 未設定の環境 (ローカル開発で OpenCode Go に
@@ -135,6 +184,44 @@ impl LiteLlmClient {
             .await
             .map_err(|e| LiteLlmError::Parse(e.to_string()))?;
         Ok(body.data.into_iter().map(AgentModel::from).collect())
+    }
+
+    /// OpenAI 互換の `/v1/chat/completions` を叩き、先頭 choice のメッセージ本文を返す。
+    pub async fn chat_completion(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+    ) -> Result<String, LiteLlmError> {
+        let url = format!("{}/v1/chat/completions", self.base_url);
+        let response = self
+            .http
+            .post(url)
+            .timeout(CHAT_COMPLETION_TIMEOUT)
+            .json(&ChatCompletionRequest {
+                model,
+                messages: &messages,
+            })
+            .send()
+            .await
+            .map_err(|e| LiteLlmError::Network(e.to_string()))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(LiteLlmError::Api(status.as_u16()));
+        }
+
+        let body: ChatCompletionResponse = response
+            .json()
+            .await
+            .map_err(|e| LiteLlmError::Parse(e.to_string()))?;
+
+        body.choices
+            .into_iter()
+            .next()
+            .and_then(|c| c.message.content)
+            .ok_or_else(|| {
+                LiteLlmError::Parse("chat completion response has no message content".into())
+            })
     }
 }
 
@@ -219,5 +306,66 @@ mod tests {
         let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
         let err = client.list_models().await.expect_err("expected error");
         assert!(matches!(err, LiteLlmError::Api(503)));
+    }
+
+    #[tokio::test]
+    async fn chat_completion_returns_first_choice_message_content() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{"message": {"content": "video summary"}}],
+            })))
+            .mount(&server)
+            .await;
+
+        let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
+        let text = client
+            .chat_completion(
+                "gemini-3.6-flash",
+                vec![ChatMessage {
+                    role: "user",
+                    content: vec![ContentPart::Text {
+                        text: "describe this".into(),
+                    }],
+                }],
+            )
+            .await
+            .expect("chat completion ok");
+        assert_eq!(text, "video summary");
+    }
+
+    #[tokio::test]
+    async fn chat_completion_maps_non_success_status_to_api_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
+        let err = client
+            .chat_completion("gemini-3.6-flash", vec![])
+            .await
+            .expect_err("expected error");
+        assert!(matches!(err, LiteLlmError::Api(503)));
+    }
+
+    #[tokio::test]
+    async fn chat_completion_errors_when_no_choices() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "choices": [] })))
+            .mount(&server)
+            .await;
+
+        let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
+        let err = client
+            .chat_completion("gemini-3.6-flash", vec![])
+            .await
+            .expect_err("expected error");
+        assert!(matches!(err, LiteLlmError::Parse(_)));
     }
 }
