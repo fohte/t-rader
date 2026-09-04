@@ -67,7 +67,7 @@ export const Unset: Story = {
   render: () => <Interactive initial="" models={MODELS} />,
 }
 
-// LiteLLM 未接続などで一覧が引けない場合は自由入力にフォールバックする
+// LLM ゲートウェイ未接続などで一覧が引けない場合は自由入力にフォールバックする
 export const NoModelsAvailable: Story = {
   args: { value: 'claude-sonnet-4', onChange: () => {}, models: [] },
   render: () => <Interactive initial="claude-sonnet-4" models={[]} />,

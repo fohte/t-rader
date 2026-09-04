@@ -40,7 +40,7 @@ use crate::handlers::{
     trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::LiteLlmClient;
+use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -64,9 +64,9 @@ pub struct AppState {
     pub kata_executor: Option<SharedKataExecutor>,
     /// マクロ指標の最新値 cache (Stooq 等の poll task が書き込み、handler が読む)
     pub macro_cache: Option<Arc<MacroCache>>,
-    /// LiteLLM Proxy client。`LLM_BASE_URL` 未設定時は `None` で起動し、
+    /// LLM ゲートウェイ client。`LLM_BASE_URL` 未設定時は `None` で起動し、
     /// `GET /api/agent-models` は空配列を返す。
-    pub litellm_client: Option<LiteLlmClient>,
+    pub llm_gateway_client: Option<LlmGatewayClient>,
 }
 
 impl AppState {
@@ -141,7 +141,7 @@ mod app_state_tests {
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             macro_cache: None,
-            litellm_client: None,
+            llm_gateway_client: None,
         };
         assert!(state.data_provider().is_ok());
     }
@@ -156,7 +156,7 @@ mod app_state_tests {
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             macro_cache: None,
-            litellm_client: None,
+            llm_gateway_client: None,
         };
         let result = state.data_provider();
         assert!(result.is_err());
@@ -332,7 +332,7 @@ pub fn create_router(state: AppState) -> Router {
     let agent_task_client = state.agent_task_client.clone();
     let data_provider = state.data_provider.clone();
     let kata_executor = state.kata_executor.clone();
-    let litellm_client = state.litellm_client.clone();
+    let llm_gateway_client = state.llm_gateway_client.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
 
     router
@@ -343,7 +343,7 @@ pub fn create_router(state: AppState) -> Router {
             agent_task_client,
             data_provider,
             kata_executor,
-            litellm_client,
+            llm_gateway_client,
             mcp::allowed_hosts_from_env(),
         ))
 }
