@@ -19,7 +19,7 @@ const GEMINI_MEDIA_MODEL: &str = "gemini-3.6-flash";
 impl StrategyServer {
     pub(crate) async fn query_media_inner(
         &self,
-        _session_strategy_id: Uuid,
+        session_strategy_id: Uuid,
         params: QueryMediaParams,
     ) -> Result<QueryMediaResult, McpError> {
         let media_url = params.media_url.trim().to_string();
@@ -41,15 +41,33 @@ impl StrategyServer {
             content: vec![
                 ContentPart::Text { text: prompt },
                 ContentPart::File {
-                    file: FilePart { file_id: media_url },
+                    file: FilePart {
+                        file_id: media_url.clone(),
+                    },
                 },
             ],
         }];
 
+        tracing::info!(
+            strategy_id = %session_strategy_id,
+            model = GEMINI_MEDIA_MODEL,
+            media_url,
+            "query_media: dispatching chat completion request"
+        );
+
         let text = client
             .chat_completion(GEMINI_MEDIA_MODEL, messages)
             .await
-            .map_err(litellm_error_to_mcp)?;
+            .map_err(|e| {
+                tracing::warn!(
+                    strategy_id = %session_strategy_id,
+                    model = GEMINI_MEDIA_MODEL,
+                    media_url,
+                    error = %e,
+                    "query_media: chat completion request failed"
+                );
+                litellm_error_to_mcp(e)
+            })?;
 
         Ok(QueryMediaResult { text })
     }

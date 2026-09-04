@@ -20,8 +20,8 @@ pub enum LiteLlmError {
     #[error("network error: {0}")]
     Network(String),
 
-    #[error("litellm api error (status {0})")]
-    Api(u16),
+    #[error("litellm api error (status {status}): {message}")]
+    Api { status: u16, message: String },
 
     #[error("failed to parse response: {0}")]
     Parse(String),
@@ -176,7 +176,11 @@ impl LiteLlmClient {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(LiteLlmError::Api(status.as_u16()));
+            let message = response.text().await.unwrap_or_default();
+            return Err(LiteLlmError::Api {
+                status: status.as_u16(),
+                message,
+            });
         }
 
         let body: ModelGroupInfoResponse = response
@@ -207,7 +211,11 @@ impl LiteLlmClient {
 
         let status = response.status();
         if !status.is_success() {
-            return Err(LiteLlmError::Api(status.as_u16()));
+            let message = response.text().await.unwrap_or_default();
+            return Err(LiteLlmError::Api {
+                status: status.as_u16(),
+                message,
+            });
         }
 
         let body: ChatCompletionResponse = response
@@ -299,13 +307,16 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/model_group/info"))
-            .respond_with(ResponseTemplate::new(503))
+            .respond_with(ResponseTemplate::new(503).set_body_string("upstream unavailable"))
             .mount(&server)
             .await;
 
         let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
         let err = client.list_models().await.expect_err("expected error");
-        assert!(matches!(err, LiteLlmError::Api(503)));
+        assert!(matches!(
+            err,
+            LiteLlmError::Api { status: 503, message } if message == "upstream unavailable"
+        ));
     }
 
     #[tokio::test]
@@ -340,7 +351,9 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(ResponseTemplate::new(503))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "error": {"message": "video is private or unavailable"},
+            })))
             .mount(&server)
             .await;
 
@@ -349,7 +362,10 @@ mod tests {
             .chat_completion("gemini-3.6-flash", vec![])
             .await
             .expect_err("expected error");
-        assert!(matches!(err, LiteLlmError::Api(503)));
+        assert!(matches!(
+            err,
+            LiteLlmError::Api { status: 400, message } if message.contains("video is private or unavailable")
+        ));
     }
 
     #[tokio::test]

@@ -125,11 +125,14 @@ pub(super) fn kata_exec_to_mcp_err(err: crate::kata_exec::KataExecError) -> McpE
     }
 }
 
-/// `LiteLlmError` の MCP エラー変換。
+/// `LiteLlmError` の MCP エラー変換。tracing は呼び出し側の strategy_id を残せるよう
+/// 呼び出し元 (`query_media_inner` 等) で行う。
 pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
     match err {
         LiteLlmError::Network(msg) => internal_error(format!("litellm network error: {msg}")),
-        LiteLlmError::Api(status) => internal_error(format!("litellm api error (status {status})")),
+        LiteLlmError::Api { status, message } => {
+            internal_error(format!("litellm api error (status {status}): {message}"))
+        }
         LiteLlmError::Parse(msg) => {
             internal_error(format!("failed to parse litellm response: {msg}"))
         }
