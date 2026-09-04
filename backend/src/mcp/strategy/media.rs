@@ -12,9 +12,12 @@ use crate::services::litellm_client::{ChatMessage, ContentPart, FilePart};
 use super::dto::{QueryMediaParams, QueryMediaResult};
 use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
 
-/// Vertex AI 経由で Google AI Pro 付帯クレジットでの動作を確認済みのモデル。
-/// `gemini-3.1-pro` はアクセス権が無く 404/429 になるため使わない。
-const GEMINI_MEDIA_MODEL: &str = "gemini-3.6-flash";
+/// デフォルトは Vertex AI 経由で Google AI Pro 付帯クレジットでの動作を確認済みのモデル。
+/// `gemini-3.1-pro` はアクセス権が無く 404/429 になるため使わない。`GEMINI_MEDIA_MODEL`
+/// でモデル名を上書きできる (価格改定やモデル廃止時にコード変更なしで切り替えるため)。
+fn gemini_media_model() -> String {
+    std::env::var("GEMINI_MEDIA_MODEL").unwrap_or_else(|_| "gemini-3.6-flash".to_string())
+}
 
 impl StrategyServer {
     pub(crate) async fn query_media_inner(
@@ -48,20 +51,21 @@ impl StrategyServer {
             ],
         }];
 
+        let model = gemini_media_model();
         tracing::info!(
             strategy_id = %session_strategy_id,
-            model = GEMINI_MEDIA_MODEL,
+            model,
             media_url,
             "query_media: dispatching chat completion request"
         );
 
         let text = client
-            .chat_completion(GEMINI_MEDIA_MODEL, messages)
+            .chat_completion(&model, messages)
             .await
             .map_err(|e| {
                 tracing::warn!(
                     strategy_id = %session_strategy_id,
-                    model = GEMINI_MEDIA_MODEL,
+                    model,
                     media_url,
                     error = %e,
                     "query_media: chat completion request failed"
