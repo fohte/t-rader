@@ -5,7 +5,7 @@ import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatOpenAI } from '@langchain/openai'
 import { errAsync, okAsync } from 'neverthrow'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import type { AgentConfig } from '#strategy-agent/agent-config-client'
@@ -414,6 +414,18 @@ describe('createStrategyAgentDeps', () => {
     expect(model.reasoning).toEqual({ effort: 'high' })
   })
 
+  type ChatOpenAIFetch = NonNullable<
+    NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['configuration']
+  >['fetch']
+
+  const buildStubModel = (fetch: ChatOpenAIFetch): ChatOpenAI =>
+    new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      configuration: { baseURL: 'http://localhost', fetch },
+    })
+
   const chatCompletionsRequestSchema = z.object({
     messages: z.array(z.object({ role: z.string(), content: z.unknown() })),
   })
@@ -422,19 +434,11 @@ describe('createStrategyAgentDeps', () => {
     let requestBody: z.infer<typeof chatCompletionsRequestSchema> = {
       messages: [],
     }
-    const model = new ChatOpenAI({
-      apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
-      maxRetries: 0,
-      configuration: {
-        baseURL: 'http://localhost',
-        fetch: (_url, init) => {
-          const body = init?.body
-          if (typeof body !== 'string') throw new Error('expected string body')
-          requestBody = chatCompletionsRequestSchema.parse(JSON.parse(body))
-          return Promise.resolve(new Response('', { status: 500 }))
-        },
-      },
+    const model = buildStubModel((_url, init) => {
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      requestBody = chatCompletionsRequestSchema.parse(JSON.parse(body))
+      return Promise.resolve(new Response('', { status: 500 }))
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
@@ -489,35 +493,27 @@ describe('createStrategyAgentDeps', () => {
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     const requestedToolCounts: number[] = []
     let callCount = 0
-    const model = new ChatOpenAI({
-      apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
-      maxRetries: 0,
-      configuration: {
-        baseURL: 'http://localhost',
-        fetch: (_url, init) => {
-          callCount += 1
-          const body = init?.body
-          if (typeof body !== 'string') throw new Error('expected string body')
-          const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
-          requestedToolCounts.push(tools.length)
-          // 通常 tool が外された最終ターンでは提出用 tool だけが残る。それ以外の
-          // ターンでは常に search tool を呼び続け、自発的な提出をさせない。
-          const isFinalTurn = tools.length === 1
-          const toolCall = isFinalTurn
-            ? {
-                name: tools[0]?.function.name,
-                arguments: JSON.stringify({
-                  status: 'completed',
-                  message: 'done',
-                }),
-              }
-            : { name: 'search', arguments: '{}' }
-          return Promise.resolve(
-            buildToolCallResponse(`call-${String(callCount)}`, toolCall),
-          )
-        },
-      },
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
+      requestedToolCounts.push(tools.length)
+      // 通常 tool が外された最終ターンでは提出用 tool だけが残る。それ以外の
+      // ターンでは常に search tool を呼び続け、自発的な提出をさせない。
+      const isFinalTurn = tools.length === 1
+      const toolCall = isFinalTurn
+        ? {
+            name: tools[0]?.function.name,
+            arguments: JSON.stringify({
+              status: 'completed',
+              message: 'done',
+            }),
+          }
+        : { name: 'search', arguments: '{}' }
+      return Promise.resolve(
+        buildToolCallResponse(`call-${String(callCount)}`, toolCall),
+      )
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
@@ -536,5 +532,110 @@ describe('createStrategyAgentDeps', () => {
       ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
       1,
     ])
+  })
+
+  it('logs immediately when the model ends without a structured-output tool call', async () => {
+    // モデルが構造化出力 tool を一切呼ばずプレーンな文章で終える応答。
+    const model = buildStubModel(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'call-1',
+            model: 'chatgpt/gpt-5',
+            choices: [
+              {
+                index: 0,
+                finish_reason: 'stop',
+                message: { role: 'assistant', content: 'no tool for you' },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    )
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+      expect(result).toEqual({})
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          'modelResponseGuardMiddleware: model call ended without a structured-output tool call',
+        ],
+      ])
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('logs an undeclared tool call immediately, then lets the model recover and submit structured output', async () => {
+    let callCount = 0
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
+      // 1 回目: 宣言されていない tool を呼ぶ。ToolNode がこれを自動で
+      // エラーの ToolMessage に変換し、2 回目の呼び出しへつながる。
+      if (callCount === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('call-1', {
+            name: 'ghost_tool',
+            arguments: '{}',
+          }),
+        )
+      }
+      // 2 回目: 宣言済みの `search` 以外の tool (=構造化出力 tool、動的な
+      // `extract-N` 名) を呼んで正常終了させる。
+      const structuredOutputToolName = tools.find(
+        (tool) => tool.function.name !== 'search',
+      )?.function.name
+      return Promise.resolve(
+        buildToolCallResponse('call-2', {
+          name: structuredOutputToolName,
+          arguments: JSON.stringify({
+            status: 'completed',
+            message: 'done',
+          }),
+        }),
+      )
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+      expect(result.structuredResponse).toEqual({
+        status: 'completed',
+        message: 'done',
+      })
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          'modelResponseGuardMiddleware: model called undeclared tool(s): ghost_tool',
+        ],
+      ])
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
