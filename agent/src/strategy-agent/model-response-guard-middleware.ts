@@ -17,18 +17,16 @@ const toolNameOf = (tool: unknown): string | undefined =>
     ? tool.name
     : undefined
 
-// モデルの応答が契約 (構造化出力を返す/宣言済み tool しか呼ばない) を満たして
-// いるかを、モデル呼び出し直後にログと Sentry capture で可視化する。挙動は
-// 変えず検知のみ行う: 構造化出力の再試行は run-agent-graph.ts、宣言外 tool 呼び出し
-// への応答は langchain の ToolNode (エラーメッセージを返して再試行させる) が担う。
+// モデル応答が構造化出力の提出または宣言済み tool 呼び出しの契約を満たしているかを
+// 検知し、ログと Sentry capture で可視化する。挙動は変えない (agent-graph 経由の
+// 構造化出力再試行は run-agent-graph.ts、非 agent-graph の単一呼び出しでは
+// 即失敗、宣言外 tool 呼び出しへの応答は langchain の ToolNode が担う)。
 export const modelResponseGuardMiddleware = createMiddleware({
   name: 'modelResponseGuardMiddleware',
   wrapModelCall: async (request, handler) => {
     const response = await handler(request)
-    // handler() の型は AIMessage を謳うが、モデルが構造化出力 tool を単独で
-    // 呼んで解決した場合は createAgent 内部の { structuredResponse, messages }
-    // 形状 (AIMessage ではない) がそのまま返ってくる。この形状は構造化出力が
-    // 既に得られたことの証なので検証不要。
+    // createAgent が構造化出力を直接解決した場合は AIMessage ではなく
+    // { structuredResponse, messages } が返るため、検証をスキップする。
     if (!AIMessage.isInstance(response)) return response
     const toolCalls = response.tool_calls ?? []
 
