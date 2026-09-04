@@ -1,8 +1,8 @@
 //! `query_media` tool の inner method 実装。
 //!
-//! 動画/音声 URL (YouTube の公開動画 URL を主対象) を LiteLLM Proxy 経由で Gemini に渡し、
-//! prompt の指示に沿ったテキスト応答を返す。discover フェーズがテキストにしか無い材料に
-//! アクセスできるようにするための tool。
+//! 動画/音声 URL (YouTube の公開動画 URL を主対象) を Gemini に渡し、prompt の指示に
+//! 沿ったテキスト応答を返す。discover フェーズがテキストにしか無い材料にアクセス
+//! できるようにするための tool。
 
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;

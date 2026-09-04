@@ -200,7 +200,7 @@ impl StrategyServer {
         self.eval_indicator_inner(sid, params).await.map(Json)
     }
 
-    /// 動画/音声 URL の内容を Gemini (LiteLLM 経由) でテキスト化する
+    /// 動画/音声 URL の内容を Gemini でテキスト化する
     #[tool(
         name = "query_media",
         description = "Fetch a video or audio URL (YouTube links are well supported; other public https:// URLs are best-effort) and answer prompt about its content via Gemini, returning free-form text. Use for source material with no text equivalent, such as a YouTube video.",

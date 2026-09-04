@@ -19,7 +19,7 @@
 //! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
 //! - `add_interest`: 戦略の関心 (derived / origin=llm) を追加する
 //! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
-//! - `query_media`: 動画/音声 URL (YouTube 等) の内容を Gemini (LiteLLM 経由) でテキスト化する
+//! - `query_media`: 動画/音声 URL (YouTube 等) の内容を Gemini でテキスト化する
 //!
 //! 実装はドメインごとに分割している:
 //!
