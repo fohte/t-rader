@@ -12,6 +12,7 @@ import type { AgentConfig } from '#strategy-agent/agent-config-client'
 import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
 import type { CompiledPhaseAgent } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
+import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
 import type {
   CompiledStrategyAgent,
   McpToolsClient,
@@ -431,5 +432,88 @@ describe('createStrategyAgentDeps', () => {
       (message) => message.role === 'system',
     )
     expect(systemMessage?.content).toBe('you are a helpful bot')
+  })
+
+  const toolCallRequestSchema = z.object({
+    tools: z.array(z.object({ function: z.object({ name: z.string() }) })),
+  })
+
+  // OpenAI chat completions のレスポンス envelope は全呼び出しで不変。
+  // このテストで実際に効くのは toolCall (どの tool を呼ぶか) だけ。
+  const buildToolCallResponse = (
+    callId: string,
+    toolCall: { name: string | undefined; arguments: string },
+  ): Response =>
+    new Response(
+      JSON.stringify({
+        id: callId,
+        model: 'chatgpt/gpt-5',
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'tool_calls',
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                { id: callId, type: 'function', function: toolCall },
+              ],
+            },
+          },
+        ],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+
+  it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
+    const requestedToolCounts: number[] = []
+    let callCount = 0
+    const model = new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      configuration: {
+        baseURL: 'http://localhost',
+        fetch: (_url, init) => {
+          callCount += 1
+          const body = init?.body
+          if (typeof body !== 'string') throw new Error('expected string body')
+          const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
+          requestedToolCounts.push(tools.length)
+          // 通常 tool が外された最終ターンでは提出用 tool だけが残る。それ以外の
+          // ターンでは常に search tool を呼び続け、自発的な提出をさせない。
+          const isFinalTurn = tools.length === 1
+          const toolCall = isFinalTurn
+            ? {
+                name: tools[0]?.function.name,
+                arguments: JSON.stringify({
+                  status: 'completed',
+                  message: 'done',
+                }),
+              }
+            : { name: 'search', arguments: '{}' }
+          return Promise.resolve(
+            buildToolCallResponse(`call-${String(callCount)}`, toolCall),
+          )
+        },
+      },
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    expect(result.structuredResponse).toEqual({
+      status: 'completed',
+      message: 'done',
+    })
+    expect(requestedToolCounts).toEqual([
+      ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
+      1,
+    ])
   })
 })
