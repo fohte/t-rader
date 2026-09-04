@@ -18,12 +18,23 @@ style.textContent = `
 `
 document.head.appendChild(style)
 
-// ponytail: 上記でも Monaco Editor を含む一部の story は canvas 描画のサブピクセル差
-// (0.006% 程度) により撮影のたびに数十ピクセル未満揺れることがある
 beforeEach(async () => {
   await page.viewport(SCREENSHOT_VIEWPORT.width, SCREENSHOT_VIEWPORT.height)
 })
 
+// Playwright のキャレット非表示等の撮影前処理は保留中の再描画を待たないため、
+// rAF を 2 段ネストして 1 フレーム分の描画が実際に反映されるのを待ってから撮影する
+async function waitForPaint(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resolve()
+      })
+    })
+  })
+}
+
 afterEach(async (context) => {
+  await waitForPaint()
   await screenshot(page, context)
 })
