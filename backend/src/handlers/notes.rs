@@ -247,6 +247,7 @@ pub async fn create_note(
         created_at: NotSet,
         updated_at: NotSet,
         graphs_json: Set(json!([])),
+        execution_id: Set(None),
     };
     let created = note::Entity::insert(model)
         .exec_with_returning(&txn)
@@ -644,6 +645,7 @@ mod tests {
                 "trigger": null,
                 "trigger_label": null,
                 "created_by_kind": "human",
+                "execution_id": null,
             }),
         );
 

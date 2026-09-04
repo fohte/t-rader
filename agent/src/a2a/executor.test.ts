@@ -170,7 +170,12 @@ describe('TraderAgentExecutor', () => {
 
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({
-      runStrategyAgent: (_strategyId, _userMessage, onStepsChanged) => {
+      runStrategyAgent: (
+        _strategyId,
+        _taskId,
+        _userMessage,
+        onStepsChanged,
+      ) => {
         onStepsChanged?.([
           {
             phaseKey: 'plan',
@@ -344,11 +349,12 @@ describe('TraderAgentExecutor', () => {
 
   describe('strategy resolution from free text (no strategy_id metadata)', () => {
     it('resolves the strategy uniquely from message content and runs it', async () => {
-      const calls: { strategyId: string; text: string }[] = []
+      const calls: { strategyId: string; taskId: string; text: string }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, userMessage) => {
+        runStrategyAgent: (strategyId, taskId, userMessage) => {
           calls.push({
             strategyId,
+            taskId,
             text: userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
               .join('\n'),
@@ -378,6 +384,7 @@ describe('TraderAgentExecutor', () => {
       expect(calls).toEqual([
         {
           strategyId: '11111111-1111-1111-1111-111111111111',
+          taskId: 'task-7',
           text: '長期投資でNVDAを分析して',
         },
       ])
@@ -517,11 +524,12 @@ describe('TraderAgentExecutor', () => {
     })
 
     it('re-resolves from the full message history when a follow-up message resumes an input-required task, without republishing the task history', async () => {
-      const calls: { strategyId: string; text: string }[] = []
+      const calls: { strategyId: string; taskId: string; text: string }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, userMessage) => {
+        runStrategyAgent: (strategyId, taskId, userMessage) => {
           calls.push({
             strategyId,
+            taskId,
             text: userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
               .join('\n'),
@@ -579,6 +587,7 @@ describe('TraderAgentExecutor', () => {
       expect(calls).toEqual([
         {
           strategyId: '11111111-1111-1111-1111-111111111111',
+          taskId: 'task-11',
           text: '投資戦略でNVDAを分析して\n長期の方でお願いします',
         },
       ])

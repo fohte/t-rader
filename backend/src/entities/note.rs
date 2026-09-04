@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    #[sea_orm(unique_key = "idx_note_strategy_id_execution_id")]
     pub strategy_id: Uuid,
     pub title: String,
     #[sea_orm(column_type = "Text")]
@@ -29,6 +30,12 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary")]
     #[schema(value_type = Vec<crate::services::graph::GraphDef>)]
     pub graphs_json: Json,
+    #[sea_orm(
+        column_type = "Text",
+        nullable,
+        unique_key = "idx_note_strategy_id_execution_id"
+    )]
+    pub execution_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

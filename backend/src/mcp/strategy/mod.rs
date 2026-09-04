@@ -80,6 +80,10 @@ const MAX_LIST_LIMIT: u64 = 200;
 pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
+/// `x-execution-id` ヘッダ名。agent が A2A タスク実行のたびに送る値で、backend は同じ値を
+/// `strategy_task.a2a_task_id` としても保持するが、`note.execution_id` 側に FK/join はなく
+/// 単なる相関用の不透明な文字列として扱う。
+const EXECUTION_ID_HEADER: &str = "x-execution-id";
 
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";
 pub(super) const DEFAULT_ANNOTATION_STATUS: &str = "unread";
@@ -202,6 +206,23 @@ fn strategy_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Result<Uuid, McpErr
     strategy_id_from_headers(&parts.headers)
 }
 
+/// `x-execution-id` ヘッダから実行 ID を取り出す。任意ヘッダなので `strategy_id_from_headers`
+/// と異なりエラーにはせず、欠落・非 ASCII・空白のみの値はすべて `None` として扱う。
+fn execution_id_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+    let raw = headers.get(EXECUTION_ID_HEADER)?.to_str().ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
+    let parts = ctx.extensions.get::<axum::http::request::Parts>()?;
+    execution_id_from_headers(&parts.headers)
+}
+
 pub(super) async fn fetch_note_owned_by(
     db: &DatabaseConnection,
     note_id: Uuid,
@@ -281,7 +302,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale)."
+        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within a task execution: repeated create calls (omitting note_id) collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -289,7 +310,10 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<WriteNoteResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
-        self.write_note_inner(sid, params).await.map(Json)
+        let execution_id = execution_id_from_ctx(&ctx);
+        self.write_note_inner(sid, execution_id, params)
+            .await
+            .map(Json)
     }
 
     /// ノートを読み出す
@@ -523,15 +547,23 @@ mod tests {
         assert_eq!(clamp_limit(input), expected);
     }
 
-    fn headers_with(strategy: Option<&str>) -> axum::http::HeaderMap {
+    fn header_map_with(name: &'static str, value: Option<&[u8]>) -> axum::http::HeaderMap {
         let mut h = axum::http::HeaderMap::new();
-        if let Some(v) = strategy {
+        if let Some(v) = value {
             h.insert(
-                STRATEGY_ID_HEADER,
-                axum::http::HeaderValue::from_str(v).expect("header value"),
+                name,
+                axum::http::HeaderValue::from_bytes(v).expect("header value"),
             );
         }
         h
+    }
+
+    fn headers_with(strategy: Option<&str>) -> axum::http::HeaderMap {
+        header_map_with(STRATEGY_ID_HEADER, strategy.map(str::as_bytes))
+    }
+
+    fn execution_headers_with(value: Option<&[u8]>) -> axum::http::HeaderMap {
+        header_map_with(EXECUTION_ID_HEADER, value)
     }
 
     #[test]
@@ -556,5 +588,19 @@ mod tests {
             .expect_err("expected invalid header to be rejected");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
         assert_eq!(err.message, expected_message);
+    }
+
+    #[rstest]
+    #[case::missing(None, None)]
+    #[case::empty(Some(b"".as_slice()), None)]
+    #[case::whitespace_only(Some(b"   ".as_slice()), None)]
+    #[case::non_ascii(Some([0xff, 0xfe].as_slice()), None)]
+    #[case::valid(Some(b"exec-1".as_slice()), Some("exec-1"))]
+    fn execution_id_from_headers_cases(
+        #[case] header: Option<&[u8]>,
+        #[case] expected: Option<&str>,
+    ) {
+        let result = execution_id_from_headers(&execution_headers_with(header));
+        assert_eq!(result, expected.map(str::to_string));
     }
 }

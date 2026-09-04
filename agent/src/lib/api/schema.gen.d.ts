@@ -1526,6 +1526,7 @@ export interface components {
       /** Format: date-time */
       created_at: string
       created_by_kind: string
+      execution_id?: string | null
       frontmatter_json: components['schemas']['Value']
       graphs_json: components['schemas']['GraphDef'][]
       /** Format: uuid */

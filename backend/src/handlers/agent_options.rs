@@ -139,7 +139,7 @@ mod tests {
                     {"name": "read_note", "description": "Read a single note owned by the strategy, including its graphs."},
                     {"name": "reply_comment", "description": "Reply to an existing review comment owned by the strategy. Posted with author_kind=llm, author_label=analyst."},
                     {"name": "resolve_comment", "description": "Mark a review comment owned by the strategy as resolved or unresolved."},
-                    {"name": "write_note", "description": "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale)."},
+                    {"name": "write_note", "description": "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within a task execution: repeated create calls (omitting note_id) collapse onto a single note instead of creating duplicates."},
                 ],
             }),
         );
