@@ -438,6 +438,33 @@ describe('createStrategyAgentDeps', () => {
     tools: z.array(z.object({ function: z.object({ name: z.string() }) })),
   })
 
+  // OpenAI chat completions のレスポンス envelope は全呼び出しで不変。
+  // このテストで実際に効くのは toolCall (どの tool を呼ぶか) だけ。
+  const buildToolCallResponse = (
+    callId: string,
+    toolCall: { name: string | undefined; arguments: string },
+  ): Response =>
+    new Response(
+      JSON.stringify({
+        id: callId,
+        model: 'chatgpt/gpt-5',
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'tool_calls',
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [
+                { id: callId, type: 'function', function: toolCall },
+              ],
+            },
+          },
+        ],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     const requestedToolCounts: number[] = []
     let callCount = 0
@@ -466,30 +493,7 @@ describe('createStrategyAgentDeps', () => {
               }
             : { name: 'search', arguments: '{}' }
           return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                id: `resp-${String(callCount)}`,
-                model: 'chatgpt/gpt-5',
-                choices: [
-                  {
-                    index: 0,
-                    finish_reason: 'tool_calls',
-                    message: {
-                      role: 'assistant',
-                      content: null,
-                      tool_calls: [
-                        {
-                          id: `call-${String(callCount)}`,
-                          type: 'function',
-                          function: toolCall,
-                        },
-                      ],
-                    },
-                  },
-                ],
-              }),
-              { status: 200, headers: { 'content-type': 'application/json' } },
-            ),
+            buildToolCallResponse(`call-${String(callCount)}`, toolCall),
           )
         },
       },

@@ -1,11 +1,10 @@
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { createMiddleware } from 'langchain'
 import { z } from 'zod'
 
-// 通常 tool の呼び出しに上限がないと、構造化出力 (提出用 tool) を一度も
-// 呼ばないままループが終わりうる (recursionLimit 到達で GraphRecursionError
-// になるか、あるいは提出以外の tool を呼び続けて invoke が structuredResponse
-// なしで解決する)。上限に達したターンでは提出用 tool 以外を外し、モデルに
-// 選択の余地を残さないことで確実に提出させる。
+const FINAL_TURN_FORCED_FINGERPRINT = 'final-turn-middleware.forced-submission'
+
+// 通常 tool の呼び出し上限。到達ターンでは提出用 tool 以外を外して構造化出力を強制する。
 export const MAX_MODEL_CALLS_PER_INVOKE = 15
 
 export const finalTurnMiddleware = createMiddleware({
@@ -18,6 +17,11 @@ export const finalTurnMiddleware = createMiddleware({
     if (request.state.modelCallCount < MAX_MODEL_CALLS_PER_INVOKE) {
       return handler(request)
     }
+    const error = new Error(
+      `finalTurnMiddleware: forcing structured-output submission at model call ${String(request.state.modelCallCount)}`,
+    )
+    console.warn(error.message)
+    captureWithFingerprint(error, FINAL_TURN_FORCED_FINGERPRINT)
     // 構造化出力用の tool は createAgent 側が responseFormat から自動で
     // 追加するため、ここでは通常 tool を空にするだけでよい。
     return handler({ ...request, tools: [] })
