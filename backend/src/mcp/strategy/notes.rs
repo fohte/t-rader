@@ -5,6 +5,7 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
 use sea_orm::{
     ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect,
     TransactionTrait,
@@ -26,6 +27,45 @@ use super::{
 fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> {
     serde_json::to_value(graphs)
         .map_err(|e| internal_error(format!("failed to serialize graphs: {e}")))
+}
+
+/// 新規ノートの `ActiveModel` を組み立てる。`Uuid` はクライアント側で生成した id で、
+/// 通常 insert / ON CONFLICT 経由 insert のどちらでも `note_id` として使い回せる。
+fn build_new_note_model(
+    session_strategy_id: Uuid,
+    execution_id: Option<String>,
+    params: WriteNoteParams,
+) -> Result<(Uuid, note::ActiveModel), McpError> {
+    let title = params
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| invalid_params("title is required when creating a new note"))?
+        .to_string();
+    let body_md = params.body_md.unwrap_or_default();
+    let frontmatter_json: serde_json::Value = params.frontmatter_json.unwrap_or_default().into();
+    let graphs_json = graphs_to_json(params.graphs.unwrap_or_default())?;
+    let id = Uuid::new_v4();
+    Ok((
+        id,
+        note::ActiveModel {
+            id: Set(id),
+            strategy_id: Set(session_strategy_id),
+            title: Set(title),
+            body_md: Set(body_md),
+            frontmatter_json: Set(frontmatter_json),
+            type_tag: Set(params.type_tag.flatten()),
+            status: Set(DEFAULT_NOTE_STATUS.to_string()),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_by_kind: Set(STRATEGY_AGENT_ACTOR.to_string()),
+            created_at: NotSet,
+            updated_at: NotSet,
+            graphs_json: Set(graphs_json),
+            execution_id: Set(execution_id),
+        },
+    ))
 }
 
 fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
@@ -62,104 +102,131 @@ impl StrategyServer {
             validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
         }
 
-        // 明示的な note_id が最優先。無ければ同一 execution_id の既存ノートを探し、
-        // あればそれを更新対象にする (agent 側のリトライによる重複作成を防ぐ)。
         let effective_note_id = match params.note_id {
             Some(note_id) => Some(note_id),
             None => match execution_id.as_deref() {
-                Some(exec_id) => note::Entity::find()
-                    .filter(note::Column::StrategyId.eq(session_strategy_id))
-                    .filter(note::Column::ExecutionId.eq(exec_id))
-                    .one(&self.db)
-                    .await
-                    .map_err(db_error)?
-                    .map(|m| m.id),
+                Some(exec_id) => {
+                    self.find_note_by_execution_id(session_strategy_id, exec_id)
+                        .await?
+                }
                 None => None,
             },
         };
 
         if let Some(note_id) = effective_note_id {
-            let current = fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
-            let mut active = current.clone().into_active_model();
-            let mut touched = false;
-            let mut new_body_md = None;
-            if let Some(title) = params.title {
-                let title = title.trim().to_string();
-                if title.is_empty() {
-                    return Err(invalid_params("title must not be empty"));
-                }
-                active.title = Set(title);
-                touched = true;
-            }
-            if let Some(body) = params.body_md {
-                new_body_md = Some(body.clone());
-                active.body_md = Set(body);
-                touched = true;
-            }
-            if let Some(tag) = params.type_tag {
-                active.type_tag = Set(tag);
-                touched = true;
-            }
-            if let Some(fm) = params.frontmatter_json {
-                active.frontmatter_json = Set(fm.into());
-                touched = true;
-            }
-            if let Some(graphs) = params.graphs {
-                active.graphs_json = Set(graphs_to_json(graphs)?);
-                touched = true;
-            }
-            if !touched {
-                return Err(invalid_params(
-                    "at least one of title / body_md / type_tag / frontmatter_json / graphs must be provided",
-                ));
-            }
-            // 内容が変わった時点で承認/却下時点の判断根拠は失効するため、
-            // 直近の status (承認/却下含む) を無条件で unread に戻す。
-            active.status = Set(DEFAULT_NOTE_STATUS.to_string());
-            active.updated_at = Set(chrono::Utc::now().fixed_offset());
-            let txn = self.db.begin().await.map_err(db_error)?;
-            active.update(&txn).await.map_err(db_error)?;
-            if let Some(body_md) = new_body_md {
-                crate::services::comment_anchor::reanchor_note_comments(&txn, note_id, &body_md)
-                    .await
-                    .map_err(db_error)?;
-            }
-            txn.commit().await.map_err(db_error)?;
-            return Ok(WriteNoteResult {
-                note_id,
-                created: false,
-            });
+            return self.update_note(session_strategy_id, note_id, params).await;
         }
 
         ensure_strategy_exists(&self.db, session_strategy_id).await?;
-        let title = params
-            .title
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| invalid_params("title is required when creating a new note"))?
-            .to_string();
-        let body_md = params.body_md.unwrap_or_default();
-        let frontmatter_json: serde_json::Value =
-            params.frontmatter_json.unwrap_or_default().into();
-        let graphs_json = graphs_to_json(params.graphs.unwrap_or_default())?;
-        let id = Uuid::new_v4();
-        let model = note::ActiveModel {
-            id: Set(id),
-            strategy_id: Set(session_strategy_id),
-            title: Set(title),
-            body_md: Set(body_md),
-            frontmatter_json: Set(frontmatter_json),
-            type_tag: Set(params.type_tag.flatten()),
-            status: Set(DEFAULT_NOTE_STATUS.to_string()),
-            trigger: Set(None),
-            trigger_label: Set(None),
-            created_by_kind: Set(STRATEGY_AGENT_ACTOR.to_string()),
-            created_at: NotSet,
-            updated_at: NotSet,
-            graphs_json: Set(graphs_json),
-            execution_id: Set(execution_id),
+
+        let Some(exec_id) = execution_id else {
+            return self.insert_note(session_strategy_id, None, params).await;
         };
+
+        // execution_id 付きの create は並行呼び出しで UNIQUE 違反になりうるため
+        // ON CONFLICT DO NOTHING で挿入を試み、負けた場合は勝者の行を更新対象にフォールバックする。
+        let params_for_fallback = params.clone();
+        match self
+            .insert_note_or_conflict(session_strategy_id, exec_id.clone(), params)
+            .await?
+        {
+            Some(result) => Ok(result),
+            None => {
+                let note_id = self
+                    .find_note_by_execution_id(session_strategy_id, &exec_id)
+                    .await?
+                    .ok_or_else(|| {
+                        db_error(sea_orm::DbErr::Custom(
+                            "note disappeared between ON CONFLICT and SELECT".into(),
+                        ))
+                    })?;
+                self.update_note(session_strategy_id, note_id, params_for_fallback)
+                    .await
+            }
+        }
+    }
+
+    async fn find_note_by_execution_id(
+        &self,
+        session_strategy_id: Uuid,
+        execution_id: &str,
+    ) -> Result<Option<Uuid>, McpError> {
+        note::Entity::find()
+            .filter(note::Column::StrategyId.eq(session_strategy_id))
+            .filter(note::Column::ExecutionId.eq(execution_id))
+            .one(&self.db)
+            .await
+            .map_err(db_error)
+            .map(|m| m.map(|m| m.id))
+    }
+
+    /// 既存ノートへ `params` の指定フィールドのみを部分適用する。`write_note_inner` の
+    /// 「明示 note_id」経路と「execution_id の ON CONFLICT 敗北」経路の両方から呼ばれる。
+    async fn update_note(
+        &self,
+        session_strategy_id: Uuid,
+        note_id: Uuid,
+        params: WriteNoteParams,
+    ) -> Result<WriteNoteResult, McpError> {
+        let current = fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
+        let mut active = current.clone().into_active_model();
+        let mut touched = false;
+        let mut new_body_md = None;
+        if let Some(title) = params.title {
+            let title = title.trim().to_string();
+            if title.is_empty() {
+                return Err(invalid_params("title must not be empty"));
+            }
+            active.title = Set(title);
+            touched = true;
+        }
+        if let Some(body) = params.body_md {
+            new_body_md = Some(body.clone());
+            active.body_md = Set(body);
+            touched = true;
+        }
+        if let Some(tag) = params.type_tag {
+            active.type_tag = Set(tag);
+            touched = true;
+        }
+        if let Some(fm) = params.frontmatter_json {
+            active.frontmatter_json = Set(fm.into());
+            touched = true;
+        }
+        if let Some(graphs) = params.graphs {
+            active.graphs_json = Set(graphs_to_json(graphs)?);
+            touched = true;
+        }
+        if !touched {
+            return Err(invalid_params(
+                "at least one of title / body_md / type_tag / frontmatter_json / graphs must be provided",
+            ));
+        }
+        // 内容が変わった時点で承認/却下時点の判断根拠は失効するため、
+        // 直近の status (承認/却下含む) を無条件で unread に戻す。
+        active.status = Set(DEFAULT_NOTE_STATUS.to_string());
+        active.updated_at = Set(chrono::Utc::now().fixed_offset());
+        let txn = self.db.begin().await.map_err(db_error)?;
+        active.update(&txn).await.map_err(db_error)?;
+        if let Some(body_md) = new_body_md {
+            crate::services::comment_anchor::reanchor_note_comments(&txn, note_id, &body_md)
+                .await
+                .map_err(db_error)?;
+        }
+        txn.commit().await.map_err(db_error)?;
+        Ok(WriteNoteResult {
+            note_id,
+            created: false,
+        })
+    }
+
+    async fn insert_note(
+        &self,
+        session_strategy_id: Uuid,
+        execution_id: Option<String>,
+        params: WriteNoteParams,
+    ) -> Result<WriteNoteResult, McpError> {
+        let (id, model) = build_new_note_model(session_strategy_id, execution_id, params)?;
         note::Entity::insert(model)
             .exec_without_returning(&self.db)
             .await
@@ -168,6 +235,40 @@ impl StrategyServer {
             note_id: id,
             created: true,
         })
+    }
+
+    /// `execution_id` 付きの新規作成を `ON CONFLICT (strategy_id, execution_id) DO NOTHING` で
+    /// 試みる。対象インデックスは部分インデックス (`execution_id IS NOT NULL` のみ) なので、
+    /// `target_and_where` で ON CONFLICT 側にも同じ述語を明示しないと Postgres がこのインデックスを
+    /// arbiter に選べない (述語が一致しないと "no unique or exclusion constraint" エラーになる)。
+    /// 衝突時 (`Ok(None)`) は呼び出し側が SELECT して更新にフォールバックすること。
+    async fn insert_note_or_conflict(
+        &self,
+        session_strategy_id: Uuid,
+        execution_id: String,
+        params: WriteNoteParams,
+    ) -> Result<Option<WriteNoteResult>, McpError> {
+        let (id, model) = build_new_note_model(session_strategy_id, Some(execution_id), params)?;
+        let insert_result = note::Entity::insert(model)
+            .on_conflict(
+                OnConflict::columns([note::Column::StrategyId, note::Column::ExecutionId])
+                    .target_and_where(Expr::col(note::Column::ExecutionId).is_not_null())
+                    .do_nothing()
+                    .to_owned(),
+            )
+            .exec_with_returning(&self.db)
+            .await;
+        match insert_result {
+            Ok(_) => Ok(Some(WriteNoteResult {
+                note_id: id,
+                created: true,
+            })),
+            // ON CONFLICT DO NOTHING で skip されたとき、SeaORM 2.0 では
+            // `exec_with_returning` は `RecordNotFound` を返す (RETURNING 行が空のため)。
+            // 念のため `RecordNotInserted` も同じパスで扱う (interests.rs の add_interest_inner と同様)。
+            Err(sea_orm::DbErr::RecordNotInserted | sea_orm::DbErr::RecordNotFound(_)) => Ok(None),
+            Err(err) => Err(db_error(err)),
+        }
     }
 
     pub(crate) async fn read_note_inner(
@@ -205,9 +306,11 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
 
-    use crate::entities::comment;
+    use crate::entities::{comment, note};
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::testing::create_test_db;
 
@@ -1254,5 +1357,53 @@ mod tests {
             ),
             ("a body updated".to_string(), "b body".to_string()),
         );
+    }
+
+    /// `insert_note_or_conflict` は同一 (strategy_id, execution_id) の行が既に存在するとき、
+    /// パーシャルユニークインデックスへの生の制約違反エラーを投げず `Ok(None)` を返す。
+    /// この行は `write_note_inner` 自身の SELECT-first fast path を経由せず直接
+    /// `note::ActiveModel` を insert して作るため、並行呼び出しで先勝ちした行を模している。
+    #[sqlx::test(migrations = false)]
+    async fn insert_note_or_conflict_returns_none_when_execution_id_already_taken(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        note::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            strategy_id: Set(strategy_id),
+            title: Set("winner".into()),
+            body_md: Set("winner body".into()),
+            frontmatter_json: Set(serde_json::json!({})),
+            type_tag: Set(None),
+            status: Set(DEFAULT_NOTE_STATUS.into()),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_by_kind: Set(STRATEGY_AGENT_ACTOR.into()),
+            created_at: NotSet,
+            updated_at: NotSet,
+            graphs_json: Set(serde_json::json!([])),
+            execution_id: Set(Some("exec-1".into())),
+        }
+        .insert(&db)
+        .await
+        .expect("seed winner note");
+
+        let result = server
+            .insert_note_or_conflict(
+                strategy_id,
+                "exec-1".into(),
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("loser".into()),
+                    body_md: Some("loser body".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("ON CONFLICT DO NOTHING must not raise a raw constraint-violation error");
+        assert_eq!(result, None);
     }
 }

@@ -35,7 +35,7 @@ pub struct QueryDataResult {
     pub bars: Vec<BarDto>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
     pub note_id: Option<Uuid>,

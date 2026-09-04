@@ -28,8 +28,8 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 同一実行 (execution_id) 内での write_note リトライを同一ノートへ収束させるための
-        // 部分ユニークインデックス。execution_id が NULL の行 (非対応クライアント) は対象外。
+        // 部分ユニークインデックス: execution_id が NULL の行は対象外のため、
+        // そのような行 (非対応クライアント由来) は複数存在できる。
         manager
             .create_index(
                 Index::create()
