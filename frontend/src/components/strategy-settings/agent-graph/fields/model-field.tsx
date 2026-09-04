@@ -23,7 +23,6 @@ export function ModelField({ value, onChange, models }: ModelFieldProps) {
     </span>
   )
 
-  // LLM ゲートウェイ未接続などで一覧が引けない場合は、既存の自由入力にフォールバックする
   if (models.length === 0) {
     return (
       <>
