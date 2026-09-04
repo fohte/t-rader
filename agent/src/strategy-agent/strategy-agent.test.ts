@@ -5,7 +5,7 @@ import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { ChatOpenAI } from '@langchain/openai'
 import { errAsync, okAsync } from 'neverthrow'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import type { AgentConfig } from '#strategy-agent/agent-config-client'
@@ -536,5 +536,125 @@ describe('createStrategyAgentDeps', () => {
       ...Array<number>(MAX_MODEL_CALLS_PER_INVOKE - 1).fill(2),
       1,
     ])
+  })
+
+  it('logs immediately when the model ends without a structured-output tool call', async () => {
+    const model = new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      configuration: {
+        baseURL: 'http://localhost',
+        // モデルが構造化出力 tool を一切呼ばずプレーンな文章で終える応答。
+        fetch: () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: 'call-1',
+                model: 'chatgpt/gpt-5',
+                choices: [
+                  {
+                    index: 0,
+                    finish_reason: 'stop',
+                    message: { role: 'assistant', content: 'no tool for you' },
+                  },
+                ],
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            ),
+          ),
+      },
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+      expect(result).toEqual({})
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          'modelResponseGuardMiddleware: model call ended without a structured-output tool call',
+        ],
+      ])
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('logs an undeclared tool call immediately, then lets the model recover and submit structured output', async () => {
+    let callCount = 0
+    const model = new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      configuration: {
+        baseURL: 'http://localhost',
+        fetch: (_url, init) => {
+          callCount += 1
+          const body = init?.body
+          if (typeof body !== 'string') throw new Error('expected string body')
+          const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
+          // 1 回目: 宣言されていない tool を呼ぶ。ToolNode がこれを自動で
+          // エラーの ToolMessage に変換し、2 回目の呼び出しへつながる。
+          if (callCount === 1) {
+            return Promise.resolve(
+              buildToolCallResponse('call-1', {
+                name: 'ghost_tool',
+                arguments: '{}',
+              }),
+            )
+          }
+          // 2 回目: 宣言済みの `search` 以外の tool (=構造化出力 tool、動的な
+          // `extract-N` 名) を呼んで正常終了させる。
+          const structuredOutputToolName = tools.find(
+            (tool) => tool.function.name !== 'search',
+          )?.function.name
+          return Promise.resolve(
+            buildToolCallResponse('call-2', {
+              name: structuredOutputToolName,
+              arguments: JSON.stringify({
+                status: 'completed',
+                message: 'done',
+              }),
+            }),
+          )
+        },
+      },
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+      expect(result.structuredResponse).toEqual({
+        status: 'completed',
+        message: 'done',
+      })
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          'modelResponseGuardMiddleware: model called undeclared tool(s): ghost_tool',
+        ],
+      ])
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

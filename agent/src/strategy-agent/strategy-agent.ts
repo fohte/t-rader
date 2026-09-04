@@ -29,6 +29,7 @@ import {
   finalTurnMiddleware,
   MAX_MODEL_CALLS_PER_INVOKE,
 } from '#strategy-agent/final-turn-middleware'
+import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -131,6 +132,9 @@ const buildCompiledAgent = (
             : `${String(error)}\n Please fix your mistakes.`,
       }),
       finalTurnMiddleware,
+      // finalTurnMiddleware より内側 (モデル呼び出しに最も近い位置) に置き、
+      // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
+      modelResponseGuardMiddleware,
     ],
   })
   return {
