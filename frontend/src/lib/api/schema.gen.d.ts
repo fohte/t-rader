@@ -13,7 +13,7 @@ export interface paths {
     }
     /**
      * 戦略 Agent 設定フォームに供給するモデル一覧を取得する。
-     *     LiteLLM Proxy が未設定、または応答不能な場合は空配列を返す (設定画面全体を壊さないため)。
+     *     LLM ゲートウェイが未設定、または応答不能な場合は空配列を返す (設定画面全体を壊さないため)。
      */
     get: operations['get_agent_models']
     put?: never
@@ -1147,7 +1147,7 @@ export interface components {
     AgentGraphBody: {
       content: string
     }
-    /** @description LiteLLM `/model_group/info` の必要フィールドだけを写した 1 モデル分。 */
+    /** @description エージェント設定フォームに供給するモデル選択肢 1 件分。 */
     AgentModel: {
       id: string
       /** Format: double */
@@ -1158,7 +1158,7 @@ export interface components {
       supports_reasoning: boolean
       supports_web_search: boolean
     }
-    /** @description `GET /api/agent-models` の戻り値。LiteLLM が未設定/応答不能なら `models` は空配列。 */
+    /** @description `GET /api/agent-models` の戻り値。LLM ゲートウェイが未設定/応答不能なら `models` は空配列。 */
     AgentModelsResponse: {
       models: components['schemas']['AgentModel'][]
     }

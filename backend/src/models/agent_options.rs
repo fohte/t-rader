@@ -1,7 +1,7 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-/// LiteLLM `/model_group/info` の必要フィールドだけを写した 1 モデル分。
+/// エージェント設定フォームに供給するモデル選択肢 1 件分。
 #[derive(Debug, PartialEq, Serialize, ToSchema)]
 pub struct AgentModel {
     pub id: String,
@@ -12,7 +12,7 @@ pub struct AgentModel {
     pub supports_web_search: bool,
 }
 
-/// `GET /api/agent-models` の戻り値。LiteLLM が未設定/応答不能なら `models` は空配列。
+/// `GET /api/agent-models` の戻り値。LLM ゲートウェイが未設定/応答不能なら `models` は空配列。
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AgentModelsResponse {
     pub models: Vec<AgentModel>,
