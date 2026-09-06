@@ -8,7 +8,6 @@ pub use super::custom_indicator::Entity as CustomIndicator;
 pub use super::hypothesis::Entity as Hypothesis;
 pub use super::indicator::Entity as Indicator;
 pub use super::instruments::Entity as Instruments;
-pub use super::mcp_session_state::Entity as McpSessionState;
 pub use super::news_item::Entity as NewsItem;
 pub use super::news_strategy_link::Entity as NewsStrategyLink;
 pub use super::note::Entity as Note;

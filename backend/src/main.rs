@@ -110,18 +110,6 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // 期限切れの MCP session を定期的に削除するバックグラウンドタスクを起動する。
-    // 戻り値は意図的に捨てる: 現状の axum::serve は graceful shutdown を取らず、
-    // ランタイム終了で task ごと止まる。graceful shutdown を導入する際は cancel token を渡す。
-    tracing::info!(
-        interval_secs = backend::mcp::store::DEFAULT_GC_INTERVAL.as_secs(),
-        "starting mcp session gc task"
-    );
-    let _gc_task = backend::mcp::store::spawn_gc(
-        backend::mcp::PostgresSessionStore::new(db.clone()),
-        backend::mcp::store::DEFAULT_GC_INTERVAL,
-    );
-
     // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。webhook 受信時の
     // 即時 polling 誘発用に Notify を watcher と共有する。
     let agent_task_notify = Arc::new(tokio::sync::Notify::new());
