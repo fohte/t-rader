@@ -420,7 +420,13 @@ describe('TraderAgentExecutor', () => {
         // 初回の working (メッセージなし) の後、step の変化がなくても
         // heartbeatTimer が interval ごとに working を再送する。
         await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 2)
+        const [, firstTick, secondTick] = workingUpdates()
         expect(workingUpdates()).toHaveLength(3)
+        // Task.history を汚さないため、interval 発火分も同じ messageId を
+        // 使い回す (publishSteps 由来の heartbeat と同じ契約)。
+        expect(firstTick?.status.message?.messageId).toEqual(
+          secondTick?.status.message?.messageId,
+        )
 
         resolveAgent(defaultStrategyAgentResult)
         await executePromise

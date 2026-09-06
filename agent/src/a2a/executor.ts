@@ -303,8 +303,6 @@ export class TraderAgentExecutor implements AgentExecutor {
     // Task.history への蓄積を防ぐ。ResultManager の messageId 重複排除
     // という内部実装依存の挙動であり、@a2a-js/sdk の公開契約ではない。
     const stepsHeartbeatMessageId = randomUUID()
-    // publishSteps (step の start/finish 時) と heartbeatTimer (step が変化
-    // しない間) の両方から呼ぶため、直近の steps 全体をここに保持する。
     let latestSteps: readonly StrategyTaskStep[] = []
     // watchdog の heartbeat は working status-update の timestamp でのみ
     // 進む (lifecycle.ts 参照)。artifact-update はそれを進めない。
@@ -347,10 +345,8 @@ export class TraderAgentExecutor implements AgentExecutor {
     // its internal Result chain even starts) must still resolve the task
     // rather than leave it stuck in working state with eventBus.finished()
     // never called.
-    // step が変化しない間 (単一フェーズが for_each なしで長時間かかる場合等)
-    // も working status-update を再送し続けるためのタイマー。finally で
-    // 確実に止め、eventBus.finished() を呼び切った後にタイマーが残らないよ
-    // うにする。
+    // publishSteps は step 変化時にしか heartbeat を出さないため、変化が
+    // ない間も HEARTBEAT_INTERVAL_MS ごとに再送する。
     const heartbeatTimer = setInterval(() => {
       publishHeartbeat(latestSteps)
     }, HEARTBEAT_INTERVAL_MS)
