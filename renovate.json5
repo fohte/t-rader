@@ -7,14 +7,9 @@
   ],
 
   packageRules: [
-    // sea-orm-cli (.mise.toml) は sea-orm/sea-orm-migration の cargo 依存と
-    // 同じ group (group:monorepos) にまとまり、Renovate は group 内の全メンバーに
-    // automerge: true が付くまで group 全体を automerge しない。共有 config の mise
-    // automerge リストは formatter/linter/git-hook 系 CLI に限定しているため、
-    // 性質の異なる codegen CLI である sea-orm-cli はそちらに混ぜず t-rader 側で定義する。
-    //
-    // check-entity-sync CI がこの sea-orm-cli バージョンで entity を再生成し diff を
-    // 検証するため、codegen の退行は automerge 後も CI で捕捉できる。
+    // sea-orm-cli (.mise.toml) は sea-orm/sea-orm-migration の cargo 依存と同じ group
+    // にまとまり、group 内の全メンバーに automerge: true が揃うまで group 全体が
+    // automerge されない。
     {
       matchManagers: ['mise'],
       matchPackageNames: ['sea-orm-cli'],
