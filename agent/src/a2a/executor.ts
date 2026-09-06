@@ -35,6 +35,11 @@ const STRATEGY_RESOLUTION_FAILED_FINGERPRINT =
   'a2a.executor.strategy-resolution-failed'
 const TURN_FAILED_FINGERPRINT = 'a2a.executor.turn-failed'
 
+// watchdog のデフォルトタイムアウト (env.ts の A2A_WATCHDOG_TIMEOUT_MS、10分)
+// より十分短く保つ。単一フェーズが for_each を含まず、開始から終了まで
+// step の変化が一切ないまま長時間かかっても heartbeat を止めないための間隔。
+export const HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000
+
 export const extractStrategyId = (message: Message): string | undefined => {
   const raw = message.metadata?.['strategy_id']
   return typeof raw === 'string' ? raw : undefined
@@ -298,20 +303,10 @@ export class TraderAgentExecutor implements AgentExecutor {
     // Task.history への蓄積を防ぐ。ResultManager の messageId 重複排除
     // という内部実装依存の挙動であり、@a2a-js/sdk の公開契約ではない。
     const stepsHeartbeatMessageId = randomUUID()
-    const publishSteps = (steps: readonly StrategyTaskStep[]): void => {
-      eventBus.publish({
-        kind: 'artifact-update',
-        taskId,
-        contextId,
-        artifact: {
-          artifactId: AGENT_GRAPH_STEPS_ARTIFACT_ID,
-          name: AGENT_GRAPH_STEPS_ARTIFACT_ID,
-          parts: [{ kind: 'data', data: { steps: steps.map(toStepJson) } }],
-        },
-      } satisfies TaskArtifactUpdateEvent)
-      // watchdog の heartbeat は working status-update の timestamp でのみ
-      // 進む (lifecycle.ts 参照)。artifact-update はそれを進めないため、
-      // フェーズ/for_each 進捗の都度ここで working を再送する。
+    let latestSteps: readonly StrategyTaskStep[] = []
+    // watchdog の heartbeat は working status-update の timestamp でのみ
+    // 進む (lifecycle.ts 参照)。artifact-update はそれを進めない。
+    const publishHeartbeat = (steps: readonly StrategyTaskStep[]): void => {
       eventBus.publish({
         kind: 'status-update',
         taskId,
@@ -330,12 +325,32 @@ export class TraderAgentExecutor implements AgentExecutor {
         },
       } satisfies TaskStatusUpdateEvent)
     }
+    const publishSteps = (steps: readonly StrategyTaskStep[]): void => {
+      latestSteps = steps
+      eventBus.publish({
+        kind: 'artifact-update',
+        taskId,
+        contextId,
+        artifact: {
+          artifactId: AGENT_GRAPH_STEPS_ARTIFACT_ID,
+          name: AGENT_GRAPH_STEPS_ARTIFACT_ID,
+          parts: [{ kind: 'data', data: { steps: steps.map(toStepJson) } }],
+        },
+      } satisfies TaskArtifactUpdateEvent)
+      publishHeartbeat(steps)
+    }
 
     // runStrategyAgent maps its own known failure modes to a StrategyAgentResult,
     // but an unexpected rejection (e.g. MCP client construction throwing before
     // its internal Result chain even starts) must still resolve the task
     // rather than leave it stuck in working state with eventBus.finished()
     // never called.
+    // publishSteps は step 変化時にしか heartbeat を出さないため、変化が
+    // ない間も HEARTBEAT_INTERVAL_MS ごとに再送する。
+    const heartbeatTimer = setInterval(() => {
+      publishHeartbeat(latestSteps)
+    }, HEARTBEAT_INTERVAL_MS)
+
     // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
       const result = await this.deps.runStrategyAgent(
@@ -381,6 +396,7 @@ export class TraderAgentExecutor implements AgentExecutor {
         },
       } satisfies TaskStatusUpdateEvent)
     } finally {
+      clearInterval(heartbeatTimer)
       eventBus.finished()
     }
   }

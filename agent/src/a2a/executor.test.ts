@@ -2,10 +2,14 @@ import type { Message, Task, TaskStatusUpdateEvent } from '@a2a-js/sdk'
 import type { AgentExecutionEvent, ExecutionEventBus } from '@a2a-js/sdk/server'
 import { RequestContext } from '@a2a-js/sdk/server'
 import { errAsync, okAsync } from 'neverthrow'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
-import { extractStrategyId, TraderAgentExecutor } from '#a2a/executor'
+import {
+  extractStrategyId,
+  HEARTBEAT_INTERVAL_MS,
+  TraderAgentExecutor,
+} from '#a2a/executor'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
 import { StrategyCandidatesFetchError } from '#strategy-resolution/mgmt-mcp-client'
@@ -380,6 +384,60 @@ describe('TraderAgentExecutor', () => {
       expect(firstHeartbeat?.status.message?.messageId).toEqual(
         secondHeartbeat?.status.message?.messageId,
       )
+    })
+  })
+
+  describe('periodic heartbeat while a phase runs without step changes', () => {
+    it('republishes the working status-update on every interval tick, and stops once the task settles', async () => {
+      vi.useFakeTimers()
+      try {
+        let resolveAgent: (result: StrategyAgentResult) => void = () => {
+          throw new Error('resolveAgent called before assignment')
+        }
+        const agentPromise = new Promise<StrategyAgentResult>((resolve) => {
+          resolveAgent = resolve
+        })
+        const executor = buildExecutor({
+          runStrategyAgent: () => agentPromise,
+        })
+        const eventBus = new FakeEventBus()
+        const userMessage = buildUserMessage({
+          strategy_id: '11111111-1111-1111-1111-111111111111',
+        })
+        const requestContext = new RequestContext(
+          userMessage,
+          'task-16',
+          'ctx-16',
+        )
+        const workingUpdates = (): TaskStatusUpdateEvent[] =>
+          eventBus.events.filter(
+            (e): e is TaskStatusUpdateEvent =>
+              e.kind === 'status-update' && e.status.state === 'working',
+          )
+
+        const executePromise = executor.execute(requestContext, eventBus)
+
+        // 初回の working (メッセージなし) の後、step の変化がなくても
+        // heartbeatTimer が interval ごとに working を再送する。
+        await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 2)
+        const [, firstTick, secondTick] = workingUpdates()
+        expect(workingUpdates()).toHaveLength(3)
+        // Task.history を汚さないため、interval 発火分も同じ messageId を
+        // 使い回す (publishSteps 由来の heartbeat と同じ契約)。
+        expect(firstTick?.status.message?.messageId).toEqual(
+          secondTick?.status.message?.messageId,
+        )
+
+        resolveAgent(defaultStrategyAgentResult)
+        await executePromise
+
+        // finally で heartbeatTimer を止めているため、決着後は interval が
+        // 進んでも working は増えない。
+        await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 3)
+        expect(workingUpdates()).toHaveLength(3)
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 
