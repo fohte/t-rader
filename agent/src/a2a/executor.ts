@@ -64,13 +64,27 @@ const STEP_STATUS_LABELS: Record<StrategyTaskStep['status'], string> = {
   failed: '失敗',
 }
 
-// steps の末尾 (直近に start/finish した要素) をもとに進捗テキストを組み立てる。
-// 同じ phaseKey を持つ要素内での位置 (position/samePhase.length) を添えることで、
-// for_each の何件目かが読み取れるようにする。
+const changedAt = (step: StrategyTaskStep): string =>
+  step.finishedAt ?? step.startedAt
+
+// for_each は maxParallel 個の要素を並列実行するため、配列の末尾が直近に
+// start/finish した要素とは限らない (先に start した要素が後に finish
+// することがある)。changedAt が最大の要素を実際の「直近の変化」として選ぶ。
+const mostRecentlyChanged = (
+  steps: readonly StrategyTaskStep[],
+): StrategyTaskStep | undefined =>
+  steps.reduce<StrategyTaskStep | undefined>(
+    (latest, step) =>
+      latest === undefined || changedAt(step) > changedAt(latest)
+        ? step
+        : latest,
+    undefined,
+  )
+
 const buildStepsProgressMessageText = (
   steps: readonly StrategyTaskStep[],
 ): string => {
-  const current = steps.at(-1)
+  const current = mostRecentlyChanged(steps)
   if (current === undefined) return '実行中'
   const samePhase = steps.filter((step) => step.phaseKey === current.phaseKey)
   const position = samePhase.indexOf(current) + 1
@@ -280,10 +294,9 @@ export class TraderAgentExecutor implements AgentExecutor {
     // 都度置換することで、Task.history を汚さずに Task.artifacts 経由で
     // 永続化される。
     //
-    // 固定の messageId を使い回すことで、ResultManager の重複判定
-    // (messageId 一致なら history に追記しない) により Task.history には
-    // 最初の 1 件だけが残り、Task.status.message には常に最新の進捗
-    // テキストが乗る。
+    // messageId を固定することで Task.status.message のみを更新し
+    // Task.history への蓄積を防ぐ。ResultManager の messageId 重複排除
+    // という内部実装依存の挙動であり、@a2a-js/sdk の公開契約ではない。
     const stepsHeartbeatMessageId = randomUUID()
     const publishSteps = (steps: readonly StrategyTaskStep[]): void => {
       eventBus.publish({
