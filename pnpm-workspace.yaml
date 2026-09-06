@@ -13,6 +13,8 @@ allowBuilds:
   workerd: true
   # no-op unless package.json sets "msw.workerDirectory", which we don't use
   msw: true
+  # wrangler's optionalDependency; only used for image transforms, which we don't use
+  sharp: false
 
 # Dodge short-lived supply-chain attacks (e.g. shai-hulud, tinycolor) by
 # holding off freshly published versions. Unit is minutes; 10080 = 7 days.
@@ -24,6 +26,8 @@ minimumReleaseAgeExclude:
   # natural age exceeds minimumReleaseAge.
   - '@hono/node-server@2.0.10'
   - hono@4.12.34
+  # Renovate security update: wrangler@3.114.17
+  - wrangler@3.114.17
 
 peerDependencyRules:
   allowedVersions:
