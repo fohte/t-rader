@@ -11,21 +11,21 @@
     "test": "pnpm -r run test"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.2.1",
+    "@commitlint/cli": "21.2.2",
     "@eslint/eslintrc": "3.3.6",
     "@fohte/eslint-config": "0.4.1",
     "@ninoseki/eslint-plugin-neverthrow": "0.2.0",
-    "@tsconfig/node-lts": "24.0.0",
+    "@tsconfig/node-lts": "24.0.1",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.13.3",
-    "concurrently": "10.0.4",
-    "esbuild": "0.28.1",
+    "concurrently": "10.0.5",
+    "esbuild": "0.28.2",
     "eslint": "10.6.0",
     "eslint-plugin-storybook": "10.4.6",
     "eslint-plugin-tailwindcss": "4.2.0",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
-    "vitest": "4.1.10",
+    "vitest": "4.1.11",
     "wrangler": "3.114.17"
   }
 }
