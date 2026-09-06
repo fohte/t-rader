@@ -1,4 +1,4 @@
-import type { Message, Task } from '@a2a-js/sdk'
+import type { Message, Task, TaskStatusUpdateEvent } from '@a2a-js/sdk'
 import type { AgentExecutionEvent, ExecutionEventBus } from '@a2a-js/sdk/server'
 import { RequestContext } from '@a2a-js/sdk/server'
 import { errAsync, okAsync } from 'neverthrow'
@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
 import { extractStrategyId, TraderAgentExecutor } from '#a2a/executor'
+import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
 import { StrategyCandidatesFetchError } from '#strategy-resolution/mgmt-mcp-client'
 import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
@@ -227,6 +228,158 @@ describe('TraderAgentExecutor', () => {
           },
         ],
       },
+    })
+  })
+
+  describe('heartbeat status-update on step progress', () => {
+    const buildStep = (
+      overrides: Partial<StrategyTaskStep> &
+        Pick<StrategyTaskStep, 'status' | 'startedAt'>,
+    ): StrategyTaskStep => ({
+      phaseKey: 'discover',
+      label: '調査',
+      model: 'claude-opus-4',
+      traceId: 'trace-1',
+      spanId: 'span-1',
+      ...overrides,
+    })
+
+    const runWithSteps = async (
+      steps: readonly StrategyTaskStep[],
+    ): Promise<TaskStatusUpdateEvent[]> => {
+      const executor = buildExecutor({
+        runStrategyAgent: (
+          _strategyId,
+          _taskId,
+          _userMessage,
+          onStepsChanged,
+        ) => {
+          onStepsChanged?.(steps)
+          return Promise.resolve(defaultStrategyAgentResult)
+        },
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+      })
+      const requestContext = new RequestContext(
+        userMessage,
+        'task-14',
+        'ctx-14',
+      )
+      await executor.execute(requestContext, eventBus)
+      // The very first working status-update (published before
+      // runStrategyAgent even starts) carries no message; only the
+      // step-progress heartbeats do.
+      return eventBus.events.filter(
+        (e): e is TaskStatusUpdateEvent =>
+          e.kind === 'status-update' &&
+          e.status.state === 'working' &&
+          e.status.message !== undefined,
+      )
+    }
+
+    it.each([
+      {
+        name: 'running',
+        status: 'running' as const,
+        text: 'フェーズ「調査」が実行中',
+      },
+      {
+        name: 'completed',
+        status: 'completed' as const,
+        text: 'フェーズ「調査」が完了',
+      },
+      {
+        name: 'failed',
+        status: 'failed' as const,
+        text: 'フェーズ「調査」が失敗',
+      },
+    ])(
+      'renders $name step status in the progress text',
+      async ({ status, text }) => {
+        const heartbeats = await runWithSteps([
+          buildStep({ status, startedAt: '2026-01-01T00:00:00.000Z' }),
+        ])
+        const [heartbeat] = heartbeats
+        expect(heartbeat?.status.message?.parts[0]).toEqual({
+          kind: 'text',
+          text,
+        })
+      },
+    )
+
+    it('reports the step that changed most recently, not the array tail, when an earlier-started for_each item finishes last', async () => {
+      const heartbeats = await runWithSteps([
+        buildStep({
+          phaseKey: 'research',
+          label: '深掘り',
+          status: 'completed',
+          item: { symbol: '7203' },
+          itemLabel: '7203',
+          startedAt: '2026-01-01T00:00:00.000Z',
+          finishedAt: '2026-01-01T00:02:00.000Z',
+        }),
+        buildStep({
+          phaseKey: 'research',
+          label: '深掘り',
+          status: 'running',
+          item: { symbol: '6758' },
+          itemLabel: '6758',
+          startedAt: '2026-01-01T00:00:30.000Z',
+        }),
+      ])
+      const [heartbeat] = heartbeats
+      expect(heartbeat?.status.message?.parts[0]).toEqual({
+        kind: 'text',
+        text: 'フェーズ「深掘り」(1/2): 7203 が完了',
+      })
+    })
+
+    it('reuses the same heartbeat messageId across step changes so history dedup keeps only the first entry', async () => {
+      const executor = buildExecutor({
+        runStrategyAgent: (
+          _strategyId,
+          _taskId,
+          _userMessage,
+          onStepsChanged,
+        ) => {
+          onStepsChanged?.([
+            buildStep({
+              status: 'running',
+              startedAt: '2026-01-01T00:00:00.000Z',
+            }),
+          ])
+          onStepsChanged?.([
+            buildStep({
+              status: 'completed',
+              startedAt: '2026-01-01T00:00:00.000Z',
+              finishedAt: '2026-01-01T00:01:00.000Z',
+            }),
+          ])
+          return Promise.resolve(defaultStrategyAgentResult)
+        },
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+      })
+      const requestContext = new RequestContext(
+        userMessage,
+        'task-15',
+        'ctx-15',
+      )
+
+      await executor.execute(requestContext, eventBus)
+
+      const heartbeats = eventBus.events.filter(
+        (e): e is TaskStatusUpdateEvent =>
+          e.kind === 'status-update' && e.status.state === 'working',
+      )
+      const [, firstHeartbeat, secondHeartbeat] = heartbeats
+      expect(firstHeartbeat?.status.message?.messageId).toEqual(
+        secondHeartbeat?.status.message?.messageId,
+      )
     })
   })
 
