@@ -5,4 +5,16 @@
     'github>fohte/renovate-config:node.json5',
     'github>fohte/renovate-config:rust.json5',
   ],
+
+  packageRules: [
+    // sea-orm-cli (.mise.toml) は sea-orm/sea-orm-migration の cargo 依存と同じ group
+    // にまとまり、group 内の全メンバーに automerge: true が揃うまで group 全体が
+    // automerge されない。
+    {
+      matchManagers: ['mise'],
+      matchPackageNames: ['sea-orm-cli'],
+      matchUpdateTypes: ['patch'],
+      automerge: true,
+    },
+  ],
 }
