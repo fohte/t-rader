@@ -230,6 +230,79 @@ describe('TraderAgentExecutor', () => {
     })
   })
 
+  it('republishes a working status-update alongside each step change, reusing one messageId so history dedup keeps only the latest progress text', async () => {
+    const executor = buildExecutor({
+      runStrategyAgent: (
+        _strategyId,
+        _taskId,
+        _userMessage,
+        onStepsChanged,
+      ) => {
+        onStepsChanged?.([
+          {
+            phaseKey: 'discover',
+            label: '調査',
+            model: 'claude-opus-4',
+            status: 'running',
+            startedAt: '2026-01-01T00:00:00.000Z',
+            traceId: 'trace-1',
+            spanId: 'span-1',
+          },
+        ])
+        onStepsChanged?.([
+          {
+            phaseKey: 'discover',
+            label: '調査',
+            model: 'claude-opus-4',
+            status: 'completed',
+            output: {},
+            startedAt: '2026-01-01T00:00:00.000Z',
+            finishedAt: '2026-01-01T00:01:00.000Z',
+            traceId: 'trace-1',
+            spanId: 'span-1',
+          },
+          {
+            phaseKey: 'research',
+            label: '深掘り',
+            model: 'claude-opus-4',
+            status: 'running',
+            item: { symbol: '7203' },
+            itemLabel: '7203',
+            startedAt: '2026-01-01T00:01:00.000Z',
+            traceId: 'trace-2',
+            spanId: 'span-2',
+          },
+        ])
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-14', 'ctx-14')
+
+    await executor.execute(requestContext, eventBus)
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test only reads the shared `status` field common to every AgentExecutionEvent variant
+    const statusUpdates = eventBus.events.filter(
+      (e) => e.kind === 'status-update',
+    ) as unknown as StatusEvent[]
+    const heartbeats = statusUpdates.filter((e) => e.status.state === 'working')
+    expect(heartbeats.map((e) => e.status.message?.parts[0])).toEqual([
+      undefined,
+      { kind: 'text', text: 'フェーズ「調査」が実行中' },
+      {
+        kind: 'text',
+        text: 'フェーズ「深掘り」: 7203 が実行中',
+      },
+    ])
+    const [, firstHeartbeat, secondHeartbeat] = heartbeats
+    expect(firstHeartbeat?.status.message?.messageId).toBe(
+      secondHeartbeat?.status.message?.messageId,
+    )
+  })
+
   it('maps a failed strategy agent result to a failed task with error_kind metadata', async () => {
     const executor = buildExecutor({
       runStrategyAgent: () =>

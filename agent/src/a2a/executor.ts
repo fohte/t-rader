@@ -47,15 +47,41 @@ const buildAgentMessage = (
   taskId: string,
   contextId: string,
   errorKind?: string,
+  messageId: string = randomUUID(),
 ): Message => ({
   kind: 'message',
   role: 'agent',
-  messageId: randomUUID(),
+  messageId,
   taskId,
   contextId,
   parts: [{ kind: 'text', text }],
   ...(errorKind !== undefined ? { metadata: { error_kind: errorKind } } : {}),
 })
+
+const STEP_STATUS_LABELS: Record<StrategyTaskStep['status'], string> = {
+  running: '実行中',
+  completed: '完了',
+  failed: '失敗',
+}
+
+// steps の末尾 (直近に start/finish した要素) をもとに進捗テキストを組み立てる。
+// 同じ phaseKey を持つ要素内での位置 (position/samePhase.length) を添えることで、
+// for_each の何件目かが読み取れるようにする。
+const buildStepsProgressMessageText = (
+  steps: readonly StrategyTaskStep[],
+): string => {
+  const current = steps.at(-1)
+  if (current === undefined) return '実行中'
+  const samePhase = steps.filter((step) => step.phaseKey === current.phaseKey)
+  const position = samePhase.indexOf(current) + 1
+  const progress =
+    samePhase.length > 1
+      ? `(${String(position)}/${String(samePhase.length)})`
+      : ''
+  const item = current.itemLabel !== undefined ? `: ${current.itemLabel}` : ''
+  const suffix = `${progress}${item}`
+  return `フェーズ「${current.label}」${suffix}${suffix === '' ? '' : ' '}が${STEP_STATUS_LABELS[current.status]}`
+}
 
 // Only user-authored text feeds strategy resolution and the eventual
 // analysis prompt. Including the agent's own clarifying question (which
@@ -253,6 +279,12 @@ export class TraderAgentExecutor implements AgentExecutor {
     // publish する。同じ artifactId を append: false (省略時のデフォルト) で
     // 都度置換することで、Task.history を汚さずに Task.artifacts 経由で
     // 永続化される。
+    //
+    // 固定の messageId を使い回すことで、ResultManager の重複判定
+    // (messageId 一致なら history に追記しない) により Task.history には
+    // 最初の 1 件だけが残り、Task.status.message には常に最新の進捗
+    // テキストが乗る。
+    const stepsHeartbeatMessageId = randomUUID()
     const publishSteps = (steps: readonly StrategyTaskStep[]): void => {
       eventBus.publish({
         kind: 'artifact-update',
@@ -264,6 +296,26 @@ export class TraderAgentExecutor implements AgentExecutor {
           parts: [{ kind: 'data', data: { steps: steps.map(toStepJson) } }],
         },
       } satisfies TaskArtifactUpdateEvent)
+      // watchdog の heartbeat は working status-update の timestamp でのみ
+      // 進む (lifecycle.ts 参照)。artifact-update はそれを進めないため、
+      // フェーズ/for_each 進捗の都度ここで working を再送する。
+      eventBus.publish({
+        kind: 'status-update',
+        taskId,
+        contextId,
+        final: false,
+        status: {
+          state: 'working',
+          timestamp: new Date().toISOString(),
+          message: buildAgentMessage(
+            buildStepsProgressMessageText(steps),
+            taskId,
+            contextId,
+            undefined,
+            stepsHeartbeatMessageId,
+          ),
+        },
+      } satisfies TaskStatusUpdateEvent)
     }
 
     // runStrategyAgent maps its own known failure modes to a StrategyAgentResult,
