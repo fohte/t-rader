@@ -74,11 +74,15 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 `eval_python` は入力値に対する純粋関数評価モデルとして設計している。1 evaluation = 1 exec Pod で起動し、入出力は stdin → stdout/stderr/exit code のみ。Pod spec 側の隔離 (read-only rootfs、non-root、capabilities drop、deadline 等) は backend が固定する。namespace 側の隔離 (RuntimeClass `kata`、NetworkPolicy 全 deny、Pod Security Admission) は [`docs/deployment.md`](./deployment.md) を参照。
 
-## session はプロセス内メモリのみ
+## session 管理方針
 
-`mcp-session-id` ヘッダで識別される session は `LocalSessionManager` の in-memory state のみで管理し、永続化しない。backend Pod が再起動すると、それまでの `mcp-session-id` は未知の session として扱われ、クライアントは `initialize` からやり直す (MCP クライアントの標準的な session 消失時の挙動)。
+`mcp-session-id` ヘッダで識別される session は `LocalSessionManager` の in-memory state のみで管理し、永続化しない。
+backend Pod が再起動すると、それまでの `mcp-session-id` は未知の session として扱われる。
+クライアントは `initialize` からやり直す。
 
-session の永続化は追加しないこと。GET (SSE) 接続のたびに shadow stream (`rmcp` 内部の keep-alive 用チャネル、上限 32) が積まれる一方、クライアントが同じ session id を叩き続ける限り永続化された session はアイドル判定に入らず GC できない。再起動のたびに同じ session が復活し、shadow stream 上限超過の warn ログでバックエンドを圧迫する自己増殖ループになる。
+session は永続化しない。
+GET (SSE) 接続のたびに shadow stream (`rmcp` 内部の keep-alive 用チャネル、上限 32) が積まれる一方、クライアントが同じ session id を叩き続ける限り永続化された session はアイドル判定に入らず GC できない。
+再起動のたびに同じ session が復元され、shadow stream が上限に達して警告ログが出力され続ける原因になる。
 
 ## `MCP_ALLOWED_HOSTS`
 

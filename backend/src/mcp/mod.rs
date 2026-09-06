@@ -24,9 +24,8 @@ pub use strategy::StrategyServer;
 
 /// MCP ルータを構築する。
 ///
-/// session はプロセス内メモリ (`LocalSessionManager`) のみで管理する。バックエンド再起動を
-/// 跨いだ `mcp-session-id` は未知の session として扱われ、クライアントは initialize から
-/// やり直す (MCP クライアントの標準的な session 消失時の挙動)。
+/// session はプロセス内メモリ (`LocalSessionManager`) でのみ管理する。バックエンド再起動を
+/// 跨いだ `mcp-session-id` は未知の session として扱われ、クライアントは initialize からやり直す。
 pub fn router(
     db: DatabaseConnection,
     agent_client: SharedAgentTaskClient,
@@ -331,10 +330,7 @@ mod tests {
         );
     }
 
-    /// バックエンド再起動を跨いだ `mcp-session-id` は未知の session として扱われ、
-    /// 404 (session 未知) を返すことを検証する。router A で発行した session id を
-    /// router B (= 再起動後のプロセス相当、in-memory state を共有しない別インスタンス) に
-    /// 渡しても再開されないことを固定する回帰テスト。
+    /// router を跨ぐ (= バックエンド再起動相当) と `mcp-session-id` が再開されないことの回帰テスト。
     #[tokio::test]
     async fn does_not_resume_session_after_restart() {
         let Some(db) = maybe_db().await else {
@@ -367,7 +363,6 @@ mod tests {
         };
 
         // server_a は drop されたので in-memory session も消えている。
-        // 別 router (= 再起動後のプロセス) は同じ session_id を未知として扱うはず。
         let server_b = TestServer::new(router(
             db.clone(),
             test_agent_client(),
