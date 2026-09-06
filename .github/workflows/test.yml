@@ -154,6 +154,7 @@ jobs:
       backend: ${{ steps.changes-backend.outputs.any_changed }}
       agent: ${{ steps.changes-agent.outputs.any_changed }}
       workflow: ${{ steps.changes-workflow.outputs.any_changed }}
+      mise: ${{ steps.changes-mise.outputs.any_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -183,11 +184,18 @@ jobs:
         with:
           files: .github/workflows/test.yml
 
+      - name: Check for mise config changes
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: changes-mise
+        with:
+          files: .mise.toml
+
   check-entity-sync:
     needs: detect-changes
     if: >-
       needs.detect-changes.outputs.backend == 'true' ||
-      needs.detect-changes.outputs.workflow == 'true'
+      needs.detect-changes.outputs.workflow == 'true' ||
+      needs.detect-changes.outputs.mise == 'true'
     runs-on: ubuntu-latest
     env:
       SCCACHE_GHA_ENABLED: 'true'
