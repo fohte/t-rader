@@ -48,7 +48,7 @@ services:
       - t-rader-net
 
   frontend:
-    image: node:24.17.0-slim
+    image: node:24.20.0-slim
     working_dir: /app
     command: sh -c "corepack enable && pnpm --filter frontend... install && pnpm --filter frontend run dev --host"
     environment:
