@@ -35,6 +35,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     responses(
         (status = 204, description = "受理 (watcher の即時 polling を誘発)"),
         (status = 401, description = "トークン不一致", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
     )
 )]

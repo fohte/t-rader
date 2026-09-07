@@ -54,6 +54,7 @@ async fn find_interest_or_404(
         (status = 201, body = strategy_interest::Model),
         (status = 400, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -103,6 +104,7 @@ pub async fn create_strategy_interest(
         (status = 200, body = strategy_interest::Model),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

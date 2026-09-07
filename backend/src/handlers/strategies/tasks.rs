@@ -40,6 +40,7 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
         (status = 202, body = StrategyChatResponse),
         (status = 400, description = "prompt が空 (空白のみを含む)", body = ErrorResponse),
         (status = 404, description = "戦略が存在しない", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
         (status = 503, description = "agent task client が未設定", body = ErrorResponse),
