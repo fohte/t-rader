@@ -10,7 +10,6 @@ pub mod custom_indicator;
 pub mod hypothesis;
 pub mod indicator;
 pub mod instruments;
-pub mod mcp_session_state;
 pub mod news_item;
 pub mod news_strategy_link;
 pub mod note;

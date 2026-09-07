@@ -4,7 +4,6 @@
 //! - `/mcp/strategy`: 戦略 Agent が叩く戦略実行 MCP
 
 pub mod mgmt;
-pub mod store;
 pub mod strategy;
 pub mod watcher;
 
@@ -12,7 +11,6 @@ use std::sync::Arc;
 
 use axum::Router;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
-use rmcp::transport::streamable_http_server::session::SessionStore;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 use sea_orm::DatabaseConnection;
@@ -22,13 +20,12 @@ use crate::data_provider::DataProviderKind;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient;
 pub use mgmt::MgmtServer;
-pub use store::PostgresSessionStore;
 pub use strategy::StrategyServer;
 
 /// MCP ルータを構築する。
 ///
-/// session の `initialize` パラメータを PostgreSQL に永続化し、バックエンド再起動を
-/// 跨いだ `mcp-session-id` で来たリクエストを transparently に再開する。
+/// session はプロセス内メモリ (`LocalSessionManager`) でのみ管理する。バックエンド再起動を
+/// 跨いだ `mcp-session-id` は未知の session として扱われ、クライアントは initialize からやり直す。
 pub fn router(
     db: DatabaseConnection,
     agent_client: SharedAgentTaskClient,
@@ -37,13 +34,11 @@ pub fn router(
     litellm_client: Option<LiteLlmClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
-    let session_store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(db.clone()));
-
     let mgmt_db = db.clone();
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_db.clone(), agent_client.clone())),
         LocalSessionManager::default().into(),
-        build_config(session_store.clone(), &extra_allowed_hosts),
+        build_config(&extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
         move || {
@@ -52,7 +47,7 @@ pub fn router(
                 .with_litellm_client(litellm_client.clone()))
         },
         LocalSessionManager::default().into(),
-        build_config(session_store, &extra_allowed_hosts),
+        build_config(&extra_allowed_hosts),
     );
 
     Router::new()
@@ -83,12 +78,8 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
         .collect()
 }
 
-fn build_config(
-    store: Arc<dyn SessionStore>,
-    extra_allowed_hosts: &[String],
-) -> StreamableHttpServerConfig {
+fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default();
-    config.session_store = Some(store);
     for host in extra_allowed_hosts {
         if !config.allowed_hosts.contains(host) {
             config.allowed_hosts.push(host.clone());
@@ -196,17 +187,6 @@ mod tests {
 
     fn test_agent_client() -> SharedAgentTaskClient {
         Arc::new(crate::agent_client::DisabledAgentTaskClient)
-    }
-
-    /// `mcp-session-id` ヘッダを SSE レスポンスから抽出する。
-    fn extract_session_id(response: &axum_test::TestResponse) -> String {
-        response
-            .headers()
-            .get("mcp-session-id")
-            .expect("no mcp-session-id header")
-            .to_str()
-            .expect("non-ascii session id")
-            .to_owned()
     }
 
     /// MCP spec 2026-07-28 (SEP-2567) は `initialize` から session の概念を除き、
@@ -350,14 +330,9 @@ mod tests {
         );
     }
 
-    /// 別プロセスを模した 2 つの router で session を継続できることを検証する。
-    ///
-    /// 1. router A で initialize して session を発行・PostgreSQL に永続化
-    /// 2. router A を drop (= プロセス再起動相当、in-memory state を捨てる)
-    /// 3. router B を同じ DB で構築し、A で発行された `mcp-session-id` で
-    ///    GET /mcp/mgmt にアクセスして 404 ではなく SSE が確立できることを確認
+    /// router を跨ぐ (= バックエンド再起動相当) と `mcp-session-id` が再開されないことの回帰テスト。
     #[tokio::test]
-    async fn resumes_session_after_restart() {
+    async fn does_not_resume_session_after_restart() {
         let Some(db) = maybe_db().await else {
             eprintln!("TEST_DATABASE_URL not set; skipping");
             return;
@@ -379,11 +354,15 @@ mod tests {
                 .json(&initialize_body())
                 .await;
             resp.assert_status_ok();
-            extract_session_id(&resp)
+            resp.headers()
+                .get("mcp-session-id")
+                .expect("no mcp-session-id header")
+                .to_str()
+                .expect("non-ascii session id")
+                .to_owned()
         };
 
         // server_a は drop されたので in-memory session も消えている。
-        // 別 router (= 再起動後のプロセス) で同じ session_id が受け付けられるはず。
         let server_b = TestServer::new(router(
             db.clone(),
             test_agent_client(),
@@ -399,19 +378,11 @@ mod tests {
             .add_header("mcp-session-id", &session_id)
             .await;
 
-        // 404 (= session 未知) ではなく、SSE ストリームが確立されることを確認。
-        assert_ne!(
+        assert_eq!(
             resume.status_code(),
             axum::http::StatusCode::NOT_FOUND,
-            "session was not restored from PostgreSQL after restart"
+            "session should not be resumable after a backend restart"
         );
-
-        // 後片付け
-        let store = PostgresSessionStore::new(db);
-        store
-            .delete(&session_id)
-            .await
-            .expect("failed to clean up session row");
     }
 
     #[rstest]
@@ -436,14 +407,12 @@ mod tests {
         let default_hosts = StreamableHttpServerConfig::default().allowed_hosts;
         assert!(!default_hosts.is_empty());
 
-        let store: Arc<dyn SessionStore> = Arc::new(PostgresSessionStore::new(
-            sea_orm::DatabaseConnection::default(),
-        ));
-        let config = build_config(store, &[extra_host.clone(), default_hosts[0].clone()]);
+        let config = build_config(&[extra_host.clone(), default_hosts[0].clone()]);
 
         let mut expected = default_hosts;
         expected.push(extra_host);
         assert_eq!(config.allowed_hosts, expected);
+        assert!(config.session_store.is_none());
     }
 
     /// rmcp の DNS rebinding 保護が in-cluster Service DNS を弾く挙動の回帰テスト。

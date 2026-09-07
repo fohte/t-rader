@@ -74,14 +74,15 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 `eval_python` は入力値に対する純粋関数評価モデルとして設計している。1 evaluation = 1 exec Pod で起動し、入出力は stdin → stdout/stderr/exit code のみ。Pod spec 側の隔離 (read-only rootfs、non-root、capabilities drop、deadline 等) は backend が固定する。namespace 側の隔離 (RuntimeClass `kata`、NetworkPolicy 全 deny、Pod Security Admission) は [`docs/deployment.md`](./deployment.md) を参照。
 
-## session 永続化
+## session 管理方針
 
-`mcp-session-id` ヘッダで識別される session は PostgreSQL の `mcp_session_state` テーブルに永続化される (`PostgresSessionStore`)。stateless な `2026-07-28` 世代のリクエストは session を発行しないため、この永続化の対象外。
+`mcp-session-id` ヘッダで識別される session は `LocalSessionManager` の in-memory state のみで管理し、永続化しない。
+backend Pod が再起動すると、それまでの `mcp-session-id` は未知の session として扱われる。
+クライアントは `initialize` からやり直す。
 
-- `initialize` 時のハンドシェイクパラメータが DB に保存される。
-- backend Pod が再起動しても、同じ `mcp-session-id` を送れば `StreamableHttpService` が state を読み出して in-memory session を再構築し、initialize を replay する。これにより数日スパンの long-lived session が backend rolling restart を跨いで継続できる。
-- `updated_at` が TTL を超えた行はバックグラウンド GC タスクで定期的に削除する (TTL と GC 間隔の既定値は `backend/src/mcp/store.rs` 参照)。
-- session 解決時の inline GC は best-effort で、失敗しても未知 session として扱い新規 initialize を案内する。
+session は永続化しない。
+GET (SSE) 接続のたびに shadow stream (`rmcp` 内部の keep-alive 用チャネル、上限 32) が積まれる一方、クライアントが同じ session id を叩き続ける限り永続化された session はアイドル判定に入らず GC できない。
+再起動のたびに同じ session が復元され、shadow stream が上限に達して警告ログが出力され続ける原因になる。
 
 ## `MCP_ALLOWED_HOSTS`
 
