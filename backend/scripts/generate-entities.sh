@@ -61,6 +61,10 @@ done
 insert_before "$ENTITIES_DIR/note.rs" "    pub graphs_json: Json," \
   "    #[schema(value_type = Vec<crate::services::graph::GraphDef>)]"
 
+# trigger.event_match の実体は object または null の JSON なので、entity の生 Json 型を上書きする
+insert_before "$ENTITIES_DIR/trigger.rs" "    pub event_match: Option<Json>," \
+  "    #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]"
+
 # utoipa は DateTimeWithTimeZone という型 alias 名を認識できないため、value_type で実型を指定する
 for file in "$ENTITIES_DIR"/*.rs; do
   dt_lines=""

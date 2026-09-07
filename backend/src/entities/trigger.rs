@@ -19,6 +19,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable, unique)]
     pub hook_slug: Option<String>,
     #[sea_orm(column_type = "JsonBinary", nullable)]
+    #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub event_match: Option<Json>,
     #[sea_orm(column_type = "Text")]
     pub prompt_template: String,
