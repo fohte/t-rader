@@ -61,6 +61,12 @@ done
 insert_before "$ENTITIES_DIR/note.rs" "    pub graphs_json: Json," \
   "    #[schema(value_type = Vec<crate::services::graph::GraphDef>)]"
 
+# trigger.event_match は object または null のみを許容する (services::trigger_crud::validate_event_match)。
+# 生 Json 型のままだと Option<Json> が oneOf [null, Value] (Value = {}) になり、null が両方の枝にマッチして
+# schemathesis の response schema conformance に失敗するため、object 型を明示する
+insert_before "$ENTITIES_DIR/trigger.rs" "    pub event_match: Option<Json>," \
+  "    #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]"
+
 # utoipa は DateTimeWithTimeZone という型 alias 名を認識できないため、value_type で実型を指定する
 for file in "$ENTITIES_DIR"/*.rs; do
   dt_lines=""

@@ -1813,7 +1813,9 @@ export interface components {
       /** Format: date-time */
       created_at: string
       enabled: boolean
-      event_match?: null | components['schemas']['Value']
+      event_match?: {
+        [key: string]: unknown
+      } | null
       hook_slug?: string | null
       kind: string
       /** Format: date-time */

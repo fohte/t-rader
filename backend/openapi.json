@@ -8752,14 +8752,14 @@
             "type": "boolean"
           },
           "event_match": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/Value"
-              }
-            ]
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "hook_slug": {
             "type": [
