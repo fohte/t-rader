@@ -61,9 +61,7 @@ done
 insert_before "$ENTITIES_DIR/note.rs" "    pub graphs_json: Json," \
   "    #[schema(value_type = Vec<crate::services::graph::GraphDef>)]"
 
-# trigger.event_match は object または null のみを許容する (services::trigger_crud::validate_event_match)。
-# 生 Json 型のままだと Option<Json> が oneOf [null, Value] (Value = {}) になり、null が両方の枝にマッチして
-# schemathesis の response schema conformance に失敗するため、object 型を明示する
+# trigger.event_match の実体は object または null の JSON なので、entity の生 Json 型を上書きする
 insert_before "$ENTITIES_DIR/trigger.rs" "    pub event_match: Option<Json>," \
   "    #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]"
 
