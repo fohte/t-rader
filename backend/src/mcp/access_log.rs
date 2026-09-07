@@ -39,7 +39,7 @@ enum LogEvent {
     WindowSummary { count: u64, elapsed: Duration },
 }
 
-// ponytail: (path, client_ip) の組み合わせが少数かつ固定である前提のため、エントリの
+// (path, client_ip) の組み合わせが少数かつ固定である前提のため、エントリの
 // eviction は行わない。
 #[derive(Clone, Default)]
 pub struct AccessLogState(Arc<Mutex<HashMap<Key, WindowEntry>>>);
