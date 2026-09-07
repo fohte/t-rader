@@ -44,6 +44,7 @@ pub struct HookResponse {
         (status = 200, body = HookResponse),
         (status = 400, description = "リクエストボディに null バイトが含まれる等の汎用エラー", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
         (status = 503, description = "agent task client が未設定", body = ErrorResponse),

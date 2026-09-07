@@ -57,6 +57,7 @@ async fn ensure_watchlist_exists(
     responses(
         (status = 201, description = "ウォッチリストを作成した", body = watchlists::Model),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
@@ -146,6 +147,7 @@ pub async fn delete_watchlist(
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
         (status = 404, description = "ウォッチリストが見つからない", body = ErrorResponse),
         (status = 409, description = "銘柄が既にウォッチリストに存在する", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )

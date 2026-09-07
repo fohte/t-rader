@@ -100,6 +100,7 @@ pub async fn sbi_preview(
     responses(
         (status = 200, body = SbiCommitResponse),
         (status = 400, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

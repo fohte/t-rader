@@ -80,6 +80,7 @@ pub async fn get_strategy(
     responses(
         (status = 201, body = strategy::Model),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -116,6 +117,7 @@ pub async fn create_strategy(
         (status = 200, body = strategy::Model),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -224,6 +226,7 @@ pub async fn get_agents_md(
         (status = 200, body = AgentsMdBody),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -272,6 +275,7 @@ pub async fn get_skills(
         (status = 200, body = SkillsBody),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -319,6 +323,7 @@ pub async fn put_skills(
         (status = 200, body = SkillBody),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

@@ -137,6 +137,7 @@ pub async fn get_indicator(
         (status = 201, body = custom_indicator::Model),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 409, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -161,6 +162,7 @@ pub async fn create_global_indicator(
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -220,6 +222,7 @@ async fn insert_indicator(
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -318,6 +321,7 @@ pub async fn get_strategy_indicator(
     responses(
         (status = 200, body = PreviewIndicatorResponse),
         (status = 400, description = "code / schema / args が不正", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 503, description = "indicator runtime が未設定または利用不可", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
