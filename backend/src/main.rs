@@ -229,7 +229,6 @@ async fn main() -> Result<(), AppError> {
         .await
         .map_err(|e| AppError::Config(format!("failed to bind to {addr}: {e}")))?;
 
-    // アクセスログでクライアント IP を記録するため ConnectInfo を有効化する。
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
