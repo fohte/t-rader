@@ -3,6 +3,7 @@
 //! - `/mcp/mgmt`: 上流のコントロールプレーンが叩く管理 MCP
 //! - `/mcp/strategy`: 戦略 Agent が叩く戦略実行 MCP
 
+mod access_log;
 pub mod mgmt;
 pub mod strategy;
 pub mod watcher;
@@ -53,6 +54,10 @@ pub fn router(
     Router::new()
         .nest_service("/mcp/mgmt", mgmt)
         .nest_service("/mcp/strategy", strategy)
+        .layer(axum::middleware::from_fn_with_state(
+            access_log::AccessLogState::new(),
+            access_log::access_log,
+        ))
 }
 
 /// `MCP_ALLOWED_HOSTS` (カンマ区切り) をパースする。未設定または空なら空 Vec。
