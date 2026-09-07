@@ -91,6 +91,7 @@ pub async fn list_rss_feeds(
         (status = 201, body = rss_feed::Model),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 409, description = "source が既存と衝突", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -124,6 +125,7 @@ pub async fn create_rss_feed(
         (status = 200, body = rss_feed::Model),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )

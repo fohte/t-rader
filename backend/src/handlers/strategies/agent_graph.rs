@@ -42,6 +42,7 @@ pub async fn get_agent_graph(
         (status = 200, body = AgentGraphBody),
         (status = 400, description = "YAML が不正、またはフェーズ定義が不正 (キー重複・for_each の参照先不備など)", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
