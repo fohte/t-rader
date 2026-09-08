@@ -61,3 +61,32 @@ pub struct SbiCommitResponse {
     /// 重複検知でスキップした件数
     pub skipped_count: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    // serde_json の arbitrary_precision feature は数値を一旦文字列として読み、u64 に
+    // パースできない (= 小数を含む) 場合は visit_map 経路に落ちる。rust_decimal 側で
+    // serde-arbitrary-precision feature を有効にしていないと DecimalVisitor::visit_map が
+    // 未実装のままになり、小数を含む Decimal の deserialize だけが失敗する。
+    #[test]
+    fn commit_row_deserializes_fractional_price() {
+        let json = indoc::indoc! {r#"
+            {
+                "strategy_id": "00000000-0000-0000-0000-000000000000",
+                "date": "2026-01-15",
+                "symbol": "7203",
+                "side": "buy",
+                "qty": 100,
+                "price": 2500.5
+            }
+        "#};
+
+        let row: SbiCommitRow = serde_json::from_str(json).unwrap();
+
+        assert_eq!(row.price, Decimal::from_str("2500.5").unwrap());
+    }
+}
