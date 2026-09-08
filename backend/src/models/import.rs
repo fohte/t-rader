@@ -34,7 +34,7 @@ pub struct SbiPreviewResponse {
 }
 
 /// SBI commit リクエストの 1 行。preview を確認後、行ごとに戦略 ID を割り当てる。
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, PartialEq, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SbiCommitRow {
     pub strategy_id: Uuid,
@@ -87,6 +87,18 @@ mod tests {
 
         let row: SbiCommitRow = serde_json::from_str(json).unwrap();
 
-        assert_eq!(row.price, Decimal::from_str("2500.5").unwrap());
+        assert_eq!(
+            row,
+            SbiCommitRow {
+                strategy_id: Uuid::nil(),
+                date: NaiveDate::from_ymd_opt(2026, 1, 15).expect("valid date"),
+                symbol: "7203".into(),
+                stock_name: "".into(),
+                side: "buy".into(),
+                qty: Decimal::from_str("100").unwrap(),
+                price: Decimal::from_str("2500.5").unwrap(),
+                fee: None,
+            }
+        );
     }
 }
