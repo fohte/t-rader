@@ -4,24 +4,15 @@
 //! ここでは接続元の strategy_id によるフィルタを行わず全 trade を対象にする。
 
 use rmcp::ErrorData as McpError;
-use sea_orm::{EntityTrait, QueryOrder};
 
-use crate::entities::trade;
-use crate::services::trades::summarize;
+use crate::services::trades::fetch_summary;
 
 use super::dto::{PortfolioPositionDto, ReadPortfolioResult};
 use super::{StrategyServer, db_error, decimal_to_f64};
 
 impl StrategyServer {
     pub(crate) async fn read_portfolio_inner(&self) -> Result<ReadPortfolioResult, McpError> {
-        let trades = trade::Entity::find()
-            .order_by_asc(trade::Column::Date)
-            .order_by_asc(trade::Column::CreatedAt)
-            .all(&self.db)
-            .await
-            .map_err(db_error)?;
-
-        let summary = summarize(None, &trades);
+        let summary = fetch_summary(&self.db, None).await.map_err(db_error)?;
         Ok(ReadPortfolioResult {
             trade_count: summary.trade_count,
             realized_pnl: decimal_to_f64(summary.realized_pnl),
