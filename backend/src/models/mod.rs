@@ -10,6 +10,7 @@ pub mod instrument;
 pub mod interest;
 pub mod note;
 pub mod refs;
+pub mod risk_policy;
 pub mod strategy;
 pub mod trade;
 pub mod trigger;
@@ -33,6 +34,11 @@ pub use instrument::Instrument;
 pub use interest::{CreateInterestRequest, UpdateInterestRequest};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use refs::RefResolution;
+pub use risk_policy::{
+    AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
+    PutStrategyRiskPolicyRequest, StrategyRiskPolicyData, StrategyRiskPolicyResponse,
+    validate_ratio,
+};
 pub use strategy::{
     AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateStrategyRequest,
     InvestableAmountResponse, PutInvestableAmountRequest, SkillBody, SkillsBody,

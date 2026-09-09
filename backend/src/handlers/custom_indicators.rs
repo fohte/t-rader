@@ -647,6 +647,7 @@ mod tests {
             agent_graph: NotSet,
             created_at: Set(now),
             updated_at: Set(now),
+            risk_policy: NotSet,
         }
         .insert(&db)
         .await

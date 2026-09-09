@@ -10,6 +10,12 @@ const ITEMS: { to: string; label: string; description: string }[] = [
     label: 'RSS フィード',
     description: 'ニュース集約対象の公開 RSS を追加・編集・無効化する',
   },
+  {
+    to: '/settings/risk-policy',
+    label: 'リスク上限',
+    description:
+      '口座全体の保有銘柄時価合計に対するセクター集中度の上限を設定する',
+  },
 ]
 
 function SettingsIndexPage() {

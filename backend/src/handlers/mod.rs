@@ -14,6 +14,7 @@ pub mod macro_data;
 pub mod news;
 pub mod notes;
 pub mod refs;
+pub mod risk_policy;
 pub mod rss_feeds;
 pub mod strategies;
 pub mod trades;

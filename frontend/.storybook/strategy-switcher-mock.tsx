@@ -16,6 +16,7 @@ function strategyStub(id: string, name: string, sortOrder: number): Strategy {
     agents_md: '',
     skills: {},
     agent_graph: '',
+    risk_policy: {},
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   }

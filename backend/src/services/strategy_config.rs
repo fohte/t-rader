@@ -118,6 +118,7 @@ pub async fn create(
         agent_graph: params.agent_graph.map(Set).unwrap_or(NotSet),
         created_at: NotSet,
         updated_at: NotSet,
+        risk_policy: NotSet,
     };
     let txn = db.begin().await?;
     let created = strategy::Entity::insert(model)
@@ -308,6 +309,36 @@ pub async fn delete_skill(
         format!("deleted skill {name}"),
     )
     .await
+}
+
+/// risk_policy カラムの保存 (検証は呼び出し元の handler が事前に済ませる前提)。
+pub async fn save_risk_policy(
+    db: &DatabaseConnection,
+    actor: Actor,
+    id: Uuid,
+    risk_policy: serde_json::Value,
+) -> Result<strategy::Model, AppError> {
+    let current = find_or_404(db, id).await?;
+    let prev = current.risk_policy.clone();
+    let mut active = current.into_active_model();
+    active.risk_policy = Set(risk_policy.clone());
+    active.updated_at = Set(chrono::Utc::now().fixed_offset());
+
+    let txn = db.begin().await?;
+    let updated = active.update(&txn).await?;
+    change_history::record_as(
+        &txn,
+        actor,
+        TargetKind::Strategy,
+        id,
+        Op::Update,
+        json!({ "risk_policy": { "from": prev, "to": risk_policy } }),
+        Some("updated risk_policy".to_string()),
+    )
+    .await?;
+    txn.commit().await?;
+
+    Ok(updated)
 }
 
 /// agent_graph カラムの保存 (検証は `services::agent_graph` が事前に済ませる前提)。

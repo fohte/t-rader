@@ -17,6 +17,7 @@ use crate::services::strategy_config;
 
 mod agent_graph;
 mod investable_amount;
+mod risk_policy;
 mod tasks;
 
 pub use agent_graph::{
@@ -25,6 +26,9 @@ pub use agent_graph::{
 pub use investable_amount::{
     __path_get_investable_amount, __path_put_investable_amount, get_investable_amount,
     put_investable_amount,
+};
+pub use risk_policy::{
+    __path_get_risk_policy, __path_put_risk_policy, get_risk_policy, put_risk_policy,
 };
 pub(crate) use tasks::map_submit_error;
 pub use tasks::{
@@ -720,6 +724,7 @@ mod tests {
             agent_graph: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
+            risk_policy: NotSet,
         }
         .insert(&db)
         .await

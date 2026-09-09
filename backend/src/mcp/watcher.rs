@@ -282,6 +282,7 @@ mod tests {
             agent_graph: sea_orm::ActiveValue::NotSet,
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
+            risk_policy: sea_orm::ActiveValue::NotSet,
         }
         .insert(db)
         .await

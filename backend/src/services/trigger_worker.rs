@@ -268,6 +268,7 @@ mod run_once_tests {
             agent_graph: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
+            risk_policy: NotSet,
         }
         .insert(db)
         .await

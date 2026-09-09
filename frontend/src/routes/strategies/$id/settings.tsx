@@ -3,18 +3,21 @@ import { useState } from 'react'
 
 import { AgentGraphTab } from '#components/strategy-settings/agent-graph-tab'
 import { AgentsMdTab } from '#components/strategy-settings/agents-md-tab'
+import { RiskPolicyTab } from '#components/strategy-settings/risk-policy-tab'
 import { SkillsTab } from '#components/strategy-settings/skills-tab'
 import { TriggersTab } from '#components/strategy-settings/triggers-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'agents-md' | 'skills' | 'triggers' | 'agent-graph'
+type TabKey =
+  'agents-md' | 'skills' | 'triggers' | 'agent-graph' | 'risk-policy'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'agents-md', label: 'AGENTS.md' },
   { key: 'skills', label: 'Skills' },
   { key: 'agent-graph', label: 'Agent' },
   { key: 'triggers', label: 'Triggers' },
+  { key: 'risk-policy', label: 'リスク上限' },
 ]
 
 export const Route = createFileRoute('/strategies/$id/settings')({
@@ -99,6 +102,7 @@ function StrategySettingsPage() {
         {tab === 'skills' && <SkillsTab strategyId={id} />}
         {tab === 'agent-graph' && <AgentGraphTab strategyId={id} />}
         {tab === 'triggers' && <TriggersTab strategyId={id} />}
+        {tab === 'risk-policy' && <RiskPolicyTab strategyId={id} />}
       </section>
     </div>
   )
