@@ -8,16 +8,13 @@
 
   customManagers: [
     {
-      // Track `schemathesis/action`'s `with: version:` as a `schemathesis`
-      // PyPI release. The action installs schemathesis via `uv tool install`
-      // at runtime, so without this manager a pinned version drifts silently.
+      // schemathesis/action installs schemathesis from PyPI via `with: version:`
+      // at runtime, so a pinned version drifts silently without this manager.
       customType: 'regex',
       managerFilePatterns: ['/(^|/)\\.github/workflows/[^/]+\\.ya?ml$/'],
       matchStrings: [
-        '[ \\t]+(?:- )?uses:[ \\t]+schemathesis/action@\\S+[^\\n]*\\n[ \\t]+with:[ \\t]*\\n(?:[ \\t]*(?:[^-\\s][^\\n]*)?\\n)*?[ \\t]+version:\\s*(?<currentValue>\\S+)',
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+version:\\s*(?<currentValue>\\S+)',
       ],
-      datasourceTemplate: 'pypi',
-      depNameTemplate: 'schemathesis',
     },
   ],
 
