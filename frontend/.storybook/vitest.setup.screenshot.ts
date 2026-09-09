@@ -10,11 +10,14 @@ vi.setSystemTime(new Date('2026-01-15T10:00:00+09:00'))
 
 // スクロールバー (ネイティブ/Monaco Editor 独自の両方) はホバー状態やフェード
 // タイマーでサム/トラックの見え方が撮影ごとに 1px 未満揺れる。撮影時は非表示にして
-// スクロール可否の判定に影響しない見た目の揺れを潰す
+// スクロール可否の判定に影響しない見た目の揺れを潰す。
+// decorationsOverviewRuler も Monaco 自身のスケジューリングで canvas に描画されるため、
+// 撮影タイミングによって枠線の描画有無が揺れる。撮影時は非表示にする
 const style = document.createElement('style')
 style.textContent = `
   ::-webkit-scrollbar { display: none !important; }
   .monaco-scrollable-element > .scrollbar { visibility: hidden !important; }
+  .decorationsOverviewRuler { visibility: hidden !important; }
 `
 document.head.appendChild(style)
 
