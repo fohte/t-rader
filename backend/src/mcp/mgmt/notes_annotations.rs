@@ -87,7 +87,7 @@ mod tests {
         for i in 0..5 {
             note::ActiveModel {
                 id: Set(Uuid::new_v4()),
-                strategy_id: Set(strategy_id),
+                strategy_id: Set(Some(strategy_id)),
                 title: Set(format!("note-{i}")),
                 body_md: Set("body".into()),
                 frontmatter_json: Set(serde_json::json!({})),

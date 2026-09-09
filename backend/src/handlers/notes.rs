@@ -229,7 +229,9 @@ pub async fn create_note(
 
     let id = Uuid::new_v4();
     let txn = state.db.begin().await?;
-    ensure_strategy_exists(&txn, payload.strategy_id).await?;
+    if let Some(strategy_id) = payload.strategy_id {
+        ensure_strategy_exists(&txn, strategy_id).await?;
+    }
 
     let model = note::ActiveModel {
         id: Set(id),
@@ -486,19 +488,21 @@ pub async fn reject_note(
         return Ok(Json(current));
     }
 
-    let prompt = format!(
-        "ノート「{}」(id: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
-        current.title, current.id
-    );
-    strategy_tasks::submit_task(
-        &state.db,
-        &state.agent_task_client,
-        current.strategy_id,
-        &prompt,
-        TaskSource::Review,
-    )
-    .await
-    .map_err(map_submit_error)?;
+    if let Some(strategy_id) = current.strategy_id {
+        let prompt = format!(
+            "ノート「{}」(id: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
+            current.title, current.id
+        );
+        strategy_tasks::submit_task(
+            &state.db,
+            &state.agent_task_client,
+            strategy_id,
+            &prompt,
+            TaskSource::Review,
+        )
+        .await
+        .map_err(map_submit_error)?;
+    }
 
     Ok(Json(
         change_note_status_from(&state, current, "rejected", payload.label).await?,
@@ -616,6 +620,117 @@ mod tests {
         res.assert_status(StatusCode::CREATED);
         let body: Value = res.json();
         Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+    }
+
+    /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
+    /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
+    #[sqlx::test(migrations = false)]
+    async fn note_without_strategy_id_rejects_execution_id(pool: PgPool) {
+        let (db, _server) = create_test_server_with_db(pool).await;
+
+        let result = note::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            strategy_id: Set(None),
+            title: Set("t".into()),
+            body_md: Set("b".into()),
+            frontmatter_json: Set(json!({})),
+            type_tag: Set(None),
+            status: Set("unread".into()),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_by_kind: Set("human".into()),
+            created_at: NotSet,
+            updated_at: NotSet,
+            graphs_json: Set(json!([])),
+            execution_id: Set(Some("exec-1".into())),
+        }
+        .insert(&db)
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_note_without_strategy_id_succeeds(pool: PgPool) {
+        let (_db, server) = create_test_server_with_db(pool).await;
+
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "市況ノート",
+                "body_md": "body",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        let mut body: Value = res.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("id");
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            body,
+            json!({
+                "strategy_id": null,
+                "title": "市況ノート",
+                "body_md": "body",
+                "frontmatter_json": {},
+                "graphs_json": [],
+                "type_tag": null,
+                "status": "unread",
+                "trigger": null,
+                "trigger_label": null,
+                "created_by_kind": "human",
+                "execution_id": null,
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reject_note_without_strategy_id_does_not_submit_task(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "市況ノート",
+                "body_md": "body",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        let note_id =
+            Uuid::parse_str(res.json::<Value>()["id"].as_str().expect("id")).expect("uuid");
+
+        let res = server
+            .post(&format!("/api/notes/{note_id}/reject"))
+            .json(&json!({}))
+            .await;
+        res.assert_status_ok();
+        let mut body: Value = res.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("id");
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            body,
+            json!({
+                "strategy_id": null,
+                "title": "市況ノート",
+                "body_md": "body",
+                "frontmatter_json": {},
+                "graphs_json": [],
+                "type_tag": null,
+                "status": "rejected",
+                "trigger": null,
+                "trigger_label": null,
+                "created_by_kind": "human",
+                "execution_id": null,
+            }),
+        );
+
+        let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
+        assert_eq!(tasks, vec![]);
     }
 
     #[sqlx::test(migrations = false)]

@@ -255,7 +255,7 @@ pub(super) async fn fetch_note_owned_by(
         .await
         .map_err(db_error)?
         .ok_or_else(|| McpError::resource_not_found("note not found", None))?;
-    if row.strategy_id != expected {
+    if row.strategy_id != Some(expected) {
         return Err(invalid_params(format!(
             "forbidden: note {note_id} belongs to another strategy"
         )));
@@ -273,7 +273,7 @@ pub(super) async fn fetch_annotation_owned_by(
         .await
         .map_err(db_error)?
         .ok_or_else(|| McpError::resource_not_found("annotation not found", None))?;
-    if row.strategy_id != expected {
+    if row.strategy_id != Some(expected) {
         return Err(invalid_params(format!(
             "forbidden: annotation {annotation_id} belongs to another strategy"
         )));

@@ -16,17 +16,26 @@ use super::dto::{
 };
 use super::{
     DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by, invalid_params,
+    decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
     Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
 }
 
-fn annotation_to_dto(m: annotation::Model) -> AnnotationDto {
-    AnnotationDto {
+/// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
+/// 必ず `Some` になるはずだが、不変条件が壊れた場合に別 strategy の id を誤って
+/// 返さないよう fail-loud にする。
+fn annotation_to_dto(m: annotation::Model) -> Result<AnnotationDto, McpError> {
+    let strategy_id = m.strategy_id.ok_or_else(|| {
+        internal_error(format!(
+            "annotation {} has no strategy_id despite session scoping",
+            m.id
+        ))
+    })?;
+    Ok(AnnotationDto {
         annotation_id: m.id,
-        strategy_id: m.strategy_id,
+        strategy_id,
         target_symbol: m.target_symbol,
         target_kind: m.target_kind,
         timestamp: m.timestamp,
@@ -37,7 +46,7 @@ fn annotation_to_dto(m: annotation::Model) -> AnnotationDto {
         created_by_kind: m.created_by_kind,
         created_at: m.created_at,
         updated_at: m.updated_at,
-    }
+    })
 }
 
 impl StrategyServer {
@@ -69,7 +78,7 @@ impl StrategyServer {
         let id = Uuid::new_v4();
         let model = annotation::ActiveModel {
             id: Set(id),
-            strategy_id: Set(session_strategy_id),
+            strategy_id: Set(Some(session_strategy_id)),
             target_symbol: Set(target_symbol),
             target_kind: Set(target_kind),
             timestamp: Set(params.timestamp),
@@ -86,7 +95,7 @@ impl StrategyServer {
             .await
             .map_err(db_error)?;
         Ok(CreateAnnotationResult {
-            annotation: annotation_to_dto(created),
+            annotation: annotation_to_dto(created)?,
         })
     }
 
@@ -112,7 +121,10 @@ impl StrategyServer {
             .await
             .map_err(db_error)?;
         Ok(ReadAnnotationsResult {
-            annotations: rows.into_iter().map(annotation_to_dto).collect(),
+            annotations: rows
+                .into_iter()
+                .map(annotation_to_dto)
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 }

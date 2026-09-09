@@ -121,7 +121,9 @@ pub async fn create_annotation(
     }
 
     let txn = state.db.begin().await?;
-    ensure_strategy_exists(&txn, p.strategy_id).await?;
+    if let Some(strategy_id) = p.strategy_id {
+        ensure_strategy_exists(&txn, strategy_id).await?;
+    }
 
     let id = Uuid::new_v4();
     let model = annotation::ActiveModel {
@@ -350,19 +352,21 @@ pub async fn reject_annotation(
         return Ok(Json(current));
     }
 
-    let prompt = format!(
-        "アノテーション (id: {}, 対象: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
-        current.id, current.target_symbol
-    );
-    strategy_tasks::submit_task(
-        &state.db,
-        &state.agent_task_client,
-        current.strategy_id,
-        &prompt,
-        TaskSource::Review,
-    )
-    .await
-    .map_err(map_submit_error)?;
+    if let Some(strategy_id) = current.strategy_id {
+        let prompt = format!(
+            "アノテーション (id: {}, 対象: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
+            current.id, current.target_symbol
+        );
+        strategy_tasks::submit_task(
+            &state.db,
+            &state.agent_task_client,
+            strategy_id,
+            &prompt,
+            TaskSource::Review,
+        )
+        .await
+        .map_err(map_submit_error)?;
+    }
 
     Ok(Json(
         change_annotation_status_from(&state, current, "rejected", payload.label).await?,
@@ -416,7 +420,10 @@ mod tests {
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
-    use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_strategy};
+    use crate::testing::{
+        create_test_server_with_db, create_test_server_with_db_and_agent_client,
+        insert_test_strategy,
+    };
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
@@ -452,6 +459,89 @@ mod tests {
         res.assert_status(StatusCode::CREATED);
         let body: Value = res.json();
         Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_annotation_without_strategy_id_succeeds(pool: PgPool) {
+        let (_db, server) = create_test_server_with_db(pool).await;
+
+        let res = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "N225",
+                "target_kind": "observation",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "市況アノテーション",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        let mut body: Value = res.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("id");
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            body,
+            json!({
+                "strategy_id": null,
+                "target_symbol": "N225",
+                "target_kind": "observation",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "price": null,
+                "text": "市況アノテーション",
+                "status": "unread",
+                "linked_note_id": null,
+                "created_by_kind": "human",
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn reject_annotation_without_strategy_id_does_not_submit_task(pool: PgPool) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+
+        let res = server
+            .post("/api/annotations")
+            .json(&json!({
+                "target_symbol": "N225",
+                "target_kind": "observation",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "市況アノテーション",
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        let anno_id =
+            Uuid::parse_str(res.json::<Value>()["id"].as_str().expect("id")).expect("uuid");
+
+        let res = server
+            .post(&format!("/api/annotations/{anno_id}/reject"))
+            .json(&json!({}))
+            .await;
+        res.assert_status_ok();
+        let mut body: Value = res.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("id");
+        obj.remove("created_at");
+        obj.remove("updated_at");
+        assert_eq!(
+            body,
+            json!({
+                "strategy_id": null,
+                "target_symbol": "N225",
+                "target_kind": "observation",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "price": null,
+                "text": "市況アノテーション",
+                "status": "rejected",
+                "linked_note_id": null,
+                "created_by_kind": "human",
+            }),
+        );
+
+        let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
+        assert_eq!(tasks, vec![]);
     }
 
     #[sqlx::test(migrations = false)]

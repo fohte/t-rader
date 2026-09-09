@@ -78,7 +78,7 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
     let id = Uuid::new_v4();
     note::ActiveModel {
         id: Set(id),
-        strategy_id: Set(owner),
+        strategy_id: Set(Some(owner)),
         title: Set(title.to_string()),
         body_md: Set("body".into()),
         frontmatter_json: Set(serde_json::json!({})),
@@ -103,7 +103,7 @@ pub(super) async fn seed_foreign_annotation(db: &DatabaseConnection, owner: Uuid
     let id = Uuid::new_v4();
     annotation::ActiveModel {
         id: Set(id),
-        strategy_id: Set(owner),
+        strategy_id: Set(Some(owner)),
         target_symbol: Set("7203".into()),
         target_kind: Set("signal".into()),
         timestamp: Set("2026-06-01T00:00:00Z".parse().expect("ts")),

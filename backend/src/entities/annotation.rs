@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub strategy_id: Uuid,
+    pub strategy_id: Option<Uuid>,
     pub target_symbol: String,
     pub target_kind: String,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
