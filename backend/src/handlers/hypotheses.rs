@@ -275,7 +275,7 @@ mod tests {
         let id = Uuid::new_v4();
         note::ActiveModel {
             id: Set(id),
-            strategy_id: Set(strategy_id),
+            strategy_id: Set(Some(strategy_id)),
             title: Set("t".into()),
             body_md: Set("b".into()),
             frontmatter_json: Set(json!({})),

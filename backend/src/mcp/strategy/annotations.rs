@@ -23,10 +23,13 @@ fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
     Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
 }
 
-fn annotation_to_dto(m: annotation::Model) -> AnnotationDto {
+/// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
+/// 必ず `Some(session_strategy_id)` になるが、型は `Option<Uuid>` なので
+/// `session_strategy_id` をフォールバックに使い `Uuid` へ落とす。
+fn annotation_to_dto(session_strategy_id: Uuid, m: annotation::Model) -> AnnotationDto {
     AnnotationDto {
         annotation_id: m.id,
-        strategy_id: m.strategy_id,
+        strategy_id: m.strategy_id.unwrap_or(session_strategy_id),
         target_symbol: m.target_symbol,
         target_kind: m.target_kind,
         timestamp: m.timestamp,
@@ -69,7 +72,7 @@ impl StrategyServer {
         let id = Uuid::new_v4();
         let model = annotation::ActiveModel {
             id: Set(id),
-            strategy_id: Set(session_strategy_id),
+            strategy_id: Set(Some(session_strategy_id)),
             target_symbol: Set(target_symbol),
             target_kind: Set(target_kind),
             timestamp: Set(params.timestamp),
@@ -86,7 +89,7 @@ impl StrategyServer {
             .await
             .map_err(db_error)?;
         Ok(CreateAnnotationResult {
-            annotation: annotation_to_dto(created),
+            annotation: annotation_to_dto(session_strategy_id, created),
         })
     }
 
@@ -112,7 +115,10 @@ impl StrategyServer {
             .await
             .map_err(db_error)?;
         Ok(ReadAnnotationsResult {
-            annotations: rows.into_iter().map(annotation_to_dto).collect(),
+            annotations: rows
+                .into_iter()
+                .map(|row| annotation_to_dto(session_strategy_id, row))
+                .collect(),
         })
     }
 }

@@ -363,7 +363,7 @@ mod tests {
         for (title, status) in [("a", "unread"), ("b", "unread"), ("c", "approved")] {
             note::ActiveModel {
                 id: Set(Uuid::new_v4()),
-                strategy_id: Set(strategy_id),
+                strategy_id: Set(Some(strategy_id)),
                 title: Set(title.to_string()),
                 body_md: Set("body".to_string()),
                 frontmatter_json: Set(serde_json::json!({})),
@@ -384,7 +384,7 @@ mod tests {
         // unread アノテーション 1 件
         annotation::ActiveModel {
             id: Set(Uuid::new_v4()),
-            strategy_id: Set(strategy_id),
+            strategy_id: Set(Some(strategy_id)),
             target_symbol: Set("7203".into()),
             target_kind: Set("signal".into()),
             timestamp: Set(chrono::Utc::now().fixed_offset()),

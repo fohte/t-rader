@@ -7,7 +7,8 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateAnnotationRequest {
-    pub strategy_id: Uuid,
+    /// 任意。省略した場合、どの戦略にも属さないアノテーションになる (市況・セクター横断の分析など)
+    pub strategy_id: Option<Uuid>,
     #[schema(min_length = 1)]
     pub target_symbol: String,
     pub target_kind: String,

@@ -51,7 +51,7 @@ fn build_new_note_model(
         id,
         note::ActiveModel {
             id: Set(id),
-            strategy_id: Set(session_strategy_id),
+            strategy_id: Set(Some(session_strategy_id)),
             title: Set(title),
             body_md: Set(body_md),
             frontmatter_json: Set(frontmatter_json),
@@ -68,7 +68,10 @@ fn build_new_note_model(
     ))
 }
 
-fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
+/// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
+/// 必ず `Some(session_strategy_id)` になるが、型は `Option<Uuid>` なので
+/// `session_strategy_id` をフォールバックに使い `Uuid` へ落とす。
+fn note_to_dto(session_strategy_id: Uuid, m: note::Model) -> Result<NoteDto, McpError> {
     let graphs: Vec<GraphDef> = serde_json::from_value(m.graphs_json)
         .map_err(|e| internal_error(format!("failed to deserialize note.graphs_json: {e}")))?;
     let frontmatter_json = m
@@ -78,7 +81,7 @@ fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
         .ok_or_else(|| internal_error("note.frontmatter_json is not a JSON object"))?;
     Ok(NoteDto {
         note_id: m.id,
-        strategy_id: m.strategy_id,
+        strategy_id: m.strategy_id.unwrap_or(session_strategy_id),
         title: m.title,
         body_md: m.body_md,
         frontmatter_json,
@@ -277,7 +280,7 @@ impl StrategyServer {
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
-        note_to_dto(row)
+        note_to_dto(session_strategy_id, row)
     }
 
     pub(crate) async fn list_notes_inner(
@@ -295,7 +298,7 @@ impl StrategyServer {
         Ok(ListNotesResult {
             notes: rows
                 .into_iter()
-                .map(note_to_dto)
+                .map(|row| note_to_dto(session_strategy_id, row))
                 .collect::<Result<Vec<_>, _>>()?,
         })
     }
@@ -1373,7 +1376,7 @@ mod tests {
 
         note::ActiveModel {
             id: Set(Uuid::new_v4()),
-            strategy_id: Set(strategy_id),
+            strategy_id: Set(Some(strategy_id)),
             title: Set("winner".into()),
             body_md: Set("winner body".into()),
             frontmatter_json: Set(serde_json::json!({})),
