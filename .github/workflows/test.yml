@@ -391,6 +391,33 @@ jobs:
             sleep 1
           done
 
+      # schemathesis/action は常に --checks=all を渡すため、backend/schemathesis.toml
+      # の [checks] での enabled=false は上書きされ効かない。無効化対象を toml から
+      # 読み取り、--exclude-checks として明示的に渡す。
+      - name: Determine schemathesis checks to exclude
+        id: schemathesis-checks
+        working-directory: backend
+        run: |
+          args=$(python3 -c '
+          import re
+          import sys
+          import tomllib
+
+          with open("schemathesis.toml", "rb") as f:
+              config = tomllib.load(f)
+          checks = config.get("checks", {})
+          names = [name for name, c in checks.items() if isinstance(c, dict) and c.get("enabled") is False]
+          # schemathesis/action は args を eval で展開するため、TOML のキーを
+          # 未検証のまま渡すとコマンドインジェクションになる。厳格な allowlist で弾く。
+          for name in names:
+              if not re.fullmatch(r"[A-Za-z0-9_]+", name):
+                  print(f"::error::unexpected schemathesis check name: {name!r}", file=sys.stderr)
+                  sys.exit(1)
+          excluded = ",".join(names)
+          print(f"--exclude-checks {excluded}" if names else "")
+          ')
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
       - name: Run Schemathesis API fuzzing
         uses: schemathesis/action@1f15936316e0742005bf69657b5909ac68f04cb3 # v2.1.0
         with:
@@ -398,7 +425,7 @@ jobs:
           checks: all
           max-examples: 50
           config-file: backend/schemathesis.toml
-          args: --workers 2
+          args: --workers 2 ${{ steps.schemathesis-checks.outputs.args }}
 
       - name: Dump backend log on failure
         if: failure()
