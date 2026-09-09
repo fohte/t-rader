@@ -381,7 +381,7 @@ mod run_once_tests {
         let id = Uuid::new_v4();
         trigger::ActiveModel {
             trigger_id: Set(id),
-            strategy_id: Set(sid),
+            strategy_id: Set(Some(sid)),
             kind: Set("hook".to_string()),
             schedule: Set(None),
             hook_slug: Set(Some("h".to_string())),

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub hypothesis_id: Uuid,
-    pub strategy_id: Uuid,
+    pub strategy_id: Option<Uuid>,
     #[sea_orm(column_type = "Text")]
     pub title: String,
     #[sea_orm(column_type = "Text")]

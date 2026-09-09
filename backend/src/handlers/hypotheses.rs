@@ -25,11 +25,11 @@ fn validate_text(field: &str, value: &str) -> Result<String, AppError> {
     Ok(v)
 }
 
-/// `related_note_ids` で渡された note がすべて当該戦略所属であることを検証する。
-/// FK を張れないため (migration の comment 参照) アプリ層で同戦略境界を担保する。
-async fn ensure_notes_belong_to_strategy<C: sea_orm::ConnectionTrait>(
+/// `related_note_ids` で渡された note がすべて仮説と同じ scope (戦略 or global) 所属であることを検証する。
+/// FK を張れないため (migration の comment 参照) アプリ層で同 scope 境界を担保する。
+async fn ensure_notes_belong_to_scope<C: sea_orm::ConnectionTrait>(
     conn: &C,
-    strategy_id: Uuid,
+    strategy_id: Option<Uuid>,
     ids: &[Uuid],
 ) -> Result<(), AppError> {
     if ids.is_empty() {
@@ -39,17 +39,29 @@ async fn ensure_notes_belong_to_strategy<C: sea_orm::ConnectionTrait>(
     let mut unique_ids: Vec<Uuid> = ids.to_vec();
     unique_ids.sort_unstable();
     unique_ids.dedup();
-    let count = note::Entity::find()
-        .filter(note::Column::Id.is_in(unique_ids.iter().copied()))
-        .filter(note::Column::StrategyId.eq(strategy_id))
-        .count(conn)
-        .await?;
+    let mut query = note::Entity::find().filter(note::Column::Id.is_in(unique_ids.iter().copied()));
+    query = match strategy_id {
+        Some(sid) => query.filter(note::Column::StrategyId.eq(sid)),
+        None => query.filter(note::Column::StrategyId.is_null()),
+    };
+    let count = query.count(conn).await?;
     if count != unique_ids.len() as u64 {
         return Err(AppError::Validation(
-            "related_note_ids contains unknown or cross-strategy note".into(),
+            "related_note_ids contains unknown or out-of-scope note".into(),
         ));
     }
     Ok(())
+}
+
+/// 仮説を戦略の有無を問わず ID だけで検索する
+async fn find_hypothesis_or_404(
+    db: &sea_orm::DatabaseConnection,
+    hypothesis_id: Uuid,
+) -> Result<hypothesis::Model, AppError> {
+    hypothesis::Entity::find_by_id(hypothesis_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("hypothesis {hypothesis_id} not found")))
 }
 
 async fn find_hypothesis_for_strategy(
@@ -57,12 +69,13 @@ async fn find_hypothesis_for_strategy(
     strategy_id: Uuid,
     hypothesis_id: Uuid,
 ) -> Result<hypothesis::Model, AppError> {
-    hypothesis::Entity::find()
-        .filter(hypothesis::Column::StrategyId.eq(strategy_id))
-        .filter(hypothesis::Column::HypothesisId.eq(hypothesis_id))
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("hypothesis {hypothesis_id} not found")))
+    let model = find_hypothesis_or_404(db, hypothesis_id).await?;
+    if model.strategy_id != Some(strategy_id) {
+        return Err(AppError::NotFound(format!(
+            "hypothesis {hypothesis_id} not found"
+        )));
+    }
+    Ok(model)
 }
 
 /// 戦略の仮説一覧 (更新日時の降順)
@@ -90,6 +103,27 @@ pub async fn list_strategy_hypotheses(
     Ok(Json(rows))
 }
 
+/// 戦略に属さない (global) 仮説の一覧 (更新日時の降順)
+#[utoipa::path(
+    get,
+    path = "/api/hypotheses",
+    tag = "hypotheses",
+    responses(
+        (status = 200, body = Vec<hypothesis::Model>),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn list_hypotheses(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<hypothesis::Model>>, AppError> {
+    let rows = hypothesis::Entity::find()
+        .filter(hypothesis::Column::StrategyId.is_null())
+        .order_by_desc(hypothesis::Column::UpdatedAt)
+        .all(&state.db)
+        .await?;
+    Ok(Json(rows))
+}
+
 /// 仮説を作成する
 #[utoipa::path(
     post,
@@ -110,6 +144,38 @@ pub async fn create_strategy_hypothesis(
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<CreateHypothesisRequest>,
 ) -> Result<(StatusCode, Json<hypothesis::Model>), AppError> {
+    let created = insert_hypothesis(&state.db, Some(strategy_id), p).await?;
+    Ok((StatusCode::CREATED, Json(created)))
+}
+
+/// 戦略に属さない (global) 仮説を作成する
+#[utoipa::path(
+    post,
+    path = "/api/hypotheses",
+    tag = "hypotheses",
+    request_body = CreateHypothesisRequest,
+    responses(
+        (status = 201, body = hypothesis::Model),
+        (status = 400, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn create_hypothesis(
+    State(state): State<AppState>,
+    JsonBody(p): JsonBody<CreateHypothesisRequest>,
+) -> Result<(StatusCode, Json<hypothesis::Model>), AppError> {
+    let created = insert_hypothesis(&state.db, None, p).await?;
+    Ok((StatusCode::CREATED, Json(created)))
+}
+
+/// 仮説作成の共通ロジック。`strategy_id` が `None` なら global 仮説になる。
+async fn insert_hypothesis(
+    db: &sea_orm::DatabaseConnection,
+    strategy_id: Option<Uuid>,
+    p: CreateHypothesisRequest,
+) -> Result<hypothesis::Model, AppError> {
     let title = validate_text("title", &p.title)?;
     let body = validate_text("body", &p.body)?;
     let status = p.status.unwrap_or_else(|| DEFAULT_STATUS.to_string());
@@ -118,9 +184,11 @@ pub async fn create_strategy_hypothesis(
     let related_note_ids = p.related_note_ids.unwrap_or_default();
     let related_interest_ids = p.related_interest_ids.unwrap_or_default();
 
-    let txn = state.db.begin().await?;
-    ensure_strategy_exists(&txn, strategy_id).await?;
-    ensure_notes_belong_to_strategy(&txn, strategy_id, &related_note_ids).await?;
+    let txn = db.begin().await?;
+    if let Some(sid) = strategy_id {
+        ensure_strategy_exists(&txn, sid).await?;
+    }
+    ensure_notes_belong_to_scope(&txn, strategy_id, &related_note_ids).await?;
     let id = Uuid::new_v4();
     let model = hypothesis::ActiveModel {
         hypothesis_id: Set(id),
@@ -137,7 +205,7 @@ pub async fn create_strategy_hypothesis(
         .exec_with_returning(&txn)
         .await?;
     txn.commit().await?;
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok(created)
 }
 
 /// 仮説を取得する (戦略境界チェック付き)
@@ -161,6 +229,27 @@ pub async fn get_strategy_hypothesis(
     JsonPath((strategy_id, hypothesis_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<Json<hypothesis::Model>, AppError> {
     let row = find_hypothesis_for_strategy(&state.db, strategy_id, hypothesis_id).await?;
+    Ok(Json(row))
+}
+
+/// 仮説を取得する (戦略の有無を問わない)
+#[utoipa::path(
+    get,
+    path = "/api/hypotheses/{hypothesis_id}",
+    tag = "hypotheses",
+    params(("hypothesis_id" = Uuid, Path, description = "仮説 ID")),
+    responses(
+        (status = 200, body = hypothesis::Model),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_hypothesis(
+    State(state): State<AppState>,
+    JsonPath(hypothesis_id): JsonPath<Uuid>,
+) -> Result<Json<hypothesis::Model>, AppError> {
+    let row = find_hypothesis_or_404(&state.db, hypothesis_id).await?;
     Ok(Json(row))
 }
 
@@ -189,7 +278,44 @@ pub async fn update_strategy_hypothesis(
     JsonBody(p): JsonBody<UpdateHypothesisRequest>,
 ) -> Result<Json<hypothesis::Model>, AppError> {
     let current = find_hypothesis_for_strategy(&state.db, strategy_id, hypothesis_id).await?;
-    let mut active = current.clone().into_active_model();
+    let updated = apply_hypothesis_update(&state.db, current, p).await?;
+    Ok(Json(updated))
+}
+
+/// 仮説を更新する (戦略の有無を問わない)
+#[utoipa::path(
+    patch,
+    path = "/api/hypotheses/{hypothesis_id}",
+    tag = "hypotheses",
+    params(("hypothesis_id" = Uuid, Path, description = "仮説 ID")),
+    request_body = UpdateHypothesisRequest,
+    responses(
+        (status = 200, body = hypothesis::Model),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn update_hypothesis(
+    State(state): State<AppState>,
+    JsonPath(hypothesis_id): JsonPath<Uuid>,
+    JsonBody(p): JsonBody<UpdateHypothesisRequest>,
+) -> Result<Json<hypothesis::Model>, AppError> {
+    let current = find_hypothesis_or_404(&state.db, hypothesis_id).await?;
+    let updated = apply_hypothesis_update(&state.db, current, p).await?;
+    Ok(Json(updated))
+}
+
+/// 仮説更新の共通ロジック。note の scope チェックは `current.strategy_id` を基準に行う。
+async fn apply_hypothesis_update(
+    db: &sea_orm::DatabaseConnection,
+    current: hypothesis::Model,
+    p: UpdateHypothesisRequest,
+) -> Result<hypothesis::Model, AppError> {
+    let strategy_id = current.strategy_id;
+    let mut active = current.into_active_model();
     let mut touched = false;
     if let Some(title) = p.title {
         let title = validate_text("title", &title)?;
@@ -207,7 +333,7 @@ pub async fn update_strategy_hypothesis(
         touched = true;
     }
     if let Some(ids) = p.related_note_ids {
-        ensure_notes_belong_to_strategy(&state.db, strategy_id, &ids).await?;
+        ensure_notes_belong_to_scope(db, strategy_id, &ids).await?;
         active.related_note_ids = Set(ids);
         touched = true;
     }
@@ -221,8 +347,7 @@ pub async fn update_strategy_hypothesis(
         ));
     }
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    let updated = active.update(&state.db).await?;
-    Ok(Json(updated))
+    Ok(active.update(db).await?)
 }
 
 /// 仮説を削除する
@@ -258,6 +383,34 @@ pub async fn delete_strategy_hypothesis(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// 仮説を削除する (戦略の有無を問わない)
+#[utoipa::path(
+    delete,
+    path = "/api/hypotheses/{hypothesis_id}",
+    tag = "hypotheses",
+    params(("hypothesis_id" = Uuid, Path, description = "仮説 ID")),
+    responses(
+        (status = 204),
+        (status = 400, body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn delete_hypothesis(
+    State(state): State<AppState>,
+    JsonPath(hypothesis_id): JsonPath<Uuid>,
+) -> Result<StatusCode, AppError> {
+    let res = hypothesis::Entity::delete_by_id(hypothesis_id)
+        .exec(&state.db)
+        .await?;
+    if res.rows_affected == 0 {
+        return Err(AppError::NotFound(format!(
+            "hypothesis {hypothesis_id} not found"
+        )));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use axum::http::StatusCode;
@@ -276,6 +429,30 @@ mod tests {
         note::ActiveModel {
             id: Set(id),
             strategy_id: Set(Some(strategy_id)),
+            title: Set("t".into()),
+            body_md: Set("b".into()),
+            frontmatter_json: Set(json!({})),
+            type_tag: Set(None),
+            status: Set("unread".into()),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_by_kind: Set("human".into()),
+            created_at: NotSet,
+            updated_at: NotSet,
+            graphs_json: Set(json!([])),
+            execution_id: Set(None),
+        }
+        .insert(db)
+        .await
+        .expect("insert note");
+        id
+    }
+
+    async fn seed_global_note(db: &DatabaseConnection) -> Uuid {
+        let id = Uuid::new_v4();
+        note::ActiveModel {
+            id: Set(id),
+            strategy_id: Set(None),
             title: Set("t".into()),
             body_md: Set("b".into()),
             frontmatter_json: Set(json!({})),
@@ -624,5 +801,204 @@ mod tests {
             .await
             .expect("query");
         assert!(row.is_none());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_global_hypothesis_returns_strategy_id_null(pool: PgPool) {
+        let (_db, server) = create_test_server_with_db(pool).await;
+
+        let created = server
+            .post("/api/hypotheses")
+            .json(&json!({
+                "title": "日経平均のレンジ相場入り",
+                "body": "直近 1 ヶ月は **横ばい**",
+            }))
+            .await;
+        created.assert_status(StatusCode::CREATED);
+        assert_eq!(
+            normalize(created.json()),
+            json!({
+                "hypothesis_id": "<uuid>",
+                "strategy_id": null,
+                "title": "日経平均のレンジ相場入り",
+                "body": "直近 1 ヶ月は **横ばい**",
+                "status": "unverified",
+                "related_note_ids": [],
+                "related_interest_ids": [],
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_global_hypothesis_accepts_global_note_and_rejects_strategy_note(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let sid = insert_test_strategy(&db, "s").await;
+        let global_note = seed_global_note(&db).await;
+        let strategy_note = seed_note(&db, sid).await;
+
+        let accepted = server
+            .post("/api/hypotheses")
+            .json(&json!({
+                "title": "t",
+                "body": "b",
+                "related_note_ids": [global_note],
+            }))
+            .await;
+        accepted.assert_status(StatusCode::CREATED);
+
+        let rejected = server
+            .post("/api/hypotheses")
+            .json(&json!({
+                "title": "t",
+                "body": "b",
+                "related_note_ids": [strategy_note],
+            }))
+            .await;
+        rejected.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_isolates_global_and_strategy_hypotheses(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let sid = insert_test_strategy(&db, "s").await;
+
+        server
+            .post(&format!("/api/strategies/{sid}/hypotheses"))
+            .json(&json!({"title": "strategy-only", "body": "b"}))
+            .await
+            .assert_status(StatusCode::CREATED);
+        server
+            .post("/api/hypotheses")
+            .json(&json!({"title": "global-only", "body": "b"}))
+            .await
+            .assert_status(StatusCode::CREATED);
+
+        let global_list = server.get("/api/hypotheses").await;
+        global_list.assert_status_ok();
+        let normalized_global: Vec<_> = global_list
+            .json::<Vec<serde_json::Value>>()
+            .into_iter()
+            .map(normalize)
+            .collect();
+        assert_eq!(
+            normalized_global,
+            vec![json!({
+                "hypothesis_id": "<uuid>",
+                "strategy_id": null,
+                "title": "global-only",
+                "body": "b",
+                "status": "unverified",
+                "related_note_ids": [],
+                "related_interest_ids": [],
+            })],
+        );
+
+        let strategy_list = server
+            .get(&format!("/api/strategies/{sid}/hypotheses"))
+            .await;
+        strategy_list.assert_status_ok();
+        let normalized_strategy: Vec<_> = strategy_list
+            .json::<Vec<serde_json::Value>>()
+            .into_iter()
+            .map(normalize)
+            .collect();
+        assert_eq!(
+            normalized_strategy,
+            vec![json!({
+                "hypothesis_id": "<uuid>",
+                "strategy_id": sid,
+                "title": "strategy-only",
+                "body": "b",
+                "status": "unverified",
+                "related_note_ids": [],
+                "related_interest_ids": [],
+            })],
+        );
+    }
+
+    // generic /api/hypotheses/{hypothesis_id} が global / strategy 両方の仮説に対して動くことを
+    // 検証する。rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
+    #[sqlx::test(migrations = false)]
+    async fn generic_endpoint_works_for_global_and_strategy_hypotheses(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let sid = insert_test_strategy(&db, "s").await;
+
+        for (label, create_path, expected_strategy_id) in [
+            ("global", "/api/hypotheses".to_string(), json!(null)),
+            (
+                "strategy",
+                format!("/api/strategies/{sid}/hypotheses"),
+                json!(sid),
+            ),
+        ] {
+            let created = server
+                .post(&create_path)
+                .json(&json!({"title": "t", "body": "b"}))
+                .await;
+            created.assert_status(StatusCode::CREATED);
+            let hid = Uuid::parse_str(
+                created.json::<serde_json::Value>()["hypothesis_id"]
+                    .as_str()
+                    .unwrap(),
+            )
+            .unwrap();
+
+            let got = server.get(&format!("/api/hypotheses/{hid}")).await;
+            assert_eq!(
+                got.status_code(),
+                StatusCode::OK,
+                "case {label} GET status mismatch",
+            );
+            assert_eq!(
+                normalize(got.json()),
+                json!({
+                    "hypothesis_id": "<uuid>",
+                    "strategy_id": expected_strategy_id,
+                    "title": "t",
+                    "body": "b",
+                    "status": "unverified",
+                    "related_note_ids": [],
+                    "related_interest_ids": [],
+                }),
+                "case {label} GET body mismatch",
+            );
+
+            let updated = server
+                .patch(&format!("/api/hypotheses/{hid}"))
+                .json(&json!({"status": "supported"}))
+                .await;
+            assert_eq!(
+                updated.status_code(),
+                StatusCode::OK,
+                "case {label} PATCH status mismatch",
+            );
+            assert_eq!(
+                normalize(updated.json()),
+                json!({
+                    "hypothesis_id": "<uuid>",
+                    "strategy_id": expected_strategy_id,
+                    "title": "t",
+                    "body": "b",
+                    "status": "supported",
+                    "related_note_ids": [],
+                    "related_interest_ids": [],
+                }),
+                "case {label} PATCH body mismatch",
+            );
+
+            let deleted = server.delete(&format!("/api/hypotheses/{hid}")).await;
+            assert_eq!(
+                deleted.status_code(),
+                StatusCode::NO_CONTENT,
+                "case {label} DELETE status mismatch",
+            );
+
+            let again = server.get(&format!("/api/hypotheses/{hid}")).await;
+            assert_eq!(
+                again.status_code(),
+                StatusCode::NOT_FOUND,
+                "case {label} re-GET after delete status mismatch",
+            );
+        }
     }
 }
