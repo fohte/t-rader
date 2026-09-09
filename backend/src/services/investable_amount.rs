@@ -11,6 +11,7 @@ use crate::entities::strategy_investable_amount;
 use crate::error::AppError;
 
 /// `effective_at` が現在時刻以下の最新行を返す。1 行も無ければ `None`。
+/// `effective_at` が同値の行が複数あった場合は `created_at` が新しい方を優先する。
 pub async fn find_current(
     db: &DatabaseConnection,
     strategy_id: Uuid,
@@ -20,13 +21,14 @@ pub async fn find_current(
         .filter(strategy_investable_amount::Column::StrategyId.eq(strategy_id))
         .filter(strategy_investable_amount::Column::EffectiveAt.lte(now))
         .order_by_desc(strategy_investable_amount::Column::EffectiveAt)
+        .order_by_desc(strategy_investable_amount::Column::CreatedAt)
         .one(db)
         .await?;
     Ok(row)
 }
 
 /// 新しい history 行を追記する。既存行は変更しない。
-pub async fn set(
+pub async fn record(
     db: &DatabaseConnection,
     strategy_id: Uuid,
     amount_jpy: Decimal,
@@ -69,22 +71,22 @@ mod tests {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let now = Utc::now().fixed_offset();
 
-        set(
+        record(
             &db,
             strategy_id,
             Decimal::from_str("1000000").unwrap(),
             now - Duration::days(1),
         )
         .await
-        .expect("set past");
-        set(
+        .expect("record past");
+        record(
             &db,
             strategy_id,
             Decimal::from_str("9999999").unwrap(),
             now + Duration::days(1),
         )
         .await
-        .expect("set future");
+        .expect("record future");
 
         let current = find_current(&db, strategy_id)
             .await
@@ -99,22 +101,22 @@ mod tests {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let now = Utc::now().fixed_offset();
 
-        set(
+        record(
             &db,
             strategy_id,
             Decimal::from_str("1000000").unwrap(),
             now - Duration::days(2),
         )
         .await
-        .expect("set older");
-        set(
+        .expect("record older");
+        record(
             &db,
             strategy_id,
             Decimal::from_str("2000000").unwrap(),
             now - Duration::days(1),
         )
         .await
-        .expect("set newer");
+        .expect("record newer");
 
         let current = find_current(&db, strategy_id)
             .await

@@ -30,7 +30,7 @@ function PortfolioPage() {
       }),
     ),
   })
-  const cash = investableAmountQueries.reduce(
+  const investableTotal = investableAmountQueries.reduce(
     (sum, q) => sum + (q.data?.amount_jpy ?? 0),
     0,
   )
@@ -41,7 +41,10 @@ function PortfolioPage() {
   )
 
   const equity = openPositions.reduce((s, p) => s + p.cost_basis, 0)
-  const totalAssets = equity + cash
+  // 投資可能額 (investableTotal) は保有株式の簿価 (equity) を含む枠のため、
+  // 単純合算すると投資済み分を二重計上する。未投資分だけを現金として扱う。
+  const cash = investableTotal - equity
+  const totalAssets = investableTotal
   const cashRatio = totalAssets > 0 ? (cash / totalAssets) * 100 : 0
   const investedRatio = totalAssets > 0 ? 100 - cashRatio : 0
   const realizedPnl = summary?.realized_pnl ?? 0

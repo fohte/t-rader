@@ -77,7 +77,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 「effective_at が現在時刻以下の最新行」を引く検索の絞り込みに使う。
         manager
             .create_index(
                 Index::create()
@@ -89,9 +88,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 参照元コードが無いまま本番 0 件で放置されていたテーブルを削除する。
-        // total_equity_jpy は Σ(qty × 現在値) + 未使用枠 から導出する方針のため、
-        // 導出可能な値を別途保持する portfolio_snapshot は復活させない。
         manager
             .drop_table(Table::drop().table(PortfolioSnapshot::Table).to_owned())
             .await?;

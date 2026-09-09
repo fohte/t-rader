@@ -1,6 +1,7 @@
 use axum::Json;
 use axum::extract::State;
 use chrono::Utc;
+use rust_decimal::Decimal;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -65,10 +66,16 @@ pub async fn put_investable_amount(
     JsonBody(payload): JsonBody<PutInvestableAmountRequest>,
 ) -> Result<Json<InvestableAmountResponse>, AppError> {
     find_strategy_or_404(&state.db, id).await?;
+    if payload.amount_jpy < Decimal::ZERO {
+        return Err(AppError::Validation(
+            "amount_jpy must be non-negative".into(),
+        ));
+    }
     let effective_at = payload
         .effective_at
         .unwrap_or_else(|| Utc::now().fixed_offset());
-    let created = investable_amount::set(&state.db, id, payload.amount_jpy, effective_at).await?;
+    let created =
+        investable_amount::record(&state.db, id, payload.amount_jpy, effective_at).await?;
     Ok(Json(to_response(Some(created))))
 }
 
@@ -193,5 +200,17 @@ mod tests {
             .json(&serde_json::json!({ "amount_jpy": 1000000 }))
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn put_400_for_negative_amount(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let id = create_strategy(&server, "s").await;
+
+        let res = server
+            .put(&format!("/api/strategies/{id}/investable-amount"))
+            .json(&serde_json::json!({ "amount_jpy": -1 }))
+            .await;
+        res.assert_status(axum::http::StatusCode::BAD_REQUEST);
     }
 }
