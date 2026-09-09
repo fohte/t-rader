@@ -52,9 +52,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // どの戦略にも属さない関心 (strategy_id IS NULL) を許容しつつ、
-        // (ref_kind, ref_id) の重複登録は strategy スコープ / global スコープそれぞれで防ぐ。
-        // 部分ユニークインデックスなので複合主キーには戻せない (custom_indicator と同じパターン)。
         manager
             .get_connection()
             .execute_unprepared(
@@ -83,7 +80,6 @@ impl MigrationTrait for Migration {
             .execute_unprepared("DROP INDEX strategy_interest_scoped_unique_idx")
             .await?;
 
-        // strategy_id IS NULL の行が残っていると失敗するが、ロールバック時の制約として許容する
         manager
             .alter_table(
                 Table::alter()

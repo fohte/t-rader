@@ -53,7 +53,6 @@ function installMiddleware(initial: StrategyInterest[] = []) {
     deleteCalls: [],
   }
   for (const i of initial) {
-    // このコンポーネントは常に /api/strategies/{id}/interests スコープでのみ使う
     const sid = i.strategy_id ?? ''
     const list = store.byStrategy.get(sid) ?? []
     list.push(i)

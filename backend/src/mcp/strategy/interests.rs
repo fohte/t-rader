@@ -55,9 +55,7 @@ impl StrategyServer {
             origin: Set(AGENT_INTEREST_ORIGIN.to_string()),
             created_at: NotSet,
         };
-        // 部分ユニークインデックス (strategy_id IS NOT NULL) を対象にするには、
-        // ON CONFLICT の conflict target に同じ WHERE 述語を明示する必要がある
-        // (指定しないと "no unique or exclusion constraint matching" で DB エラーになる)。
+        // 部分ユニークインデックスを conflict target に指定するため、WHERE 述語を一致させる
         let insert_result = strategy_interest::Entity::insert(model)
             .on_conflict(
                 OnConflict::columns([

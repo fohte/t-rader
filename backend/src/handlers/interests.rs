@@ -83,6 +83,30 @@ async fn update_interest_inner(
     active.update(db).await.map_err(AppError::from)
 }
 
+/// リクエストを検証して ActiveModel を組み立てる共通処理。戦略スコープ / global スコープ両方から呼ばれる。
+fn build_interest_active_model(
+    strategy_id: Option<Uuid>,
+    p: CreateInterestRequest,
+) -> Result<strategy_interest::ActiveModel, AppError> {
+    let ref_kind = p.ref_kind.trim().to_string();
+    ensure_ref_kind(&ref_kind)?;
+    let ref_id = normalize_ref_id(&p.ref_id)?;
+    let role = p.role.unwrap_or_else(|| DEFAULT_ROLE.to_string());
+    let origin = p.origin.unwrap_or_else(|| DEFAULT_ORIGIN.to_string());
+    ensure_role(&role)?;
+    ensure_origin(&origin)?;
+
+    Ok(strategy_interest::ActiveModel {
+        id: NotSet,
+        strategy_id: Set(strategy_id),
+        ref_kind: Set(ref_kind),
+        ref_id: Set(ref_id),
+        role: Set(role),
+        origin: Set(origin),
+        created_at: NotSet,
+    })
+}
+
 /// 削除する共通処理。戦略スコープ / global スコープ両方から呼ばれる。
 async fn delete_interest_inner(
     db: &sea_orm::DatabaseConnection,
@@ -130,25 +154,10 @@ pub async fn create_strategy_interest(
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<CreateInterestRequest>,
 ) -> Result<(StatusCode, Json<strategy_interest::Model>), AppError> {
-    let ref_kind = p.ref_kind.trim().to_string();
-    ensure_ref_kind(&ref_kind)?;
-    let ref_id = normalize_ref_id(&p.ref_id)?;
-    let role = p.role.unwrap_or_else(|| DEFAULT_ROLE.to_string());
-    let origin = p.origin.unwrap_or_else(|| DEFAULT_ORIGIN.to_string());
-    ensure_role(&role)?;
-    ensure_origin(&origin)?;
+    let model = build_interest_active_model(Some(strategy_id), p)?;
 
     let txn = state.db.begin().await?;
     ensure_strategy_exists(&txn, strategy_id).await?;
-    let model = strategy_interest::ActiveModel {
-        id: NotSet,
-        strategy_id: Set(Some(strategy_id)),
-        ref_kind: Set(ref_kind),
-        ref_id: Set(ref_id),
-        role: Set(role),
-        origin: Set(origin),
-        created_at: NotSet,
-    };
     let created = strategy_interest::Entity::insert(model)
         .exec_with_returning(&txn)
         .await?;
@@ -252,23 +261,7 @@ pub async fn create_global_interest(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateInterestRequest>,
 ) -> Result<(StatusCode, Json<strategy_interest::Model>), AppError> {
-    let ref_kind = p.ref_kind.trim().to_string();
-    ensure_ref_kind(&ref_kind)?;
-    let ref_id = normalize_ref_id(&p.ref_id)?;
-    let role = p.role.unwrap_or_else(|| DEFAULT_ROLE.to_string());
-    let origin = p.origin.unwrap_or_else(|| DEFAULT_ORIGIN.to_string());
-    ensure_role(&role)?;
-    ensure_origin(&origin)?;
-
-    let model = strategy_interest::ActiveModel {
-        id: NotSet,
-        strategy_id: Set(None),
-        ref_kind: Set(ref_kind),
-        ref_id: Set(ref_id),
-        role: Set(role),
-        origin: Set(origin),
-        created_at: NotSet,
-    };
+    let model = build_interest_active_model(None, p)?;
     let created = strategy_interest::Entity::insert(model)
         .exec_with_returning(&state.db)
         .await?;

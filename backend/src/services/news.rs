@@ -192,8 +192,6 @@ fn expand_interest_terms(
 ) -> Vec<InterestTerm> {
     let mut out = Vec::new();
     for i in interests {
-        // load_strategy_interests で strategy_id IS NOT NULL に絞っているため実質常に Some だが、
-        // 型としては Option<Uuid> なので分解が必要
         let Some(strategy_id) = i.strategy_id else {
             continue;
         };
