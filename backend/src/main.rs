@@ -203,8 +203,10 @@ async fn main() -> Result<(), AppError> {
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
-    // stock.sector_id が NULL の銘柄の業種を補完する poll task を起動する
-    if let Some(provider) = &data_provider {
+    // IBKR provider は fetch_instrument で業種を返さないため対象外。
+    if let Some(provider) = &data_provider
+        && matches!(provider.as_ref(), DataProviderKind::JQuants(_))
+    {
         let _sector_backfill_poll = backend::services::sector_backfill::spawn_poll(
             db.clone(),
             provider.clone(),

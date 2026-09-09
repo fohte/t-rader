@@ -30,7 +30,12 @@ pub struct BackfillStats {
     pub filled: usize,
 }
 
-/// `sector_id` が NULL の stock を対象に業種を取得し、埋められた分だけ反映する
+/// `sector_id` が NULL の stock を対象に業種を取得し、埋められた分だけ反映する。
+///
+/// ponytail: 対象取得は ORDER BY を持たないため、業種を確定できない銘柄 (fetch_instrument
+/// が恒常的に失敗する、または sector が常に空) が BATCH_LIMIT 件以上存在すると、それらが
+/// 毎サイクルの枠を埋めて他の未試行銘柄に到達しなくなる。保有銘柄規模では起きにくいが、
+/// 顕在化したら試行順を記録する列を足して LRU 的にローテーションさせる。
 pub async fn run_backfill_cycle<P: DataProvider>(
     db: &DatabaseConnection,
     provider: &P,
@@ -88,13 +93,16 @@ async fn upsert_sector(db: &DatabaseConnection, name: &str) -> Result<(), sea_or
         id: Set(name.to_string()),
         name: Set(name.to_string()),
     };
+    // support_returning() が true (Postgres) だと通常の exec() は RETURNING 行を
+    // 前提にしており、ON CONFLICT DO NOTHING で行が返らないと DbErr::RecordNotInserted
+    // になってしまう。conflict を正常系として扱うため returning 不要な exec を使う
     sector::Entity::insert(model)
         .on_conflict(
             OnConflict::column(sector::Column::Id)
                 .do_nothing()
                 .to_owned(),
         )
-        .exec(db)
+        .exec_without_returning(db)
         .await?;
     Ok(())
 }
@@ -185,6 +193,15 @@ mod tests {
         }
     }
 
+    async fn assert_sector_id(db: &DatabaseConnection, stock_id: &str, expected: Option<&str>) {
+        let updated = stock::Entity::find_by_id(stock_id.to_string())
+            .one(db)
+            .await
+            .expect("query ok")
+            .expect("stock exists");
+        assert_eq!(updated.sector_id, expected.map(|s| s.to_string()));
+    }
+
     #[sqlx::test(migrations = false)]
     async fn fills_sector_id_and_creates_sector_row(pool: PgPool) {
         let db = create_test_db(pool).await;
@@ -203,12 +220,7 @@ mod tests {
             }
         );
 
-        let updated = stock::Entity::find_by_id("7203".to_string())
-            .one(&db)
-            .await
-            .expect("query ok")
-            .expect("stock exists");
-        assert_eq!(updated.sector_id, Some("輸送用機器".to_string()));
+        assert_sector_id(&db, "7203", Some("輸送用機器")).await;
 
         let sector_row = sector::Entity::find_by_id("輸送用機器".to_string())
             .one(&db)
@@ -236,12 +248,7 @@ mod tests {
             }
         );
 
-        let updated = stock::Entity::find_by_id("9999".to_string())
-            .one(&db)
-            .await
-            .expect("query ok")
-            .expect("stock exists");
-        assert_eq!(updated.sector_id, None);
+        assert_sector_id(&db, "9999", None).await;
     }
 
     #[sqlx::test(migrations = false)]
@@ -262,12 +269,7 @@ mod tests {
             }
         );
 
-        let updated = stock::Entity::find_by_id("1111".to_string())
-            .one(&db)
-            .await
-            .expect("query ok")
-            .expect("stock exists");
-        assert_eq!(updated.sector_id, None);
+        assert_sector_id(&db, "1111", None).await;
     }
 
     #[sqlx::test(migrations = false)]
@@ -298,5 +300,33 @@ mod tests {
                 filled: 0,
             }
         );
+    }
+
+    /// 2 件目の upsert_sector は同じ id への ON CONFLICT DO NOTHING を踏む。conflict を
+    /// エラー扱いしてしまうと、後続銘柄がまとめて未処理になる (upsert_sector の doc 参照)
+    #[sqlx::test(migrations = false)]
+    async fn fills_sector_id_for_multiple_stocks_sharing_the_same_sector(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_stock(&db, "7203", "トヨタ自動車").await;
+        insert_stock(&db, "7267", "ホンダ").await;
+
+        let provider = MockProvider {
+            instruments: vec![
+                instrument("7203", Some("輸送用機器")),
+                instrument("7267", Some("輸送用機器")),
+            ],
+        };
+
+        let stats = run_backfill_cycle(&db, &provider).await.expect("cycle ok");
+        assert_eq!(
+            stats,
+            BackfillStats {
+                attempted: 2,
+                filled: 2,
+            }
+        );
+
+        assert_sector_id(&db, "7203", Some("輸送用機器")).await;
+        assert_sector_id(&db, "7267", Some("輸送用機器")).await;
     }
 }
