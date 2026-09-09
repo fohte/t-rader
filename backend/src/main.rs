@@ -212,7 +212,10 @@ async fn main() -> Result<(), AppError> {
             provider.clone(),
             backend::services::sector_backfill::DEFAULT_INTERVAL,
         );
-        tracing::info!("sector backfill poll task started (interval=24h)");
+        tracing::info!(
+            interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
+            "sector backfill poll task started",
+        );
     }
 
     let llm_gateway_client = LlmGatewayClient::from_env();
