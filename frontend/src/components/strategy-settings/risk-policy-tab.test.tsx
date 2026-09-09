@@ -85,7 +85,7 @@ afterEach(() => {
 })
 
 describe('RiskPolicyTab', () => {
-  it('GET の max_position_ratio をパーセント表記で入力欄と現在値表示に反映する', async () => {
+  it('GET の値が入力欄の初期値に反映される', async () => {
     setup({ maxPositionRatio: 0.15 })
 
     await waitFor(() => {
@@ -93,21 +93,35 @@ describe('RiskPolicyTab', () => {
         '15',
       )
     })
-    expect(screen.getByTestId('current-value').textContent).toBe(
-      '現在の上限: 15%',
-    )
   })
 
-  it('未設定なら上限なしと表示し、入力欄は空にする', async () => {
+  it('GET の値が現在値表示に反映される', async () => {
+    setup({ maxPositionRatio: 0.15 })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('current-value').textContent).toBe(
+        '現在の上限: 15%',
+      )
+    })
+  })
+
+  it('未設定なら入力欄を空にする', async () => {
     setup({ maxPositionRatio: null })
 
     const input = await screen.findByLabelText(/1 銘柄あたりの保有時価上限/)
     await waitFor(() => {
       expect(input).toHaveValue('')
     })
-    expect(screen.getByTestId('current-value').textContent).toBe(
-      '現在の上限: 上限なし',
-    )
+  })
+
+  it('未設定なら現在値表示に上限なしと表示する', async () => {
+    setup({ maxPositionRatio: null })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('current-value').textContent).toBe(
+        '現在の上限: 上限なし',
+      )
+    })
   })
 
   it('範囲外の値を保存しようとすると PUT せずクライアント側でエラー表示する', async () => {

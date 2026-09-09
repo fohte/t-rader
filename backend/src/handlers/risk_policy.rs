@@ -2,20 +2,15 @@
 
 use axum::Json;
 use axum::extract::State;
-use sea_orm::DbErr;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
-    AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest, validate_ratio,
+    AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
+    parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
 use crate::services::account_risk_policy;
-
-fn parse_risk_policy(value: serde_json::Value) -> Result<AccountRiskPolicyData, AppError> {
-    serde_json::from_value(value)
-        .map_err(|e| AppError::Database(DbErr::Custom(format!("invalid risk_policy: {e}"))))
-}
 
 /// 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す
 #[utoipa::path(
@@ -64,10 +59,9 @@ pub async fn put_account_risk_policy(
         schema_version: crate::models::risk_policy::RISK_POLICY_SCHEMA_VERSION,
         max_sector_ratio: payload.max_sector_ratio,
     };
-    let value = serde_json::to_value(&data)
-        .map_err(|e| AppError::Database(DbErr::Custom(format!("invalid risk_policy: {e}"))))?;
+    let value = serialize_risk_policy(&data)?;
     let saved = account_risk_policy::save(&state.db, value).await?;
-    let data = parse_risk_policy(saved.risk_policy)?;
+    let data = parse_risk_policy::<AccountRiskPolicyData>(saved.risk_policy)?;
     Ok(Json(data.into()))
 }
 

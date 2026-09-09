@@ -23,6 +23,7 @@ pub async fn save(
     db: &DatabaseConnection,
     risk_policy: serde_json::Value,
 ) -> Result<account_risk_policy::Model, AppError> {
+    let prev = find_current(db).await?;
     let model = account_risk_policy::ActiveModel {
         id: Set(SINGLETON_ID),
         risk_policy: Set(risk_policy),
@@ -39,6 +40,13 @@ pub async fn save(
         )
         .exec_with_returning(db)
         .await?;
+    // account_risk_policy は change_history::TargetKind に対応する種別が無いため、
+    // 変更前後の値をログにのみ残す。
+    tracing::info!(
+        from = ?prev.map(|m| m.risk_policy),
+        to = ?saved.risk_policy,
+        "updated account_risk_policy",
+    );
     Ok(saved)
 }
 

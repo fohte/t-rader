@@ -1,6 +1,5 @@
 use axum::Json;
 use axum::extract::State;
-use sea_orm::DbErr;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -8,17 +7,12 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
     PutStrategyRiskPolicyRequest, StrategyRiskPolicyData, StrategyRiskPolicyResponse,
-    validate_ratio,
+    parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
 use crate::services::change_history::Actor;
 use crate::services::strategy_config;
 
 use super::find_strategy_or_404;
-
-fn parse_risk_policy(value: serde_json::Value) -> Result<StrategyRiskPolicyData, AppError> {
-    serde_json::from_value(value)
-        .map_err(|e| AppError::Database(DbErr::Custom(format!("invalid risk_policy: {e}"))))
-}
 
 /// 戦略の銘柄集中度上限 (`max_position_ratio`) を取得
 #[utoipa::path(
@@ -38,7 +32,7 @@ pub async fn get_risk_policy(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<StrategyRiskPolicyResponse>, AppError> {
     let row = find_strategy_or_404(&state.db, id).await?;
-    let data = parse_risk_policy(row.risk_policy)?;
+    let data = parse_risk_policy::<StrategyRiskPolicyData>(row.risk_policy)?;
     Ok(Json(data.into()))
 }
 
@@ -63,15 +57,16 @@ pub async fn put_risk_policy(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<PutStrategyRiskPolicyRequest>,
 ) -> Result<Json<StrategyRiskPolicyResponse>, AppError> {
+    let current = find_strategy_or_404(&state.db, id).await?;
     validate_ratio(payload.max_position_ratio)?;
     let data = StrategyRiskPolicyData {
         schema_version: crate::models::risk_policy::RISK_POLICY_SCHEMA_VERSION,
         max_position_ratio: payload.max_position_ratio,
     };
-    let value = serde_json::to_value(&data)
-        .map_err(|e| AppError::Database(DbErr::Custom(format!("invalid risk_policy: {e}"))))?;
-    let updated = strategy_config::save_risk_policy(&state.db, Actor::Human, id, value).await?;
-    let data = parse_risk_policy(updated.risk_policy)?;
+    let value = serialize_risk_policy(&data)?;
+    let updated =
+        strategy_config::save_risk_policy(&state.db, Actor::Human, current, value).await?;
+    let data = parse_risk_policy::<StrategyRiskPolicyData>(updated.risk_policy)?;
     Ok(Json(data.into()))
 }
 

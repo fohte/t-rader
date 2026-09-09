@@ -37,7 +37,7 @@ pub use refs::RefResolution;
 pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
     PutStrategyRiskPolicyRequest, StrategyRiskPolicyData, StrategyRiskPolicyResponse,
-    validate_ratio,
+    parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
 pub use strategy::{
     AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateStrategyRequest,

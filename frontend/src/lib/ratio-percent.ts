@@ -1,11 +1,11 @@
-// backend の (0, 1] 範囲チェック (max_position_ratio / max_sector_ratio) と対称な、
-// パーセント表記 (0, 100] での入出力を担う変換ヘルパー
 export const RATIO_PERCENT_ERROR = '0 より大きく 100 以下の値を入力してください'
 
 export type ParsedRatioPercent =
   { ratio: number | null; error: null } | { ratio: null; error: string }
 
-/** 空欄は上限解除 (null) を表す */
+/**
+ * パーセント表記の文字列 (0, 100] を比率 (0, 1] に変換する。空文字列は null を返す。
+ */
 export function parseRatioPercent(input: string): ParsedRatioPercent {
   const trimmed = input.trim()
   if (trimmed === '') return { ratio: null, error: null }

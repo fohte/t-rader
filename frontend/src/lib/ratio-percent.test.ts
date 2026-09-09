@@ -15,7 +15,7 @@ describe('parseRatioPercent', () => {
       expected: { ratio: null, error: null },
     },
     {
-      name: 'lower-bound',
+      name: 'typical-value',
       input: '15',
       expected: { ratio: 0.15, error: null },
     },

@@ -315,10 +315,10 @@ pub async fn delete_skill(
 pub async fn save_risk_policy(
     db: &DatabaseConnection,
     actor: Actor,
-    id: Uuid,
+    current: strategy::Model,
     risk_policy: serde_json::Value,
 ) -> Result<strategy::Model, AppError> {
-    let current = find_or_404(db, id).await?;
+    let id = current.id;
     let prev = current.risk_policy.clone();
     let mut active = current.into_active_model();
     active.risk_policy = Set(risk_policy.clone());

@@ -44,6 +44,28 @@ pub fn validate_ratio(value: Option<Decimal>) -> Result<(), crate::error::AppErr
     Ok(())
 }
 
+/// `risk_policy` JSONB カラムの値を型付きデータにパースする。
+pub fn parse_risk_policy<T: serde::de::DeserializeOwned>(
+    value: serde_json::Value,
+) -> Result<T, crate::error::AppError> {
+    serde_json::from_value(value).map_err(|e| {
+        crate::error::AppError::Database(sea_orm::DbErr::Custom(format!(
+            "invalid risk_policy: {e}"
+        )))
+    })
+}
+
+/// 型付きデータを `risk_policy` JSONB カラムに書き込む値へシリアライズする。
+pub fn serialize_risk_policy<T: serde::Serialize>(
+    data: &T,
+) -> Result<serde_json::Value, crate::error::AppError> {
+    serde_json::to_value(data).map_err(|e| {
+        crate::error::AppError::Database(sea_orm::DbErr::Custom(format!(
+            "invalid risk_policy: {e}"
+        )))
+    })
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PutStrategyRiskPolicyRequest {
