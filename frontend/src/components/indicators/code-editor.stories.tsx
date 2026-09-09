@@ -81,7 +81,7 @@ export const ReadOnly: Story = {
   },
   parameters: { screenshot: { skip: true } },
   play: async ({ canvasElement }) => {
-    const editContext = canvasElement.querySelector('[aria-autocomplete]')
-    await expect(editContext).toHaveAttribute('aria-autocomplete', 'none')
+    const editableRegion = canvasElement.querySelector('[aria-autocomplete]')
+    await expect(editableRegion).toHaveAttribute('aria-autocomplete', 'none')
   },
 }
