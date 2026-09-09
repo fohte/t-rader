@@ -180,7 +180,7 @@ mod tests {
             "ticks": [{
                 "symbol": "日経225",
                 "value": "100.00",
-                "pct": 0.5,
+                "pct": Value::Number(serde_json::Number::from_str("0.50").expect("valid number")),
                 "fetched_at": NORMALIZED_FETCHED_AT,
             }],
             "stale_since": null,
