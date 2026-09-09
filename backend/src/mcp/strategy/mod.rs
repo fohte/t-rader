@@ -20,6 +20,7 @@
 //! - `add_interest`: 戦略の関心 (derived / origin=llm) を追加する
 //! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
 //! - `query_media`: 動画/音声 URL (YouTube 等) の内容を Gemini でテキスト化する
+//! - `read_portfolio`: 口座全体 (全戦略横断) の保有銘柄と実現損益を返す
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -32,6 +33,7 @@
 //! - `interests`: 関心の追加 (`add_interest_inner`)
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
+//! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
 //!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
 //!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
@@ -48,6 +50,7 @@ pub(super) mod eval_indicator;
 pub(super) mod interests;
 pub(super) mod media;
 pub(super) mod notes;
+pub(super) mod portfolio;
 mod tool_router;
 
 #[cfg(test)]
