@@ -870,6 +870,27 @@ export interface paths {
     patch: operations['update_strategy_interest']
     trace?: never
   }
+  '/api/strategies/{id}/investable-amount': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 戦略の投資可能額 (`effective_at` が現在時刻以下の最新行) を取得。
+     *     history が無い戦略では `amount_jpy` / `effective_at` ともに null を返す。
+     */
+    get: operations['get_investable_amount']
+    /** 戦略の投資可能額を新しい history 行として記録する。既存行は上書きしない。 */
+    put: operations['put_investable_amount']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/news': {
     parameters: {
       query?: never
@@ -1493,6 +1514,16 @@ export interface components {
       kind: string
       name: string
     }
+    /**
+     * @description 戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。
+     *     history が 1 行も無い戦略では両方 null。
+     */
+    InvestableAmountResponse: {
+      /** Format: double */
+      amount_jpy?: number | null
+      /** Format: date-time */
+      effective_at?: string | null
+    }
     /** @enum {string} */
     Layout: 'flow' | 'tree' | 'chain' | 'scatter'
     /** @description マクロ指標の現在値 */
@@ -1610,6 +1641,19 @@ export interface components {
       output?: unknown
       stderr: string
       stdout: string
+    }
+    /**
+     * @description 戦略の投資可能額を新しい history 行として記録するリクエスト。
+     *     口座の現金残高や証券会社の買付余力とは別概念で、ユーザーが投資に回すと決めた枠を表す。
+     */
+    PutInvestableAmountRequest: {
+      /** Format: double */
+      amount_jpy: number
+      /**
+       * Format: date-time
+       * @description 省略時はサーバー側で現在時刻を使う
+       */
+      effective_at?: string | null
     }
     /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
     RefResolution: {
@@ -5549,6 +5593,120 @@ export interface operations {
         }
       }
       /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_investable_amount: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InvestableAmountResponse']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_investable_amount: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PutInvestableAmountRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['InvestableAmountResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       422: {
         headers: {
           [name: string]: unknown

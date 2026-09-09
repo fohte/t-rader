@@ -6,22 +6,35 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
 )]
-#[sea_orm(table_name = "portfolio_snapshot")]
-#[schema(as = PortfolioSnapshot)]
+#[sea_orm(table_name = "strategy_investable_amount")]
+#[schema(as = StrategyInvestableAmount)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    pub strategy_id: Uuid,
+    pub amount_jpy: Decimal,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
-    pub taken_at: DateTimeWithTimeZone,
-    pub cash_jpy: Decimal,
-    pub total_equity_jpy: Decimal,
-    #[sea_orm(column_type = "JsonBinary")]
-    pub positions_json: Json,
+    pub effective_at: DateTimeWithTimeZone,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::strategy::Entity",
+        from = "Column::StrategyId",
+        to = "super::strategy::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    Strategy,
+}
+
+impl Related<super::strategy::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Strategy.def()
+    }
+}
 
 impl ActiveModelBehavior for ActiveModel {}

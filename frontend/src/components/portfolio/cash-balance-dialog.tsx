@@ -42,10 +42,9 @@ export function CashBalanceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>現金残高を更新</DialogTitle>
+          <DialogTitle>投資可能額を更新</DialogTitle>
           <DialogDescription>
-            ポートフォリオ全体の現金 (円) を入力します。MVP
-            ではブラウザのローカルストレージに保存します。
+            この戦略に配分した投資可能額 (円) を入力します。
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2 py-2">
@@ -53,7 +52,7 @@ export function CashBalanceDialog({
             htmlFor="cash-balance-input"
             className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
           >
-            現金 (¥)
+            投資可能額 (¥)
           </label>
           <Input
             id="cash-balance-input"
