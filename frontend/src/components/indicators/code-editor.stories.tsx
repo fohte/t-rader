@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { expect } from 'storybook/test'
 
 import { CodeEditor } from '#components/indicators/code-editor'
 
@@ -69,11 +70,18 @@ export const Yaml: Story = {
   render: () => <Interactive language="yaml" initial={SAMPLE_YAML} />,
 }
 
+// readOnly は外観に差分が現れないため VRT 対象外。
+// Monaco は readOnly 時に aria-autocomplete 属性を 'none' に設定する。
 export const ReadOnly: Story = {
   args: {
     language: 'python',
     value: SAMPLE_PYTHON,
     onChange: () => {},
     readOnly: true,
+  },
+  parameters: { screenshot: { skip: true } },
+  play: async ({ canvasElement }) => {
+    const editableRegion = canvasElement.querySelector('[aria-autocomplete]')
+    await expect(editableRegion).toHaveAttribute('aria-autocomplete', 'none')
   },
 }

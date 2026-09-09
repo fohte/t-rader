@@ -426,6 +426,8 @@ jobs:
           max-examples: 50
           config-file: backend/schemathesis.toml
           args: --workers 2 ${{ steps.schemathesis-checks.outputs.args }}
+          # renovate: datasource=pypi depName=schemathesis
+          version: 4.26.1
 
       - name: Dump backend log on failure
         if: failure()
