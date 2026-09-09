@@ -70,11 +70,8 @@ export const Yaml: Story = {
   render: () => <Interactive language="yaml" initial={SAMPLE_YAML} />,
 }
 
-// readOnly は見た目には現れず appearance では Python story と区別できないため
-// screenshot 対象から外し、play で readOnly が実際に反映されていることを検証する。
-// aria-autocomplete は Monaco が readOnly オプションを直接見て 'none'/'both' を
-// 切り替える属性 (.ime-text-area の readonly 属性は IME 補助用で readOnly の値に
-// 関わらず常に付与されるため検証には使えない)
+// readOnly は外観に差分が現れないため VRT 対象外。
+// Monaco は readOnly 時に aria-autocomplete 属性を 'none' に設定する。
 export const ReadOnly: Story = {
   args: {
     language: 'python',
@@ -84,7 +81,7 @@ export const ReadOnly: Story = {
   },
   parameters: { screenshot: { skip: true } },
   play: async ({ canvasElement }) => {
-    const editContext = canvasElement.querySelector('.native-edit-context')
+    const editContext = canvasElement.querySelector('[aria-autocomplete]')
     await expect(editContext).toHaveAttribute('aria-autocomplete', 'none')
   },
 }
