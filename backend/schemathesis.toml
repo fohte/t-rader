@@ -5,10 +5,6 @@
 allow-x00 = false
 
 [checks]
-# ここで enabled = false にした check は、api-fuzzing-backend ジョブが
-# --exclude-checks として schemathesis run に渡す (action が常に --checks=all
-# を渡すため、この [checks] を schemathesis に直接読ませても上書きされて効かない)。
-
 # GET/DELETE エンドポイントのパスパラメータは URL 文字列にシリアライズされるため、
 # Schemathesis が型をミューテートしても有効な文字列として送信される。
 # stateful テストで作成されたリソースの UUID が再利用されると、
