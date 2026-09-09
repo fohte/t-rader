@@ -9,7 +9,6 @@ allow-x00 = false
 # Schemathesis が型をミューテートしても有効な文字列として送信される。
 # stateful テストで作成されたリソースの UUID が再利用されると、
 # サーバーが正常応答を返し false positive になる。
-# ref: https://github.com/schemathesis/schemathesis/issues/2312
 negative_data_rejection.enabled = false
 
 # パスパラメータに含まれる UUID はランダム生成されるため、
