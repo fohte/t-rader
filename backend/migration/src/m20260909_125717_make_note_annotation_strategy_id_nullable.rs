@@ -32,9 +32,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // strategy を持たないノートは execution (戦略タスク実行) に紐づき得ないため、
-        // (strategy_id, execution_id) 部分ユニークインデックスが strategy_id IS NULL の
-        // 行同士を区別できなくなる問題をこの CHECK で未然に防ぐ。
+        // 戦略を持たないノートは戦略タスク実行 (execution) に紐づかないため、execution_id を禁止する。
         manager
             .get_connection()
             .execute_unprepared(

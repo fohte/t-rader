@@ -35,6 +35,7 @@ where
         .column(strategy_id_col)
         .column_as(id_col.count(), "unread_count")
         .filter(status_col.eq("unread"))
+        .filter(strategy_id_col.is_not_null())
         .group_by(strategy_id_col)
         .into_tuple()
         .all(db)
@@ -390,6 +391,46 @@ mod tests {
             timestamp: Set(chrono::Utc::now().fixed_offset()),
             price: Set(None),
             text: Set("note".into()),
+            status: Set("unread".into()),
+            linked_note_id: Set(None),
+            created_by_kind: Set("llm".into()),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+
+        // 戦略に属さない unread note / annotation は、どの戦略の未読件数にも
+        // 計上されず、集計クエリ自体も失敗しない (strategy_id が NULL の行が
+        // group by 対象から除外されることの回帰)。
+        note::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            strategy_id: Set(None),
+            title: Set("市況ノート".to_string()),
+            body_md: Set("body".to_string()),
+            frontmatter_json: Set(serde_json::json!({})),
+            type_tag: Set(None),
+            status: Set("unread".to_string()),
+            trigger: Set(None),
+            trigger_label: Set(None),
+            created_by_kind: Set("human".to_string()),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+            graphs_json: Set(serde_json::json!([])),
+            execution_id: Set(None),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        annotation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            strategy_id: Set(None),
+            target_symbol: Set("N225".into()),
+            target_kind: Set("signal".into()),
+            timestamp: Set(chrono::Utc::now().fixed_offset()),
+            price: Set(None),
+            text: Set("市況アノテーション".into()),
             status: Set("unread".into()),
             linked_note_id: Set(None),
             created_by_kind: Set("llm".into()),

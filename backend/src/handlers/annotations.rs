@@ -352,8 +352,6 @@ pub async fn reject_annotation(
         return Ok(Json(current));
     }
 
-    // 戦略に属さないアノテーションには却下時の自動修正タスクを投げる担当戦略が無いため、
-    // ステータス変更のみ行いタスク投入はスキップする。
     if let Some(strategy_id) = current.strategy_id {
         let prompt = format!(
             "アノテーション (id: {}, 対象: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
