@@ -17,6 +17,10 @@ negative_data_rejection.enabled = false
 # stateful テストでは実際のリソース ID が使われるため正しく検証される。
 positive_data_acceptance.enabled = false
 
+# URL に現れない外部キーで親リソースにぶら下がり、親の削除時に連鎖削除される
+# 子リソースは、誤検知抑制の URL prefix 一致判定が効かず false positive になる。
+ensure_resource_availability.enabled = false
+
 # chat エンドポイントは agent task client 未設定時に 503 を返す仕様
 # (CI 環境では TRADER_AGENT_API_URL=disabled のため必然的に 503 になる)。
 # ref: https://github.com/schemathesis/schemathesis/issues/2539
