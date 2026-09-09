@@ -17,8 +17,8 @@ use super::dto::{
     EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, ListNotesParams,
     ListNotesResult, NoteDto, QueryDataParams, QueryDataResult, QueryMediaParams, QueryMediaResult,
     ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult,
-    ReadNoteParams, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
-    ResolveCommentResult, WriteNoteParams, WriteNoteResult,
+    ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
+    ResolveCommentParams, ResolveCommentResult, WriteNoteParams, WriteNoteResult,
 };
 use super::{StrategyServer, execution_id_from_ctx, strategy_id_from_ctx};
 
@@ -214,6 +214,22 @@ impl StrategyServer {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.query_media_inner(sid, params).await.map(Json)
     }
+
+    /// 口座全体 (全戦略横断) の保有銘柄と実現損益を返す
+    #[tool(
+        name = "read_portfolio",
+        description = "Return account-wide open positions and realized P&L (FIFO), aggregated across all strategies regardless of the connecting strategy. Use this to check existing holdings before proposing new trades.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_portfolio(
+        &self,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadPortfolioResult>, McpError> {
+        // 口座全体を対象にするため sid はスコープに使わない。呼び出しが有効な戦略接続
+        // であることの検査としてのみ利用する。
+        strategy_id_from_ctx(&ctx)?;
+        self.read_portfolio_inner().await.map(Json)
+    }
 }
 
 impl StrategyServer {
@@ -273,6 +289,7 @@ mod tests {
                 ("read_annotations", Some(true)),
                 ("read_comments", Some(true)),
                 ("read_note", Some(true)),
+                ("read_portfolio", Some(true)),
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("write_note", None),
