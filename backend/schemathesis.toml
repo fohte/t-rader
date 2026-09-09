@@ -19,8 +19,6 @@ positive_data_acceptance.enabled = false
 
 # URL に現れない外部キーで親リソースにぶら下がり、親の削除時に連鎖削除される
 # 子リソースは、誤検知抑制の URL prefix 一致判定が効かず false positive になる。
-# schemathesis/action は checks: all を渡すため、[[operations]] での無効化は
-# CLI 側の enabled 上書きに負けて効かず、グローバルに無効化するしかない。
 ensure_resource_availability.enabled = false
 
 # chat エンドポイントは agent task client 未設定時に 503 を返す仕様
