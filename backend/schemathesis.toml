@@ -17,6 +17,12 @@ negative_data_rejection.enabled = false
 # stateful テストでは実際のリソース ID が使われるため正しく検証される。
 positive_data_acceptance.enabled = false
 
+# note/custom indicator 等は URL に現れない strategy_id (FK) で親 strategy に
+# ぶら下がり、strategy 削除時に ON DELETE CASCADE で連鎖削除される。この check の
+# 誤検知抑制は URL パスの prefix 一致でしか親子関係を判定できないため、URL に
+# 現れない経路での cascade delete を検知できず false positive になる。
+ensure_resource_availability.enabled = false
+
 # chat エンドポイントは agent task client 未設定時に 503 を返す仕様
 # (CI 環境では TRADER_AGENT_API_URL=disabled のため必然的に 503 になる)。
 # ref: https://github.com/schemathesis/schemathesis/issues/2539
