@@ -51,7 +51,7 @@ fn build_new_note_model(
         id,
         note::ActiveModel {
             id: Set(id),
-            strategy_id: Set(session_strategy_id),
+            strategy_id: Set(Some(session_strategy_id)),
             title: Set(title),
             body_md: Set(body_md),
             frontmatter_json: Set(frontmatter_json),
@@ -68,7 +68,16 @@ fn build_new_note_model(
     ))
 }
 
+/// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
+/// 必ず `Some` になるはずだが、不変条件が壊れた場合に別 strategy の id を誤って
+/// 返さないよう fail-loud にする。
 fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
+    let strategy_id = m.strategy_id.ok_or_else(|| {
+        internal_error(format!(
+            "note {} has no strategy_id despite session scoping",
+            m.id
+        ))
+    })?;
     let graphs: Vec<GraphDef> = serde_json::from_value(m.graphs_json)
         .map_err(|e| internal_error(format!("failed to deserialize note.graphs_json: {e}")))?;
     let frontmatter_json = m
@@ -78,7 +87,7 @@ fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
         .ok_or_else(|| internal_error("note.frontmatter_json is not a JSON object"))?;
     Ok(NoteDto {
         note_id: m.id,
-        strategy_id: m.strategy_id,
+        strategy_id,
         title: m.title,
         body_md: m.body_md,
         frontmatter_json,
@@ -1373,7 +1382,7 @@ mod tests {
 
         note::ActiveModel {
             id: Set(Uuid::new_v4()),
-            strategy_id: Set(strategy_id),
+            strategy_id: Set(Some(strategy_id)),
             title: Set("winner".into()),
             body_md: Set("winner body".into()),
             frontmatter_json: Set(serde_json::json!({})),

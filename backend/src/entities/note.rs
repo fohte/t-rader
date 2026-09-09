@@ -12,7 +12,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     #[sea_orm(unique_key = "idx_note_strategy_id_execution_id")]
-    pub strategy_id: Uuid,
+    pub strategy_id: Option<Uuid>,
     pub title: String,
     #[sea_orm(column_type = "Text")]
     pub body_md: String,

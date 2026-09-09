@@ -35,6 +35,28 @@ pub struct QueryDataResult {
     pub bars: Vec<BarDto>,
 }
 
+/// 銘柄ごとの未決済ポジションと損益 (FIFO ベース)
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct PortfolioPositionDto {
+    pub symbol: String,
+    /// 保有数量 (買い残 - 売り残)
+    pub qty: f64,
+    /// 平均取得単価 (FIFO ベース)
+    pub avg_cost: f64,
+    /// 取得簿価 (qty * avg_cost)
+    pub cost_basis: f64,
+    /// 実現損益累計
+    pub realized_pnl: f64,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ReadPortfolioResult {
+    pub trade_count: i64,
+    /// 全銘柄合計の実現損益
+    pub realized_pnl: f64,
+    pub positions: Vec<PortfolioPositionDto>,
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。

@@ -6902,7 +6902,6 @@
         "type": "object",
         "required": [
           "id",
-          "strategy_id",
           "target_symbol",
           "target_kind",
           "timestamp",
@@ -6942,7 +6941,10 @@
             "type": "string"
           },
           "strategy_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "target_kind": {
@@ -7159,7 +7161,6 @@
       "CreateAnnotationRequest": {
         "type": "object",
         "required": [
-          "strategy_id",
           "target_symbol",
           "target_kind",
           "timestamp",
@@ -7193,8 +7194,12 @@
             ]
           },
           "strategy_id": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "任意。省略した場合、どの戦略にも属さないアノテーションになる (市況・セクター横断の分析など)"
           },
           "target_kind": {
             "type": "string"
@@ -7378,7 +7383,6 @@
       "CreateNoteRequest": {
         "type": "object",
         "required": [
-          "strategy_id",
           "title",
           "body_md"
         ],
@@ -7411,8 +7415,12 @@
             "description": "任意。デフォルトは \"unread\""
           },
           "strategy_id": {
-            "type": "string",
-            "format": "uuid"
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "任意。省略した場合、どの戦略にも属さないノートになる (市況・セクター横断の分析など)"
           },
           "title": {
             "type": "string",
@@ -8025,7 +8033,6 @@
         "type": "object",
         "required": [
           "id",
-          "strategy_id",
           "title",
           "body_md",
           "frontmatter_json",
@@ -8069,7 +8076,10 @@
             "type": "string"
           },
           "strategy_id": {
-            "type": "string",
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid"
           },
           "title": {

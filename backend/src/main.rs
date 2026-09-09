@@ -203,6 +203,21 @@ async fn main() -> Result<(), AppError> {
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
+    // IBKR provider は fetch_instrument で業種を返さないため対象外。
+    if let Some(provider) = &data_provider
+        && matches!(provider.as_ref(), DataProviderKind::JQuants(_))
+    {
+        let _sector_backfill_poll = backend::services::sector_backfill::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::sector_backfill::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
+            "sector backfill poll task started",
+        );
+    }
+
     let llm_gateway_client = LlmGatewayClient::from_env();
 
     let state = AppState {

@@ -24,6 +24,7 @@ function StrategyListPage() {
   const unreadByStrategy = useMemo(() => {
     const m = new Map<string, number>()
     for (const n of unreadNotes ?? []) {
+      if (n.strategy_id == null) continue
       m.set(n.strategy_id, (m.get(n.strategy_id) ?? 0) + 1)
     }
     return m

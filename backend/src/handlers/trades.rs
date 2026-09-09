@@ -308,12 +308,7 @@ pub async fn trades_summary(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<SummaryQuery>,
 ) -> Result<Json<PerformanceSummary>, AppError> {
-    let mut q = trade::Entity::find()
-        .order_by_asc(trade::Column::Date)
-        .order_by_asc(trade::Column::CreatedAt);
-    if let Some(sid) = p.strategy_id {
-        q = q.filter(trade::Column::StrategyId.eq(sid));
-    }
-    let trades = q.all(&state.db).await?;
-    Ok(Json(trades_svc::summarize(p.strategy_id, &trades)))
+    Ok(Json(
+        trades_svc::fetch_summary(&state.db, p.strategy_id).await?,
+    ))
 }
