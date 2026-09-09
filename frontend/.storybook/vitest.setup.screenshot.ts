@@ -8,13 +8,15 @@ import { SCREENSHOT_VIEWPORT } from './screenshot-viewport'
 // 実行時刻基準で変わるため、システム時刻を固定してスクリーンショットを決定的にする
 vi.setSystemTime(new Date('2026-01-15T10:00:00+09:00'))
 
-// スクロールバー (ネイティブ/Monaco Editor 独自の両方) はホバー状態やフェード
-// タイマーでサム/トラックの見え方が撮影ごとに 1px 未満揺れる。撮影時は非表示にして
-// スクロール可否の判定に影響しない見た目の揺れを潰す
 const style = document.createElement('style')
 style.textContent = `
+  /* スクロールバー (ネイティブ/Monaco Editor 独自の両方) はホバー状態やフェードタイマーで
+     サム/トラックの見え方が撮影ごとに 1px 未満揺れるため、撮影時は非表示にする */
   ::-webkit-scrollbar { display: none !important; }
   .monaco-scrollable-element > .scrollbar { visibility: hidden !important; }
+  /* decorationsOverviewRuler (overview ruler の枠線) は Monaco 自身のスケジューリングで
+     canvas に描画されるため、撮影タイミングによって描画有無が撮影ごとに揺れる */
+  .decorationsOverviewRuler { visibility: hidden !important; }
 `
 document.head.appendChild(style)
 
