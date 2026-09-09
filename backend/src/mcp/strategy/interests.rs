@@ -6,8 +6,8 @@
 
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::sea_query::{Expr, OnConflict};
+use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::strategy_interest;
@@ -47,13 +47,17 @@ impl StrategyServer {
         // 単純な check-then-insert だと並行呼び出し時に片方が UNIQUE 違反で失敗し、
         // tool description の「idempotent」契約を破る。
         let model = strategy_interest::ActiveModel {
-            strategy_id: Set(session_strategy_id),
+            id: NotSet,
+            strategy_id: Set(Some(session_strategy_id)),
             ref_kind: Set(ref_kind.to_string()),
             ref_id: Set(ref_id.to_string()),
             role: Set(AGENT_INTEREST_ROLE.to_string()),
             origin: Set(AGENT_INTEREST_ORIGIN.to_string()),
             created_at: NotSet,
         };
+        // 部分ユニークインデックス (strategy_id IS NOT NULL) を対象にするには、
+        // ON CONFLICT の conflict target に同じ WHERE 述語を明示する必要がある
+        // (指定しないと "no unique or exclusion constraint matching" で DB エラーになる)。
         let insert_result = strategy_interest::Entity::insert(model)
             .on_conflict(
                 OnConflict::columns([
@@ -61,6 +65,7 @@ impl StrategyServer {
                     strategy_interest::Column::RefKind,
                     strategy_interest::Column::RefId,
                 ])
+                .target_and_where(Expr::col(strategy_interest::Column::StrategyId).is_not_null())
                 .do_nothing()
                 .to_owned(),
             )
@@ -68,7 +73,7 @@ impl StrategyServer {
             .await;
         match insert_result {
             Ok(created) => Ok(AddInterestResult {
-                strategy_id: created.strategy_id,
+                strategy_id: session_strategy_id,
                 ref_kind: created.ref_kind,
                 ref_id: created.ref_id,
                 role: created.role,
@@ -92,7 +97,7 @@ impl StrategyServer {
                         ))
                     })?;
                 Ok(AddInterestResult {
-                    strategy_id: existing.strategy_id,
+                    strategy_id: session_strategy_id,
                     ref_kind: existing.ref_kind,
                     ref_id: existing.ref_id,
                     role: existing.role,
