@@ -203,6 +203,16 @@ async fn main() -> Result<(), AppError> {
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
+    // stock.sector_id が NULL の銘柄の業種を補完する poll task を起動する
+    if let Some(provider) = &data_provider {
+        let _sector_backfill_poll = backend::services::sector_backfill::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::sector_backfill::DEFAULT_INTERVAL,
+        );
+        tracing::info!("sector backfill poll task started (interval=5min)");
+    }
+
     let llm_gateway_client = LlmGatewayClient::from_env();
 
     let state = AppState {

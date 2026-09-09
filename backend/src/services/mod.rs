@@ -10,6 +10,7 @@ pub mod interests;
 pub mod litellm_client;
 pub mod news;
 pub mod rss_feed;
+pub mod sector_backfill;
 pub mod strategies;
 pub mod strategy_config;
 pub mod strategy_tasks;
