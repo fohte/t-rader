@@ -398,21 +398,11 @@ jobs:
           checks: all
           max-examples: 50
           config-file: backend/schemathesis.toml
-          # action は checks input (既定 all) を常に --checks に渡すため、
-          # backend/schemathesis.toml の [checks] での enabled=false は上書きされ効かない。
-          # --exclude-checks は --checks all より優先されるため、false positive の
-          # 除外はここで行う。
-          #
-          # negative_data_rejection: GET/DELETE のパスパラメータは URL 文字列に
-          # シリアライズされるため、型をミューテートしても有効な文字列として送信される。
-          # stateful テストで作成済みリソースの UUID が再利用されると、
-          # サーバーが正常応答を返し false positive になる。
+          # negative_data_rejection / positive_data_acceptance は UUID パスパラメータの
+          # ランダム生成・再利用に起因する false positive のため除外。schemathesis.toml
+          # の [checks] ではなくここに置くのは、action が常に --checks=all を渡し
+          # config file 側の enabled=false を上書きしてしまうため。
           # ref: https://github.com/schemathesis/schemathesis/issues/2312
-          #
-          # positive_data_acceptance: パスパラメータに含まれる UUID はランダム生成
-          # されるため、対応するリソースが存在せず 404 が返る。スキーマ準拠のデータが
-          # 拒否されたのではなく、リソースが存在しないだけなので false positive になる。
-          # stateful テストでは実際のリソース ID が使われるため正しく検証される。
           args: --workers 2 --exclude-checks negative_data_rejection,positive_data_acceptance
 
       - name: Dump backend log on failure

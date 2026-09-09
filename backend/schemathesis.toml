@@ -4,11 +4,6 @@
 # 通常 null バイトを含まない前提で使われるため、生成自体を無効化する。
 allow-x00 = false
 
-# negative_data_rejection / positive_data_acceptance の false positive 除外は
-# .github/workflows/test.yml の api-fuzzing-backend ジョブ側で --exclude-checks
-# として行っている (schemathesis/action は常に --checks=all を渡すため、ここでの
-# [checks] での enabled=false は上書きされて効かない)。
-
 # chat エンドポイントは agent task client 未設定時に 503 を返す仕様
 # (CI 環境では TRADER_AGENT_API_URL=disabled のため必然的に 503 になる)。
 # ref: https://github.com/schemathesis/schemathesis/issues/2539
