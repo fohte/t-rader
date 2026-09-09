@@ -223,6 +223,10 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::put_agent_graph
         ))
         .routes(routes!(strategies::get_agent_config))
+        .routes(routes!(
+            strategies::get_investable_amount,
+            strategies::put_investable_amount
+        ))
         // refs
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))

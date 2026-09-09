@@ -1,10 +1,14 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useMemo } from 'react'
+import { Pencil } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
+import { CashBalanceDialog } from '#components/portfolio/cash-balance-dialog'
 import { PositionsTable } from '#components/portfolio/positions-table'
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import { TradesTable } from '#components/trades/trades-table'
+import { Button } from '#components/ui/button'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
@@ -15,6 +19,8 @@ export const Route = createFileRoute('/strategies/$id/performance')({
 function StrategyPerformancePage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [amountDialogOpen, setAmountDialogOpen] = useState(false)
 
   const { data: strategy, isPending: strategyPending } = $api.useQuery(
     'get',
@@ -31,6 +37,15 @@ function StrategyPerformancePage() {
   })
   const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
   const { data: stocks = [] } = $api.useQuery('get', '/api/refs/stocks')
+  const { data: investableAmount } = $api.useQuery(
+    'get',
+    '/api/strategies/{id}/investable-amount',
+    { params: { path: { id } } },
+  )
+  const investableAmountMutation = $api.useMutation(
+    'put',
+    '/api/strategies/{id}/investable-amount',
+  )
 
   const sellsCount = trades.filter((t) => t.side === 'sell').length
   const feesTotal = trades.reduce((s, t) => s + t.fee, 0)
@@ -46,6 +61,10 @@ function StrategyPerformancePage() {
   }
 
   const stats: StatItem[] = [
+    {
+      label: '投資可能額',
+      value: formatYen(investableAmount?.amount_jpy ?? 0),
+    },
     {
       label: '実現損益',
       value: formatYen(realizedPnl, true),
@@ -91,15 +110,27 @@ function StrategyPerformancePage() {
         </Link>
       </div>
 
-      <header>
-        <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-          戦略成績 — {strategy.name}
-        </h1>
-        {strategy.description != null && strategy.description !== '' && (
-          <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
-            {strategy.description}
-          </p>
-        )}
+      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 flex-1">
+          <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
+            戦略成績 — {strategy.name}
+          </h1>
+          {strategy.description != null && strategy.description !== '' && (
+            <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
+              {strategy.description}
+            </p>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            setAmountDialogOpen(true)
+          }}
+        >
+          <Pencil />
+          投資可能額を更新
+        </Button>
       </header>
 
       {summaryPending ? (
@@ -153,6 +184,28 @@ function StrategyPerformancePage() {
           取引履歴で編集する →
         </Link>
       </div>
+
+      <CashBalanceDialog
+        open={amountDialogOpen}
+        initial={investableAmount?.amount_jpy ?? 0}
+        onOpenChange={setAmountDialogOpen}
+        onSave={(amount) => {
+          investableAmountMutation.mutate(
+            { params: { path: { id } }, body: { amount_jpy: amount } },
+            {
+              onSuccess: () => {
+                void queryClient.invalidateQueries({
+                  queryKey: $api.queryOptions(
+                    'get',
+                    '/api/strategies/{id}/investable-amount',
+                    { params: { path: { id } } },
+                  ).queryKey,
+                })
+              },
+            },
+          )
+        }}
+      />
     </div>
   )
 }

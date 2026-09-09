@@ -4867,6 +4867,160 @@
         }
       }
     },
+    "/api/strategies/{id}/investable-amount": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略の投資可能額 (`effective_at` が現在時刻以下の最新行) を取得。\nhistory が無い戦略では `amount_jpy` / `effective_at` ともに null を返す。",
+        "operationId": "get_investable_amount",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestableAmountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略の投資可能額を新しい history 行として記録する。既存行は上書きしない。",
+        "operationId": "put_investable_amount",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutInvestableAmountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestableAmountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/news": {
       "get": {
         "tags": [
@@ -7765,6 +7919,26 @@
           }
         }
       },
+      "InvestableAmountResponse": {
+        "type": "object",
+        "description": "戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。\nhistory が 1 行も無い戦略では両方 null。",
+        "properties": {
+          "amount_jpy": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "effective_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "Layout": {
         "type": "string",
         "enum": [
@@ -8071,6 +8245,28 @@
             "type": "string"
           }
         }
+      },
+      "PutInvestableAmountRequest": {
+        "type": "object",
+        "description": "戦略の投資可能額を新しい history 行として記録するリクエスト。\n口座の現金残高や証券会社の買付余力とは別概念で、ユーザーが投資に回すと決めた枠を表す。",
+        "required": [
+          "amount_jpy"
+        ],
+        "properties": {
+          "amount_jpy": {
+            "type": "number",
+            "format": "double"
+          },
+          "effective_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "省略時はサーバー側で現在時刻を使う"
+          }
+        },
+        "additionalProperties": false
       },
       "RefResolution": {
         "type": "object",

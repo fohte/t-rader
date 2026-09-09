@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, FixedOffset};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -105,4 +106,25 @@ pub struct AgentConfigResponse {
     pub small_model: String,
     /// 多段フェーズ実行設定 (YAML)。未設定なら空文字列。
     pub agent_graph: String,
+}
+
+/// 戦略の投資可能額を新しい history 行として記録するリクエスト。
+/// 口座の現金残高や証券会社の買付余力とは別概念で、ユーザーが投資に回すと決めた枠を表す。
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PutInvestableAmountRequest {
+    pub amount_jpy: Decimal,
+    /// 省略時はサーバー側で現在時刻を使う
+    #[serde(default)]
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub effective_at: Option<DateTime<FixedOffset>>,
+}
+
+/// 戦略の現在有効な投資可能額 (`effective_at` が現在時刻以下の最新行)。
+/// history が 1 行も無い戦略では両方 null。
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvestableAmountResponse {
+    pub amount_jpy: Option<Decimal>,
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub effective_at: Option<DateTime<FixedOffset>>,
 }

@@ -1,17 +1,14 @@
+import { useQueries } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Pencil } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import {
   AllocationBar,
   type AllocationSegment,
 } from '#components/portfolio/allocation-bar'
-import { CashBalanceDialog } from '#components/portfolio/cash-balance-dialog'
 import { PositionsTable } from '#components/portfolio/positions-table'
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
-import { useCashBalance } from '#components/portfolio/use-cash-balance'
 import { formatYen, pnlColorClass } from '#components/trades/format'
-import { Button } from '#components/ui/button'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
@@ -20,14 +17,23 @@ export const Route = createFileRoute('/portfolio')({
 })
 
 function PortfolioPage() {
-  const { cash, setCash } = useCashBalance()
-  const [cashOpen, setCashOpen] = useState(false)
-
   const { data: summary, isPending: summaryPending } = $api.useQuery(
     'get',
     '/api/trades/summary',
   )
   const { data: stocks = [] } = $api.useQuery('get', '/api/refs/stocks')
+  const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
+  const investableAmountQueries = useQueries({
+    queries: strategies.map((s) =>
+      $api.queryOptions('get', '/api/strategies/{id}/investable-amount', {
+        params: { path: { id: s.id } },
+      }),
+    ),
+  })
+  const cash = investableAmountQueries.reduce(
+    (sum, q) => sum + (q.data?.amount_jpy ?? 0),
+    0,
+  )
 
   const openPositions = useMemo(
     () => (summary?.positions ?? []).filter((p) => p.qty > 0),
@@ -88,26 +94,14 @@ function PortfolioPage() {
         </Link>
       </div>
 
-      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0 flex-1">
-          <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
-            ポートフォリオ
-          </h1>
-          <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
-            戦略横断の全体ビュー。現金比率・全保有・全体損益を把握します。LLM
-            もこのコンテキストを参照します。
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setCashOpen(true)
-          }}
-        >
-          <Pencil />
-          現金残高を更新
-        </Button>
+      <header>
+        <h1 className="mb-1.5 text-2xl font-bold leading-tight tracking-tight">
+          ポートフォリオ
+        </h1>
+        <p className="max-w-180 text-sm leading-relaxed text-muted-foreground-strong">
+          戦略横断の全体ビュー。現金比率・全保有・全体損益を把握します。LLM
+          もこのコンテキストを参照します。
+        </p>
       </header>
 
       {summaryPending ? (
@@ -163,13 +157,6 @@ function PortfolioPage() {
           取引履歴をすべて見る →
         </Link>
       </div>
-
-      <CashBalanceDialog
-        open={cashOpen}
-        initial={cash}
-        onOpenChange={setCashOpen}
-        onSave={setCash}
-      />
     </div>
   )
 }

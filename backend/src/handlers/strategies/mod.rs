@@ -16,10 +16,15 @@ use crate::services::change_history::Actor;
 use crate::services::strategy_config;
 
 mod agent_graph;
+mod investable_amount;
 mod tasks;
 
 pub use agent_graph::{
     __path_get_agent_graph, __path_put_agent_graph, get_agent_graph, put_agent_graph,
+};
+pub use investable_amount::{
+    __path_get_investable_amount, __path_put_investable_amount, get_investable_amount,
+    put_investable_amount,
 };
 pub(crate) use tasks::map_submit_error;
 pub use tasks::{
