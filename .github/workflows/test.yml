@@ -391,6 +391,24 @@ jobs:
             sleep 1
           done
 
+      # schemathesis/action は常に --checks=all を渡すため、backend/schemathesis.toml
+      # の [checks] での enabled=false は上書きされ効かない。無効化対象を toml から
+      # 読み取り、--exclude-checks として明示的に渡す。
+      - name: Determine schemathesis checks to exclude
+        id: schemathesis-checks
+        working-directory: backend
+        run: |
+          excluded=$(python3 -c '
+          import tomllib
+
+          with open("schemathesis.toml", "rb") as f:
+              config = tomllib.load(f)
+          checks = config.get("checks", {})
+          names = [name for name, c in checks.items() if isinstance(c, dict) and c.get("enabled") is False]
+          print(",".join(names))
+          ')
+          echo "excluded=$excluded" >> "$GITHUB_OUTPUT"
+
       - name: Run Schemathesis API fuzzing
         uses: schemathesis/action@1f15936316e0742005bf69657b5909ac68f04cb3 # v2.1.0
         with:
@@ -398,12 +416,7 @@ jobs:
           checks: all
           max-examples: 50
           config-file: backend/schemathesis.toml
-          # negative_data_rejection / positive_data_acceptance は UUID パスパラメータの
-          # ランダム生成・再利用に起因する false positive のため除外。schemathesis.toml
-          # の [checks] ではなくここに置くのは、action が常に --checks=all を渡し
-          # config file 側の enabled=false を上書きしてしまうため。
-          # ref: https://github.com/schemathesis/schemathesis/issues/2312
-          args: --workers 2 --exclude-checks negative_data_rejection,positive_data_acceptance
+          args: --workers 2 --exclude-checks ${{ steps.schemathesis-checks.outputs.excluded }}
 
       - name: Dump backend log on failure
         if: failure()
