@@ -15,8 +15,11 @@ use tokio::task::JoinHandle;
 use crate::data_provider::{DataProvider, DataProviderKind};
 use crate::entities::{sector, stock};
 
-/// poll task のデフォルト実行間隔
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(300);
+/// poll task のデフォルト実行間隔。
+/// sector_id が NULL になるのは新規銘柄追加時のみで定常状態では稀なため、macro_data (5 分) や
+/// news (1 時間) ほどの高頻度は不要。リアルタイム性を重視せず pull 型で「開いて読む」
+/// プロダクト方針も踏まえ、1 日間隔にする。
+pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 1 サイクルで処理する対象銘柄数の上限。
 /// JQuantsClient の RateLimiter (5 req/60s) はウォッチリスト追加時の日足取得等と共有のため、
