@@ -98,9 +98,8 @@ pub async fn receive_hook(
         Err(FireTriggerError::TriggerNotFound(_) | FireTriggerError::Disabled(_)) => {
             Err(AppError::NotFound(format!("hook {hook_slug} not found")))
         }
-        // hook_slug 経由の trigger は必ず strategy_id を持つため現時点では到達しないが、
-        // 将来 global trigger (strategy_id が NULL) からの誤呼び出しを防ぐ防御。
-        Err(FireTriggerError::NoStrategy(_)) => {
+        Err(FireTriggerError::NoStrategy(trigger_id)) => {
+            tracing::warn!(trigger_id = %trigger_id, "hook fire rejected: trigger has no strategy_id");
             Err(AppError::NotFound(format!("hook {hook_slug} not found")))
         }
         Err(FireTriggerError::Submit(err)) => {

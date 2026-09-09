@@ -48,7 +48,6 @@ pub async fn fire_trigger(
         return Err(FireTriggerError::Disabled(trigger_id));
     }
 
-    // global trigger (strategy_id が NULL) を作成する経路は未実装だが、スキーマ上は許容済みなので防御する
     let strategy_id = trigger_row
         .strategy_id
         .ok_or(FireTriggerError::NoStrategy(trigger_id))?;
@@ -536,8 +535,7 @@ mod fire_tests {
 
     #[sqlx::test(migrations = false)]
     async fn fire_trigger_without_strategy_returns_no_strategy_error(pool: PgPool) {
-        // strategy_id が NULL の global trigger は作成 API が無く到達しないが、
-        // スキーマ上は許容されているため直接 insert して防御コードを検証する。
+        // strategy_id が NULL の trigger を作る API が無いため直接 insert する
         let db = create_test_db(pool).await;
         let id = Uuid::new_v4();
         trigger::ActiveModel {

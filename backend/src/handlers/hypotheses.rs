@@ -424,35 +424,11 @@ mod tests {
     use crate::entities::note;
     use crate::testing::{create_test_server_with_db, insert_test_strategy};
 
-    async fn seed_note(db: &DatabaseConnection, strategy_id: Uuid) -> Uuid {
+    async fn seed_note(db: &DatabaseConnection, strategy_id: Option<Uuid>) -> Uuid {
         let id = Uuid::new_v4();
         note::ActiveModel {
             id: Set(id),
-            strategy_id: Set(Some(strategy_id)),
-            title: Set("t".into()),
-            body_md: Set("b".into()),
-            frontmatter_json: Set(json!({})),
-            type_tag: Set(None),
-            status: Set("unread".into()),
-            trigger: Set(None),
-            trigger_label: Set(None),
-            created_by_kind: Set("human".into()),
-            created_at: NotSet,
-            updated_at: NotSet,
-            graphs_json: Set(json!([])),
-            execution_id: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("insert note");
-        id
-    }
-
-    async fn seed_global_note(db: &DatabaseConnection) -> Uuid {
-        let id = Uuid::new_v4();
-        note::ActiveModel {
-            id: Set(id),
-            strategy_id: Set(None),
+            strategy_id: Set(strategy_id),
             title: Set("t".into()),
             body_md: Set("b".into()),
             frontmatter_json: Set(json!({})),
@@ -550,7 +526,7 @@ mod tests {
     async fn create_with_status_and_related_ids(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let n1 = seed_note(&db, sid).await;
+        let n1 = seed_note(&db, Some(sid)).await;
         let i1 = Uuid::new_v4();
 
         let created = server
@@ -582,7 +558,7 @@ mod tests {
     async fn create_accepts_duplicate_related_note_ids(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let n1 = seed_note(&db, sid).await;
+        let n1 = seed_note(&db, Some(sid)).await;
         // 同一 note を重複指定しても、unique 化後の存在チェックを通過する
         let res = server
             .post(&format!("/api/strategies/{sid}/hypotheses"))
@@ -615,7 +591,7 @@ mod tests {
         let (db, server) = create_test_server_with_db(pool).await;
         let a = insert_test_strategy(&db, "a").await;
         let b = insert_test_strategy(&db, "b").await;
-        let n_b = seed_note(&db, b).await;
+        let n_b = seed_note(&db, Some(b)).await;
         let res = server
             .post(&format!("/api/strategies/{a}/hypotheses"))
             .json(&json!({
@@ -833,8 +809,8 @@ mod tests {
     async fn create_global_hypothesis_accepts_global_note_and_rejects_strategy_note(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let global_note = seed_global_note(&db).await;
-        let strategy_note = seed_note(&db, sid).await;
+        let global_note = seed_note(&db, None).await;
+        let strategy_note = seed_note(&db, Some(sid)).await;
 
         let accepted = server
             .post("/api/hypotheses")
@@ -916,8 +892,7 @@ mod tests {
         );
     }
 
-    // generic /api/hypotheses/{hypothesis_id} が global / strategy 両方の仮説に対して動くことを
-    // 検証する。rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
+    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
     #[sqlx::test(migrations = false)]
     async fn generic_endpoint_works_for_global_and_strategy_hypotheses(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
