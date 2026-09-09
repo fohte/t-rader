@@ -8,8 +8,6 @@
 
   customManagers: [
     {
-      // schemathesis/action installs schemathesis from PyPI via `with: version:`
-      // at runtime, so a pinned version drifts silently without this manager.
       customType: 'regex',
       managerFilePatterns: ['/(^|/)\\.github/workflows/[^/]+\\.ya?ml$/'],
       matchStrings: [
