@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { expect } from 'storybook/test'
 
 import { CodeEditor } from '#components/indicators/code-editor'
 
@@ -16,16 +17,6 @@ const SAMPLE_PYTHON = `import json, sys
 args = json.load(sys.stdin)["args"]
 period = args.get("period", 14)
 print(json.dumps({"value": period * 2}))
-`
-
-// ReadOnly story は Python story と本文が同一だと Monaco の readOnly 表示上の差分が
-// 撮影に反映されず (キャレット非表示は撮影前処理側で既に行われている)、スクリーンショットが
-// 完全一致して重複検出に引っかかるため、内容を変えて区別する
-const SAMPLE_PYTHON_READONLY = `import json, sys
-
-args = json.load(sys.stdin)["args"]
-threshold = args.get("threshold", 0.5)
-print(json.dumps({"value": threshold}))
 `
 
 const SAMPLE_JSON = JSON.stringify(
@@ -79,11 +70,19 @@ export const Yaml: Story = {
   render: () => <Interactive language="yaml" initial={SAMPLE_YAML} />,
 }
 
+// readOnly は Monaco の隠し textarea (.ime-text-area) の readonly 属性にのみ反映され、
+// 見た目には現れない。appearance では Python story と区別できないため screenshot 対象から
+// 外し、play で readOnly が実際に反映されていることを検証する
 export const ReadOnly: Story = {
   args: {
     language: 'python',
-    value: SAMPLE_PYTHON_READONLY,
+    value: SAMPLE_PYTHON,
     onChange: () => {},
     readOnly: true,
+  },
+  parameters: { screenshot: { skip: true } },
+  play: async ({ canvasElement }) => {
+    const textarea = canvasElement.querySelector('textarea.ime-text-area')
+    await expect(textarea).toHaveAttribute('readonly')
   },
 }
