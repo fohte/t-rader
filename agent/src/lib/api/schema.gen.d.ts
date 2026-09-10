@@ -47,7 +47,11 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** 目的別 agent 設定を取得 */
+    /**
+     * 目的別 agent 設定を取得。
+     *     `strategies::get_agent_config` (戦略 ID キー、`AgentConfigResponse` を返す) とは
+     *     別 API。こちらは purpose キーで `agent_config` テーブルの行をそのまま返す。
+     */
     get: operations['agent_config_get_agent_config']
     put?: never
     post?: never
@@ -894,6 +898,7 @@ export interface paths {
     /**
      * 戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
      *     t-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。
+     *     `agent_config::get_agent_config` (purpose キー) とは別 API。
      */
     get: operations['get_agent_config']
     put?: never

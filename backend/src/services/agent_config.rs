@@ -3,6 +3,9 @@
 //! REST handler から叩く。入力バリデーション (purpose / skill 名の slug 正規表現、
 //! agent_graph の YAML 検証) もここで集約する。agent_graph の YAML パース自体は
 //! `services::agent_graph` (戦略の agent_graph とも共用する汎用ロジック) に委譲する。
+//!
+//! `change_history::TargetKind` に対応する種別が無いため、変更前後の値は
+//! `account_risk_policy` と同様に `tracing::info!` にのみ残す。
 
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
@@ -114,10 +117,12 @@ pub async fn create(
         created_at: NotSet,
         updated_at: NotSet,
     };
-    agent_config::Entity::insert(model)
+    let created = agent_config::Entity::insert(model)
         .exec_with_returning(db)
         .await
-        .map_err(|e| classify_insert_error(e, &purpose))
+        .map_err(|e| classify_insert_error(e, &purpose))?;
+    tracing::info!(purpose = %created.purpose, "created agent_config");
+    Ok(created)
 }
 
 pub async fn delete(db: &DatabaseConnection, purpose: &str) -> Result<(), AgentConfigError> {
@@ -128,6 +133,7 @@ pub async fn delete(db: &DatabaseConnection, purpose: &str) -> Result<(), AgentC
     if result.rows_affected == 0 {
         return Err(AgentConfigError::NotFound(purpose.to_string()));
     }
+    tracing::info!(purpose, "deleted agent_config");
     Ok(())
 }
 
@@ -137,10 +143,18 @@ pub async fn save_agents_md(
     content: String,
 ) -> Result<String, AgentConfigError> {
     let current = find_or_404(db, purpose).await?;
+    let from_len = current.agents_md.len();
     let mut active = current.into_active_model();
     active.agents_md = Set(content);
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    Ok(active.update(db).await?.agents_md)
+    let saved = active.update(db).await?.agents_md;
+    tracing::info!(
+        purpose,
+        from_len,
+        to_len = saved.len(),
+        "updated agent_config agents_md"
+    );
+    Ok(saved)
 }
 
 async fn save_skills(
@@ -148,10 +162,15 @@ async fn save_skills(
     current: agent_config::Model,
     skills: serde_json::Value,
 ) -> Result<agent_config::Model, AgentConfigError> {
+    let purpose = current.purpose.clone();
+    let from: Vec<String> = skills_to_btree(&current.skills).into_keys().collect();
+    let to: Vec<String> = skills_to_btree(&skills).into_keys().collect();
     let mut active = current.into_active_model();
     active.skills = Set(skills);
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    Ok(active.update(db).await?)
+    let saved = active.update(db).await?;
+    tracing::info!(purpose, ?from, ?to, "updated agent_config skills");
+    Ok(saved)
 }
 
 /// skills 全置換
@@ -208,10 +227,18 @@ pub async fn save_agent_graph(
 ) -> Result<String, AgentConfigError> {
     agent_graph_svc::parse_agent_graph(content)?;
     let current = find_or_404(db, purpose).await?;
+    let from_len = current.agent_graph.len();
     let mut active = current.into_active_model();
     active.agent_graph = Set(content.to_string());
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    Ok(active.update(db).await?.agent_graph)
+    let saved = active.update(db).await?.agent_graph;
+    tracing::info!(
+        purpose,
+        from_len,
+        to_len = saved.len(),
+        "updated agent_config agent_graph"
+    );
+    Ok(saved)
 }
 
 pub fn skills_as_btree(model: &agent_config::Model) -> std::collections::BTreeMap<String, String> {

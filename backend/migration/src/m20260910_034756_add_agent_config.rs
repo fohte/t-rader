@@ -69,14 +69,15 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 既存の唯一の戦略が持つ agents_md/skills/agent_graph を、目的キー "default" の
-        // 初期行として引き継ぐ (戦略が 0 件の環境では何も挿入されない)。
+        // 既存の戦略が 1 件のみの場合に限り、その agents_md/skills/agent_graph を
+        // 目的キー "default" の初期行として引き継ぐ。0 件、または複数件存在する
+        // 環境では対応関係が一意に定まらないため何も挿入しない。
         manager
             .get_connection()
             .execute_unprepared(
                 "INSERT INTO agent_config (purpose, agents_md, skills, agent_graph) \
                  SELECT 'default', agents_md, skills, agent_graph FROM strategy \
-                 ORDER BY created_at ASC LIMIT 1",
+                 WHERE (SELECT COUNT(*) FROM strategy) = 1",
             )
             .await?;
 

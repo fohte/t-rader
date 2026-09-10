@@ -2,7 +2,6 @@
 //! CRUD HTTP handler。
 //!
 //! バリデーション・DB 操作は `services::agent_config` に委譲する thin wrapper。
-//! `strategy` の同名カラムとは独立したテーブルで、まだどこからも読まれない (置き場所のみ)。
 
 use axum::Json;
 use axum::extract::State;
@@ -72,7 +71,9 @@ pub async fn create_agent_config(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
-/// 目的別 agent 設定を取得
+/// 目的別 agent 設定を取得。
+/// `strategies::get_agent_config` (戦略 ID キー、`AgentConfigResponse` を返す) とは
+/// 別 API。こちらは purpose キーで `agent_config` テーブルの行をそのまま返す。
 #[utoipa::path(
     get,
     operation_id = "agent_config_get_agent_config",
