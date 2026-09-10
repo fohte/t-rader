@@ -21,6 +21,8 @@ pub enum FireTriggerError {
     TriggerNotFound(Uuid),
     #[error("trigger {0} is disabled")]
     Disabled(Uuid),
+    #[error("trigger {0} has no strategy_id")]
+    NoStrategy(Uuid),
     #[error("submit strategy task failed: {0}")]
     Submit(#[from] SubmitTaskError),
     #[error("database error: {0}")]
@@ -46,11 +48,15 @@ pub async fn fire_trigger(
         return Err(FireTriggerError::Disabled(trigger_id));
     }
 
-    let strategy_row = strategy::Entity::find_by_id(trigger_row.strategy_id)
+    let strategy_id = trigger_row
+        .strategy_id
+        .ok_or(FireTriggerError::NoStrategy(trigger_id))?;
+
+    let strategy_row = strategy::Entity::find_by_id(strategy_id)
         .one(db)
         .await?
         .ok_or(FireTriggerError::Submit(SubmitTaskError::StrategyNotFound(
-            trigger_row.strategy_id,
+            strategy_id,
         )))?;
 
     // prompt 内 `{{now}}` と DB の `last_fired_at` を同一時点に揃えるため now を 1 度だけ取る
@@ -58,7 +64,7 @@ pub async fn fire_trigger(
     let context = build_standard_context(&strategy_row, now);
     let prompt = expand_template(&trigger_row.prompt_template, &payload, &context);
 
-    let outcome = submit_task(db, agent_client, trigger_row.strategy_id, &prompt, source).await?;
+    let outcome = submit_task(db, agent_client, strategy_id, &prompt, source).await?;
 
     let now_fixed = now.fixed_offset();
     let mut active = trigger_row.into_active_model();
@@ -347,7 +353,7 @@ mod fire_tests {
         let id = Uuid::new_v4();
         trigger::ActiveModel {
             trigger_id: Set(id),
-            strategy_id: Set(strategy_id),
+            strategy_id: Set(Some(strategy_id)),
             kind: Set("hook".to_string()),
             schedule: Set(None),
             hook_slug: Set(Some(slug.to_string())),
@@ -451,7 +457,7 @@ mod fire_tests {
         let id = Uuid::new_v4();
         trigger::ActiveModel {
             trigger_id: Set(id),
-            strategy_id: Set(sid),
+            strategy_id: Set(Some(sid)),
             kind: Set("cron".to_string()),
             schedule: Set(Some("0 9 * * 1-5".to_string())),
             hook_slug: Set(None),
@@ -494,7 +500,7 @@ mod fire_tests {
         let id = Uuid::new_v4();
         trigger::ActiveModel {
             trigger_id: Set(id),
-            strategy_id: Set(sid),
+            strategy_id: Set(Some(sid)),
             kind: Set("hook".to_string()),
             schedule: Set(None),
             hook_slug: Set(Some("off".to_string())),
@@ -525,6 +531,35 @@ mod fire_tests {
             .await
             .expect_err("not found");
         assert_eq!(err.to_string(), format!("trigger {missing} not found"));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn fire_trigger_without_strategy_returns_no_strategy_error(pool: PgPool) {
+        // strategy_id が NULL の trigger を作る API が無いため直接 insert する
+        let db = create_test_db(pool).await;
+        let id = Uuid::new_v4();
+        trigger::ActiveModel {
+            trigger_id: Set(id),
+            strategy_id: Set(None),
+            kind: Set("hook".to_string()),
+            schedule: Set(None),
+            hook_slug: Set(Some("global".to_string())),
+            event_match: Set(None),
+            prompt_template: Set("x".to_string()),
+            enabled: Set(true),
+            last_fired_at: NotSet,
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+
+        let err = fire_trigger(&db, &kube, id, json!({}), TaskSource::Hook)
+            .await
+            .expect_err("no strategy");
+        assert_eq!(err.to_string(), format!("trigger {id} has no strategy_id"));
     }
 
     #[sqlx::test(migrations = false)]

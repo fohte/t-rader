@@ -103,6 +103,7 @@ impl AppState {
         (name = "history", description = "変更履歴"),
         (name = "trades", description = "取引履歴と損益サマリ"),
         (name = "triggers", description = "戦略 trigger (cron / hook)"),
+        (name = "hypotheses", description = "仮説 (global 作成・戦略の有無を問わない generic エンドポイント)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
         (name = "macro", description = "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"),
@@ -208,6 +209,15 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             hypotheses::get_strategy_hypothesis,
             hypotheses::update_strategy_hypothesis,
             hypotheses::delete_strategy_hypothesis
+        ))
+        .routes(routes!(
+            hypotheses::list_hypotheses,
+            hypotheses::create_hypothesis
+        ))
+        .routes(routes!(
+            hypotheses::get_hypothesis,
+            hypotheses::update_hypothesis,
+            hypotheses::delete_hypothesis
         ))
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
