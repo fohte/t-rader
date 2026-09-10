@@ -109,7 +109,6 @@ fn sum_market_value(positions: &[PortfolioPositionDto]) -> f64 {
 }
 
 /// `investable_amount::find_current` が返す `AppError` の MCP エラー変換。
-/// 実装上は常に `sea_orm::DbErr` の伝播のみだが、シグネチャは `AppError` を返すため型で受ける。
 fn app_error_to_mcp(err: AppError) -> McpError {
     match err {
         AppError::Database(e) => db_error(e),

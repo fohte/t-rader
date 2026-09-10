@@ -14,11 +14,11 @@ use crate::models::Timeframe;
 use crate::repositories::bars::find_latest_bar;
 use crate::services::backfill::backfill_daily_bars;
 
-/// 銘柄ごとの直近終値と、価格取得に用いた共通の対象営業日。
+/// 銘柄ごとの直近終値と、取得できた中で最も新しい観測日。
 #[derive(Debug, PartialEq)]
 pub struct LatestPrices {
     pub prices: HashMap<String, Decimal>,
-    /// 全銘柄に共通の価格観測日。1 銘柄も価格を取得できなければ `None`。
+    /// 取得できた価格のうち最も新しい観測日。1 銘柄も価格を取得できなければ `None`。
     pub priced_at: Option<NaiveDate>,
 }
 
@@ -104,91 +104,10 @@ mod tests {
     use sqlx::PgPool;
 
     use super::*;
-    use crate::data_provider::{DataProviderError, DateRange};
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
     use crate::repositories::bars::upsert_bars;
-    use crate::testing::create_test_db;
-
-    /// テスト用のモックデータプロバイダー (`backfill.rs` の同名モックを複製したもの)
-    struct MockProvider {
-        bars: Vec<Bar>,
-        instruments: Vec<Instrument>,
-        calls: std::sync::Mutex<Vec<String>>,
-    }
-
-    impl MockProvider {
-        fn new() -> Self {
-            Self {
-                bars: Vec::new(),
-                instruments: Vec::new(),
-                calls: std::sync::Mutex::new(Vec::new()),
-            }
-        }
-
-        fn with_bars(mut self, bars: Vec<Bar>) -> Self {
-            self.bars = bars;
-            self
-        }
-
-        fn with_instruments(mut self, instruments: Vec<Instrument>) -> Self {
-            self.instruments = instruments;
-            self
-        }
-    }
-
-    impl DataProvider for MockProvider {
-        async fn fetch_daily_bars(
-            &self,
-            instrument_id: &str,
-            range: &DateRange,
-        ) -> Result<Vec<Bar>, DataProviderError> {
-            self.calls
-                .lock()
-                .expect("lock")
-                .push(instrument_id.to_string());
-
-            let exists = self.instruments.iter().any(|i| i.id == instrument_id);
-            if !exists {
-                return Err(DataProviderError::NotFound(format!(
-                    "instrument '{instrument_id}' not found"
-                )));
-            }
-
-            let from_dt =
-                Utc.from_utc_datetime(&range.from.and_hms_opt(0, 0, 0).unwrap_or_default());
-            let to_exclusive = range.to.succ_opt().unwrap_or(range.to);
-            let to_dt =
-                Utc.from_utc_datetime(&to_exclusive.and_hms_opt(0, 0, 0).unwrap_or_default());
-
-            let mut bars: Vec<Bar> = self
-                .bars
-                .iter()
-                .filter(|b| {
-                    b.instrument_id == instrument_id
-                        && b.timestamp >= from_dt
-                        && b.timestamp < to_dt
-                })
-                .cloned()
-                .collect();
-
-            bars.sort_by_key(|b| b.timestamp);
-            Ok(bars)
-        }
-
-        async fn fetch_instrument(
-            &self,
-            instrument_id: &str,
-        ) -> Result<Instrument, DataProviderError> {
-            self.instruments
-                .iter()
-                .find(|i| i.id == instrument_id)
-                .cloned()
-                .ok_or_else(|| {
-                    DataProviderError::NotFound(format!("instrument '{instrument_id}' not found"))
-                })
-        }
-    }
+    use crate::testing::{MockProvider, create_test_db};
 
     fn sample_instrument(id: &str) -> Instrument {
         Instrument {
