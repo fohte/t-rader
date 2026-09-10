@@ -110,8 +110,6 @@ export function buildFlowEdges(
           ? `${edge.label} [${String(citeNumber)}]`
           : `[${String(citeNumber)}]`
 
-    // ponytail: エッジの cite はテキスト注記のみにとどめる。ノードのような Popover 化が
-    // 要るなら custom edge type + EdgeLabelRenderer で追加する
     return {
       id: `${edge.source}-${edge.target}-${String(index)}`,
       source: edge.source,

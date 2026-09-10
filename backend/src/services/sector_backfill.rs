@@ -34,11 +34,6 @@ pub struct BackfillStats {
 }
 
 /// `sector_id` が NULL の stock を対象に業種を取得し、埋められた分だけ反映する。
-///
-/// ponytail: 対象取得は ORDER BY を持たないため、業種を確定できない銘柄 (fetch_instrument
-/// が恒常的に失敗する、または sector が常に空) が BATCH_LIMIT 件以上存在すると、それらが
-/// 毎サイクルの枠を埋めて他の未試行銘柄に到達しなくなる。保有銘柄規模では起きにくいが、
-/// 顕在化したら試行順を記録する列を足して LRU 的にローテーションさせる。
 pub async fn run_backfill_cycle<P: DataProvider>(
     db: &DatabaseConnection,
     provider: &P,

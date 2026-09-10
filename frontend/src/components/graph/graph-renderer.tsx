@@ -150,11 +150,6 @@ function GraphCanvas({ def, onOpenRef, fitViewDuration }: GraphCanvasProps) {
   // (SVG text) やノードの角に絶対配置される CiteBadge、nowrap な RefChip の CJK
   // テキストなど、ノード自身の枠からはみ出す描画はここに含まれない。そのぶんを
   // 安全マージンとして padding を通常より大きく確保する。
-  // ponytail: 実測値ベースのヒューリスティックな上限であり、はみ出し量がこれを
-  // 超えると再度 overflow しうる。padding の効果は <ReactFlow> の既定 minZoom (0.5)
-  // でクランプされるため、グラフ全体が横に大きくなるほど padding を上げても余白が
-  // 増えなくなる。根本対応するなら dagre-layout 側でノード内コンテンツ幅・edge
-  // label 幅を layout に反映する
   useEffect(() => {
     void fitView({ duration: fitViewDuration ?? 200, padding: 0.7 })
   }, [rawNodes, rawEdges, fitView, fitViewDuration])

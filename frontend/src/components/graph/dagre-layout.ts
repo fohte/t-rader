@@ -72,7 +72,6 @@ export function buildDagreLayout(
 
   // React Flow は親ノードが子より配列内で前に来ることを要求する。LLM が書く JSON の
   // 順序に依存しないようここでソートする。
-  // ponytail: 1 階層のみ対応。グループのネストが要るなら深さ順の topological sort に拡張する
   const sortedNodes = [...def.nodes].sort(
     (a, b) => Number(a.parent != null) - Number(b.parent != null),
   )
