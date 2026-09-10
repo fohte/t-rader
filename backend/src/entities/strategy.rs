@@ -25,6 +25,8 @@ pub struct Model {
     pub skills: Json,
     #[sea_orm(column_type = "Text")]
     pub agent_graph: String,
+    #[sea_orm(column_type = "JsonBinary")]
+    pub risk_policy: Json,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

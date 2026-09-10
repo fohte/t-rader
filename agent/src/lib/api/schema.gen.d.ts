@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+  '/api/account/risk-policy': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す */
+    get: operations['get_account_risk_policy']
+    /** 口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する */
+    put: operations['put_account_risk_policy']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/agent-models': {
     parameters: {
       query?: never
@@ -985,6 +1003,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/strategies/{id}/risk-policy': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略の銘柄集中度上限 (`max_position_ratio`) を取得 */
+    get: operations['get_risk_policy']
+    /** 戦略の銘柄集中度上限 (`max_position_ratio`) を更新。`null` で上限を解除する */
+    put: operations['put_risk_policy']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/strategies/{id}/skills': {
     parameters: {
       query?: never
@@ -1220,6 +1256,10 @@ export interface paths {
 export type webhooks = Record<string, never>
 export interface components {
   schemas: {
+    AccountRiskPolicyResponse: {
+      /** Format: double */
+      max_sector_ratio?: number | null
+    }
     AddWatchlistItemRequest: {
       /** @description 銘柄コード (例: "7203") */
       instrument_id: string
@@ -1715,6 +1755,14 @@ export interface components {
       stderr: string
       stdout: string
     }
+    PutAccountRiskPolicyRequest: {
+      /**
+       * Format: double
+       * @description セクターに属する保有銘柄の時価合計 (口座全体) / 口座全体の保有銘柄時価合計 の上限比率。
+       *     (0, 1] の範囲。`null` で上限を解除する
+       */
+      max_sector_ratio?: number | null
+    }
     /**
      * @description 戦略の投資可能額を新しい history 行として記録するリクエスト。
      *     口座の現金残高や証券会社の買付余力とは別概念で、ユーザーが投資に回すと決めた枠を表す。
@@ -1727,6 +1775,13 @@ export interface components {
        * @description 省略時はサーバー側で現在時刻を使う
        */
       effective_at?: string | null
+    }
+    PutStrategyRiskPolicyRequest: {
+      /**
+       * Format: double
+       * @description 銘柄の保有時価 / 戦略の投資可能額 の上限比率。(0, 1] の範囲。`null` で上限を解除する
+       */
+      max_position_ratio?: number | null
     }
     /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
     RefResolution: {
@@ -1830,6 +1885,7 @@ export interface components {
       /** Format: uuid */
       id: string
       name: string
+      risk_policy: components['schemas']['Value']
       skills: components['schemas']['Value']
       /** Format: int32 */
       sort_order: number
@@ -1870,6 +1926,10 @@ export interface components {
       source: string
       title: string
       url: string
+    }
+    StrategyRiskPolicyResponse: {
+      /** Format: double */
+      max_position_ratio?: number | null
     }
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
@@ -2063,6 +2123,89 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
+  get_account_risk_policy: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AccountRiskPolicyResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_account_risk_policy: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PutAccountRiskPolicyRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AccountRiskPolicyResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   get_agent_models: {
     parameters: {
       query?: never
@@ -6281,6 +6424,120 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_risk_policy: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyRiskPolicyResponse']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  put_risk_policy: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 戦略 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PutStrategyRiskPolicyRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyRiskPolicyResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
         headers: {
           [name: string]: unknown
         }

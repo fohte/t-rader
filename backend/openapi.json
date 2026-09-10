@@ -9,6 +9,106 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/account/risk-policy": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す",
+        "operationId": "get_account_risk_policy",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRiskPolicyResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "口座全体のセクター集中度上限 (`max_sector_ratio`) を更新 (upsert)。`null` で上限を解除する",
+        "operationId": "put_account_risk_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutAccountRiskPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRiskPolicyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agent-models": {
       "get": {
         "tags": [
@@ -5675,6 +5775,160 @@
         }
       }
     },
+    "/api/strategies/{id}/risk-policy": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略の銘柄集中度上限 (`max_position_ratio`) を取得",
+        "operationId": "get_risk_policy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyRiskPolicyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "戦略の銘柄集中度上限 (`max_position_ratio`) を更新。`null` で上限を解除する",
+        "operationId": "put_risk_policy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "戦略 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutStrategyRiskPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyRiskPolicyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/strategies/{id}/skills": {
       "get": {
         "tags": [
@@ -7314,6 +7568,18 @@
   },
   "components": {
     "schemas": {
+      "AccountRiskPolicyResponse": {
+        "type": "object",
+        "properties": {
+          "max_sector_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "AddWatchlistItemRequest": {
         "type": "object",
         "required": [
@@ -8845,6 +9111,20 @@
           }
         }
       },
+      "PutAccountRiskPolicyRequest": {
+        "type": "object",
+        "properties": {
+          "max_sector_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "セクターに属する保有銘柄の時価合計 (口座全体) / 口座全体の保有銘柄時価合計 の上限比率。\n(0, 1] の範囲。`null` で上限を解除する"
+          }
+        },
+        "additionalProperties": false
+      },
       "PutInvestableAmountRequest": {
         "type": "object",
         "description": "戦略の投資可能額を新しい history 行として記録するリクエスト。\n口座の現金残高や証券会社の買付余力とは別概念で、ユーザーが投資に回すと決めた枠を表す。",
@@ -8863,6 +9143,20 @@
             ],
             "format": "date-time",
             "description": "省略時はサーバー側で現在時刻を使う"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PutStrategyRiskPolicyRequest": {
+        "type": "object",
+        "properties": {
+          "max_position_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "銘柄の保有時価 / 戦略の投資可能額 の上限比率。(0, 1] の範囲。`null` で上限を解除する"
           }
         },
         "additionalProperties": false
@@ -9190,7 +9484,8 @@
           "updated_at",
           "agents_md",
           "skills",
-          "agent_graph"
+          "agent_graph",
+          "risk_policy"
         ],
         "properties": {
           "agent_graph": {
@@ -9215,6 +9510,9 @@
           },
           "name": {
             "type": "string"
+          },
+          "risk_policy": {
+            "$ref": "#/components/schemas/Value"
           },
           "skills": {
             "$ref": "#/components/schemas/Value"
@@ -9341,6 +9639,18 @@
           },
           "url": {
             "type": "string"
+          }
+        }
+      },
+      "StrategyRiskPolicyResponse": {
+        "type": "object",
+        "properties": {
+          "max_position_ratio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
           }
         }
       },
@@ -10105,6 +10415,10 @@
     {
       "name": "config",
       "description": "frontend 向けランタイム設定値"
+    },
+    {
+      "name": "account",
+      "description": "口座全体の設定"
     }
   ]
 }

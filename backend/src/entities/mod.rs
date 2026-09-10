@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod account_risk_policy;
 pub mod annotation;
 pub mod bars;
 pub mod change_history;

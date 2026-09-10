@@ -24,6 +24,7 @@ pub(super) async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid
         agent_graph: sea_orm::ActiveValue::NotSet,
         created_at: sea_orm::ActiveValue::NotSet,
         updated_at: sea_orm::ActiveValue::NotSet,
+        risk_policy: sea_orm::ActiveValue::NotSet,
     }
     .insert(db)
     .await
