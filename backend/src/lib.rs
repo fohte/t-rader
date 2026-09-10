@@ -35,9 +35,9 @@ use crate::data_provider::DataProviderKind;
 use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
-    agent_options, agent_tasks, annotations, bars, comments, config, custom_indicators, history,
-    hooks, hypotheses, imports, interests, macro_data, news, notes, refs, risk_policy, rss_feeds,
-    strategies, trades, triggers, watchlists,
+    agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
+    custom_indicators, history, hooks, hypotheses, imports, interests, macro_data, news, notes,
+    refs, risk_policy, rss_feeds, strategies, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -96,6 +96,7 @@ impl AppState {
         (name = "watchlists", description = "ウォッチリスト管理"),
         (name = "watchlist_items", description = "ウォッチリスト内の銘柄管理"),
         (name = "strategies", description = "戦略 (ワークスペース)"),
+        (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
         (name = "refs", description = "一級参照型 (stock / indicator / sector / theme)"),
         (name = "notes", description = "ノート"),
         (name = "annotations", description = "アノテーション"),
@@ -249,6 +250,25 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(
             strategies::get_risk_policy,
             strategies::put_risk_policy
+        ))
+        // agent_config (目的別 agent 設定)
+        .routes(routes!(
+            agent_config::list_agent_configs,
+            agent_config::create_agent_config
+        ))
+        .routes(routes!(
+            agent_config::get_agent_config,
+            agent_config::delete_agent_config
+        ))
+        .routes(routes!(
+            agent_config::get_agents_md,
+            agent_config::put_agents_md
+        ))
+        .routes(routes!(agent_config::get_skills, agent_config::put_skills))
+        .routes(routes!(agent_config::put_skill, agent_config::delete_skill))
+        .routes(routes!(
+            agent_config::get_agent_graph,
+            agent_config::put_agent_graph
         ))
         // refs
         .routes(routes!(refs::list_stocks))

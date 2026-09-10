@@ -1,3 +1,4 @@
+pub mod agent_config;
 pub mod agent_options;
 pub mod agent_tasks;
 pub mod annotations;
