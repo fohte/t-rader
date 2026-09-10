@@ -206,6 +206,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
             "error_summary": null,
             "result_text": "7203 は堅調",
             "steps": [],
+            "purpose": null,
         }),
     );
 }

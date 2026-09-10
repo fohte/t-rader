@@ -57,6 +57,8 @@ pub struct StrategyTaskStatusResponse {
     /// フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。
     #[schema(value_type = serde_json::Value)]
     pub steps: serde_json::Value,
+    /// 投入時に指定された purpose。`None` なら戦略の実行グラフでフェーズを表示する。
+    pub purpose: Option<String>,
 }
 
 /// `GET /api/strategies/:id/tasks` の一覧要素。`steps`/`result_text` は一覧では
