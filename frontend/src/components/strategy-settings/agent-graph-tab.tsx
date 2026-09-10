@@ -6,17 +6,20 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 interface AgentGraphTabProps {
-  strategyId: string
+  purpose: string
 }
 
-export function AgentGraphTab({ strategyId }: AgentGraphTabProps) {
+export function AgentGraphTab({ purpose }: AgentGraphTabProps) {
   const queryClient = useQueryClient()
   const { data, isPending } = $api.useQuery(
     'get',
-    '/api/strategies/{id}/agent-graph',
-    { params: { path: { id: strategyId } } },
+    '/api/agent-configs/{purpose}/agent-graph',
+    { params: { path: { purpose } } },
   )
-  const mutation = $api.useMutation('put', '/api/strategies/{id}/agent-graph')
+  const mutation = $api.useMutation(
+    'put',
+    '/api/agent-configs/{purpose}/agent-graph',
+  )
   const [saveError, setSaveError] = useState<string | null>(null)
 
   if (isPending) {
@@ -25,7 +28,7 @@ export function AgentGraphTab({ strategyId }: AgentGraphTabProps) {
 
   return (
     <AgentGraphEditor
-      strategyId={strategyId}
+      purpose={purpose}
       initialValue={data?.content ?? ''}
       isSaving={mutation.isPending}
       saveError={saveError}
@@ -33,7 +36,7 @@ export function AgentGraphTab({ strategyId }: AgentGraphTabProps) {
         setSaveError(null)
         mutation.mutate(
           {
-            params: { path: { id: strategyId } },
+            params: { path: { purpose } },
             body: { content: next },
           },
           {
@@ -41,8 +44,8 @@ export function AgentGraphTab({ strategyId }: AgentGraphTabProps) {
               void queryClient.invalidateQueries({
                 queryKey: $api.queryOptions(
                   'get',
-                  '/api/strategies/{id}/agent-graph',
-                  { params: { path: { id: strategyId } } },
+                  '/api/agent-configs/{purpose}/agent-graph',
+                  { params: { path: { purpose } } },
                 ).queryKey,
               })
             },

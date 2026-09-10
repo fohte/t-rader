@@ -26,7 +26,7 @@ function installMiddleware(initial: SkillStore = {}) {
       const { url } = request
       const method = request.method.toUpperCase()
 
-      const single = /\/api\/strategies\/[^/]+\/skills\/([^/?]+)/.exec(url)
+      const single = /\/api\/agent-configs\/[^/]+\/skills\/([^/?]+)/.exec(url)
       if (single != null) {
         const name = single[1] ?? ''
         if (method === 'PUT') {
@@ -49,7 +49,7 @@ function installMiddleware(initial: SkillStore = {}) {
       }
 
       if (
-        /\/api\/strategies\/[^/]+\/skills(\?|$)/.test(url) &&
+        /\/api\/agent-configs\/[^/]+\/skills(\?|$)/.test(url) &&
         method === 'GET'
       ) {
         return new Response(JSON.stringify({ skills: { ...store } }), {
@@ -81,7 +81,7 @@ function setup(initial: SkillStore = {}) {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<SkillsTab strategyId="strat-1" />, { wrapper: Wrapper })
+  return render(<SkillsTab purpose="explore" />, { wrapper: Wrapper })
 }
 
 afterEach(() => {

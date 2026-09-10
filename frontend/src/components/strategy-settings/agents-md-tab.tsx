@@ -6,17 +6,20 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 interface AgentsMdTabProps {
-  strategyId: string
+  purpose: string
 }
 
-export function AgentsMdTab({ strategyId }: AgentsMdTabProps) {
+export function AgentsMdTab({ purpose }: AgentsMdTabProps) {
   const queryClient = useQueryClient()
   const { data, isPending } = $api.useQuery(
     'get',
-    '/api/strategies/{id}/agents-md',
-    { params: { path: { id: strategyId } } },
+    '/api/agent-configs/{purpose}/agents-md',
+    { params: { path: { purpose } } },
   )
-  const mutation = $api.useMutation('put', '/api/strategies/{id}/agents-md')
+  const mutation = $api.useMutation(
+    'put',
+    '/api/agent-configs/{purpose}/agents-md',
+  )
   const [saveError, setSaveError] = useState<string | null>(null)
 
   if (isPending) {
@@ -32,7 +35,7 @@ export function AgentsMdTab({ strategyId }: AgentsMdTabProps) {
         setSaveError(null)
         mutation.mutate(
           {
-            params: { path: { id: strategyId } },
+            params: { path: { purpose } },
             body: { content: next },
           },
           {
@@ -40,8 +43,8 @@ export function AgentsMdTab({ strategyId }: AgentsMdTabProps) {
               void queryClient.invalidateQueries({
                 queryKey: $api.queryOptions(
                   'get',
-                  '/api/strategies/{id}/agents-md',
-                  { params: { path: { id: strategyId } } },
+                  '/api/agent-configs/{purpose}/agents-md',
+                  { params: { path: { purpose } } },
                 ).queryKey,
               })
             },

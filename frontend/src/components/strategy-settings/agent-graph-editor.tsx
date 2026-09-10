@@ -8,7 +8,7 @@ import { Button } from '#components/ui/button'
 import { cn } from '#lib/utils'
 
 interface AgentGraphEditorProps {
-  strategyId: string
+  purpose: string
   /** 永続化されている現在の内容 (保存ボタン押下時の diff 元) */
   initialValue: string
   /** 保存ハンドラ。エラー表示は呼び出し側で saveError prop 経由に倒す */
@@ -18,7 +18,7 @@ interface AgentGraphEditorProps {
 }
 
 export function AgentGraphEditor({
-  strategyId,
+  purpose,
   initialValue,
   onSave,
   isSaving = false,
@@ -123,7 +123,7 @@ export function AgentGraphEditor({
 
       {effectiveView === 'form' ? (
         <AgentGraphForm
-          strategyId={strategyId}
+          purpose={purpose}
           value={value}
           onChange={setValue}
           errorPhaseKey={errorPhaseKey}

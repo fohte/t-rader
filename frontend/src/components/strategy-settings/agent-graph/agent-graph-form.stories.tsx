@@ -86,7 +86,7 @@ function installMiddleware() {
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (/\/api\/strategies\/[^/]+\/skills(\?|$)/.test(url)) {
+      if (/\/api\/agent-configs\/[^/]+\/skills(\?|$)/.test(url)) {
         return new Response(JSON.stringify({ skills: SKILLS }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -125,7 +125,7 @@ function Interactive({
   return (
     <QueryClientProvider client={client}>
       <AgentGraphForm
-        strategyId="strat-1"
+        purpose="explore"
         value={value}
         onChange={setValue}
         errorPhaseKey={errorPhaseKey}
@@ -137,7 +137,7 @@ function Interactive({
 
 export const ToggleOff: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     value: '',
     onChange: () => {},
     lastEnabledValueRef: { current: '' },
@@ -147,7 +147,7 @@ export const ToggleOff: Story = {
 
 export const ToggleOn: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     value: SINGLE_PHASE,
     onChange: () => {},
     lastEnabledValueRef: { current: SINGLE_PHASE },
@@ -157,7 +157,7 @@ export const ToggleOn: Story = {
 
 export const MultiPhaseWithForEach: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     value: MULTI_PHASE_WITH_FOR_EACH,
     onChange: () => {},
     lastEnabledValueRef: { current: MULTI_PHASE_WITH_FOR_EACH },
@@ -167,7 +167,7 @@ export const MultiPhaseWithForEach: Story = {
 
 export const WithError: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     value: MULTI_PHASE_WITH_FOR_EACH,
     onChange: () => {},
     errorPhaseKey: 'investigate',

@@ -58,7 +58,7 @@ function installMiddleware() {
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (/\/api\/strategies\/[^/]+\/skills(\?|$)/.test(url)) {
+      if (/\/api\/agent-configs\/[^/]+\/skills(\?|$)/.test(url)) {
         return new Response(JSON.stringify({ skills: SKILLS }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -127,7 +127,7 @@ const SAMPLE = `phases:
 
 export const FormView: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     initialValue: SAMPLE,
     onSave: () => {},
   },
@@ -135,7 +135,7 @@ export const FormView: Story = {
 
 export const PhaseSplitDisabled: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     initialValue: '',
     onSave: () => {},
   },
@@ -143,7 +143,7 @@ export const PhaseSplitDisabled: Story = {
 
 export const BrokenYaml: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     initialValue: 'phases: [',
     onSave: () => {},
   },
@@ -151,7 +151,7 @@ export const BrokenYaml: Story = {
 
 export const SaveErrorOnPhase: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     initialValue: SAMPLE,
     onSave: () => {},
     saveError: 'phase key "plan" is duplicated',
@@ -160,7 +160,7 @@ export const SaveErrorOnPhase: Story = {
 
 export const Saving: Story = {
   args: {
-    strategyId: 'strat-1',
+    purpose: 'explore',
     initialValue: SAMPLE,
     onSave: () => {},
     isSaving: true,

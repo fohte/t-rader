@@ -25,7 +25,7 @@ import { PhaseCard } from '#components/strategy-settings/agent-graph/phase-card'
 import { $api } from '#lib/api/client'
 
 interface AgentGraphFormProps {
-  strategyId: string
+  purpose: string
   /** agent_graph の YAML 文字列。これが唯一の真実の情報源で、フォーム操作のたびに書き換える */
   value: string
   onChange: (next: string) => void
@@ -40,7 +40,7 @@ interface AgentGraphFormProps {
 }
 
 export function AgentGraphForm({
-  strategyId,
+  purpose,
   value,
   onChange,
   errorPhaseKey = null,
@@ -52,8 +52,8 @@ export function AgentGraphForm({
   const { data: toolsData } = $api.useQuery('get', '/api/agent-tools')
   const { data: skillsData } = $api.useQuery(
     'get',
-    '/api/strategies/{id}/skills',
-    { params: { path: { id: strategyId } } },
+    '/api/agent-configs/{purpose}/skills',
+    { params: { path: { purpose } } },
   )
   const models = modelsData?.models ?? []
   const tools = toolsData?.tools ?? []

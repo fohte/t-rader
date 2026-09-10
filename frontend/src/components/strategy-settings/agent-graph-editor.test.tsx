@@ -49,7 +49,7 @@ function installMiddleware() {
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (/\/api\/strategies\/[^/]+\/skills(\?|$)/.test(url)) {
+      if (/\/api\/agent-configs\/[^/]+\/skills(\?|$)/.test(url)) {
         return new Response(JSON.stringify({ skills: {} }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -67,7 +67,7 @@ function installMiddleware() {
 let ejectMiddleware: (() => void) | null = null
 
 function renderEditor(
-  props: Omit<ComponentProps<typeof AgentGraphEditor>, 'strategyId'>,
+  props: Omit<ComponentProps<typeof AgentGraphEditor>, 'purpose'>,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -75,7 +75,7 @@ function renderEditor(
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<AgentGraphEditor strategyId="strat-1" {...props} />, {
+  return render(<AgentGraphEditor purpose="explore" {...props} />, {
     wrapper: Wrapper,
   })
 }
@@ -157,11 +157,7 @@ describe('AgentGraphEditor', () => {
     expect(screen.getByLabelText('agent_graph')).toHaveValue('A')
 
     rerender(
-      <AgentGraphEditor
-        strategyId="strat-1"
-        initialValue="B"
-        onSave={() => {}}
-      />,
+      <AgentGraphEditor purpose="explore" initialValue="B" onSave={() => {}} />,
     )
     expect(screen.getByLabelText('agent_graph')).toHaveValue('B')
     expect(screen.queryByTestId('dirty-indicator')).toBeNull()
@@ -176,11 +172,7 @@ describe('AgentGraphEditor', () => {
     await user.type(editor, 'draft')
 
     rerender(
-      <AgentGraphEditor
-        strategyId="strat-1"
-        initialValue="B"
-        onSave={() => {}}
-      />,
+      <AgentGraphEditor purpose="explore" initialValue="B" onSave={() => {}} />,
     )
     expect(screen.getByLabelText('agent_graph')).toHaveValue('Adraft')
   })
