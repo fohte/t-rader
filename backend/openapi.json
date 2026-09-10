@@ -317,6 +317,58 @@
         }
       }
     },
+    "/api/agent-configs/{purpose}/agent-config": {
+      "get": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent が purpose 付きタスク実行時に呼び出す。\n`strategies::get_agent_config` (戦略 ID キー) の purpose キー版。",
+        "operationId": "agent_config_get_agent_config_bundle",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfigResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agent-configs/{purpose}/agent-graph": {
       "get": {
         "tags": [

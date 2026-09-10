@@ -64,7 +64,7 @@ pub async fn fire_trigger(
     let context = build_standard_context(&strategy_row, now);
     let prompt = expand_template(&trigger_row.prompt_template, &payload, &context);
 
-    let outcome = submit_task(db, agent_client, strategy_id, &prompt, source).await?;
+    let outcome = submit_task(db, agent_client, strategy_id, &prompt, source, None).await?;
 
     let now_fixed = now.fixed_offset();
     let mut active = trigger_row.into_active_model();

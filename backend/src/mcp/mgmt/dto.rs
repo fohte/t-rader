@@ -28,6 +28,11 @@ pub struct ListStrategiesResult {
 pub struct SubmitStrategyTaskParams {
     pub strategy_id: Uuid,
     pub prompt: String,
+    /// 指定すると、戦略キーの agent-config ではなく `agent_config` テーブルの purpose
+    /// キーの行 (AGENTS.md / skills / agent_graph) を使ってタスクを実行する。存在しない
+    /// purpose を指定した場合、ここではなく agent 実行時にタスクが失敗する。
+    #[serde(default)]
+    pub purpose: Option<String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]

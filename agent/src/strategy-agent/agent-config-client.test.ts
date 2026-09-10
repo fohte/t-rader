@@ -31,7 +31,10 @@ describe('createAgentConfigFetcher', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig('strategy-1')
+    const result = await fetchAgentConfig({
+      kind: 'strategy',
+      strategyId: 'strategy-1',
+    })
 
     expect(result).toEqual(
       ok({
@@ -47,6 +50,75 @@ describe('createAgentConfigFetcher', () => {
     )
   })
 
+  it('fetches by purpose from the purpose-keyed endpoint when given a purpose key', async () => {
+    const fetchMock = vi.fn<
+      (input: string | URL | Request) => Promise<Response>
+    >(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            agents_md: '# AGENTS',
+            skills: { 'ja-stock': 'skill body' },
+            model: 'opencode-go/minimax-m3',
+            small_model: 'opencode-go/deepseek-v4-flash',
+            agent_graph: 'phases: []',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const result = await fetchAgentConfig({
+      kind: 'purpose',
+      purpose: 'purpose-a',
+    })
+
+    expect(result).toEqual(
+      ok({
+        agentsMd: '# AGENTS',
+        skills: { 'ja-stock': 'skill body' },
+        model: 'opencode-go/minimax-m3',
+        smallModel: 'opencode-go/deepseek-v4-flash',
+        agentGraph: 'phases: []',
+      }),
+    )
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://backend/api/agent-configs/purpose-a/agent-config',
+    )
+  })
+
+  it('percent-encodes a purpose containing path separators so it cannot escape the agent-configs path segment', async () => {
+    const fetchMock = vi.fn<
+      (input: string | URL | Request) => Promise<Response>
+    >(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            agents_md: '# AGENTS',
+            skills: { 'ja-stock': 'skill body' },
+            model: 'opencode-go/minimax-m3',
+            small_model: 'opencode-go/deepseek-v4-flash',
+            agent_graph: 'phases: []',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    await fetchAgentConfig({
+      kind: 'purpose',
+      purpose: '../strategies/other-id',
+    })
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://backend/api/agent-configs/..%2Fstrategies%2Fother-id/agent-config',
+    )
+  })
+
   it('returns an error when fetch itself rejects', async () => {
     vi.stubGlobal(
       'fetch',
@@ -54,7 +126,10 @@ describe('createAgentConfigFetcher', () => {
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig('strategy-1')
+    const result = await fetchAgentConfig({
+      kind: 'strategy',
+      strategyId: 'strategy-1',
+    })
 
     expect(result).toEqual(
       err(
@@ -72,7 +147,10 @@ describe('createAgentConfigFetcher', () => {
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig('missing-strategy')
+    const result = await fetchAgentConfig({
+      kind: 'strategy',
+      strategyId: 'missing-strategy',
+    })
 
     expect(result).toEqual(
       err(
@@ -90,7 +168,10 @@ describe('createAgentConfigFetcher', () => {
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig('strategy-1')
+    const result = await fetchAgentConfig({
+      kind: 'strategy',
+      strategyId: 'strategy-1',
+    })
 
     expect(result).toEqual(
       err(
@@ -134,7 +215,10 @@ describe('createAgentConfigFetcher', () => {
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig('strategy-1')
+    const result = await fetchAgentConfig({
+      kind: 'strategy',
+      strategyId: 'strategy-1',
+    })
 
     expect(result).toEqual(
       err(

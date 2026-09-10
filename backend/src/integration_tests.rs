@@ -40,6 +40,7 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
     mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
         strategy_id,
         prompt: "from mgmt".into(),
+        purpose: None,
     }))
     .await
     .expect("mgmt submit ok");

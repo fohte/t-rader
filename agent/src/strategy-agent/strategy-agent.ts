@@ -248,6 +248,7 @@ export const createStrategyAgentDeps = (
 export const runStrategyAgent = async (
   deps: StrategyAgentDeps,
   strategyId: string,
+  purpose: string | undefined,
   taskId: string,
   userMessage: Message,
   onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
@@ -300,7 +301,11 @@ export const runStrategyAgent = async (
       // ResultAsync.fromPromise never rejects, so Promise.all would
       // otherwise wait for both to settle regardless of which one failed.
       return deps
-        .fetchAgentConfig(strategyId)
+        .fetchAgentConfig(
+          purpose !== undefined
+            ? { kind: 'purpose', purpose }
+            : { kind: 'strategy', strategyId },
+        )
         .andThen((agentConfig) =>
           toolsResult.andThen((tools) => {
             const parsedGraph = parseAgentGraph(agentConfig.agentGraph)

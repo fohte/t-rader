@@ -57,6 +57,7 @@ pub async fn submit_strategy_chat(
         id,
         &payload.prompt,
         TaskSource::Frontend,
+        None,
     )
     .await
     .map_err(map_submit_error)?;

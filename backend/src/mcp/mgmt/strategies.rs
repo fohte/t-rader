@@ -98,6 +98,7 @@ impl MgmtServer {
             params.strategy_id,
             &params.prompt,
             TaskSource::MgmtMcp,
+            params.purpose,
         )
         .await
         .map_err(map_submit_error)?;
@@ -185,6 +186,7 @@ mod tests {
             .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
                 strategy_id,
                 prompt: " inspect 7203 ".into(),
+                purpose: None,
             }))
             .await
             .expect("submit ok");
@@ -224,6 +226,32 @@ mod tests {
         );
     }
 
+    #[sqlx::test(migrations = false)]
+    async fn submit_strategy_task_forwards_purpose_to_agent_client(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long-term").await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let server = build_server(db, fake.clone());
+
+        server
+            .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
+                strategy_id,
+                prompt: "inspect 7203".into(),
+                purpose: Some("explore".to_string()),
+            }))
+            .await
+            .expect("submit ok");
+
+        let submitted: Vec<Option<String>> = fake
+            .submitted
+            .lock()
+            .await
+            .iter()
+            .map(|s| s.purpose.clone())
+            .collect();
+        assert_eq!(submitted, vec![Some("explore".to_string())]);
+    }
+
     #[derive(Debug, PartialEq, Eq)]
     struct StrategyTaskRowSummary {
         task_id: Uuid,
@@ -259,6 +287,7 @@ mod tests {
             .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
                 strategy_id: Uuid::new_v4(),
                 prompt: "x".into(),
+                purpose: None,
             }))
             .await
             .err()
@@ -275,6 +304,7 @@ mod tests {
             .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
                 strategy_id,
                 prompt: "   ".into(),
+                purpose: None,
             }))
             .await
             .err()
@@ -298,6 +328,7 @@ mod tests {
             .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
                 strategy_id,
                 prompt: "x".into(),
+                purpose: None,
             }))
             .await
             .err()
@@ -324,6 +355,7 @@ mod tests {
             .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
                 strategy_id,
                 prompt: "p".into(),
+                purpose: None,
             }))
             .await
             .expect("submit");

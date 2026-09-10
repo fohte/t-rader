@@ -245,6 +245,43 @@ pub fn skills_as_btree(model: &agent_config::Model) -> std::collections::BTreeMa
     skills_to_btree(&model.skills)
 }
 
+pub(crate) const DEFAULT_AGENT_MODEL: &str = "opencode-go/minimax-m3";
+pub(crate) const DEFAULT_AGENT_SMALL_MODEL: &str = "opencode-go/deepseek-v4-flash";
+
+/// モデル設定は DB ではなく env 由来。
+pub(crate) fn agent_model_settings() -> (String, String) {
+    agent_model_settings_with(|key| std::env::var(key).ok())
+}
+
+fn agent_model_settings_with<F>(get: F) -> (String, String)
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let model = get("STRATEGY_AGENT_MODEL")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_string());
+    let small_model = get("STRATEGY_AGENT_SMALL_MODEL")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_AGENT_SMALL_MODEL.to_string());
+    (model, small_model)
+}
+
+/// 戦略キー版・purpose キー版の `AgentConfigResponse` 構築を共通化する。
+pub(crate) fn build_agent_config_response(
+    agents_md: String,
+    skills: std::collections::BTreeMap<String, String>,
+    agent_graph: String,
+) -> crate::models::AgentConfigResponse {
+    let (model, small_model) = agent_model_settings();
+    crate::models::AgentConfigResponse {
+        agents_md,
+        skills,
+        model,
+        small_model,
+        agent_graph,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
@@ -449,5 +486,34 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, AgentConfigError::InvalidAgentGraph(_)));
         assert_eq!(find_or_404(&db, "explore").await.unwrap().agent_graph, "");
+    }
+
+    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key: &str| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    #[rstest]
+    #[case::unset(&[], (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL))]
+    #[case::empty(
+        &[("STRATEGY_AGENT_MODEL", ""), ("STRATEGY_AGENT_SMALL_MODEL", "")],
+        (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL)
+    )]
+    #[case::overridden(
+        &[("STRATEGY_AGENT_MODEL", "m-x"), ("STRATEGY_AGENT_SMALL_MODEL", "m-y")],
+        ("m-x", "m-y")
+    )]
+    fn agent_model_settings_with_resolves_env(
+        #[case] env: &[(&str, &str)],
+        #[case] expected: (&str, &str),
+    ) {
+        assert_eq!(
+            agent_model_settings_with(env_get(env)),
+            (expected.0.to_string(), expected.1.to_string()),
+        );
     }
 }

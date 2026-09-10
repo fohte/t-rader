@@ -12,6 +12,7 @@ use crate::models::{
     AgentConfigResponse, AgentsMdBody, CreateStrategyRequest, SkillBody, SkillsBody,
     UpdateStrategyRequest,
 };
+use crate::services::agent_config::build_agent_config_response;
 use crate::services::change_history::Actor;
 use crate::services::strategy_config;
 
@@ -388,27 +389,6 @@ pub async fn delete_skill(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub(crate) const DEFAULT_AGENT_MODEL: &str = "opencode-go/minimax-m3";
-pub(crate) const DEFAULT_AGENT_SMALL_MODEL: &str = "opencode-go/deepseek-v4-flash";
-
-/// モデル設定は DB ではなく env 由来。
-fn agent_model_settings() -> (String, String) {
-    agent_model_settings_with(|key| std::env::var(key).ok())
-}
-
-fn agent_model_settings_with<F>(get: F) -> (String, String)
-where
-    F: Fn(&str) -> Option<String>,
-{
-    let model = get("STRATEGY_AGENT_MODEL")
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_AGENT_MODEL.to_string());
-    let small_model = get("STRATEGY_AGENT_SMALL_MODEL")
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| DEFAULT_AGENT_SMALL_MODEL.to_string());
-    (model, small_model)
-}
-
 /// 戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
 /// t-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。
 /// `agent_config::get_agent_config` (purpose キー) とは別 API。
@@ -429,19 +409,15 @@ pub async fn get_agent_config(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<AgentConfigResponse>, AppError> {
     let row = find_strategy_or_404(&state.db, id).await?;
-    let (model, small_model) = agent_model_settings();
-    Ok(Json(AgentConfigResponse {
-        agents_md: row.agents_md,
-        skills: strategy_config::skills_to_btree(&row.skills),
-        model,
-        small_model,
-        agent_graph: row.agent_graph,
-    }))
+    Ok(Json(build_agent_config_response(
+        row.agents_md,
+        strategy_config::skills_to_btree(&row.skills),
+        row.agent_graph,
+    )))
 }
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use serde_json::json;
@@ -449,8 +425,8 @@ mod tests {
 
     use uuid::Uuid;
 
-    use super::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL, agent_model_settings_with};
     use crate::entities::strategy;
+    use crate::services::agent_config::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL};
     use crate::testing::{create_strategy, create_test_server, create_test_server_with_db};
 
     #[sqlx::test(migrations = false)]
@@ -676,35 +652,6 @@ mod tests {
             .json(&json!({ "content": "x" }))
             .await;
         put_md.assert_status(axum::http::StatusCode::NOT_FOUND);
-    }
-
-    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |key: &str| {
-            pairs
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| (*v).to_string())
-        }
-    }
-
-    #[rstest]
-    #[case::unset(&[], (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL))]
-    #[case::empty(
-        &[("STRATEGY_AGENT_MODEL", ""), ("STRATEGY_AGENT_SMALL_MODEL", "")],
-        (DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL)
-    )]
-    #[case::overridden(
-        &[("STRATEGY_AGENT_MODEL", "m-x"), ("STRATEGY_AGENT_SMALL_MODEL", "m-y")],
-        ("m-x", "m-y")
-    )]
-    fn agent_model_settings_with_resolves_env(
-        #[case] env: &[(&str, &str)],
-        #[case] expected: (&str, &str),
-    ) {
-        assert_eq!(
-            agent_model_settings_with(env_get(env)),
-            (expected.0.to_string(), expected.1.to_string()),
-        );
     }
 
     #[sqlx::test(migrations = false)]

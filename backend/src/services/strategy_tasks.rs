@@ -114,12 +114,16 @@ pub enum GetTaskError {
 /// Pending 行を先に INSERT してから t-rader-agent 内部 API に投入する。投入成功後は
 /// 行に `a2a_task_id` を記録して phase を Running に進める。投入失敗時は行を Failed に
 /// 更新する。
+///
+/// `purpose` が `Some` の場合、t-rader-agent は戦略キーの agent-config ではなく
+/// purpose キーの agent-config (AGENTS.md / skills / agent_graph) を使ってタスクを実行する。
 pub async fn submit_task(
     db: &DatabaseConnection,
     agent_client: &SharedAgentTaskClient,
     strategy_id: Uuid,
     prompt: &str,
     source: TaskSource,
+    purpose: Option<String>,
 ) -> Result<SubmittedTask, SubmitTaskError> {
     let prompt = prompt.trim().to_string();
     if prompt.is_empty() {
@@ -157,6 +161,7 @@ pub async fn submit_task(
         .submit(SubmitAgentTask {
             strategy_id,
             prompt,
+            purpose,
         })
         .await
     {
