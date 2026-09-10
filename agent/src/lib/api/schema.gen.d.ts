@@ -62,6 +62,27 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/agent-configs/{purpose}/agent-config': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
+     *     t-rader-agent が purpose 付きタスク実行時に呼び出す。
+     *     `strategies::get_agent_config` (戦略 ID キー) の purpose キー版。
+     */
+    get: operations['agent_config_get_agent_config_bundle']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/agent-configs/{purpose}/agent-graph': {
     parameters: {
       query?: never
@@ -2487,6 +2508,44 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_get_agent_config_bundle: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentConfigResponse']
+        }
       }
       404: {
         headers: {

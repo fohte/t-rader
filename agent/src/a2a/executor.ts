@@ -45,6 +45,14 @@ export const extractStrategyId = (message: Message): string | undefined => {
   return typeof raw === 'string' ? raw : undefined
 }
 
+// No format validation, unlike strategy_id: purpose is opaque free-text and
+// an unknown value simply 404s at agent-config fetch time, surfacing as a
+// normal failed task.
+export const extractPurpose = (message: Message): string | undefined => {
+  const raw = message.metadata?.['purpose']
+  return typeof raw === 'string' ? raw : undefined
+}
+
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
 const buildAgentMessage = (
@@ -148,6 +156,7 @@ export interface TraderAgentExecutorDeps {
   taskStore: Pick<TaskStore, 'load'>
   runStrategyAgent: (
     strategyId: string,
+    purpose: string | undefined,
     taskId: string,
     userMessage: Message,
     onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
@@ -170,6 +179,7 @@ export class TraderAgentExecutor implements AgentExecutor {
   ): Promise<void> {
     const { taskId, contextId, userMessage, task } = requestContext
     const rawStrategyId = extractStrategyId(userMessage)
+    const purpose = extractPurpose(userMessage)
 
     if (rawStrategyId !== undefined && !isValidStrategyId(rawStrategyId)) {
       const rejectedStatus = {
@@ -355,6 +365,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     try {
       const result = await this.deps.runStrategyAgent(
         strategyId,
+        purpose,
         taskId,
         promptMessage,
         publishSteps,

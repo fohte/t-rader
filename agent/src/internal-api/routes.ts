@@ -27,6 +27,9 @@ const submitTaskBodySchema = z
   .object({
     strategy_id: z.string().min(1),
     prompt: z.string().min(1),
+    // 目的キー (agent_config.purpose)。指定時は目的別設定 (agent/agent-config-client.ts)
+    // を、未指定時は従来どおり戦略 ID ベースの設定を使う。
+    purpose: z.string().min(1).optional(),
   })
   .openapi('SubmitTaskBody')
 
@@ -72,12 +75,19 @@ export interface InternalApiOptions {
   pushNotificationConfig?: PushNotificationConfig
 }
 
-const buildUserMessage = (strategyId: string, prompt: string): Message => ({
+const buildUserMessage = (
+  strategyId: string,
+  prompt: string,
+  purpose: string | undefined,
+): Message => ({
   kind: 'message',
   role: 'user',
   messageId: randomUUID(),
   parts: [{ kind: 'text', text: prompt }],
-  metadata: { strategy_id: strategyId },
+  metadata: {
+    strategy_id: strategyId,
+    ...(purpose !== undefined ? { purpose } : {}),
+  },
 })
 
 const resultTextOf = (task: Task): string | undefined => {
@@ -185,8 +195,8 @@ export const mountInternalApiRoutes = (
   app.openapi(
     submitTaskRoute,
     async (c) => {
-      const { strategy_id, prompt } = c.req.valid('json')
-      const message = buildUserMessage(strategy_id, prompt)
+      const { strategy_id, prompt, purpose } = c.req.valid('json')
+      const message = buildUserMessage(strategy_id, prompt, purpose)
       const params: MessageSendParams = {
         message,
         configuration: {

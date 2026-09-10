@@ -363,6 +363,7 @@ pub async fn reject_annotation(
             strategy_id,
             &prompt,
             TaskSource::Review,
+            None,
         )
         .await
         .map_err(map_submit_error)?;

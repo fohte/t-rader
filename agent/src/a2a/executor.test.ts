@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
 import {
+  extractPurpose,
   extractStrategyId,
   HEARTBEAT_INTERVAL_MS,
   TraderAgentExecutor,
@@ -76,6 +77,22 @@ describe('extractStrategyId', () => {
     expect(
       extractStrategyId(buildUserMessage({ strategy_id: 123 })),
     ).toBeUndefined()
+  })
+})
+
+describe('extractPurpose', () => {
+  it('reads purpose from message metadata', () => {
+    expect(extractPurpose(buildUserMessage({ purpose: 'purpose-a' }))).toBe(
+      'purpose-a',
+    )
+  })
+
+  it('returns undefined when metadata is absent', () => {
+    expect(extractPurpose(buildUserMessage())).toBeUndefined()
+  })
+
+  it('returns undefined when purpose is not a string', () => {
+    expect(extractPurpose(buildUserMessage({ purpose: 123 }))).toBeUndefined()
   })
 })
 
@@ -173,10 +190,50 @@ describe('TraderAgentExecutor', () => {
     })
   })
 
+  it('forwards message metadata.purpose to runStrategyAgent alongside an explicit strategy_id', async () => {
+    const calls: (string | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (_strategyId, purpose) => {
+        calls.push(purpose)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+      purpose: 'purpose-a',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-18', 'ctx-18')
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual(['purpose-a'])
+  })
+
+  it('passes undefined for purpose when message metadata carries no purpose', async () => {
+    const calls: (string | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (_strategyId, purpose) => {
+        calls.push(purpose)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-19', 'ctx-19')
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual([undefined])
+  })
+
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({
       runStrategyAgent: (
         _strategyId,
+        _purpose,
         _taskId,
         _userMessage,
         onStepsChanged,
@@ -254,6 +311,7 @@ describe('TraderAgentExecutor', () => {
       const executor = buildExecutor({
         runStrategyAgent: (
           _strategyId,
+          _purpose,
           _taskId,
           _userMessage,
           onStepsChanged,
@@ -344,6 +402,7 @@ describe('TraderAgentExecutor', () => {
       const executor = buildExecutor({
         runStrategyAgent: (
           _strategyId,
+          _purpose,
           _taskId,
           _userMessage,
           onStepsChanged,
@@ -560,11 +619,17 @@ describe('TraderAgentExecutor', () => {
 
   describe('strategy resolution from free text (no strategy_id metadata)', () => {
     it('resolves the strategy uniquely from message content and runs it', async () => {
-      const calls: { strategyId: string; taskId: string; text: string }[] = []
+      const calls: {
+        strategyId: string
+        purpose: string | undefined
+        taskId: string
+        text: string
+      }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, taskId, userMessage) => {
+        runStrategyAgent: (strategyId, purpose, taskId, userMessage) => {
           calls.push({
             strategyId,
+            purpose,
             taskId,
             text: userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
@@ -595,6 +660,7 @@ describe('TraderAgentExecutor', () => {
       expect(calls).toEqual([
         {
           strategyId: '11111111-1111-1111-1111-111111111111',
+          purpose: undefined,
           taskId: 'task-7',
           text: '長期投資でNVDAを分析して',
         },
@@ -735,11 +801,17 @@ describe('TraderAgentExecutor', () => {
     })
 
     it('re-resolves from the full message history when a follow-up message resumes an input-required task, without republishing the task history', async () => {
-      const calls: { strategyId: string; taskId: string; text: string }[] = []
+      const calls: {
+        strategyId: string
+        purpose: string | undefined
+        taskId: string
+        text: string
+      }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, taskId, userMessage) => {
+        runStrategyAgent: (strategyId, purpose, taskId, userMessage) => {
           calls.push({
             strategyId,
+            purpose,
             taskId,
             text: userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
@@ -798,10 +870,35 @@ describe('TraderAgentExecutor', () => {
       expect(calls).toEqual([
         {
           strategyId: '11111111-1111-1111-1111-111111111111',
+          purpose: undefined,
           taskId: 'task-11',
           text: '投資戦略でNVDAを分析して\n長期の方でお願いします',
         },
       ])
+    })
+
+    it('forwards message metadata.purpose to runStrategyAgent when present, alongside a strategy resolved from free text', async () => {
+      const calls: (string | undefined)[] = []
+      const executor = buildExecutor({
+        runStrategyAgent: (_strategyId, purpose) => {
+          calls.push(purpose)
+          return Promise.resolve(defaultStrategyAgentResult)
+        },
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage(
+        { purpose: 'purpose-a' },
+        '長期投資でNVDAを分析して',
+      )
+      const requestContext = new RequestContext(
+        userMessage,
+        'task-17',
+        'ctx-17',
+      )
+
+      await executor.execute(requestContext, eventBus)
+
+      expect(calls).toEqual(['purpose-a'])
     })
   })
 })

@@ -11,8 +11,10 @@ use crate::AppState;
 use crate::entities::agent_config;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
+use crate::handlers::strategies::agent_model_settings;
 use crate::models::{
-    AgentGraphBody, AgentsMdBody, CreateAgentConfigRequest, SkillBody, SkillsBody,
+    AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateAgentConfigRequest, SkillBody,
+    SkillsBody,
 };
 use crate::services::agent_config as svc;
 
@@ -94,6 +96,39 @@ pub async fn get_agent_config(
         .await
         .map_err(map_err)?;
     Ok(Json(model))
+}
+
+/// 目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
+/// t-rader-agent が purpose 付きタスク実行時に呼び出す。
+/// `strategies::get_agent_config` (戦略 ID キー) の purpose キー版。
+#[utoipa::path(
+    get,
+    operation_id = "agent_config_get_agent_config_bundle",
+    path = "/api/agent-configs/{purpose}/agent-config",
+    tag = "agent_config",
+    params(("purpose" = String, Path, description = "目的キー")),
+    responses(
+        (status = 200, body = AgentConfigResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_agent_config_bundle(
+    State(state): State<AppState>,
+    JsonPath(purpose): JsonPath<String>,
+) -> Result<Json<AgentConfigResponse>, AppError> {
+    let row = svc::find_or_404(&state.db, &purpose)
+        .await
+        .map_err(map_err)?;
+    let skills = svc::skills_as_btree(&row);
+    let (model, small_model) = agent_model_settings();
+    Ok(Json(AgentConfigResponse {
+        agents_md: row.agents_md,
+        skills,
+        model,
+        small_model,
+        agent_graph: row.agent_graph,
+    }))
 }
 
 /// 目的別 agent 設定を削除
@@ -557,5 +592,51 @@ mod tests {
             .json(&json!({ "content": "phases: [" }))
             .await;
         res.assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_agent_config_bundle_returns_agents_md_skills_and_model(pool: PgPool) {
+        use crate::handlers::strategies::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL};
+
+        let server = create_test_server(pool).await;
+        server
+            .post("/api/agent-configs")
+            .json(&json!({ "purpose": "explore" }))
+            .await
+            .assert_status(StatusCode::CREATED);
+
+        let agents_md = indoc::indoc! {"
+            # 方針
+            慎重に運用する"};
+        server
+            .put("/api/agent-configs/explore/agents-md")
+            .json(&json!({ "content": agents_md }))
+            .await
+            .assert_status_ok();
+        server
+            .put("/api/agent-configs/explore/skills/scout")
+            .json(&json!({ "content": "scout body" }))
+            .await
+            .assert_status_ok();
+
+        let res = server.get("/api/agent-configs/explore/agent-config").await;
+        res.assert_status_ok();
+        assert_eq!(
+            res.json::<Value>(),
+            json!({
+                "agents_md": agents_md,
+                "skills": { "scout": "scout body" },
+                "model": DEFAULT_AGENT_MODEL,
+                "small_model": DEFAULT_AGENT_SMALL_MODEL,
+                "agent_graph": "",
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn get_agent_config_bundle_404_for_unknown_purpose(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let res = server.get("/api/agent-configs/missing/agent-config").await;
+        res.assert_status(StatusCode::NOT_FOUND);
     }
 }

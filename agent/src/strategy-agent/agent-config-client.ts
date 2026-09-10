@@ -43,19 +43,41 @@ const isAgentConfigResponseBody = (
   )
 }
 
+// Which agent-config bundle to fetch: keyed by strategy (existing, default
+// behavior) or by a caller-supplied purpose (new). Both map to the same
+// AgentConfigResponse shape on the backend, just a different URL.
+export type AgentConfigKey =
+  | { readonly kind: 'strategy'; readonly strategyId: string }
+  | { readonly kind: 'purpose'; readonly purpose: string }
+
 export type FetchAgentConfig = (
-  strategyId: string,
+  key: AgentConfigKey,
 ) => ResultAsync<AgentConfig, AgentConfigFetchError>
+
+const agentConfigUrl = (
+  backendApiBaseUrl: string,
+  key: AgentConfigKey,
+): string =>
+  key.kind === 'strategy'
+    ? `${backendApiBaseUrl}/api/strategies/${key.strategyId}/agent-config`
+    : `${backendApiBaseUrl}/api/agent-configs/${key.purpose}/agent-config`
+
+const describeKey = (key: AgentConfigKey): string =>
+  key.kind === 'strategy'
+    ? `strategy ${key.strategyId}`
+    : `purpose ${key.purpose}`
 
 export const createAgentConfigFetcher = (
   backendApiBaseUrl: string,
 ): FetchAgentConfig => {
-  return (strategyId) =>
-    ResultAsync.fromPromise(
-      fetch(`${backendApiBaseUrl}/api/strategies/${strategyId}/agent-config`),
+  return (key) => {
+    const url = agentConfigUrl(backendApiBaseUrl, key)
+    const target = describeKey(key)
+    return ResultAsync.fromPromise(
+      fetch(url),
       (error) =>
         new AgentConfigFetchError(
-          `failed to fetch agent config for strategy ${strategyId}`,
+          `failed to fetch agent config for ${target}`,
           error,
         ),
     )
@@ -63,7 +85,7 @@ export const createAgentConfigFetcher = (
         if (!res.ok) {
           return errAsync(
             new AgentConfigFetchError(
-              `failed to fetch agent config for strategy ${strategyId}: ${String(res.status)}`,
+              `failed to fetch agent config for ${target}: ${String(res.status)}`,
             ),
           )
         }
@@ -71,7 +93,7 @@ export const createAgentConfigFetcher = (
           res.json(),
           (error) =>
             new AgentConfigFetchError(
-              `failed to parse agent-config response body for strategy ${strategyId}`,
+              `failed to parse agent-config response body for ${target}`,
               error,
             ),
         )
@@ -80,7 +102,7 @@ export const createAgentConfigFetcher = (
         if (!isAgentConfigResponseBody(body)) {
           return errAsync(
             new AgentConfigFetchError(
-              `malformed agent-config response for strategy ${strategyId}: expected agents_md/model/small_model/agent_graph strings and a skills map of strings`,
+              `malformed agent-config response for ${target}: expected agents_md/model/small_model/agent_graph strings and a skills map of strings`,
             ),
           )
         }
@@ -92,4 +114,5 @@ export const createAgentConfigFetcher = (
           agentGraph: body.agent_graph,
         })
       })
+  }
 }

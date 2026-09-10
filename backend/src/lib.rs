@@ -270,6 +270,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             agent_config::get_agent_graph,
             agent_config::put_agent_graph
         ))
+        .routes(routes!(agent_config::get_agent_config_bundle))
         // refs
         .routes(routes!(refs::list_stocks))
         .routes(routes!(refs::get_stock))

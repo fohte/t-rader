@@ -8,7 +8,10 @@ import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
-import type { AgentConfig } from '#strategy-agent/agent-config-client'
+import type {
+  AgentConfig,
+  AgentConfigKey,
+} from '#strategy-agent/agent-config-client'
 import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
 import type { CompiledPhaseAgent } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
@@ -81,7 +84,7 @@ interface BuildDepsOptions {
 }
 
 interface Calls {
-  fetchAgentConfigStrategyId?: string
+  fetchAgentConfigKey?: AgentConfigKey
   createMcpClientStrategyId?: string
   createMcpClientTaskId?: string
   mcpClientClosed: boolean
@@ -101,8 +104,8 @@ const buildDeps = (
   const chatModel = new FakeChatModel({})
 
   const deps: StrategyAgentDeps = {
-    fetchAgentConfig: (strategyId) => {
-      calls.fetchAgentConfigStrategyId = strategyId
+    fetchAgentConfig: (key) => {
+      calls.fetchAgentConfigKey = key
       return okAsync({
         ...AGENT_CONFIG,
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
@@ -156,12 +159,15 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )
 
     expect.soft(result).toEqual({ status: 'completed', message: 'done' })
-    expect.soft(calls.fetchAgentConfigStrategyId).toBe('strategy-1')
+    expect
+      .soft(calls.fetchAgentConfigKey)
+      .toEqual({ kind: 'strategy', strategyId: 'strategy-1' })
     expect.soft(calls.createMcpClientStrategyId).toBe('strategy-1')
     expect.soft(calls.createMcpClientTaskId).toBe('task-1')
     expect.soft(calls.createChatModelArg).toBe('opencode-go/minimax-m3')
@@ -175,6 +181,28 @@ describe('runStrategyAgent', () => {
     expect.soft(calls.mcpClientClosed).toBe(true)
   })
 
+  it('fetches agent config by purpose key when purpose is given, ignoring strategyId for that lookup', async () => {
+    const { deps, calls } = buildDeps({
+      agentInvoke: () =>
+        Promise.resolve({
+          structuredResponse: { status: 'completed', message: 'done' },
+        }),
+    })
+
+    await runStrategyAgent(
+      deps,
+      'strategy-1',
+      'purpose-a',
+      'task-1',
+      buildUserMessage('do the thing'),
+    )
+
+    expect(calls.fetchAgentConfigKey).toEqual({
+      kind: 'purpose',
+      purpose: 'purpose-a',
+    })
+  })
+
   it('maps an "error" structured response to failed with error_kind agent_error', async () => {
     const { deps } = buildDeps({
       agentInvoke: () =>
@@ -186,6 +214,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )
@@ -205,6 +234,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )
@@ -229,6 +259,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )
@@ -249,6 +280,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )
@@ -271,6 +303,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       { ...deps, fetchAgentConfig: () => errAsync(fetchError) },
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )
@@ -294,6 +327,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )
@@ -316,6 +350,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
       (steps) => notifications.push(steps),
@@ -364,6 +399,7 @@ describe('runStrategyAgent', () => {
     const result = await runStrategyAgent(
       deps,
       'strategy-1',
+      undefined,
       'task-1',
       buildUserMessage('do the thing'),
     )

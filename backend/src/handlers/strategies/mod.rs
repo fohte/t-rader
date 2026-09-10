@@ -392,7 +392,7 @@ pub(crate) const DEFAULT_AGENT_MODEL: &str = "opencode-go/minimax-m3";
 pub(crate) const DEFAULT_AGENT_SMALL_MODEL: &str = "opencode-go/deepseek-v4-flash";
 
 /// モデル設定は DB ではなく env 由来。
-fn agent_model_settings() -> (String, String) {
+pub(crate) fn agent_model_settings() -> (String, String) {
     agent_model_settings_with(|key| std::env::var(key).ok())
 }
 

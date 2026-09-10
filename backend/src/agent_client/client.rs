@@ -63,6 +63,8 @@ impl AgentTaskState {
 pub struct SubmitAgentTask {
     pub strategy_id: Uuid,
     pub prompt: String,
+    /// 目的別 agent_config を使わせたい場合の purpose キー。`None` なら戦略キーの agent-config を使う (従来通り)。
+    pub purpose: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -225,9 +227,15 @@ impl AgentTaskClient for HttpAgentTaskClient {
                 .map_err(|e| AgentTaskError::Parse(format!("invalid strategy_id: {e}")))?;
         let prompt = generated::types::SubmitTaskBodyPrompt::try_from(req.prompt)
             .map_err(|e| AgentTaskError::Parse(format!("invalid prompt: {e}")))?;
+        let purpose = req
+            .purpose
+            .map(generated::types::SubmitTaskBodyPurpose::try_from)
+            .transpose()
+            .map_err(|e| AgentTaskError::Parse(format!("invalid purpose: {e}")))?;
         let body = generated::types::SubmitTaskBody {
             strategy_id,
             prompt,
+            purpose,
         };
 
         let response = self
@@ -442,10 +450,43 @@ mod tests {
             .submit(SubmitAgentTask {
                 strategy_id,
                 prompt: "hello".into(),
+                purpose: None,
             })
             .await
             .expect("submit ok");
         assert_eq!(result.task_id, "task-abc");
+    }
+
+    #[rstest]
+    #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello" }))]
+    #[case::some(Some("explore".to_string()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "purpose": "explore" }))]
+    #[tokio::test]
+    async fn submit_body_includes_purpose_only_when_some(
+        #[case] purpose: Option<String>,
+        #[case] expected_body: serde_json::Value,
+    ) {
+        let server = MockServer::start().await;
+        let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
+
+        Mock::given(method("POST"))
+            .and(path("/internal/tasks"))
+            .and(body_json(expected_body))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "task_id": "task-abc",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = http_client(&server);
+        client
+            .submit(SubmitAgentTask {
+                strategy_id,
+                prompt: "hello".into(),
+                purpose,
+            })
+            .await
+            .expect("submit ok");
     }
 
     #[tokio::test]
@@ -463,6 +504,7 @@ mod tests {
             .submit(SubmitAgentTask {
                 strategy_id: uuid::Uuid::new_v4(),
                 prompt: "hello".into(),
+                purpose: None,
             })
             .await
             .expect_err("expected error");
