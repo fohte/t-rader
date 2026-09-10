@@ -89,6 +89,51 @@ pub struct ReadPortfolioResult {
     pub strategy: StrategyPortfolioScopeDto,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CheckBuyableQtyParams {
+    /// 対象銘柄コード (例: "7203")
+    pub symbol: String,
+}
+
+/// 制約単位の追加購入可能株数。
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ConstraintResult {
+    /// 上限が効いている。`max_additional_qty` は `lot_size` の倍数に切り捨て済み
+    Limited { max_additional_qty: i64 },
+    /// risk_policy でこの制約自体が未設定 (上限なし)
+    Unlimited,
+    /// 計算に必要な値が欠けており判定できない
+    Unavailable { reason: String },
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct CheckBuyableQtyResult {
+    pub symbol: String,
+    /// 単元株数。各上限株数はこの倍数に切り捨てて返す
+    pub lot_size: i64,
+    /// 接続元戦略が現在保有する株数。保有していなければ 0
+    pub current_qty: f64,
+    /// 直近終値。取得できなかった場合は null (この場合、価格に依存する制約はすべて unavailable になる)
+    pub current_price: Option<f64>,
+    /// 価格取得を試みた銘柄 (口座全体の保有銘柄 + 対象銘柄) のうち、取得できたもので
+    /// 最も新しい観測日。1 銘柄も取得できなければ null。`current_price` 自体の観測日とは
+    /// 限らない
+    pub priced_at: Option<NaiveDate>,
+    /// `strategy.risk_policy.max_position_ratio` による制約
+    pub max_qty_by_position_ratio: ConstraintResult,
+    /// `account_risk_policy.max_sector_ratio` による制約
+    pub max_qty_by_sector_ratio: ConstraintResult,
+    /// 戦略の未使用投資可能額による制約
+    pub max_qty_by_cash: ConstraintResult,
+    /// 上記制約のうち最も厳しいもの。いずれかが unavailable なら unavailable、
+    /// 全て unlimited なら unlimited
+    pub max_qty: ConstraintResult,
+    /// `max_qty` が `Limited` のとき、根拠になった制約名
+    /// (`position_ratio` / `sector_ratio` / `cash`)。それ以外は null
+    pub binding_constraint: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
