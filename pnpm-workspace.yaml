@@ -25,7 +25,8 @@ minimumReleaseAgeExclude:
   # Exact-pinned security-fix versions; safe to remove once each version's
   # natural age exceeds minimumReleaseAge.
   - '@hono/node-server@2.0.10'
-  - hono@4.12.34
+  # Renovate security update: hono@4.13.5
+  - hono@4.12.34 || 4.13.5
   # Renovate security update: wrangler@3.114.17
   - wrangler@3.114.17
 
