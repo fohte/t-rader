@@ -27,7 +27,7 @@ function installMiddleware(
   const middleware: Middleware = {
     onRequest({ request }) {
       const method = request.method.toUpperCase()
-      if (/\/api\/strategies\/[^/]+\/agent-graph/.test(request.url)) {
+      if (/\/api\/agent-configs\/[^/]+\/agent-graph/.test(request.url)) {
         if (method === 'GET') {
           return new Response(JSON.stringify({ content: store.content }), {
             status: 200,
@@ -79,7 +79,7 @@ function setup(
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<AgentGraphTab strategyId="strat-1" />, { wrapper: Wrapper })
+  return render(<AgentGraphTab purpose="explore" />, { wrapper: Wrapper })
 }
 
 async function expectEditorValue(value: string) {

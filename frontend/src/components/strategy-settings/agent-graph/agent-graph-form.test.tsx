@@ -94,7 +94,7 @@ function installMiddleware() {
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (/\/api\/strategies\/[^/]+\/skills(\?|$)/.test(url)) {
+      if (/\/api\/agent-configs\/[^/]+\/skills(\?|$)/.test(url)) {
         return new Response(JSON.stringify({ skills: SKILLS }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -128,7 +128,7 @@ function Controlled({
   return (
     <>
       <AgentGraphForm
-        strategyId="strat-1"
+        purpose="explore"
         value={value}
         onChange={setValue}
         errorPhaseKey={errorPhaseKey}

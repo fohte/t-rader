@@ -6,6 +6,11 @@ export const Route = createFileRoute('/settings/')({
 
 const ITEMS: { to: string; label: string; description: string }[] = [
   {
+    to: '/settings/agent-configs',
+    label: 'Agent 設定',
+    description: '目的ごとの AGENTS.md / skills / agent graph を管理する',
+  },
+  {
     to: '/settings/rss-feeds',
     label: 'RSS フィード',
     description: 'ニュース集約対象の公開 RSS を追加・編集・無効化する',

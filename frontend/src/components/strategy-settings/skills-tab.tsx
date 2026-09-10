@@ -9,25 +9,28 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 interface SkillsTabProps {
-  strategyId: string
+  purpose: string
 }
 
-export function SkillsTab({ strategyId }: SkillsTabProps) {
+export function SkillsTab({ purpose }: SkillsTabProps) {
   const queryClient = useQueryClient()
   const { data, isPending } = $api.useQuery(
     'get',
-    '/api/strategies/{id}/skills',
-    { params: { path: { id: strategyId } } },
+    '/api/agent-configs/{purpose}/skills',
+    { params: { path: { purpose } } },
   )
 
-  const addSkill = $api.useMutation('put', '/api/strategies/{id}/skills/{name}')
+  const addSkill = $api.useMutation(
+    'put',
+    '/api/agent-configs/{purpose}/skills/{name}',
+  )
   const saveSkill = $api.useMutation(
     'put',
-    '/api/strategies/{id}/skills/{name}',
+    '/api/agent-configs/{purpose}/skills/{name}',
   )
   const deleteSkill = $api.useMutation(
     'delete',
-    '/api/strategies/{id}/skills/{name}',
+    '/api/agent-configs/{purpose}/skills/{name}',
   )
 
   const [selected, setSelected] = useState<string | null>(null)
@@ -46,9 +49,13 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
 
   function invalidateSkills() {
     void queryClient.invalidateQueries({
-      queryKey: $api.queryOptions('get', '/api/strategies/{id}/skills', {
-        params: { path: { id: strategyId } },
-      }).queryKey,
+      queryKey: $api.queryOptions(
+        'get',
+        '/api/agent-configs/{purpose}/skills',
+        {
+          params: { path: { purpose } },
+        },
+      ).queryKey,
     })
   }
 
@@ -66,7 +73,7 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
     setNewNameError(null)
     addSkill.mutate(
       {
-        params: { path: { id: strategyId, name: trimmed } },
+        params: { path: { purpose, name: trimmed } },
         body: { content: '' },
       },
       {
@@ -86,7 +93,7 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
   function handleDelete(name: string) {
     if (!window.confirm(`skill "${name}" を削除しますか?`)) return
     deleteSkill.mutate(
-      { params: { path: { id: strategyId, name } } },
+      { params: { path: { purpose, name } } },
       {
         onSuccess: () => {
           invalidateSkills()
@@ -106,7 +113,7 @@ export function SkillsTab({ strategyId }: SkillsTabProps) {
     setSaveError(null)
     saveSkill.mutate(
       {
-        params: { path: { id: strategyId, name } },
+        params: { path: { purpose, name } },
         body: { content },
       },
       {

@@ -1,30 +1,32 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { RiskPolicyTab } from '#components/strategy-settings/risk-policy-tab'
-import { TriggersTab } from '#components/strategy-settings/triggers-tab'
+import { AgentGraphTab } from '#components/strategy-settings/agent-graph-tab'
+import { AgentsMdTab } from '#components/strategy-settings/agents-md-tab'
+import { SkillsTab } from '#components/strategy-settings/skills-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'triggers' | 'risk-policy'
+type TabKey = 'agents-md' | 'skills' | 'agent-graph'
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'triggers', label: 'Triggers' },
-  { key: 'risk-policy', label: 'リスク上限' },
+  { key: 'agents-md', label: 'AGENTS.md' },
+  { key: 'skills', label: 'Skills' },
+  { key: 'agent-graph', label: 'Agent' },
 ]
 
-export const Route = createFileRoute('/strategies/$id/settings')({
-  component: StrategySettingsPage,
+export const Route = createFileRoute('/settings/agent-configs/$purpose')({
+  component: AgentConfigSettingsPage,
 })
 
-function StrategySettingsPage() {
-  const { id } = Route.useParams()
-  const [tab, setTab] = useState<TabKey>('triggers')
+function AgentConfigSettingsPage() {
+  const { purpose } = Route.useParams()
+  const [tab, setTab] = useState<TabKey>('agents-md')
 
-  const { data: strategy, isPending } = $api.useQuery(
+  const { data: agentConfig, isPending } = $api.useQuery(
     'get',
-    '/api/strategies/{id}',
-    { params: { path: { id } } },
+    '/api/agent-configs/{purpose}',
+    { params: { path: { purpose } } },
   )
 
   if (isPending) {
@@ -36,10 +38,10 @@ function StrategySettingsPage() {
     )
   }
 
-  if (strategy == null) {
+  if (agentConfig == null) {
     return (
       <div className="font-mono text-sm text-muted-foreground">
-        戦略が見つかりませんでした。
+        Agent 設定が見つかりませんでした。
       </div>
     )
   }
@@ -48,25 +50,24 @@ function StrategySettingsPage() {
     <div className="space-y-5">
       <div>
         <Link
-          to="/strategies/$id"
-          params={{ id }}
+          to="/settings/agent-configs"
           className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
-          &lt; {strategy.name} に戻る
+          &lt; Agent 設定に戻る
         </Link>
       </div>
       <header>
         <h1 className="mb-1 text-2xl font-bold leading-tight tracking-tight">
-          戦略設定 — {strategy.name}
+          Agent 設定 — {purpose}
         </h1>
         <p className="text-sm text-muted-foreground-strong">
-          trigger とリスク上限を編集します。
+          AGENTS.md / skills / agent graph を編集します。
         </p>
       </header>
 
       <div
         role="tablist"
-        aria-label="戦略設定タブ"
+        aria-label="Agent 設定タブ"
         className="flex items-center gap-1 border-b border-border"
       >
         {TABS.map((t) => {
@@ -90,8 +91,9 @@ function StrategySettingsPage() {
       </div>
 
       <section role="tabpanel">
-        {tab === 'triggers' && <TriggersTab strategyId={id} />}
-        {tab === 'risk-policy' && <RiskPolicyTab strategyId={id} />}
+        {tab === 'agents-md' && <AgentsMdTab purpose={purpose} />}
+        {tab === 'skills' && <SkillsTab purpose={purpose} />}
+        {tab === 'agent-graph' && <AgentGraphTab purpose={purpose} />}
       </section>
     </div>
   )

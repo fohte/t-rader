@@ -17,7 +17,7 @@ function installMiddleware(initial: Store) {
   const middleware: Middleware = {
     onRequest({ request }) {
       const method = request.method.toUpperCase()
-      if (/\/api\/strategies\/[^/]+\/agents-md/.test(request.url)) {
+      if (/\/api\/agent-configs\/[^/]+\/agents-md/.test(request.url)) {
         if (method === 'GET') {
           return new Response(JSON.stringify({ content: store.content }), {
             status: 200,
@@ -60,7 +60,7 @@ function setup(initial: Store) {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<AgentsMdTab strategyId="strat-1" />, { wrapper: Wrapper })
+  return render(<AgentsMdTab purpose="explore" />, { wrapper: Wrapper })
 }
 
 afterEach(() => {

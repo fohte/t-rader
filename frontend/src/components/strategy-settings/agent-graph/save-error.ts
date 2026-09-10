@@ -4,7 +4,7 @@
 const PHASE_KEY_PATTERN = /^phase(?: key)? "([^"]+)"/
 
 /**
- * `PUT /api/strategies/{id}/agent-graph` が返すエラーメッセージから、原因になった
+ * `PUT /api/agent-configs/{purpose}/agent-graph` が返すエラーメッセージから、原因になった
  * フェーズの key を抜き出す。`AgentGraphError::InvalidYaml` のようにフェーズを
  * 特定できないエラーでは null を返す (呼び出し側は全体バナーのみ表示する)。
  */
