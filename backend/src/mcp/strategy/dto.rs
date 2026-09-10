@@ -116,7 +116,9 @@ pub struct CheckBuyableQtyResult {
     pub current_qty: f64,
     /// 直近終値。取得できなかった場合は null (この場合、価格に依存する制約はすべて unavailable になる)
     pub current_price: Option<f64>,
-    /// current_price の観測対象日。1 銘柄も評価できなければ null
+    /// 価格取得を試みた銘柄 (口座全体の保有銘柄 + 対象銘柄) のうち、取得できたもので
+    /// 最も新しい観測日。1 銘柄も取得できなければ null。`current_price` 自体の観測日とは
+    /// 限らない
     pub priced_at: Option<NaiveDate>,
     /// `strategy.risk_policy.max_position_ratio` による制約
     pub max_qty_by_position_ratio: ConstraintResult,

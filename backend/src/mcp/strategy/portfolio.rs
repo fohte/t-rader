@@ -56,9 +56,12 @@ impl StrategyServer {
         let investable_amount_row = investable_amount::find_current(&self.db, strategy_id)
             .await
             .map_err(app_error_to_mcp)?;
-        let unused_investable_amount = investable_amount_row.as_ref().map(|row| {
-            decimal_to_f64(row.amount_jpy + strategy_realized_pnl - strategy_cost_basis)
-        });
+        let unused_investable_amount = super::unused_investable_amount(
+            investable_amount_row.as_ref().map(|row| row.amount_jpy),
+            strategy_realized_pnl,
+            strategy_cost_basis,
+        )
+        .map(decimal_to_f64);
 
         let strategy = StrategyPortfolioScopeDto {
             trade_count: strategy_summary.trade_count,

@@ -320,6 +320,16 @@ pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
     }
 }
 
+/// 戦略の未使用投資可能額 (投資可能額 + 実現損益 - 取得原価)。投資可能額が記録されて
+/// いなければ `None`。
+pub(super) fn unused_investable_amount(
+    investable_amount: Option<Decimal>,
+    realized_pnl: Decimal,
+    cost_basis: Decimal,
+) -> Option<Decimal> {
+    investable_amount.map(|amount| amount + realized_pnl - cost_basis)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

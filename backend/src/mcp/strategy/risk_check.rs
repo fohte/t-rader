@@ -23,8 +23,7 @@ use crate::services::trades::fetch_summary;
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
 use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, invalid_params};
 
-/// 日本株の単元株数。2018 年の単元株統一により全銘柄 100 株で固定。
-/// 上限株数はすべてこの倍数に切り捨てて返す。
+/// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
 
 impl StrategyServer {
@@ -137,9 +136,11 @@ impl StrategyServer {
             .iter()
             .map(|p| p.cost_basis)
             .sum();
-        let unused_investable_amount = investable_amount_row
-            .as_ref()
-            .map(|row| row.amount_jpy + strategy_summary.realized_pnl - strategy_cost_basis);
+        let unused_investable_amount = super::unused_investable_amount(
+            investable_amount_row.as_ref().map(|row| row.amount_jpy),
+            strategy_summary.realized_pnl,
+            strategy_cost_basis,
+        );
         let cash_result = compute_cash_constraint(unused_investable_amount, target_price, &symbol);
 
         let (max_qty, binding_constraint) = combine_constraints([
@@ -174,8 +175,7 @@ async fn fetch_sector_by_symbol(
     Ok(rows.into_iter().map(|s| (s.id, s.sector_id)).collect())
 }
 
-/// `headroom` (円建ての残り購入余力) を `price` で株数に変換し、単元株に切り捨てる。
-/// `headroom` が 0 以下、または `price` が 0 以下なら 0 株。
+/// 円建ての残り購入余力 (`headroom`) を株数に変換し、単元株に切り捨てる。
 fn additional_qty_from_headroom(headroom: Decimal, price: Decimal) -> i64 {
     if headroom <= Decimal::ZERO || price <= Decimal::ZERO {
         return 0;
@@ -245,9 +245,7 @@ fn compute_sector_ratio_constraint(
         };
     }
 
-    // ratio が 1 (100%) のとき、口座全体の保有時価に占めるセクター比率は定義上つねに 1 以下
-    // なので実質的に無制限。この場合のみ price*(1-ratio) が 0 になり除算できないため
-    // 先に弾く。
+    // 上限比率が 1 (100%) 以上のとき、セクター比率は上限を超え得ないため無制限。
     let denom = price * (Decimal::ONE - ratio);
     if denom <= Decimal::ZERO {
         return ConstraintResult::Unlimited;
@@ -281,11 +279,8 @@ fn compute_cash_constraint(
     }
 }
 
-/// 制約ごとの結果から全体の `max_qty` と `binding_constraint` を導く。
-/// いずれかが `Unavailable` なら、他が計算できていても全体を `Unavailable` にする
-/// (未計算の制約が実際にはもっと厳しい可能性を排除できないため)。
-/// 全て `Unlimited` なら `Unlimited`。それ以外は `Limited` の最小値を採用し、
-/// 同値なら引数の並び順 (position_ratio → sector_ratio → cash) で先勝ちにする。
+/// 制約結果を集約する。いずれかが Unavailable なら全体を Unavailable とし、
+/// それ以外は最小の Limited を採用する (同値は前方の制約を優先)。
 fn combine_constraints(
     constraints: [(&str, &ConstraintResult); 3],
 ) -> (ConstraintResult, Option<String>) {
@@ -758,20 +753,25 @@ mod integration_tests {
             .expect("check_buyable_qty");
 
         assert_eq!(
-            result.max_qty_by_position_ratio,
-            ConstraintResult::Limited {
-                max_additional_qty: 200
+            result,
+            CheckBuyableQtyResult {
+                symbol: "7203".to_string(),
+                lot_size: 100,
+                current_qty: 0.0,
+                current_price: Some(1000.0),
+                priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
+                max_qty_by_position_ratio: ConstraintResult::Limited {
+                    max_additional_qty: 200
+                },
+                max_qty_by_sector_ratio: ConstraintResult::Unlimited,
+                max_qty_by_cash: ConstraintResult::Limited {
+                    max_additional_qty: 1000
+                },
+                max_qty: ConstraintResult::Limited {
+                    max_additional_qty: 200
+                },
+                binding_constraint: Some("position_ratio".to_string()),
             }
-        );
-        assert_eq!(
-            result.max_qty,
-            ConstraintResult::Limited {
-                max_additional_qty: 200
-            }
-        );
-        assert_eq!(
-            result.binding_constraint,
-            Some("position_ratio".to_string())
         );
     }
 
@@ -803,20 +803,27 @@ mod integration_tests {
             .await
             .expect("check_buyable_qty");
 
-        assert_eq!(result.current_qty, 100.0);
         assert_eq!(
-            result.max_qty_by_sector_ratio,
-            ConstraintResult::Limited {
-                max_additional_qty: 200
+            result,
+            CheckBuyableQtyResult {
+                symbol: "7203".to_string(),
+                lot_size: 100,
+                current_qty: 100.0,
+                current_price: Some(1000.0),
+                priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
+                max_qty_by_position_ratio: ConstraintResult::Unlimited,
+                max_qty_by_sector_ratio: ConstraintResult::Limited {
+                    max_additional_qty: 200
+                },
+                max_qty_by_cash: ConstraintResult::Limited {
+                    max_additional_qty: 99900
+                },
+                max_qty: ConstraintResult::Limited {
+                    max_additional_qty: 200
+                },
+                binding_constraint: Some("sector_ratio".to_string()),
             }
         );
-        assert_eq!(
-            result.max_qty,
-            ConstraintResult::Limited {
-                max_additional_qty: 200
-            }
-        );
-        assert_eq!(result.binding_constraint, Some("sector_ratio".to_string()));
     }
 
     #[sqlx::test(migrations = false)]
@@ -839,24 +846,29 @@ mod integration_tests {
             .await
             .expect("check_buyable_qty");
 
-        assert_eq!(result.current_price, None);
         assert_eq!(
-            result.max_qty_by_position_ratio,
-            ConstraintResult::Unavailable {
-                reason: "price unavailable for 7203".to_string()
+            result,
+            CheckBuyableQtyResult {
+                symbol: "7203".to_string(),
+                lot_size: 100,
+                current_qty: 0.0,
+                current_price: None,
+                priced_at: None,
+                max_qty_by_position_ratio: ConstraintResult::Unavailable {
+                    reason: "price unavailable for 7203".to_string()
+                },
+                max_qty_by_sector_ratio: ConstraintResult::Unavailable {
+                    reason: "7203 has no sector assigned".to_string()
+                },
+                max_qty_by_cash: ConstraintResult::Unavailable {
+                    reason: "price unavailable for 7203".to_string()
+                },
+                max_qty: ConstraintResult::Unavailable {
+                    reason: "position_ratio: price unavailable for 7203".to_string()
+                },
+                binding_constraint: None,
             }
         );
-        assert_eq!(
-            result.max_qty_by_cash,
-            ConstraintResult::Unavailable {
-                reason: "price unavailable for 7203".to_string()
-            }
-        );
-        assert!(matches!(
-            result.max_qty,
-            ConstraintResult::Unavailable { .. }
-        ));
-        assert_eq!(result.binding_constraint, None);
     }
 
     #[sqlx::test(migrations = false)]
@@ -880,15 +892,26 @@ mod integration_tests {
             .expect("check_buyable_qty");
 
         assert_eq!(
-            result.max_qty_by_sector_ratio,
-            ConstraintResult::Unavailable {
-                reason: "7203 has no sector assigned".to_string()
+            result,
+            CheckBuyableQtyResult {
+                symbol: "7203".to_string(),
+                lot_size: 100,
+                current_qty: 0.0,
+                current_price: Some(1000.0),
+                priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
+                max_qty_by_position_ratio: ConstraintResult::Unlimited,
+                max_qty_by_sector_ratio: ConstraintResult::Unavailable {
+                    reason: "7203 has no sector assigned".to_string()
+                },
+                max_qty_by_cash: ConstraintResult::Limited {
+                    max_additional_qty: 1000
+                },
+                max_qty: ConstraintResult::Unavailable {
+                    reason: "sector_ratio: 7203 has no sector assigned".to_string()
+                },
+                binding_constraint: None,
             }
         );
-        assert!(matches!(
-            result.max_qty,
-            ConstraintResult::Unavailable { .. }
-        ));
     }
 
     #[sqlx::test(migrations = false)]
@@ -916,16 +939,29 @@ mod integration_tests {
             .expect("check_buyable_qty");
 
         assert_eq!(
-            result.max_qty_by_sector_ratio,
-            ConstraintResult::Unavailable {
-                reason:
-                    "missing price for held position(s), account-wide total is unreliable: 9999"
-                        .to_string()
+            result,
+            CheckBuyableQtyResult {
+                symbol: "7203".to_string(),
+                lot_size: 100,
+                current_qty: 100.0,
+                current_price: Some(1000.0),
+                priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
+                max_qty_by_position_ratio: ConstraintResult::Unlimited,
+                max_qty_by_sector_ratio: ConstraintResult::Unavailable {
+                    reason:
+                        "missing price for held position(s), account-wide total is unreliable: 9999"
+                            .to_string()
+                },
+                max_qty_by_cash: ConstraintResult::Limited {
+                    max_additional_qty: 800
+                },
+                max_qty: ConstraintResult::Unavailable {
+                    reason:
+                        "sector_ratio: missing price for held position(s), account-wide total is unreliable: 9999"
+                            .to_string()
+                },
+                binding_constraint: None,
             }
         );
-        assert!(matches!(
-            result.max_qty,
-            ConstraintResult::Unavailable { .. }
-        ));
     }
 }
