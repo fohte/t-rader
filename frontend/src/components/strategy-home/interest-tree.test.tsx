@@ -33,10 +33,13 @@ interface InterestStore {
 function makeInterest(
   overrides: Partial<StrategyInterest> = {},
 ): StrategyInterest {
+  const refKind = overrides.ref_kind ?? 'stock'
+  const refId = overrides.ref_id ?? '7203'
   return {
+    id: overrides.id ?? `interest-${refKind}-${refId}`,
     strategy_id: overrides.strategy_id ?? 'strat-1',
-    ref_kind: overrides.ref_kind ?? 'stock',
-    ref_id: overrides.ref_id ?? '7203',
+    ref_kind: refKind,
+    ref_id: refId,
     role: overrides.role ?? 'seed',
     origin: overrides.origin ?? 'human',
     created_at: overrides.created_at ?? '2026-01-01T00:00:00Z',
@@ -50,9 +53,10 @@ function installMiddleware(initial: StrategyInterest[] = []) {
     deleteCalls: [],
   }
   for (const i of initial) {
-    const list = store.byStrategy.get(i.strategy_id) ?? []
+    const sid = i.strategy_id ?? ''
+    const list = store.byStrategy.get(sid) ?? []
     list.push(i)
-    store.byStrategy.set(i.strategy_id, list)
+    store.byStrategy.set(sid, list)
   }
 
   const middleware: Middleware = {

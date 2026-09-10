@@ -200,6 +200,14 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             interests::update_strategy_interest,
             interests::delete_strategy_interest
         ))
+        .routes(routes!(
+            interests::list_global_interests,
+            interests::create_global_interest
+        ))
+        .routes(routes!(
+            interests::update_global_interest,
+            interests::delete_global_interest
+        ))
         // hypotheses
         .routes(routes!(
             hypotheses::list_strategy_hypotheses,
