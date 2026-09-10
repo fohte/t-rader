@@ -31,8 +31,6 @@ function TaskRunPage() {
     },
   )
   const task = taskQuery.data
-  // purpose が記録されているタスクは purpose キーの実行グラフを読む。
-  // 未指定 (旧経路由来を含む) のタスクは従来通り戦略キーの実行グラフを読む。
   const purpose = task?.purpose ?? null
 
   const strategyAgentGraphQuery = $api.useQuery(

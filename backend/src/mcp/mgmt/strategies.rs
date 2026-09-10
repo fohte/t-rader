@@ -252,8 +252,6 @@ mod tests {
             .collect();
         assert_eq!(submitted, vec![Some("explore".to_string())]);
 
-        // agent への転送だけでなく、strategy_task 行にも purpose が記録される
-        // (実行詳細画面がこの値で表示先の実行グラフを切り替える)
         let rows = strategy_task::Entity::find().all(&db).await.unwrap();
         let purposes: Vec<Option<String>> = rows.into_iter().map(|r| r.purpose).collect();
         assert_eq!(purposes, vec![Some("explore".to_string())]);
