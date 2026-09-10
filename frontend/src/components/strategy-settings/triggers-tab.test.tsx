@@ -67,9 +67,10 @@ function installMiddleware(initial: Trigger[] = []) {
     deleteCalls: [],
   }
   for (const t of initial) {
-    const list = store.byStrategy.get(t.strategy_id) ?? []
+    const key = t.strategy_id ?? ''
+    const list = store.byStrategy.get(key) ?? []
     list.push(t)
-    store.byStrategy.set(t.strategy_id, list)
+    store.byStrategy.set(key, list)
     store.byId.set(t.trigger_id, t)
   }
 
@@ -145,10 +146,11 @@ function installMiddleware(initial: Trigger[] = []) {
               'enabled' in body ? (body.enabled ?? true) : current.enabled,
           }
           store.byId.set(tid, updated)
-          const list = store.byStrategy.get(updated.strategy_id) ?? []
+          const key = updated.strategy_id ?? ''
+          const list = store.byStrategy.get(key) ?? []
           const idx = list.findIndex((t) => t.trigger_id === tid)
           if (idx >= 0) list[idx] = updated
-          store.byStrategy.set(updated.strategy_id, list)
+          store.byStrategy.set(key, list)
           return new Response(JSON.stringify(updated), {
             status: 200,
             headers: { 'content-type': 'application/json' },
@@ -157,9 +159,10 @@ function installMiddleware(initial: Trigger[] = []) {
         if (method === 'DELETE') {
           store.deleteCalls.push(tid)
           store.byId.delete(tid)
-          const list = store.byStrategy.get(current.strategy_id) ?? []
+          const key = current.strategy_id ?? ''
+          const list = store.byStrategy.get(key) ?? []
           store.byStrategy.set(
-            current.strategy_id,
+            key,
             list.filter((t) => t.trigger_id !== tid),
           )
           return new Response(null, { status: 204 })

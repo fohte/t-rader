@@ -110,10 +110,15 @@ pub async fn upsert_news_items(
     Ok(rows)
 }
 
+/// どの戦略にも属さないグローバル関心 (strategy_id IS NULL) は
+/// どの戦略の news リンクにも紐づけるべきではないため除外する
 async fn load_strategy_interests(
     db: &DatabaseConnection,
 ) -> Result<Vec<strategy_interest::Model>, sea_orm::DbErr> {
-    strategy_interest::Entity::find().all(db).await
+    strategy_interest::Entity::find()
+        .filter(strategy_interest::Column::StrategyId.is_not_null())
+        .all(db)
+        .await
 }
 
 /// interest に登場する ref_id だけを対象に id → name を引いておく。
@@ -187,6 +192,9 @@ fn expand_interest_terms(
 ) -> Vec<InterestTerm> {
     let mut out = Vec::new();
     for i in interests {
+        let Some(strategy_id) = i.strategy_id else {
+            continue;
+        };
         let name = match i.ref_kind.as_str() {
             "stock" => lookup.stock.get(&i.ref_id),
             "indicator" => lookup.indicator.get(&i.ref_id),
@@ -198,9 +206,9 @@ fn expand_interest_terms(
             && !name.is_empty()
             && name != &i.ref_id
         {
-            push_unique(&mut out, &i.strategy_id, &i.ref_kind, &i.ref_id, name);
+            push_unique(&mut out, &strategy_id, &i.ref_kind, &i.ref_id, name);
         }
-        push_unique(&mut out, &i.strategy_id, &i.ref_kind, &i.ref_id, &i.ref_id);
+        push_unique(&mut out, &strategy_id, &i.ref_kind, &i.ref_id, &i.ref_id);
     }
     out
 }
@@ -348,7 +356,20 @@ mod tests {
 
     fn interest(strategy_id: Uuid, kind: &str, id: &str) -> strategy_interest::Model {
         strategy_interest::Model {
-            strategy_id,
+            id: Uuid::new_v4(),
+            strategy_id: Some(strategy_id),
+            ref_kind: kind.into(),
+            ref_id: id.into(),
+            role: "seed".into(),
+            origin: "user".into(),
+            created_at: ymd_hms(2026, 6, 25, 0, 0, 0).into(),
+        }
+    }
+
+    fn global_interest(kind: &str, id: &str) -> strategy_interest::Model {
+        strategy_interest::Model {
+            id: Uuid::new_v4(),
+            strategy_id: None,
             ref_kind: kind.into(),
             ref_id: id.into(),
             role: "seed".into(),
@@ -492,6 +513,13 @@ mod tests {
     #[rstest]
     fn expand_terms_skips_single_character_term() {
         let interests = vec![interest(STRATEGY_A, "theme", "A")];
+        let lookup = RefNameLookup::default();
+        assert_eq!(expand_interest_terms(&interests, &lookup), vec![]);
+    }
+
+    #[rstest]
+    fn expand_terms_excludes_global_interest() {
+        let interests = vec![global_interest("indicator", "N225")];
         let lookup = RefNameLookup::default();
         assert_eq!(expand_interest_terms(&interests, &lookup), vec![]);
     }

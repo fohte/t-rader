@@ -23,6 +23,8 @@ mod m20260906_155928_drop_mcp_session_state;
 mod m20260909_125717_make_note_annotation_strategy_id_nullable;
 mod m20260909_140059_add_strategy_investable_amount;
 mod m20260909_163939_add_risk_policy;
+mod m20260909_165140_make_strategy_interest_strategy_id_nullable;
+mod m20260909_165900_make_hypothesis_trigger_strategy_id_nullable;
 
 pub struct Migrator;
 
@@ -52,6 +54,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260909_125717_make_note_annotation_strategy_id_nullable::Migration),
             Box::new(m20260909_140059_add_strategy_investable_amount::Migration),
             Box::new(m20260909_163939_add_risk_policy::Migration),
+            Box::new(m20260909_165140_make_strategy_interest_strategy_id_nullable::Migration),
+            Box::new(m20260909_165900_make_hypothesis_trigger_strategy_id_nullable::Migration),
         ]
     }
 }

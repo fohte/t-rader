@@ -98,6 +98,10 @@ pub async fn receive_hook(
         Err(FireTriggerError::TriggerNotFound(_) | FireTriggerError::Disabled(_)) => {
             Err(AppError::NotFound(format!("hook {hook_slug} not found")))
         }
+        Err(FireTriggerError::NoStrategy(trigger_id)) => {
+            tracing::warn!(trigger_id = %trigger_id, "hook fire rejected: trigger has no strategy_id");
+            Err(AppError::NotFound(format!("hook {hook_slug} not found")))
+        }
         Err(FireTriggerError::Submit(err)) => {
             Err(crate::handlers::strategies::map_submit_error(err))
         }

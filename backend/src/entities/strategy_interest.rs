@@ -9,16 +9,18 @@ use serde::{Deserialize, Serialize};
 #[sea_orm(table_name = "strategy_interest")]
 #[schema(as = StrategyInterest)]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub strategy_id: Uuid,
-    #[sea_orm(primary_key, auto_increment = false)]
+    #[sea_orm(unique_key = "strategy_interest_scoped_unique_idx")]
+    pub strategy_id: Option<Uuid>,
+    #[sea_orm(unique_key = "strategy_interest_global_unique_idx")]
     pub ref_kind: String,
-    #[sea_orm(primary_key, auto_increment = false)]
+    #[sea_orm(unique_key = "strategy_interest_global_unique_idx")]
     pub ref_id: String,
     pub role: String,
     pub origin: String,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
