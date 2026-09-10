@@ -21,6 +21,8 @@
 //! - `reply_comment`: レビューコメントに返信する
 //! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
 //! - `add_interest`: 戦略の関心 (derived / origin=llm) を追加する
+//! - `list_watch_targets`: 人間が `origin=human` で登録した未保有の監視対象銘柄
+//!   (`ref_kind=stock`, `status=active`) を一覧する
 //! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
 //! - `query_media`: 動画/音声 URL (YouTube 等) の内容を Gemini でテキスト化する
 //! - `read_portfolio`: 口座全体 (全戦略横断) の保有銘柄と実現損益に加え、接続元戦略自身の
@@ -36,7 +38,7 @@
 //! - `comments`: コメント操作 (`read_comments_inner` / `resolve_comment_inner` / `reply_comment_inner`)
 //! - `data`: 価格データ取得 (`query_data_inner`)
 //! - `eval`: Python 実行 (`eval_python_inner`)
-//! - `interests`: 関心の追加 (`add_interest_inner`)
+//! - `interests`: 関心の追加 (`add_interest_inner`) / 監視対象一覧 (`list_watch_targets_inner`)
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)

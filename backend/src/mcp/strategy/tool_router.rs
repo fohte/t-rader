@@ -15,11 +15,12 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use super::dto::{
     AddInterestParams, AddInterestResult, CheckBuyableQtyParams, CheckBuyableQtyResult,
     CreateAnnotationParams, CreateAnnotationResult, EvalIndicatorParams, EvalIndicatorResult,
-    EvalPythonParams, EvalPythonResult, ListNotesParams, ListNotesResult, NoteDto, QueryDataParams,
-    QueryDataResult, QueryMediaParams, QueryMediaResult, ReadAnnotationsParams,
-    ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadNoteParams,
-    ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
-    ResolveCommentResult, WriteNoteParams, WriteNoteResult,
+    EvalPythonParams, EvalPythonResult, ListNotesParams, ListNotesResult, ListWatchTargetsParams,
+    ListWatchTargetsResult, NoteDto, QueryDataParams, QueryDataResult, QueryMediaParams,
+    QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
+    ReadCommentsResult, ReadNoteParams, ReadPortfolioResult, ReplyCommentParams,
+    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::{StrategyServer, execution_id_from_ctx, strategy_id_from_ctx};
 
@@ -187,6 +188,21 @@ impl StrategyServer {
         self.add_interest_inner(sid, params).await.map(Json)
     }
 
+    /// 人間が「追う」と決めた未保有の監視対象銘柄一覧を返す
+    #[tool(
+        name = "list_watch_targets",
+        description = "List stocks a human has marked to watch for the current strategy (origin=human, status=active), oldest first. Excludes interests the agent added itself (origin=llm) and archived ones. Not pre-filtered against current holdings; combine with read_portfolio / check_buyable_qty as needed.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_watch_targets(
+        &self,
+        Parameters(params): Parameters<ListWatchTargetsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ListWatchTargetsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.list_watch_targets_inner(sid, params).await.map(Json)
+    }
+
     /// 永続化された indicator (戦略 scope 優先) を exec Pod 上で評価する
     #[tool(
         name = "eval_indicator",
@@ -299,6 +315,7 @@ mod tests {
                 ("eval_indicator", None),
                 ("eval_python", None),
                 ("list_notes", Some(true)),
+                ("list_watch_targets", Some(true)),
                 ("query_data", Some(true)),
                 ("query_media", Some(true)),
                 ("read_annotations", Some(true)),
