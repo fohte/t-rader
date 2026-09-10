@@ -157,7 +157,7 @@ mod tests {
                 stored.enabled,
             ),
             (
-                strategy_id,
+                Some(strategy_id),
                 "cron".to_string(),
                 Some("0 9 * * *".to_string()),
                 None,

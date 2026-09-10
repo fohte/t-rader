@@ -47,9 +47,10 @@ function installMiddleware(initial: Hypothesis[] = []) {
     createCalls: [],
   }
   for (const h of initial) {
-    const list = store.byStrategy.get(h.strategy_id) ?? []
+    const key = h.strategy_id ?? ''
+    const list = store.byStrategy.get(key) ?? []
     list.push(h)
-    store.byStrategy.set(h.strategy_id, list)
+    store.byStrategy.set(key, list)
   }
 
   const middleware: Middleware = {

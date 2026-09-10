@@ -128,7 +128,7 @@ pub async fn create_trigger(
 
     let model = trigger::ActiveModel {
         trigger_id: Set(Uuid::new_v4()),
-        strategy_id: Set(strategy_id),
+        strategy_id: Set(Some(strategy_id)),
         kind: Set(payload.kind.as_str().to_string()),
         schedule: Set(payload.schedule.map(|s| s.trim().to_string())),
         hook_slug: Set(payload.hook_slug.map(|s| s.trim().to_string())),
