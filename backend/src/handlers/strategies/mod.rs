@@ -411,6 +411,7 @@ where
 
 /// 戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
 /// t-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。
+/// `agent_config::get_agent_config` (purpose キー) とは別 API。
 #[utoipa::path(
     get,
     path = "/api/strategies/{id}/agent-config",

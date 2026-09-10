@@ -22,6 +22,118 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/agent-configs': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 目的別 agent 設定一覧 */
+    get: operations['list_agent_configs']
+    put?: never
+    /** 目的別 agent 設定を作成 (purpose のみ必須、内容は空で作成し後続の PUT で設定する) */
+    post: operations['create_agent_config']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/agent-configs/{purpose}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * 目的別 agent 設定を取得。
+     *     `strategies::get_agent_config` (戦略 ID キー、`AgentConfigResponse` を返す) とは
+     *     別 API。こちらは purpose キーで `agent_config` テーブルの行をそのまま返す。
+     */
+    get: operations['agent_config_get_agent_config']
+    put?: never
+    post?: never
+    /** 目的別 agent 設定を削除 */
+    delete: operations['delete_agent_config']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/agent-configs/{purpose}/agent-graph': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 目的別 agent の多段フェーズ実行設定 (YAML) を取得 */
+    get: operations['agent_config_get_agent_graph']
+    /** 目的別 agent の多段フェーズ実行設定 (YAML) を上書き保存する */
+    put: operations['agent_config_put_agent_graph']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/agent-configs/{purpose}/agents-md': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 目的別 agent の AGENTS.md (方針 / 制約 markdown) を取得 */
+    get: operations['agent_config_get_agents_md']
+    /** 目的別 agent の AGENTS.md を上書き保存 */
+    put: operations['agent_config_put_agents_md']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/agent-configs/{purpose}/skills': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 目的別 agent の skills 全件取得 */
+    get: operations['agent_config_get_skills']
+    /** 目的別 agent の skills 全置換 */
+    put: operations['agent_config_put_skills']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/agent-configs/{purpose}/skills/{name}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    /** 目的別 agent の単一 skill 追加 / 更新 */
+    put: operations['agent_config_put_skill']
+    post?: never
+    /** 目的別 agent の単一 skill 削除 */
+    delete: operations['agent_config_delete_skill']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/agent-models': {
     parameters: {
       query?: never
@@ -786,6 +898,7 @@ export interface paths {
     /**
      * 戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
      *     t-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。
+     *     `agent_config::get_agent_config` (purpose キー) とは別 API。
      */
     get: operations['get_agent_config']
     put?: never
@@ -1266,6 +1379,18 @@ export interface components {
       /** @description 銘柄名 (例: "トヨタ自動車") */
       name: string
     }
+    AgentConfig: {
+      agent_graph: string
+      agents_md: string
+      /** Format: date-time */
+      created_at: string
+      /** Format: uuid */
+      id: string
+      purpose: string
+      skills: components['schemas']['Value']
+      /** Format: date-time */
+      updated_at: string
+    }
     /** @description t-rader-agent がタスク実行時に取得する agent 設定一式。 */
     AgentConfigResponse: {
       /** @description 多段フェーズ実行設定 (YAML)。未設定なら空文字列。 */
@@ -1391,6 +1516,13 @@ export interface components {
        *     `TRACE_URL_TEMPLATE` 未設定なら `null`。
        */
       trace_url_template?: string | null
+    }
+    CreateAgentConfigRequest: {
+      /**
+       * @description 目的キー (slug, `^[a-z0-9][a-z0-9_-]*$`)。セマンティックな分類はコードに持たず、
+       *     この値自体が呼び出し側の決めた自由記述の目的名になる。
+       */
+      purpose: string
     }
     CreateAnnotationRequest: {
       created_by_kind?: string | null
@@ -2189,6 +2321,589 @@ export interface operations {
         }
       }
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_agent_configs: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentConfig'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_agent_config: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateAgentConfigRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentConfig']
+        }
+      }
+      /** @description purpose が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description purpose が既存と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_get_agent_config: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentConfig']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_agent_config: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_get_agent_graph: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentGraphBody']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_put_agent_graph: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentGraphBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentGraphBody']
+        }
+      }
+      /** @description YAML が不正、またはフェーズ定義が不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_get_agents_md: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentsMdBody']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_put_agents_md: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AgentsMdBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['AgentsMdBody']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_get_skills: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillsBody']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_put_skills: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SkillsBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillsBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_put_skill: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+        /** @description skill 名 (^[a-z0-9][a-z0-9_-]*$) */
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SkillBody']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SkillBody']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  agent_config_delete_skill: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 目的キー */
+        purpose: string
+        /** @description skill 名 */
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      404: {
         headers: {
           [name: string]: unknown
         }

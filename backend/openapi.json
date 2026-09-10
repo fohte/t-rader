@@ -109,6 +109,783 @@
         }
       }
     },
+    "/api/agent-configs": {
+      "get": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent 設定一覧",
+        "operationId": "list_agent_configs",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentConfig"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent 設定を作成 (purpose のみ必須、内容は空で作成し後続の PUT で設定する)",
+        "operationId": "create_agent_config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "purpose が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "purpose が既存と衝突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-configs/{purpose}": {
+      "get": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent 設定を取得。\n`strategies::get_agent_config` (戦略 ID キー、`AgentConfigResponse` を返す) とは\n別 API。こちらは purpose キーで `agent_config` テーブルの行をそのまま返す。",
+        "operationId": "agent_config_get_agent_config",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentConfig"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent 設定を削除",
+        "operationId": "delete_agent_config",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-configs/{purpose}/agent-graph": {
+      "get": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の多段フェーズ実行設定 (YAML) を取得",
+        "operationId": "agent_config_get_agent_graph",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGraphBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の多段フェーズ実行設定 (YAML) を上書き保存する",
+        "operationId": "agent_config_put_agent_graph",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentGraphBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentGraphBody"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "YAML が不正、またはフェーズ定義が不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-configs/{purpose}/agents-md": {
+      "get": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の AGENTS.md (方針 / 制約 markdown) を取得",
+        "operationId": "agent_config_get_agents_md",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsMdBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の AGENTS.md を上書き保存",
+        "operationId": "agent_config_put_agents_md",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentsMdBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsMdBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-configs/{purpose}/skills": {
+      "get": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の skills 全件取得",
+        "operationId": "agent_config_get_skills",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillsBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の skills 全置換",
+        "operationId": "agent_config_put_skills",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillsBody"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent-configs/{purpose}/skills/{name}": {
+      "put": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の単一 skill 追加 / 更新",
+        "operationId": "agent_config_put_skill",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "skill 名 (^[a-z0-9][a-z0-9_-]*$)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillBody"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent_config"
+        ],
+        "summary": "目的別 agent の単一 skill 削除",
+        "operationId": "agent_config_delete_skill",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "description": "目的キー",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "skill 名",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agent-models": {
       "get": {
         "tags": [
@@ -4130,7 +4907,7 @@
         "tags": [
           "strategies"
         ],
-        "summary": "戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。",
+        "summary": "戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。\n`agent_config::get_agent_config` (purpose キー) とは別 API。",
         "operationId": "get_agent_config",
         "parameters": [
           {
@@ -7602,6 +8379,44 @@
         },
         "additionalProperties": false
       },
+      "AgentConfig": {
+        "type": "object",
+        "required": [
+          "id",
+          "purpose",
+          "agents_md",
+          "skills",
+          "agent_graph",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "agent_graph": {
+            "type": "string"
+          },
+          "agents_md": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "skills": {
+            "$ref": "#/components/schemas/Value"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "AgentConfigResponse": {
         "type": "object",
         "description": "t-rader-agent がタスク実行時に取得する agent 設定一式。",
@@ -8010,6 +8825,21 @@
             "description": "トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` プレースホルダを含む)。\n`TRACE_URL_TEMPLATE` 未設定なら `null`。"
           }
         }
+      },
+      "CreateAgentConfigRequest": {
+        "type": "object",
+        "required": [
+          "purpose"
+        ],
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "description": "目的キー (slug, `^[a-z0-9][a-z0-9_-]*$`)。セマンティックな分類はコードに持たず、\nこの値自体が呼び出し側の決めた自由記述の目的名になる。",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          }
+        },
+        "additionalProperties": false
       },
       "CreateAnnotationRequest": {
         "type": "object",
@@ -10355,6 +11185,10 @@
     {
       "name": "strategies",
       "description": "戦略 (ワークスペース)"
+    },
+    {
+      "name": "agent_config",
+      "description": "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"
     },
     {
       "name": "refs",
