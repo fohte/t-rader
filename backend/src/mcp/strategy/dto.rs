@@ -47,14 +47,46 @@ pub struct PortfolioPositionDto {
     pub cost_basis: f64,
     /// 実現損益累計
     pub realized_pnl: f64,
+    /// 直近終値。取得できなかった場合は null
+    pub current_price: Option<f64>,
+    /// 保有時価 (qty * current_price)。current_price が null の場合は null
+    pub market_value: Option<f64>,
+    /// 含み損益 (market_value - cost_basis)。current_price が null の場合は null
+    pub unrealized_pnl: Option<f64>,
+}
+
+/// 口座全体、または単一戦略のポジション集計
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct PortfolioScopeDto {
+    pub trade_count: i64,
+    /// 全銘柄合計の実現損益
+    pub realized_pnl: f64,
+    /// 保有時価合計 (current_price が取れたポジションのみの合計)
+    pub market_value: f64,
+    pub positions: Vec<PortfolioPositionDto>,
+}
+
+/// 戦略単位のポジション集計 + 投資可能額
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct StrategyPortfolioScopeDto {
+    pub trade_count: i64,
+    pub realized_pnl: f64,
+    pub market_value: f64,
+    pub positions: Vec<PortfolioPositionDto>,
+    /// 戦略に割り当てられた投資可能額の現在値。記録が無ければ null
+    pub investable_amount: Option<f64>,
+    /// 投資可能額 + 実現損益 - 取得原価。investable_amount が null の場合は null
+    pub unused_investable_amount: Option<f64>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadPortfolioResult {
-    pub trade_count: i64,
-    /// 全銘柄合計の実現損益
-    pub realized_pnl: f64,
-    pub positions: Vec<PortfolioPositionDto>,
+    /// 保有時価の評価に用いた対象営業日。1 銘柄も評価できなければ null
+    pub priced_at: Option<NaiveDate>,
+    /// 口座全体 (全戦略横断) の集計
+    pub account: PortfolioScopeDto,
+    /// 接続元戦略の集計
+    pub strategy: StrategyPortfolioScopeDto,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]

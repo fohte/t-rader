@@ -69,6 +69,21 @@ pub async fn find_bars(
     Ok(results)
 }
 
+/// 銘柄の最新の日足バーを 1 件返す。無ければ `None`。
+pub async fn find_latest_bar(
+    db: &DatabaseConnection,
+    instrument_id: &str,
+    timeframe: &str,
+) -> Result<Option<bars::Model>, AppError> {
+    let result = bars::Entity::find()
+        .filter(bars::Column::InstrumentId.eq(instrument_id))
+        .filter(bars::Column::Timeframe.eq(timeframe))
+        .order_by_desc(bars::Column::Timestamp)
+        .one(db)
+        .await?;
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, TimeZone, Utc};
@@ -224,5 +239,45 @@ mod tests {
         let result = find_bars(&db, query).await.expect("find failed");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].close, Decimal::new(105, 0));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn find_latest_bar_returns_most_recent(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_test_instrument(&db, "7203").await;
+
+        let bars = vec![
+            make_test_bar(
+                "7203",
+                NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date"),
+                100,
+            ),
+            make_test_bar(
+                "7203",
+                NaiveDate::from_ymd_opt(2025, 1, 8).expect("invalid date"),
+                103,
+            ),
+            make_test_bar(
+                "7203",
+                NaiveDate::from_ymd_opt(2025, 1, 7).expect("invalid date"),
+                105,
+            ),
+        ];
+        upsert_bars(&db, bars).await.expect("upsert failed");
+
+        let result = find_latest_bar(&db, "7203", "1d")
+            .await
+            .expect("find failed");
+        assert_eq!(result.map(|b| b.close), Some(Decimal::new(103, 0)));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn find_latest_bar_returns_none_when_no_bars(pool: PgPool) {
+        let db = create_test_db(pool).await;
+
+        let result = find_latest_bar(&db, "7203", "1d")
+            .await
+            .expect("find failed");
+        assert_eq!(result, None);
     }
 }
