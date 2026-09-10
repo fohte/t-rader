@@ -51,21 +51,21 @@ describe('createAgentConfigFetcher', () => {
   })
 
   it('fetches by purpose from the purpose-keyed endpoint when given a purpose key', async () => {
-    const fetchMock = vi.fn(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- typed only so fetchMock.mock.calls[0][0] below is typed, the response body doesn't depend on it
-      (_input: string | URL | Request): Promise<Response> =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              agents_md: '# AGENTS',
-              skills: { 'ja-stock': 'skill body' },
-              model: 'opencode-go/minimax-m3',
-              small_model: 'opencode-go/deepseek-v4-flash',
-              agent_graph: 'phases: []',
-            }),
-            { status: 200 },
-          ),
+    const fetchMock = vi.fn<
+      (input: string | URL | Request) => Promise<Response>
+    >(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            agents_md: '# AGENTS',
+            skills: { 'ja-stock': 'skill body' },
+            model: 'opencode-go/minimax-m3',
+            small_model: 'opencode-go/deepseek-v4-flash',
+            agent_graph: 'phases: []',
+          }),
+          { status: 200 },
         ),
+      ),
     )
     vi.stubGlobal('fetch', fetchMock)
 
@@ -86,6 +86,36 @@ describe('createAgentConfigFetcher', () => {
     )
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'http://backend/api/agent-configs/purpose-a/agent-config',
+    )
+  })
+
+  it('percent-encodes a purpose containing path separators so it cannot escape the agent-configs path segment', async () => {
+    const fetchMock = vi.fn<
+      (input: string | URL | Request) => Promise<Response>
+    >(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            agents_md: '# AGENTS',
+            skills: { 'ja-stock': 'skill body' },
+            model: 'opencode-go/minimax-m3',
+            small_model: 'opencode-go/deepseek-v4-flash',
+            agent_graph: 'phases: []',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    await fetchAgentConfig({
+      kind: 'purpose',
+      purpose: '../strategies/other-id',
+    })
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://backend/api/agent-configs/..%2Fstrategies%2Fother-id/agent-config',
     )
   })
 

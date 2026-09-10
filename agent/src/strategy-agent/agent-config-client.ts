@@ -43,9 +43,8 @@ const isAgentConfigResponseBody = (
   )
 }
 
-// Which agent-config bundle to fetch: keyed by strategy (existing, default
-// behavior) or by a caller-supplied purpose (new). Both map to the same
-// AgentConfigResponse shape on the backend, just a different URL.
+// Both keys map to the same AgentConfigResponse shape on the backend, just a
+// different URL.
 export type AgentConfigKey =
   | { readonly kind: 'strategy'; readonly strategyId: string }
   | { readonly kind: 'purpose'; readonly purpose: string }
@@ -59,8 +58,8 @@ const agentConfigUrl = (
   key: AgentConfigKey,
 ): string =>
   key.kind === 'strategy'
-    ? `${backendApiBaseUrl}/api/strategies/${key.strategyId}/agent-config`
-    : `${backendApiBaseUrl}/api/agent-configs/${key.purpose}/agent-config`
+    ? `${backendApiBaseUrl}/api/strategies/${encodeURIComponent(key.strategyId)}/agent-config`
+    : `${backendApiBaseUrl}/api/agent-configs/${encodeURIComponent(key.purpose)}/agent-config`
 
 const describeKey = (key: AgentConfigKey): string =>
   key.kind === 'strategy'
