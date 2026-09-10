@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Middleware } from 'openapi-fetch'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { expect, userEvent, waitFor, within } from 'storybook/test'
+import { expect, userEvent, within } from 'storybook/test'
 
 import { RiskPolicyTab } from '#components/strategy-settings/risk-policy-tab'
 import { fetchClient } from '#lib/api/client'
@@ -101,16 +101,11 @@ export const SaveError: Story = {
       </QueryDecorator>
     ),
   ],
-  // 初期表示は WithLimit と同一の見た目になるため、保存ボタンを押してエラー状態にしてから撮影する
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    // 初回 GET が解決してスケルトンから保存ボタンに切り替わるまで待つ
     const saveButton = await canvas.findByRole('button', { name: '保存' })
     await userEvent.click(saveButton)
-    await waitFor(async () => {
-      await expect(canvas.getByTestId('save-error').textContent).toBe(
-        '保存に失敗しました',
-      )
-    })
+    const saveError = await canvas.findByTestId('save-error')
+    await expect(saveError.textContent).toBe('保存に失敗しました')
   },
 }
