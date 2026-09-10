@@ -1,9 +1,9 @@
-//! 銘柄リストから直近終値を取得する。DB にバーが無い銘柄は DataProvider から
-//! バックフィルしてから読み直す。
+//! 銘柄リストから直近終値を取得する。バーが `backfill_daily_bars` の取得可能上限に
+//! 届いていない銘柄は DataProvider から再取得してから読み直す。
 
 use std::collections::HashMap;
 
-use chrono::NaiveDate;
+use chrono::{Datelike, Duration, NaiveDate, Utc, Weekday};
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait, Set};
@@ -12,31 +12,37 @@ use crate::data_provider::DataProvider;
 use crate::entities::instruments;
 use crate::models::Timeframe;
 use crate::repositories::bars::find_latest_bar;
-use crate::services::backfill::backfill_daily_bars;
+use crate::services::backfill::{backfill_daily_bars, latest_fetchable_date};
 
-/// 銘柄ごとの直近終値と、取得できた中で最も新しい観測日。
+/// 銘柄ごとの直近終値と、その観測日。
 #[derive(Debug, PartialEq)]
 pub struct LatestPrices {
+    /// `priced_at` と同じ観測日の終値のみを含む (異なる日付の終値が混在することはない)。
     pub prices: HashMap<String, Decimal>,
-    /// 取得できた価格のうち最も新しい観測日。1 銘柄も価格を取得できなければ `None`。
+    /// `prices` の全銘柄に共通する観測日。1 銘柄も価格を取得できなければ `None`。
     pub priced_at: Option<NaiveDate>,
 }
 
-/// `symbols` それぞれの最新終値を返す。バーが無い銘柄は DataProvider から
-/// バックフィルしてから読み直す。取得元銘柄が存在しない等で結局バーが
-/// 得られなかった銘柄は結果から省く (呼び出し元は該当銘柄の価格を null 扱いすること)。
-///
-/// ponytail: 既にバーがある銘柄は再取得しないため、直近の値動きより古いまま
-/// 返ることがある。継続的な鮮度が要るなら sector_backfill.rs と同様の定期
-/// ポーリングタスクを足す。
+/// `date` が土日ならその直前の金曜日を返す。祝日は考慮しない。
+fn latest_business_day(date: NaiveDate) -> NaiveDate {
+    match date.weekday() {
+        Weekday::Sat => date - Duration::days(1),
+        Weekday::Sun => date - Duration::days(2),
+        _ => date,
+    }
+}
+
+/// `symbols` それぞれの最新終値を返す。取得可能上限日に届いていない銘柄は
+/// DataProvider から再取得を試みる。全銘柄中の最新観測日 (`priced_at`) に満たない
+/// 銘柄は結果から省かれる。
 pub async fn fetch_latest_prices<P: DataProvider>(
     db: &DatabaseConnection,
     provider: Option<&P>,
     symbols: &[String],
 ) -> LatestPrices {
     let timeframe = Timeframe::Daily.to_string();
-    let mut prices = HashMap::new();
-    let mut priced_at: Option<NaiveDate> = None;
+    let fetchable_ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive()));
+    let mut bars: HashMap<String, (NaiveDate, Decimal)> = HashMap::new();
 
     for symbol in symbols {
         let mut bar = find_latest_bar(db, symbol, &timeframe)
@@ -46,9 +52,10 @@ pub async fn fetch_latest_prices<P: DataProvider>(
                 None
             });
 
-        if bar.is_none()
-            && let Some(provider) = provider
-        {
+        let is_stale = bar
+            .as_ref()
+            .is_none_or(|b| b.timestamp.date_naive() < fetchable_ceiling);
+        if is_stale && let Some(provider) = provider {
             match ensure_instrument_exists(db, symbol).await {
                 Ok(()) => {
                     backfill_daily_bars(db, provider, symbol).await;
@@ -65,13 +72,33 @@ pub async fn fetch_latest_prices<P: DataProvider>(
             }
         }
 
-        let Some(bar) = bar else { continue };
-        let date = bar.timestamp.date_naive();
-        priced_at = Some(priced_at.map_or(date, |current| current.max(date)));
-        prices.insert(symbol.clone(), bar.close);
+        if let Some(bar) = bar {
+            bars.insert(symbol.clone(), (bar.timestamp.date_naive(), bar.close));
+        }
     }
 
+    let (prices, priced_at) = select_common_priced_at(bars);
     LatestPrices { prices, priced_at }
+}
+
+/// 取得できたバーの集合から、全銘柄に共通する最新観測日の終値だけを残す。
+fn select_common_priced_at(
+    bars: HashMap<String, (NaiveDate, Decimal)>,
+) -> (HashMap<String, Decimal>, Option<NaiveDate>) {
+    let priced_at = bars.values().map(|(date, _)| *date).max();
+    let prices = priced_at.map_or_else(HashMap::new, |latest| {
+        bars.into_iter()
+            .filter(|(symbol, (date, _))| {
+                if *date == latest {
+                    return true;
+                }
+                tracing::warn!(symbol, %date, %latest, "観測日が最新銘柄と食い違うため価格から除外");
+                false
+            })
+            .map(|(symbol, (_, close))| (symbol, close))
+            .collect()
+    });
+    (prices, priced_at)
 }
 
 /// 価格取得の前提として `instruments` 行を保証する (`bars` の FK 制約のため)。
@@ -100,6 +127,7 @@ async fn ensure_instrument_exists(
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use rstest::rstest;
     use rust_decimal::Decimal;
     use sqlx::PgPool;
 
@@ -107,6 +135,7 @@ mod tests {
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
     use crate::repositories::bars::upsert_bars;
+    use crate::services::backfill::latest_fetchable_date;
     use crate::testing::{MockProvider, create_test_db};
 
     fn sample_instrument(id: &str) -> Instrument {
@@ -125,6 +154,12 @@ mod tests {
         make_bar(instrument_id, date, close)
     }
 
+    /// fetch_latest_prices が「これ以上新しくならない」と判定する境界日ちょうどの bar を作る
+    fn ceiling_bar(instrument_id: &str, close: i64) -> Bar {
+        let ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive()));
+        make_bar(instrument_id, ceiling, close)
+    }
+
     fn make_bar(instrument_id: &str, date: NaiveDate, close: i64) -> Bar {
         let timestamp = Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap_or_default());
         Bar {
@@ -137,6 +172,10 @@ mod tests {
             close: Decimal::new(close, 0),
             volume: 1000,
         }
+    }
+
+    fn assert_provider_calls(provider: &MockProvider, expected: &[&str]) {
+        assert_eq!(provider.calls.lock().expect("lock").as_slice(), expected);
     }
 
     async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
@@ -156,14 +195,53 @@ mod tests {
         .expect("failed to insert test instrument");
     }
 
+    #[rstest]
+    #[case::saturday(
+        NaiveDate::from_ymd_opt(2025, 1, 4).expect("date"),
+        NaiveDate::from_ymd_opt(2025, 1, 3).expect("date")
+    )]
+    #[case::sunday(
+        NaiveDate::from_ymd_opt(2025, 1, 5).expect("date"),
+        NaiveDate::from_ymd_opt(2025, 1, 3).expect("date")
+    )]
+    #[case::weekday(
+        NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"),
+        NaiveDate::from_ymd_opt(2025, 1, 6).expect("date")
+    )]
+    fn latest_business_day_steps_back_from_weekends(
+        #[case] date: NaiveDate,
+        #[case] expected: NaiveDate,
+    ) {
+        assert_eq!(latest_business_day(date), expected);
+    }
+
+    #[test]
+    fn select_common_priced_at_excludes_symbols_with_mismatched_dates() {
+        let older = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
+        let newer = NaiveDate::from_ymd_opt(2025, 1, 8).expect("date");
+        let bars = HashMap::from([
+            ("7203".to_string(), (older, Decimal::new(100, 0))),
+            ("6758".to_string(), (newer, Decimal::new(300, 0))),
+        ]);
+
+        let result = select_common_priced_at(bars);
+
+        assert_eq!(
+            result,
+            (
+                HashMap::from([("6758".to_string(), Decimal::new(300, 0))]),
+                Some(newer),
+            )
+        );
+    }
+
     #[sqlx::test(migrations = false)]
-    async fn returns_existing_bar_without_calling_provider(pool: PgPool) {
+    async fn skips_provider_when_bar_already_reaches_the_fetchable_ceiling(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
-        let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
-        upsert_bars(&db, vec![make_bar("7203", date, 100)])
-            .await
-            .expect("upsert");
+        let bar = ceiling_bar("7203", 100);
+        let date = bar.timestamp.date_naive();
+        upsert_bars(&db, vec![bar]).await.expect("upsert");
 
         let provider = MockProvider::new();
         let result = fetch_latest_prices(&db, Some(&provider), &["7203".to_string()]).await;
@@ -175,7 +253,48 @@ mod tests {
                 priced_at: Some(date),
             }
         );
-        assert!(provider.calls.lock().expect("lock").is_empty());
+        assert_provider_calls(&provider, &[]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn stops_calling_provider_once_bar_reaches_the_fetchable_ceiling(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let provider = MockProvider::new()
+            .with_instruments(vec![sample_instrument("7203")])
+            .with_bars(vec![ceiling_bar("7203", 200)]);
+
+        fetch_latest_prices(&db, Some(&provider), &["7203".to_string()]).await;
+        assert_provider_calls(&provider, &["7203"]);
+
+        fetch_latest_prices(&db, Some(&provider), &["7203".to_string()]).await;
+        assert_provider_calls(&provider, &["7203"]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn refetches_stale_bar_even_when_one_already_exists(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_test_instrument(&db, "7203").await;
+        let stale_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
+        upsert_bars(&db, vec![make_bar("7203", stale_date, 100)])
+            .await
+            .expect("upsert");
+
+        let fresh_bar = backfillable_bar("7203", 200);
+        let expected_date = fresh_bar.timestamp.date_naive();
+        let provider = MockProvider::new()
+            .with_instruments(vec![sample_instrument("7203")])
+            .with_bars(vec![fresh_bar]);
+
+        let result = fetch_latest_prices(&db, Some(&provider), &["7203".to_string()]).await;
+
+        assert_eq!(
+            result,
+            LatestPrices {
+                prices: HashMap::from([("7203".to_string(), Decimal::new(200, 0))]),
+                priced_at: Some(expected_date),
+            }
+        );
+        assert_provider_calls(&provider, &["7203"]);
     }
 
     #[sqlx::test(migrations = false)]
@@ -196,24 +315,28 @@ mod tests {
                 priced_at: Some(expected_date),
             }
         );
-        assert_eq!(provider.calls.lock().expect("lock").as_slice(), ["7203"]);
+        assert_provider_calls(&provider, &["7203"]);
     }
 
     #[sqlx::test(migrations = false)]
-    async fn priced_at_is_the_max_date_across_symbols(pool: PgPool) {
+    async fn stale_symbols_that_cannot_catch_up_are_excluded_from_prices(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
         insert_test_instrument(&db, "6758").await;
-        let older = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
-        let newer = NaiveDate::from_ymd_opt(2025, 1, 8).expect("date");
-        upsert_bars(&db, vec![make_bar("7203", older, 100)])
+        let stale_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
+        upsert_bars(&db, vec![make_bar("7203", stale_date, 100)])
             .await
             .expect("upsert");
-        upsert_bars(&db, vec![make_bar("6758", newer, 300)])
+        upsert_bars(&db, vec![make_bar("6758", stale_date, 300)])
             .await
             .expect("upsert");
 
-        let provider = MockProvider::new();
+        let fresh_bar = backfillable_bar("6758", 350);
+        let fresh_date = fresh_bar.timestamp.date_naive();
+        let provider = MockProvider::new()
+            .with_instruments(vec![sample_instrument("6758")])
+            .with_bars(vec![fresh_bar]);
+
         let result = fetch_latest_prices(
             &db,
             Some(&provider),
@@ -224,11 +347,8 @@ mod tests {
         assert_eq!(
             result,
             LatestPrices {
-                prices: HashMap::from([
-                    ("7203".to_string(), Decimal::new(100, 0)),
-                    ("6758".to_string(), Decimal::new(300, 0)),
-                ]),
-                priced_at: Some(newer),
+                prices: HashMap::from([("6758".to_string(), Decimal::new(350, 0))]),
+                priced_at: Some(fresh_date),
             }
         );
     }

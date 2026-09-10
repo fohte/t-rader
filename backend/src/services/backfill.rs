@@ -1,4 +1,4 @@
-use chrono::{Duration, Utc};
+use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::DatabaseConnection;
 
 use crate::data_provider::{DataProvider, DateRange};
@@ -11,6 +11,12 @@ use crate::repositories::bars::upsert_bars;
 const JQUANTS_FREE_PLAN_OFFSET_WEEKS: i64 = 12;
 const JQUANTS_FREE_PLAN_MAX_HISTORY_DAYS: i64 = 365 * 2;
 
+/// `backfill_daily_bars` が実際に取得できる最新日 (J-Quants Free プランの取得可能範囲の上限)。
+/// この関数が挿入するバーの日付は、プロバイダの種類によらず常にこの日付以下になる。
+pub(crate) fn latest_fetchable_date(today: NaiveDate) -> NaiveDate {
+    today - Duration::weeks(JQUANTS_FREE_PLAN_OFFSET_WEEKS)
+}
+
 /// 指定銘柄の日足データを J-Quants Free プランの取得可能期間分バックフィルする
 ///
 /// Free プランでは 12 週間前 ~ 2 年 12 週間前の範囲のみ取得可能。
@@ -21,8 +27,7 @@ pub async fn backfill_daily_bars(
     instrument_id: &str,
 ) {
     let today = Utc::now().date_naive();
-    // J-Quants Free プランのデータ取得可能範囲にクランプする
-    let to = today - Duration::weeks(JQUANTS_FREE_PLAN_OFFSET_WEEKS);
+    let to = latest_fetchable_date(today);
     let from = to - Duration::days(JQUANTS_FREE_PLAN_MAX_HISTORY_DAYS);
 
     let range = DateRange { from, to };

@@ -81,7 +81,8 @@ pub struct StrategyPortfolioScopeDto {
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadPortfolioResult {
-    /// 保有時価の評価に用いた対象営業日。1 銘柄も評価できなければ null
+    /// 保有時価の評価に用いた対象営業日。current_price を持つ全ポジションに共通する日付
+    /// (日付が食い違う銘柄は current_price が null になる)。1 銘柄も評価できなければ null
     pub priced_at: Option<NaiveDate>,
     /// 口座全体 (全戦略横断) の集計
     pub account: PortfolioScopeDto,
