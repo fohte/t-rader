@@ -13,12 +13,13 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 
 use super::dto::{
-    AddInterestParams, AddInterestResult, CreateAnnotationParams, CreateAnnotationResult,
-    EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, ListNotesParams,
-    ListNotesResult, NoteDto, QueryDataParams, QueryDataResult, QueryMediaParams, QueryMediaResult,
-    ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult,
-    ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
-    ResolveCommentParams, ResolveCommentResult, WriteNoteParams, WriteNoteResult,
+    AddInterestParams, AddInterestResult, CheckBuyableQtyParams, CheckBuyableQtyResult,
+    CreateAnnotationParams, CreateAnnotationResult, EvalIndicatorParams, EvalIndicatorResult,
+    EvalPythonParams, EvalPythonResult, ListNotesParams, ListNotesResult, NoteDto, QueryDataParams,
+    QueryDataResult, QueryMediaParams, QueryMediaResult, ReadAnnotationsParams,
+    ReadAnnotationsResult, ReadCommentsParams, ReadCommentsResult, ReadNoteParams,
+    ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
+    ResolveCommentResult, WriteNoteParams, WriteNoteResult,
 };
 use super::{StrategyServer, execution_id_from_ctx, strategy_id_from_ctx};
 
@@ -228,6 +229,21 @@ impl StrategyServer {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.read_portfolio_inner(sid).await.map(Json)
     }
+
+    /// 指定銘柄をあと何株買えるかを、制約ごとの上限株数とともに返す
+    #[tool(
+        name = "check_buyable_qty",
+        description = "Calculate how many more shares of a symbol can be bought, per constraint (strategy position ratio cap, account-wide sector ratio cap, and the strategy's remaining unused investable amount), plus the overall minimum and which constraint is binding. Works for symbols not currently held (current_qty is 0). max_additional_qty values are floored to 100-share lots (see lot_size). A constraint with no configured cap reports status=unlimited; a constraint that cannot be computed (missing price, missing sector, no investable amount recorded) reports status=unavailable with a reason instead of a possibly-wrong number, and poisons the overall max_qty to unavailable too.",
+        annotations(read_only_hint = true)
+    )]
+    async fn check_buyable_qty(
+        &self,
+        Parameters(params): Parameters<CheckBuyableQtyParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<CheckBuyableQtyResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.check_buyable_qty_inner(sid, params).await.map(Json)
+    }
 }
 
 impl StrategyServer {
@@ -278,6 +294,7 @@ mod tests {
             read_only_hints,
             [
                 ("add_interest", None),
+                ("check_buyable_qty", Some(true)),
                 ("create_annotation", None),
                 ("eval_indicator", None),
                 ("eval_python", None),

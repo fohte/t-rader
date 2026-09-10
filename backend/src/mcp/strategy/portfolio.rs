@@ -10,7 +10,6 @@ use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::error::AppError;
 use crate::models::PositionSummary;
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
@@ -19,7 +18,7 @@ use crate::services::trades::fetch_summary;
 use super::dto::{
     PortfolioPositionDto, PortfolioScopeDto, ReadPortfolioResult, StrategyPortfolioScopeDto,
 };
-use super::{StrategyServer, db_error, decimal_to_f64, internal_error};
+use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64};
 
 impl StrategyServer {
     pub(crate) async fn read_portfolio_inner(
@@ -106,14 +105,6 @@ fn to_position_dto(p: PositionSummary, prices: &HashMap<String, Decimal>) -> Por
 
 fn sum_market_value(positions: &[PortfolioPositionDto]) -> f64 {
     positions.iter().filter_map(|p| p.market_value).sum()
-}
-
-/// `investable_amount::find_current` が返す `AppError` の MCP エラー変換。
-fn app_error_to_mcp(err: AppError) -> McpError {
-    match err {
-        AppError::Database(e) => db_error(e),
-        other => internal_error(format!("investable amount error: {other}")),
-    }
 }
 
 #[cfg(test)]

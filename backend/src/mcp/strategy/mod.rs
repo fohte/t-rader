@@ -25,6 +25,8 @@
 //! - `query_media`: 動画/音声 URL (YouTube 等) の内容を Gemini でテキスト化する
 //! - `read_portfolio`: 口座全体 (全戦略横断) の保有銘柄と実現損益に加え、接続元戦略自身の
 //!   スライスを時価で返す
+//! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、銘柄上限比率・セクター上限比率・
+//!   現金の各制約ごとに計算して返す
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -38,6 +40,7 @@
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
+//! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
 //!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
 //!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
@@ -55,6 +58,7 @@ pub(super) mod interests;
 pub(super) mod media;
 pub(super) mod notes;
 pub(super) mod portfolio;
+pub(super) mod risk_check;
 mod tool_router;
 
 #[cfg(test)]
@@ -304,6 +308,16 @@ pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
         tracing::warn!(value = %d, "decimal value out of f64 range; coerced to 0.0");
         0.0
     })
+}
+
+/// `AppError` の MCP エラー変換。`services::investable_amount` / `services::account_risk_policy`
+/// / `models::risk_policy::parse_risk_policy` が返すエラーの共通ハンドリング。
+pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
+    use crate::error::AppError;
+    match err {
+        AppError::Database(e) => db_error(e),
+        other => internal_error(format!("{other}")),
+    }
 }
 
 #[cfg(test)]
