@@ -4,8 +4,9 @@
 //! 同じ (strategy_id, ref_kind, ref_id) が既に存在する場合は idempotent に成功させる
 //! (role / origin は変更しない)。
 //!
-//! 監視対象一覧 (`list_watch_targets`) は人間が `origin=human` で登録した未保有の
-//! 銘柄 (`ref_kind=stock`) のうち `status=active` のものだけを返す。
+//! 監視対象一覧 (`list_watch_targets`) は人間が `origin=human` で登録した
+//! 銘柄 (`ref_kind=stock`) のうち `status=active` のものだけを返す。保有状況は
+//! 見ないため、除外したい場合は呼び出し側で `read_portfolio` 等と突き合わせること。
 
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -114,9 +115,10 @@ impl StrategyServer {
         }
     }
 
-    /// 人間が `origin=human` で登録した未保有の監視対象銘柄 (`ref_kind=stock`,
+    /// 人間が `origin=human` で登録した監視対象銘柄 (`ref_kind=stock`,
     /// `status=active`) を古い順に返す。エージェント自身が追加した interest
-    /// (`origin=llm`) や archived 済みのものは含まれない。
+    /// (`origin=llm`) や `status=archived` のものは含まれない。保有状況によるフィルタは
+    /// 行わないため、除外したい場合は `read_portfolio` / `check_buyable_qty` と組み合わせる。
     pub(crate) async fn list_watch_targets_inner(
         &self,
         session_strategy_id: Uuid,
@@ -156,7 +158,7 @@ mod tests {
     use crate::entities::strategy_interest;
     use crate::testing::create_test_db;
 
-    use super::super::dto::{AddInterestParams, ListWatchTargetsParams};
+    use super::super::dto::{AddInterestParams, ListWatchTargetsParams, ListWatchTargetsResult};
     use super::super::tests_common::{build_server, insert_strategy};
 
     fn ts(secs: i64) -> DateTime<FixedOffset> {
@@ -187,6 +189,10 @@ mod tests {
         .insert(db)
         .await
         .expect("insert interest");
+    }
+
+    fn watch_target_ref_ids(result: ListWatchTargetsResult) -> Vec<String> {
+        result.watch_targets.into_iter().map(|t| t.ref_id).collect()
     }
 
     #[sqlx::test(migrations = false)]
@@ -311,14 +317,7 @@ mod tests {
             .await
             .expect("list_watch_targets");
 
-        assert_eq!(
-            result
-                .watch_targets
-                .into_iter()
-                .map(|t| t.ref_id)
-                .collect::<Vec<_>>(),
-            vec!["7203".to_string()],
-        );
+        assert_eq!(watch_target_ref_ids(result), vec!["7203".to_string()]);
     }
 
     #[sqlx::test(migrations = false)]
@@ -337,11 +336,7 @@ mod tests {
             .expect("list_watch_targets");
 
         assert_eq!(
-            result
-                .watch_targets
-                .into_iter()
-                .map(|t| t.ref_id)
-                .collect::<Vec<_>>(),
+            watch_target_ref_ids(result),
             vec!["1".to_string(), "2".to_string()],
         );
     }
@@ -361,13 +356,6 @@ mod tests {
             .await
             .expect("list_watch_targets");
 
-        assert_eq!(
-            result
-                .watch_targets
-                .into_iter()
-                .map(|t| t.ref_id)
-                .collect::<Vec<_>>(),
-            vec!["7203".to_string()],
-        );
+        assert_eq!(watch_target_ref_ids(result), vec!["7203".to_string()]);
     }
 }

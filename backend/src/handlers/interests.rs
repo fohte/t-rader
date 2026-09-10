@@ -83,7 +83,7 @@ async fn update_interest_inner(
     }
     if !touched {
         return Err(AppError::Validation(
-            "at least one of role / origin must be provided".into(),
+            "at least one of role / origin / status must be provided".into(),
         ));
     }
     active.update(db).await.map_err(AppError::from)

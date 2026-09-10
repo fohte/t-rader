@@ -264,7 +264,7 @@ pub struct ListWatchTargetsParams {
     pub limit: Option<u32>,
 }
 
-/// 人間が「追う」と決めた未保有の監視対象銘柄
+/// 人間が「追う」と決めた監視対象銘柄。保有状況によるフィルタは行わない
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct WatchTargetDto {
     pub ref_id: String,

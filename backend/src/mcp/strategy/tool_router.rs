@@ -188,7 +188,7 @@ impl StrategyServer {
         self.add_interest_inner(sid, params).await.map(Json)
     }
 
-    /// 人間が「追う」と決めた未保有の監視対象銘柄一覧を返す
+    /// 人間が「追う」と決めた監視対象銘柄一覧を返す (保有状況によるフィルタは行わない)
     #[tool(
         name = "list_watch_targets",
         description = "List stocks a human has marked to watch for the current strategy (origin=human, status=active), oldest first. Excludes interests the agent added itself (origin=llm) and archived ones. Not pre-filtered against current holdings; combine with read_portfolio / check_buyable_qty as needed.",
