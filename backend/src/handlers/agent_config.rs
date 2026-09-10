@@ -11,7 +11,6 @@ use crate::AppState;
 use crate::entities::agent_config;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::handlers::strategies::agent_model_settings;
 use crate::models::{
     AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateAgentConfigRequest, SkillBody,
     SkillsBody,
@@ -121,14 +120,11 @@ pub async fn get_agent_config_bundle(
         .await
         .map_err(map_err)?;
     let skills = svc::skills_as_btree(&row);
-    let (model, small_model) = agent_model_settings();
-    Ok(Json(AgentConfigResponse {
-        agents_md: row.agents_md,
+    Ok(Json(svc::build_agent_config_response(
+        row.agents_md,
         skills,
-        model,
-        small_model,
-        agent_graph: row.agent_graph,
-    }))
+        row.agent_graph,
+    )))
 }
 
 /// 目的別 agent 設定を削除
@@ -596,7 +592,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn get_agent_config_bundle_returns_agents_md_skills_and_model(pool: PgPool) {
-        use crate::handlers::strategies::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL};
+        use crate::services::agent_config::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL};
 
         let server = create_test_server(pool).await;
         server
