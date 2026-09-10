@@ -45,9 +45,6 @@ export const extractStrategyId = (message: Message): string | undefined => {
   return typeof raw === 'string' ? raw : undefined
 }
 
-// No format validation, unlike strategy_id: purpose is opaque free-text and
-// an unknown value simply 404s at agent-config fetch time, surfacing as a
-// normal failed task.
 export const extractPurpose = (message: Message): string | undefined => {
   const raw = message.metadata?.['purpose']
   return typeof raw === 'string' ? raw : undefined

@@ -190,44 +190,43 @@ describe('TraderAgentExecutor', () => {
     })
   })
 
-  it('forwards message metadata.purpose to runStrategyAgent alongside an explicit strategy_id', async () => {
-    const calls: (string | undefined)[] = []
-    const executor = buildExecutor({
-      runStrategyAgent: (_strategyId, purpose) => {
-        calls.push(purpose)
-        return Promise.resolve(defaultStrategyAgentResult)
+  it.each([
+    {
+      name: 'with purpose',
+      metadata: {
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+        purpose: 'purpose-a',
       },
-    })
-    const eventBus = new FakeEventBus()
-    const userMessage = buildUserMessage({
-      strategy_id: '11111111-1111-1111-1111-111111111111',
-      purpose: 'purpose-a',
-    })
-    const requestContext = new RequestContext(userMessage, 'task-18', 'ctx-18')
+      expected: 'purpose-a',
+    },
+    {
+      name: 'without purpose',
+      metadata: { strategy_id: '11111111-1111-1111-1111-111111111111' },
+      expected: undefined,
+    },
+  ])(
+    'forwards purpose ($name) to runStrategyAgent alongside an explicit strategy_id',
+    async ({ metadata, expected }) => {
+      const calls: (string | undefined)[] = []
+      const executor = buildExecutor({
+        runStrategyAgent: (_strategyId, purpose) => {
+          calls.push(purpose)
+          return Promise.resolve(defaultStrategyAgentResult)
+        },
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage(metadata)
+      const requestContext = new RequestContext(
+        userMessage,
+        'task-18',
+        'ctx-18',
+      )
 
-    await executor.execute(requestContext, eventBus)
+      await executor.execute(requestContext, eventBus)
 
-    expect(calls).toEqual(['purpose-a'])
-  })
-
-  it('passes undefined for purpose when message metadata carries no purpose', async () => {
-    const calls: (string | undefined)[] = []
-    const executor = buildExecutor({
-      runStrategyAgent: (_strategyId, purpose) => {
-        calls.push(purpose)
-        return Promise.resolve(defaultStrategyAgentResult)
-      },
-    })
-    const eventBus = new FakeEventBus()
-    const userMessage = buildUserMessage({
-      strategy_id: '11111111-1111-1111-1111-111111111111',
-    })
-    const requestContext = new RequestContext(userMessage, 'task-19', 'ctx-19')
-
-    await executor.execute(requestContext, eventBus)
-
-    expect(calls).toEqual([undefined])
-  })
+      expect(calls).toEqual([expected])
+    },
+  )
 
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({

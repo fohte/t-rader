@@ -27,8 +27,7 @@ const submitTaskBodySchema = z
   .object({
     strategy_id: z.string().min(1),
     prompt: z.string().min(1),
-    // 目的キー (agent_config.purpose)。指定時は目的別設定 (agent/agent-config-client.ts)
-    // を、未指定時は従来どおり戦略 ID ベースの設定を使う。
+    // 目的キー (agent_config.purpose)。未指定時は strategy_id の設定を使う。
     purpose: z.string().min(1).optional(),
   })
   .openapi('SubmitTaskBody')
