@@ -215,20 +215,18 @@ impl StrategyServer {
         self.query_media_inner(sid, params).await.map(Json)
     }
 
-    /// 口座全体 (全戦略横断) の保有銘柄と実現損益を返す
+    /// 口座全体 (全戦略横断) の保有銘柄と実現損益、および接続元戦略のスライスを時価で返す
     #[tool(
         name = "read_portfolio",
-        description = "Return account-wide open positions and realized P&L (FIFO), aggregated across all strategies regardless of the connecting strategy. Use this to check existing holdings before proposing new trades.",
+        description = "Return account-wide open positions and realized P&L (FIFO) aggregated across all strategies, plus the connecting strategy's own slice, both priced at current market value. Use this to check existing holdings and available investable amount before proposing new trades.",
         annotations(read_only_hint = true)
     )]
     async fn read_portfolio(
         &self,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadPortfolioResult>, McpError> {
-        // 口座全体を対象にするため sid はスコープに使わない。呼び出しが有効な戦略接続
-        // であることの検査としてのみ利用する。
-        strategy_id_from_ctx(&ctx)?;
-        self.read_portfolio_inner().await.map(Json)
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_portfolio_inner(sid).await.map(Json)
     }
 }
 

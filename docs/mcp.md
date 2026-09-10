@@ -52,7 +52,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 - ヘッダが欠落 / 非 UUID なら MCP 層で reject する。
 - tool 引数の `strategy_id` がヘッダの値と一致しない呼び出しも reject する。
 - 対象リソース (note / annotation) の `strategy_id` も Repository 層で二重検査し、戦略 A の Agent が戦略 B のリソースに触れないことを保証する。
-- 唯一の例外が `read_portfolio` で、戦略は口座内のお金の区分に過ぎず分析は口座全体を見る、という設計上 `x-strategy-id` をスコープに使わない (ヘッダが有効な戦略接続であることの検証にのみ使う)。
+- 唯一の例外が `read_portfolio` で、戦略は口座内のお金の区分に過ぎず分析は口座全体を見る、という設計上、口座全体の集計には `x-strategy-id` をスコープとして使わない。ただし接続元戦略自身のスライス (投資可能額を含む) を追加で返すため、ヘッダの値もその選択に使う。
 
 任意ヘッダ `x-execution-id` で実行単位 (1 回の `runStrategyAgent` 呼び出し。A2A タスクの `taskId` を使う) を識別できる。戦略境界の検査対象ではなく、`write_note` の冪等性 (下表参照) にのみ使う。
 
@@ -72,7 +72,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 | `eval_python`       | `strategy_id`, `code`, `stdin?`, `timeout_secs?`, `max_output_bytes?`                           | Python コードを exec Pod (Kata Containers) 上で実行。stdout/stderr/exit code を返す                                                                                                                                                                                                                                                                                                                    |
 | `add_interest`      | `strategy_id`, `ref_kind`, `ref_id`                                                             | 関心 (`role=derived`, `origin=llm`) を追加。既存と一致すれば idempotent に成功                                                                                                                                                                                                                                                                                                                         |
 | `eval_indicator`    | `strategy_id`, `name`, `args`, `timeout_secs?`, `max_output_bytes?`                             | 永続化された indicator を exec Pod 上で評価 (戦略 scope 優先、無ければ global)                                                                                                                                                                                                                                                                                                                         |
-| `read_portfolio`    | (なし)                                                                                          | 口座全体 (全戦略横断) の保有銘柄と実現損益 (FIFO)。`strategy_id` はスコープに使わない (上記「戦略境界の保証」の例外)                                                                                                                                                                                                                                                                                   |
+| `read_portfolio`    | `strategy_id` (戦略スライス算出用、口座全体の集計には使わない)                                  | 口座全体 (全戦略横断) と接続元戦略それぞれの保有銘柄・実現損益 (FIFO) を直近終値で時価評価して返す。戦略側は投資可能額と未使用枠も含む。価格観測日 (`priced_at`) も返す                                                                                                                                                                                                                                |
 
 `eval_python` は入力値に対する純粋関数評価モデルとして設計している。1 evaluation = 1 exec Pod で起動し、入出力は stdin → stdout/stderr/exit code のみ。Pod spec 側の隔離 (read-only rootfs、non-root、capabilities drop、deadline 等) は backend が固定する。namespace 側の隔離 (RuntimeClass `kata`、NetworkPolicy 全 deny、Pod Security Admission) は [`docs/deployment.md`](./deployment.md) を参照。
 

@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum_test::TestServer;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -10,8 +10,10 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
+use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::entities::{strategy, trigger};
 use crate::kata_exec::SharedKataExecutor;
+use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
 
 /// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
@@ -212,4 +214,86 @@ pub async fn create_test_server_with_state(pool: PgPool) -> (AppState, TestServe
     let router = create_router(state.clone());
     let server = TestServer::new(router).expect("failed to create test server");
     (state, server)
+}
+
+/// テスト用のモックデータプロバイダー
+///
+/// `calls` に `fetch_daily_bars` へ渡された instrument_id を記録するため、
+/// どの銘柄が実際にバックフィルされたかをテストで検証できる。
+pub struct MockProvider {
+    bars: Vec<Bar>,
+    instruments: Vec<Instrument>,
+    pub calls: Mutex<Vec<String>>,
+}
+
+impl MockProvider {
+    pub fn new() -> Self {
+        Self {
+            bars: Vec::new(),
+            instruments: Vec::new(),
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn with_bars(mut self, bars: Vec<Bar>) -> Self {
+        self.bars = bars;
+        self
+    }
+
+    pub fn with_instruments(mut self, instruments: Vec<Instrument>) -> Self {
+        self.instruments = instruments;
+        self
+    }
+}
+
+impl Default for MockProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DataProvider for MockProvider {
+    async fn fetch_daily_bars(
+        &self,
+        instrument_id: &str,
+        range: &DateRange,
+    ) -> Result<Vec<Bar>, DataProviderError> {
+        self.calls
+            .lock()
+            .expect("lock")
+            .push(instrument_id.to_string());
+
+        let exists = self.instruments.iter().any(|i| i.id == instrument_id);
+        if !exists {
+            return Err(DataProviderError::NotFound(format!(
+                "instrument '{instrument_id}' not found"
+            )));
+        }
+
+        let from_dt = Utc.from_utc_datetime(&range.from.and_hms_opt(0, 0, 0).unwrap_or_default());
+        let to_exclusive = range.to.succ_opt().unwrap_or(range.to);
+        let to_dt = Utc.from_utc_datetime(&to_exclusive.and_hms_opt(0, 0, 0).unwrap_or_default());
+
+        let mut bars: Vec<Bar> = self
+            .bars
+            .iter()
+            .filter(|b| {
+                b.instrument_id == instrument_id && b.timestamp >= from_dt && b.timestamp < to_dt
+            })
+            .cloned()
+            .collect();
+
+        bars.sort_by_key(|b| b.timestamp);
+        Ok(bars)
+    }
+
+    async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
+        self.instruments
+            .iter()
+            .find(|i| i.id == instrument_id)
+            .cloned()
+            .ok_or_else(|| {
+                DataProviderError::NotFound(format!("instrument '{instrument_id}' not found"))
+            })
+    }
 }

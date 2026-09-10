@@ -76,85 +76,9 @@ mod tests {
     use sqlx::PgPool;
 
     use super::*;
-    use crate::data_provider::{DataProviderError, DateRange};
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
-    use crate::testing::create_test_db;
-
-    // --- テスト用モック ---
-
-    /// テスト用のモックデータプロバイダー
-    struct MockProvider {
-        bars: Vec<Bar>,
-        instruments: Vec<Instrument>,
-    }
-
-    impl MockProvider {
-        fn new() -> Self {
-            Self {
-                bars: Vec::new(),
-                instruments: Vec::new(),
-            }
-        }
-
-        fn with_bars(mut self, bars: Vec<Bar>) -> Self {
-            self.bars = bars;
-            self
-        }
-
-        fn with_instruments(mut self, instruments: Vec<Instrument>) -> Self {
-            self.instruments = instruments;
-            self
-        }
-    }
-
-    impl DataProvider for MockProvider {
-        async fn fetch_daily_bars(
-            &self,
-            instrument_id: &str,
-            range: &DateRange,
-        ) -> Result<Vec<Bar>, DataProviderError> {
-            let exists = self.instruments.iter().any(|i| i.id == instrument_id);
-            if !exists {
-                return Err(DataProviderError::NotFound(format!(
-                    "instrument '{instrument_id}' not found"
-                )));
-            }
-
-            let from_dt =
-                Utc.from_utc_datetime(&range.from.and_hms_opt(0, 0, 0).unwrap_or_default());
-            let to_exclusive = range.to.succ_opt().unwrap_or(range.to);
-            let to_dt =
-                Utc.from_utc_datetime(&to_exclusive.and_hms_opt(0, 0, 0).unwrap_or_default());
-
-            let mut bars: Vec<Bar> = self
-                .bars
-                .iter()
-                .filter(|b| {
-                    b.instrument_id == instrument_id
-                        && b.timestamp >= from_dt
-                        && b.timestamp < to_dt
-                })
-                .cloned()
-                .collect();
-
-            bars.sort_by_key(|b| b.timestamp);
-            Ok(bars)
-        }
-
-        async fn fetch_instrument(
-            &self,
-            instrument_id: &str,
-        ) -> Result<Instrument, DataProviderError> {
-            self.instruments
-                .iter()
-                .find(|i| i.id == instrument_id)
-                .cloned()
-                .ok_or_else(|| {
-                    DataProviderError::NotFound(format!("instrument '{instrument_id}' not found"))
-                })
-        }
-    }
+    use crate::testing::{MockProvider, create_test_db};
 
     // --- テスト用ヘルパー ---
 
