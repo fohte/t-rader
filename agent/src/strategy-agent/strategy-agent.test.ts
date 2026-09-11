@@ -179,7 +179,7 @@ describe('runStrategyAgent', () => {
     expect.soft(calls.mcpClientClosed).toBe(true)
   })
 
-  it('fetches agent config by purpose key when purpose is given, ignoring strategyId for that lookup', async () => {
+  it('passes the given purpose straight through to fetchAgentConfig instead of the default', async () => {
     const { deps, calls } = buildDeps({
       agentInvoke: () =>
         Promise.resolve({
