@@ -31,7 +31,8 @@ interface HypothesisStore {
 function makeHypothesis(overrides: Partial<Hypothesis> = {}): Hypothesis {
   return {
     hypothesis_id: overrides.hypothesis_id ?? 'hyp-1',
-    strategy_id: overrides.strategy_id ?? 'strat-1',
+    strategy_id:
+      'strategy_id' in overrides ? (overrides.strategy_id ?? null) : 'strat-1',
     title: overrides.title ?? 'old title',
     body: overrides.body ?? 'old body',
     status: overrides.status ?? 'unverified',
@@ -236,5 +237,19 @@ describe('HypothesisDetailPage', () => {
 
     // refetch 後も未保存の title ドラフトが保持されている
     expect(screen.getByLabelText('title')).toHaveValue('draft in progress')
+  })
+
+  it('strategy_id がある場合、戦略ホームに戻るリンクが表示される', async () => {
+    await renderInRouter(makeHypothesis({ strategy_id: 'strat-1' }))
+    await screen.findByLabelText('title')
+    expect(
+      screen.queryByRole('link', { name: /戦略ホームに戻る/ }),
+    ).not.toBeNull()
+  })
+
+  it('strategy_id が null の場合、戦略ホームに戻るリンクは表示されない', async () => {
+    await renderInRouter(makeHypothesis({ strategy_id: null }))
+    await screen.findByLabelText('title')
+    expect(screen.queryByRole('link', { name: /戦略ホームに戻る/ })).toBeNull()
   })
 })

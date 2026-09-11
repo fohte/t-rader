@@ -8,14 +8,16 @@ import { $api } from '#lib/api/client'
 
 interface HypothesisStatusPanelProps {
   hypothesisId: string
+  strategyId: string | null
   status: string
 }
 
 export function HypothesisStatusPanel({
   hypothesisId,
+  strategyId,
   status,
 }: HypothesisStatusPanelProps) {
-  const invalidate = useInvalidateHypothesis(hypothesisId)
+  const invalidate = useInvalidateHypothesis(hypothesisId, strategyId)
   const updateMutation = $api.useMutation(
     'patch',
     '/api/hypotheses/{hypothesis_id}',

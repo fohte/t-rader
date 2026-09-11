@@ -21,7 +21,10 @@ export function HypothesisDetailPage({
   } = $api.useQuery('get', '/api/hypotheses/{hypothesis_id}', {
     params: { path: { hypothesis_id: hypothesisId } },
   })
-  const invalidate = useInvalidateHypothesis(hypothesisId)
+  const invalidate = useInvalidateHypothesis(
+    hypothesisId,
+    hypothesis?.strategy_id ?? null,
+  )
   const updateMutation = $api.useMutation(
     'patch',
     '/api/hypotheses/{hypothesis_id}',
@@ -89,6 +92,7 @@ export function HypothesisDetailPage({
         <aside className="space-y-4">
           <HypothesisStatusPanel
             hypothesisId={hypothesisId}
+            strategyId={hypothesis.strategy_id ?? null}
             status={hypothesis.status}
           />
         </aside>

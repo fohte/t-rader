@@ -1,4 +1,7 @@
 import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
+
+type Strategy = components['schemas']['Strategy']
 
 interface StrategyFilterSelectProps {
   value: string | undefined
@@ -13,6 +16,26 @@ export function StrategyFilterSelect({
   const { data: strategies } = $api.useQuery('get', '/api/strategies')
 
   return (
+    <StrategyFilterSelectView
+      value={value}
+      onChange={onChange}
+      strategies={strategies ?? []}
+    />
+  )
+}
+
+interface StrategyFilterSelectViewProps {
+  value: string | undefined
+  onChange: (value: string | undefined) => void
+  strategies: Strategy[]
+}
+
+export function StrategyFilterSelectView({
+  value,
+  onChange,
+  strategies,
+}: StrategyFilterSelectViewProps) {
+  return (
     <select
       aria-label="戦略で絞り込み"
       value={value ?? ''}
@@ -22,7 +45,7 @@ export function StrategyFilterSelect({
       className="h-9 border border-input bg-transparent px-3 font-mono text-xs"
     >
       <option value="">すべての戦略</option>
-      {(strategies ?? []).map((s) => (
+      {strategies.map((s) => (
         <option key={s.id} value={s.id}>
           {s.name}
         </option>

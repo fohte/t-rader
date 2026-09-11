@@ -81,11 +81,7 @@ function NoteDetailPage() {
           </div>
         </article>
         <aside className="space-y-4">
-          <ReviewPanel
-            noteId={note.id}
-            strategyId={note.strategy_id ?? null}
-            status={note.status}
-          />
+          <ReviewPanel noteId={note.id} status={note.status} />
           <CommentsPanel
             noteId={note.id}
             pendingQuote={pendingQuote}

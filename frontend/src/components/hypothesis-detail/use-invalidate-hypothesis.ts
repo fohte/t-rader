@@ -2,7 +2,10 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { $api } from '#lib/api/client'
 
-export function useInvalidateHypothesis(hypothesisId: string) {
+export function useInvalidateHypothesis(
+  hypothesisId: string,
+  strategyId: string | null,
+) {
   const queryClient = useQueryClient()
   return () => {
     void queryClient.invalidateQueries({
@@ -13,5 +16,12 @@ export function useInvalidateHypothesis(hypothesisId: string) {
     void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/hypotheses').queryKey,
     })
+    if (strategyId != null) {
+      void queryClient.invalidateQueries({
+        queryKey: $api.queryOptions('get', '/api/strategies/{id}/hypotheses', {
+          params: { path: { id: strategyId } },
+        }).queryKey,
+      })
+    }
   }
 }

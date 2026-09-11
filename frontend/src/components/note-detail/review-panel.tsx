@@ -5,11 +5,10 @@ import { $api } from '#lib/api/client'
 
 interface ReviewPanelProps {
   noteId: string
-  strategyId: string | null
   status: string
 }
 
-export function ReviewPanel({ noteId, strategyId, status }: ReviewPanelProps) {
+export function ReviewPanel({ noteId, status }: ReviewPanelProps) {
   const queryClient = useQueryClient()
   const approve = $api.useMutation('post', '/api/notes/{id}/approve')
   const reject = $api.useMutation('post', '/api/notes/{id}/reject')
@@ -20,14 +19,6 @@ export function ReviewPanel({ noteId, strategyId, status }: ReviewPanelProps) {
         params: { path: { id: noteId } },
       }).queryKey,
     })
-    if (strategyId != null) {
-      void queryClient.invalidateQueries({
-        queryKey: $api.queryOptions('get', '/api/notes', {
-          params: { query: { strategy_id: strategyId } },
-        }).queryKey,
-      })
-    }
-    // strategy_id ありなしで queryKey が分かれるため、base キーも合わせて無効化して account-wide 一覧のキャッシュも対象にする
     void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/notes').queryKey,
     })
