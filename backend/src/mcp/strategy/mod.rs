@@ -88,9 +88,10 @@ const MAX_LIST_LIMIT: u64 = 200;
 pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
-/// `x-execution-id` ヘッダ名。agent が A2A タスク実行のたびに送る値で、backend は同じ値を
-/// `strategy_task.a2a_task_id` としても保持するが、`note.execution_id` 側に FK/join はなく
-/// 単なる相関用の不透明な文字列として扱う。
+/// `x-execution-id` ヘッダ名。agent は `{a2a_task_id}:{step_id}` 形式の値を MCP tool 呼び出し
+/// ごとに送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列)。backend は
+/// これを `note.execution_id` にそのまま保持するが FK/join は持たず、単なる相関用の
+/// 不透明な文字列として扱う。
 const EXECUTION_ID_HEADER: &str = "x-execution-id";
 
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";

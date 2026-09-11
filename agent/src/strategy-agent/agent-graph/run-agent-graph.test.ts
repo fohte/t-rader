@@ -54,6 +54,30 @@ const buildFakeTool = (name: string): DynamicStructuredTool =>
 interface InvokeCall {
   readonly systemPrompt: string
   readonly messageText: string
+  readonly executionStepId: string | undefined
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+// executionStepId (crypto.randomUUID()) は実行のたびに変わるため、比較前に
+// 出現順で <execution-step-id-N> へ正規化する。同じ値は同じラベルになるため、
+// 呼び出し間で値が一致/不一致であることは正規化後も検証できる。
+const normalizeExecutionStepIds = (
+  calls: readonly InvokeCall[],
+): InvokeCall[] => {
+  const labels = new Map<string, string>()
+  return calls.map((call) => {
+    const { executionStepId } = call
+    if (executionStepId === undefined) return call
+    expect(executionStepId).toMatch(UUID_PATTERN)
+    let label = labels.get(executionStepId)
+    if (label === undefined) {
+      label = `<execution-step-id-${String(labels.size + 1)}>`
+      labels.set(executionStepId, label)
+    }
+    return { ...call, executionStepId: label }
+  })
 }
 
 const buildDeps = (
@@ -69,6 +93,7 @@ const buildDeps = (
         const call: InvokeCall = {
           systemPrompt: options.systemPrompt,
           messageText: input.messages.map((m) => m.text).join('\n'),
+          executionStepId: input.executionStepId,
         }
         calls.push(call)
         return invokeImpl(call)
@@ -121,7 +146,7 @@ describe('runAgentGraph', () => {
       status: 'completed',
       message: '2フェーズの実行が完了しました (Step A → Step B)',
     })
-    expect(calls).toEqual([
+    expect(normalizeExecutionStepIds(calls)).toEqual([
       {
         systemPrompt: 'AGENTS',
         messageText: buildPhaseMessageText({
@@ -130,6 +155,7 @@ describe('runAgentGraph', () => {
           item: undefined,
           priorResults: {},
         }),
+        executionStepId: '<execution-step-id-1>',
       },
       {
         systemPrompt: 'AGENTS',
@@ -139,6 +165,7 @@ describe('runAgentGraph', () => {
           item: undefined,
           priorResults: { stepA: { value: 'A-OUT' } },
         }),
+        executionStepId: '<execution-step-id-2>',
       },
     ])
   })
@@ -333,9 +360,9 @@ describe('runAgentGraph', () => {
     expect(maxActive).toBe(2)
   })
 
-  it('retries a phase up to 2 times after a missing structured response, then succeeds', async () => {
+  it('retries a phase up to 2 times after a missing structured response, then succeeds, reusing one executionStepId across attempts', async () => {
     let attempts = 0
-    const { deps } = buildDeps(() => {
+    const { deps, calls } = buildDeps(() => {
       attempts++
       return Promise.resolve(
         attempts < 3 ? {} : { structuredResponse: { ok: true } },
@@ -367,6 +394,13 @@ describe('runAgentGraph', () => {
       message: '1フェーズの実行が完了しました (P)',
     })
     expect(attempts).toBe(3)
+    expect(
+      normalizeExecutionStepIds(calls).map((call) => call.executionStepId),
+    ).toEqual([
+      '<execution-step-id-1>',
+      '<execution-step-id-1>',
+      '<execution-step-id-1>',
+    ])
   })
 
   it('fails the phase after exhausting all structured-output retries', async () => {
@@ -736,6 +770,54 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it('gives each for_each item a distinct executionStepId', async () => {
+    const { deps, calls } = buildDeps((call) =>
+      Promise.resolve(
+        call.messageText.includes('do plan')
+          ? { structuredResponse: { items: ['a', 'b'] } }
+          : { structuredResponse: {} },
+      ),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(
+      normalizeExecutionStepIds(calls).map((call) => call.executionStepId),
+    ).toEqual([
+      '<execution-step-id-1>',
+      '<execution-step-id-2>',
+      '<execution-step-id-3>',
+    ])
+  })
+
   it('continues running remaining chunks and threads only the successful outputs into the next phase when some for_each items fail', async () => {
     const messageTextForWorkItem = (item: unknown): string =>
       buildPhaseMessageText({
@@ -803,7 +885,7 @@ describe('runAgentGraph', () => {
       status: 'completed',
       message: '3フェーズの実行が完了しました (Plan → Work → Summarize)',
     })
-    expect(calls.at(-1)).toEqual({
+    expect(normalizeExecutionStepIds(calls).at(-1)).toEqual({
       systemPrompt: 'AGENTS',
       messageText: buildPhaseMessageText({
         originalPromptText: 'req',
@@ -814,6 +896,7 @@ describe('runAgentGraph', () => {
           work: [{ value: 'b-done' }],
         },
       }),
+      executionStepId: '<execution-step-id-4>',
     })
     const last = notifications.at(-1)
     expect(

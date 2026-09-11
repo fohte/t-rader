@@ -23,8 +23,25 @@ import type {
 } from '#strategy-agent/strategy-agent'
 import {
   createStrategyAgentDeps,
+  resolveMcpToolCallHeaders,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+
+type CapturedBeforeToolCall = (
+  toolCall: { name: string; args: unknown; serverName: string },
+  state: unknown,
+  runnableConfig: { configurable?: Record<string, unknown> },
+) => { headers?: Record<string, string>; args?: unknown } | undefined
+
+let capturedBeforeToolCall: CapturedBeforeToolCall | undefined
+
+vi.mock('@langchain/mcp-adapters', () => ({
+  MultiServerMCPClient: vi.fn(function (config: {
+    beforeToolCall?: CapturedBeforeToolCall
+  }) {
+    capturedBeforeToolCall = config.beforeToolCall
+  }),
+}))
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -422,6 +439,23 @@ describe('createStrategyAgentDeps', () => {
     return model
   }
 
+  it('wires createMcpClient beforeToolCall to resolve x-execution-id via the step id from RunnableConfig.configurable', () => {
+    createStrategyAgentDeps(baseConfig).createMcpClient('strategy-1', 'task-1')
+
+    const headers = capturedBeforeToolCall?.(
+      { serverName: 'strategy', name: 'write_note', args: {} },
+      {},
+      { configurable: { mcpExecutionStepId: 'step-1' } },
+    )
+
+    expect(headers).toEqual({
+      headers: {
+        'x-strategy-id': 'strategy-1',
+        'x-execution-id': 'task-1:step-1',
+      },
+    })
+  })
+
   it('creates a chat model defaulted to the OpenCode Go base URL', () => {
     const deps = createStrategyAgentDeps(baseConfig)
 
@@ -682,5 +716,32 @@ describe('createStrategyAgentDeps', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+})
+
+describe('resolveMcpToolCallHeaders', () => {
+  it.each([
+    { name: 'no configurable', configurable: undefined },
+    {
+      name: 'unrelated configurable key',
+      configurable: { someOtherKey: 'value' },
+    },
+  ])('returns no header override when given $name', ({ configurable }) => {
+    expect(
+      resolveMcpToolCallHeaders('strategy-1', 'task-1', configurable),
+    ).toEqual({})
+  })
+
+  it('scopes x-execution-id to the step while keeping x-strategy-id', () => {
+    expect(
+      resolveMcpToolCallHeaders('strategy-1', 'task-1', {
+        mcpExecutionStepId: 'step-1',
+      }),
+    ).toEqual({
+      headers: {
+        'x-strategy-id': 'strategy-1',
+        'x-execution-id': 'task-1:step-1',
+      },
+    })
   })
 })

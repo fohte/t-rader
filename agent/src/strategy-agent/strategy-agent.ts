@@ -39,6 +39,9 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
 
+// RunnableConfig.configurable 経由で beforeToolCall まで実行ステップ ID を運ぶキー。
+const MCP_EXECUTION_STEP_ID_CONFIG_KEY = 'mcpExecutionStepId'
+
 const DEFAULT_PURPOSE = 'default'
 
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
@@ -147,10 +150,19 @@ const buildCompiledAgent = (
     invoke: async (input) => {
       const result = await agent.invoke(
         { messages: [...input.messages] },
-        // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
-        // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
-        // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
-        { recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3 },
+        {
+          // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
+          // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
+          // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
+          recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3,
+          ...(input.executionStepId !== undefined
+            ? {
+                configurable: {
+                  [MCP_EXECUTION_STEP_ID_CONFIG_KEY]: input.executionStepId,
+                },
+              }
+            : {}),
+        },
       )
       // createAgent の推論型では structuredResponse は常に存在する扱いだが、
       // 実行時はモデルが structured-output tool を呼び出さないこともある。
@@ -201,6 +213,23 @@ const createDefaultBuildPhaseAgent =
       responseFormat: toolStrategy(options.responseSchema),
     })
 
+// client.fork() は headers をまるごと置き換える (元の headers とマージしない) ため、
+// x-execution-id を差し替える際は x-strategy-id も一緒に返す必要がある。
+export const resolveMcpToolCallHeaders = (
+  strategyId: string,
+  taskId: string,
+  configurable: Record<string, unknown> | undefined,
+): { headers?: Record<string, string> } => {
+  const stepId = configurable?.[MCP_EXECUTION_STEP_ID_CONFIG_KEY]
+  if (typeof stepId !== 'string') return {}
+  return {
+    headers: {
+      [STRATEGY_ID_HEADER]: strategyId,
+      [EXECUTION_ID_HEADER]: `${taskId}:${stepId}`,
+    },
+  }
+}
+
 type ReasoningEffort = NonNullable<
   NonNullable<
     NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['reasoning']
@@ -223,6 +252,15 @@ export const createStrategyAgentDeps = (
           },
         },
       },
+      // headers を返すたびに client.fork() が新規コネクションを張る
+      // (@langchain/mcp-adapters の ConnectionManager#forkClient は既存コネクションを
+      // 再利用しない)。生成されたコネクションは mcpClient.close() まで閉じられない。
+      beforeToolCall: (_toolCall, _state, runnableConfig) =>
+        resolveMcpToolCallHeaders(
+          strategyId,
+          taskId,
+          runnableConfig.configurable,
+        ),
     }),
   createChatModel: (model, options) =>
     new ChatOpenAI({

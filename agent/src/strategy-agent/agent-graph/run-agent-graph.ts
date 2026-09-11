@@ -28,7 +28,11 @@ export interface BuildPhaseAgentOptions {
 }
 
 export interface CompiledPhaseAgent {
-  invoke(input: { messages: readonly HumanMessage[] }): Promise<{
+  invoke(input: {
+    messages: readonly HumanMessage[]
+    // 実行ステップの識別子。省略時はステップ単位の識別を行わない。
+    executionStepId?: string
+  }): Promise<{
     structuredResponse?: Record<string, unknown>
   }>
 }
@@ -209,10 +213,11 @@ const hasRequiredArrayFields = (
 const invokePhaseWithRetry = async (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
+  executionStepId: string,
   requiredArrayFields: ReadonlySet<string>,
   attemptsLeft: number = MAX_STRUCTURED_OUTPUT_ATTEMPTS,
 ): Promise<Result<Record<string, unknown>, unknown>> => {
-  const invoked = await agent.invoke({ messages }).then(
+  const invoked = await agent.invoke({ messages, executionStepId }).then(
     (
       value,
     ): Result<{ structuredResponse?: Record<string, unknown> }, unknown> =>
@@ -242,6 +247,7 @@ const invokePhaseWithRetry = async (
   return invokePhaseWithRetry(
     agent,
     messages,
+    executionStepId,
     requiredArrayFields,
     attemptsLeft - 1,
   )
@@ -275,6 +281,9 @@ const resolveForEachItems = (
 // 1 件分の invoke を実行し、開始時に running step を記録、決着したら
 // completed/failed に更新する。for_each の各要素と、for_each でないフェーズ
 // (常に 1 件) の両方から呼ばれる。
+//
+// spanId (OTel 未設定時は NoopTracer により固定値になる) とは独立に
+// executionStepId を生成し、invokePhaseWithRetry の再試行間で使い回す。
 const invokeAndRecordStep = (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
@@ -291,22 +300,26 @@ const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
-    return invokePhaseWithRetry(agent, messages, requiredArrayFields).then(
-      (result) => {
-        if (result.isErr()) {
-          recorder.finish(index, {
-            status: 'failed',
-            error: errorMessage(result.error),
-          })
-        } else {
-          recorder.finish(index, {
-            status: 'completed',
-            output: result.value,
-          })
-        }
-        return result
-      },
-    )
+    const executionStepId = crypto.randomUUID()
+    return invokePhaseWithRetry(
+      agent,
+      messages,
+      executionStepId,
+      requiredArrayFields,
+    ).then((result) => {
+      if (result.isErr()) {
+        recorder.finish(index, {
+          status: 'failed',
+          error: errorMessage(result.error),
+        })
+      } else {
+        recorder.finish(index, {
+          status: 'completed',
+          output: result.value,
+        })
+      }
+      return result
+    })
   })
 
 const runForEachItems = async (
