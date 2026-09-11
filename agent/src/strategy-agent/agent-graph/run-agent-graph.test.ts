@@ -31,11 +31,6 @@ const normalizeStepTimestamps = (
     ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
   }))
 
-// priorResults セクションにも同じ値が全件分含まれるため、messageText 全体への
-// 単純な includes では呼び出し対象を一意に特定できない。
-const assignedItem = (messageText: string): string | undefined =>
-  /割り当てられた対象:\n```json\n"([^"]+)"\n```/.exec(messageText)?.[1]
-
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
     return 'fake'
@@ -742,14 +737,22 @@ describe('runAgentGraph', () => {
   })
 
   it('continues running remaining chunks and threads only the successful outputs into the next phase when some for_each items fail', async () => {
+    const messageTextForWorkItem = (item: unknown): string =>
+      buildPhaseMessageText({
+        originalPromptText: 'req',
+        phasePrompt: 'do work',
+        item,
+        priorResults: { plan: { items: ['a', 'b'] } },
+      })
     const { deps, calls } = buildDeps((call) => {
       if (call.messageText.includes('do plan')) {
         return Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
       }
-      if (call.messageText.includes('do work')) {
-        return assignedItem(call.messageText) === 'a'
-          ? Promise.reject(new Error('item a failed'))
-          : Promise.resolve({ structuredResponse: { value: 'b-done' } })
+      if (call.messageText === messageTextForWorkItem('a')) {
+        return Promise.reject(new Error('item a failed'))
+      }
+      if (call.messageText === messageTextForWorkItem('b')) {
+        return Promise.resolve({ structuredResponse: { value: 'b-done' } })
       }
       return Promise.resolve({ structuredResponse: {} })
     })
@@ -866,11 +869,18 @@ describe('runAgentGraph', () => {
   })
 
   it('fails the phase when every for_each item fails', async () => {
+    const messageTextForWorkItem = (item: unknown): string =>
+      buildPhaseMessageText({
+        originalPromptText: 'req',
+        phasePrompt: 'do work',
+        item,
+        priorResults: { plan: { items: ['x', 'y'] } },
+      })
     const { deps } = buildDeps((call) => {
       if (call.messageText.includes('do plan')) {
         return Promise.resolve({ structuredResponse: { items: ['x', 'y'] } })
       }
-      return assignedItem(call.messageText) === 'x'
+      return call.messageText === messageTextForWorkItem('x')
         ? Promise.reject(new Error('x failed'))
         : Promise.reject(new Error('y failed'))
     })
