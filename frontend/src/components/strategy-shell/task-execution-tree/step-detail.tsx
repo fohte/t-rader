@@ -10,12 +10,10 @@ import {
 } from '#components/strategy-shell/task-execution-tree/model'
 
 export function StepDetail({
-  strategyId,
   step,
   outputSchema,
   traceUrlTemplate,
 }: {
-  strategyId: string
   step: TaskStep
   outputSchema?: AgentGraphOutputSchema
   traceUrlTemplate?: string
@@ -53,8 +51,8 @@ export function StepDetail({
       )}
       {noteId != null && (
         <Link
-          to="/strategies/$id/notes/$noteId"
-          params={{ id: strategyId, noteId }}
+          to="/notes/$noteId"
+          params={{ noteId }}
           className="block text-primary hover:underline"
         >
           → ノートを開く

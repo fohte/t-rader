@@ -130,7 +130,6 @@ function StrategyHomePage() {
       </header>
 
       <ArrivalsList
-        strategyId={id}
         notes={notes ?? []}
         annotations={annotations ?? []}
         since={lastVisited}
@@ -147,7 +146,6 @@ function StrategyHomePage() {
           />
 
           <AnnotationList
-            strategyId={id}
             items={numberedAnnotations}
             symbol={activeSymbol}
             selectedAnnotationId={selectedAnnotationId}
@@ -171,7 +169,7 @@ function StrategyHomePage() {
             ) : (
               <div className="space-y-3">
                 {sortedNotes.map((n) => (
-                  <AnalysisCard key={n.id} note={n} strategyId={id} />
+                  <AnalysisCard key={n.id} note={n} />
                 ))}
               </div>
             )}
@@ -181,7 +179,7 @@ function StrategyHomePage() {
         <aside className="space-y-5">
           <RelatedMacro indicatorIds={indicatorIds} />
           <RelatedNews strategyId={id} />
-          <NotesList strategyId={id} notes={sortedNotes} />
+          <NotesList notes={sortedNotes} />
           <HypothesisList strategyId={id} />
           <InterestTree strategyId={id} />
         </aside>

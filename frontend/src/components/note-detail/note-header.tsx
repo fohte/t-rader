@@ -7,7 +7,7 @@ type Note = components['schemas']['Note']
 
 interface NoteHeaderProps {
   note: Note
-  strategyId: string
+  strategyId: string | null
 }
 
 export function NoteHeader({ note, strategyId }: NoteHeaderProps) {
@@ -22,7 +22,9 @@ export function NoteHeader({ note, strategyId }: NoteHeaderProps) {
         <span className="text-muted-foreground">status:</span>{' '}
         <span className="text-foreground">{note.status}</span>{' '}
         <span className="text-muted-foreground">strategy:</span>{' '}
-        <span className="text-foreground">{strategyId}</span>
+        <span className="text-foreground">
+          {strategyId != null ? strategyId : '(戦略に属さない)'}
+        </span>
         {refs.length > 0 && (
           <>
             <br />

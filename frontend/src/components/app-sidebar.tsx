@@ -1,6 +1,13 @@
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, FileText, History, List } from 'lucide-react'
+import {
+  BarChart3,
+  FileText,
+  History,
+  Lightbulb,
+  List,
+  MessageSquareText,
+} from 'lucide-react'
 
 import {
   Sidebar,
@@ -49,6 +56,16 @@ const navGroups: NavGroup[] = [
         title: 'ノート',
         href: '/notes',
         icon: FileText,
+      },
+      {
+        title: 'アノテーション',
+        href: '/annotations',
+        icon: MessageSquareText,
+      },
+      {
+        title: '仮説',
+        href: '/hypotheses',
+        icon: Lightbulb,
       },
     ],
   },

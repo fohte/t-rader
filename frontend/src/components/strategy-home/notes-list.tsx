@@ -7,11 +7,10 @@ import { formatRelative } from '#lib/note-utils'
 type Note = components['schemas']['Note']
 
 interface NotesListProps {
-  strategyId: string
   notes: Note[]
 }
 
-export function NotesList({ strategyId, notes }: NotesListProps) {
+export function NotesList({ notes }: NotesListProps) {
   return (
     <section className="border border-border bg-card">
       <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
@@ -31,8 +30,8 @@ export function NotesList({ strategyId, notes }: NotesListProps) {
           {notes.map((n) => (
             <Link
               key={n.id}
-              to="/strategies/$id/notes/$noteId"
-              params={{ id: strategyId, noteId: n.id }}
+              to="/notes/$noteId"
+              params={{ noteId: n.id }}
               className="flex flex-col gap-1 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-strong"
             >
               <span className="line-clamp-2 text-sm text-foreground">

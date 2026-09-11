@@ -28,11 +28,11 @@ function createAnalysisCardRouter(props: { note: Note }) {
   return createStoryRouter(
     () => (
       <div className="max-w-160 bg-background p-4">
-        <AnalysisCard note={props.note} strategyId="semi-swing" />
+        <AnalysisCard note={props.note} />
       </div>
     ),
     {
-      paths: ['/strategies/$id', '/strategies/$id/notes/$noteId'],
+      paths: ['/strategies/$id', '/notes/$noteId'],
       initialPath: '/strategies/semi-swing',
     },
   )

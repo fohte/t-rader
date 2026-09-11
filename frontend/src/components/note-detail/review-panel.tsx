@@ -5,11 +5,10 @@ import { $api } from '#lib/api/client'
 
 interface ReviewPanelProps {
   noteId: string
-  strategyId: string
   status: string
 }
 
-export function ReviewPanel({ noteId, strategyId, status }: ReviewPanelProps) {
+export function ReviewPanel({ noteId, status }: ReviewPanelProps) {
   const queryClient = useQueryClient()
   const approve = $api.useMutation('post', '/api/notes/{id}/approve')
   const reject = $api.useMutation('post', '/api/notes/{id}/reject')
@@ -21,9 +20,7 @@ export function ReviewPanel({ noteId, strategyId, status }: ReviewPanelProps) {
       }).queryKey,
     })
     void queryClient.invalidateQueries({
-      queryKey: $api.queryOptions('get', '/api/notes', {
-        params: { query: { strategy_id: strategyId } },
-      }).queryKey,
+      queryKey: $api.queryOptions('get', '/api/notes').queryKey,
     })
     void queryClient.invalidateQueries({
       queryKey: $api.queryOptions('get', '/api/history', {

@@ -47,3 +47,7 @@ export const HumanApproved: Story = {
     strategyId: 'semi-swing',
   },
 }
+
+export const NoStrategy: Story = {
+  args: { note: { ...note, strategy_id: null }, strategyId: null },
+}

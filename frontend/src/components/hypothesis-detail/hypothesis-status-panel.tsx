@@ -7,26 +7,26 @@ import {
 import { $api } from '#lib/api/client'
 
 interface HypothesisStatusPanelProps {
-  strategyId: string
   hypothesisId: string
+  strategyId: string | null
   status: string
 }
 
 export function HypothesisStatusPanel({
-  strategyId,
   hypothesisId,
+  strategyId,
   status,
 }: HypothesisStatusPanelProps) {
-  const invalidate = useInvalidateHypothesis(strategyId, hypothesisId)
+  const invalidate = useInvalidateHypothesis(hypothesisId, strategyId)
   const updateMutation = $api.useMutation(
     'patch',
-    '/api/strategies/{id}/hypotheses/{hypothesis_id}',
+    '/api/hypotheses/{hypothesis_id}',
   )
 
   function handleChange(nextStatus: string) {
     updateMutation.mutate(
       {
-        params: { path: { id: strategyId, hypothesis_id: hypothesisId } },
+        params: { path: { hypothesis_id: hypothesisId } },
         body: { status: nextStatus },
       },
       { onSuccess: invalidate },

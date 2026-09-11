@@ -19,7 +19,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     ),
-    { paths: ['/strategies/$id/notes/$noteId'] },
+    { paths: ['/notes/$noteId'] },
   )
   return <RouterProvider router={router} />
 }
@@ -37,7 +37,6 @@ export const Running: Story = {
   render: () => (
     <Frame>
       <TaskExecutionTree
-        strategyId="semi-swing"
         steps={[
           PLAN_STEP,
           investigateStep('円安の進行が主因', {
@@ -64,7 +63,6 @@ export const Completed: Story = {
   render: () => (
     <Frame>
       <TaskExecutionTree
-        strategyId="semi-swing"
         steps={[
           PLAN_STEP,
           investigateStep('円安の進行が主因', {
@@ -110,7 +108,6 @@ export const WithFailure: Story = {
   render: () => (
     <Frame>
       <TaskExecutionTree
-        strategyId="semi-swing"
         steps={[
           PLAN_STEP,
           investigateStep('円安の進行が主因', {
@@ -142,7 +139,7 @@ export const NoAgentGraph: Story = {
       <p className="font-mono text-2xs text-muted-foreground">
         agent_graph 未設定 (steps が空) — 以下、何も表示されません:
       </p>
-      <TaskExecutionTree strategyId="semi-swing" steps={[]} configPhases={[]} />
+      <TaskExecutionTree steps={[]} configPhases={[]} />
     </Frame>
   ),
 }

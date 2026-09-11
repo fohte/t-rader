@@ -429,7 +429,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** 戦略に属さない (global) 仮説の一覧 (更新日時の降順) */
+    /** 口座全体の仮説一覧 (更新日時の降順)。`strategy_id` を指定するとその戦略の仮説に絞り込む。 */
     get: operations['list_hypotheses']
     put?: never
     /** 戦略に属さない (global) 仮説を作成する */
@@ -3851,7 +3851,9 @@ export interface operations {
   }
   list_hypotheses: {
     parameters: {
-      query?: never
+      query?: {
+        strategy_id?: string
+      }
       header?: never
       path?: never
       cookie?: never
@@ -3864,6 +3866,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['Hypothesis'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       500: {

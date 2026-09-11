@@ -21,7 +21,7 @@ function createFloatingChatRouter(props: FloatingChatViewProps) {
       </div>
     ),
     {
-      paths: ['/strategies/$id/notes/$noteId', '/strategies/$id/runs/$taskId'],
+      paths: ['/notes/$noteId', '/strategies/$id/runs/$taskId'],
     },
   )
 }

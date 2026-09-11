@@ -11,10 +11,9 @@ type Note = components['schemas']['Note']
 
 interface AnalysisCardProps {
   note: Note
-  strategyId: string
 }
 
-export function AnalysisCard({ note, strategyId }: AnalysisCardProps) {
+export function AnalysisCard({ note }: AnalysisCardProps) {
   const refs = extractRefs(note).slice(0, 4)
   const snippet = buildSnippet(note.body_md)
   const unread = note.status === 'unread'
@@ -35,11 +34,7 @@ export function AnalysisCard({ note, strategyId }: AnalysisCardProps) {
         <span className="flex-1" />
         <TriggerTag trigger={note.trigger} label={note.trigger_label} />
       </div>
-      <Link
-        to="/strategies/$id/notes/$noteId"
-        params={{ id: strategyId, noteId: note.id }}
-        className="block"
-      >
+      <Link to="/notes/$noteId" params={{ noteId: note.id }} className="block">
         <h4 className="text-base font-bold leading-tight text-foreground hover:text-primary">
           {note.title}
         </h4>
