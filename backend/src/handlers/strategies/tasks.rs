@@ -138,22 +138,11 @@ pub async fn list_strategy_tasks(
     JsonPath(strategy_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
     find_strategy_or_404(&state.db, strategy_id).await?;
-    let views = strategy_tasks::list_tasks_for_strategy(&state.db, strategy_id)
+    let views = strategy_tasks::list_tasks(&state.db, Some(strategy_id), None)
         .await
         .map_err(AppError::Database)?;
     Ok(Json(
-        views
-            .into_iter()
-            .map(|view| StrategyTaskSummary {
-                task_id: view.task_id,
-                source: view.source,
-                prompt: view.prompt,
-                phase: phase_str(&view.phase).to_string(),
-                error_summary: view.error_summary,
-                created_at: view.created_at,
-                updated_at: view.updated_at,
-            })
-            .collect(),
+        views.into_iter().map(StrategyTaskSummary::from).collect(),
     ))
 }
 
@@ -161,19 +150,19 @@ pub async fn list_strategy_tasks(
 mod tests {
     use std::sync::Arc;
 
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait};
+    use sea_orm::EntityTrait;
     use serde_json::json;
     use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::{strategy, strategy_task};
+    use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
-        create_test_server, create_test_server_with_db, create_test_server_with_db_and_agent_client,
+        create_test_server, create_test_server_with_db,
+        create_test_server_with_db_and_agent_client, insert_test_strategy,
+        insert_test_strategy_task,
     };
 
     /// JSON body から動的フィールド (created_at/updated_at) を除去し、
@@ -185,60 +174,13 @@ mod tests {
         }
     }
 
-    async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
-        let id = Uuid::new_v4();
-        strategy::ActiveModel {
-            id: Set(id),
-            name: Set(name.to_string()),
-            description: Set(None),
-            sort_order: Set(0),
-            created_at: NotSet,
-            updated_at: NotSet,
-            risk_policy: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("insert strategy");
-        id
-    }
-
-    /// 一覧系テスト用に created_at/updated_at を明示指定して strategy_task 行を直接 insert する。
-    /// (created_at 降順の検証には自動採番される値では順序を制御できないため)
-    async fn insert_task(
-        db: &DatabaseConnection,
-        strategy_id: Uuid,
-        prompt: &str,
-        created_at: chrono::DateTime<chrono::FixedOffset>,
-    ) -> Uuid {
-        let task_id = Uuid::new_v4();
-        strategy_task::ActiveModel {
-            task_id: Set(task_id),
-            strategy_id: Set(strategy_id),
-            a2a_task_id: Set(None),
-            source: Set("frontend".to_string()),
-            prompt: Set(prompt.to_string()),
-            phase: Set(crate::entities::sea_orm_active_enums::StrategyTaskPhase::Completed),
-            error_summary: Set(None),
-            result_text: Set(None),
-            deadline_at: Set(created_at + chrono::Duration::minutes(15)),
-            steps: Set(json!([])),
-            purpose: NotSet,
-            created_at: Set(created_at),
-            updated_at: Set(created_at),
-        }
-        .insert(db)
-        .await
-        .expect("insert task");
-        task_id
-    }
-
     #[sqlx::test(migrations = false)]
     async fn submit_chat_creates_task_row_and_submits_to_agent(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_next_task_id("agent-task-1").await;
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "long").await;
+        let strategy_id = insert_test_strategy(&db, "long").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
@@ -311,7 +253,7 @@ mod tests {
     async fn submit_chat_empty_prompt_returns_400(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
+        let strategy_id = insert_test_strategy(&db, "x").await;
 
         let res = server
             .post(&format!("/api/strategies/{strategy_id}/chat"))
@@ -326,7 +268,7 @@ mod tests {
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
+        let strategy_id = insert_test_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
@@ -346,7 +288,7 @@ mod tests {
     async fn submit_chat_missing_agent_config_returns_503(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
+        let strategy_id = insert_test_strategy(&db, "x").await;
 
         let res = server
             .post(&format!("/api/strategies/{strategy_id}/chat"))
@@ -363,7 +305,7 @@ mod tests {
     async fn get_strategy_task_returns_phase(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
+        let strategy_id = insert_test_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
@@ -409,7 +351,7 @@ mod tests {
     async fn get_strategy_task_unknown_returns_404(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_id = insert_strategy(&db, "x").await;
+        let strategy_id = insert_test_strategy(&db, "x").await;
 
         let res = server
             .get(&format!(
@@ -423,8 +365,8 @@ mod tests {
     async fn get_strategy_task_strategy_mismatch_returns_404(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
-        let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
+        let strategy_a = insert_test_strategy(&db, "a").await;
+        let strategy_b = insert_test_strategy(&db, "b").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
@@ -448,21 +390,23 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn list_strategy_tasks_returns_tasks_newest_first(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let strategy_id = insert_strategy(&db, "x").await;
+        let strategy_id = insert_test_strategy(&db, "x").await;
 
         let base = chrono::Utc::now().fixed_offset();
-        let task1 = insert_task(&db, strategy_id, "first", base).await;
-        let task2 = insert_task(
+        let task1 = insert_test_strategy_task(&db, strategy_id, "first", None, base).await;
+        let task2 = insert_test_strategy_task(
             &db,
             strategy_id,
             "second",
+            None,
             base + chrono::Duration::seconds(1),
         )
         .await;
-        let task3 = insert_task(
+        let task3 = insert_test_strategy_task(
             &db,
             strategy_id,
             "third",
+            None,
             base + chrono::Duration::seconds(2),
         )
         .await;
@@ -478,24 +422,30 @@ mod tests {
             vec![
                 json!({
                     "task_id": task3,
+                    "strategy_id": strategy_id,
                     "source": "frontend",
                     "prompt": "third",
                     "phase": "completed",
                     "error_summary": null,
+                    "purpose": null,
                 }),
                 json!({
                     "task_id": task2,
+                    "strategy_id": strategy_id,
                     "source": "frontend",
                     "prompt": "second",
                     "phase": "completed",
                     "error_summary": null,
+                    "purpose": null,
                 }),
                 json!({
                     "task_id": task1,
+                    "strategy_id": strategy_id,
                     "source": "frontend",
                     "prompt": "first",
                     "phase": "completed",
                     "error_summary": null,
+                    "purpose": null,
                 }),
             ],
         );
@@ -513,12 +463,12 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn list_strategy_tasks_scoped_to_strategy(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
-        let strategy_a = insert_strategy(&db, "a").await;
-        let strategy_b = insert_strategy(&db, "b").await;
+        let strategy_a = insert_test_strategy(&db, "a").await;
+        let strategy_b = insert_test_strategy(&db, "b").await;
 
         let base = chrono::Utc::now().fixed_offset();
-        let task_a = insert_task(&db, strategy_a, "for-a", base).await;
-        insert_task(&db, strategy_b, "for-b", base).await;
+        let task_a = insert_test_strategy_task(&db, strategy_a, "for-a", None, base).await;
+        insert_test_strategy_task(&db, strategy_b, "for-b", None, base).await;
 
         let res = server
             .get(&format!("/api/strategies/{strategy_a}/tasks"))
@@ -530,10 +480,12 @@ mod tests {
             body,
             vec![json!({
                 "task_id": task_a,
+                "strategy_id": strategy_a,
                 "source": "frontend",
                 "prompt": "for-a",
                 "phase": "completed",
                 "error_summary": null,
+                "purpose": null,
             })],
         );
     }

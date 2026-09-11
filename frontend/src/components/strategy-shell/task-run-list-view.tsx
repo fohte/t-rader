@@ -6,14 +6,16 @@ import { formatRelative } from '#lib/note-utils'
 
 export interface TaskRunListItem {
   taskId: string
+  strategyId: string
+  strategyName?: string
   prompt: string
   source: string
   phase: string
+  purpose: string | null
   createdAt: string
 }
 
 export interface TaskRunListViewProps {
-  strategyId: string
   tasks: TaskRunListItem[] | null
 }
 
@@ -39,7 +41,6 @@ function PhaseBadge({ phase }: { phase: string }) {
 }
 
 export function TaskRunListView({
-  strategyId,
   tasks,
 }: TaskRunListViewProps): React.ReactElement {
   if (tasks == null) {
@@ -66,12 +67,22 @@ export function TaskRunListView({
         <li key={t.taskId}>
           <Link
             to="/strategies/$id/runs/$taskId"
-            params={{ id: strategyId, taskId: t.taskId }}
+            params={{ id: t.strategyId, taskId: t.taskId }}
             className="flex items-center gap-3 border border-border bg-card px-3.5 py-2.5 hover:border-primary"
           >
             <span className="flex-1 truncate text-sm text-foreground">
               {t.prompt}
             </span>
+            {t.strategyName != null && (
+              <span className="font-mono text-2xs text-muted-foreground">
+                {t.strategyName}
+              </span>
+            )}
+            {t.purpose != null && (
+              <span className="font-mono text-2xs text-muted-foreground">
+                {t.purpose}
+              </span>
+            )}
             <span className="font-mono text-2xs text-muted-foreground">
               {sourceLabel(t.source)}
             </span>
