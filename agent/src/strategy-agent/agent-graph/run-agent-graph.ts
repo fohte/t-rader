@@ -322,6 +322,7 @@ const runForEachItems = async (
   // レイテンシ差が大きい場合は待ち時間が偏る。偏りが問題になれば worker pool 方式に置き換える。
   const chunkSize = Math.max(phase.maxParallel ?? items.length, 1)
   const outputs: unknown[] = []
+  const errors: unknown[] = []
 
   for (let start = 0; start < items.length; start += chunkSize) {
     const chunk = items.slice(start, start + chunkSize)
@@ -356,10 +357,24 @@ const runForEachItems = async (
         )
       }),
     )
+    // 1 件の失敗で打ち切らず、残りのチャンクも最後まで実行する。要素ごとの成否は
+    // recorder (実行ステップ) に既に記録済みのため、ここでは成功分の output だけを
+    // 集めて後続フェーズに渡す。
     for (const chunkResult of chunkResults) {
-      if (chunkResult.isErr()) return err(chunkResult.error)
-      outputs.push(chunkResult.value)
+      if (chunkResult.isErr()) {
+        errors.push(chunkResult.error)
+      } else {
+        outputs.push(chunkResult.value)
+      }
     }
+  }
+
+  if (outputs.length === 0) {
+    return err(
+      new Error(
+        `for_each の全要素 (${String(items.length)}件) が失敗しました: ${errorMessage(errors[0])}`,
+      ),
+    )
   }
 
   return ok(outputs)
