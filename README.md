@@ -92,7 +92,7 @@ docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_de
 
 ## Agent サービス
 
-`agent/` は A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤、internal API、observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/strategies/{id}/agent-config`) から LangGraph agent 構成、MCP tool 呼び出しまでの戦略実行ロジックを備える。
+`agent/` は A2A (Agent-to-Agent) プロトコルサーバー。A2A server 基盤、internal API、observability に加え、agent-config 取得 (`GET {BACKEND_API_BASE_URL}/api/agent-configs/{purpose}/agent-config`) から LangGraph agent 構成、MCP tool 呼び出しまでの戦略実行ロジックを備える。
 
 - DB は backend とは別の論理 DB (`t_rader_agent_development` / `t_rader_agent_test`) を同じ Postgres インスタンス上に持つ (`docker-compose.infra.yml` の initdb スクリプトで作成)。initdb は Postgres の data ディレクトリが空の初回起動時にしか実行されないため、既存の共有 `db_data` ボリュームを使っている場合は `docker compose -f docker-compose.infra.yml exec db psql -U t_rader -d t_rader_development -c 'CREATE DATABASE t_rader_agent_development'` 等で手動作成すること (test 用 DB も同様)
 - マイグレーションは drizzle-orm を使用し、起動時に自動実行される (`agent/drizzle/`)
@@ -156,7 +156,7 @@ pnpm run format   # ESLint + Prettier によるフォーマット
 | `BACKEND_WEBHOOK_URL`    | agent -> backend の push notification 送信先 URL                                                                                                                                                                                           | -                            |
 | `BACKEND_WEBHOOK_TOKEN`  | agent -> backend の push notification 送信を認証する bearer token                                                                                                                                                                          | -                            |
 | `AGENT_WEBHOOK_TOKEN`    | backend が agent からの push notification を認証する bearer token (`BACKEND_WEBHOOK_TOKEN` と同じ値)                                                                                                                                       | -                            |
-| `BACKEND_API_BASE_URL`   | agent が戦略の AGENTS.md / skills / model を取得する backend のベース URL                                                                                                                                                                  | -                            |
+| `BACKEND_API_BASE_URL`   | agent が目的 (purpose) の AGENTS.md / skills / model を取得する backend のベース URL                                                                                                                                                       | -                            |
 | `STRATEGY_MCP_URL`       | agent が strategy tool 群に接続する backend の MCP エンドポイント                                                                                                                                                                          | -                            |
 | `MGMT_MCP_URL`           | agent が strategy_id metadata の無い message から対象戦略を名前解決する際に使う backend の管理 MCP エンドポイント                                                                                                                          | -                            |
 | `LLM_API_KEY`            | agent が戦略 Agent の LLM 呼び出しに使う API キー (`LLM_BASE_URL` を差し替えた場合はその接続先の API キー)。未設定だと agent の起動に失敗する。docker-compose の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること | -                            |

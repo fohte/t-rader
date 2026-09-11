@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, FixedOffset};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -57,7 +55,8 @@ pub struct StrategyTaskStatusResponse {
     /// フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。
     #[schema(value_type = serde_json::Value)]
     pub steps: serde_json::Value,
-    /// 投入時に指定された purpose。`None` なら戦略の実行グラフでフェーズを表示する。
+    /// 投入時に指定された purpose。タスクは常に purpose キーの実行グラフでフェーズを
+    /// 表示する。`None` はこのカラムが追加される前に作成された行に限られる。
     pub purpose: Option<String>,
 }
 
@@ -72,42 +71,6 @@ pub struct StrategyTaskSummary {
     pub error_summary: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct AgentsMdBody {
-    pub content: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SkillBody {
-    pub content: String,
-}
-
-/// 戦略ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct AgentGraphBody {
-    pub content: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SkillsBody {
-    pub skills: BTreeMap<String, String>,
-}
-
-/// t-rader-agent がタスク実行時に取得する agent 設定一式。
-#[derive(Debug, Serialize, ToSchema)]
-pub struct AgentConfigResponse {
-    pub agents_md: String,
-    pub skills: BTreeMap<String, String>,
-    pub model: String,
-    pub small_model: String,
-    /// 多段フェーズ実行設定 (YAML)。未設定なら空文字列。
-    pub agent_graph: String,
 }
 
 /// 戦略の投資可能額を新しい history 行として記録するリクエスト。

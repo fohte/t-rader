@@ -133,6 +133,9 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
     match err {
         SubmitTaskError::EmptyPrompt => invalid_params("prompt must not be empty"),
         SubmitTaskError::StrategyNotFound(id) => invalid_params(format!("strategy {id} not found")),
+        SubmitTaskError::PurposeNotFound(purpose) => {
+            invalid_params(format!("agent_config for purpose '{purpose}' not found"))
+        }
         SubmitTaskError::Database(db_err) => db_error(db_err),
         SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
@@ -165,6 +168,8 @@ mod tests {
     use crate::agent_client::FakeAgentTaskClient;
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
+    use crate::services::agent_config;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::create_test_db;
 
     use super::super::tests_common::{build_server, insert_strategy};
@@ -178,6 +183,9 @@ mod tests {
     async fn submit_strategy_task_inserts_row_and_submits_to_agent(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long-term").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_next_task_id("agent-task-1").await;
         let server = build_server(db.clone(), fake.clone());
@@ -222,7 +230,7 @@ mod tests {
                 prompt: "inspect 7203".to_string(),
                 phase: StrategyTaskPhase::Running,
                 error_summary: None,
-                purpose: None,
+                purpose: Some(DEFAULT_PURPOSE.to_string()),
             }],
         );
     }
@@ -231,6 +239,9 @@ mod tests {
     async fn submit_strategy_task_forwards_purpose_to_agent_client(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long-term").await;
+        agent_config::create(&db, "explore".to_string())
+            .await
+            .expect("insert test agent_config");
         let fake = Arc::new(FakeAgentTaskClient::new());
         let server = build_server(db.clone(), fake.clone());
 
@@ -323,6 +334,9 @@ mod tests {
     async fn submit_strategy_task_persists_failure_on_agent_error(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::Api {
             status: 500,
@@ -355,6 +369,9 @@ mod tests {
     async fn get_strategy_task_status_returns_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let fake = Arc::new(FakeAgentTaskClient::new());
         let server = build_server(db.clone(), fake);
 

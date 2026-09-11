@@ -72,9 +72,7 @@ pub async fn create_agent_config(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
-/// 目的別 agent 設定を取得。
-/// `strategies::get_agent_config` (戦略 ID キー、`AgentConfigResponse` を返す) とは
-/// 別 API。こちらは purpose キーで `agent_config` テーブルの行をそのまま返す。
+/// 目的別 agent 設定を取得。purpose キーで `agent_config` テーブルの行をそのまま返す。
 #[utoipa::path(
     get,
     operation_id = "agent_config_get_agent_config",
@@ -98,8 +96,7 @@ pub async fn get_agent_config(
 }
 
 /// 目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
-/// t-rader-agent が purpose 付きタスク実行時に呼び出す。
-/// `strategies::get_agent_config` (戦略 ID キー) の purpose キー版。
+/// t-rader-agent がタスク実行のたびに呼び出す。
 #[utoipa::path(
     get,
     operation_id = "agent_config_get_agent_config_bundle",

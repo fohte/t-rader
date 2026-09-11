@@ -1,9 +1,9 @@
-//! 戦略 1 行の設定 (name / description / sort_order / agents_md / skills / agent_graph) の
+//! 戦略 1 行の設定 (name / description / sort_order / risk_policy) の
 //! 取得・作成・部分更新・削除の共通経路。
 //!
 //! REST (`handlers::strategies`) と管理 MCP (`mcp::mgmt`) の両方から同じカラムへの書き込みが
 //! 発生しうるため、検証・DB 更新・change_history 記録をここに集約し、書き込み経路を 1 つに
-//! 保つ。agent_graph 固有の YAML 検証は `services::agent_graph` に残し、DB 更新のみここに委譲する。
+//! 保つ。
 
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
@@ -32,72 +32,10 @@ pub fn validate_name(value: &str) -> Result<String, AppError> {
     Ok(trimmed)
 }
 
-pub fn validate_skill_name(name: &str) -> Result<(), AppError> {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return Err(AppError::Validation("skill name must not be empty".into()));
-    };
-    if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
-        return Err(AppError::Validation(
-            "skill name must start with [a-z0-9]".into(),
-        ));
-    }
-    for c in chars {
-        if !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-') {
-            return Err(AppError::Validation(
-                "skill name must match ^[a-z0-9][a-z0-9_-]*$".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-pub fn skills_object(value: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
-    value
-        .as_object()
-        .cloned()
-        .unwrap_or_else(serde_json::Map::new)
-}
-
-/// skills カラムの JSON オブジェクトを文字列値のみ抽出して `BTreeMap` に変換する。
-pub fn skills_to_btree(value: &serde_json::Value) -> std::collections::BTreeMap<String, String> {
-    let mut out = std::collections::BTreeMap::new();
-    if let Some(map) = value.as_object() {
-        for (k, v) in map {
-            if let Some(s) = v.as_str() {
-                out.insert(k.clone(), s.to_string());
-            }
-        }
-    }
-    out
-}
-
-/// JSON Merge Patch (RFC 7396) 相当のセマンティクスで skills をマージする。patch の値が
-/// null のキーは削除し、それ以外は追加/更新する。DB には触らない純粋関数。
-/// 現在の呼び出し元 (`put_skill`) は null を渡さないため削除分岐は未使用だが、
-/// 後続 PR の `update_strategy_config` MCP tool が null によるキー削除にそのまま使う。
-pub fn apply_skills_patch(
-    current: &serde_json::Value,
-    patch: serde_json::Map<String, serde_json::Value>,
-) -> serde_json::Map<String, serde_json::Value> {
-    let mut map = skills_object(current);
-    for (k, v) in patch {
-        if v.is_null() {
-            map.remove(&k);
-        } else {
-            map.insert(k, v);
-        }
-    }
-    map
-}
-
 pub struct CreateStrategy {
     pub name: String,
     pub description: Option<String>,
     pub sort_order: i32,
-    pub agents_md: Option<String>,
-    pub skills: Option<serde_json::Value>,
-    pub agent_graph: Option<String>,
 }
 
 pub async fn create(
@@ -113,9 +51,6 @@ pub async fn create(
         name: Set(name.clone()),
         description: Set(params.description),
         sort_order: Set(params.sort_order),
-        agents_md: params.agents_md.map(Set).unwrap_or(NotSet),
-        skills: params.skills.map(Set).unwrap_or(NotSet),
-        agent_graph: params.agent_graph.map(Set).unwrap_or(NotSet),
         created_at: NotSet,
         updated_at: NotSet,
         risk_policy: NotSet,
@@ -124,8 +59,6 @@ pub async fn create(
     let created = strategy::Entity::insert(model)
         .exec_with_returning(&txn)
         .await?;
-    // DB デフォルト (agents_md/skills/agent_graph 省略時) を diff に正しく反映するため、
-    // 渡されたパラメータではなく作成後の行の実値を使う。
     change_history::record_as(
         &txn,
         actor,
@@ -136,9 +69,6 @@ pub async fn create(
             "name": created.name,
             "sort_order": created.sort_order,
             "description": created.description,
-            "agents_md": created.agents_md,
-            "skills": created.skills,
-            "agent_graph": created.agent_graph,
         }),
         Some(format!("created strategy {name}")),
     )
@@ -153,9 +83,6 @@ pub struct StrategyUpdate {
     pub name: Option<String>,
     pub description: Option<String>,
     pub sort_order: Option<i32>,
-    pub agents_md: Option<String>,
-    pub skills_patch: Option<serde_json::Map<String, serde_json::Value>>,
-    pub agent_graph: Option<String>,
 }
 
 pub async fn update(
@@ -187,28 +114,6 @@ pub async fn update(
         );
         active.sort_order = Set(sort_order);
     }
-    if let Some(content) = payload.agents_md {
-        diff.insert(
-            "agents_md".into(),
-            json!({ "from": current.agents_md, "to": content }),
-        );
-        active.agents_md = Set(content);
-    }
-    if let Some(patch) = payload.skills_patch {
-        let merged = apply_skills_patch(&current.skills, patch);
-        diff.insert(
-            "skills".into(),
-            json!({ "from": current.skills, "to": merged }),
-        );
-        active.skills = Set(serde_json::Value::Object(merged));
-    }
-    if let Some(content) = payload.agent_graph {
-        diff.insert(
-            "agent_graph".into(),
-            json!({ "from": current.agent_graph, "to": content }),
-        );
-        active.agent_graph = Set(content);
-    }
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
 
     let txn = db.begin().await?;
@@ -228,87 +133,6 @@ pub async fn update(
     txn.commit().await?;
 
     Ok(updated)
-}
-
-pub async fn save_agents_md(
-    db: &DatabaseConnection,
-    actor: Actor,
-    id: Uuid,
-    content: String,
-) -> Result<String, AppError> {
-    let current = find_or_404(db, id).await?;
-    let prev = current.agents_md.clone();
-    let mut active = current.into_active_model();
-    active.agents_md = Set(content.clone());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record_as(
-        &txn,
-        actor,
-        TargetKind::Strategy,
-        id,
-        Op::Update,
-        json!({ "agents_md": { "from": prev, "to": content } }),
-        Some("updated agents_md".to_string()),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(updated.agents_md)
-}
-
-pub async fn save_skills(
-    db: &DatabaseConnection,
-    actor: Actor,
-    current: strategy::Model,
-    skills: serde_json::Value,
-    op_desc: String,
-) -> Result<strategy::Model, AppError> {
-    let id = current.id;
-    let prev_skills = current.skills.clone();
-    let mut active = current.into_active_model();
-    active.skills = Set(skills.clone());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record_as(
-        &txn,
-        actor,
-        TargetKind::Strategy,
-        id,
-        Op::Update,
-        json!({ "skills": { "from": prev_skills, "to": skills } }),
-        Some(op_desc),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(updated)
-}
-
-/// 単一 skill を削除する。存在しない skill 名を指定した場合は `NotFound` を返す。
-pub async fn delete_skill(
-    db: &DatabaseConnection,
-    actor: Actor,
-    id: Uuid,
-    name: &str,
-) -> Result<strategy::Model, AppError> {
-    let current = find_or_404(db, id).await?;
-    let mut map = skills_object(&current.skills);
-    if map.remove(name).is_none() {
-        return Err(AppError::NotFound(format!("skill {name} not found")));
-    }
-    save_skills(
-        db,
-        actor,
-        current,
-        serde_json::Value::Object(map),
-        format!("deleted skill {name}"),
-    )
-    .await
 }
 
 /// risk_policy カラムの保存 (検証は呼び出し元の handler が事前に済ませる前提)。
@@ -339,36 +163,6 @@ pub async fn save_risk_policy(
     txn.commit().await?;
 
     Ok(updated)
-}
-
-/// agent_graph カラムの保存 (検証は `services::agent_graph` が事前に済ませる前提)。
-pub async fn save_agent_graph(
-    db: &DatabaseConnection,
-    actor: Actor,
-    id: Uuid,
-    content: String,
-) -> Result<String, AppError> {
-    let current = find_or_404(db, id).await?;
-    let prev = current.agent_graph.clone();
-    let mut active = current.into_active_model();
-    active.agent_graph = Set(content.clone());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record_as(
-        &txn,
-        actor,
-        TargetKind::Strategy,
-        id,
-        Op::Update,
-        json!({ "agent_graph": { "from": prev, "to": content } }),
-        Some("updated agent_graph".to_string()),
-    )
-    .await?;
-    txn.commit().await?;
-
-    Ok(updated.agent_graph)
 }
 
 /// 戦略を削除する。関連リソース (note / annotation / trade / trigger 等) は DB の
@@ -430,170 +224,10 @@ pub async fn delete_confirmed(
 
 #[cfg(test)]
 mod tests {
-    use axum::response::IntoResponse;
-    use sea_orm::EntityTrait;
-    use serde_json::json;
     use sqlx::PgPool;
 
     use super::*;
     use crate::testing::{create_test_db, insert_test_strategy};
-
-    // 実際の並行リクエストは非決定的なため、read (find_or_404) と update (save_skills) の
-    // 間に別経路で削除を挟むことで、本来並行削除が起こるタイミングを決定的に再現する。
-    #[sqlx::test(migrations = false)]
-    async fn save_skills_returns_404_when_strategy_deleted_concurrently(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let id = insert_test_strategy(&db, "s").await;
-
-        let current = save_skills(
-            &db,
-            Actor::Human,
-            find_or_404(&db, id).await.expect("find strategy"),
-            json!({ "scout": "first" }),
-            "added skill scout".to_string(),
-        )
-        .await
-        .expect("save skills");
-
-        strategy::Entity::delete_by_id(id)
-            .exec(&db)
-            .await
-            .expect("delete strategy");
-
-        let mut map = skills_object(&current.skills);
-        map.remove("scout");
-        let err = save_skills(
-            &db,
-            Actor::Human,
-            current,
-            serde_json::Value::Object(map),
-            "deleted skill scout".to_string(),
-        )
-        .await
-        .expect_err("update against a deleted row must fail");
-
-        let response = err.into_response();
-        let status = response.status();
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("read body");
-        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("parse json body");
-        assert_eq!(
-            (status, body),
-            (
-                axum::http::StatusCode::NOT_FOUND,
-                json!({ "error": "resource not found" }),
-            )
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn delete_skill_returns_404_for_unknown_skill(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let id = insert_test_strategy(&db, "s").await;
-
-        let err = delete_skill(&db, Actor::Human, id, "missing")
-            .await
-            .expect_err("must fail");
-        assert!(matches!(err, AppError::NotFound(_)));
-    }
-
-    #[test]
-    fn apply_skills_patch_upserts_and_deletes_via_null() {
-        let current = json!({ "scout": "old", "review": "keep" });
-        let mut patch = serde_json::Map::new();
-        patch.insert("scout".to_string(), json!("new"));
-        patch.insert("review".to_string(), serde_json::Value::Null);
-        patch.insert("added".to_string(), json!("v"));
-
-        let merged = apply_skills_patch(&current, patch);
-        assert_eq!(
-            serde_json::Value::Object(merged),
-            json!({ "scout": "new", "added": "v" }),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn create_persists_agents_md_skills_and_agent_graph(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
-        let created = create(
-            &db,
-            Actor::Human,
-            CreateStrategy {
-                name: "s".to_string(),
-                description: None,
-                sort_order: 0,
-                agents_md: Some("# 方針".to_string()),
-                skills: Some(json!({ "scout": "scout body" })),
-                agent_graph: Some("phases: []".to_string()),
-            },
-        )
-        .await
-        .expect("create");
-
-        let found = find_or_404(&db, created.id).await.expect("find");
-        assert_eq!(
-            (found.agents_md, found.skills, found.agent_graph),
-            (
-                "# 方針".to_string(),
-                json!({ "scout": "scout body" }),
-                "phases: []".to_string(),
-            ),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn update_applies_agents_md_skills_and_agent_graph_together(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let id = insert_test_strategy(&db, "s").await;
-        save_skills(
-            &db,
-            Actor::Human,
-            find_or_404(&db, id).await.expect("find strategy"),
-            json!({ "old": "old body" }),
-            "seed".to_string(),
-        )
-        .await
-        .expect("seed skills");
-
-        let mut skills_patch = serde_json::Map::new();
-        skills_patch.insert("old".to_string(), serde_json::Value::Null);
-        skills_patch.insert("new".to_string(), json!("new body"));
-
-        let updated = update(
-            &db,
-            Actor::Human,
-            id,
-            StrategyUpdate {
-                agents_md: Some("# 方針".to_string()),
-                skills_patch: Some(skills_patch),
-                agent_graph: Some("phases: []".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("update");
-
-        assert_eq!(
-            (
-                updated.name,
-                updated.description,
-                updated.sort_order,
-                updated.agents_md,
-                updated.skills,
-                updated.agent_graph,
-            ),
-            (
-                "s".to_string(),
-                None,
-                0,
-                "# 方針".to_string(),
-                json!({ "new": "new body" }),
-                "phases: []".to_string(),
-            ),
-        );
-    }
 
     #[sqlx::test(migrations = false)]
     async fn delete_records_change_history_with_given_actor(pool: PgPool) {

@@ -10,7 +10,7 @@ export interface Env {
   A2A_WATCHDOG_TIMEOUT_MS: number
   A2A_RETENTION_DAYS: number
   // Base URL of t-rader backend, used to fetch AGENTS.md / skills / model
-  // via GET {base}/api/strategies/{id}/agent-config.
+  // via GET {base}/api/agent-configs/{purpose}/agent-config.
   BACKEND_API_BASE_URL: string
   // Same target as backend's STRATEGY_MCP_URL env (the strategy MCP
   // endpoint).

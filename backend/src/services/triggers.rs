@@ -321,6 +321,8 @@ mod fire_tests {
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::{strategy, strategy_task, trigger};
+    use crate::services::agent_config;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::create_test_db;
 
     use super::*;
@@ -332,9 +334,6 @@ mod fire_tests {
             name: Set(name.to_string()),
             description: Set(None),
             sort_order: Set(0),
-            agents_md: NotSet,
-            skills: NotSet,
-            agent_graph: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
             risk_policy: NotSet,
@@ -415,6 +414,9 @@ mod fire_tests {
     async fn fire_creates_strategy_task_with_expected_source(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "長期").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let tid = seed_hook_trigger(&db, sid, "tv", "alert {{payload.symbol}}").await;
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
@@ -455,6 +457,9 @@ mod fire_tests {
     async fn fire_with_cron_source_writes_cron(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let id = Uuid::new_v4();
         trigger::ActiveModel {
             trigger_id: Set(id),
@@ -567,6 +572,9 @@ mod fire_tests {
     async fn fire_does_not_update_last_fired_when_submit_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "p").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let tid = seed_hook_trigger(&db, sid, "p", "x").await;
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::Api {

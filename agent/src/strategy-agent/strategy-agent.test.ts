@@ -165,9 +165,7 @@ describe('runStrategyAgent', () => {
     )
 
     expect.soft(result).toEqual({ status: 'completed', message: 'done' })
-    expect
-      .soft(calls.fetchAgentConfigKey)
-      .toEqual({ kind: 'strategy', strategyId: 'strategy-1' })
+    expect.soft(calls.fetchAgentConfigKey).toEqual({ purpose: 'default' })
     expect.soft(calls.createMcpClientStrategyId).toBe('strategy-1')
     expect.soft(calls.createMcpClientTaskId).toBe('task-1')
     expect.soft(calls.createChatModelArg).toBe('opencode-go/minimax-m3')
@@ -181,7 +179,7 @@ describe('runStrategyAgent', () => {
     expect.soft(calls.mcpClientClosed).toBe(true)
   })
 
-  it('fetches agent config by purpose key when purpose is given, ignoring strategyId for that lookup', async () => {
+  it('passes the given purpose straight through to fetchAgentConfig instead of the default', async () => {
     const { deps, calls } = buildDeps({
       agentInvoke: () =>
         Promise.resolve({
@@ -198,7 +196,6 @@ describe('runStrategyAgent', () => {
     )
 
     expect(calls.fetchAgentConfigKey).toEqual({
-      kind: 'purpose',
       purpose: 'purpose-a',
     })
   })

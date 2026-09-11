@@ -43,11 +43,9 @@ const isAgentConfigResponseBody = (
   )
 }
 
-// Both keys map to the same AgentConfigResponse shape on the backend, just a
-// different URL.
-export type AgentConfigKey =
-  | { readonly kind: 'strategy'; readonly strategyId: string }
-  | { readonly kind: 'purpose'; readonly purpose: string }
+export interface AgentConfigKey {
+  readonly purpose: string
+}
 
 export type FetchAgentConfig = (
   key: AgentConfigKey,
@@ -57,14 +55,9 @@ const agentConfigUrl = (
   backendApiBaseUrl: string,
   key: AgentConfigKey,
 ): string =>
-  key.kind === 'strategy'
-    ? `${backendApiBaseUrl}/api/strategies/${encodeURIComponent(key.strategyId)}/agent-config`
-    : `${backendApiBaseUrl}/api/agent-configs/${encodeURIComponent(key.purpose)}/agent-config`
+  `${backendApiBaseUrl}/api/agent-configs/${encodeURIComponent(key.purpose)}/agent-config`
 
-const describeKey = (key: AgentConfigKey): string =>
-  key.kind === 'strategy'
-    ? `strategy ${key.strategyId}`
-    : `purpose ${key.purpose}`
+const describeKey = (key: AgentConfigKey): string => `purpose ${key.purpose}`
 
 export const createAgentConfigFetcher = (
   backendApiBaseUrl: string,

@@ -22,6 +22,8 @@ use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::strategy_task;
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
 use crate::mcp::watcher;
+use crate::services::agent_config;
+use crate::services::strategy_tasks::DEFAULT_PURPOSE;
 use crate::services::trigger_worker;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
@@ -35,6 +37,9 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
     let (db, server) =
         create_test_server_with_db_and_agent_client(pool, agent_client.clone()).await;
     let strategy_id = insert_test_strategy(&db, "s").await;
+    agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        .await
+        .expect("insert test agent_config");
 
     let mgmt = MgmtServer::new(db.clone(), agent_client.clone());
     mgmt.submit_strategy_task(Parameters(SubmitStrategyTaskParams {
@@ -158,6 +163,9 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
     let (db, server) =
         create_test_server_with_db_and_agent_client(pool, agent_client.clone()).await;
     let strategy_id = insert_test_strategy(&db, "s").await;
+    agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        .await
+        .expect("insert test agent_config");
 
     let submit = server
         .post(&format!("/api/strategies/{strategy_id}/chat"))
@@ -206,7 +214,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
             "error_summary": null,
             "result_text": "7203 は堅調",
             "steps": [],
-            "purpose": null,
+            "purpose": "default",
         }),
     );
 }

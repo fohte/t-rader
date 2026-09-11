@@ -227,7 +227,7 @@
         "tags": [
           "agent_config"
         ],
-        "summary": "目的別 agent 設定を取得。\n`strategies::get_agent_config` (戦略 ID キー、`AgentConfigResponse` を返す) とは\n別 API。こちらは purpose キーで `agent_config` テーブルの行をそのまま返す。",
+        "summary": "目的別 agent 設定を取得。purpose キーで `agent_config` テーブルの行をそのまま返す。",
         "operationId": "agent_config_get_agent_config",
         "parameters": [
           {
@@ -322,7 +322,7 @@
         "tags": [
           "agent_config"
         ],
-        "summary": "目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent が purpose 付きタスク実行時に呼び出す。\n`strategies::get_agent_config` (戦略 ID キー) の purpose キー版。",
+        "summary": "目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出す。",
         "operationId": "agent_config_get_agent_config_bundle",
         "parameters": [
           {
@@ -1556,7 +1556,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -2209,7 +2209,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -3906,7 +3906,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -4954,377 +4954,6 @@
         }
       }
     },
-    "/api/strategies/{id}/agent-config": {
-      "get": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。\n`agent_config::get_agent_config` (purpose キー) とは別 API。",
-        "operationId": "get_agent_config",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentConfigResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/strategies/{id}/agent-graph": {
-      "get": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の多段フェーズ実行設定 (YAML) を取得",
-        "operationId": "get_agent_graph",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentGraphBody"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の多段フェーズ実行設定 (YAML) を上書き保存する。\nパースできない YAML や、`for_each` の参照先が手前のフェーズに実在しない配列である\nといった不正な設定は 400 で弾く。",
-        "operationId": "put_agent_graph",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentGraphBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentGraphBody"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "YAML が不正、またはフェーズ定義が不正 (キー重複・for_each の参照先不備など)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/strategies/{id}/agents-md": {
-      "get": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の AGENTS.md (方針 / 制約 markdown) を取得",
-        "operationId": "get_agents_md",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentsMdBody"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の AGENTS.md を上書き保存し、Agent reconcile を再発火",
-        "operationId": "put_agents_md",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentsMdBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentsMdBody"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/strategies/{id}/chat": {
       "post": {
         "tags": [
@@ -5416,7 +5045,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -6736,325 +6365,6 @@
             }
           },
           "422": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/strategies/{id}/skills": {
-      "get": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の skills 全件取得",
-        "operationId": "get_skills",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillsBody"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の skills 全置換",
-        "operationId": "put_skills",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SkillsBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillsBody"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/strategies/{id}/skills/{name}": {
-      "put": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の単一 skill 追加 / 更新",
-        "operationId": "put_skill",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "name",
-            "in": "path",
-            "description": "skill 名 (^[a-z0-9][a-z0-9_-]*$)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SkillBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillBody"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略 Agent の単一 skill 削除",
-        "operationId": "delete_skill",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "name",
-            "in": "path",
-            "description": "skill 名",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
             "description": "",
             "content": {
               "application/json": {
@@ -8506,7 +7816,7 @@
       },
       "AgentGraphBody": {
         "type": "object",
-        "description": "戦略ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。",
+        "description": "目的ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。",
         "required": [
           "content"
         ],
@@ -10370,18 +9680,9 @@
           "sort_order",
           "created_at",
           "updated_at",
-          "agents_md",
-          "skills",
-          "agent_graph",
           "risk_policy"
         ],
         "properties": {
-          "agent_graph": {
-            "type": "string"
-          },
-          "agents_md": {
-            "type": "string"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -10400,9 +9701,6 @@
             "type": "string"
           },
           "risk_policy": {
-            "$ref": "#/components/schemas/Value"
-          },
-          "skills": {
             "$ref": "#/components/schemas/Value"
           },
           "sort_order": {
@@ -10587,7 +9885,7 @@
               "string",
               "null"
             ],
-            "description": "投入時に指定された purpose。`None` なら戦略の実行グラフでフェーズを表示する。"
+            "description": "投入時に指定された purpose。タスクは常に purpose キーの実行グラフでフェーズを\n表示する。`None` はこのカラムが追加される前に作成された行に限られる。"
           },
           "result_text": {
             "type": [

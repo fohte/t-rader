@@ -2,7 +2,7 @@
 //!
 //! REST handler から叩く。入力バリデーション (purpose / skill 名の slug 正規表現、
 //! agent_graph の YAML 検証) もここで集約する。agent_graph の YAML パース自体は
-//! `services::agent_graph` (戦略の agent_graph とも共用する汎用ロジック) に委譲する。
+//! `services::agent_graph` に委譲する。
 //!
 //! `change_history::TargetKind` に対応する種別が無いため、変更前後の値は
 //! `account_risk_policy` と同様に `tracing::info!` にのみ残す。
@@ -16,7 +16,6 @@ use uuid::Uuid;
 
 use crate::entities::agent_config;
 use crate::services::agent_graph::{self as agent_graph_svc, AgentGraphError};
-use crate::services::strategy_config::{apply_skills_patch, skills_object, skills_to_btree};
 
 const SLUG_PATTERN_DESC: &str = "^[a-z0-9][a-z0-9_-]*$";
 
@@ -82,6 +81,43 @@ fn classify_insert_error(err: DbErr, purpose: &str) -> AgentConfigError {
         return AgentConfigError::DuplicatePurpose(purpose.to_string());
     }
     AgentConfigError::Database(err)
+}
+
+pub fn skills_object(value: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+    value
+        .as_object()
+        .cloned()
+        .unwrap_or_else(serde_json::Map::new)
+}
+
+/// skills カラムの JSON オブジェクトを文字列値のみ抽出して `BTreeMap` に変換する。
+pub fn skills_to_btree(value: &serde_json::Value) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    if let Some(map) = value.as_object() {
+        for (k, v) in map {
+            if let Some(s) = v.as_str() {
+                out.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// JSON Merge Patch (RFC 7396) 相当のセマンティクスで skills をマージする。patch の値が
+/// null のキーは削除し、それ以外は追加/更新する。DB には触らない純粋関数。
+pub fn apply_skills_patch(
+    current: &serde_json::Value,
+    patch: serde_json::Map<String, serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut map = skills_object(current);
+    for (k, v) in patch {
+        if v.is_null() {
+            map.remove(&k);
+        } else {
+            map.insert(k, v);
+        }
+    }
+    map
 }
 
 /// purpose 昇順で全件返す
@@ -266,7 +302,7 @@ where
     (model, small_model)
 }
 
-/// 戦略キー版・purpose キー版の `AgentConfigResponse` 構築を共通化する。
+/// `AgentConfigResponse` を組み立てる。
 pub(crate) fn build_agent_config_response(
     agents_md: String,
     skills: std::collections::BTreeMap<String, String>,
@@ -317,6 +353,21 @@ mod tests {
     #[case::leading_dash("-explore")]
     fn is_valid_slug_rejects(#[case] value: &str) {
         assert!(!is_valid_slug(value));
+    }
+
+    #[test]
+    fn apply_skills_patch_upserts_and_deletes_via_null() {
+        let current = serde_json::json!({ "scout": "old", "review": "keep" });
+        let mut patch = serde_json::Map::new();
+        patch.insert("scout".to_string(), serde_json::json!("new"));
+        patch.insert("review".to_string(), serde_json::Value::Null);
+        patch.insert("added".to_string(), serde_json::json!("v"));
+
+        let merged = apply_skills_patch(&current, patch);
+        assert_eq!(
+            serde_json::Value::Object(merged),
+            serde_json::json!({ "scout": "new", "added": "v" }),
+        );
     }
 
     #[sqlx::test(migrations = false)]

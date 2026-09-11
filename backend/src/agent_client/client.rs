@@ -63,7 +63,8 @@ impl AgentTaskState {
 pub struct SubmitAgentTask {
     pub strategy_id: Uuid,
     pub prompt: String,
-    /// 目的別 agent_config を使わせたい場合の purpose キー。`None` なら戦略キーの agent-config を使う (従来通り)。
+    /// タスク実行に使う `agent_config` テーブルの purpose キー。`services::strategy_tasks::submit_task`
+    /// が常に解決済みの値を詰めるため、実質的に `None` にはならない。
     pub purpose: Option<String>,
 }
 

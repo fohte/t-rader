@@ -12,45 +12,6 @@ afterEach(() => {
 
 describe('createAgentConfigFetcher', () => {
   it('fetches and maps the backend agent-config response to camelCase', async () => {
-    const fetchMock = vi.fn(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- typed only so fetchMock.mock.calls[0][0] below is typed, the response body doesn't depend on it
-      (_input: string | URL | Request): Promise<Response> =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({
-              agents_md: '# AGENTS',
-              skills: { 'ja-stock': 'skill body' },
-              model: 'opencode-go/minimax-m3',
-              small_model: 'opencode-go/deepseek-v4-flash',
-              agent_graph: 'phases: []',
-            }),
-            { status: 200 },
-          ),
-        ),
-    )
-    vi.stubGlobal('fetch', fetchMock)
-
-    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig({
-      kind: 'strategy',
-      strategyId: 'strategy-1',
-    })
-
-    expect(result).toEqual(
-      ok({
-        agentsMd: '# AGENTS',
-        skills: { 'ja-stock': 'skill body' },
-        model: 'opencode-go/minimax-m3',
-        smallModel: 'opencode-go/deepseek-v4-flash',
-        agentGraph: 'phases: []',
-      }),
-    )
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      'http://backend/api/strategies/strategy-1/agent-config',
-    )
-  })
-
-  it('fetches by purpose from the purpose-keyed endpoint when given a purpose key', async () => {
     const fetchMock = vi.fn<
       (input: string | URL | Request) => Promise<Response>
     >(() =>
@@ -70,10 +31,7 @@ describe('createAgentConfigFetcher', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig({
-      kind: 'purpose',
-      purpose: 'purpose-a',
-    })
+    const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
     expect(result).toEqual(
       ok({
@@ -109,10 +67,7 @@ describe('createAgentConfigFetcher', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    await fetchAgentConfig({
-      kind: 'purpose',
-      purpose: '../strategies/other-id',
-    })
+    await fetchAgentConfig({ purpose: '../strategies/other-id' })
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       'http://backend/api/agent-configs/..%2Fstrategies%2Fother-id/agent-config',
@@ -126,36 +81,30 @@ describe('createAgentConfigFetcher', () => {
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig({
-      kind: 'strategy',
-      strategyId: 'strategy-1',
-    })
+    const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
     expect(result).toEqual(
       err(
         new AgentConfigFetchError(
-          'failed to fetch agent config for strategy strategy-1',
+          'failed to fetch agent config for purpose purpose-a',
         ),
       ),
     )
   })
 
-  it('returns an error with the strategy id and status when the backend responds with an error', async () => {
+  it('returns an error with the purpose and status when the backend responds with an error', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.resolve(new Response('not found', { status: 404 }))),
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig({
-      kind: 'strategy',
-      strategyId: 'missing-strategy',
-    })
+    const result = await fetchAgentConfig({ purpose: 'missing-purpose' })
 
     expect(result).toEqual(
       err(
         new AgentConfigFetchError(
-          'failed to fetch agent config for strategy missing-strategy: 404',
+          'failed to fetch agent config for purpose missing-purpose: 404',
         ),
       ),
     )
@@ -168,15 +117,12 @@ describe('createAgentConfigFetcher', () => {
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig({
-      kind: 'strategy',
-      strategyId: 'strategy-1',
-    })
+    const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
     expect(result).toEqual(
       err(
         new AgentConfigFetchError(
-          'failed to parse agent-config response body for strategy strategy-1',
+          'failed to parse agent-config response body for purpose purpose-a',
         ),
       ),
     )
@@ -215,15 +161,12 @@ describe('createAgentConfigFetcher', () => {
     )
 
     const fetchAgentConfig = createAgentConfigFetcher('http://backend')
-    const result = await fetchAgentConfig({
-      kind: 'strategy',
-      strategyId: 'strategy-1',
-    })
+    const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
     expect(result).toEqual(
       err(
         new AgentConfigFetchError(
-          'malformed agent-config response for strategy strategy-1: expected agents_md/model/small_model/agent_graph strings and a skills map of strings',
+          'malformed agent-config response for purpose purpose-a: expected agents_md/model/small_model/agent_graph strings and a skills map of strings',
         ),
       ),
     )

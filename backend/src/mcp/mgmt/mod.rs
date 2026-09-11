@@ -24,8 +24,8 @@
 //! - `dto`: 各 tool の入出力スキーマ
 //! - `strategies`: 戦略一覧・タスク投入・タスク status
 //!   (`list_strategies_inner` / `submit_strategy_task_inner` / `get_strategy_task_status_inner`)
-//! - `strategy_config`: 戦略設定 (name/description/agents_md/skills/agent_graph) の
-//!   取得・作成・更新・削除と、戦略に紐づく trigger の一覧取得 (読み取り専用)
+//! - `strategy_config`: 戦略設定 (name/description) の取得・作成・更新・削除と、
+//!   戦略に紐づく trigger の一覧取得 (読み取り専用)
 //!   (`get_strategy_config_inner` / `create_strategy_inner` / `update_strategy_config_inner` /
 //!   `delete_strategy_inner`)
 //! - `triggers`: trigger の作成・更新・削除
@@ -152,10 +152,10 @@ impl MgmtServer {
         self.get_strategy_task_status_inner(params).await.map(Json)
     }
 
-    /// 戦略の設定 (name/description/agents_md/skills/agent_graph) と trigger 一覧を取得する
+    /// 戦略の設定 (name/description) と trigger 一覧を取得する
     #[tool(
         name = "get_strategy_config",
-        description = "Get a strategy's full config: name, description, agents_md, skills, agent_graph, and its triggers.",
+        description = "Get a strategy's full config: name, description, and its triggers.",
         annotations(read_only_hint = true)
     )]
     async fn get_strategy_config(
@@ -165,10 +165,10 @@ impl MgmtServer {
         self.get_strategy_config_inner(params).await.map(Json)
     }
 
-    /// 戦略を作成する (name のみ必須、他は任意で 1 回の呼び出しでまとめて設定できる)
+    /// 戦略を作成する (name のみ必須、description は任意)
     #[tool(
         name = "create_strategy",
-        description = "Create a new strategy with name (required) and optionally description, agents_md, skills, and agent_graph in one call. On a validation failure (empty name, a bad skill name, or invalid agent_graph YAML) this returns ok=false with all the errors it found instead of failing the tool call, so the caller can read them, fix the input, and retry; no strategy is created when any error is present."
+        description = "Create a new strategy with name (required) and optionally description. On a validation failure (empty name) this returns ok=false with all the errors it found instead of failing the tool call, so the caller can read them, fix the input, and retry; no strategy is created when any error is present."
     )]
     async fn create_strategy(
         &self,
@@ -180,7 +180,7 @@ impl MgmtServer {
     /// 戦略の設定を部分更新する (1 回の呼び出しで複数フィールドをまとめて atomic に反映)
     #[tool(
         name = "update_strategy_config",
-        description = "Update only the given fields of a strategy's config in one atomic call. skills uses JSON Merge Patch semantics: a null value deletes that skill, anything else upserts it, and omitted keys are left unchanged. On a validation failure (a bad skill name or invalid agent_graph YAML) this returns ok=false with all the errors it found instead of failing the tool call; nothing is written when any error is present."
+        description = "Update only the given fields of a strategy's config in one atomic call. On a validation failure (empty name) this returns ok=false with all the errors it found instead of failing the tool call; nothing is written when any error is present."
     )]
     async fn update_strategy_config(
         &self,

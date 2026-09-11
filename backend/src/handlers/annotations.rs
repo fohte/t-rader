@@ -334,7 +334,7 @@ pub async fn approve_annotation(
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
-        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定、または agent_config が見つからない", body = ErrorResponse),
     )
 )]
 pub async fn reject_annotation(
@@ -421,6 +421,8 @@ mod tests {
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
+    use crate::services::agent_config;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
@@ -551,6 +553,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let anno_id = create_test_annotation(&server, strategy_id).await;
 
         let res = server
@@ -603,6 +608,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let anno_id = create_test_annotation(&server, strategy_id).await;
 
         for _ in 0..2 {
@@ -628,6 +636,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake;
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let anno_id = create_test_annotation(&server, strategy_id).await;
 
         let res = server
