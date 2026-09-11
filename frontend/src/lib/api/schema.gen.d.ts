@@ -1501,13 +1501,14 @@ export interface components {
      * @description 戦略の関心 (interest) を新規追加するリクエスト。
      *
      *     `ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。
-     *     `role` は省略時 `seed`、`origin` は省略時 `human`。
+     *     `role` は省略時 `seed`、`origin` は省略時 `human`、`status` は省略時 `active`。
      */
     CreateInterestRequest: {
       origin?: string | null
       ref_id: string
       ref_kind: string
       role?: string | null
+      status?: string | null
     }
     CreateNoteRequest: {
       body_md: string
@@ -1959,6 +1960,7 @@ export interface components {
       ref_id: string
       ref_kind: string
       role: string
+      status: string
       /** Format: uuid */
       strategy_id?: string | null
     }
@@ -2101,10 +2103,11 @@ export interface components {
       status?: string | null
       title?: string | null
     }
-    /** @description 既存の関心の role / origin を更新するリクエスト。 */
+    /** @description 既存の関心の role / origin / status を更新するリクエスト。 */
     UpdateInterestRequest: {
       origin?: string | null
       role?: string | null
+      status?: string | null
     }
     UpdateNoteRequest: {
       body_md?: string | null
@@ -2139,6 +2142,8 @@ export interface components {
       qty?: number | null
       side?: string | null
       source?: string | null
+      /** Format: uuid */
+      strategy_id?: string | null
       symbol?: string | null
     }
     UpdateTriggerRequest: {

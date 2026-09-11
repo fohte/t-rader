@@ -6,9 +6,11 @@ use crate::error::AppError;
 pub const REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
 pub const ROLES: [&str; 2] = ["seed", "derived"];
 pub const ORIGINS: [&str; 2] = ["human", "llm"];
+pub const STATUSES: [&str; 2] = ["active", "archived"];
 
 pub const DEFAULT_ROLE: &str = "seed";
 pub const DEFAULT_ORIGIN: &str = "human";
+pub const DEFAULT_STATUS: &str = "active";
 
 pub fn ensure_ref_kind(value: &str) -> Result<(), AppError> {
     if REF_KINDS.contains(&value) {
@@ -31,5 +33,13 @@ pub fn ensure_origin(value: &str) -> Result<(), AppError> {
         Ok(())
     } else {
         Err(AppError::Validation(format!("invalid origin: {value}")))
+    }
+}
+
+pub fn ensure_status(value: &str) -> Result<(), AppError> {
+    if STATUSES.contains(&value) {
+        Ok(())
+    } else {
+        Err(AppError::Validation(format!("invalid status: {value}")))
     }
 }
