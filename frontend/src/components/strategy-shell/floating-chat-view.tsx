@@ -64,7 +64,7 @@ export function FloatingChatView({
   const inputDisabled = strategyId == null || submitting || polling
   const submitDisabled = inputDisabled || input.trim() === ''
   const placeholder =
-    strategyId == null ? '戦略ホームを開いてください' : 'プロンプトを入力'
+    strategyId == null ? '戦略ページを開いてください' : 'プロンプトを入力'
 
   return (
     <div

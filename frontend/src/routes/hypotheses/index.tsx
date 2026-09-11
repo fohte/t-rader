@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useState } from 'react'
 
 import { StrategyFilterSelect } from '#components/strategy-filter-select'
+import { CreateHypothesisDialog } from '#components/strategy-home/create-hypothesis-dialog'
 import { HypothesisStatusPill } from '#components/strategy-home/hypothesis-status-pill'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
@@ -19,6 +21,7 @@ export const Route = createFileRoute('/hypotheses/')({
 function HypothesesPage() {
   const { strategy_id } = Route.useSearch()
   const navigate = Route.useNavigate()
+  const [creating, setCreating] = useState(false)
 
   const { data: hypotheses, isPending } = $api.useQuery(
     'get',
@@ -32,12 +35,25 @@ function HypothesesPage() {
         <h1 className="text-2xl font-bold tracking-tight">
           <span className="font-mono font-bold text-primary">&gt;</span> 仮説
         </h1>
-        <StrategyFilterSelect
-          value={strategy_id}
-          onChange={(v) => {
-            void navigate({ search: (prev) => ({ ...prev, strategy_id: v }) })
-          }}
-        />
+        <div className="flex items-center gap-2">
+          <StrategyFilterSelect
+            value={strategy_id}
+            onChange={(v) => {
+              void navigate({
+                search: (prev) => ({ ...prev, strategy_id: v }),
+              })
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setCreating(true)
+            }}
+            className="h-9 border border-border bg-surface-strong px-3 font-mono text-xs text-muted-foreground-strong hover:border-primary hover:text-primary"
+          >
+            + 新規作成
+          </button>
+        </div>
       </div>
 
       {isPending ? (
@@ -84,6 +100,12 @@ function HypothesesPage() {
           )}
         </section>
       )}
+
+      <CreateHypothesisDialog
+        initialStrategyId={strategy_id}
+        open={creating}
+        onOpenChange={setCreating}
+      />
     </div>
   )
 }

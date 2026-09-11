@@ -61,9 +61,3 @@ export function formatRelative(iso: string, now = Date.now()): string {
   if (diff < 7 * DAY) return `${String(Math.floor(diff / DAY))} 日前`
   return iso.slice(0, 10)
 }
-
-export function isNewerThan(iso: string, since: number | null): boolean {
-  if (since == null) return true
-  const t = new Date(iso).getTime()
-  return !Number.isNaN(t) && t > since
-}
