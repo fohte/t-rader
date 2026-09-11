@@ -736,6 +736,241 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it('continues running remaining chunks and threads only the successful outputs into the next phase when some for_each items fail', async () => {
+    const messageTextForWorkItem = (item: unknown): string =>
+      buildPhaseMessageText({
+        originalPromptText: 'req',
+        phasePrompt: 'do work',
+        item,
+        priorResults: { plan: { items: ['a', 'b'] } },
+      })
+    const { deps, calls } = buildDeps((call) => {
+      if (call.messageText.includes('do plan')) {
+        return Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
+      }
+      if (call.messageText === messageTextForWorkItem('a')) {
+        return Promise.reject(new Error('item a failed'))
+      }
+      if (call.messageText === messageTextForWorkItem('b')) {
+        return Promise.resolve({ structuredResponse: { value: 'b-done' } })
+      }
+      return Promise.resolve({ structuredResponse: {} })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          maxParallel: 1,
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+        {
+          key: 'summarize',
+          label: 'Summarize',
+          model: 'm',
+          prompt: 'do summarize',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+    const notifications: (readonly StrategyTaskStep[])[] = []
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+    })
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '3フェーズの実行が完了しました (Plan → Work → Summarize)',
+    })
+    expect(calls.at(-1)).toEqual({
+      systemPrompt: 'AGENTS',
+      messageText: buildPhaseMessageText({
+        originalPromptText: 'req',
+        phasePrompt: 'do summarize',
+        item: undefined,
+        priorResults: {
+          plan: { items: ['a', 'b'] },
+          work: [{ value: 'b-done' }],
+        },
+      }),
+    })
+    const last = notifications.at(-1)
+    expect(
+      last === undefined ? undefined : normalizeStepTimestamps(last),
+    ).toEqual([
+      {
+        phaseKey: 'plan',
+        label: 'Plan',
+        model: 'm',
+        status: 'completed',
+        output: { items: ['a', 'b'] },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'work',
+        label: 'Work',
+        model: 'm',
+        status: 'failed',
+        item: 'a',
+        error: 'item a failed',
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'work',
+        label: 'Work',
+        model: 'm',
+        status: 'completed',
+        item: 'b',
+        output: { value: 'b-done' },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'summarize',
+        label: 'Summarize',
+        model: 'm',
+        status: 'completed',
+        output: {},
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+    ])
+  })
+
+  it('fails the phase when every for_each item fails', async () => {
+    const messageTextForWorkItem = (item: unknown): string =>
+      buildPhaseMessageText({
+        originalPromptText: 'req',
+        phasePrompt: 'do work',
+        item,
+        priorResults: { plan: { items: ['x', 'y'] } },
+      })
+    const { deps } = buildDeps((call) => {
+      if (call.messageText.includes('do plan')) {
+        return Promise.resolve({ structuredResponse: { items: ['x', 'y'] } })
+      }
+      return call.messageText === messageTextForWorkItem('x')
+        ? Promise.reject(new Error('x failed'))
+        : Promise.reject(new Error('y failed'))
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message:
+        'フェーズ「Work」(work) の実行に失敗しました: for_each の全要素 (2件) が失敗しました: x failed',
+      errorKind: 'agent_error',
+    })
+  })
+
+  it('preserves the usage_limit error classification when every for_each item fails from a usage limit error', async () => {
+    const usageLimitError = Object.assign(new Error('usage limit exceeded'), {
+      rateLimitType: 'capacity',
+    })
+    const { deps } = buildDeps((call) =>
+      call.messageText.includes('do plan')
+        ? Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
+        : Promise.reject(usageLimitError),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message:
+        'フェーズ「Work」(work) の実行に失敗しました: usage limit exceeded',
+      errorKind: 'usage_limit',
+    })
+  })
+
   it('records a failed step with an error and no output when a phase fails', async () => {
     const { deps } = buildDeps(() => Promise.resolve({}))
     const config: AgentGraphConfig = {
