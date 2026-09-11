@@ -20,7 +20,7 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
             AppError::NotFound(format!("strategy {id} not found"))
         }
         SubmitTaskError::PurposeNotFound(purpose) => {
-            AppError::Config(format!("agent_config for purpose '{purpose}' not found"))
+            AppError::ServiceUnavailable(format!("agent_config for purpose '{purpose}' not found"))
         }
         SubmitTaskError::Database(db_err) => AppError::Database(db_err),
         SubmitTaskError::AgentTask(AgentTaskError::NotConfigured) => {
