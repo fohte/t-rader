@@ -54,6 +54,7 @@ const buildFakeTool = (name: string): DynamicStructuredTool =>
 interface InvokeCall {
   readonly systemPrompt: string
   readonly messageText: string
+  readonly executionStepId: string | undefined
 }
 
 const buildDeps = (
@@ -69,6 +70,7 @@ const buildDeps = (
         const call: InvokeCall = {
           systemPrompt: options.systemPrompt,
           messageText: input.messages.map((m) => m.text).join('\n'),
+          executionStepId: input.executionStepId,
         }
         calls.push(call)
         return invokeImpl(call)
@@ -130,6 +132,7 @@ describe('runAgentGraph', () => {
           item: undefined,
           priorResults: {},
         }),
+        executionStepId: NOOP_SPAN_ID,
       },
       {
         systemPrompt: 'AGENTS',
@@ -139,6 +142,7 @@ describe('runAgentGraph', () => {
           item: undefined,
           priorResults: { stepA: { value: 'A-OUT' } },
         }),
+        executionStepId: NOOP_SPAN_ID,
       },
     ])
   })
@@ -333,9 +337,9 @@ describe('runAgentGraph', () => {
     expect(maxActive).toBe(2)
   })
 
-  it('retries a phase up to 2 times after a missing structured response, then succeeds', async () => {
+  it('retries a phase up to 2 times after a missing structured response, then succeeds, reusing one executionStepId across attempts', async () => {
     let attempts = 0
-    const { deps } = buildDeps(() => {
+    const { deps, calls } = buildDeps(() => {
       attempts++
       return Promise.resolve(
         attempts < 3 ? {} : { structuredResponse: { ok: true } },
@@ -367,6 +371,12 @@ describe('runAgentGraph', () => {
       message: '1フェーズの実行が完了しました (P)',
     })
     expect(attempts).toBe(3)
+    // 再試行は同一の実行ステップの続きなので、MCP tool 呼び出しの x-execution-id
+    // に使う executionStepId は 3 回とも同じ値でなければ、途中の write_note が
+    // 別ノートとして重複作成されてしまう。
+    const executionStepIds = calls.map((call) => call.executionStepId)
+    expect(executionStepIds).toEqual([NOOP_SPAN_ID, NOOP_SPAN_ID, NOOP_SPAN_ID])
+    expect(new Set(executionStepIds).size).toBe(1)
   })
 
   it('fails the phase after exhausting all structured-output retries', async () => {
@@ -647,7 +657,7 @@ describe('runAgentGraph', () => {
   })
 
   it('records one step per for_each item, extracting item_label via label_field', async () => {
-    const { deps } = buildDeps((call) =>
+    const { deps, calls } = buildDeps((call) =>
       Promise.resolve(
         call.messageText.includes('do plan')
           ? {
@@ -734,6 +744,12 @@ describe('runAgentGraph', () => {
         spanId: NOOP_SPAN_ID,
       },
     ])
+    // executionStepId は各ステップ自身の spanId をそのまま使う (別ステップの
+    // ノートを誤って上書きしないよう、後から strategy_task.steps の spanId と
+    // note.execution_id を突き合わせて追跡できる)。
+    expect(calls.map((call) => call.executionStepId)).toEqual(
+      last?.map((step) => step.spanId),
+    )
   })
 
   it('continues running remaining chunks and threads only the successful outputs into the next phase when some for_each items fail', async () => {
@@ -814,6 +830,7 @@ describe('runAgentGraph', () => {
           work: [{ value: 'b-done' }],
         },
       }),
+      executionStepId: NOOP_SPAN_ID,
     })
     const last = notifications.at(-1)
     expect(

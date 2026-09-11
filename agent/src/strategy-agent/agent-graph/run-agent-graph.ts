@@ -28,7 +28,12 @@ export interface BuildPhaseAgentOptions {
 }
 
 export interface CompiledPhaseAgent {
-  invoke(input: { messages: readonly HumanMessage[] }): Promise<{
+  invoke(input: {
+    messages: readonly HumanMessage[]
+    // MCP tool 呼び出しの x-execution-id ヘッダに使う実行ステップの識別子。
+    // 省略時は MCP クライアント構築時の既定ヘッダ (実行全体で 1 個) のまま。
+    executionStepId?: string
+  }): Promise<{
     structuredResponse?: Record<string, unknown>
   }>
 }
@@ -209,10 +214,11 @@ const hasRequiredArrayFields = (
 const invokePhaseWithRetry = async (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
+  executionStepId: string,
   requiredArrayFields: ReadonlySet<string>,
   attemptsLeft: number = MAX_STRUCTURED_OUTPUT_ATTEMPTS,
 ): Promise<Result<Record<string, unknown>, unknown>> => {
-  const invoked = await agent.invoke({ messages }).then(
+  const invoked = await agent.invoke({ messages, executionStepId }).then(
     (
       value,
     ): Result<{ structuredResponse?: Record<string, unknown> }, unknown> =>
@@ -242,6 +248,7 @@ const invokePhaseWithRetry = async (
   return invokePhaseWithRetry(
     agent,
     messages,
+    executionStepId,
     requiredArrayFields,
     attemptsLeft - 1,
   )
@@ -275,6 +282,10 @@ const resolveForEachItems = (
 // 1 件分の invoke を実行し、開始時に running step を記録、決着したら
 // completed/failed に更新する。for_each の各要素と、for_each でないフェーズ
 // (常に 1 件) の両方から呼ばれる。
+//
+// spanIds.spanId をそのまま MCP tool 呼び出しの実行ステップ識別子として使う。
+// invokePhaseWithRetry の再試行はここで生成した 1 個の spanId を使い回すため、
+// 同じ実行ステップの再試行が別ノートとして重複作成されることはない。
 const invokeAndRecordStep = (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
@@ -291,22 +302,25 @@ const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
-    return invokePhaseWithRetry(agent, messages, requiredArrayFields).then(
-      (result) => {
-        if (result.isErr()) {
-          recorder.finish(index, {
-            status: 'failed',
-            error: errorMessage(result.error),
-          })
-        } else {
-          recorder.finish(index, {
-            status: 'completed',
-            output: result.value,
-          })
-        }
-        return result
-      },
-    )
+    return invokePhaseWithRetry(
+      agent,
+      messages,
+      spanIds.spanId,
+      requiredArrayFields,
+    ).then((result) => {
+      if (result.isErr()) {
+        recorder.finish(index, {
+          status: 'failed',
+          error: errorMessage(result.error),
+        })
+      } else {
+        recorder.finish(index, {
+          status: 'completed',
+          output: result.value,
+        })
+      }
+      return result
+    })
   })
 
 const runForEachItems = async (

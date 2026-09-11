@@ -23,6 +23,7 @@ import type {
 } from '#strategy-agent/strategy-agent'
 import {
   createStrategyAgentDeps,
+  resolveMcpToolCallHeaders,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
 
@@ -682,5 +683,31 @@ describe('createStrategyAgentDeps', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+})
+
+describe('resolveMcpToolCallHeaders', () => {
+  it('returns no header override when no execution step id is configured', () => {
+    expect(
+      resolveMcpToolCallHeaders('strategy-1', 'task-1', undefined),
+    ).toEqual({})
+    expect(
+      resolveMcpToolCallHeaders('strategy-1', 'task-1', {
+        someOtherKey: 'value',
+      }),
+    ).toEqual({})
+  })
+
+  it('scopes x-execution-id to the step while keeping x-strategy-id', () => {
+    expect(
+      resolveMcpToolCallHeaders('strategy-1', 'task-1', {
+        mcpExecutionStepId: 'step-1',
+      }),
+    ).toEqual({
+      headers: {
+        'x-strategy-id': 'strategy-1',
+        'x-execution-id': 'task-1:step-1',
+      },
+    })
   })
 })

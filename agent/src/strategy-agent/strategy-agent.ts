@@ -39,6 +39,12 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
 
+// agent.invoke() の RunnableConfig.configurable に載せて MCP tool 呼び出しの
+// beforeToolCall フックまで運ぶキー。実行ステップ (invokeAndRecordStep 単位) を
+// 一意に識別する値を持ち、x-execution-id ヘッダの実行単位をタスク全体からこの
+// 単位まで絞り込む。
+const MCP_EXECUTION_STEP_ID_CONFIG_KEY = 'mcpExecutionStepId'
+
 const DEFAULT_PURPOSE = 'default'
 
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
@@ -147,10 +153,19 @@ const buildCompiledAgent = (
     invoke: async (input) => {
       const result = await agent.invoke(
         { messages: [...input.messages] },
-        // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
-        // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
-        // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
-        { recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3 },
+        {
+          // finalTurnMiddleware が MAX_MODEL_CALLS_PER_INVOKE 到達ターンで
+          // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
+          // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
+          recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3,
+          ...(input.executionStepId !== undefined
+            ? {
+                configurable: {
+                  [MCP_EXECUTION_STEP_ID_CONFIG_KEY]: input.executionStepId,
+                },
+              }
+            : {}),
+        },
       )
       // createAgent の推論型では structuredResponse は常に存在する扱いだが、
       // 実行時はモデルが structured-output tool を呼び出さないこともある。
@@ -201,6 +216,26 @@ const createDefaultBuildPhaseAgent =
       responseFormat: toolStrategy(options.responseSchema),
     })
 
+// beforeToolCall フック本体。実行ステップ ID (config.configurable 経由) があれば
+// その呼び出しだけ x-execution-id を `{taskId}:{stepId}` へ差し替える。
+// client.fork() は headers をまるごと置き換える (元の headers とマージしない) ため、
+// 差し替え時は x-strategy-id も一緒に返す必要がある。ステップ ID が無ければ
+// `{}` (headers 未指定) を返し、既定ヘッダのまま fork を起こさない。
+export const resolveMcpToolCallHeaders = (
+  strategyId: string,
+  taskId: string,
+  configurable: Record<string, unknown> | undefined,
+): { headers?: Record<string, string> } => {
+  const stepId = configurable?.[MCP_EXECUTION_STEP_ID_CONFIG_KEY]
+  if (typeof stepId !== 'string') return {}
+  return {
+    headers: {
+      [STRATEGY_ID_HEADER]: strategyId,
+      [EXECUTION_ID_HEADER]: `${taskId}:${stepId}`,
+    },
+  }
+}
+
 type ReasoningEffort = NonNullable<
   NonNullable<
     NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['reasoning']
@@ -223,6 +258,12 @@ export const createStrategyAgentDeps = (
           },
         },
       },
+      beforeToolCall: (_toolCall, _state, runnableConfig) =>
+        resolveMcpToolCallHeaders(
+          strategyId,
+          taskId,
+          runnableConfig.configurable,
+        ),
     }),
   createChatModel: (model, options) =>
     new ChatOpenAI({
