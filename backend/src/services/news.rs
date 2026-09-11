@@ -362,6 +362,7 @@ mod tests {
             ref_id: id.into(),
             role: "seed".into(),
             origin: "user".into(),
+            status: "active".into(),
             created_at: ymd_hms(2026, 6, 25, 0, 0, 0).into(),
         }
     }
@@ -374,6 +375,7 @@ mod tests {
             ref_id: id.into(),
             role: "seed".into(),
             origin: "user".into(),
+            status: "active".into(),
             created_at: ymd_hms(2026, 6, 25, 0, 0, 0).into(),
         }
     }

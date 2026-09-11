@@ -42,6 +42,7 @@ function makeInterest(
     ref_id: refId,
     role: overrides.role ?? 'seed',
     origin: overrides.origin ?? 'human',
+    status: overrides.status ?? 'active',
     created_at: overrides.created_at ?? '2026-01-01T00:00:00Z',
   }
 }

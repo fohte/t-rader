@@ -260,6 +260,23 @@ pub struct AddInterestResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListWatchTargetsParams {
+    pub limit: Option<u32>,
+}
+
+/// 人間が「追う」と決めた監視対象銘柄。保有状況によるフィルタは行わない
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct WatchTargetDto {
+    pub ref_id: String,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ListWatchTargetsResult {
+    pub watch_targets: Vec<WatchTargetDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCommentsParams {
     /// "note" | "annotation"
     pub target_kind: String,

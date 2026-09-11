@@ -9088,7 +9088,7 @@
       },
       "CreateInterestRequest": {
         "type": "object",
-        "description": "戦略の関心 (interest) を新規追加するリクエスト。\n\n`ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。\n`role` は省略時 `seed`、`origin` は省略時 `human`。",
+        "description": "戦略の関心 (interest) を新規追加するリクエスト。\n\n`ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。\n`role` は省略時 `seed`、`origin` は省略時 `human`、`status` は省略時 `active`。",
         "required": [
           "ref_kind",
           "ref_id"
@@ -9107,6 +9107,12 @@
             "type": "string"
           },
           "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
             "type": [
               "string",
               "null"
@@ -10448,7 +10454,8 @@
           "role",
           "origin",
           "created_at",
-          "id"
+          "id",
+          "status"
         ],
         "properties": {
           "created_at": {
@@ -10469,6 +10476,9 @@
             "type": "string"
           },
           "role": {
+            "type": "string"
+          },
+          "status": {
             "type": "string"
           },
           "strategy_id": {
@@ -10959,7 +10969,7 @@
       },
       "UpdateInterestRequest": {
         "type": "object",
-        "description": "既存の関心の role / origin を更新するリクエスト。",
+        "description": "既存の関心の role / origin / status を更新するリクエスト。",
         "properties": {
           "origin": {
             "type": [
@@ -10968,6 +10978,12 @@
             ]
           },
           "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
             "type": [
               "string",
               "null"

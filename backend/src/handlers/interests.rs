@@ -14,7 +14,8 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateInterestRequest, UpdateInterestRequest};
 use crate::services::interests::{
-    DEFAULT_ORIGIN, DEFAULT_ROLE, ensure_origin, ensure_ref_kind, ensure_role,
+    DEFAULT_ORIGIN, DEFAULT_ROLE, DEFAULT_STATUS, ensure_origin, ensure_ref_kind, ensure_role,
+    ensure_status,
 };
 use crate::services::strategies::ensure_strategy_exists;
 
@@ -75,9 +76,14 @@ async fn update_interest_inner(
         active.origin = Set(origin);
         touched = true;
     }
+    if let Some(status) = p.status {
+        ensure_status(&status)?;
+        active.status = Set(status);
+        touched = true;
+    }
     if !touched {
         return Err(AppError::Validation(
-            "at least one of role / origin must be provided".into(),
+            "at least one of role / origin / status must be provided".into(),
         ));
     }
     active.update(db).await.map_err(AppError::from)
@@ -93,8 +99,10 @@ fn build_interest_active_model(
     let ref_id = normalize_ref_id(&p.ref_id)?;
     let role = p.role.unwrap_or_else(|| DEFAULT_ROLE.to_string());
     let origin = p.origin.unwrap_or_else(|| DEFAULT_ORIGIN.to_string());
+    let status = p.status.unwrap_or_else(|| DEFAULT_STATUS.to_string());
     ensure_role(&role)?;
     ensure_origin(&origin)?;
+    ensure_status(&status)?;
 
     Ok(strategy_interest::ActiveModel {
         id: NotSet,
@@ -103,6 +111,7 @@ fn build_interest_active_model(
         ref_id: Set(ref_id),
         role: Set(role),
         origin: Set(origin),
+        status: Set(status),
         created_at: NotSet,
     })
 }
@@ -366,6 +375,7 @@ mod tests {
                 "ref_id": "7203",
                 "role": "seed",
                 "origin": "human",
+                "status": "active",
             })],
         );
     }
@@ -397,12 +407,44 @@ mod tests {
                 "ref_id": "USDJPY",
                 "role": "derived",
                 "origin": "llm",
+                "status": "active",
             }),
         );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn create_rejects_invalid_ref_kind_role_origin(pool: PgPool) {
+    async fn create_with_explicit_status(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let sid = insert_test_strategy(&db, "s").await;
+
+        let created = server
+            .post(&format!("/api/strategies/{sid}/interests"))
+            .json(&json!({
+                "ref_kind": "stock",
+                "ref_id": "7203",
+                "status": "archived",
+            }))
+            .await;
+        created.assert_status(StatusCode::CREATED);
+        let mut body: serde_json::Value = created.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("created_at");
+        obj.remove("id");
+        assert_eq!(
+            body,
+            json!({
+                "strategy_id": sid,
+                "ref_kind": "stock",
+                "ref_id": "7203",
+                "role": "seed",
+                "origin": "human",
+                "status": "archived",
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_rejects_invalid_ref_kind_role_origin_status(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
 
@@ -419,6 +461,10 @@ mod tests {
             (
                 "invalid_origin",
                 json!({"ref_kind": "stock", "ref_id": "7203", "origin": "bogus"}),
+            ),
+            (
+                "invalid_status",
+                json!({"ref_kind": "stock", "ref_id": "7203", "status": "bogus"}),
             ),
         ] {
             let res = server
@@ -488,6 +534,39 @@ mod tests {
                 "ref_id": "7203",
                 "role": "derived",
                 "origin": "llm",
+                "status": "active",
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn update_changes_status(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let sid = insert_test_strategy(&db, "s").await;
+        server
+            .post(&format!("/api/strategies/{sid}/interests"))
+            .json(&json!({"ref_kind": "stock", "ref_id": "7203"}))
+            .await
+            .assert_status(StatusCode::CREATED);
+
+        let res = server
+            .patch(&format!("/api/strategies/{sid}/interests/stock/7203"))
+            .json(&json!({"status": "archived"}))
+            .await;
+        res.assert_status_ok();
+        let mut body: serde_json::Value = res.json();
+        let obj = body.as_object_mut().unwrap();
+        obj.remove("created_at");
+        obj.remove("id");
+        assert_eq!(
+            body,
+            json!({
+                "strategy_id": sid,
+                "ref_kind": "stock",
+                "ref_id": "7203",
+                "role": "seed",
+                "origin": "human",
+                "status": "archived",
             }),
         );
     }
@@ -590,6 +669,7 @@ mod tests {
                     "ref_id": "7203",
                     "role": "seed",
                     "origin": "human",
+                    "status": "active",
                 })],
                 vec![json!({
                     "strategy_id": b,
@@ -597,6 +677,7 @@ mod tests {
                     "ref_id": "9984",
                     "role": "seed",
                     "origin": "human",
+                    "status": "active",
                 })],
             ),
         );
@@ -641,6 +722,7 @@ mod tests {
                 "ref_id": "N225",
                 "role": "seed",
                 "origin": "human",
+                "status": "active",
             })],
         );
     }
@@ -682,6 +764,7 @@ mod tests {
                 "ref_id": "N225",
                 "role": "derived",
                 "origin": "llm",
+                "status": "active",
             }),
         );
     }
@@ -757,6 +840,7 @@ mod tests {
                     "ref_id": "N225",
                     "role": "seed",
                     "origin": "human",
+                    "status": "active",
                 })],
                 vec![json!({
                     "strategy_id": null,
@@ -764,6 +848,7 @@ mod tests {
                     "ref_id": "N225",
                     "role": "seed",
                     "origin": "human",
+                    "status": "active",
                 })],
             ),
         );
