@@ -139,6 +139,10 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE strategy_task ADD COLUMN steps jsonb NOT NULL DEFAULT '[]'::jsonb",
             )
             .await?;
+        manager
+            .get_connection()
+            .execute_unprepared("ALTER TABLE strategy_task ALTER COLUMN steps DROP DEFAULT")
+            .await?;
 
         manager
             .drop_table(Table::drop().table(StrategyTaskStep::Table).to_owned())
