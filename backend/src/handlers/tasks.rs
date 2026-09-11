@@ -8,7 +8,7 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
 use crate::models::StrategyTaskSummary;
-use crate::services::strategy_tasks::{self, phase_str};
+use crate::services::strategy_tasks;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -37,20 +37,7 @@ pub async fn list_tasks(
         .await
         .map_err(AppError::Database)?;
     Ok(Json(
-        views
-            .into_iter()
-            .map(|view| StrategyTaskSummary {
-                task_id: view.task_id,
-                strategy_id: view.strategy_id,
-                source: view.source,
-                prompt: view.prompt,
-                phase: phase_str(&view.phase).to_string(),
-                error_summary: view.error_summary,
-                created_at: view.created_at,
-                updated_at: view.updated_at,
-                purpose: view.purpose,
-            })
-            .collect(),
+        views.into_iter().map(StrategyTaskSummary::from).collect(),
     ))
 }
 

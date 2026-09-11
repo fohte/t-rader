@@ -34,6 +34,7 @@ export const List: Story = {
           {
             taskId: 'task-0003',
             strategyId: 'semi-swing',
+            strategyName: '半導体スイング',
             prompt: '半導体セクターの調整は一時的か、循環の転換点か',
             source: 'frontend',
             phase: 'running',

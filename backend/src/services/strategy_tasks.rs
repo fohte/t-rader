@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::{strategy, strategy_task};
+use crate::models::StrategyTaskSummary;
 use crate::services::agent_config;
 
 /// 内部 API 投入後、client 側で完了を待つ猶予期間。
@@ -105,6 +106,22 @@ impl From<strategy_task::Model> for TaskStatusView {
             updated_at: row.updated_at,
             steps: row.steps,
             purpose: row.purpose,
+        }
+    }
+}
+
+impl From<TaskStatusView> for StrategyTaskSummary {
+    fn from(view: TaskStatusView) -> Self {
+        Self {
+            task_id: view.task_id,
+            strategy_id: view.strategy_id,
+            source: view.source,
+            prompt: view.prompt,
+            phase: phase_str(&view.phase).to_string(),
+            error_summary: view.error_summary,
+            created_at: view.created_at,
+            updated_at: view.updated_at,
+            purpose: view.purpose,
         }
     }
 }

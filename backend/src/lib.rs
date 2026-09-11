@@ -233,7 +233,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
         .routes(routes!(strategies::list_strategy_tasks))
-        // tasks (口座横断の戦略タスク一覧)
+        // tasks
         .routes(routes!(tasks::list_tasks))
         .routes(routes!(
             strategies::get_investable_amount,

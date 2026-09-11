@@ -9,18 +9,33 @@ export const Route = createFileRoute('/runs')({
   component: RunsPage,
 })
 
-// purpose 未指定 (purpose カラム追加前に作成された行) を絞り込むための内部キー
 const UNSPECIFIED_PURPOSE = '__unspecified__'
 
 function RunsPage() {
   const [strategyFilter, setStrategyFilter] = useState('all')
   const [purposeFilter, setPurposeFilter] = useState('all')
 
-  const { data: tasks, isPending } = $api.useQuery('get', '/api/tasks')
+  // フィルタ選択肢 (件数バッジ) 計算用。フィルタ切り替えで件数が変動しないよう、常に全件クエリを見る。
+  // ただし /api/tasks 自体にページネーションが無く直近 50 件までしか返らないため、この件数も正確な総数ではない。
+  const { data: allTasks = [] } = $api.useQuery('get', '/api/tasks')
   const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
   const { data: agentConfigs = [] } = $api.useQuery('get', '/api/agent-configs')
 
-  const taskList = useMemo(() => tasks ?? [], [tasks])
+  const { data: filteredTasksRaw, isPending } = $api.useQuery(
+    'get',
+    '/api/tasks',
+    {
+      params: {
+        query: {
+          strategy_id: strategyFilter !== 'all' ? strategyFilter : undefined,
+          purpose:
+            purposeFilter !== 'all' && purposeFilter !== UNSPECIFIED_PURPOSE
+              ? purposeFilter
+              : undefined,
+        },
+      },
+    },
+  )
 
   const strategyNameById = useMemo(
     () => new Map(strategies.map((s) => [s.id, s.name] as const)),
@@ -29,7 +44,7 @@ function RunsPage() {
 
   const strategyOptions = useMemo<FilterOption[]>(() => {
     const counts = new Map<string, number>()
-    for (const t of taskList) {
+    for (const t of allTasks) {
       counts.set(t.strategy_id, (counts.get(t.strategy_id) ?? 0) + 1)
     }
     return strategies.map((s) => ({
@@ -37,11 +52,11 @@ function RunsPage() {
       label: s.name,
       count: counts.get(s.id) ?? 0,
     }))
-  }, [taskList, strategies])
+  }, [allTasks, strategies])
 
   const purposeOptions = useMemo<FilterOption[]>(() => {
     const counts = new Map<string, number>()
-    for (const t of taskList) {
+    for (const t of allTasks) {
       const key = t.purpose ?? UNSPECIFIED_PURPOSE
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
@@ -59,20 +74,14 @@ function RunsPage() {
       })
     }
     return options
-  }, [taskList, agentConfigs])
+  }, [allTasks, agentConfigs])
 
   const shown = useMemo(
     () =>
-      taskList
-        .filter(
-          (t) => strategyFilter === 'all' || t.strategy_id === strategyFilter,
-        )
-        .filter((t) => {
-          if (purposeFilter === 'all') return true
-          if (purposeFilter === UNSPECIFIED_PURPOSE) return t.purpose == null
-          return t.purpose === purposeFilter
-        }),
-    [taskList, strategyFilter, purposeFilter],
+      purposeFilter === UNSPECIFIED_PURPOSE
+        ? (filteredTasksRaw ?? []).filter((t) => t.purpose == null)
+        : (filteredTasksRaw ?? []),
+    [filteredTasksRaw, purposeFilter],
   )
 
   return (
@@ -100,14 +109,14 @@ function RunsPage() {
         value={strategyFilter}
         onChange={setStrategyFilter}
         allLabel="すべての戦略"
-        allCount={taskList.length}
+        allCount={allTasks.length}
       />
       <FilterBar
         options={purposeOptions}
         value={purposeFilter}
         onChange={setPurposeFilter}
         allLabel="すべての目的"
-        allCount={taskList.length}
+        allCount={allTasks.length}
       />
 
       <TaskRunListView

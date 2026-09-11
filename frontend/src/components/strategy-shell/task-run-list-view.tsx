@@ -7,7 +7,6 @@ import { formatRelative } from '#lib/note-utils'
 export interface TaskRunListItem {
   taskId: string
   strategyId: string
-  /** 口座横断ページなど、どの戦略のタスクか明示したい文脈でのみ渡す */
   strategyName?: string
   prompt: string
   source: string
