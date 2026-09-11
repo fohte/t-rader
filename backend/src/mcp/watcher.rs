@@ -224,6 +224,7 @@ async fn apply_phase(
         prompt: NotSet,
         deadline_at: NotSet,
         created_at: NotSet,
+        purpose: NotSet,
     };
     strategy_task::Entity::update(active).exec(db).await?;
     Ok(true)
@@ -312,6 +313,7 @@ mod tests {
             result_text: Set(None),
             deadline_at: Set(now + deadline_offset),
             steps: Set(serde_json::json!([])),
+            purpose: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }

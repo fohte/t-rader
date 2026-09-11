@@ -2094,6 +2094,8 @@ export interface components {
       error_summary?: string | null
       phase: string
       prompt: string
+      /** @description 投入時に指定された purpose。`None` なら戦略の実行グラフでフェーズを表示する。 */
+      purpose?: string | null
       /** @description agent の最終応答テキスト (completed 時のみ) */
       result_text?: string | null
       source: string
@@ -2242,6 +2244,8 @@ export interface components {
       qty?: number | null
       side?: string | null
       source?: string | null
+      /** Format: uuid */
+      strategy_id?: string | null
       symbol?: string | null
     }
     UpdateTriggerRequest: {

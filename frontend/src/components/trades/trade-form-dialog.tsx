@@ -200,6 +200,7 @@ export function TradeFormDialog({
       updateMutation.mutate({
         params: { path: { id: initial.id } },
         body: {
+          strategy_id: form.strategyId,
           symbol: form.symbol,
           side: form.side,
           qty: qtyNum,
@@ -255,7 +256,6 @@ export function TradeFormDialog({
                   value: s.id,
                   label: s.name,
                 }))}
-                disabled={initial != null}
               />
             </Field>
 
@@ -409,21 +409,18 @@ function SelectNative({
   value,
   onChange,
   options,
-  disabled,
 }: {
   value: string
   onChange: (v: string) => void
   options: { value: string; label: string }[]
-  disabled?: boolean
 }) {
   return (
     <select
       value={value}
-      disabled={disabled}
       onChange={(e) => {
         onChange(e.target.value)
       }}
-      className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+      className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>

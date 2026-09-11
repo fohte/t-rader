@@ -191,6 +191,14 @@ pub async fn update_trade(
     let mut active = current.clone().into_active_model();
     let mut diff = serde_json::Map::new();
 
+    if let Some(v) = p.strategy_id {
+        ensure_strategy_exists(&state.db, v).await?;
+        diff.insert(
+            "strategy_id".into(),
+            json!({ "from": current.strategy_id, "to": v }),
+        );
+        active.strategy_id = Set(v);
+    }
     if let Some(v) = p.symbol {
         let trimmed = v.trim().to_string();
         if trimmed.is_empty() {

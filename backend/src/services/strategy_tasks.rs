@@ -79,6 +79,8 @@ pub struct TaskStatusView {
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
     pub steps: serde_json::Value,
+    /// 投入時に指定された purpose。`None` なら戦略キーの agent-config で実行された。
+    pub purpose: Option<String>,
 }
 
 impl From<strategy_task::Model> for TaskStatusView {
@@ -95,6 +97,7 @@ impl From<strategy_task::Model> for TaskStatusView {
             created_at: row.created_at,
             updated_at: row.updated_at,
             steps: row.steps,
+            purpose: row.purpose,
         }
     }
 }
@@ -150,6 +153,7 @@ pub async fn submit_task(
         result_text: Set(None),
         deadline_at: Set(deadline_at),
         steps: Set(serde_json::json!([])),
+        purpose: Set(purpose.clone()),
         created_at: NotSet,
         updated_at: NotSet,
     };

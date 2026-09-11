@@ -10582,6 +10582,13 @@
           "prompt": {
             "type": "string"
           },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "投入時に指定された purpose。`None` なら戦略の実行グラフでフェーズを表示する。"
+          },
           "result_text": {
             "type": [
               "string",
@@ -11135,6 +11142,13 @@
               "string",
               "null"
             ]
+          },
+          "strategy_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           },
           "symbol": {
             "type": [
