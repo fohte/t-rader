@@ -240,14 +240,22 @@ pub async fn submit_task(
 /// 一覧取得時の上限件数。ページネーションは今のところ無く、直近分だけを返す。
 const TASK_LIST_LIMIT: u64 = 50;
 
-/// 戦略の過去タスクを新しい順に返す (最大 `TASK_LIST_LIMIT` 件)。
-pub async fn list_tasks_for_strategy(
+/// 過去タスクを新しい順に返す (最大 `TASK_LIST_LIMIT` 件)。`strategy_id`/`purpose` は
+/// 省略すると絞り込まない (`strategy_id` 省略時は口座横断の一覧になる)。
+pub async fn list_tasks(
     db: &DatabaseConnection,
-    strategy_id: Uuid,
+    strategy_id: Option<Uuid>,
+    purpose: Option<String>,
 ) -> Result<Vec<TaskStatusView>, sea_orm::DbErr> {
     use sea_orm::{ColumnTrait, QueryFilter, QueryOrder, QuerySelect};
-    let rows = strategy_task::Entity::find()
-        .filter(strategy_task::Column::StrategyId.eq(strategy_id))
+    let mut q = strategy_task::Entity::find();
+    if let Some(strategy_id) = strategy_id {
+        q = q.filter(strategy_task::Column::StrategyId.eq(strategy_id));
+    }
+    if let Some(purpose) = purpose {
+        q = q.filter(strategy_task::Column::Purpose.eq(purpose));
+    }
+    let rows = q
         .order_by_desc(strategy_task::Column::CreatedAt)
         .limit(TASK_LIST_LIMIT)
         .all(db)

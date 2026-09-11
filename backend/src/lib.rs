@@ -37,7 +37,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
     custom_indicators, history, hooks, hypotheses, imports, interests, macro_data, news, notes,
-    refs, risk_policy, rss_feeds, strategies, trades, triggers, watchlists,
+    refs, risk_policy, rss_feeds, strategies, tasks, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -103,6 +103,7 @@ impl AppState {
         (name = "comments", description = "コメントスレッド"),
         (name = "history", description = "変更履歴"),
         (name = "trades", description = "取引履歴と損益サマリ"),
+        (name = "tasks", description = "戦略タスクの実行履歴 (口座横断)"),
         (name = "triggers", description = "戦略 trigger (cron / hook)"),
         (name = "hypotheses", description = "仮説 (global 作成・戦略の有無を問わない generic エンドポイント)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
@@ -232,6 +233,8 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
         .routes(routes!(strategies::list_strategy_tasks))
+        // tasks (口座横断の戦略タスク一覧)
+        .routes(routes!(tasks::list_tasks))
         .routes(routes!(
             strategies::get_investable_amount,
             strategies::put_investable_amount

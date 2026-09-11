@@ -6702,6 +6702,69 @@
         }
       }
     },
+    "/api/tasks": {
+      "get": {
+        "tags": [
+          "tasks"
+        ],
+        "summary": "戦略タスクの実行履歴を口座横断で新しい順に一覧取得する。`strategy_id`/`purpose` で絞り込める。",
+        "operationId": "list_tasks",
+        "parameters": [
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StrategyTaskSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/trades": {
       "get": {
         "tags": [
@@ -9916,9 +9979,10 @@
       },
       "StrategyTaskSummary": {
         "type": "object",
-        "description": "`GET /api/strategies/:id/tasks` の一覧要素。`steps`/`result_text` は一覧では\n使わないため含めない。",
+        "description": "`GET /api/strategies/:id/tasks` と `GET /api/tasks` の一覧要素。`steps`/`result_text`\nは一覧では使わないため含めない。",
         "required": [
           "task_id",
+          "strategy_id",
           "source",
           "prompt",
           "phase",
@@ -9942,8 +10006,19 @@
           "prompt": {
             "type": "string"
           },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。"
+          },
           "source": {
             "type": "string"
+          },
+          "strategy_id": {
+            "type": "string",
+            "format": "uuid"
           },
           "task_id": {
             "type": "string",
@@ -10593,6 +10668,10 @@
     {
       "name": "trades",
       "description": "取引履歴と損益サマリ"
+    },
+    {
+      "name": "tasks",
+      "description": "戦略タスクの実行履歴 (口座横断)"
     },
     {
       "name": "triggers",

@@ -18,7 +18,7 @@ afterEach(cleanup)
 // Link が親ルートを要求するため、最低限のテストルーターを噛ませる
 async function renderInRouter(tasks: TaskRunListItem[]) {
   const rootRoute = createRootRoute({
-    component: () => <TaskRunListView strategyId="strategy-1" tasks={tasks} />,
+    component: () => <TaskRunListView tasks={tasks} />,
   })
   const detailRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -42,9 +42,11 @@ describe('TaskRunListView', () => {
     await renderInRouter([
       {
         taskId: 'task-1',
+        strategyId: 'strategy-1',
         prompt: 'p',
         source: 'frontend',
         phase: 'unknown-phase',
+        purpose: null,
         createdAt: '2026-08-15T00:00:00.000Z',
       },
     ])

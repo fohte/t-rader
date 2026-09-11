@@ -18,6 +18,7 @@ pub mod refs;
 pub mod risk_policy;
 pub mod rss_feeds;
 pub mod strategies;
+pub mod tasks;
 pub mod trades;
 pub mod triggers;
 pub mod watchlists;
