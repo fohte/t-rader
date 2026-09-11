@@ -31,10 +31,8 @@ const normalizeStepTimestamps = (
     ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
   }))
 
-// buildPhaseMessageText が埋め込む「割り当てられた対象」セクションから、その
-// 呼び出しがどの for_each 要素向けかを取り出す。priorResults セクションにも
-// 同じ値が全件分含まれるため、messageText 全体への単純な includes では
-// 呼び出し対象を一意に特定できない。
+// priorResults セクションにも同じ値が全件分含まれるため、messageText 全体への
+// 単純な includes では呼び出し対象を一意に特定できない。
 const assignedItem = (messageText: string): string | undefined =>
   /割り当てられた対象:\n```json\n"([^"]+)"\n```/.exec(messageText)?.[1]
 
@@ -912,6 +910,54 @@ describe('runAgentGraph', () => {
       message:
         'フェーズ「Work」(work) の実行に失敗しました: for_each の全要素 (2件) が失敗しました: x failed',
       errorKind: 'agent_error',
+    })
+  })
+
+  it('preserves the usage_limit error classification when every for_each item fails from a usage limit error', async () => {
+    const usageLimitError = Object.assign(new Error('usage limit exceeded'), {
+      rateLimitType: 'capacity',
+    })
+    const { deps } = buildDeps((call) =>
+      call.messageText.includes('do plan')
+        ? Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
+        : Promise.reject(usageLimitError),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message:
+        'フェーズ「Work」(work) の実行に失敗しました: usage limit exceeded',
+      errorKind: 'usage_limit',
     })
   })
 
