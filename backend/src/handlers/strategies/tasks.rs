@@ -113,6 +113,7 @@ pub async fn get_strategy_task(
         created_at: view.created_at,
         updated_at: view.updated_at,
         steps: view.steps,
+        purpose: view.purpose,
     }))
 }
 
@@ -219,6 +220,7 @@ mod tests {
             result_text: Set(None),
             deadline_at: Set(created_at + chrono::Duration::minutes(15)),
             steps: Set(json!([])),
+            purpose: NotSet,
             created_at: Set(created_at),
             updated_at: Set(created_at),
         }
@@ -370,6 +372,7 @@ mod tests {
                 "error_summary": null,
                 "result_text": null,
                 "steps": [],
+                "purpose": null,
             }),
         );
     }
