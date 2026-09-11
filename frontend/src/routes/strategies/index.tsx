@@ -38,8 +38,7 @@ function StrategyListPage() {
           戦略を選ぶ
         </h1>
         <p className="text-sm leading-relaxed text-muted-foreground-strong">
-          各戦略は永続ワークスペース。LLM
-          がアナリスト役として監視対象を広げ、ノートとアノテーションを産出します。あなたは時々開いてレビューします。
+          各戦略は運用資金の区分です。取引の帰属先・投資可能額・リスク上限を管理します。分析は口座全体を対象に行います。
         </p>
       </div>
 
