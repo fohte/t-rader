@@ -222,6 +222,7 @@ mod tests {
                 prompt: "inspect 7203".to_string(),
                 phase: StrategyTaskPhase::Running,
                 error_summary: None,
+                purpose: None,
             }],
         );
     }
@@ -231,7 +232,7 @@ mod tests {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long-term").await;
         let fake = Arc::new(FakeAgentTaskClient::new());
-        let server = build_server(db, fake.clone());
+        let server = build_server(db.clone(), fake.clone());
 
         server
             .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
@@ -250,6 +251,10 @@ mod tests {
             .map(|s| s.purpose.clone())
             .collect();
         assert_eq!(submitted, vec![Some("explore".to_string())]);
+
+        let rows = strategy_task::Entity::find().all(&db).await.unwrap();
+        let purposes: Vec<Option<String>> = rows.into_iter().map(|r| r.purpose).collect();
+        assert_eq!(purposes, vec![Some("explore".to_string())]);
     }
 
     #[derive(Debug, PartialEq, Eq)]
@@ -261,6 +266,7 @@ mod tests {
         prompt: String,
         phase: StrategyTaskPhase,
         error_summary: Option<String>,
+        purpose: Option<String>,
     }
 
     impl StrategyTaskRowSummary {
@@ -273,6 +279,7 @@ mod tests {
                 prompt: m.prompt,
                 phase: m.phase,
                 error_summary: m.error_summary,
+                purpose: m.purpose,
             }
         }
     }
