@@ -8,25 +8,23 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 interface HypothesisDetailPageProps {
-  strategyId: string
   hypothesisId: string
 }
 
 export function HypothesisDetailPage({
-  strategyId,
   hypothesisId,
 }: HypothesisDetailPageProps) {
   const {
     data: hypothesis,
     isPending,
     isError,
-  } = $api.useQuery('get', '/api/strategies/{id}/hypotheses/{hypothesis_id}', {
-    params: { path: { id: strategyId, hypothesis_id: hypothesisId } },
+  } = $api.useQuery('get', '/api/hypotheses/{hypothesis_id}', {
+    params: { path: { hypothesis_id: hypothesisId } },
   })
-  const invalidate = useInvalidateHypothesis(strategyId, hypothesisId)
+  const invalidate = useInvalidateHypothesis(hypothesisId)
   const updateMutation = $api.useMutation(
     'patch',
-    '/api/strategies/{id}/hypotheses/{hypothesis_id}',
+    '/api/hypotheses/{hypothesis_id}',
   )
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -34,7 +32,7 @@ export function HypothesisDetailPage({
     setSaveError(null)
     updateMutation.mutate(
       {
-        params: { path: { id: strategyId, hypothesis_id: hypothesisId } },
+        params: { path: { hypothesis_id: hypothesisId } },
         body: next,
       },
       {
@@ -69,13 +67,15 @@ export function HypothesisDetailPage({
 
   return (
     <div className="space-y-4 font-sans text-foreground">
-      <Link
-        to="/strategies/$id"
-        params={{ id: strategyId }}
-        className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
-      >
-        &lt; 戦略ホームに戻る
-      </Link>
+      {hypothesis.strategy_id != null && (
+        <Link
+          to="/strategies/$id"
+          params={{ id: hypothesis.strategy_id }}
+          className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
+        >
+          &lt; 戦略ホームに戻る
+        </Link>
+      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-hypothesis-detail)">
         <article className="border border-border bg-card px-5 py-5">
           <HypothesisEditor
@@ -88,7 +88,6 @@ export function HypothesisDetailPage({
         </article>
         <aside className="space-y-4">
           <HypothesisStatusPanel
-            strategyId={strategyId}
             hypothesisId={hypothesisId}
             status={hypothesis.status}
           />

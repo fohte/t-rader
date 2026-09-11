@@ -221,8 +221,8 @@ function FloatingChatNoteList({
       {notes.map((n) => (
         <li key={n.id}>
           <Link
-            to="/strategies/$id/notes/$noteId"
-            params={{ id: strategyId, noteId: n.id }}
+            to="/notes/$noteId"
+            params={{ noteId: n.id }}
             className="flex items-baseline gap-2 border border-border bg-background px-2.5 py-1.5 hover:border-primary"
           >
             <span className="flex-1 text-xs text-foreground">{n.title}</span>

@@ -31,7 +31,7 @@ async function renderInRouter(ui: React.ReactElement) {
   const rootRoute = createRootRoute({ component: () => ui })
   const noteRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/strategies/$id/notes/$noteId',
+    path: '/notes/$noteId',
     component: () => null,
   })
   const router = createRouter({
@@ -67,7 +67,6 @@ function makeProps(
   return {
     steps: [],
     configPhases: [],
-    strategyId: 'strategy-1',
     ...overrides,
   }
 }
@@ -441,7 +440,7 @@ describe('StepDetail', () => {
       finished_at: '2026-08-15T00:00:28.700Z',
     })
 
-    render(<StepDetail strategyId="strategy-1" step={step} />)
+    render(<StepDetail step={step} />)
 
     expect(screen.getByText('フェーズ')).toBeInTheDocument()
     expect(screen.getByText('仮説の調査')).toBeInTheDocument()
@@ -458,7 +457,7 @@ describe('StepDetail', () => {
       finished_at: undefined,
     })
 
-    render(<StepDetail strategyId="strategy-1" step={step} />)
+    render(<StepDetail step={step} />)
 
     expect(screen.getByText('—')).toBeInTheDocument()
   })
@@ -473,13 +472,7 @@ describe('StepDetail', () => {
       summary: { type: 'string' },
     }
 
-    render(
-      <StepDetail
-        strategyId="strategy-1"
-        step={step}
-        outputSchema={outputSchema}
-      />,
-    )
+    render(<StepDetail step={step} outputSchema={outputSchema} />)
 
     expect(screen.getByText('verdict')).toBeInTheDocument()
     expect(screen.getByText('rejected')).toBeInTheDocument()
@@ -492,7 +485,7 @@ describe('StepDetail', () => {
       output: { verdict: 'rejected' },
     })
 
-    render(<StepDetail strategyId="strategy-1" step={step} />)
+    render(<StepDetail step={step} />)
 
     expect(screen.queryByText('rejected')).not.toBeInTheDocument()
   })
@@ -504,7 +497,7 @@ describe('StepDetail', () => {
       output: { verdict: '妥当' },
     })
 
-    render(<StepDetail strategyId="strategy-1" step={step} />)
+    render(<StepDetail step={step} />)
 
     expect(screen.getByText('input')).toBeInTheDocument()
     expect(
@@ -523,7 +516,6 @@ describe('StepDetail', () => {
 
     render(
       <StepDetail
-        strategyId="strategy-1"
         step={step}
         traceUrlTemplate="https://grafana.example/trace/{trace_id}?span={span_id}"
       />,
@@ -543,11 +535,11 @@ describe('StepDetail', () => {
       output: { verdict: 'rejected', note_id: 'note-abc' },
     })
 
-    await renderInRouter(<StepDetail strategyId="strategy-1" step={step} />)
+    await renderInRouter(<StepDetail step={step} />)
 
     expect(
       screen.getByRole('link', { name: '→ ノートを開く' }),
-    ).toHaveAttribute('href', '/strategies/strategy-1/notes/note-abc')
+    ).toHaveAttribute('href', '/notes/note-abc')
   })
 
   it('output に note_id が無ければノートへのリンクを出さない', () => {
@@ -556,7 +548,7 @@ describe('StepDetail', () => {
       output: { verdict: 'rejected' },
     })
 
-    render(<StepDetail strategyId="strategy-1" step={step} />)
+    render(<StepDetail step={step} />)
 
     expect(
       screen.queryByRole('link', { name: '→ ノートを開く' }),
@@ -569,7 +561,7 @@ describe('StepDetail', () => {
       output: { verdict: 'rejected', note_id: '' },
     })
 
-    render(<StepDetail strategyId="strategy-1" step={step} />)
+    render(<StepDetail step={step} />)
 
     expect(
       screen.queryByRole('link', { name: '→ ノートを開く' }),

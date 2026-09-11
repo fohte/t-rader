@@ -118,7 +118,7 @@ async function renderInRouter(initial: Hypothesis[] = []) {
   })
   const detailRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/strategies/$id/hypotheses/$hypothesisId',
+    path: '/hypotheses/$hypothesisId',
     component: () => null,
   })
   const router = createRouter({

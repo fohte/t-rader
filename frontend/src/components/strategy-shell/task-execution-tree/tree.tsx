@@ -16,8 +16,6 @@ import { cn } from '#lib/utils'
 export interface TaskExecutionTreeProps {
   steps: TaskStep[]
   configPhases: AgentGraphPhaseSummary[]
-  /** ノートへのリンク組み立てに使う戦略 id */
-  strategyId: string
   /** トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` を差し替える)。未設定なら該当リンクを出さない */
   traceUrlTemplate?: string
   /**
@@ -101,7 +99,6 @@ function toRows(nodes: PhaseNode[]): RenderRow[] {
 export function TaskExecutionTree({
   steps,
   configPhases,
-  strategyId,
   traceUrlTemplate,
   detailPlacement = 'inline',
   onSelectStep,
@@ -154,7 +151,6 @@ export function TaskExecutionTree({
               selected &&
               row.content.kind === 'step' && (
                 <StepDetail
-                  strategyId={strategyId}
                   step={row.content.step}
                   outputSchema={row.content.outputSchema}
                   traceUrlTemplate={traceUrlTemplate}

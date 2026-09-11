@@ -55,8 +55,8 @@ export function HypothesisList({ strategyId }: HypothesisListProps) {
           {hypotheses.map((h) => (
             <Link
               key={h.hypothesis_id}
-              to="/strategies/$id/hypotheses/$hypothesisId"
-              params={{ id: strategyId, hypothesisId: h.hypothesis_id }}
+              to="/hypotheses/$hypothesisId"
+              params={{ hypothesisId: h.hypothesis_id }}
               className="flex flex-col gap-1 border-b border-border px-3.5 py-2.5 last:border-b-0 hover:bg-surface-strong"
             >
               <span className="line-clamp-2 text-sm text-foreground">

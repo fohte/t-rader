@@ -53,10 +53,9 @@ function installMiddleware(initial: Hypothesis) {
       const { url } = request
       const method = request.method.toUpperCase()
 
-      const singleMatch =
-        /\/api\/strategies\/([^/]+)\/hypotheses\/([^/?]+)/.exec(url)
+      const singleMatch = /\/api\/hypotheses\/([^/?]+)/.exec(url)
       if (singleMatch != null) {
-        const hid = singleMatch[2] ?? ''
+        const hid = singleMatch[1] ?? ''
         const current = store.byId.get(hid)
         if (current == null) {
           return new Response(JSON.stringify({ error: 'not found' }), {
@@ -111,10 +110,7 @@ async function renderInRouter(initial: Hypothesis) {
   const rootRoute = createRootRoute({
     component: () => (
       <QueryClientProvider client={client}>
-        <HypothesisDetailPage
-          strategyId="strat-1"
-          hypothesisId={initial.hypothesis_id}
-        />
+        <HypothesisDetailPage hypothesisId={initial.hypothesis_id} />
       </QueryClientProvider>
     ),
   })

@@ -2226,8 +2226,19 @@
         "tags": [
           "hypotheses"
         ],
-        "summary": "戦略に属さない (global) 仮説の一覧 (更新日時の降順)",
+        "summary": "口座全体の仮説一覧 (更新日時の降順)。`strategy_id` を指定するとその戦略の仮説に絞り込む。",
         "operationId": "list_hypotheses",
+        "parameters": [
+          {
+            "name": "strategy_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -2238,6 +2249,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Hypothesis"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }

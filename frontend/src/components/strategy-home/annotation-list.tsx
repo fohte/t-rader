@@ -4,7 +4,6 @@ import { StatusPill } from '#components/strategy-home/status-pill'
 import type { NumberedAnnotation } from '#lib/annotation-utils'
 
 interface AnnotationListProps {
-  strategyId: string
   /** 採番済みのアノテーション一覧。チャートと共通の (annotations, symbol) から派生していること */
   items: NumberedAnnotation[]
   /** 表示中の銘柄。ラベル表示にのみ使用 */
@@ -14,7 +13,6 @@ interface AnnotationListProps {
 }
 
 export function AnnotationList({
-  strategyId,
   items,
   symbol,
   selectedAnnotationId,
@@ -66,16 +64,16 @@ export function AnnotationList({
                 </span>
                 <StatusPill status={a.status} />
                 <Link
-                  to="/strategies/$id/annotations/$annoId"
-                  params={{ id: strategyId, annoId: a.id }}
+                  to="/annotations/$annoId"
+                  params={{ annoId: a.id }}
                   className="text-primary hover:underline"
                 >
                   → 詳細
                 </Link>
                 {a.linked_note_id != null && (
                   <Link
-                    to="/strategies/$id/notes/$noteId"
-                    params={{ id: strategyId, noteId: a.linked_note_id }}
+                    to="/notes/$noteId"
+                    params={{ noteId: a.linked_note_id }}
                     className="text-primary hover:underline"
                   >
                     → note を開く

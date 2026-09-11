@@ -19,7 +19,7 @@ function createTaskRunViewRouter(props: TaskRunViewProps) {
         <TaskRunView {...props} />
       </div>
     ),
-    { paths: ['/strategies/$id/runs', '/strategies/$id/notes/$noteId'] },
+    { paths: ['/strategies/$id/runs', '/notes/$noteId'] },
   )
 }
 

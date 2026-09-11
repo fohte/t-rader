@@ -7,7 +7,7 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import { resolveRef } from '#lib/strategy-mock'
 
-export const Route = createFileRoute('/strategies/$id/annotations/$annoId')({
+export const Route = createFileRoute('/annotations/$annoId')({
   component: AnnotationDetailPage,
 })
 
@@ -23,7 +23,7 @@ function formatDateTime(iso: string): string {
 }
 
 function AnnotationDetailPage() {
-  const { id, annoId } = Route.useParams()
+  const { annoId } = Route.useParams()
   const queryClient = useQueryClient()
 
   const { data: annotation, isPending: annoPending } = $api.useQuery(
@@ -93,12 +93,8 @@ function AnnotationDetailPage() {
     return (
       <div className="font-mono text-sm text-muted-foreground">
         アノテーションが見つかりませんでした。{' '}
-        <Link
-          to="/strategies/$id"
-          params={{ id }}
-          className="text-primary hover:underline"
-        >
-          戦略ホームに戻る
+        <Link to="/annotations" className="text-primary hover:underline">
+          アノテーション一覧に戻る
         </Link>
       </div>
     )
@@ -138,15 +134,17 @@ function AnnotationDetailPage() {
 
   return (
     <div className="space-y-5 font-sans text-foreground">
-      <div>
-        <Link
-          to="/strategies/$id"
-          params={{ id }}
-          className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground-strong hover:text-primary"
-        >
-          ← 戦略ホームに戻る
-        </Link>
-      </div>
+      {annotation.strategy_id != null && (
+        <div>
+          <Link
+            to="/strategies/$id"
+            params={{ id: annotation.strategy_id }}
+            className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground-strong hover:text-primary"
+          >
+            ← 戦略ホームに戻る
+          </Link>
+        </div>
+      )}
 
       <header className="border border-border bg-card p-5">
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -185,8 +183,8 @@ function AnnotationDetailPage() {
         {annotation.linked_note_id != null && (
           <div className="mt-4 border-t border-border pt-3">
             <Link
-              to="/strategies/$id/notes/$noteId"
-              params={{ id, noteId: annotation.linked_note_id }}
+              to="/notes/$noteId"
+              params={{ noteId: annotation.linked_note_id }}
               className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
             >
               → 紐づくノートを開く

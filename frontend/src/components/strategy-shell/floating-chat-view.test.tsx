@@ -22,7 +22,7 @@ async function renderInRouter(ui: React.ReactElement): Promise<void> {
   const rootRoute = createRootRoute({ component: () => ui })
   const noteRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/strategies/$id/notes/$noteId',
+    path: '/notes/$noteId',
     component: () => null,
   })
   const runRoute = createRoute({
@@ -166,8 +166,8 @@ describe('FloatingChatView', () => {
     expect(screen.getByText('completed')).toBeInTheDocument()
     const link1 = screen.getByRole('link', { name: /今日の半導体メモ/ })
     const link2 = screen.getByRole('link', { name: /別件/ })
-    expect(link1).toHaveAttribute('href', '/strategies/S1/notes/N1')
-    expect(link2).toHaveAttribute('href', '/strategies/S1/notes/N2')
+    expect(link1).toHaveAttribute('href', '/notes/N1')
+    expect(link2).toHaveAttribute('href', '/notes/N2')
   })
 
   it('completed でもノートが空ならフォールバック文言を出す', async () => {

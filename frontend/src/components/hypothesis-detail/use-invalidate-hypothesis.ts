@@ -2,23 +2,16 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { $api } from '#lib/api/client'
 
-export function useInvalidateHypothesis(
-  strategyId: string,
-  hypothesisId: string,
-) {
+export function useInvalidateHypothesis(hypothesisId: string) {
   const queryClient = useQueryClient()
   return () => {
     void queryClient.invalidateQueries({
-      queryKey: $api.queryOptions(
-        'get',
-        '/api/strategies/{id}/hypotheses/{hypothesis_id}',
-        { params: { path: { id: strategyId, hypothesis_id: hypothesisId } } },
-      ).queryKey,
+      queryKey: $api.queryOptions('get', '/api/hypotheses/{hypothesis_id}', {
+        params: { path: { hypothesis_id: hypothesisId } },
+      }).queryKey,
     })
     void queryClient.invalidateQueries({
-      queryKey: $api.queryOptions('get', '/api/strategies/{id}/hypotheses', {
-        params: { path: { id: strategyId } },
-      }).queryKey,
+      queryKey: $api.queryOptions('get', '/api/hypotheses').queryKey,
     })
   }
 }

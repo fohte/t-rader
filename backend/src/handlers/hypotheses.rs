@@ -7,12 +7,14 @@ use sea_orm::{
     ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
     TransactionTrait,
 };
+use serde::Deserialize;
+use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::entities::{hypothesis, note};
 use crate::error::{AppError, ErrorResponse};
-use crate::extractors::{JsonBody, JsonPath};
+use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateHypothesisRequest, UpdateHypothesisRequest};
 use crate::services::hypotheses::{DEFAULT_STATUS, ensure_status};
 use crate::services::strategies::ensure_strategy_exists;
@@ -103,25 +105,33 @@ pub async fn list_strategy_hypotheses(
     Ok(Json(rows))
 }
 
-/// 戦略に属さない (global) 仮説の一覧 (更新日時の降順)
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ListHypothesesQuery {
+    pub strategy_id: Option<Uuid>,
+}
+
+/// 口座全体の仮説一覧 (更新日時の降順)。`strategy_id` を指定するとその戦略の仮説に絞り込む。
 #[utoipa::path(
     get,
     path = "/api/hypotheses",
     tag = "hypotheses",
+    params(ListHypothesesQuery),
     responses(
         (status = 200, body = Vec<hypothesis::Model>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_hypotheses(
     State(state): State<AppState>,
+    JsonQuery(params): JsonQuery<ListHypothesesQuery>,
 ) -> Result<Json<Vec<hypothesis::Model>>, AppError> {
-    let rows = hypothesis::Entity::find()
-        .filter(hypothesis::Column::StrategyId.is_null())
-        .order_by_desc(hypothesis::Column::UpdatedAt)
-        .all(&state.db)
-        .await?;
-    Ok(Json(rows))
+    let mut q = hypothesis::Entity::find().order_by_desc(hypothesis::Column::UpdatedAt);
+    if let Some(sid) = params.strategy_id {
+        q = q.filter(hypothesis::Column::StrategyId.eq(sid));
+    }
+    Ok(Json(q.all(&state.db).await?))
 }
 
 /// 仮説を作成する
@@ -834,7 +844,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn list_isolates_global_and_strategy_hypotheses(pool: PgPool) {
+    async fn list_account_wide_returns_all_and_filters_by_strategy(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
 
@@ -849,37 +859,49 @@ mod tests {
             .await
             .assert_status(StatusCode::CREATED);
 
-        let global_list = server.get("/api/hypotheses").await;
-        global_list.assert_status_ok();
-        let normalized_global: Vec<_> = global_list
+        let account_wide_list = server.get("/api/hypotheses").await;
+        account_wide_list.assert_status_ok();
+        let mut normalized_account_wide: Vec<_> = account_wide_list
             .json::<Vec<serde_json::Value>>()
             .into_iter()
             .map(normalize)
             .collect();
+        normalized_account_wide.sort_by_key(|v| v["title"].as_str().unwrap().to_string());
         assert_eq!(
-            normalized_global,
-            vec![json!({
-                "hypothesis_id": "<uuid>",
-                "strategy_id": null,
-                "title": "global-only",
-                "body": "b",
-                "status": "unverified",
-                "related_note_ids": [],
-                "related_interest_ids": [],
-            })],
+            normalized_account_wide,
+            vec![
+                json!({
+                    "hypothesis_id": "<uuid>",
+                    "strategy_id": null,
+                    "title": "global-only",
+                    "body": "b",
+                    "status": "unverified",
+                    "related_note_ids": [],
+                    "related_interest_ids": [],
+                }),
+                json!({
+                    "hypothesis_id": "<uuid>",
+                    "strategy_id": sid,
+                    "title": "strategy-only",
+                    "body": "b",
+                    "status": "unverified",
+                    "related_note_ids": [],
+                    "related_interest_ids": [],
+                }),
+            ],
         );
 
-        let strategy_list = server
-            .get(&format!("/api/strategies/{sid}/hypotheses"))
+        let filtered_list = server
+            .get(&format!("/api/hypotheses?strategy_id={sid}"))
             .await;
-        strategy_list.assert_status_ok();
-        let normalized_strategy: Vec<_> = strategy_list
+        filtered_list.assert_status_ok();
+        let normalized_filtered: Vec<_> = filtered_list
             .json::<Vec<serde_json::Value>>()
             .into_iter()
             .map(normalize)
             .collect();
         assert_eq!(
-            normalized_strategy,
+            normalized_filtered,
             vec![json!({
                 "hypothesis_id": "<uuid>",
                 "strategy_id": sid,

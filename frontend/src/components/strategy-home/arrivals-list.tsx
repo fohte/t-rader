@@ -7,7 +7,6 @@ type Note = components['schemas']['Note']
 type Annotation = components['schemas']['Annotation']
 
 interface ArrivalsListProps {
-  strategyId: string
   notes: Note[]
   annotations: Annotation[]
   since: number | null
@@ -55,12 +54,7 @@ function pickArrivals(
 
 const MAX_VISIBLE = 6
 
-export function ArrivalsList({
-  strategyId,
-  notes,
-  annotations,
-  since,
-}: ArrivalsListProps) {
+export function ArrivalsList({ notes, annotations, since }: ArrivalsListProps) {
   const arrivals = pickArrivals(notes, annotations, since)
   if (arrivals.length === 0) return null
 
@@ -81,16 +75,16 @@ export function ArrivalsList({
             a.kind === 'annotation'
               ? a.noteId != null
                 ? {
-                    to: '/strategies/$id/notes/$noteId' as const,
-                    params: { id: strategyId, noteId: a.noteId },
+                    to: '/notes/$noteId' as const,
+                    params: { noteId: a.noteId },
                   }
                 : {
-                    to: '/strategies/$id/annotations/$annoId' as const,
-                    params: { id: strategyId, annoId: a.id },
+                    to: '/annotations/$annoId' as const,
+                    params: { annoId: a.id },
                   }
               : {
-                  to: '/strategies/$id/notes/$noteId' as const,
-                  params: { id: strategyId, noteId: a.noteId ?? a.id },
+                  to: '/notes/$noteId' as const,
+                  params: { noteId: a.noteId ?? a.id },
                 }
           return (
             <Link

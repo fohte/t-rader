@@ -10,12 +10,12 @@ import { openFloatingChat } from '#components/strategy-shell/floating-chat-store
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-export const Route = createFileRoute('/strategies/$id/notes/$noteId')({
+export const Route = createFileRoute('/notes/$noteId')({
   component: NoteDetailPage,
 })
 
 function NoteDetailPage() {
-  const { id, noteId } = Route.useParams()
+  const { noteId } = Route.useParams()
   const { data: note, isPending } = $api.useQuery('get', '/api/notes/{id}', {
     params: { path: { id: noteId } },
   })
@@ -48,16 +48,18 @@ function NoteDetailPage() {
 
   return (
     <div className="space-y-4 font-sans text-foreground">
-      <Link
-        to="/strategies/$id"
-        params={{ id }}
-        className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
-      >
-        &lt; 戦略ホームに戻る
-      </Link>
+      {note.strategy_id != null && (
+        <Link
+          to="/strategies/$id"
+          params={{ id: note.strategy_id }}
+          className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
+        >
+          &lt; 戦略ホームに戻る
+        </Link>
+      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
         <article className="border border-border bg-card px-5 py-5">
-          <NoteHeader note={note} strategyId={id} />
+          <NoteHeader note={note} strategyId={note.strategy_id ?? null} />
           <NoteDocument
             source={note.body_md}
             graphs={note.graphs_json}
@@ -79,7 +81,11 @@ function NoteDetailPage() {
           </div>
         </article>
         <aside className="space-y-4">
-          <ReviewPanel noteId={note.id} strategyId={id} status={note.status} />
+          <ReviewPanel
+            noteId={note.id}
+            strategyId={note.strategy_id ?? null}
+            status={note.status}
+          />
           <CommentsPanel
             noteId={note.id}
             pendingQuote={pendingQuote}
