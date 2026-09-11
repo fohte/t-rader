@@ -221,7 +221,6 @@ mod tests {
             error_summary: Set(None),
             result_text: Set(None),
             deadline_at: Set(created_at + chrono::Duration::minutes(15)),
-            steps: Set(json!([])),
             purpose: NotSet,
             created_at: Set(created_at),
             updated_at: Set(created_at),

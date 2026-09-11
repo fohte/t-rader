@@ -7,12 +7,12 @@
 use chrono::{DateTime, FixedOffset};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{strategy, strategy_task};
+use crate::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
+use crate::entities::{strategy, strategy_task, strategy_task_step};
 use crate::services::agent_config;
 
 /// 内部 API 投入後、client 側で完了を待つ猶予期間。
@@ -103,7 +103,10 @@ impl From<strategy_task::Model> for TaskStatusView {
             result_text: row.result_text,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            steps: row.steps,
+            // strategy_task_step は別テーブルのため、ここでは埋められない。
+            // steps を必要とする呼び出し元 (get_task_for_strategy/get_task_by_a2a_task_id) が
+            // steps_json_for_task で上書きする。
+            steps: serde_json::json!([]),
             purpose: row.purpose,
         }
     }
@@ -166,7 +169,6 @@ pub async fn submit_task(
         error_summary: Set(None),
         result_text: Set(None),
         deadline_at: Set(deadline_at),
-        steps: Set(serde_json::json!([])),
         purpose: Set(purpose.clone()),
         created_at: NotSet,
         updated_at: NotSet,
@@ -245,7 +247,7 @@ pub async fn list_tasks_for_strategy(
     db: &DatabaseConnection,
     strategy_id: Uuid,
 ) -> Result<Vec<TaskStatusView>, sea_orm::DbErr> {
-    use sea_orm::{ColumnTrait, QueryFilter, QueryOrder, QuerySelect};
+    use sea_orm::QuerySelect;
     let rows = strategy_task::Entity::find()
         .filter(strategy_task::Column::StrategyId.eq(strategy_id))
         .order_by_desc(strategy_task::Column::CreatedAt)
@@ -272,7 +274,9 @@ pub async fn get_task_for_strategy(
             strategy_id,
         });
     }
-    Ok(TaskStatusView::from(row))
+    let mut view = TaskStatusView::from(row);
+    view.steps = steps_json_for_task(db, view.task_id).await?;
+    Ok(view)
 }
 
 /// a2a_task_id で strategy_task 行を引く (管理 MCP `get_strategy_task_status` 互換)。
@@ -280,12 +284,16 @@ pub async fn get_task_by_a2a_task_id(
     db: &DatabaseConnection,
     a2a_task_id: &str,
 ) -> Result<Option<TaskStatusView>, sea_orm::DbErr> {
-    use sea_orm::{ColumnTrait, QueryFilter};
     let row = strategy_task::Entity::find()
         .filter(strategy_task::Column::A2aTaskId.eq(a2a_task_id))
         .one(db)
         .await?;
-    Ok(row.map(TaskStatusView::from))
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let mut view = TaskStatusView::from(row);
+    view.steps = steps_json_for_task(db, view.task_id).await?;
+    Ok(Some(view))
 }
 
 pub fn phase_str(phase: &StrategyTaskPhase) -> &'static str {
@@ -295,6 +303,80 @@ pub fn phase_str(phase: &StrategyTaskPhase) -> &'static str {
         StrategyTaskPhase::Completed => "completed",
         StrategyTaskPhase::Failed => "failed",
     }
+}
+
+fn step_status_str(status: &StrategyTaskStepStatus) -> &'static str {
+    match status {
+        StrategyTaskStepStatus::Running => "running",
+        StrategyTaskStepStatus::Completed => "completed",
+        StrategyTaskStepStatus::Failed => "failed",
+    }
+}
+
+/// `task_id` の実行ステップを挿入順 (`seq` 昇順、元の agent 側 push 順) に、
+/// `GET /api/strategies/:id/tasks/:task_id` の `steps` 配列と同じ wire JSON 形式で返す。
+/// optional フィールドは値が無ければキーごと省略する (`execution_step_id` は DB 内部の
+/// 主キーに過ぎず、この API レスポンスの契約には含めない)。
+pub async fn steps_json_for_task(
+    db: &DatabaseConnection,
+    task_id: Uuid,
+) -> Result<serde_json::Value, sea_orm::DbErr> {
+    let rows = strategy_task_step::Entity::find()
+        .filter(strategy_task_step::Column::TaskId.eq(task_id))
+        .order_by_asc(strategy_task_step::Column::Seq)
+        .all(db)
+        .await?;
+
+    let steps = rows.into_iter().map(step_to_wire_json).collect();
+    Ok(serde_json::Value::Array(steps))
+}
+
+fn step_to_wire_json(row: strategy_task_step::Model) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "phase_key".to_string(),
+        serde_json::Value::String(row.phase_key),
+    );
+    obj.insert("label".to_string(), serde_json::Value::String(row.label));
+    obj.insert("model".to_string(), serde_json::Value::String(row.model));
+    obj.insert(
+        "status".to_string(),
+        serde_json::Value::String(step_status_str(&row.status).to_string()),
+    );
+    if let Some(item) = row.item {
+        obj.insert("item".to_string(), item);
+    }
+    if let Some(item_label) = row.item_label {
+        obj.insert(
+            "item_label".to_string(),
+            serde_json::Value::String(item_label),
+        );
+    }
+    if let Some(output) = row.output {
+        obj.insert("output".to_string(), output);
+    }
+    obj.insert(
+        "started_at".to_string(),
+        serde_json::Value::String(row.started_at.to_rfc3339()),
+    );
+    if let Some(finished_at) = row.finished_at {
+        obj.insert(
+            "finished_at".to_string(),
+            serde_json::Value::String(finished_at.to_rfc3339()),
+        );
+    }
+    obj.insert(
+        "trace_id".to_string(),
+        serde_json::Value::String(row.trace_id),
+    );
+    obj.insert(
+        "span_id".to_string(),
+        serde_json::Value::String(row.span_id),
+    );
+    if let Some(error) = row.error {
+        obj.insert("error".to_string(), serde_json::Value::String(error));
+    }
+    serde_json::Value::Object(obj)
 }
 
 #[cfg(test)]

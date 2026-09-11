@@ -75,15 +75,28 @@ const buildUserMessage = (text: string): Message => ({
 const NOOP_TRACE_ID = '00000000000000000000000000000000'
 const NOOP_SPAN_ID = '0000000000000000'
 
-// startedAt/finishedAt は実行のたびに変わるため、比較前に固定文字列へ正規化する。
+// startedAt/finishedAt/executionStepId は実行のたびに変わるため、比較前に
+// 固定文字列へ正規化する。executionStepId は出現順で <execution-step-id-N>
+// へラベル付けする (呼び出しごとに新しい Map を使うため、toEqual ブロックごと
+// に独立して 1 から振られる)。
 const normalizeStepTimestamps = (
   steps: readonly StrategyTaskStep[],
-): unknown[] =>
-  steps.map((step) => ({
-    ...step,
-    startedAt: '<started-at>',
-    ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
-  }))
+): unknown[] => {
+  const labels = new Map<string, string>()
+  return steps.map((step) => {
+    let label = labels.get(step.executionStepId)
+    if (label === undefined) {
+      label = `<execution-step-id-${String(labels.size + 1)}>`
+      labels.set(step.executionStepId, label)
+    }
+    return {
+      ...step,
+      executionStepId: label,
+      startedAt: '<started-at>',
+      ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
+    }
+  })
+}
 
 const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
@@ -378,6 +391,7 @@ describe('runStrategyAgent', () => {
       [
         {
           phaseKey: 'p',
+          executionStepId: '<execution-step-id-1>',
           label: 'P',
           model: 'm',
           status: 'running',
@@ -389,6 +403,7 @@ describe('runStrategyAgent', () => {
       [
         {
           phaseKey: 'p',
+          executionStepId: '<execution-step-id-1>',
           label: 'P',
           model: 'm',
           status: 'completed',
