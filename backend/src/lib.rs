@@ -233,17 +233,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(strategies::get_strategy_task))
         .routes(routes!(strategies::list_strategy_tasks))
         .routes(routes!(
-            strategies::get_agents_md,
-            strategies::put_agents_md
-        ))
-        .routes(routes!(strategies::get_skills, strategies::put_skills))
-        .routes(routes!(strategies::put_skill, strategies::delete_skill))
-        .routes(routes!(
-            strategies::get_agent_graph,
-            strategies::put_agent_graph
-        ))
-        .routes(routes!(strategies::get_agent_config))
-        .routes(routes!(
             strategies::get_investable_amount,
             strategies::put_investable_amount
         ))

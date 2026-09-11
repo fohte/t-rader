@@ -33,22 +33,13 @@ function TaskRunPage() {
   const task = taskQuery.data
   const purpose = task?.purpose ?? null
 
-  const strategyAgentGraphQuery = $api.useQuery(
-    'get',
-    '/api/strategies/{id}/agent-graph',
-    { params: { path: { id } } },
-    { enabled: purpose == null },
-  )
   const purposeAgentGraphQuery = $api.useQuery(
     'get',
     '/api/agent-configs/{purpose}/agent-graph',
     { params: { path: { purpose: purpose ?? '' } } },
     { enabled: purpose != null },
   )
-  const agentGraphContent =
-    purpose == null
-      ? strategyAgentGraphQuery.data?.content
-      : purposeAgentGraphQuery.data?.content
+  const agentGraphContent = purposeAgentGraphQuery.data?.content
   const configQuery = $api.useQuery('get', '/api/config')
   const configPhases = useMemo(
     () => parseAgentGraphPhases(agentGraphContent ?? ''),

@@ -19,12 +19,6 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
-    #[sea_orm(column_type = "Text")]
-    pub agents_md: String,
-    #[sea_orm(column_type = "JsonBinary")]
-    pub skills: Json,
-    #[sea_orm(column_type = "Text")]
-    pub agent_graph: String,
     #[sea_orm(column_type = "JsonBinary")]
     pub risk_policy: Json,
 }

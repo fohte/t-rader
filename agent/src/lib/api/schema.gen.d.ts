@@ -47,11 +47,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /**
-     * 目的別 agent 設定を取得。
-     *     `strategies::get_agent_config` (戦略 ID キー、`AgentConfigResponse` を返す) とは
-     *     別 API。こちらは purpose キーで `agent_config` テーブルの行をそのまま返す。
-     */
+    /** 目的別 agent 設定を取得。purpose キーで `agent_config` テーブルの行をそのまま返す。 */
     get: operations['agent_config_get_agent_config']
     put?: never
     post?: never
@@ -71,8 +67,7 @@ export interface paths {
     }
     /**
      * 目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
-     *     t-rader-agent が purpose 付きタスク実行時に呼び出す。
-     *     `strategies::get_agent_config` (戦略 ID キー) の purpose キー版。
+     *     t-rader-agent がタスク実行のたびに呼び出す。
      */
     get: operations['agent_config_get_agent_config_bundle']
     put?: never
@@ -909,67 +904,6 @@ export interface paths {
     patch: operations['update_strategy']
     trace?: never
   }
-  '/api/strategies/{id}/agent-config': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /**
-     * 戦略 Agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
-     *     t-rader-agent がタスク実行のたびに呼び出し、agent をその場で構成する。
-     *     `agent_config::get_agent_config` (purpose キー) とは別 API。
-     */
-    get: operations['get_agent_config']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/strategies/{id}/agent-graph': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** 戦略 Agent の多段フェーズ実行設定 (YAML) を取得 */
-    get: operations['get_agent_graph']
-    /**
-     * 戦略 Agent の多段フェーズ実行設定 (YAML) を上書き保存する。
-     *     パースできない YAML や、`for_each` の参照先が手前のフェーズに実在しない配列である
-     *     といった不正な設定は 400 で弾く。
-     */
-    put: operations['put_agent_graph']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/strategies/{id}/agents-md': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** 戦略 Agent の AGENTS.md (方針 / 制約 markdown) を取得 */
-    get: operations['get_agents_md']
-    /** 戦略 Agent の AGENTS.md を上書き保存し、Agent reconcile を再発火 */
-    put: operations['put_agents_md']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/strategies/{id}/chat': {
     parameters: {
       query?: never
@@ -1150,42 +1084,6 @@ export interface paths {
     put: operations['put_risk_policy']
     post?: never
     delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/strategies/{id}/skills': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** 戦略 Agent の skills 全件取得 */
-    get: operations['get_skills']
-    /** 戦略 Agent の skills 全置換 */
-    put: operations['put_skills']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/strategies/{id}/skills/{name}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    /** 戦略 Agent の単一 skill 追加 / 更新 */
-    put: operations['put_skill']
-    post?: never
-    /** 戦略 Agent の単一 skill 削除 */
-    delete: operations['delete_skill']
     options?: never
     head?: never
     patch?: never
@@ -2030,8 +1928,6 @@ export interface components {
       updated_at: string
     }
     Strategy: {
-      agent_graph: string
-      agents_md: string
       /** Format: date-time */
       created_at: string
       description?: string | null
@@ -2039,7 +1935,6 @@ export interface components {
       id: string
       name: string
       risk_policy: components['schemas']['Value']
-      skills: components['schemas']['Value']
       /** Format: int32 */
       sort_order: number
       /** Format: date-time */
@@ -2092,7 +1987,10 @@ export interface components {
       error_summary?: string | null
       phase: string
       prompt: string
-      /** @description 投入時に指定された purpose。`None` なら戦略の実行グラフでフェーズを表示する。 */
+      /**
+       * @description 投入時に指定された purpose。タスクは常に purpose キーの実行グラフでフェーズを
+       *     表示する。`None` はこのカラムが追加される前に作成された行に限られる。
+       */
       purpose?: string | null
       /** @description agent の最終応答テキスト (completed 時のみ) */
       result_text?: string | null
@@ -6033,279 +5931,6 @@ export interface operations {
       }
     }
   }
-  get_agent_config: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['AgentConfigResponse']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  get_agent_graph: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['AgentGraphBody']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  put_agent_graph: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AgentGraphBody']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['AgentGraphBody']
-        }
-      }
-      /** @description YAML が不正、またはフェーズ定義が不正 (キー重複・for_each の参照先不備など) */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  get_agents_md: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['AgentsMdBody']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  put_agents_md: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['AgentsMdBody']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['AgentsMdBody']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
   submit_strategy_chat: {
     parameters: {
       query?: never
@@ -7314,234 +6939,6 @@ export interface operations {
         }
       }
       422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  get_skills: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['SkillsBody']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  put_skills: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SkillsBody']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['SkillsBody']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  put_skill: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-        /** @description skill 名 (^[a-z0-9][a-z0-9_-]*$) */
-        name: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['SkillBody']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['SkillBody']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  delete_skill: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-        /** @description skill 名 */
-        name: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
         headers: {
           [name: string]: unknown
         }

@@ -21,6 +21,9 @@ use crate::entities::{strategy, strategy_task};
 /// watchdog が機能しない (server ごと長期停止する) 場合の最終防衛。
 pub const DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
 
+/// `submit_task` に `purpose` が指定されなかった場合に使う purpose。
+pub const DEFAULT_PURPOSE: &str = "default";
+
 /// 戦略タスクの起源。`strategy_task.source` に保存される文字列。
 #[derive(Debug, Clone, Copy)]
 pub enum TaskSource {
@@ -79,7 +82,8 @@ pub struct TaskStatusView {
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
     pub steps: serde_json::Value,
-    /// 投入時に指定された purpose。`None` なら戦略キーの agent-config で実行された。
+    /// 投入時に指定された purpose。`submit_task` は常に `Some` を書き込むため、`None` は
+    /// このカラムが追加される前に作成された行に限られる。
     pub purpose: Option<String>,
 }
 
@@ -118,7 +122,7 @@ pub enum GetTaskError {
 /// 行に `a2a_task_id` を記録して phase を Running に進める。投入失敗時は行を Failed に
 /// 更新する。
 ///
-/// `purpose` が `Some` の場合、t-rader-agent は戦略キーの agent-config ではなく
+/// `purpose` を省略した場合は `DEFAULT_PURPOSE` を使う。t-rader-agent は常に
 /// purpose キーの agent-config (AGENTS.md / skills / agent_graph) を使ってタスクを実行する。
 pub async fn submit_task(
     db: &DatabaseConnection,
@@ -132,6 +136,7 @@ pub async fn submit_task(
     if prompt.is_empty() {
         return Err(SubmitTaskError::EmptyPrompt);
     }
+    let purpose = Some(purpose.unwrap_or_else(|| DEFAULT_PURPOSE.to_string()));
 
     strategy::Entity::find_by_id(strategy_id)
         .one(db)

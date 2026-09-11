@@ -1,7 +1,5 @@
 //! 管理 MCP tool の入出力スキーマ。
 
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, FixedOffset};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -28,9 +26,9 @@ pub struct ListStrategiesResult {
 pub struct SubmitStrategyTaskParams {
     pub strategy_id: Uuid,
     pub prompt: String,
-    /// 指定すると、戦略キーの agent-config ではなく `agent_config` テーブルの purpose
-    /// キーの行 (AGENTS.md / skills / agent_graph) を使ってタスクを実行する。存在しない
-    /// purpose を指定した場合、ここではなく agent 実行時にタスクが失敗する。
+    /// タスク実行に使う `agent_config` テーブルの purpose キー。省略時は
+    /// `strategy_tasks::DEFAULT_PURPOSE` を使う。存在しない purpose を指定した場合、
+    /// ここではなく agent 実行時にタスクが失敗する。
     #[serde(default)]
     pub purpose: Option<String>,
 }
@@ -199,9 +197,6 @@ pub struct GetStrategyConfigResult {
     pub strategy_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub agents_md: String,
-    pub skills: BTreeMap<String, String>,
-    pub agent_graph: String,
     pub triggers: Vec<TriggerSummary>,
 }
 
@@ -210,13 +205,6 @@ pub struct CreateStrategyParams {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
-    pub agents_md: Option<String>,
-    /// skill 名 -> 本文 (markdown)。指定されたものが初期値としてそのまま保存される。
-    #[serde(default)]
-    pub skills: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    pub agent_graph: Option<String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -234,14 +222,6 @@ pub struct UpdateStrategyConfigParams {
     pub name: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
-    #[serde(default)]
-    pub agents_md: Option<String>,
-    /// JSON Merge Patch セマンティクス: 値が null のキーは削除、それ以外は追加/更新。
-    /// 未指定のキーは変更しない。
-    #[serde(default)]
-    pub skills: Option<BTreeMap<String, Option<String>>>,
-    #[serde(default)]
-    pub agent_graph: Option<String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]

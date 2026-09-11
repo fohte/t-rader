@@ -27,6 +27,7 @@ mod m20260909_165140_make_strategy_interest_strategy_id_nullable;
 mod m20260909_165900_make_hypothesis_trigger_strategy_id_nullable;
 mod m20260910_034756_add_agent_config;
 mod m20260910_144115_add_strategy_task_purpose;
+mod m20260911_005614_drop_strategy_agent_columns;
 
 pub struct Migrator;
 
@@ -60,6 +61,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260909_165900_make_hypothesis_trigger_strategy_id_nullable::Migration),
             Box::new(m20260910_034756_add_agent_config::Migration),
             Box::new(m20260910_144115_add_strategy_task_purpose::Migration),
+            Box::new(m20260911_005614_drop_strategy_agent_columns::Migration),
         ]
     }
 }

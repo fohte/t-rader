@@ -187,9 +187,6 @@ mod tests {
             name: Set(name.to_string()),
             description: Set(None),
             sort_order: Set(0),
-            agents_md: NotSet,
-            skills: NotSet,
-            agent_graph: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
             risk_policy: NotSet,
@@ -372,7 +369,7 @@ mod tests {
                 "error_summary": null,
                 "result_text": null,
                 "steps": [],
-                "purpose": null,
+                "purpose": "default",
             }),
         );
     }

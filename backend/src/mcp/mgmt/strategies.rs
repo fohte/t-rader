@@ -165,6 +165,7 @@ mod tests {
     use crate::agent_client::FakeAgentTaskClient;
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::create_test_db;
 
     use super::super::tests_common::{build_server, insert_strategy};
@@ -222,7 +223,7 @@ mod tests {
                 prompt: "inspect 7203".to_string(),
                 phase: StrategyTaskPhase::Running,
                 error_summary: None,
-                purpose: None,
+                purpose: Some(DEFAULT_PURPOSE.to_string()),
             }],
         );
     }

@@ -39,6 +39,8 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
 
+const DEFAULT_PURPOSE = 'default'
+
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
 const MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
   'strategy-agent.mcp-client-close-failed'
@@ -301,11 +303,7 @@ export const runStrategyAgent = async (
       // ResultAsync.fromPromise never rejects, so Promise.all would
       // otherwise wait for both to settle regardless of which one failed.
       return deps
-        .fetchAgentConfig(
-          purpose !== undefined
-            ? { kind: 'purpose', purpose }
-            : { kind: 'strategy', strategyId },
-        )
+        .fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
         .andThen((agentConfig) =>
           toolsResult.andThen((tools) => {
             const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
