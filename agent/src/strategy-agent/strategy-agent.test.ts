@@ -26,6 +26,7 @@ import {
   resolveMcpToolCallHeaders,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
 type CapturedBeforeToolCall = (
   toolCall: { name: string; args: unknown; serverName: string },
@@ -74,29 +75,6 @@ const buildUserMessage = (text: string): Message => ({
 // span context。@opentelemetry/api の INVALID_TRACEID/INVALID_SPANID と同じ値。
 const NOOP_TRACE_ID = '00000000000000000000000000000000'
 const NOOP_SPAN_ID = '0000000000000000'
-
-// startedAt/finishedAt/executionStepId は実行のたびに変わるため、比較前に
-// 固定文字列へ正規化する。executionStepId は出現順で <execution-step-id-N>
-// へラベル付けする (呼び出しごとに新しい Map を使うため、toEqual ブロックごと
-// に独立して 1 から振られる)。
-const normalizeStepTimestamps = (
-  steps: readonly StrategyTaskStep[],
-): unknown[] => {
-  const labels = new Map<string, string>()
-  return steps.map((step) => {
-    let label = labels.get(step.executionStepId)
-    if (label === undefined) {
-      label = `<execution-step-id-${String(labels.size + 1)}>`
-      labels.set(step.executionStepId, label)
-    }
-    return {
-      ...step,
-      executionStepId: label,
-      startedAt: '<started-at>',
-      ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
-    }
-  })
-}
 
 const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
