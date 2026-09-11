@@ -1556,7 +1556,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -2209,7 +2209,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -3906,7 +3906,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -5045,7 +5045,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {

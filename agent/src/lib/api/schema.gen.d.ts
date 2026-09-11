@@ -3366,7 +3366,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
-      /** @description agent task client が未設定 */
+      /** @description agent task client が未設定、または agent_config が見つからない */
       503: {
         headers: {
           [name: string]: unknown
@@ -3838,7 +3838,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
-      /** @description agent task client が未設定 */
+      /** @description agent task client が未設定、または agent_config が見つからない */
       503: {
         headers: {
           [name: string]: unknown
@@ -5148,7 +5148,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
-      /** @description agent task client が未設定 */
+      /** @description agent task client が未設定、または agent_config が見つからない */
       503: {
         headers: {
           [name: string]: unknown
@@ -6004,7 +6004,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
-      /** @description agent task client が未設定 */
+      /** @description agent task client が未設定、または agent_config が見つからない */
       503: {
         headers: {
           [name: string]: unknown

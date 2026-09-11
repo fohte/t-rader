@@ -46,7 +46,7 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
-        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定、または agent_config が見つからない", body = ErrorResponse),
     )
 )]
 pub async fn submit_strategy_chat(
@@ -339,6 +339,23 @@ mod tests {
         assert_eq!(
             res.json::<serde_json::Value>(),
             json!({ "error": "agent task client is not configured" }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_chat_missing_agent_config_returns_503(pool: PgPool) {
+        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+
+        let res = server
+            .post(&format!("/api/strategies/{strategy_id}/chat"))
+            .json(&json!({ "prompt": "inspect 7203" }))
+            .await;
+        res.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            res.json::<serde_json::Value>(),
+            json!({ "error": "agent_config for purpose 'default' not found" }),
         );
     }
 

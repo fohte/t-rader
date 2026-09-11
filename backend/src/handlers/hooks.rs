@@ -47,7 +47,7 @@ pub struct HookResponse {
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
-        (status = 503, description = "agent task client が未設定", body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定、または agent_config が見つからない", body = ErrorResponse),
     )
 )]
 pub async fn receive_hook(
