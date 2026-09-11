@@ -25,6 +25,7 @@ pub struct CreateTradeRequest {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateTradeRequest {
+    pub strategy_id: Option<Uuid>,
     pub symbol: Option<String>,
     pub side: Option<String>,
     pub qty: Option<Decimal>,
