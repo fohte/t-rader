@@ -57,6 +57,29 @@ interface InvokeCall {
   readonly executionStepId: string | undefined
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+// executionStepId (crypto.randomUUID()) は実行のたびに変わるため、比較前に
+// 出現順で <execution-step-id-N> へ正規化する。同じ値は同じラベルになるため、
+// 呼び出し間で値が一致/不一致であることは正規化後も検証できる。
+const normalizeExecutionStepIds = (
+  calls: readonly InvokeCall[],
+): InvokeCall[] => {
+  const labels = new Map<string, string>()
+  return calls.map((call) => {
+    const { executionStepId } = call
+    if (executionStepId === undefined) return call
+    expect(executionStepId).toMatch(UUID_PATTERN)
+    let label = labels.get(executionStepId)
+    if (label === undefined) {
+      label = `<execution-step-id-${String(labels.size + 1)}>`
+      labels.set(executionStepId, label)
+    }
+    return { ...call, executionStepId: label }
+  })
+}
+
 const buildDeps = (
   invokeImpl: (
     call: InvokeCall,
@@ -123,7 +146,7 @@ describe('runAgentGraph', () => {
       status: 'completed',
       message: '2フェーズの実行が完了しました (Step A → Step B)',
     })
-    expect(calls).toEqual([
+    expect(normalizeExecutionStepIds(calls)).toEqual([
       {
         systemPrompt: 'AGENTS',
         messageText: buildPhaseMessageText({
@@ -132,7 +155,7 @@ describe('runAgentGraph', () => {
           item: undefined,
           priorResults: {},
         }),
-        executionStepId: NOOP_SPAN_ID,
+        executionStepId: '<execution-step-id-1>',
       },
       {
         systemPrompt: 'AGENTS',
@@ -142,7 +165,7 @@ describe('runAgentGraph', () => {
           item: undefined,
           priorResults: { stepA: { value: 'A-OUT' } },
         }),
-        executionStepId: NOOP_SPAN_ID,
+        executionStepId: '<execution-step-id-2>',
       },
     ])
   })
@@ -371,12 +394,13 @@ describe('runAgentGraph', () => {
       message: '1フェーズの実行が完了しました (P)',
     })
     expect(attempts).toBe(3)
-    // 再試行は同一の実行ステップの続きなので、MCP tool 呼び出しの x-execution-id
-    // に使う executionStepId は 3 回とも同じ値でなければ、途中の write_note が
-    // 別ノートとして重複作成されてしまう。
-    const executionStepIds = calls.map((call) => call.executionStepId)
-    expect(executionStepIds).toEqual([NOOP_SPAN_ID, NOOP_SPAN_ID, NOOP_SPAN_ID])
-    expect(new Set(executionStepIds).size).toBe(1)
+    expect(
+      normalizeExecutionStepIds(calls).map((call) => call.executionStepId),
+    ).toEqual([
+      '<execution-step-id-1>',
+      '<execution-step-id-1>',
+      '<execution-step-id-1>',
+    ])
   })
 
   it('fails the phase after exhausting all structured-output retries', async () => {
@@ -657,7 +681,7 @@ describe('runAgentGraph', () => {
   })
 
   it('records one step per for_each item, extracting item_label via label_field', async () => {
-    const { deps, calls } = buildDeps((call) =>
+    const { deps } = buildDeps((call) =>
       Promise.resolve(
         call.messageText.includes('do plan')
           ? {
@@ -744,12 +768,54 @@ describe('runAgentGraph', () => {
         spanId: NOOP_SPAN_ID,
       },
     ])
-    // executionStepId は各ステップ自身の spanId をそのまま使う (別ステップの
-    // ノートを誤って上書きしないよう、後から strategy_task.steps の spanId と
-    // note.execution_id を突き合わせて追跡できる)。
-    expect(calls.map((call) => call.executionStepId)).toEqual(
-      last?.map((step) => step.spanId),
+  })
+
+  it('gives each for_each item a distinct executionStepId', async () => {
+    const { deps, calls } = buildDeps((call) =>
+      Promise.resolve(
+        call.messageText.includes('do plan')
+          ? { structuredResponse: { items: ['a', 'b'] } }
+          : { structuredResponse: {} },
+      ),
     )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+    })
+
+    expect(
+      normalizeExecutionStepIds(calls).map((call) => call.executionStepId),
+    ).toEqual([
+      '<execution-step-id-1>',
+      '<execution-step-id-2>',
+      '<execution-step-id-3>',
+    ])
   })
 
   it('continues running remaining chunks and threads only the successful outputs into the next phase when some for_each items fail', async () => {
@@ -819,7 +885,7 @@ describe('runAgentGraph', () => {
       status: 'completed',
       message: '3フェーズの実行が完了しました (Plan → Work → Summarize)',
     })
-    expect(calls.at(-1)).toEqual({
+    expect(normalizeExecutionStepIds(calls).at(-1)).toEqual({
       systemPrompt: 'AGENTS',
       messageText: buildPhaseMessageText({
         originalPromptText: 'req',
@@ -830,7 +896,7 @@ describe('runAgentGraph', () => {
           work: [{ value: 'b-done' }],
         },
       }),
-      executionStepId: NOOP_SPAN_ID,
+      executionStepId: '<execution-step-id-4>',
     })
     const last = notifications.at(-1)
     expect(

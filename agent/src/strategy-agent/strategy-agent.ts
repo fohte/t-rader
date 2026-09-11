@@ -39,10 +39,7 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
 
-// agent.invoke() の RunnableConfig.configurable に載せて MCP tool 呼び出しの
-// beforeToolCall フックまで運ぶキー。実行ステップ (invokeAndRecordStep 単位) を
-// 一意に識別する値を持ち、x-execution-id ヘッダの実行単位をタスク全体からこの
-// 単位まで絞り込む。
+// RunnableConfig.configurable 経由で beforeToolCall まで実行ステップ ID を運ぶキー。
 const MCP_EXECUTION_STEP_ID_CONFIG_KEY = 'mcpExecutionStepId'
 
 const DEFAULT_PURPOSE = 'default'
@@ -216,11 +213,8 @@ const createDefaultBuildPhaseAgent =
       responseFormat: toolStrategy(options.responseSchema),
     })
 
-// beforeToolCall フック本体。実行ステップ ID (config.configurable 経由) があれば
-// その呼び出しだけ x-execution-id を `{taskId}:{stepId}` へ差し替える。
 // client.fork() は headers をまるごと置き換える (元の headers とマージしない) ため、
-// 差し替え時は x-strategy-id も一緒に返す必要がある。ステップ ID が無ければ
-// `{}` (headers 未指定) を返し、既定ヘッダのまま fork を起こさない。
+// x-execution-id を差し替える際は x-strategy-id も一緒に返す必要がある。
 export const resolveMcpToolCallHeaders = (
   strategyId: string,
   taskId: string,
@@ -258,6 +252,9 @@ export const createStrategyAgentDeps = (
           },
         },
       },
+      // headers を返すたびに client.fork() が新規コネクションを張る
+      // (@langchain/mcp-adapters の ConnectionManager#forkClient は既存コネクションを
+      // 再利用しない)。生成されたコネクションは mcpClient.close() まで閉じられない。
       beforeToolCall: (_toolCall, _state, runnableConfig) =>
         resolveMcpToolCallHeaders(
           strategyId,

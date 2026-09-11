@@ -30,8 +30,7 @@ export interface BuildPhaseAgentOptions {
 export interface CompiledPhaseAgent {
   invoke(input: {
     messages: readonly HumanMessage[]
-    // MCP tool 呼び出しの x-execution-id ヘッダに使う実行ステップの識別子。
-    // 省略時は MCP クライアント構築時の既定ヘッダ (実行全体で 1 個) のまま。
+    // 実行ステップの識別子。省略時はステップ単位の識別を行わない。
     executionStepId?: string
   }): Promise<{
     structuredResponse?: Record<string, unknown>
@@ -283,9 +282,8 @@ const resolveForEachItems = (
 // completed/failed に更新する。for_each の各要素と、for_each でないフェーズ
 // (常に 1 件) の両方から呼ばれる。
 //
-// spanIds.spanId をそのまま MCP tool 呼び出しの実行ステップ識別子として使う。
-// invokePhaseWithRetry の再試行はここで生成した 1 個の spanId を使い回すため、
-// 同じ実行ステップの再試行が別ノートとして重複作成されることはない。
+// spanId (OTel 未設定時は NoopTracer により固定値になる) とは独立に
+// executionStepId を生成し、invokePhaseWithRetry の再試行間で使い回す。
 const invokeAndRecordStep = (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
@@ -302,10 +300,11 @@ const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
+    const executionStepId = crypto.randomUUID()
     return invokePhaseWithRetry(
       agent,
       messages,
-      spanIds.spanId,
+      executionStepId,
       requiredArrayFields,
     ).then((result) => {
       if (result.isErr()) {
