@@ -124,6 +124,8 @@ mod tests {
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::{strategy, strategy_task};
+    use crate::services::agent_config;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_hook_trigger};
 
     /// strategy_task 行の動的フィールド (id / 時刻) を捨てた比較用ビュー。
@@ -168,6 +170,9 @@ mod tests {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "長期").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let _ = insert_test_hook_trigger(
             &db,
             sid,
@@ -261,6 +266,9 @@ mod tests {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
         let sid = seed_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let _ = insert_test_hook_trigger(
             &db,
             sid,
@@ -300,6 +308,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake;
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let sid = seed_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let _ = insert_test_hook_trigger(&db, sid, "tv-alert", "x", None, true).await;
 
         let res = server.post("/api/hooks/tv-alert").json(&json!({})).await;

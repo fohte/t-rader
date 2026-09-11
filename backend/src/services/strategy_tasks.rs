@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::{strategy, strategy_task};
+use crate::services::agent_config;
 
 /// 内部 API 投入後、client 側で完了を待つ猶予期間。
 ///
@@ -57,6 +58,8 @@ pub enum SubmitTaskError {
     StrategyNotFound(Uuid),
     #[error("prompt must not be empty")]
     EmptyPrompt,
+    #[error("agent_config for purpose '{0}' not found")]
+    PurposeNotFound(String),
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
     #[error(transparent)]
@@ -124,6 +127,8 @@ pub enum GetTaskError {
 ///
 /// `purpose` を省略した場合は `DEFAULT_PURPOSE` を使う。t-rader-agent は常に
 /// purpose キーの agent-config (AGENTS.md / skills / agent_graph) を使ってタスクを実行する。
+/// 解決した purpose に対応する `agent_config` 行が存在しない場合は `PurposeNotFound` を
+/// 返し、strategy_task 行の作成前に投入を止める。
 pub async fn submit_task(
     db: &DatabaseConnection,
     agent_client: &SharedAgentTaskClient,
@@ -136,12 +141,16 @@ pub async fn submit_task(
     if prompt.is_empty() {
         return Err(SubmitTaskError::EmptyPrompt);
     }
-    let purpose = Some(purpose.unwrap_or_else(|| DEFAULT_PURPOSE.to_string()));
+    let purpose = purpose.unwrap_or_else(|| DEFAULT_PURPOSE.to_string());
 
     strategy::Entity::find_by_id(strategy_id)
         .one(db)
         .await?
         .ok_or(SubmitTaskError::StrategyNotFound(strategy_id))?;
+    agent_config::find_or_404(db, &purpose)
+        .await
+        .map_err(|_| SubmitTaskError::PurposeNotFound(purpose.clone()))?;
+    let purpose = Some(purpose);
 
     let task_id = Uuid::new_v4();
     let now = chrono::Utc::now().fixed_offset();
@@ -290,8 +299,15 @@ pub fn phase_str(phase: &StrategyTaskPhase) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+
     use rstest::rstest;
+    use sea_orm::PaginatorTrait;
+    use sqlx::PgPool;
+
+    use super::*;
+    use crate::agent_client::FakeAgentTaskClient;
+    use crate::testing::{create_test_db, insert_test_strategy};
 
     #[rstest]
     #[case::mgmt_mcp(TaskSource::MgmtMcp, "mgmt-mcp")]
@@ -299,5 +315,27 @@ mod tests {
     #[case::review(TaskSource::Review, "review")]
     fn task_source_as_str(#[case] source: TaskSource, #[case] expected: &str) {
         assert_eq!(source.as_str(), expected);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn submit_task_rejects_missing_purpose_before_inserting_task_row(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+
+        let err = submit_task(
+            &db,
+            &agent_client,
+            strategy_id,
+            "prompt",
+            TaskSource::Review,
+            None,
+        )
+        .await
+        .expect_err("missing agent_config should be rejected");
+        assert!(matches!(err, SubmitTaskError::PurposeNotFound(p) if p == DEFAULT_PURPOSE));
+
+        let task_count = strategy_task::Entity::find().count(&db).await.unwrap();
+        assert_eq!(task_count, 0);
     }
 }

@@ -1321,7 +1321,7 @@ export interface components {
       }
       small_model: string
     }
-    /** @description 戦略ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。 */
+    /** @description 目的ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。 */
     AgentGraphBody: {
       content: string
     }

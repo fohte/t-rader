@@ -524,6 +524,8 @@ mod tests {
     use crate::entities::comment;
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
+    use crate::services::agent_config;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
@@ -740,6 +742,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "タイトル").await;
 
         let res = server
@@ -794,6 +799,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "t").await;
 
         for _ in 0..2 {
@@ -819,6 +827,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake;
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "t").await;
 
         let res = server

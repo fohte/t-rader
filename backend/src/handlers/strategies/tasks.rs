@@ -19,6 +19,9 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
         SubmitTaskError::StrategyNotFound(id) => {
             AppError::NotFound(format!("strategy {id} not found"))
         }
+        SubmitTaskError::PurposeNotFound(purpose) => {
+            AppError::Config(format!("agent_config for purpose '{purpose}' not found"))
+        }
         SubmitTaskError::Database(db_err) => AppError::Database(db_err),
         SubmitTaskError::AgentTask(AgentTaskError::NotConfigured) => {
             AppError::ServiceUnavailable("agent task client is not configured".into())
@@ -167,6 +170,8 @@ mod tests {
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::{strategy, strategy_task};
+    use crate::services::agent_config;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
         create_test_server, create_test_server_with_db, create_test_server_with_db_and_agent_client,
     };
@@ -234,6 +239,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake.clone();
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_strategy(&db, "long").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
 
         let res = server
             .post(&format!("/api/strategies/{strategy_id}/chat"))
@@ -319,6 +327,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = fake;
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_strategy(&db, "x").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
 
         let res = server
             .post(&format!("/api/strategies/{strategy_id}/chat"))
@@ -336,6 +347,9 @@ mod tests {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_id = insert_strategy(&db, "x").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
 
         let submit = server
             .post(&format!("/api/strategies/{strategy_id}/chat"))
@@ -394,6 +408,9 @@ mod tests {
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
 
         let submit = server
             .post(&format!("/api/strategies/{strategy_a}/chat"))

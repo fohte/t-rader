@@ -252,6 +252,8 @@ mod run_once_tests {
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::{strategy, strategy_task};
+    use crate::services::agent_config;
+    use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{create_test_db, insert_test_cron_trigger};
 
     use super::*;
@@ -297,6 +299,9 @@ mod run_once_tests {
     async fn fires_due_cron_and_writes_strategy_task(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
         // 毎分発火する schedule、last_fired_at は十分過去
         let past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
         let tid = insert_test_cron_trigger(
