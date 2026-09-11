@@ -9,11 +9,15 @@ function createHeaderRouter(initialPath: string) {
   return createStoryRouter(() => <Header />, {
     paths: [
       '/strategies',
-      '/strategies/$id',
+      '/strategies/$id/performance',
       '/strategies/$id/settings',
-      '/strategies/$id/runs',
       '/portfolio',
       '/trades',
+      '/notes',
+      '/annotations',
+      '/hypotheses',
+      '/runs',
+      '/indicators',
     ],
     initialPath,
   })
@@ -40,7 +44,9 @@ export const StrategyList: Story = {
 
 export const StrategyHome: Story = {
   render: () => (
-    <RouterProvider router={createHeaderRouter('/strategies/semi-swing')} />
+    <RouterProvider
+      router={createHeaderRouter('/strategies/semi-swing/performance')}
+    />
   ),
 }
 

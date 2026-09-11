@@ -48,11 +48,10 @@ function StrategySettingsPage() {
     <div className="space-y-5">
       <div>
         <Link
-          to="/strategies/$id"
-          params={{ id }}
+          to="/strategies"
           className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
-          &lt; {strategy.name} に戻る
+          &lt; 戦略一覧に戻る
         </Link>
       </div>
       <header>

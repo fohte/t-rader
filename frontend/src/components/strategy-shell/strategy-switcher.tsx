@@ -36,7 +36,7 @@ export function StrategySwitcher() {
           return (
             <Link
               key={s.id}
-              to="/strategies/$id"
+              to="/strategies/$id/performance"
               params={{ id: s.id }}
               className={`relative flex flex-shrink-0 cursor-pointer items-center gap-2 border px-3.5 py-1.5 font-mono text-sm ${
                 active
@@ -96,7 +96,7 @@ function MobileStrategyDropdown({
           {strategies.map((s) => (
             <li key={s.id}>
               <Link
-                to="/strategies/$id"
+                to="/strategies/$id/performance"
                 params={{ id: s.id }}
                 onClick={() => {
                   setOpen(false)

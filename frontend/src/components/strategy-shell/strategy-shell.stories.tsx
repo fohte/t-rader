@@ -7,7 +7,7 @@ import { StrategySwitcherQueryDecorator } from '#storybook/strategy-switcher-moc
 
 const PLACEHOLDER_PATHS = [
   { path: '/strategies', label: '戦略一覧 placeholder' },
-  { path: '/strategies/$id', label: '戦略ホーム placeholder' },
+  { path: '/strategies/$id/performance', label: '戦略成績 placeholder' },
   { path: '/portfolio', label: 'ポートフォリオ placeholder' },
   { path: '/trades', label: '取引履歴 placeholder' },
 ].map(({ path, label }) => ({
@@ -54,7 +54,7 @@ export const Default: Story = {
 export const StrategyHome: Story = {
   render: () => (
     <RouterProvider
-      router={createStrategyShellRouter('/strategies/semi-swing')}
+      router={createStrategyShellRouter('/strategies/semi-swing/performance')}
     />
   ),
 }
