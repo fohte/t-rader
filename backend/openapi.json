@@ -11120,6 +11120,13 @@
               "null"
             ]
           },
+          "strategy_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
           "symbol": {
             "type": [
               "string",

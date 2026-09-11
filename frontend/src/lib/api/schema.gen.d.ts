@@ -2239,6 +2239,8 @@ export interface components {
       qty?: number | null
       side?: string | null
       source?: string | null
+      /** Format: uuid */
+      strategy_id?: string | null
       symbol?: string | null
     }
     UpdateTriggerRequest: {
