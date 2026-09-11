@@ -15,7 +15,10 @@ use std::time::Duration;
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
+};
 use tokio::sync::{Notify, Semaphore};
 use uuid::Uuid;
 
@@ -196,8 +199,12 @@ async fn apply_phase_logged(
 }
 
 /// 1 行ぶんの phase / error_summary / result_text 更新と、`strategy_task_step` へのステップ
-/// upsert を適用する。前者は差分が無ければ DB 書き込みをしない。主キーと変更カラムのみを
+/// upsert を適用する。いずれも差分が無ければ DB 書き込みをしない。主キーと変更カラムのみを
 /// `Set` した ActiveModel で UPDATE することで、prompt 等の長文カラムを毎回書き直すのを避ける。
+///
+/// 両方の書き込みを 1 トランザクションにまとめる。片方だけ成功すると、phase が
+/// Completed/Failed に進んでいるのに steps が反映されない (またはその逆の) 行が生じ、
+/// `run_once` の対象 (`phase IN ('pending', 'running')`) から外れて恒久的に取り残される。
 async fn apply_phase(
     db: &DatabaseConnection,
     row: strategy_task::Model,
@@ -209,6 +216,9 @@ async fn apply_phase(
     let row_changed = new_phase != row.phase
         || new_error != row.error_summary
         || new_result_text != row.result_text;
+
+    let txn = db.begin().await?;
+
     if row_changed {
         let active = strategy_task::ActiveModel {
             task_id: sea_orm::ActiveValue::Unchanged(row.task_id),
@@ -224,15 +234,17 @@ async fn apply_phase(
             created_at: NotSet,
             purpose: NotSet,
         };
-        strategy_task::Entity::update(active).exec(db).await?;
+        strategy_task::Entity::update(active).exec(&txn).await?;
     }
 
     let steps_changed = match new_steps {
         Some(serde_json::Value::Array(steps)) if !steps.is_empty() => {
-            upsert_steps(db, row.task_id, &steps).await?
+            upsert_steps(&txn, row.task_id, &steps).await?
         }
         _ => false,
     };
+
+    txn.commit().await?;
 
     Ok(row_changed || steps_changed)
 }
@@ -242,8 +254,8 @@ async fn apply_phase(
 /// `execution_step_id` を主キーとして、既存行と `status`/`output`/`finished_at`/`error` が
 /// 全て一致する場合は書き込みをスキップする (`phase_key`/`label`/`model`/`item`/`item_label`/
 /// `started_at`/`trace_id`/`span_id` はステップ発行時点で確定し不変のため比較・更新対象外)。
-async fn upsert_steps(
-    db: &DatabaseConnection,
+async fn upsert_steps<C: ConnectionTrait>(
+    db: &C,
     task_id: Uuid,
     steps: &[serde_json::Value],
 ) -> Result<bool, sea_orm::DbErr> {
@@ -327,9 +339,7 @@ async fn upsert_steps(
 }
 
 /// t-rader-agent から届く実行ステップの wire JSON 形式。`status` は文字列のまま受け取り、
-/// `step_status_from_raw` で手動変換する (`AgentTaskState::from_raw` と同じ方針: derive された
-/// enum の Serialize/Deserialize が variant 名依存で実際の JSON 値と一致しない可能性があるため
-/// 信用しない)。
+/// `step_status_from_raw` で手動変換する。
 #[derive(Debug, serde::Deserialize)]
 struct StepWire {
     execution_step_id: Uuid,
@@ -867,5 +877,54 @@ mod tests {
                 seq,
             },
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn apply_phase_rolls_back_row_update_when_step_upsert_fails(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-txn"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+
+        // 同じ execution_step_id を持つ 2 件を 1 回の upsert に含めると、Postgres が
+        // 「ON CONFLICT DO UPDATE command cannot affect row a second time」で拒否する。
+        // steps upsert 側の失敗を注入する手段として使う。
+        let dup_id = Uuid::new_v4();
+        let step = |status: &str| {
+            serde_json::json!({
+                "execution_step_id": dup_id,
+                "phase_key": "investigate",
+                "label": "仮説の調査",
+                "model": "test-model",
+                "status": status,
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "trace_id": "trace-1",
+                "span_id": "span-1",
+            })
+        };
+
+        let row = fetch_task(&db, task_id).await;
+        apply_phase(
+            &db,
+            row,
+            StrategyTaskPhase::Completed,
+            None,
+            Some("done".to_string()),
+            Some(serde_json::json!([step("running"), step("completed")])),
+        )
+        .await
+        .expect_err("duplicate execution_step_id in one batch should fail at the DB level");
+
+        // steps upsert の失敗で phase 更新もロールバックされ、行は変化していないこと。
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(row.phase, StrategyTaskPhase::Running);
+        assert_eq!(row.result_text, None);
+        assert_eq!(fetch_steps(&db, task_id).await, vec![]);
     }
 }
