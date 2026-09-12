@@ -232,7 +232,6 @@ mod tests {
         assert_eq!(normalized, vec![expected]);
     }
 
-    /// 回帰テスト: リンク後に仮説本体を編集しても、既存リンクの snapshot は変わらない。
     #[sqlx::test(migrations = false)]
     async fn snapshot_stays_pinned_after_hypothesis_is_edited(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
@@ -277,7 +276,6 @@ mod tests {
         );
     }
 
-    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難く、ケース数が少ないため for ループで列挙する。
     #[sqlx::test(migrations = false)]
     async fn create_rejects_scope_mismatch(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;

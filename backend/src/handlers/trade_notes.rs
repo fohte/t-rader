@@ -269,7 +269,6 @@ mod tests {
         let n1 = seed_note(&db, Some(sid)).await;
         let n2 = seed_note(&db, Some(sid)).await;
 
-        // n2 を先にリンクし、リンク作成順 (n2, n1) が維持されることを確認する
         server
             .post(&format!("/api/trades/{tid}/notes"))
             .json(&json!({ "note_id": n2 }))

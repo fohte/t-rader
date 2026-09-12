@@ -279,7 +279,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(notes::approve_note))
         .routes(routes!(notes::reject_note))
-        // note hypotheses (ノートと仮説の多対多リンク。仮説側はリンク時点の本文を snapshot する)
+        // note hypotheses
         .routes(routes!(
             note_hypotheses::list_note_hypotheses,
             note_hypotheses::create_note_hypothesis
@@ -311,7 +311,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             trades::update_trade,
             trades::delete_trade
         ))
-        // trade notes (取引と判断ノートの多対多リンク)
+        // trade notes
         .routes(routes!(
             trade_notes::list_trade_notes,
             trade_notes::create_trade_note
