@@ -5,17 +5,16 @@ use crate::data_provider::{DataProvider, DateRange};
 use crate::models::Timeframe;
 use crate::repositories::bars::upsert_bars;
 
-/// 契約範囲が未学習のときに使う既定の遅延週数 (Free プラン: 12 週間)。
-/// https://jpx-jquants.com/
-const FREE_PLAN_OFFSET_WEEKS: i64 = 12;
-
 /// 契約範囲が未学習のときに試す確認用の範囲 (Premium 相当の最大範囲)。この範囲で
 /// リクエストし、実際の契約範囲を成功レスポンスまたは 400 エラーメッセージから学習する。
 /// 学習後はこの範囲を使わず、学習済みの範囲 (`known_range`) を使い回す。
 const PROBE_MAX_HISTORY_DAYS: i64 = 365 * 20;
 
 /// `backfill_daily_bars` が実際に取得できる最新日。`known_range` が学習済みならその
-/// 上限日、未学習なら Free プランの既定値による上限日を返す。
+/// 上限日を返す。未学習の間は「今日より古いデータは全て取得を試みるべき」として
+/// `today` を返す (= 既存バーは常に stale 扱いになり、`fetch_latest_prices` が
+/// backfill を試みて学習のきっかけを作る)。契約範囲外だった Free プラン時代の上限
+/// (12 週前) に黙って留まり続けることは絶対にしない。
 /// 保有時価の評価上限 (`market_price::fetch_latest_prices`) もこの関数を経由して
 /// 同じ値を参照するため、取得側と評価側で上限がずれることはない。
 pub(crate) fn latest_fetchable_date(
@@ -23,7 +22,10 @@ pub(crate) fn latest_fetchable_date(
     known_range: Option<(NaiveDate, NaiveDate)>,
 ) -> NaiveDate {
     known_range.map_or_else(
-        || today - Duration::weeks(FREE_PLAN_OFFSET_WEEKS),
+        || {
+            tracing::warn!("契約範囲が未学習のため、上限を today として扱い取得を試みます");
+            today
+        },
         |(_, to)| to,
     )
 }
@@ -148,16 +150,16 @@ mod tests {
     // --- テスト ---
 
     #[rstest]
-    #[case::unlearned_falls_back_to_free_plan(
+    #[case::unlearned_treats_today_as_the_upper_bound(
         None,
-        NaiveDate::from_ymd_opt(2025, 6, 1).expect("date") - Duration::weeks(12)
+        NaiveDate::from_ymd_opt(2025, 6, 1).expect("date")
     )]
     #[case::learned_uses_the_learned_upper_bound(
         Some((
-            NaiveDate::from_ymd_opt(2024, 6, 20).expect("date"),
-            NaiveDate::from_ymd_opt(2026, 6, 20).expect("date"),
+            NaiveDate::from_ymd_opt(2020, 4, 1).expect("date"),
+            NaiveDate::from_ymd_opt(2022, 4, 1).expect("date"),
         )),
-        NaiveDate::from_ymd_opt(2026, 6, 20).expect("date")
+        NaiveDate::from_ymd_opt(2022, 4, 1).expect("date")
     )]
     fn latest_fetchable_date_cases(
         #[case] known_range: Option<(NaiveDate, NaiveDate)>,
@@ -207,8 +209,8 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
-        let known_from = NaiveDate::from_ymd_opt(2024, 6, 20).expect("date");
-        let known_to = NaiveDate::from_ymd_opt(2026, 6, 20).expect("date");
+        let known_from = NaiveDate::from_ymd_opt(2020, 4, 1).expect("date");
+        let known_to = NaiveDate::from_ymd_opt(2022, 4, 1).expect("date");
 
         // 学習済み範囲内の bar と範囲外の bar を両方用意する
         let in_range = make_bar("7203", known_from + Duration::days(1), 100);

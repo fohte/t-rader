@@ -372,8 +372,8 @@ impl DataProvider for JQuantsClient {
 }
 
 /// J-Quants API が契約範囲外の日付を指定されたときに返す 400 エラーメッセージから
-/// 契約範囲を抽出する。想定する message の例:
-/// "Your subscription covers the following dates: 2024-06-20 ~ 2026-06-20. ..."
+/// 契約範囲を抽出する。想定する message の例 (日付は形式を示すための架空の値):
+/// "Your subscription covers the following dates: 2020-04-01 ~ 2022-04-01. ..."
 fn parse_subscription_range(message: &str) -> Option<(NaiveDate, NaiveDate)> {
     let after_marker = message.split("covers the following dates:").nth(1)?;
     let mut dates = after_marker.split_whitespace().filter_map(|token| {

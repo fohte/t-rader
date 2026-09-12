@@ -360,8 +360,8 @@ mod subscription_range_learning {
         Mock::given(method("GET"))
             .and(path("/equities/bars/daily"))
             .and(query_param("code", "8697"))
-            .and(query_param("from", "20240620"))
-            .and(query_param("to", "20260620"))
+            .and(query_param("from", "20200401"))
+            .and(query_param("to", "20220401"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "data": [{
                     "Date": "2025-01-06",
@@ -379,7 +379,7 @@ mod subscription_range_learning {
 
         // 契約範囲外を指定した初回リクエストへの応答。このメッセージから契約範囲を学習する
         mock.error()
-            .subscription_range("/equities/bars/daily", "2024-06-20", "2026-06-20")
+            .subscription_range("/equities/bars/daily", "2020-04-01", "2022-04-01")
             .await;
 
         let client = mock.client()?;
@@ -389,7 +389,7 @@ mod subscription_range_learning {
         assert_eq!(bars[0].close, dec(105.0));
         assert_eq!(
             client.known_fetchable_range(),
-            Some((date(2024, 6, 20), date(2026, 6, 20)))
+            Some((date(2020, 4, 1), date(2022, 4, 1)))
         );
         Ok(())
     }
