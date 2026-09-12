@@ -657,6 +657,44 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/notes/{id}/hypotheses': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートが依拠した仮説一覧 (リンク作成順)。各行はリンク時点の仮説内容を snapshot している。 */
+    get: operations['list_note_hypotheses']
+    put?: never
+    /**
+     * ノートに仮説を紐付ける。仮説の title/body/status はこの時点の内容を snapshot し、
+     *     以後の仮説編集では書き換わらない (過去のノートが依拠した根拠を固定するため)。
+     */
+    post: operations['create_note_hypothesis']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}/hypotheses/{hypothesis_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** ノートと仮説の紐付けを解除する */
+    delete: operations['delete_note_hypothesis']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes/{id}/reject': {
     parameters: {
       query?: never
@@ -1194,6 +1232,41 @@ export interface paths {
     patch: operations['update_trade']
     trace?: never
   }
+  '/api/trades/{id}/notes': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 取引に紐づく判断ノート一覧 (リンク作成順) */
+    get: operations['list_trade_notes']
+    put?: never
+    /** 取引に判断ノートを紐付ける */
+    post: operations['create_trade_note']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/trades/{id}/notes/{note_id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** 取引と判断ノートの紐付けを解除する */
+    delete: operations['delete_trade_note']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/triggers/{trigger_id}': {
     parameters: {
       query?: never
@@ -1509,6 +1582,10 @@ export interface components {
       role?: string | null
       status?: string | null
     }
+    CreateNoteHypothesisRequest: {
+      /** Format: uuid */
+      hypothesis_id: string
+    }
     CreateNoteRequest: {
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
@@ -1543,6 +1620,10 @@ export interface components {
       name: string
       /** Format: int32 */
       sort_order?: number | null
+    }
+    CreateTradeNoteRequest: {
+      /** Format: uuid */
+      note_id: string
     }
     CreateTradeRequest: {
       /** Format: date */
@@ -1741,6 +1822,17 @@ export interface components {
       type_tag?: string | null
       /** Format: date-time */
       updated_at: string
+    }
+    NoteHypothesis: {
+      /** Format: date-time */
+      created_at: string
+      hypothesis_body: string
+      /** Format: uuid */
+      hypothesis_id: string
+      hypothesis_status: string
+      hypothesis_title: string
+      /** Format: uuid */
+      note_id: string
     }
     /**
      * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
@@ -2042,6 +2134,14 @@ export interface components {
       symbol: string
       /** Format: date-time */
       updated_at: string
+    }
+    TradeNote: {
+      /** Format: date-time */
+      created_at: string
+      /** Format: uuid */
+      note_id: string
+      /** Format: uuid */
+      trade_id: string
     }
     Trigger: {
       /** Format: date-time */
@@ -5086,6 +5186,175 @@ export interface operations {
       }
     }
   }
+  list_note_hypotheses: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteHypothesis'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_note_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateNoteHypothesisRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteHypothesis']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 既にリンク済み */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_note_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+        /** @description 仮説 ID */
+        hypothesis_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   reject_note: {
     parameters: {
       query?: never
@@ -7396,6 +7665,175 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_trade_notes: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 取引 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Note'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_trade_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 取引 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTradeNoteRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['TradeNote']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 既にリンク済み */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_trade_note: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 取引 ID */
+        id: string
+        /** @description ノート ID */
+        note_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
         headers: {
           [name: string]: unknown
         }
