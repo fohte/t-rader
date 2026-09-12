@@ -186,6 +186,7 @@ mod tests {
             ref_id: Set(ref_id.into()),
             matched_term: Set(term.into()),
             created_at: Set(Utc::now().into()),
+            seq: NotSet,
         }
         .insert(db)
         .await
