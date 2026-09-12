@@ -138,6 +138,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Agent is shutting down and not accepting new tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }

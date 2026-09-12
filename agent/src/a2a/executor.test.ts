@@ -903,4 +903,42 @@ describe('TraderAgentExecutor', () => {
       expect(calls).toEqual(['purpose-a'])
     })
   })
+
+  describe('waitForInFlightExecutions', () => {
+    it('stays pending until every execute() call registered at invocation time has settled', async () => {
+      let resolveRunStrategyAgent: (() => void) | undefined
+      const executor = buildExecutor({
+        runStrategyAgent: () =>
+          new Promise((resolve) => {
+            resolveRunStrategyAgent = () => {
+              resolve(defaultStrategyAgentResult)
+            }
+          }),
+      })
+      const eventBus = new FakeEventBus()
+      const userMessage = buildUserMessage({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+      })
+      const requestContext = new RequestContext(
+        userMessage,
+        'task-19',
+        'ctx-19',
+      )
+
+      const executionPromise = executor.execute(requestContext, eventBus)
+      let waitResolved = false
+      const waitPromise = executor.waitForInFlightExecutions().then(() => {
+        waitResolved = true
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(waitResolved).toBe(false)
+
+      resolveRunStrategyAgent?.()
+      await executionPromise
+      await waitPromise
+
+      expect(waitResolved).toBe(true)
+    })
+  })
 })

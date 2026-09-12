@@ -43,9 +43,15 @@ const buildStubHandler = (
   resubscribe: notImplemented,
 })
 
-const buildApp = (requestHandler: A2ARequestHandler): OpenAPIHono => {
+const buildApp = (
+  requestHandler: A2ARequestHandler,
+  isShuttingDown?: () => boolean,
+): OpenAPIHono => {
   const app = new OpenAPIHono()
-  mountInternalApiRoutes(app, { requestHandler })
+  mountInternalApiRoutes(app, {
+    requestHandler,
+    ...(isShuttingDown !== undefined ? { isShuttingDown } : {}),
+  })
   return app
 }
 
@@ -80,6 +86,46 @@ describe('POST /internal/tasks', () => {
       text: 'do the thing',
     })
     expect.soft(capturedParams?.configuration?.blocking).toBe(false)
+  })
+
+  it('returns 503 without sending a message once shutdown starts, and 201 before it', async () => {
+    let sendMessageCalled = false
+    let shuttingDown = false
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: () => {
+          sendMessageCalled = true
+          return Promise.resolve(buildTask({ id: 'task-1' }))
+        },
+      }),
+      () => shuttingDown,
+    )
+    const requestBody = JSON.stringify({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+      prompt: 'do the thing',
+    })
+
+    const beforeRes = await app.request('/internal/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: requestBody,
+    })
+    expect.soft(beforeRes.status).toBe(201)
+    expect.soft(sendMessageCalled).toBe(true)
+
+    shuttingDown = true
+    sendMessageCalled = false
+    const afterRes = await app.request('/internal/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: requestBody,
+    })
+
+    expect.soft(afterRes.status).toBe(503)
+    expect.soft(await afterRes.json()).toEqual({
+      error: 'agent is shutting down',
+    })
+    expect.soft(sendMessageCalled).toBe(false)
   })
 
   it('returns 400 for a malformed JSON body', async () => {
