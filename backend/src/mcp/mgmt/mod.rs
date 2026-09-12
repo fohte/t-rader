@@ -1,9 +1,10 @@
 //! 管理 MCP server の tool 実装
 //!
-//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 16 種:
+//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 17 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
+//! - `resume_strategy_task`
 //! - `get_strategy_task_status`
 //! - `get_strategy_config`
 //! - `create_strategy`
@@ -22,8 +23,9 @@
 //! 実装はドメインごとに分割している:
 //!
 //! - `dto`: 各 tool の入出力スキーマ
-//! - `strategies`: 戦略一覧・タスク投入・タスク status
-//!   (`list_strategies_inner` / `submit_strategy_task_inner` / `get_strategy_task_status_inner`)
+//! - `strategies`: 戦略一覧・タスク投入・タスク再開・タスク status
+//!   (`list_strategies_inner` / `submit_strategy_task_inner` / `resume_strategy_task_inner` /
+//!   `get_strategy_task_status_inner`)
 //! - `strategy_config`: 戦略設定 (name/description) の取得・作成・更新・削除と、
 //!   戦略に紐づく trigger の一覧取得 (読み取り専用)
 //!   (`get_strategy_config_inner` / `create_strategy_inner` / `update_strategy_config_inner` /
@@ -65,9 +67,10 @@ use dto::{
     DeleteStrategyResult, DeleteStrategyTriggerParams, DeleteStrategyTriggerResult,
     GetStrategyConfigParams, GetStrategyConfigResult, GetStrategyTaskStatusParams,
     GetStrategyTaskStatusResult, ListRecentAnnotationsResult, ListRecentNotesResult,
-    ListRecentParams, ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult, RssFeedSummary,
-    SubmitStrategyTaskResult, UpdateRssFeedParams, UpdateStrategyConfigParams,
-    UpdateStrategyConfigResult, UpdateStrategyTriggerParams, UpdateStrategyTriggerResult,
+    ListRecentParams, ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult,
+    ResumeStrategyTaskParams, ResumeStrategyTaskResult, RssFeedSummary, SubmitStrategyTaskResult,
+    UpdateRssFeedParams, UpdateStrategyConfigParams, UpdateStrategyConfigResult,
+    UpdateStrategyTriggerParams, UpdateStrategyTriggerResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -137,6 +140,18 @@ impl MgmtServer {
         Parameters(params): Parameters<SubmitStrategyTaskParams>,
     ) -> Result<Json<SubmitStrategyTaskResult>, McpError> {
         self.submit_strategy_task_inner(params).await.map(Json)
+    }
+
+    /// 失敗した戦略タスクを、成功済みステップを再実行せずに同じ行のまま再開する
+    #[tool(
+        name = "resume_strategy_task",
+        description = "Resume a previously failed strategy task in place. Steps that already completed are skipped (their saved output is reused for downstream phases); only the steps that failed (or were left running) are re-run, reusing their original execution_step_id so side effects like notes aren't duplicated. Fails if the task is not currently in the 'failed' phase."
+    )]
+    async fn resume_strategy_task(
+        &self,
+        Parameters(params): Parameters<ResumeStrategyTaskParams>,
+    ) -> Result<Json<ResumeStrategyTaskResult>, McpError> {
+        self.resume_strategy_task_inner(params).await.map(Json)
     }
 
     /// 投入済み戦略タスクの status を返す
@@ -375,6 +390,7 @@ mod tests {
                 ("list_recent_notes", Some(true)),
                 ("list_rss_feeds", Some(true)),
                 ("list_strategies", Some(true)),
+                ("resume_strategy_task", None),
                 ("submit_strategy_task", None),
                 ("update_rss_feed", None),
                 ("update_strategy_config", None),

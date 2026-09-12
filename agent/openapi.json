@@ -48,6 +48,12 @@
           "purpose": {
             "type": "string",
             "minLength": 1
+          },
+          "resume_steps": {
+            "type": "array",
+            "items": {
+              "nullable": true
+            }
           }
         },
         "required": [

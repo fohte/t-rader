@@ -31,7 +31,9 @@ mod m20260910_144144_add_strategy_interest_status;
 mod m20260911_005614_drop_strategy_agent_columns;
 mod m20260911_153846_add_strategy_task_step;
 mod m20260912_022210_drop_strategy_risk_policy;
+mod m20260912_105611_add_checkpoint;
 mod m20260912_105634_add_trade_note_and_note_hypothesis_links;
+mod m20260912_105636_add_news_strategy_link_seq;
 
 pub struct Migrator;
 
@@ -69,7 +71,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260911_005614_drop_strategy_agent_columns::Migration),
             Box::new(m20260911_153846_add_strategy_task_step::Migration),
             Box::new(m20260912_022210_drop_strategy_risk_policy::Migration),
+            Box::new(m20260912_105611_add_checkpoint::Migration),
             Box::new(m20260912_105634_add_trade_note_and_note_hypothesis_links::Migration),
+            Box::new(m20260912_105636_add_news_strategy_link_seq::Migration),
         ]
     }
 }

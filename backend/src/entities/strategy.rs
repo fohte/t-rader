@@ -25,6 +25,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::annotation::Entity")]
     Annotation,
+    #[sea_orm(has_many = "super::checkpoint::Entity")]
+    Checkpoint,
     #[sea_orm(has_many = "super::custom_indicator::Entity")]
     CustomIndicator,
     #[sea_orm(has_many = "super::hypothesis::Entity")]
@@ -48,6 +50,12 @@ pub enum Relation {
 impl Related<super::annotation::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Annotation.def()
+    }
+}
+
+impl Related<super::checkpoint::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Checkpoint.def()
     }
 }
 
