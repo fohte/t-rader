@@ -24,6 +24,7 @@ pub use super::strategy_interest::Entity as StrategyInterest;
 pub use super::strategy_investable_amount::Entity as StrategyInvestableAmount;
 pub use super::strategy_task::Entity as StrategyTask;
 pub use super::strategy_task_step::Entity as StrategyTaskStep;
+pub use super::strategy_task_step_evidence::Entity as StrategyTaskStepEvidence;
 pub use super::theme::Entity as Theme;
 pub use super::trade::Entity as Trade;
 pub use super::trade_note::Entity as TradeNote;
