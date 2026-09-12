@@ -50,6 +50,11 @@ export const extractPurpose = (message: Message): string | undefined => {
   return typeof raw === 'string' ? raw : undefined
 }
 
+export const extractResumeSteps = (message: Message): unknown[] | undefined => {
+  const raw = message.metadata?.['resume_steps']
+  return Array.isArray(raw) ? raw : undefined
+}
+
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
 const buildAgentMessage = (
@@ -156,6 +161,7 @@ export interface TraderAgentExecutorDeps {
     purpose: string | undefined,
     taskId: string,
     userMessage: Message,
+    resumeSteps: unknown[] | undefined,
     onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
   ) => Promise<StrategyAgentResult>
   // Looks up the current strategy list (via the backend's management MCP)
@@ -177,6 +183,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     const { taskId, contextId, userMessage, task } = requestContext
     const rawStrategyId = extractStrategyId(userMessage)
     const purpose = extractPurpose(userMessage)
+    const resumeSteps = extractResumeSteps(userMessage)
 
     if (rawStrategyId !== undefined && !isValidStrategyId(rawStrategyId)) {
       const rejectedStatus = {
@@ -365,6 +372,7 @@ export class TraderAgentExecutor implements AgentExecutor {
         purpose,
         taskId,
         promptMessage,
+        resumeSteps,
         publishSteps,
       )
       eventBus.publish({

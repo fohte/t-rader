@@ -7,6 +7,10 @@ import { err, ok } from 'neverthrow'
 import { isPlainObject } from '#strategy-agent/agent-graph/json'
 import type { ObjectJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 import { buildOutputJsonSchema } from '#strategy-agent/agent-graph/output-schema'
+import {
+  createPreviousStepMatcher,
+  findPreviousStepForPhase,
+} from '#strategy-agent/agent-graph/resume'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { withPhaseSpan } from '#strategy-agent/agent-graph/tracing'
 import type {
@@ -55,6 +59,10 @@ export interface RunAgentGraphContext {
   // 実行中のフェーズ/for_each 要素ごとの進捗を都度通知する。呼び出し側は
   // 受け取った配列全体を steps の最新状態として扱う (差分ではない)。
   readonly onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void
+  // resume 対象タスクの全ステップ (backend の全 strategy_task_step 行)。
+  // status='completed' のものだけスキップ対象になり、それ以外 (failed/running)
+  // は元の executionStepId を再利用して再実行する。
+  readonly previousSteps?: readonly StrategyTaskStep[]
 }
 
 const errorMessage = (error: unknown): string =>
@@ -80,6 +88,9 @@ type StepOutcome =
 interface StepRecorder {
   readonly start: (step: StepStartInput) => number
   readonly finish: (index: number, outcome: StepOutcome) => void
+  // resume でスキップした (再実行しない) 完了済みステップをそのまま steps に
+  // 積む。start/finish を経由しないので running を経由せず直接完了状態になる。
+  readonly recordExisting: (step: StrategyTaskStep) => void
 }
 
 // steps 配列はここでのみ mutate する。呼び出し側 (executor) は
@@ -104,6 +115,10 @@ const createStepRecorder = (
         ...outcome,
         finishedAt: new Date().toISOString(),
       }
+      notify()
+    },
+    recordExisting: (step) => {
+      steps.push(step)
       notify()
     },
   }
@@ -295,9 +310,12 @@ const invokeAndRecordStep = (
   >,
   spanName: string,
   spanAttributes: Record<string, string | number>,
+  // resume で再実行するステップの元 executionStepId。指定時はこれを使い回すことで
+  // MCP の x-execution-id ヘッダーが安定し、notes.rs 側でノートが重複しない。
+  existingExecutionStepId?: string,
 ): Promise<Result<Record<string, unknown>, unknown>> =>
   withPhaseSpan(spanName, spanAttributes, (spanIds) => {
-    const executionStepId = crypto.randomUUID()
+    const executionStepId = existingExecutionStepId ?? crypto.randomUUID()
     const index = recorder.start({
       ...stepBase,
       executionStepId,
@@ -334,12 +352,14 @@ const runForEachItems = async (
   items: readonly unknown[],
   recorder: StepRecorder,
   requiredArrayFields: ReadonlySet<string>,
+  previousStepsForPhase: readonly StrategyTaskStep[],
 ): Promise<Result<unknown[], unknown>> => {
   // 固定サイズのチャンク分割による並列数制御。セマフォより単純だが、フェーズあたりの
   // レイテンシ差が大きい場合は待ち時間が偏る。偏りが問題になれば worker pool 方式に置き換える。
   const chunkSize = Math.max(phase.maxParallel ?? items.length, 1)
   const outputs: unknown[] = []
   let firstError: unknown
+  const previousStepMatcher = createPreviousStepMatcher(previousStepsForPhase)
 
   for (let start = 0; start < items.length; start += chunkSize) {
     const chunk = items.slice(start, start + chunkSize)
@@ -347,6 +367,11 @@ const runForEachItems = async (
       chunk.map((item, offset) => {
         const index = start + offset
         const itemLabel = extractItemLabel(item, phase.labelField)
+        const matched = previousStepMatcher.take(item)
+        if (matched?.status === 'completed') {
+          recorder.recordExisting(matched)
+          return Promise.resolve(ok(matched.output))
+        }
         const messageText = buildPhaseMessageText({
           originalPromptText: context.originalPromptText,
           phasePrompt: phase.prompt,
@@ -371,6 +396,7 @@ const runForEachItems = async (
             'phase.model': phase.model,
             'phase.item_index': index,
           },
+          matched?.executionStepId,
         )
       }),
     )
@@ -409,6 +435,12 @@ const runPhase = async (
     requiredArrayFieldsByPhase.get(phase.key) ?? new Set<string>()
 
   if (phase.forEach === undefined) {
+    const previous = findPreviousStepForPhase(context.previousSteps, phase.key)
+    if (previous?.status === 'completed') {
+      recorder.recordExisting(previous)
+      return ok(previous.output)
+    }
+
     const messageText = buildPhaseMessageText({
       originalPromptText: context.originalPromptText,
       phasePrompt: phase.prompt,
@@ -423,12 +455,16 @@ const runPhase = async (
       { phaseKey: phase.key, label: phase.label, model: phase.model },
       phase.label,
       { 'phase.key': phase.key, 'phase.model': phase.model },
+      previous?.executionStepId,
     )
   }
 
   const [refKey, refField] = splitForEach(phase.forEach)
   const itemsResult = resolveForEachItems(priorResults, refKey, refField)
   if (itemsResult.isErr()) return itemsResult
+
+  const previousStepsForPhase =
+    context.previousSteps?.filter((s) => s.phaseKey === phase.key) ?? []
 
   return runForEachItems(
     phase,
@@ -438,6 +474,7 @@ const runPhase = async (
     itemsResult.value,
     recorder,
     requiredArrayFields,
+    previousStepsForPhase,
   )
 }
 
