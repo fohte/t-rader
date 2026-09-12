@@ -344,6 +344,81 @@ mod rate_limiter {
     }
 }
 
+// === 契約範囲の自己学習 (400 エラーメッセージからの学習) ===
+
+mod subscription_range_learning {
+    use super::*;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_learns_range_from_400_and_retries_successfully() -> Result<(), DataProviderError>
+    {
+        let mock = JQuantsMockServer::start().await;
+
+        // 学習後の再取得リクエスト。先に mount することで、from/to が一致するリクエストは
+        // こちらが優先される (wiremock は同一 priority ならマウント順を優先する)
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("code", "8697"))
+            .and(query_param("from", "20240620"))
+            .and(query_param("to", "20260620"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{
+                    "Date": "2025-01-06",
+                    "Code": "86970",
+                    "AdjO": 100.0,
+                    "AdjH": 110.0,
+                    "AdjL": 95.0,
+                    "AdjC": 105.0,
+                    "AdjVo": 1000.0,
+                }],
+                "pagination_key": null,
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        // 契約範囲外を指定した初回リクエストへの応答。このメッセージから契約範囲を学習する
+        mock.error()
+            .subscription_range("/equities/bars/daily", "2024-06-20", "2026-06-20")
+            .await;
+
+        let client = mock.client()?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].close, dec(105.0));
+        assert_eq!(
+            client.known_fetchable_range(),
+            Some((date(2024, 6, 20), date(2026, 6, 20)))
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_unparsable_400_message_is_returned_as_is() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("code", "8697"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "message": "Bad Request",
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        let client = mock.client()?;
+        let result = client.fetch_daily_bars("8697", &default_range()).await;
+
+        assert!(matches!(
+            result,
+            Err(DataProviderError::Api { status: 400, .. })
+        ));
+        assert_eq!(client.known_fetchable_range(), None);
+        Ok(())
+    }
+}
+
 // === DataProviderKind ===
 
 mod data_provider_kind {

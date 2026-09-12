@@ -171,11 +171,11 @@ pnpm run format   # ESLint + Prettier によるフォーマット
 
 `DATA_PROVIDER` 環境変数で価格データの取得元を選ぶ。デフォルト (未設定) は `jquants`。
 
-| 値        | 必要な追加変数                                                                                 | 用途                                                            |
-| --------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `jquants` | `JQUANTS_API_KEY` (未設定時は DataProvider なしで起動)                                         | J-Quants API (無料枠は 12 週遅延あり)                           |
-| `ibkr`    | `IBKR_BASE_URL` (任意), `IBKR_SESSION_TOKEN` (任意), `IBKR_EXCHANGE` (任意、デフォルト `TSEJ`) | IBKR Client Portal Web API。Gateway を別途常駐させて URL を指す |
-| `none`    | (なし)                                                                                         | DataProvider を無効化。データ取得系エンドポイントは 503 を返す  |
+| 値        | 必要な追加変数                                                                                 | 用途                                                                                                             |
+| --------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `jquants` | `JQUANTS_API_KEY` (未設定時は DataProvider なしで起動)                                         | J-Quants API。無料枠は 12 週遅延・2 年分の履歴。有料プランは契約範囲外エラーから実際の範囲を自動学習して追従する |
+| `ibkr`    | `IBKR_BASE_URL` (任意), `IBKR_SESSION_TOKEN` (任意), `IBKR_EXCHANGE` (任意、デフォルト `TSEJ`) | IBKR Client Portal Web API。Gateway を別途常駐させて URL を指す                                                  |
+| `none`    | (なし)                                                                                         | DataProvider を無効化。データ取得系エンドポイントは 503 を返す                                                   |
 
 IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐させ、その HTTP エンドポイントを `IBKR_BASE_URL` に設定する (例: `https://ibkr-gateway:5000/v1/api`)。秘密鍵相当の API キーは存在せず、認証は Gateway 側の Web ログインで維持される。
 

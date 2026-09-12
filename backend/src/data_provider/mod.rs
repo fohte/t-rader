@@ -67,6 +67,12 @@ pub trait DataProvider: Send + Sync {
 
     /// 指定銘柄の情報を取得する
     async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError>;
+
+    /// 学習済みの契約範囲 (取得可能な最古日・最新日)。学習の仕組みを持たないプロバイダは
+    /// 常に `None` を返す。
+    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        None
+    }
 }
 
 /// DataProvider の具体的な実装を列挙する enum
@@ -96,6 +102,13 @@ impl DataProvider for DataProviderKind {
         match self {
             DataProviderKind::JQuants(client) => client.fetch_instrument(instrument_id).await,
             DataProviderKind::Ibkr(client) => client.fetch_instrument(instrument_id).await,
+        }
+    }
+
+    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        match self {
+            DataProviderKind::JQuants(client) => client.known_fetchable_range(),
+            DataProviderKind::Ibkr(client) => client.known_fetchable_range(),
         }
     }
 }

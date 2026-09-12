@@ -41,7 +41,9 @@ pub async fn fetch_latest_prices<P: DataProvider>(
     symbols: &[String],
 ) -> LatestPrices {
     let timeframe = Timeframe::Daily.to_string();
-    let fetchable_ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive()));
+    let known_range = provider.and_then(|p| p.known_fetchable_range());
+    let fetchable_ceiling =
+        latest_business_day(latest_fetchable_date(Utc::now().date_naive(), known_range));
     let mut bars: HashMap<String, (NaiveDate, Decimal)> = HashMap::new();
 
     for symbol in symbols {
@@ -155,8 +157,10 @@ mod tests {
     }
 
     /// fetch_latest_prices が「これ以上新しくならない」と判定する境界日ちょうどの bar を作る
+    /// (MockProvider は known_fetchable_range を明示設定しない限り None を返すため、
+    /// ここでは Free プラン相当の上限で判定する)
     fn ceiling_bar(instrument_id: &str, close: i64) -> Bar {
-        let ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive()));
+        let ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive(), None));
         make_bar(instrument_id, ceiling, close)
     }
 

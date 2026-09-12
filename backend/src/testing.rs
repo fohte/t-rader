@@ -250,6 +250,7 @@ pub async fn create_test_server_with_state(pool: PgPool) -> (AppState, TestServe
 pub struct MockProvider {
     bars: Vec<Bar>,
     instruments: Vec<Instrument>,
+    known_fetchable_range: Option<(chrono::NaiveDate, chrono::NaiveDate)>,
     pub calls: Mutex<Vec<String>>,
 }
 
@@ -258,6 +259,7 @@ impl MockProvider {
         Self {
             bars: Vec::new(),
             instruments: Vec::new(),
+            known_fetchable_range: None,
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -269,6 +271,16 @@ impl MockProvider {
 
     pub fn with_instruments(mut self, instruments: Vec<Instrument>) -> Self {
         self.instruments = instruments;
+        self
+    }
+
+    /// 契約範囲を学習済みの状態にする (未設定時は `None`)
+    pub fn with_known_fetchable_range(
+        mut self,
+        from: chrono::NaiveDate,
+        to: chrono::NaiveDate,
+    ) -> Self {
+        self.known_fetchable_range = Some((from, to));
         self
     }
 }
@@ -322,5 +334,9 @@ impl DataProvider for MockProvider {
             .ok_or_else(|| {
                 DataProviderError::NotFound(format!("instrument '{instrument_id}' not found"))
             })
+    }
+
+    fn known_fetchable_range(&self) -> Option<(chrono::NaiveDate, chrono::NaiveDate)> {
+        self.known_fetchable_range
     }
 }

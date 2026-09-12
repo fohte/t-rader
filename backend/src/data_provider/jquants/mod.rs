@@ -94,6 +94,9 @@ pub struct JQuantsClient {
     base_url: String,
     api_key: String,
     rate_limiter: RateLimiter,
+    /// 400 エラーメッセージから学習した契約範囲。学習後はこの範囲を使い回し、
+    /// 契約範囲を確認するためだけの API 呼び出しを増やさない。
+    learned_range: std::sync::Mutex<Option<(NaiveDate, NaiveDate)>>,
 }
 
 impl JQuantsClient {
@@ -108,6 +111,7 @@ impl JQuantsClient {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key,
             rate_limiter: RateLimiter::new(),
+            learned_range: std::sync::Mutex::new(None),
         })
     }
 
@@ -124,7 +128,16 @@ impl JQuantsClient {
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
             rate_limiter: RateLimiter::new(),
+            learned_range: std::sync::Mutex::new(None),
         })
+    }
+
+    fn learned_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        *self.learned_range.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn set_learned_range(&self, range: (NaiveDate, NaiveDate)) {
+        *self.learned_range.lock().unwrap_or_else(|e| e.into_inner()) = Some(range);
     }
 
     /// 指数バックオフ付き GET リクエスト
@@ -212,10 +225,9 @@ impl JQuantsClient {
         }
         Ok(url)
     }
-}
 
-impl DataProvider for JQuantsClient {
-    async fn fetch_daily_bars(
+    /// `/equities/bars/daily` を実際に呼び出す (契約範囲外エラーの自己修復はしない)
+    async fn fetch_daily_bars_once(
         &self,
         instrument_id: &str,
         range: &DateRange,
@@ -294,6 +306,45 @@ impl DataProvider for JQuantsClient {
         all_bars.sort_by_key(|b| b.timestamp);
         Ok(all_bars)
     }
+}
+
+impl DataProvider for JQuantsClient {
+    /// 契約範囲外エラー (400) を学習して同じリクエストを 1 回だけ自己修復する。
+    /// 学習済みなら常に成功する範囲でリクエストするため、この自己修復が
+    /// 発動するのは未学習時の最初の 1 回だけになる。
+    async fn fetch_daily_bars(
+        &self,
+        instrument_id: &str,
+        range: &DateRange,
+    ) -> Result<Vec<Bar>, DataProviderError> {
+        match self.fetch_daily_bars_once(instrument_id, range).await {
+            Err(DataProviderError::Api {
+                status: 400,
+                message,
+            }) => {
+                let Some((from, to)) = parse_subscription_range(&message) else {
+                    return Err(DataProviderError::Api {
+                        status: 400,
+                        message,
+                    });
+                };
+                tracing::info!(
+                    instrument_id,
+                    %from,
+                    %to,
+                    "契約範囲を学習しました。学習した範囲で再取得します"
+                );
+                self.set_learned_range((from, to));
+                self.fetch_daily_bars_once(instrument_id, &DateRange { from, to })
+                    .await
+            }
+            other => other,
+        }
+    }
+
+    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        self.learned_range()
+    }
 
     async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
         let url = self.build_url("/equities/master", &[("code", instrument_id)])?;
@@ -318,4 +369,18 @@ impl DataProvider for JQuantsClient {
             sector: master.sector_name,
         })
     }
+}
+
+/// J-Quants API が契約範囲外の日付を指定されたときに返す 400 エラーメッセージから
+/// 契約範囲を抽出する。想定する message の例:
+/// "Your subscription covers the following dates: 2024-06-20 ~ 2026-06-20. ..."
+fn parse_subscription_range(message: &str) -> Option<(NaiveDate, NaiveDate)> {
+    let after_marker = message.split("covers the following dates:").nth(1)?;
+    let mut dates = after_marker.split_whitespace().filter_map(|token| {
+        let cleaned = token.trim_matches(|c: char| !c.is_ascii_digit() && c != '-');
+        NaiveDate::parse_from_str(cleaned, "%Y-%m-%d").ok()
+    });
+    let from = dates.next()?;
+    let to = dates.next()?;
+    Some((from, to))
 }

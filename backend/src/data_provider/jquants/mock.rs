@@ -226,4 +226,17 @@ impl<'a> MockErrorBuilder<'a> {
             .mount(self.server)
             .await;
     }
+
+    /// 契約範囲外の日付を指定したときに J-Quants API が返す 400 エラー
+    pub async fn subscription_range(self, endpoint_path: &str, from: &str, to: &str) {
+        Mock::given(method("GET"))
+            .and(path(endpoint_path))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "message": format!(
+                    "Your subscription covers the following dates: {from} ~ {to}.\nIf you want more data, please check other plans:https://jpx-jquants.com/#dataset"
+                ),
+            })))
+            .mount(self.server)
+            .await;
+    }
 }
