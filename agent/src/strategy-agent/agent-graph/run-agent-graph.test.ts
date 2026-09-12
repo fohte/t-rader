@@ -489,6 +489,44 @@ describe('runAgentGraph', () => {
     expect(attempts).toBe(1)
   })
 
+  it('records the step as failed when the step MCP client fails to fetch tools', async () => {
+    let attempts = 0
+    const { deps } = buildDeps(() => {
+      attempts++
+      return Promise.resolve({ structuredResponse: {} })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'p',
+          label: 'P',
+          model: 'm',
+          prompt: 'do p',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: () => ({
+        getTools: () => Promise.reject(new Error('cannot connect')),
+        close: () => Promise.resolve(),
+      }),
+      originalPromptText: 'req',
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message: 'フェーズ「P」(p) の実行に失敗しました: cannot connect',
+      errorKind: 'agent_error',
+    })
+    expect(attempts).toBe(0)
+  })
+
   it.each([
     {
       name: 'never becomes an array',

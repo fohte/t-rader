@@ -16,7 +16,10 @@ export interface BuildPhaseAgentOptions {
 export interface CompiledPhaseAgent {
   invoke(input: {
     messages: readonly HumanMessage[]
-    // 実行ステップの識別子。省略時はステップ単位の識別を行わない。
+    // 実行ステップの識別子。同一ステップのリトライ間で同じ値が渡されることを
+    // テストが観測点として使う (MCP 接続への焼き込みは呼び出し元の
+    // context.createStepMcpClient(executionStepId) 側で行うため、この値自体を
+    // デフォルト実装が消費することはない)。
     executionStepId?: string
   }): Promise<{
     structuredResponse?: Record<string, unknown>

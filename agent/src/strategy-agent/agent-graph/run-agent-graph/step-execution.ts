@@ -1,3 +1,4 @@
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { HumanMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import type { Result } from 'neverthrow'
@@ -18,6 +19,9 @@ import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 
 // 上限に達しても structured response を得られなければ、そのフェーズを失敗として確定する。
 const MAX_STRUCTURED_OUTPUT_ATTEMPTS = 3
+
+const STEP_MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
+  'run-agent-graph.step-mcp-client-close-failed'
 
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -173,24 +177,39 @@ export const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
-    const stepMcpClient = context.createStepMcpClient(executionStepId)
+    // createStepMcpClient() 自体の同期 throw も含め、ステップの失敗として
+    // 記録できるよう Promise チェーンの中で構築する。
     return (
       Promise.resolve()
-        .then(async () =>
-          invokePhaseWithRetry(
-            createPhaseAgent(
-              deps,
-              phase,
-              context,
-              await stepMcpClient.getTools(),
+        .then(() => context.createStepMcpClient(executionStepId))
+        .then((stepMcpClient) =>
+          Promise.resolve()
+            .then(async () =>
+              invokePhaseWithRetry(
+                createPhaseAgent(
+                  deps,
+                  phase,
+                  context,
+                  await stepMcpClient.getTools(),
+                ),
+                messages,
+                executionStepId,
+                requiredArrayFields,
+              ),
+            )
+            .finally(() =>
+              // close の失敗でステップの決着を取り消さない。
+              stepMcpClient.close().catch((closeError: unknown) => {
+                captureWithFingerprint(
+                  closeError,
+                  STEP_MCP_CLIENT_CLOSE_FAILED_FINGERPRINT,
+                  { extras: { executionStepId } },
+                )
+              }),
             ),
-            messages,
-            executionStepId,
-            requiredArrayFields,
-          ),
         )
-        // getTools() の失敗 (コネクションを張れない等) も invoke の失敗と同じ
-        // 経路でステップの失敗として記録する。
+        // createStepMcpClient()/getTools() の失敗 (コネクションを張れない等) も
+        // invoke の失敗と同じ経路でステップの失敗として記録する。
         .catch((error: unknown) => err(error))
         .then((result) => {
           recorder.finish(
@@ -201,11 +220,5 @@ export const invokeAndRecordStep = (
           )
           return result
         })
-        .finally(() =>
-          // close の失敗でステップの決着を取り消さない。
-          stepMcpClient.close().catch((closeError: unknown) => {
-            console.error('failed to close step MCP client:', closeError)
-          }),
-        )
     )
   })

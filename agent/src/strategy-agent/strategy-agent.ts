@@ -326,14 +326,19 @@ export const runStrategyAgent = async (
     }
   }
 
-  // mcpClient is already constructed at this point, so chain construction
-  // itself throwing synchronously (e.g. fetchAgentConfig) must still reach
-  // the .finally() below and close it. Wrapped in .then()
-  // (rather than relying on this function's own `async` to convert a
-  // synchronous throw to a rejection) makes that explicit.
+  // Ensures mcpClient is closed in .finally() even if setup throws synchronously.
   return Promise.resolve()
-    .then(() =>
-      deps
+    .then(() => {
+      // Started before fetchAgentConfig is awaited below so it's already in
+      // flight rather than sequenced after it. Only the legacy (non
+      // agent_graph) branch below consumes this — the agent_graph branch
+      // fetches step-scoped tools of its own via createStepMcpClient.
+      const toolsResult = ResultAsync.fromPromise(
+        mcpClient.getTools(),
+        (error) => error,
+      )
+
+      return deps
         .fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
         .andThen((agentConfig) => {
           const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
@@ -349,9 +354,6 @@ export const runStrategyAgent = async (
               runAgentGraph(deps, parsedGraph.value, {
                 agentsMd: agentConfig.agentsMd,
                 skills: agentConfig.skills,
-                // ステップごとに専用の client を張り、そのステップの終了時に
-                // 閉じる。x-execution-id は構築時に固定するため、tool 呼び出し
-                // ごとにコネクションが増えない。
                 createStepMcpClient: (executionStepId) =>
                   deps.createMcpClient(
                     strategyId,
@@ -378,7 +380,7 @@ export const runStrategyAgent = async (
             )
           }
 
-          return ResultAsync.fromPromise(mcpClient.getTools(), (error) => error)
+          return toolsResult
             .andThen((tools) =>
               ResultAsync.fromPromise(
                 deps
@@ -416,8 +418,8 @@ export const runStrategyAgent = async (
               }
             })
         })
-        .match((r) => r, toErrorResult),
-    )
+        .match((r) => r, toErrorResult)
+    })
     .catch((error: unknown) => toErrorResult(error))
     .finally(() => closeMcpClient())
 }

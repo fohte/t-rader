@@ -82,7 +82,10 @@ interface BuildDepsOptions {
   readonly agentInvoke: CompiledStrategyAgent['invoke']
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
-  readonly buildPhaseAgentInvoke?: CompiledPhaseAgent['invoke']
+  readonly buildPhaseAgentInvoke?: (
+    input: Parameters<CompiledPhaseAgent['invoke']>[0],
+    calls: Calls,
+  ) => ReturnType<CompiledPhaseAgent['invoke']>
 }
 
 interface McpClientCall {
@@ -147,10 +150,9 @@ const buildDeps = (
     },
     buildPhaseAgent: () => ({
       invoke: (input) =>
-        (
-          options.buildPhaseAgentInvoke ??
-          (() => Promise.resolve({ structuredResponse: {} }))
-        )(input),
+        options.buildPhaseAgentInvoke !== undefined
+          ? options.buildPhaseAgentInvoke(input, calls)
+          : Promise.resolve({ structuredResponse: {} }),
     }),
   }
 
@@ -483,12 +485,8 @@ describe('runStrategyAgent', () => {
   })
 
   it('opens one MCP client per graph step and closes it before the next step starts', async () => {
-    // agent_graph 経路では tool 呼び出し回数ではなくステップ数に比例した
-    // client しか作らず、各 client は自分のステップの終了時に閉じられる。
     const snapshots: McpClientCall[][] = []
-    // buildDeps が返す calls を buildPhaseAgentInvoke から参照するための前方宣言。
-    const recorded: { mcpClients?: McpClientCall[] } = {}
-    const built = buildDeps({
+    const { deps, calls } = buildDeps({
       agentGraph: [
         'phases:',
         '  - key: plan',
@@ -505,15 +503,14 @@ describe('runStrategyAgent', () => {
       ].join('\n'),
       agentInvoke: () =>
         Promise.reject(new Error('buildAgent should not be invoked')),
-      buildPhaseAgentInvoke: () => {
-        snapshots.push((recorded.mcpClients ?? []).map((c) => ({ ...c })))
+      buildPhaseAgentInvoke: (_input, currentCalls) => {
+        snapshots.push(currentCalls.mcpClients.map((c) => ({ ...c })))
         return Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
       },
     })
-    recorded.mcpClients = built.calls.mcpClients
 
     const result = await runStrategyAgent(
-      built.deps,
+      deps,
       'strategy-1',
       undefined,
       'task-1',
@@ -558,7 +555,7 @@ describe('runStrategyAgent', () => {
         { executionId: 'task-1:<step-3>', closed: false },
       ],
     ])
-    expect.soft(normalize(built.calls.mcpClients)).toEqual([
+    expect.soft(normalize(calls.mcpClients)).toEqual([
       { executionId: 'task-1', closed: true },
       { executionId: 'task-1:<step-1>', closed: true },
       { executionId: 'task-1:<step-2>', closed: true },
