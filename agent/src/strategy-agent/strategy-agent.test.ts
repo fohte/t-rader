@@ -564,6 +564,16 @@ describe('createStrategyAgentDeps', () => {
     expect(model.timeout).toBe(123_000)
   })
 
+  it('disables retries so a single call is bounded by the configured timeout', () => {
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const model = expectChatOpenAI(deps.createChatModel('test-model'))
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- caller.maxRetries は @langchain/core の型定義上 protected だが、ChatOpenAI に渡した maxRetries が実際に反映される唯一の観測点のため構造的に narrowing する。
+    const caller = model.caller as unknown as { maxRetries: number }
+    expect(caller.maxRetries).toBe(0)
+  })
+
   it('omits reasoning when no reasoning effort is given', () => {
     const deps = createStrategyAgentDeps(baseConfig)
 
