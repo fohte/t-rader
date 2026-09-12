@@ -29,6 +29,9 @@ const submitTaskBodySchema = z
     prompt: z.string().min(1),
     // 目的キー (agent_config.purpose)。省略時は既定の目的が使われる。
     purpose: z.string().min(1).optional(),
+    // 再開対象タスクの全 strategy_task_step 行 (seq 昇順、backend の
+    // step_to_resume_wire_json が返す形)。
+    resume_steps: z.array(z.unknown()).optional(),
   })
   .openapi('SubmitTaskBody')
 
@@ -79,6 +82,7 @@ const buildUserMessage = (
   strategyId: string,
   prompt: string,
   purpose: string | undefined,
+  resumeSteps: unknown[] | undefined,
 ): Message => ({
   kind: 'message',
   role: 'user',
@@ -87,6 +91,7 @@ const buildUserMessage = (
   metadata: {
     strategy_id: strategyId,
     ...(purpose !== undefined ? { purpose } : {}),
+    ...(resumeSteps !== undefined ? { resume_steps: resumeSteps } : {}),
   },
 })
 
@@ -202,8 +207,13 @@ export const mountInternalApiRoutes = (
       if (isShuttingDown?.() === true) {
         return c.json({ error: 'agent is shutting down' }, 503)
       }
-      const { strategy_id, prompt, purpose } = c.req.valid('json')
-      const message = buildUserMessage(strategy_id, prompt, purpose)
+      const { strategy_id, prompt, purpose, resume_steps } = c.req.valid('json')
+      const message = buildUserMessage(
+        strategy_id,
+        prompt,
+        purpose,
+        resume_steps,
+      )
       const params: MessageSendParams = {
         message,
         configuration: {

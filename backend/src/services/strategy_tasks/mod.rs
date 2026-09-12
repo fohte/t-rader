@@ -16,6 +16,9 @@ use crate::entities::{strategy, strategy_task, strategy_task_step};
 use crate::models::StrategyTaskSummary;
 use crate::services::agent_config;
 
+mod resume;
+pub use resume::{ResumeTaskError, resume_task};
+
 /// 内部 API 投入後、client 側で完了を待つ猶予期間。
 ///
 /// t-rader-agent の watchdog (デフォルト 10 分) より長く設定し、working 固着時は
@@ -199,6 +202,7 @@ pub async fn submit_task(
             strategy_id,
             prompt,
             purpose,
+            resume_steps: None,
         })
         .await
     {

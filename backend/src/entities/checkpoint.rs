@@ -6,34 +6,35 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
 )]
-#[sea_orm(table_name = "news_strategy_link")]
-#[schema(as = NewsStrategyLink)]
+#[sea_orm(table_name = "checkpoint")]
+#[schema(as = Checkpoint)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub news_id: Uuid,
-    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    #[sea_orm(unique_key = "checkpoint_strategy_graph_stream_idx")]
     pub strategy_id: Uuid,
-    #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
-    pub ref_kind: String,
-    #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
-    pub ref_id: String,
+    #[sea_orm(
+        column_type = "Text",
+        unique_key = "checkpoint_strategy_graph_stream_idx"
+    )]
+    pub graph: String,
+    #[sea_orm(
+        column_type = "Text",
+        unique_key = "checkpoint_strategy_graph_stream_idx"
+    )]
+    pub stream: String,
     #[sea_orm(column_type = "Text")]
-    pub matched_term: String,
+    pub cursor: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub updated_by_run_id: Option<String>,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
-    pub seq: i64,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub updated_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::news_item::Entity",
-        from = "Column::NewsId",
-        to = "super::news_item::Column::Id",
-        on_update = "NoAction",
-        on_delete = "Cascade"
-    )]
-    NewsItem,
     #[sea_orm(
         belongs_to = "super::strategy::Entity",
         from = "Column::StrategyId",
@@ -42,12 +43,6 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Strategy,
-}
-
-impl Related<super::news_item::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::NewsItem.def()
-    }
 }
 
 impl Related<super::strategy::Entity> for Entity {
