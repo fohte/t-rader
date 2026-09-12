@@ -8,7 +8,7 @@
 
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
@@ -17,8 +17,8 @@ use crate::entities::{checkpoint, news_item, news_strategy_link};
 use super::dto::{NewsUpdateDto, ReadNewsParams, ReadNewsResult};
 use super::{StrategyServer, clamp_limit, db_error, ensure_strategy_exists, internal_error};
 
-/// checkpoint.graph の固定値。現状 MCP 層に「どの agent graph からの呼び出しか」を
-/// 伝える手段が無いため、複数 graph でのスコープ分離が要るようになるまで空文字で運用する。
+/// checkpoint.graph は agent graph 単位でスコープ分離するためのフィールドだが、MCP 層は
+/// どの graph からの呼び出しかを受け取っていないため、read_news では空文字で運用する。
 const CHECKPOINT_GRAPH: &str = "";
 const NEWS_STREAM: &str = "news";
 
@@ -103,6 +103,11 @@ impl StrategyServer {
                     checkpoint::Column::UpdatedByRunId,
                     checkpoint::Column::UpdatedAt,
                 ])
+                // 同一戦略への read_news 同時呼び出しで、後勝ちの書き込みが先勝ちの進んだ
+                // cursor を巻き戻さないようにする (巻き戻ると次回呼び出しで再配信が起きる)。
+                .action_and_where(Expr::cust(format!(
+                    "checkpoint.cursor::bigint < {new_cursor}"
+                )))
                 .to_owned(),
             )
             .exec_without_returning(&self.db)
@@ -193,7 +198,6 @@ mod tests {
         let news2 = insert_news_item(&db, "https://ex.com/2").await;
         insert_link(&db, news1, a, "stock", "7203", "トヨタ").await;
         insert_link(&db, news2, a, "theme", "semi", "半導体").await;
-        // 他戦略の link は絶対に混ざらない
         let news3 = insert_news_item(&db, "https://ex.com/3").await;
         insert_link(&db, news3, b, "stock", "9984", "ソフトバンク").await;
 
