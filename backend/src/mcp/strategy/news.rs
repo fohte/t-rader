@@ -124,7 +124,7 @@ impl StrategyServer {
 
     /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する。
     /// `news_strategy_link` を経由しないため、strategy_interest への語の登録有無に結果は
-    /// 左右されない (`read_news` が引き継いでいた制約を回避する)。
+    /// 左右されない。
     pub(crate) async fn search_news_inner(
         &self,
         _session_strategy_id: Uuid,
@@ -213,20 +213,7 @@ mod tests {
     }
 
     async fn insert_news_item(db: &DatabaseConnection, url: &str) -> Uuid {
-        let id = Uuid::new_v4();
-        news_item::ActiveModel {
-            id: Set(id),
-            source: Set("Test".into()),
-            url: Set(url.into()),
-            title: Set(format!("title-{url}")),
-            body_snippet: Set(None),
-            published_at: Set(ts(1)),
-            fetched_at: Set(ts(1)),
-        }
-        .insert(db)
-        .await
-        .expect("insert news item");
-        id
+        insert_news_item_with(db, url, &format!("title-{url}"), None, ts(1)).await
     }
 
     async fn insert_link(
@@ -675,8 +662,6 @@ mod tests {
         let sid = insert_strategy(&db, "s").await;
         let server = build_server(db.clone());
 
-        // どの strategy_interest にも一致しない (news_strategy_link が 1 行も無い) ニュース。
-        // read_news では絶対に返らないが、search_news は news_item を直接見るので返る。
         insert_news_item_with(
             &db,
             "https://ex.com/1",
