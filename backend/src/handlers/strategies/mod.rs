@@ -13,15 +13,11 @@ use crate::services::change_history::Actor;
 use crate::services::strategy_config;
 
 mod investable_amount;
-mod risk_policy;
 mod tasks;
 
 pub use investable_amount::{
     __path_get_investable_amount, __path_put_investable_amount, get_investable_amount,
     put_investable_amount,
-};
-pub use risk_policy::{
-    __path_get_risk_policy, __path_put_risk_policy, get_risk_policy, put_risk_policy,
 };
 pub(crate) use tasks::map_submit_error;
 pub use tasks::{

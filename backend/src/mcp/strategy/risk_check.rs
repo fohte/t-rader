@@ -13,15 +13,15 @@ use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::{stock, strategy};
-use crate::models::{AccountRiskPolicyData, StrategyRiskPolicyData, parse_risk_policy};
+use crate::entities::stock;
+use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 use crate::services::account_risk_policy;
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
 use crate::services::trades::fetch_summary;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
-use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, invalid_params};
+use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, ensure_strategy_exists};
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
@@ -34,14 +34,7 @@ impl StrategyServer {
     ) -> Result<CheckBuyableQtyResult, McpError> {
         let symbol = params.symbol;
 
-        let strategy = strategy::Entity::find_by_id(strategy_id)
-            .one(&self.db)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| invalid_params(format!("strategy {strategy_id} not found")))?;
-
-        let strategy_risk_policy: StrategyRiskPolicyData =
-            parse_risk_policy(strategy.risk_policy).map_err(app_error_to_mcp)?;
+        ensure_strategy_exists(&self.db, strategy_id).await?;
 
         let account_risk_policy_row = account_risk_policy::find_current(&self.db)
             .await
@@ -113,14 +106,6 @@ impl StrategyServer {
             .await
             .map_err(app_error_to_mcp)?;
 
-        let position_ratio_result = compute_position_ratio_constraint(
-            strategy_risk_policy.max_position_ratio,
-            target_price,
-            current_qty,
-            investable_amount_row.as_ref().map(|r| r.amount_jpy),
-            &symbol,
-        );
-
         let sector_ratio_result = compute_sector_ratio_constraint(
             max_sector_ratio,
             target_price,
@@ -144,7 +129,6 @@ impl StrategyServer {
         let cash_result = compute_cash_constraint(unused_investable_amount, target_price, &symbol);
 
         let (max_qty, binding_constraint) = combine_constraints([
-            ("position_ratio", &position_ratio_result),
             ("sector_ratio", &sector_ratio_result),
             ("cash", &cash_result),
         ]);
@@ -155,7 +139,6 @@ impl StrategyServer {
             current_qty: decimal_to_f64(current_qty),
             current_price: target_price.map(decimal_to_f64),
             priced_at: prices.priced_at,
-            max_qty_by_position_ratio: position_ratio_result,
             max_qty_by_sector_ratio: sector_ratio_result,
             max_qty_by_cash: cash_result,
             max_qty,
@@ -186,32 +169,6 @@ fn additional_qty_from_headroom(headroom: Decimal, price: Decimal) -> i64 {
 
 fn floor_to_lot(qty: i64) -> i64 {
     (qty / LOT_SIZE) * LOT_SIZE
-}
-
-fn compute_position_ratio_constraint(
-    max_ratio: Option<Decimal>,
-    price: Option<Decimal>,
-    current_qty: Decimal,
-    investable_amount: Option<Decimal>,
-    symbol: &str,
-) -> ConstraintResult {
-    let Some(ratio) = max_ratio else {
-        return ConstraintResult::Unlimited;
-    };
-    let Some(price) = price else {
-        return ConstraintResult::Unavailable {
-            reason: format!("price unavailable for {symbol}"),
-        };
-    };
-    let Some(investable_amount) = investable_amount else {
-        return ConstraintResult::Unavailable {
-            reason: "no investable amount recorded for this strategy".to_string(),
-        };
-    };
-    let headroom = ratio * investable_amount - current_qty * price;
-    ConstraintResult::Limited {
-        max_additional_qty: additional_qty_from_headroom(headroom, price),
-    }
 }
 
 fn compute_sector_ratio_constraint(
@@ -282,7 +239,7 @@ fn compute_cash_constraint(
 /// 制約結果を集約する。いずれかが Unavailable なら全体を Unavailable とし、
 /// それ以外は最小の Limited を採用する (同値は前方の制約を優先)。
 fn combine_constraints(
-    constraints: [(&str, &ConstraintResult); 3],
+    constraints: [(&str, &ConstraintResult); 2],
 ) -> (ConstraintResult, Option<String>) {
     for (name, result) in &constraints {
         if let ConstraintResult::Unavailable { reason } = result {
@@ -336,61 +293,6 @@ mod tests {
         #[case] expected: i64,
     ) {
         assert_eq!(additional_qty_from_headroom(headroom, price), expected);
-    }
-
-    #[rstest]
-    #[case::no_ratio_is_unlimited(
-        None,
-        Some(Decimal::from(1000)),
-        Decimal::ZERO,
-        Some(Decimal::from(1_000_000)),
-        ConstraintResult::Unlimited
-    )]
-    #[case::missing_price_is_unavailable(
-        Some(Decimal::new(2, 1)),
-        None,
-        Decimal::ZERO,
-        Some(Decimal::from(1_000_000)),
-        ConstraintResult::Unavailable { reason: "price unavailable for 7203".to_string() }
-    )]
-    #[case::missing_investable_amount_is_unavailable(
-        Some(Decimal::new(2, 1)),
-        Some(Decimal::from(1000)),
-        Decimal::ZERO,
-        None,
-        ConstraintResult::Unavailable { reason: "no investable amount recorded for this strategy".to_string() }
-    )]
-    #[case::computes_headroom_over_investable_amount(
-        Some(Decimal::new(2, 1)),
-        Some(Decimal::from(1000)),
-        Decimal::ZERO,
-        Some(Decimal::from(1_000_000)),
-        ConstraintResult::Limited { max_additional_qty: 200 }
-    )]
-    #[case::subtracts_current_position_value(
-        Some(Decimal::new(2, 1)),
-        Some(Decimal::from(1000)),
-        Decimal::from(100),
-        Some(Decimal::from(1_000_000)),
-        ConstraintResult::Limited { max_additional_qty: 100 }
-    )]
-    fn compute_position_ratio_constraint_cases(
-        #[case] max_ratio: Option<Decimal>,
-        #[case] price: Option<Decimal>,
-        #[case] current_qty: Decimal,
-        #[case] investable_amount: Option<Decimal>,
-        #[case] expected: ConstraintResult,
-    ) {
-        assert_eq!(
-            compute_position_ratio_constraint(
-                max_ratio,
-                price,
-                current_qty,
-                investable_amount,
-                "7203"
-            ),
-            expected
-        );
     }
 
     #[rstest]
@@ -522,18 +424,15 @@ mod tests {
         ConstraintResult::Unlimited,
         ConstraintResult::Unlimited,
         ConstraintResult::Unlimited,
-        ConstraintResult::Unlimited,
         None
     )]
     #[case::any_unavailable_poisons_overall(
-        ConstraintResult::Limited { max_additional_qty: 100 },
         ConstraintResult::Unavailable { reason: "x".to_string() },
         ConstraintResult::Limited { max_additional_qty: 50 },
         ConstraintResult::Unavailable { reason: "sector_ratio: x".to_string() },
         None
     )]
     #[case::picks_minimum_limited(
-        ConstraintResult::Limited { max_additional_qty: 1500 },
         ConstraintResult::Limited { max_additional_qty: 1000 },
         ConstraintResult::Limited { max_additional_qty: 1800 },
         ConstraintResult::Limited { max_additional_qty: 1000 },
@@ -541,23 +440,18 @@ mod tests {
     )]
     #[case::ties_prefer_earlier_constraint(
         ConstraintResult::Limited { max_additional_qty: 1000 },
-        ConstraintResult::Unlimited,
         ConstraintResult::Limited { max_additional_qty: 1000 },
         ConstraintResult::Limited { max_additional_qty: 1000 },
-        Some("position_ratio")
+        Some("sector_ratio")
     )]
     fn combine_constraints_cases(
-        #[case] position_ratio: ConstraintResult,
         #[case] sector_ratio: ConstraintResult,
         #[case] cash: ConstraintResult,
         #[case] expected_max_qty: ConstraintResult,
         #[case] expected_binding: Option<&str>,
     ) {
-        let (max_qty, binding_constraint) = combine_constraints([
-            ("position_ratio", &position_ratio),
-            ("sector_ratio", &sector_ratio),
-            ("cash", &cash),
-        ]);
+        let (max_qty, binding_constraint) =
+            combine_constraints([("sector_ratio", &sector_ratio), ("cash", &cash)]);
         assert_eq!(max_qty, expected_max_qty);
         assert_eq!(binding_constraint, expected_binding.map(str::to_string));
     }
@@ -573,7 +467,7 @@ mod integration_tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::{instruments, sector, stock, strategy, trade};
+    use crate::entities::{instruments, sector, stock, trade};
     use crate::models::{Bar, Timeframe};
     use crate::repositories::bars::upsert_bars;
     use crate::services::{account_risk_policy, investable_amount};
@@ -666,17 +560,6 @@ mod integration_tests {
         .expect("insert test stock");
     }
 
-    async fn set_max_position_ratio(db: &DatabaseConnection, strategy_id: Uuid, ratio: &str) {
-        let mut active: strategy::ActiveModel = strategy::Entity::find_by_id(strategy_id)
-            .one(db)
-            .await
-            .expect("query ok")
-            .expect("strategy exists")
-            .into();
-        active.risk_policy = Set(serde_json::json!({ "max_position_ratio": ratio }));
-        active.update(db).await.expect("set max_position_ratio");
-    }
-
     async fn set_max_sector_ratio(db: &DatabaseConnection, ratio: &str) {
         account_risk_policy::save(db, serde_json::json!({ "max_sector_ratio": ratio }))
             .await
@@ -720,7 +603,6 @@ mod integration_tests {
                 current_qty: 0.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_position_ratio: ConstraintResult::Unlimited,
                 max_qty_by_sector_ratio: ConstraintResult::Unlimited,
                 max_qty_by_cash: ConstraintResult::Limited {
                     max_additional_qty: 1000
@@ -729,48 +611,6 @@ mod integration_tests {
                     max_additional_qty: 1000
                 },
                 binding_constraint: Some("cash".to_string()),
-            }
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn position_ratio_binds_when_stricter_than_cash(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy(&db, "a").await;
-        set_max_position_ratio(&db, strategy_id, "0.2").await;
-        record_investable_amount(&db, strategy_id, 1_000_000).await;
-        seed_bar(&db, "7203", 1000).await;
-        let server = build_server(db);
-
-        let result = server
-            .check_buyable_qty_inner(
-                strategy_id,
-                CheckBuyableQtyParams {
-                    symbol: "7203".to_string(),
-                },
-            )
-            .await
-            .expect("check_buyable_qty");
-
-        assert_eq!(
-            result,
-            CheckBuyableQtyResult {
-                symbol: "7203".to_string(),
-                lot_size: 100,
-                current_qty: 0.0,
-                current_price: Some(1000.0),
-                priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_position_ratio: ConstraintResult::Limited {
-                    max_additional_qty: 200
-                },
-                max_qty_by_sector_ratio: ConstraintResult::Unlimited,
-                max_qty_by_cash: ConstraintResult::Limited {
-                    max_additional_qty: 1000
-                },
-                max_qty: ConstraintResult::Limited {
-                    max_additional_qty: 200
-                },
-                binding_constraint: Some("position_ratio".to_string()),
             }
         );
     }
@@ -811,7 +651,6 @@ mod integration_tests {
                 current_qty: 100.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_position_ratio: ConstraintResult::Unlimited,
                 max_qty_by_sector_ratio: ConstraintResult::Limited {
                     max_additional_qty: 200
                 },
@@ -830,7 +669,6 @@ mod integration_tests {
     async fn all_constraints_become_unavailable_when_target_price_is_missing(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        set_max_position_ratio(&db, strategy_id, "0.2").await;
         set_max_sector_ratio(&db, "0.2").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
         // "7203" の bar を意図的に seed しない (価格取得不可を再現)
@@ -854,9 +692,6 @@ mod integration_tests {
                 current_qty: 0.0,
                 current_price: None,
                 priced_at: None,
-                max_qty_by_position_ratio: ConstraintResult::Unavailable {
-                    reason: "price unavailable for 7203".to_string()
-                },
                 max_qty_by_sector_ratio: ConstraintResult::Unavailable {
                     reason: "7203 has no sector assigned".to_string()
                 },
@@ -864,7 +699,7 @@ mod integration_tests {
                     reason: "price unavailable for 7203".to_string()
                 },
                 max_qty: ConstraintResult::Unavailable {
-                    reason: "position_ratio: price unavailable for 7203".to_string()
+                    reason: "sector_ratio: 7203 has no sector assigned".to_string()
                 },
                 binding_constraint: None,
             }
@@ -899,7 +734,6 @@ mod integration_tests {
                 current_qty: 0.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_position_ratio: ConstraintResult::Unlimited,
                 max_qty_by_sector_ratio: ConstraintResult::Unavailable {
                     reason: "7203 has no sector assigned".to_string()
                 },
@@ -946,7 +780,6 @@ mod integration_tests {
                 current_qty: 100.0,
                 current_price: Some(1000.0),
                 priced_at: Some(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("date")),
-                max_qty_by_position_ratio: ConstraintResult::Unlimited,
                 max_qty_by_sector_ratio: ConstraintResult::Unavailable {
                     reason:
                         "missing price for held position(s), account-wide total is unreliable: 9999"

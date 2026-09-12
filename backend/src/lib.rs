@@ -239,10 +239,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::get_investable_amount,
             strategies::put_investable_amount
         ))
-        .routes(routes!(
-            strategies::get_risk_policy,
-            strategies::put_risk_policy
-        ))
         // agent_config (目的別 agent 設定)
         .routes(routes!(
             agent_config::list_agent_configs,

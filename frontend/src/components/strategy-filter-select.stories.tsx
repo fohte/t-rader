@@ -18,7 +18,6 @@ const strategy1 = {
   name: '長期投資',
   description: null,
   sort_order: 0,
-  risk_policy: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -27,7 +26,6 @@ const strategy2 = {
   name: '集中スイング',
   description: null,
   sort_order: 1,
-  risk_policy: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }

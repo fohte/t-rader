@@ -80,7 +80,6 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
         sort_order: Set(0),
         created_at: NotSet,
         updated_at: NotSet,
-        risk_policy: NotSet,
     }
     .insert(db)
     .await
