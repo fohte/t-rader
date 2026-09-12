@@ -4,11 +4,12 @@ mod response;
 #[cfg(test)]
 mod tests;
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
+use crate::date_utils::latest_business_day;
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use response::{ErrorResponse, HistoryResponse, StocksResponse};
@@ -323,6 +324,17 @@ impl DataProvider for IbkrClient {
         let (_, instrument) = self.lookup_stock(instrument_id).await?;
         Ok(instrument)
     }
+
+    /// IBKR は契約範囲の学習機構を持たないライブデータプロバイダのため、常に
+    /// 直近の確定営業日までを取得可能とみなす (`None` を返すと J-Quants 向けの
+    /// 「未学習時は today を上限とみなす」フォールバックに巻き込まれ、
+    /// `fetch_latest_prices` のたびに全期間の再取得が発生してしまう)。
+    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        Some((
+            NaiveDate::from_ymd_opt(1990, 1, 1).unwrap_or_default(),
+            latest_business_day(Utc::now().date_naive()),
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -349,6 +361,26 @@ mod period_tests {
         assert_eq!(
             period_and_start_time(&range),
             (expected_period.to_string(), expected_start_time.to_string())
+        );
+    }
+}
+
+#[cfg(test)]
+mod known_fetchable_range_tests {
+    use super::*;
+
+    #[test]
+    fn known_fetchable_range_returns_a_range_up_to_the_latest_business_day() {
+        let client = IbkrClient::with_base_url("http://localhost").expect("client");
+
+        let range = client.known_fetchable_range();
+
+        assert_eq!(
+            range,
+            Some((
+                NaiveDate::from_ymd_opt(1990, 1, 1).unwrap_or_default(),
+                latest_business_day(Utc::now().date_naive()),
+            ))
         );
     }
 }

@@ -3,12 +3,13 @@
 
 use std::collections::HashMap;
 
-use chrono::{Datelike, Duration, NaiveDate, Utc, Weekday};
+use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait, Set};
 
 use crate::data_provider::DataProvider;
+use crate::date_utils::latest_business_day;
 use crate::entities::instruments;
 use crate::models::Timeframe;
 use crate::repositories::bars::find_latest_bar;
@@ -21,15 +22,6 @@ pub struct LatestPrices {
     pub prices: HashMap<String, Decimal>,
     /// `prices` の全銘柄に共通する観測日。1 銘柄も価格を取得できなければ `None`。
     pub priced_at: Option<NaiveDate>,
-}
-
-/// `date` が土日ならその直前の金曜日を返す。祝日は考慮しない。
-fn latest_business_day(date: NaiveDate) -> NaiveDate {
-    match date.weekday() {
-        Weekday::Sat => date - Duration::days(1),
-        Weekday::Sun => date - Duration::days(2),
-        _ => date,
-    }
 }
 
 /// `symbols` それぞれの最新終値を返す。取得可能上限日に届いていない銘柄は
@@ -129,7 +121,6 @@ async fn ensure_instrument_exists(
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, NaiveDate, TimeZone, Utc};
-    use rstest::rstest;
     use rust_decimal::Decimal;
     use sqlx::PgPool;
 
@@ -197,26 +188,6 @@ mod tests {
         .exec_without_returning(db)
         .await
         .expect("failed to insert test instrument");
-    }
-
-    #[rstest]
-    #[case::saturday(
-        NaiveDate::from_ymd_opt(2025, 1, 4).expect("date"),
-        NaiveDate::from_ymd_opt(2025, 1, 3).expect("date")
-    )]
-    #[case::sunday(
-        NaiveDate::from_ymd_opt(2025, 1, 5).expect("date"),
-        NaiveDate::from_ymd_opt(2025, 1, 3).expect("date")
-    )]
-    #[case::weekday(
-        NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"),
-        NaiveDate::from_ymd_opt(2025, 1, 6).expect("date")
-    )]
-    fn latest_business_day_steps_back_from_weekends(
-        #[case] date: NaiveDate,
-        #[case] expected: NaiveDate,
-    ) {
-        assert_eq!(latest_business_day(date), expected);
     }
 
     #[test]
