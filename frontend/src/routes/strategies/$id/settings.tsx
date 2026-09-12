@@ -2,13 +2,15 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { InterestTree } from '#components/strategy-home/interest-tree'
+import { GeneralTab } from '#components/strategy-settings/general-tab'
 import { TriggersTab } from '#components/strategy-settings/triggers-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'triggers' | 'interests'
+type TabKey = 'general' | 'triggers' | 'interests'
 
 const TABS: { key: TabKey; label: string }[] = [
+  { key: 'general', label: '全般' },
   { key: 'triggers', label: 'Triggers' },
   { key: 'interests', label: '関心' },
 ]
@@ -19,7 +21,7 @@ export const Route = createFileRoute('/strategies/$id/settings')({
 
 function StrategySettingsPage() {
   const { id } = Route.useParams()
-  const [tab, setTab] = useState<TabKey>('triggers')
+  const [tab, setTab] = useState<TabKey>('general')
 
   const { data: strategy, isPending } = $api.useQuery(
     'get',
@@ -59,7 +61,7 @@ function StrategySettingsPage() {
           戦略設定 — {strategy.name}
         </h1>
         <p className="text-sm text-muted-foreground-strong">
-          trigger を編集します。
+          基本情報・trigger・関心を編集します。
         </p>
       </header>
 
@@ -89,6 +91,7 @@ function StrategySettingsPage() {
       </div>
 
       <section role="tabpanel">
+        {tab === 'general' && <GeneralTab strategyId={id} />}
         {tab === 'triggers' && <TriggersTab strategyId={id} />}
         {tab === 'interests' && <InterestTree strategyId={id} />}
       </section>
