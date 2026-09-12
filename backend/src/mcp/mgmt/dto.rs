@@ -44,6 +44,17 @@ pub struct GetStrategyTaskStatusParams {
     pub a2a_task_id: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ResumeStrategyTaskParams {
+    pub task_id: Uuid,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ResumeStrategyTaskResult {
+    pub task_id: Uuid,
+    pub a2a_task_id: String,
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct GetStrategyTaskStatusResult {
     pub task_id: Uuid,

@@ -18,9 +18,9 @@ use super::dto::{
     EvalPythonParams, EvalPythonResult, ListNotesParams, ListNotesResult, ListWatchTargetsParams,
     ListWatchTargetsResult, NoteDto, QueryDataParams, QueryDataResult, QueryMediaParams,
     QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
-    ReadCommentsResult, ReadNoteParams, ReadPortfolioResult, ReplyCommentParams,
-    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, WriteNoteParams,
-    WriteNoteResult,
+    ReadCommentsResult, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
+    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
+    WriteNoteParams, WriteNoteResult,
 };
 use super::{
     StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, strategy_id_from_ctx,
@@ -265,6 +265,23 @@ impl StrategyServer {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.check_buyable_qty_inner(sid, params).await.map(Json)
     }
+
+    /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
+    #[tool(
+        name = "read_news",
+        description = "Read news items linked to the strategy that haven't been returned by a previous call, oldest first. A per-strategy checkpoint automatically advances past whatever this call returns, so repeated calls only surface items linked since the last call — nothing is skipped even across long gaps between runs. Each row is one interest match; a news item matched by more than one interest (e.g. a stock and a theme) appears once per match, so the same url/title can repeat. If has_more is true, call again to continue from where this call left off."
+    )]
+    async fn read_news(
+        &self,
+        Parameters(params): Parameters<ReadNewsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadNewsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        let execution_id = execution_id_from_ctx(&ctx);
+        self.read_news_inner(sid, execution_id, params)
+            .await
+            .map(Json)
+    }
 }
 
 impl StrategyServer {
@@ -325,6 +342,7 @@ mod tests {
                 ("query_media", Some(true)),
                 ("read_annotations", Some(true)),
                 ("read_comments", Some(true)),
+                ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
                 ("reply_comment", None),

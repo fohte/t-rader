@@ -5,6 +5,7 @@ pub use super::agent_config::Entity as AgentConfig;
 pub use super::annotation::Entity as Annotation;
 pub use super::bars::Entity as Bars;
 pub use super::change_history::Entity as ChangeHistory;
+pub use super::checkpoint::Entity as Checkpoint;
 pub use super::comment::Entity as Comment;
 pub use super::custom_indicator::Entity as CustomIndicator;
 pub use super::hypothesis::Entity as Hypothesis;
