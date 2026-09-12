@@ -6,18 +6,19 @@
 use chrono::Utc;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
+use sea_orm::sea_query::{Expr, ExprTrait};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, EntityTrait, IntoActiveModel, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
 use crate::entities::{hypothesis, hypothesis_proposal};
 use crate::error::AppError;
+use crate::services::hypotheses::find_hypothesis_or_404;
 
-pub const PROPOSAL_STATUSES: [&str; 3] = ["pending", "approved", "rejected"];
-
-async fn find_proposal_or_404(
-    db: &DatabaseConnection,
+async fn find_proposal_or_404<C: ConnectionTrait>(
+    db: &C,
     proposal_id: Uuid,
 ) -> Result<hypothesis_proposal::Model, AppError> {
     hypothesis_proposal::Entity::find_by_id(proposal_id)
@@ -26,14 +27,34 @@ async fn find_proposal_or_404(
         .ok_or_else(|| AppError::NotFound(format!("hypothesis_proposal {proposal_id} not found")))
 }
 
-async fn find_hypothesis_or_404<C: ConnectionTrait>(
-    db: &C,
-    hypothesis_id: Uuid,
-) -> Result<hypothesis::Model, AppError> {
-    hypothesis::Entity::find_by_id(hypothesis_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("hypothesis {hypothesis_id} not found")))
+/// `pending` である行だけを狙った状態に条件付き UPDATE する。approve/reject の並行呼び出しに
+/// 対する CAS (`services::strategy_tasks::resume::resume_task` と同じ考え方): 事前チェックと
+/// 更新の間に別呼び出しが割り込んでも、`WHERE status = 'pending'` が対象行を絞るため
+/// 一方だけが成功し、もう一方は `rows_affected == 0` で検出できる。
+async fn claim_pending_proposal<C: ConnectionTrait>(
+    conn: &C,
+    proposal_id: Uuid,
+    new_status: &str,
+    review_note: Option<String>,
+) -> Result<bool, AppError> {
+    let result = hypothesis_proposal::Entity::update_many()
+        .col_expr(hypothesis_proposal::Column::Status, Expr::value(new_status))
+        .col_expr(
+            hypothesis_proposal::Column::ReviewedAt,
+            Expr::value(Utc::now().fixed_offset()),
+        )
+        .col_expr(
+            hypothesis_proposal::Column::ReviewNote,
+            Expr::value(review_note),
+        )
+        .filter(
+            hypothesis_proposal::Column::Id
+                .eq(proposal_id)
+                .and(hypothesis_proposal::Column::Status.eq("pending")),
+        )
+        .exec(conn)
+        .await?;
+    Ok(result.rows_affected > 0)
 }
 
 /// 提案を承認する。`pending` の場合のみ、指定されたフィールドだけを仮説本体に反映する。
@@ -54,6 +75,14 @@ pub async fn approve_proposal(
         _ => {
             let txn = db.begin().await?;
 
+            if !claim_pending_proposal(&txn, proposal_id, "approved", review_note).await? {
+                let current = find_proposal_or_404(&txn, proposal_id).await?;
+                return Err(AppError::Conflict(format!(
+                    "proposal already {}",
+                    current.status
+                )));
+            }
+
             let current_hypothesis = find_hypothesis_or_404(&txn, proposal.hypothesis_id).await?;
             let mut active_hypothesis = current_hypothesis.into_active_model();
             if let Some(title) = proposal.proposed_title.clone() {
@@ -68,11 +97,7 @@ pub async fn approve_proposal(
             active_hypothesis.updated_at = Set(Utc::now().fixed_offset());
             let updated_hypothesis = active_hypothesis.update(&txn).await?;
 
-            let mut active_proposal = proposal.into_active_model();
-            active_proposal.status = Set("approved".to_string());
-            active_proposal.reviewed_at = Set(Some(Utc::now().fixed_offset()));
-            active_proposal.review_note = Set(review_note);
-            let updated_proposal = active_proposal.update(&txn).await?;
+            let updated_proposal = find_proposal_or_404(&txn, proposal_id).await?;
 
             txn.commit().await?;
             Ok((updated_proposal, updated_hypothesis))
@@ -93,22 +118,27 @@ pub async fn reject_proposal(
         "approved" => Err(AppError::Conflict("proposal already approved".into())),
         "rejected" => Ok(proposal),
         _ => {
-            let mut active = proposal.into_active_model();
-            active.status = Set("rejected".to_string());
-            active.reviewed_at = Set(Some(Utc::now().fixed_offset()));
-            active.review_note = Set(review_note);
-            Ok(active.update(db).await?)
+            if !claim_pending_proposal(db, proposal_id, "rejected", review_note).await? {
+                let current = find_proposal_or_404(db, proposal_id).await?;
+                return Err(AppError::Conflict(format!(
+                    "proposal already {}",
+                    current.status
+                )));
+            }
+            find_proposal_or_404(db, proposal_id).await
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::ActiveValue::NotSet;
     use sqlx::PgPool;
 
     use super::*;
-    use crate::testing::{create_test_db, insert_test_strategy};
+    use crate::testing::{
+        create_test_db, insert_test_hypothesis, insert_test_hypothesis_proposal,
+        insert_test_strategy,
+    };
 
     /// 動的な timestamp を固定値に潰してから比較するための epoch。
     fn fixed() -> chrono::DateTime<chrono::FixedOffset> {
@@ -122,22 +152,7 @@ mod tests {
         body: &str,
         status: &str,
     ) -> Uuid {
-        let id = Uuid::new_v4();
-        hypothesis::ActiveModel {
-            hypothesis_id: Set(id),
-            strategy_id: Set(Some(strategy_id)),
-            title: Set(title.into()),
-            body: Set(body.into()),
-            status: Set(status.into()),
-            related_note_ids: Set(vec![]),
-            related_interest_ids: Set(vec![]),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("insert test hypothesis");
-        id
+        insert_test_hypothesis(db, Some(strategy_id), title, body, status).await
     }
 
     async fn seed_proposal(
@@ -149,23 +164,17 @@ mod tests {
         rationale: &str,
         status: &str,
     ) -> Uuid {
-        let id = Uuid::new_v4();
-        hypothesis_proposal::ActiveModel {
-            id: Set(id),
-            hypothesis_id: Set(hypothesis_id),
-            proposed_title: Set(proposed_title.map(str::to_string)),
-            proposed_body: Set(proposed_body.map(str::to_string)),
-            proposed_status: Set(proposed_status.map(str::to_string)),
-            rationale: Set(rationale.into()),
-            status: Set(status.into()),
-            review_note: Set(None),
-            created_at: NotSet,
-            reviewed_at: Set(None),
-        }
-        .insert(db)
+        insert_test_hypothesis_proposal(
+            db,
+            hypothesis_id,
+            proposed_title,
+            proposed_body,
+            proposed_status,
+            rationale,
+            status,
+            fixed(),
+        )
         .await
-        .expect("insert test hypothesis_proposal");
-        id
     }
 
     fn normalize_hypothesis(mut m: hypothesis::Model) -> hypothesis::Model {
@@ -179,9 +188,6 @@ mod tests {
         m.reviewed_at = m.reviewed_at.map(|_| fixed());
         m
     }
-
-    // `sqlx::test` は `#[rstest]` と共存できないため (`src/mcp/strategy/eval_indicator.rs` 参照)、
-    // ケースは 1 つの sqlx::test 関数内でループ列挙する。
 
     #[sqlx::test(migrations = false)]
     async fn approve_applies_only_specified_fields(pool: PgPool) {

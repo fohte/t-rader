@@ -15,7 +15,7 @@ use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, Quer
 use uuid::Uuid;
 
 use crate::entities::{hypothesis, hypothesis_proposal};
-use crate::services::hypotheses::STATUSES;
+use crate::services::hypotheses::ensure_status;
 
 use super::dto::{
     HypothesisDto, ListHypothesesParams, ListHypothesesResult, ProposeHypothesisChangeParams,
@@ -24,6 +24,13 @@ use super::dto::{
 use super::{StrategyServer, clamp_limit, db_error, invalid_params};
 
 const PENDING_PROPOSAL_STATUS: &str = "pending";
+
+fn validation_to_mcp(err: crate::error::AppError) -> McpError {
+    match err {
+        crate::error::AppError::Validation(msg) => invalid_params(msg),
+        other => invalid_params(format!("validation failed: {other}")),
+    }
+}
 
 fn hypothesis_to_dto(m: hypothesis::Model) -> HypothesisDto {
     HypothesisDto {
@@ -120,10 +127,8 @@ impl StrategyServer {
         {
             return Err(invalid_params("proposed_body must not be empty"));
         }
-        if let Some(status) = &params.proposed_status
-            && !STATUSES.contains(&status.as_str())
-        {
-            return Err(invalid_params(format!("invalid proposed_status: {status}")));
+        if let Some(status) = &params.proposed_status {
+            ensure_status(status).map_err(validation_to_mcp)?;
         }
 
         let model = hypothesis_proposal::ActiveModel {

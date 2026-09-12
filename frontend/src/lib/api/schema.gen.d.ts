@@ -520,8 +520,8 @@ export interface paths {
     get?: never
     put?: never
     /**
-     * 提案を承認する。`pending` の場合のみ、指定されたフィールドだけを仮説本体に反映する
-     *     (`approved`/`rejected` からの再承認・却下の扱いは `services::hypothesis_proposals` 参照)
+     * 提案を承認する。`pending` の場合のみ指定されたフィールドを仮説本体に反映する。
+     *     既に `approved` の場合は再適用せず現在値を返し (200)、`rejected` の場合は 409 を返す。
      */
     post: operations['approve_hypothesis_proposal']
     delete?: never

@@ -6,10 +6,11 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{hypothesis, hypothesis_proposal};
+use crate::entities::hypothesis_proposal;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{ApproveHypothesisProposalResponse, ReviewHypothesisProposalRequest};
+use crate::services::hypotheses::find_hypothesis_or_404;
 use crate::services::hypothesis_proposals;
 
 async fn find_proposal_or_404(
@@ -20,15 +21,6 @@ async fn find_proposal_or_404(
         .one(db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("hypothesis_proposal {id} not found")))
-}
-
-async fn ensure_hypothesis_exists(db: &DatabaseConnection, id: Uuid) -> Result<(), AppError> {
-    let exists = hypothesis::Entity::find_by_id(id).one(db).await?.is_some();
-    if exists {
-        Ok(())
-    } else {
-        Err(AppError::NotFound(format!("hypothesis {id} not found")))
-    }
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -82,7 +74,7 @@ pub async fn list_proposals_for_hypothesis(
     State(state): State<AppState>,
     JsonPath(hypothesis_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<hypothesis_proposal::Model>>, AppError> {
-    ensure_hypothesis_exists(&state.db, hypothesis_id).await?;
+    find_hypothesis_or_404(&state.db, hypothesis_id).await?;
     let rows = hypothesis_proposal::Entity::find()
         .filter(hypothesis_proposal::Column::HypothesisId.eq(hypothesis_id))
         .order_by_desc(hypothesis_proposal::Column::CreatedAt)
@@ -111,8 +103,8 @@ pub async fn get_hypothesis_proposal(
     Ok(Json(find_proposal_or_404(&state.db, id).await?))
 }
 
-/// 提案を承認する。`pending` の場合のみ、指定されたフィールドだけを仮説本体に反映する
-/// (`approved`/`rejected` からの再承認・却下の扱いは `services::hypothesis_proposals` 参照)
+/// 提案を承認する。`pending` の場合のみ指定されたフィールドを仮説本体に反映する。
+/// 既に `approved` の場合は再適用せず現在値を返し (200)、`rejected` の場合は 409 を返す。
 #[utoipa::path(
     post,
     path = "/api/hypothesis-proposals/{id}/approve",
@@ -174,76 +166,21 @@ mod tests {
     use axum::http::StatusCode;
     use chrono::{DateTime, FixedOffset, TimeZone, Utc};
     use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait, IntoActiveModel};
+    use sea_orm::ActiveValue::Set;
+    use sea_orm::{EntityTrait, IntoActiveModel};
     use serde_json::{Value, json};
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::{hypothesis, hypothesis_proposal};
-    use crate::testing::{create_test_server_with_db, insert_test_strategy};
+    use crate::entities::hypothesis;
+    use crate::testing::{
+        create_test_server_with_db, insert_test_hypothesis, insert_test_hypothesis_proposal,
+        insert_test_strategy,
+    };
 
     fn at(minute: i64) -> DateTime<FixedOffset> {
         (Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap() + chrono::Duration::minutes(minute))
             .fixed_offset()
-    }
-
-    async fn seed_hypothesis(
-        db: &DatabaseConnection,
-        strategy_id: Uuid,
-        title: &str,
-        body: &str,
-        status: &str,
-    ) -> Uuid {
-        let id = Uuid::new_v4();
-        hypothesis::ActiveModel {
-            hypothesis_id: Set(id),
-            strategy_id: Set(Some(strategy_id)),
-            title: Set(title.into()),
-            body: Set(body.into()),
-            status: Set(status.into()),
-            related_note_ids: Set(vec![]),
-            related_interest_ids: Set(vec![]),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("insert test hypothesis");
-        id
-    }
-
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "hypothesis_proposal の各フィールドをテスト用に並べる関数"
-    )]
-    async fn seed_proposal(
-        db: &DatabaseConnection,
-        hypothesis_id: Uuid,
-        proposed_title: Option<&str>,
-        proposed_body: Option<&str>,
-        proposed_status: Option<&str>,
-        rationale: &str,
-        status: &str,
-        created_at: DateTime<FixedOffset>,
-    ) -> Uuid {
-        let id = Uuid::new_v4();
-        hypothesis_proposal::ActiveModel {
-            id: Set(id),
-            hypothesis_id: Set(hypothesis_id),
-            proposed_title: Set(proposed_title.map(str::to_string)),
-            proposed_body: Set(proposed_body.map(str::to_string)),
-            proposed_status: Set(proposed_status.map(str::to_string)),
-            rationale: Set(rationale.into()),
-            status: Set(status.into()),
-            review_note: Set(None),
-            created_at: Set(created_at),
-            reviewed_at: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("insert test hypothesis_proposal");
-        id
     }
 
     fn normalize_proposal(mut v: Value) -> Value {
@@ -278,11 +215,41 @@ mod tests {
     async fn list_hypothesis_proposals_filters_by_hypothesis_id_and_status(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let h1 = seed_hypothesis(&db, sid, "h1", "b1", "unverified").await;
-        let h2 = seed_hypothesis(&db, sid, "h2", "b2", "unverified").await;
-        let p1 = seed_proposal(&db, h1, Some("new1"), None, None, "r1", "pending", at(0)).await;
-        let p2 = seed_proposal(&db, h1, Some("new2"), None, None, "r2", "approved", at(1)).await;
-        let p3 = seed_proposal(&db, h2, Some("new3"), None, None, "r3", "pending", at(2)).await;
+        let h1 = insert_test_hypothesis(&db, Some(sid), "h1", "b1", "unverified").await;
+        let h2 = insert_test_hypothesis(&db, Some(sid), "h2", "b2", "unverified").await;
+        let p1 = insert_test_hypothesis_proposal(
+            &db,
+            h1,
+            Some("new1"),
+            None,
+            None,
+            "r1",
+            "pending",
+            at(0),
+        )
+        .await;
+        let p2 = insert_test_hypothesis_proposal(
+            &db,
+            h1,
+            Some("new2"),
+            None,
+            None,
+            "r2",
+            "approved",
+            at(1),
+        )
+        .await;
+        let p3 = insert_test_hypothesis_proposal(
+            &db,
+            h2,
+            Some("new3"),
+            None,
+            None,
+            "r3",
+            "pending",
+            at(2),
+        )
+        .await;
 
         let ids_of = |res: axum_test::TestResponse| -> Vec<Uuid> {
             res.json::<Vec<Value>>()
@@ -312,10 +279,21 @@ mod tests {
     async fn list_proposals_for_hypothesis_returns_scoped_list_and_404_for_unknown(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let h1 = seed_hypothesis(&db, sid, "h1", "b1", "unverified").await;
-        let h2 = seed_hypothesis(&db, sid, "h2", "b2", "unverified").await;
-        seed_proposal(&db, h1, Some("new1"), None, None, "r1", "pending", at(0)).await;
-        let p2 = seed_proposal(&db, h2, Some("new2"), None, None, "r2", "pending", at(1)).await;
+        let h1 = insert_test_hypothesis(&db, Some(sid), "h1", "b1", "unverified").await;
+        let h2 = insert_test_hypothesis(&db, Some(sid), "h2", "b2", "unverified").await;
+        insert_test_hypothesis_proposal(&db, h1, Some("new1"), None, None, "r1", "pending", at(0))
+            .await;
+        let p2 = insert_test_hypothesis_proposal(
+            &db,
+            h2,
+            Some("new2"),
+            None,
+            None,
+            "r2",
+            "pending",
+            at(1),
+        )
+        .await;
 
         let scoped = server.get(&format!("/api/hypotheses/{h2}/proposals")).await;
         scoped.assert_status_ok();
@@ -345,8 +323,9 @@ mod tests {
     async fn approve_applies_only_specified_fields(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let hid = seed_hypothesis(&db, sid, "元タイトル", "元本文", "unverified").await;
-        let pid = seed_proposal(
+        let hid =
+            insert_test_hypothesis(&db, Some(sid), "元タイトル", "元本文", "unverified").await;
+        let pid = insert_test_hypothesis_proposal(
             &db,
             hid,
             Some("新タイトル"),
@@ -397,8 +376,9 @@ mod tests {
     async fn approve_is_idempotent_and_does_not_reapply(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let hid = seed_hypothesis(&db, sid, "元タイトル", "元本文", "unverified").await;
-        let pid = seed_proposal(
+        let hid =
+            insert_test_hypothesis(&db, Some(sid), "元タイトル", "元本文", "unverified").await;
+        let pid = insert_test_hypothesis_proposal(
             &db,
             hid,
             Some("新タイトル"),
@@ -465,8 +445,18 @@ mod tests {
     async fn reject_then_approve_returns_409(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let hid = seed_hypothesis(&db, sid, "t", "b", "unverified").await;
-        let pid = seed_proposal(&db, hid, Some("new"), None, None, "根拠", "pending", at(0)).await;
+        let hid = insert_test_hypothesis(&db, Some(sid), "t", "b", "unverified").await;
+        let pid = insert_test_hypothesis_proposal(
+            &db,
+            hid,
+            Some("new"),
+            None,
+            None,
+            "根拠",
+            "pending",
+            at(0),
+        )
+        .await;
 
         server
             .post(&format!("/api/hypothesis-proposals/{pid}/reject"))
@@ -485,8 +475,18 @@ mod tests {
     async fn reject_applies_and_does_not_touch_hypothesis(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let hid = seed_hypothesis(&db, sid, "t", "b", "unverified").await;
-        let pid = seed_proposal(&db, hid, Some("new"), None, None, "根拠", "pending", at(0)).await;
+        let hid = insert_test_hypothesis(&db, Some(sid), "t", "b", "unverified").await;
+        let pid = insert_test_hypothesis_proposal(
+            &db,
+            hid,
+            Some("new"),
+            None,
+            None,
+            "根拠",
+            "pending",
+            at(0),
+        )
+        .await;
 
         let res = server
             .post(&format!("/api/hypothesis-proposals/{pid}/reject"))
@@ -521,8 +521,18 @@ mod tests {
     async fn reject_is_idempotent(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let hid = seed_hypothesis(&db, sid, "t", "b", "unverified").await;
-        let pid = seed_proposal(&db, hid, Some("new"), None, None, "根拠", "pending", at(0)).await;
+        let hid = insert_test_hypothesis(&db, Some(sid), "t", "b", "unverified").await;
+        let pid = insert_test_hypothesis_proposal(
+            &db,
+            hid,
+            Some("new"),
+            None,
+            None,
+            "根拠",
+            "pending",
+            at(0),
+        )
+        .await;
 
         let first = server
             .post(&format!("/api/hypothesis-proposals/{pid}/reject"))
@@ -546,8 +556,18 @@ mod tests {
     async fn approve_then_reject_returns_409(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
-        let hid = seed_hypothesis(&db, sid, "t", "b", "unverified").await;
-        let pid = seed_proposal(&db, hid, Some("new"), None, None, "根拠", "pending", at(0)).await;
+        let hid = insert_test_hypothesis(&db, Some(sid), "t", "b", "unverified").await;
+        let pid = insert_test_hypothesis_proposal(
+            &db,
+            hid,
+            Some("new"),
+            None,
+            None,
+            "根拠",
+            "pending",
+            at(0),
+        )
+        .await;
 
         server
             .post(&format!("/api/hypothesis-proposals/{pid}/approve"))
