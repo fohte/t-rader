@@ -42,6 +42,8 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::annotation::Entity")]
     Annotation,
+    #[sea_orm(has_many = "super::note_hypothesis::Entity")]
+    NoteHypothesis,
     #[sea_orm(has_many = "super::note_ref::Entity")]
     NoteRef,
     #[sea_orm(
@@ -52,11 +54,19 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Strategy,
+    #[sea_orm(has_many = "super::trade_note::Entity")]
+    TradeNote,
 }
 
 impl Related<super::annotation::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Annotation.def()
+    }
+}
+
+impl Related<super::note_hypothesis::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::NoteHypothesis.def()
     }
 }
 
@@ -69,6 +79,30 @@ impl Related<super::note_ref::Entity> for Entity {
 impl Related<super::strategy::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Strategy.def()
+    }
+}
+
+impl Related<super::trade_note::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TradeNote.def()
+    }
+}
+
+impl Related<super::hypothesis::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::note_hypothesis::Relation::Hypothesis.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::note_hypothesis::Relation::Note.def().rev())
+    }
+}
+
+impl Related<super::trade::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::trade_note::Relation::Trade.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::trade_note::Relation::Note.def().rev())
     }
 }
 

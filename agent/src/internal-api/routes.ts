@@ -75,6 +75,7 @@ export interface InternalApiOptions {
   // A2A push notification config for every submitted task so the SDK's own
   // push delivery (DefaultPushNotificationSender) fires it.
   pushNotificationConfig?: PushNotificationConfig
+  isShuttingDown?: () => boolean
 }
 
 const buildUserMessage = (
@@ -164,6 +165,10 @@ const submitTaskRoute = createRoute({
       content: { 'application/json': { schema: errorResponseSchema } },
       description: 'Agent did not create a task',
     },
+    503: {
+      content: { 'application/json': { schema: errorResponseSchema } },
+      description: 'Agent is shutting down and not accepting new tasks',
+    },
   },
 })
 
@@ -194,11 +199,14 @@ export const mountInternalApiRoutes = (
   app: OpenAPIHono,
   options: InternalApiOptions,
 ): void => {
-  const { requestHandler, pushNotificationConfig } = options
+  const { requestHandler, pushNotificationConfig, isShuttingDown } = options
 
   app.openapi(
     submitTaskRoute,
     async (c) => {
+      if (isShuttingDown?.() === true) {
+        return c.json({ error: 'agent is shutting down' }, 503)
+      }
       const { strategy_id, prompt, purpose, resume_steps } = c.req.valid('json')
       const message = buildUserMessage(
         strategy_id,

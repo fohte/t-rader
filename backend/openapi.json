@@ -3836,6 +3836,239 @@
         }
       }
     },
+    "/api/notes/{id}/hypotheses": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートが依拠した仮説一覧 (リンク作成順)。各行はリンク時点の仮説内容を snapshot している。",
+        "operationId": "list_note_hypotheses",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteHypothesis"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートに仮説を紐付ける。仮説の title/body/status はこの時点の内容を snapshot し、\n以後の仮説編集では書き換わらない (過去のノートが依拠した根拠を固定するため)。",
+        "operationId": "create_note_hypothesis",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNoteHypothesisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteHypothesis"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "既にリンク済み",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/hypotheses/{hypothesis_id}": {
+      "delete": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートと仮説の紐付けを解除する",
+        "operationId": "delete_note_hypothesis",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "hypothesis_id",
+            "in": "path",
+            "description": "仮説 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/{id}/reject": {
       "post": {
         "tags": [
@@ -7025,6 +7258,239 @@
         }
       }
     },
+    "/api/trades/{id}/notes": {
+      "get": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引に紐づく判断ノート一覧 (リンク作成順)",
+        "operationId": "list_trade_notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "取引 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Note"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引に判断ノートを紐付ける",
+        "operationId": "create_trade_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "取引 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTradeNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeNote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "既にリンク済み",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trades/{id}/notes/{note_id}": {
+      "delete": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "取引と判断ノートの紐付けを解除する",
+        "operationId": "delete_trade_note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "取引 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "note_id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/triggers/{trigger_id}": {
       "get": {
         "tags": [
@@ -8361,6 +8827,19 @@
         },
         "additionalProperties": false
       },
+      "CreateNoteHypothesisRequest": {
+        "type": "object",
+        "required": [
+          "hypothesis_id"
+        ],
+        "properties": {
+          "hypothesis_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateNoteRequest": {
         "type": "object",
         "required": [
@@ -8485,6 +8964,19 @@
               "null"
             ],
             "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateTradeNoteRequest": {
+        "type": "object",
+        "required": [
+          "note_id"
+        ],
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "additionalProperties": false
@@ -9089,6 +9581,40 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "NoteHypothesis": {
+        "type": "object",
+        "required": [
+          "note_id",
+          "hypothesis_id",
+          "hypothesis_title",
+          "hypothesis_body",
+          "hypothesis_status",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hypothesis_body": {
+            "type": "string"
+          },
+          "hypothesis_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hypothesis_status": {
+            "type": "string"
+          },
+          "hypothesis_title": {
+            "type": "string"
+          },
+          "note_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -9764,6 +10290,14 @@
               "null"
             ]
           },
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した\nデータの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を\n受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの\nカラムが追加される前に作成された行に限られる。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -9827,6 +10361,14 @@
           "updated_at"
         ],
         "properties": {
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した\nデータの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を\n受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの\nカラムが追加される前に作成された行に限られる。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -9950,6 +10492,28 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "TradeNote": {
+        "type": "object",
+        "required": [
+          "trade_id",
+          "note_id",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "note_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trade_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

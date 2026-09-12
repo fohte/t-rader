@@ -202,6 +202,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
     let obj = body.as_object_mut().unwrap();
     obj.remove("created_at");
     obj.remove("updated_at");
+    obj.remove("as_of");
     assert_eq!(
         body,
         json!({
