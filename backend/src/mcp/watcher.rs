@@ -8,17 +8,23 @@
 //! `deadline_at` を過ぎても決着しない行 (内部 API 到達不能、投入自体の記録漏れを含む) は
 //! failed に確定し、沈黙したまま残ることを防ぐ。
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
+};
 use tokio::sync::{Notify, Semaphore};
+use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskError, AgentTaskState, AgentTaskStatus, SharedAgentTaskClient};
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::strategy_task;
+use crate::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
+use crate::entities::{strategy_task, strategy_task_step};
 
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
 
@@ -158,19 +164,18 @@ async fn apply_status(
     let new_phase = phase_for_state(status.state);
     let new_error = error_summary_for(&status, &new_phase);
     let new_result_text = status.result_text.or_else(|| row.result_text.clone());
-    let new_steps = status.steps.clone().unwrap_or_else(|| row.steps.clone());
+    let new_steps = status.steps.clone();
     apply_phase_logged(db, row, new_phase, new_error, new_result_text, new_steps).await
 }
 
 async fn apply_failed(db: &DatabaseConnection, row: strategy_task::Model, message: String) -> bool {
-    let steps = row.steps.clone();
     apply_phase_logged(
         db,
         row,
         StrategyTaskPhase::Failed,
         Some(message),
         None,
-        steps,
+        None,
     )
     .await
 }
@@ -182,7 +187,7 @@ async fn apply_phase_logged(
     new_phase: StrategyTaskPhase,
     new_error: Option<String>,
     new_result_text: Option<String>,
-    new_steps: serde_json::Value,
+    new_steps: Option<serde_json::Value>,
 ) -> bool {
     match apply_phase(db, row, new_phase, new_error, new_result_text, new_steps).await {
         Ok(updated) => updated,
@@ -193,41 +198,177 @@ async fn apply_phase_logged(
     }
 }
 
-/// 1 行ぶんの phase / error_summary / result_text / steps 更新を適用する。差分が無ければ DB
-/// 書き込みをしない。主キーと変更カラムのみを `Set` した ActiveModel で UPDATE することで、
-/// prompt 等の長文カラムを毎回書き直すのを避ける。
+/// 1 行ぶんの phase / error_summary / result_text 更新と、`strategy_task_step` へのステップ
+/// upsert を適用する。いずれも差分が無ければ DB 書き込みをしない。主キーと変更カラムのみを
+/// `Set` した ActiveModel で UPDATE することで、prompt 等の長文カラムを毎回書き直すのを避ける。
+///
+/// 両方の書き込みを 1 トランザクションにまとめる。片方だけ成功すると、phase が
+/// Completed/Failed に進んでいるのに steps が反映されない (またはその逆の) 行が生じ、
+/// `run_once` の対象 (`phase IN ('pending', 'running')`) から外れて恒久的に取り残される。
 async fn apply_phase(
     db: &DatabaseConnection,
     row: strategy_task::Model,
     new_phase: StrategyTaskPhase,
     new_error: Option<String>,
     new_result_text: Option<String>,
-    new_steps: serde_json::Value,
+    new_steps: Option<serde_json::Value>,
 ) -> Result<bool, sea_orm::DbErr> {
-    if new_phase == row.phase
-        && new_error == row.error_summary
-        && new_result_text == row.result_text
-        && new_steps == row.steps
-    {
+    let row_changed = new_phase != row.phase
+        || new_error != row.error_summary
+        || new_result_text != row.result_text;
+
+    let txn = db.begin().await?;
+
+    if row_changed {
+        let active = strategy_task::ActiveModel {
+            task_id: sea_orm::ActiveValue::Unchanged(row.task_id),
+            phase: Set(new_phase),
+            error_summary: Set(new_error),
+            result_text: Set(new_result_text),
+            updated_at: Set(Utc::now().fixed_offset()),
+            strategy_id: NotSet,
+            a2a_task_id: NotSet,
+            source: NotSet,
+            prompt: NotSet,
+            deadline_at: NotSet,
+            created_at: NotSet,
+            purpose: NotSet,
+        };
+        strategy_task::Entity::update(active).exec(&txn).await?;
+    }
+
+    let steps_changed = match new_steps {
+        Some(serde_json::Value::Array(steps)) if !steps.is_empty() => {
+            upsert_steps(&txn, row.task_id, &steps).await?
+        }
+        _ => false,
+    };
+
+    txn.commit().await?;
+
+    Ok(row_changed || steps_changed)
+}
+
+/// t-rader-agent から届いた実行ステップ配列を `strategy_task_step` へ upsert する。
+///
+/// `execution_step_id` を主キーとして、既存行と `status`/`output`/`finished_at`/`error` が
+/// 全て一致する場合は書き込みをスキップする (`phase_key`/`label`/`model`/`item`/`item_label`/
+/// `started_at`/`trace_id`/`span_id` はステップ発行時点で確定し不変のため比較・更新対象外)。
+async fn upsert_steps<C: ConnectionTrait>(
+    db: &C,
+    task_id: Uuid,
+    steps: &[serde_json::Value],
+) -> Result<bool, sea_orm::DbErr> {
+    let existing: HashMap<Uuid, strategy_task_step::Model> = strategy_task_step::Entity::find()
+        .filter(strategy_task_step::Column::TaskId.eq(task_id))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|row| (row.execution_step_id, row))
+        .collect();
+
+    let mut to_upsert = Vec::new();
+    for raw in steps {
+        let wire: StepWire = match serde_json::from_value(raw.clone()) {
+            Ok(wire) => wire,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    task_id = %task_id,
+                    "failed to parse strategy task step; skipping",
+                );
+                continue;
+            }
+        };
+        let Some(status) = step_status_from_raw(&wire.status) else {
+            tracing::warn!(
+                status = wire.status,
+                task_id = %task_id,
+                "unknown strategy task step status; skipping",
+            );
+            continue;
+        };
+
+        if let Some(existing_row) = existing.get(&wire.execution_step_id)
+            && existing_row.status == status
+            && existing_row.output == wire.output
+            && existing_row.finished_at == wire.finished_at
+            && existing_row.error == wire.error
+        {
+            continue;
+        }
+
+        to_upsert.push(strategy_task_step::ActiveModel {
+            execution_step_id: Set(wire.execution_step_id),
+            task_id: Set(task_id),
+            phase_key: Set(wire.phase_key),
+            label: Set(wire.label),
+            model: Set(wire.model),
+            status: Set(status),
+            item: Set(wire.item),
+            item_label: Set(wire.item_label),
+            output: Set(wire.output),
+            started_at: Set(wire.started_at),
+            finished_at: Set(wire.finished_at),
+            trace_id: Set(wire.trace_id),
+            span_id: Set(wire.span_id),
+            error: Set(wire.error),
+            seq: NotSet,
+        });
+    }
+
+    if to_upsert.is_empty() {
         return Ok(false);
     }
-    let active = strategy_task::ActiveModel {
-        task_id: sea_orm::ActiveValue::Unchanged(row.task_id),
-        phase: Set(new_phase),
-        error_summary: Set(new_error),
-        result_text: Set(new_result_text),
-        steps: Set(new_steps),
-        updated_at: Set(Utc::now().fixed_offset()),
-        strategy_id: NotSet,
-        a2a_task_id: NotSet,
-        source: NotSet,
-        prompt: NotSet,
-        deadline_at: NotSet,
-        created_at: NotSet,
-        purpose: NotSet,
-    };
-    strategy_task::Entity::update(active).exec(db).await?;
+
+    strategy_task_step::Entity::insert_many(to_upsert)
+        .on_conflict(
+            OnConflict::column(strategy_task_step::Column::ExecutionStepId)
+                .update_columns([
+                    strategy_task_step::Column::Status,
+                    strategy_task_step::Column::Output,
+                    strategy_task_step::Column::FinishedAt,
+                    strategy_task_step::Column::Error,
+                ])
+                .to_owned(),
+        )
+        .exec(db)
+        .await?;
+
     Ok(true)
+}
+
+/// t-rader-agent から届く実行ステップの wire JSON 形式。`status` は文字列のまま受け取り、
+/// `step_status_from_raw` で手動変換する。
+#[derive(Debug, serde::Deserialize)]
+struct StepWire {
+    execution_step_id: Uuid,
+    phase_key: String,
+    label: String,
+    model: String,
+    status: String,
+    #[serde(default)]
+    item: Option<serde_json::Value>,
+    #[serde(default)]
+    item_label: Option<String>,
+    #[serde(default)]
+    output: Option<serde_json::Value>,
+    started_at: DateTime<FixedOffset>,
+    #[serde(default)]
+    finished_at: Option<DateTime<FixedOffset>>,
+    trace_id: String,
+    span_id: String,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+fn step_status_from_raw(raw: &str) -> Option<StrategyTaskStepStatus> {
+    match raw {
+        "running" => Some(StrategyTaskStepStatus::Running),
+        "completed" => Some(StrategyTaskStepStatus::Completed),
+        "failed" => Some(StrategyTaskStepStatus::Failed),
+        _ => None,
+    }
 }
 
 /// 定期 polling のバックグラウンドタスクを起動する。
@@ -309,7 +450,6 @@ mod tests {
             error_summary: Set(None),
             result_text: Set(None),
             deadline_at: Set(now + deadline_offset),
-            steps: Set(serde_json::json!([])),
             purpose: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
@@ -325,6 +465,15 @@ mod tests {
             .one(db)
             .await
             .unwrap()
+            .unwrap()
+    }
+
+    async fn fetch_steps(db: &DatabaseConnection, task_id: Uuid) -> Vec<strategy_task_step::Model> {
+        strategy_task_step::Entity::find()
+            .filter(strategy_task_step::Column::TaskId.eq(task_id))
+            .order_by_asc(strategy_task_step::Column::Seq)
+            .all(db)
+            .await
             .unwrap()
     }
 
@@ -360,7 +509,6 @@ mod tests {
         )
         .await;
 
-        let completed_steps = serde_json::json!([{"phase_key": "x", "status": "completed"}]);
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_status(
             "t-completed",
@@ -368,7 +516,7 @@ mod tests {
                 state: AgentTaskState::Completed,
                 result_text: Some("all good".to_string()),
                 error_kind: None,
-                steps: Some(completed_steps.clone()),
+                steps: None,
             },
         )
         .await;
@@ -395,7 +543,7 @@ mod tests {
 
         let agent_client: SharedAgentTaskClient = fake.clone();
         let updated = run_once(&db, &agent_client).await;
-        // running は phase (Running) も error/result/steps も変化しないので更新カウントに含まれない。
+        // running は phase (Running) も error/result も変化しないので更新カウントに含まれない。
         assert_eq!(updated, 2);
 
         let completed = fetch_task(&db, completed_id).await;
@@ -407,42 +555,24 @@ mod tests {
                 completed.phase,
                 completed.result_text,
                 completed.error_summary,
-                completed.steps,
             ),
             (
                 StrategyTaskPhase::Completed,
                 Some("all good".to_string()),
                 None,
-                completed_steps,
             ),
         );
         assert_eq!(
-            (
-                failed.phase,
-                failed.result_text,
-                failed.error_summary,
-                failed.steps,
-            ),
+            (failed.phase, failed.result_text, failed.error_summary),
             (
                 StrategyTaskPhase::Failed,
                 None,
                 Some("usage_limit".to_string()),
-                serde_json::json!([]),
             ),
         );
         assert_eq!(
-            (
-                running.phase,
-                running.result_text,
-                running.error_summary,
-                running.steps,
-            ),
-            (
-                StrategyTaskPhase::Running,
-                None,
-                None,
-                serde_json::json!([]),
-            ),
+            (running.phase, running.result_text, running.error_summary),
+            (StrategyTaskPhase::Running, None, None),
         );
     }
 
@@ -617,5 +747,184 @@ mod tests {
 
         let row = fetch_task(&db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Running);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn apply_phase_upserts_steps_and_skips_unchanged(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-steps"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+
+        let step_id = Uuid::new_v4();
+        let running_step = serde_json::json!({
+            "execution_step_id": step_id,
+            "phase_key": "investigate",
+            "label": "仮説の調査",
+            "model": "test-model",
+            "status": "running",
+            "started_at": "2026-01-01T00:00:00.000Z",
+            "trace_id": "trace-1",
+            "span_id": "span-1",
+        });
+
+        // 新規ステップは insert される。
+        let row = fetch_task(&db, task_id).await;
+        let updated = apply_phase(
+            &db,
+            row,
+            StrategyTaskPhase::Running,
+            None,
+            None,
+            Some(serde_json::json!([running_step.clone()])),
+        )
+        .await
+        .unwrap();
+        assert!(updated);
+
+        let steps = fetch_steps(&db, task_id).await;
+        assert_eq!(steps.len(), 1);
+        let seq = steps[0].seq;
+        assert_eq!(
+            steps[0],
+            strategy_task_step::Model {
+                execution_step_id: step_id,
+                task_id,
+                phase_key: "investigate".to_string(),
+                label: "仮説の調査".to_string(),
+                model: "test-model".to_string(),
+                status: StrategyTaskStepStatus::Running,
+                item: None,
+                item_label: None,
+                output: None,
+                started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
+                finished_at: None,
+                trace_id: "trace-1".to_string(),
+                span_id: "span-1".to_string(),
+                error: None,
+                seq,
+            },
+        );
+
+        // 同じ内容の再送は upsert 対象にならない。
+        let row = fetch_task(&db, task_id).await;
+        let updated = apply_phase(
+            &db,
+            row,
+            StrategyTaskPhase::Running,
+            None,
+            None,
+            Some(serde_json::json!([running_step])),
+        )
+        .await
+        .unwrap();
+        assert!(!updated);
+        assert_eq!(fetch_steps(&db, task_id).await, vec![steps[0].clone()]);
+
+        // status/output の変化は既存行 (同じ execution_step_id) を更新する。
+        let completed_step = serde_json::json!({
+            "execution_step_id": step_id,
+            "phase_key": "investigate",
+            "label": "仮説の調査",
+            "model": "test-model",
+            "status": "completed",
+            "output": {"summary": "ok"},
+            "started_at": "2026-01-01T00:00:00.000Z",
+            "finished_at": "2026-01-01T00:00:05.000Z",
+            "trace_id": "trace-1",
+            "span_id": "span-1",
+        });
+        let row = fetch_task(&db, task_id).await;
+        let updated = apply_phase(
+            &db,
+            row,
+            StrategyTaskPhase::Running,
+            None,
+            None,
+            Some(serde_json::json!([completed_step])),
+        )
+        .await
+        .unwrap();
+        assert!(updated);
+
+        let steps = fetch_steps(&db, task_id).await;
+        assert_eq!(steps.len(), 1);
+        assert_eq!(
+            steps[0],
+            strategy_task_step::Model {
+                execution_step_id: step_id,
+                task_id,
+                phase_key: "investigate".to_string(),
+                label: "仮説の調査".to_string(),
+                model: "test-model".to_string(),
+                status: StrategyTaskStepStatus::Completed,
+                item: None,
+                item_label: None,
+                output: Some(serde_json::json!({"summary": "ok"})),
+                started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
+                finished_at: Some(
+                    DateTime::parse_from_rfc3339("2026-01-01T00:00:05.000Z").unwrap()
+                ),
+                trace_id: "trace-1".to_string(),
+                span_id: "span-1".to_string(),
+                error: None,
+                seq,
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn apply_phase_rolls_back_row_update_when_step_upsert_fails(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-txn"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+
+        // 同じ execution_step_id を持つ 2 件を 1 回の upsert に含めると、Postgres が
+        // 「ON CONFLICT DO UPDATE command cannot affect row a second time」で拒否する。
+        // steps upsert 側の失敗を注入する手段として使う。
+        let dup_id = Uuid::new_v4();
+        let step = |status: &str| {
+            serde_json::json!({
+                "execution_step_id": dup_id,
+                "phase_key": "investigate",
+                "label": "仮説の調査",
+                "model": "test-model",
+                "status": status,
+                "started_at": "2026-01-01T00:00:00.000Z",
+                "trace_id": "trace-1",
+                "span_id": "span-1",
+            })
+        };
+
+        let row = fetch_task(&db, task_id).await;
+        apply_phase(
+            &db,
+            row,
+            StrategyTaskPhase::Completed,
+            None,
+            Some("done".to_string()),
+            Some(serde_json::json!([step("running"), step("completed")])),
+        )
+        .await
+        .expect_err("duplicate execution_step_id in one batch should fail at the DB level");
+
+        // steps upsert の失敗で phase 更新もロールバックされ、行は変化していないこと。
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(row.phase, StrategyTaskPhase::Running);
+        assert_eq!(row.result_text, None);
+        assert_eq!(fetch_steps(&db, task_id).await, vec![]);
     }
 }

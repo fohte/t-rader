@@ -7,6 +7,7 @@ export type StrategyTaskStepStatus = 'running' | 'completed' | 'failed'
 
 export interface StrategyTaskStep {
   readonly phaseKey: string
+  readonly executionStepId: string
   readonly label: string
   readonly model: string
   readonly status: StrategyTaskStepStatus
@@ -23,6 +24,7 @@ export interface StrategyTaskStep {
 // steps に乗る wire 形式 (snake_case)。frontend はこの型を直接参照して narrow する。
 export interface StrategyTaskStepJson {
   readonly phase_key: string
+  readonly execution_step_id: string
   readonly label: string
   readonly model: string
   readonly status: StrategyTaskStepStatus
@@ -38,6 +40,7 @@ export interface StrategyTaskStepJson {
 
 export const toStepJson = (step: StrategyTaskStep): StrategyTaskStepJson => ({
   phase_key: step.phaseKey,
+  execution_step_id: step.executionStepId,
   label: step.label,
   model: step.model,
   status: step.status,

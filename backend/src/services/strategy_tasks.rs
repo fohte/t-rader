@@ -7,12 +7,12 @@
 use chrono::{DateTime, FixedOffset};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{strategy, strategy_task};
+use crate::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
+use crate::entities::{strategy, strategy_task, strategy_task_step};
 use crate::models::StrategyTaskSummary;
 use crate::services::agent_config;
 
@@ -104,7 +104,10 @@ impl From<strategy_task::Model> for TaskStatusView {
             result_text: row.result_text,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            steps: row.steps,
+            // strategy_task_step は別テーブルのため、ここでは埋められない。
+            // steps を必要とする呼び出し元 (get_task_for_strategy/get_task_by_a2a_task_id) が
+            // steps_json_for_task で上書きする。
+            steps: serde_json::json!([]),
             purpose: row.purpose,
         }
     }
@@ -183,7 +186,6 @@ pub async fn submit_task(
         error_summary: Set(None),
         result_text: Set(None),
         deadline_at: Set(deadline_at),
-        steps: Set(serde_json::json!([])),
         purpose: Set(purpose.clone()),
         created_at: NotSet,
         updated_at: NotSet,
@@ -297,7 +299,9 @@ pub async fn get_task_for_strategy(
             strategy_id,
         });
     }
-    Ok(TaskStatusView::from(row))
+    let mut view = TaskStatusView::from(row);
+    view.steps = steps_json_for_task(db, view.task_id).await?;
+    Ok(view)
 }
 
 /// a2a_task_id で strategy_task 行を引く (管理 MCP `get_strategy_task_status` 互換)。
@@ -305,12 +309,16 @@ pub async fn get_task_by_a2a_task_id(
     db: &DatabaseConnection,
     a2a_task_id: &str,
 ) -> Result<Option<TaskStatusView>, sea_orm::DbErr> {
-    use sea_orm::{ColumnTrait, QueryFilter};
     let row = strategy_task::Entity::find()
         .filter(strategy_task::Column::A2aTaskId.eq(a2a_task_id))
         .one(db)
         .await?;
-    Ok(row.map(TaskStatusView::from))
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let mut view = TaskStatusView::from(row);
+    view.steps = steps_json_for_task(db, view.task_id).await?;
+    Ok(Some(view))
 }
 
 pub fn phase_str(phase: &StrategyTaskPhase) -> &'static str {
@@ -320,6 +328,79 @@ pub fn phase_str(phase: &StrategyTaskPhase) -> &'static str {
         StrategyTaskPhase::Completed => "completed",
         StrategyTaskPhase::Failed => "failed",
     }
+}
+
+fn step_status_str(status: &StrategyTaskStepStatus) -> &'static str {
+    match status {
+        StrategyTaskStepStatus::Running => "running",
+        StrategyTaskStepStatus::Completed => "completed",
+        StrategyTaskStepStatus::Failed => "failed",
+    }
+}
+
+/// `task_id` の実行ステップを挿入順 (`seq` 昇順、元の agent 側 push 順) に、
+/// `GET /api/strategies/:id/tasks/:task_id` の `steps` 配列と同じ wire JSON 形式で返す。
+/// `execution_step_id` は DB 内部の主キーに過ぎず、この API レスポンスの契約には含めない。
+pub async fn steps_json_for_task(
+    db: &DatabaseConnection,
+    task_id: Uuid,
+) -> Result<serde_json::Value, sea_orm::DbErr> {
+    let rows = strategy_task_step::Entity::find()
+        .filter(strategy_task_step::Column::TaskId.eq(task_id))
+        .order_by_asc(strategy_task_step::Column::Seq)
+        .all(db)
+        .await?;
+
+    let steps = rows
+        .into_iter()
+        .map(step_to_wire_json)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| {
+            sea_orm::DbErr::Custom(format!("failed to serialize strategy_task_step: {err}"))
+        })?;
+    Ok(serde_json::Value::Array(steps))
+}
+
+/// `GET /api/strategies/:id/tasks/:task_id` の `steps` 配列 1 要素分の wire JSON 形状。
+/// optional フィールドは値が無ければキーごと省略する。
+#[derive(serde::Serialize)]
+struct StrategyTaskStepWireJson {
+    phase_key: String,
+    label: String,
+    model: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<serde_json::Value>,
+    started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    finished_at: Option<String>,
+    trace_id: String,
+    span_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn step_to_wire_json(
+    row: strategy_task_step::Model,
+) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::to_value(StrategyTaskStepWireJson {
+        phase_key: row.phase_key,
+        label: row.label,
+        model: row.model,
+        status: step_status_str(&row.status).to_string(),
+        item: row.item,
+        item_label: row.item_label,
+        output: row.output,
+        started_at: row.started_at.to_rfc3339(),
+        finished_at: row.finished_at.map(|t| t.to_rfc3339()),
+        trace_id: row.trace_id,
+        span_id: row.span_id,
+        error: row.error,
+    })
 }
 
 #[cfg(test)]
