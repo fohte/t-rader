@@ -277,6 +277,9 @@ export const createStrategyAgentDeps = (
       // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
       streaming: true,
       timeout: config.llmCallTimeoutMs,
+      // タイムアウト累積を防ぎ、再試行は上位のフェーズ再実行
+      // (resume steps) 側に委ねるため、呼び出し単体でのリトライは行わない。
+      maxRetries: 0,
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
       },
