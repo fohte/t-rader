@@ -46,7 +46,6 @@ export function ModelField({ value, onChange, models }: ModelFieldProps) {
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: false,
-    supports_web_search: false,
   }
   const options =
     value !== '' && !models.some((m) => m.id === value)
