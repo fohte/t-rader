@@ -100,7 +100,6 @@ export interface StrategyAgentConfig {
   readonly llmApiKey: string
   readonly llmBaseUrl?: string | undefined
   readonly genAiProviderName: string
-  // モデルへの 1 回の invoke あたりのタイムアウト (ms)。
   readonly llmCallTimeoutMs: number
 }
 

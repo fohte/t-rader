@@ -9,8 +9,6 @@ export interface Env {
   BACKEND_WEBHOOK_TOKEN: string
   A2A_WATCHDOG_TIMEOUT_MS: number
   A2A_RETENTION_DAYS: number
-  // モデルへの 1 回の invoke あたりのタイムアウト。実測で正常応答が
-  // 429 秒かかった例があるため、それに十分なマージンを持たせている。
   LLM_CALL_TIMEOUT_MS: number
   // Base URL of t-rader backend, used to fetch AGENTS.md / skills / model
   // via GET {base}/api/agent-configs/{purpose}/agent-config.
