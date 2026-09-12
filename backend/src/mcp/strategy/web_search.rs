@@ -8,7 +8,7 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{DatabaseConnection, EntityTrait, ExprTrait};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::mcp_tool_call_count;
@@ -66,6 +66,39 @@ async fn increment_task_tool_call_count(
     Ok(row.call_count)
 }
 
+/// `increment_task_tool_call_count` で予約した 1 回分を取り消す (best-effort)。LiteLLM
+/// 呼び出しが失敗した場合、実際には検索していないのに呼び出し予算だけを消費してしまうと、
+/// 上流の一時的な障害が続いたときに search_web がタスク実行の残り時間ずっと使えなくなる。
+/// デクリメント自体が失敗しても呼び出し元のエラーはそのまま返したいので、結果は返さず
+/// warn ログのみ残す。
+async fn decrement_task_tool_call_count(
+    db: &DatabaseConnection,
+    task_execution_id: &str,
+    tool_name: &str,
+) {
+    let result = mcp_tool_call_count::Entity::update_many()
+        .col_expr(
+            mcp_tool_call_count::Column::CallCount,
+            Expr::col(mcp_tool_call_count::Column::CallCount).sub(1),
+        )
+        .col_expr(
+            mcp_tool_call_count::Column::UpdatedAt,
+            Expr::current_timestamp(),
+        )
+        .filter(mcp_tool_call_count::Column::TaskExecutionId.eq(task_execution_id))
+        .filter(mcp_tool_call_count::Column::ToolName.eq(tool_name))
+        .exec(db)
+        .await;
+    if let Err(err) = result {
+        tracing::warn!(
+            task_execution_id,
+            tool_name,
+            error = %err,
+            "search_web: failed to release call count reservation after a failed request"
+        );
+    }
+}
+
 impl StrategyServer {
     pub(crate) async fn search_web_inner(
         &self,
@@ -103,16 +136,23 @@ impl StrategyServer {
             "search_web: dispatching web search request"
         );
 
-        let outcome = client.web_search(&model, &query).await.map_err(|e| {
-            tracing::warn!(
-                strategy_id = %session_strategy_id,
-                model,
-                query,
-                error = %e,
-                "search_web: web search request failed"
-            );
-            litellm_error_to_mcp(e)
-        })?;
+        let outcome = match client.web_search(&model, &query).await {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                tracing::warn!(
+                    strategy_id = %session_strategy_id,
+                    model,
+                    query,
+                    error = %e,
+                    "search_web: web search request failed"
+                );
+                // 検索が実際には行われなかったので、予約した呼び出し回数を戻す。
+                if let Some(task_execution_id) = task_execution_id.as_deref() {
+                    decrement_task_tool_call_count(&self.db, task_execution_id, TOOL_NAME).await;
+                }
+                return Err(litellm_error_to_mcp(e));
+            }
+        };
 
         Ok(SearchWebResult {
             text: outcome.text,
@@ -266,6 +306,37 @@ mod tests {
             .await
             .expect("recorded requests");
         assert_eq!(requests.len(), SEARCH_WEB_MAX_CALLS_PER_TASK as usize);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(pool: PgPool) {
+        let db = create_test_db(pool).await;
+
+        let litellm = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("upstream error"))
+            .mount(&litellm)
+            .await;
+
+        let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
+        let server = StrategyServer::new(db, None).with_litellm_client(Some(client));
+        let task_execution_id = format!("task-{}", Uuid::new_v4());
+
+        // 予約したカウントが都度解放されなければ、SEARCH_WEB_MAX_CALLS_PER_TASK 回目以降は
+        // 呼び出し上限エラー (INVALID_PARAMS) に化けてしまう。上限の 2 倍失敗させても常に
+        // upstream の失敗 (INTERNAL_ERROR) のまま伝わることを確認する。
+        for _ in 0..(SEARCH_WEB_MAX_CALLS_PER_TASK * 2) {
+            let err = server
+                .search_web_inner(
+                    Uuid::new_v4(),
+                    Some(task_execution_id.clone()),
+                    params("query"),
+                )
+                .await
+                .expect_err("upstream failure should propagate");
+            assert_eq!(err.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+        }
     }
 
     #[sqlx::test(migrations = false)]
