@@ -100,6 +100,8 @@ export interface StrategyAgentConfig {
   readonly llmApiKey: string
   readonly llmBaseUrl?: string | undefined
   readonly genAiProviderName: string
+  // モデルへの 1 回の invoke あたりのタイムアウト (ms)。
+  readonly llmCallTimeoutMs: number
 }
 
 // createDefaultBuildAgent/createDefaultBuildPhaseAgent (後述) の共通処理。
@@ -269,6 +271,7 @@ export const createStrategyAgentDeps = (
       // model 引数によっては上流 backend が非ストリーミングの応答から
       // output を復元できず呼び出しが失敗するため、常に streaming で呼ぶ。
       streaming: true,
+      timeout: config.llmCallTimeoutMs,
       configuration: {
         baseURL: config.llmBaseUrl ?? OPENCODE_GO_BASE_URL,
       },

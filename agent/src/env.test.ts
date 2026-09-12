@@ -11,6 +11,7 @@ const fullSource = {
   BACKEND_WEBHOOK_TOKEN: 'webhook-token',
   A2A_WATCHDOG_TIMEOUT_MS: '60000',
   A2A_RETENTION_DAYS: '7',
+  LLM_CALL_TIMEOUT_MS: '300000',
   BACKEND_API_BASE_URL: 'http://t-rader-backend',
   STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
   MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
@@ -39,6 +40,7 @@ describe('loadEnv', () => {
       BACKEND_WEBHOOK_TOKEN: 'webhook-token',
       A2A_WATCHDOG_TIMEOUT_MS: 60000,
       A2A_RETENTION_DAYS: 7,
+      LLM_CALL_TIMEOUT_MS: 300000,
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
@@ -47,14 +49,16 @@ describe('loadEnv', () => {
     })
   })
 
-  it('defaults A2A_WATCHDOG_TIMEOUT_MS and A2A_RETENTION_DAYS when omitted', () => {
+  it('defaults A2A_WATCHDOG_TIMEOUT_MS, A2A_RETENTION_DAYS, and LLM_CALL_TIMEOUT_MS when omitted', () => {
     const {
       A2A_WATCHDOG_TIMEOUT_MS: _timeout,
       A2A_RETENTION_DAYS: _retention,
+      LLM_CALL_TIMEOUT_MS: _llmCallTimeout,
       ...rest
     } = fullSource
     void _timeout
     void _retention
+    void _llmCallTimeout
     expect(loadEnv(rest)).toEqual({
       DATABASE_URL: 'postgres://localhost/t_rader_agent',
       TRADER_AGENT_PORT: 8080,
@@ -64,6 +68,7 @@ describe('loadEnv', () => {
       BACKEND_WEBHOOK_TOKEN: 'webhook-token',
       A2A_WATCHDOG_TIMEOUT_MS: 10 * 60 * 1000,
       A2A_RETENTION_DAYS: 30,
+      LLM_CALL_TIMEOUT_MS: 10 * 60 * 1000,
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
@@ -84,6 +89,7 @@ describe('loadEnv', () => {
       BACKEND_WEBHOOK_TOKEN: 'webhook-token',
       A2A_WATCHDOG_TIMEOUT_MS: 60000,
       A2A_RETENTION_DAYS: 7,
+      LLM_CALL_TIMEOUT_MS: 300000,
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
@@ -102,6 +108,7 @@ describe('loadEnv', () => {
       BACKEND_WEBHOOK_TOKEN: 'webhook-token',
       A2A_WATCHDOG_TIMEOUT_MS: 60000,
       A2A_RETENTION_DAYS: 7,
+      LLM_CALL_TIMEOUT_MS: 300000,
       BACKEND_API_BASE_URL: 'http://t-rader-backend',
       STRATEGY_MCP_URL: 'http://t-rader-backend/mcp/strategy',
       MGMT_MCP_URL: 'http://t-rader-backend/mcp/mgmt',
@@ -137,5 +144,11 @@ describe('loadEnv', () => {
         loadEnv({ ...fullSource, A2A_WATCHDOG_TIMEOUT_MS: '-1' }),
       ),
     ).toEqual(['A2A_WATCHDOG_TIMEOUT_MS must be a positive integer (got: -1)'])
+  })
+
+  it('rejects a non-positive-integer LLM_CALL_TIMEOUT_MS', () => {
+    expect(
+      captureIssues(() => loadEnv({ ...fullSource, LLM_CALL_TIMEOUT_MS: '0' })),
+    ).toEqual(['LLM_CALL_TIMEOUT_MS must be a positive integer (got: 0)'])
   })
 })
