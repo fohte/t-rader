@@ -80,7 +80,6 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
         sort_order: Set(0),
         created_at: NotSet,
         updated_at: NotSet,
-        risk_policy: NotSet,
     }
     .insert(db)
     .await
@@ -108,7 +107,6 @@ pub async fn insert_test_strategy_task(
         error_summary: Set(None),
         result_text: Set(None),
         deadline_at: Set(created_at + chrono::Duration::minutes(15)),
-        steps: Set(serde_json::json!([])),
         purpose: Set(purpose.map(str::to_string)),
         created_at: Set(created_at),
         updated_at: Set(created_at),

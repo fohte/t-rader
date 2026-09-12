@@ -240,6 +240,7 @@ describe('TraderAgentExecutor', () => {
         onStepsChanged?.([
           {
             phaseKey: 'plan',
+            executionStepId: 'exec-1',
             label: '調査計画',
             model: 'claude-opus-4',
             status: 'running',
@@ -276,6 +277,7 @@ describe('TraderAgentExecutor', () => {
               steps: [
                 {
                   phase_key: 'plan',
+                  execution_step_id: 'exec-1',
                   label: '調査計画',
                   model: 'claude-opus-4',
                   status: 'running',
@@ -297,6 +299,7 @@ describe('TraderAgentExecutor', () => {
         Pick<StrategyTaskStep, 'status' | 'startedAt'>,
     ): StrategyTaskStep => ({
       phaseKey: 'discover',
+      executionStepId: 'exec-1',
       label: '調査',
       model: 'claude-opus-4',
       traceId: 'trace-1',

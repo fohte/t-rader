@@ -289,18 +289,22 @@ const invokeAndRecordStep = (
   messages: readonly HumanMessage[],
   requiredArrayFields: ReadonlySet<string>,
   recorder: StepRecorder,
-  stepBase: Omit<StepStartInput, 'startedAt' | 'traceId' | 'spanId'>,
+  stepBase: Omit<
+    StepStartInput,
+    'startedAt' | 'traceId' | 'spanId' | 'executionStepId'
+  >,
   spanName: string,
   spanAttributes: Record<string, string | number>,
 ): Promise<Result<Record<string, unknown>, unknown>> =>
   withPhaseSpan(spanName, spanAttributes, (spanIds) => {
+    const executionStepId = crypto.randomUUID()
     const index = recorder.start({
       ...stepBase,
+      executionStepId,
       startedAt: new Date().toISOString(),
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
-    const executionStepId = crypto.randomUUID()
     return invokePhaseWithRetry(
       agent,
       messages,

@@ -41,7 +41,6 @@ pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use refs::RefResolution;
 pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
-    PutStrategyRiskPolicyRequest, StrategyRiskPolicyData, StrategyRiskPolicyResponse,
     parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
 pub use strategy::{

@@ -6254,160 +6254,6 @@
         }
       }
     },
-    "/api/strategies/{id}/risk-policy": {
-      "get": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略の銘柄集中度上限 (`max_position_ratio`) を取得",
-        "operationId": "get_risk_policy",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StrategyRiskPolicyResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "リクエストパラメータが不正",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略の銘柄集中度上限 (`max_position_ratio`) を更新。`null` で上限を解除する",
-        "operationId": "put_risk_policy",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PutStrategyRiskPolicyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StrategyRiskPolicyResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/strategies/{id}/tasks": {
       "get": {
         "tags": [
@@ -9429,20 +9275,6 @@
         },
         "additionalProperties": false
       },
-      "PutStrategyRiskPolicyRequest": {
-        "type": "object",
-        "properties": {
-          "max_position_ratio": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "銘柄の保有時価 / 戦略の投資可能額 の上限比率。(0, 1] の範囲。`null` で上限を解除する"
-          }
-        },
-        "additionalProperties": false
-      },
       "RefResolution": {
         "type": "object",
         "description": "`[[kind:id]]` のリンクテキストを解決した結果",
@@ -9763,8 +9595,7 @@
           "name",
           "sort_order",
           "created_at",
-          "updated_at",
-          "risk_policy"
+          "updated_at"
         ],
         "properties": {
           "created_at": {
@@ -9783,9 +9614,6 @@
           },
           "name": {
             "type": "string"
-          },
-          "risk_policy": {
-            "$ref": "#/components/schemas/Value"
           },
           "sort_order": {
             "type": "integer",
@@ -9916,18 +9744,6 @@
           }
         }
       },
-      "StrategyRiskPolicyResponse": {
-        "type": "object",
-        "properties": {
-          "max_position_ratio": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double"
-          }
-        }
-      },
       "StrategyTaskStatusResponse": {
         "type": "object",
         "description": "`GET /api/strategies/:id/tasks/:task_id` の戻り値。",
@@ -9982,7 +9798,7 @@
             "type": "string"
           },
           "steps": {
-            "description": "フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。"
+            "description": "フェーズ/分岐ごとの実行状況。`strategy_task_step` の各行から既知のフィールドのみを\n再構築した配列。"
           },
           "strategy_id": {
             "type": "string",

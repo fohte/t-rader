@@ -1,4 +1,4 @@
-//! 戦略 1 行の設定 (name / description / sort_order / risk_policy) の
+//! 戦略 1 行の設定 (name / description / sort_order) の
 //! 取得・作成・部分更新・削除の共通経路。
 //!
 //! REST (`handlers::strategies`) と管理 MCP (`mcp::mgmt`) の両方から同じカラムへの書き込みが
@@ -53,7 +53,6 @@ pub async fn create(
         sort_order: Set(params.sort_order),
         created_at: NotSet,
         updated_at: NotSet,
-        risk_policy: NotSet,
     };
     let txn = db.begin().await?;
     let created = strategy::Entity::insert(model)
@@ -130,36 +129,6 @@ pub async fn update(
         )
         .await?;
     }
-    txn.commit().await?;
-
-    Ok(updated)
-}
-
-/// risk_policy カラムの保存 (検証は呼び出し元の handler が事前に済ませる前提)。
-pub async fn save_risk_policy(
-    db: &DatabaseConnection,
-    actor: Actor,
-    current: strategy::Model,
-    risk_policy: serde_json::Value,
-) -> Result<strategy::Model, AppError> {
-    let id = current.id;
-    let prev = current.risk_policy.clone();
-    let mut active = current.into_active_model();
-    active.risk_policy = Set(risk_policy.clone());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record_as(
-        &txn,
-        actor,
-        TargetKind::Strategy,
-        id,
-        Op::Update,
-        json!({ "risk_policy": { "from": prev, "to": risk_policy } }),
-        Some("updated risk_policy".to_string()),
-    )
-    .await?;
     txn.commit().await?;
 
     Ok(updated)

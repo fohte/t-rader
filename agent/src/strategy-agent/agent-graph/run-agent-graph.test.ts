@@ -15,21 +15,12 @@ import {
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { AgentGraphConfig } from '#strategy-agent/agent-graph/types'
+import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
 // NoopTracer (テスト環境では実 exporter を設定しないため) が返す固定の invalid
 // span context。@opentelemetry/api の INVALID_TRACEID/INVALID_SPANID と同じ値。
 const NOOP_TRACE_ID = '00000000000000000000000000000000'
 const NOOP_SPAN_ID = '0000000000000000'
-
-// startedAt/finishedAt は実行のたびに変わるため、比較前に固定文字列へ正規化する。
-const normalizeStepTimestamps = (
-  steps: readonly StrategyTaskStep[],
-): unknown[] =>
-  steps.map((step) => ({
-    ...step,
-    startedAt: '<started-at>',
-    ...(step.finishedAt !== undefined ? { finishedAt: '<finished-at>' } : {}),
-  }))
 
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
@@ -656,6 +647,7 @@ describe('runAgentGraph', () => {
       [
         {
           phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
           label: 'Step A',
           model: 'model-a',
           status: 'running',
@@ -667,6 +659,7 @@ describe('runAgentGraph', () => {
       [
         {
           phaseKey: 'stepA',
+          executionStepId: '<execution-step-id-1>',
           label: 'Step A',
           model: 'model-a',
           status: 'completed',
@@ -732,6 +725,7 @@ describe('runAgentGraph', () => {
     ).toEqual([
       {
         phaseKey: 'plan',
+        executionStepId: '<execution-step-id-1>',
         label: 'Plan',
         model: 'm',
         status: 'completed',
@@ -743,6 +737,7 @@ describe('runAgentGraph', () => {
       },
       {
         phaseKey: 'investigate',
+        executionStepId: '<execution-step-id-2>',
         label: 'Investigate',
         model: 'm',
         status: 'completed',
@@ -756,6 +751,7 @@ describe('runAgentGraph', () => {
       },
       {
         phaseKey: 'investigate',
+        executionStepId: '<execution-step-id-3>',
         label: 'Investigate',
         model: 'm',
         status: 'completed',
@@ -904,6 +900,7 @@ describe('runAgentGraph', () => {
     ).toEqual([
       {
         phaseKey: 'plan',
+        executionStepId: '<execution-step-id-1>',
         label: 'Plan',
         model: 'm',
         status: 'completed',
@@ -915,6 +912,7 @@ describe('runAgentGraph', () => {
       },
       {
         phaseKey: 'work',
+        executionStepId: '<execution-step-id-2>',
         label: 'Work',
         model: 'm',
         status: 'failed',
@@ -927,6 +925,7 @@ describe('runAgentGraph', () => {
       },
       {
         phaseKey: 'work',
+        executionStepId: '<execution-step-id-3>',
         label: 'Work',
         model: 'm',
         status: 'completed',
@@ -939,6 +938,7 @@ describe('runAgentGraph', () => {
       },
       {
         phaseKey: 'summarize',
+        executionStepId: '<execution-step-id-4>',
         label: 'Summarize',
         model: 'm',
         status: 'completed',
@@ -1085,6 +1085,7 @@ describe('runAgentGraph', () => {
     ).toEqual([
       {
         phaseKey: 'p',
+        executionStepId: '<execution-step-id-1>',
         label: 'P',
         model: 'm',
         status: 'failed',

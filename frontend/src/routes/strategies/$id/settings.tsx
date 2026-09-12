@@ -3,17 +3,15 @@ import { useState } from 'react'
 
 import { InterestTree } from '#components/strategy-home/interest-tree'
 import { GeneralTab } from '#components/strategy-settings/general-tab'
-import { RiskPolicyTab } from '#components/strategy-settings/risk-policy-tab'
 import { TriggersTab } from '#components/strategy-settings/triggers-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'general' | 'triggers' | 'risk-policy' | 'interests'
+type TabKey = 'general' | 'triggers' | 'interests'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'general', label: '全般' },
   { key: 'triggers', label: 'Triggers' },
-  { key: 'risk-policy', label: 'リスク上限' },
   { key: 'interests', label: '関心' },
 ]
 
@@ -63,7 +61,7 @@ function StrategySettingsPage() {
           戦略設定 — {strategy.name}
         </h1>
         <p className="text-sm text-muted-foreground-strong">
-          基本情報・trigger・リスク上限・関心を編集します。
+          基本情報・trigger・関心を編集します。
         </p>
       </header>
 
@@ -95,7 +93,6 @@ function StrategySettingsPage() {
       <section role="tabpanel">
         {tab === 'general' && <GeneralTab strategyId={id} />}
         {tab === 'triggers' && <TriggersTab strategyId={id} />}
-        {tab === 'risk-policy' && <RiskPolicyTab strategyId={id} />}
         {tab === 'interests' && <InterestTree strategyId={id} />}
       </section>
     </div>

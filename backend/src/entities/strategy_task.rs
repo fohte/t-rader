@@ -30,8 +30,6 @@ pub struct Model {
     pub result_text: Option<String>,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub deadline_at: DateTimeWithTimeZone,
-    #[sea_orm(column_type = "JsonBinary")]
-    pub steps: Json,
     #[sea_orm(column_type = "Text", nullable)]
     pub purpose: Option<String>,
 }
@@ -46,11 +44,19 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Strategy,
+    #[sea_orm(has_many = "super::strategy_task_step::Entity")]
+    StrategyTaskStep,
 }
 
 impl Related<super::strategy::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Strategy.def()
+    }
+}
+
+impl Related<super::strategy_task_step::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::StrategyTaskStep.def()
     }
 }
 
