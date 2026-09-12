@@ -233,6 +233,7 @@ async fn apply_phase(
             deadline_at: NotSet,
             created_at: NotSet,
             purpose: NotSet,
+            as_of: NotSet,
         };
         strategy_task::Entity::update(active).exec(&txn).await?;
     }
@@ -450,6 +451,7 @@ mod tests {
             result_text: Set(None),
             deadline_at: Set(now + deadline_offset),
             purpose: NotSet,
+            as_of: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }
