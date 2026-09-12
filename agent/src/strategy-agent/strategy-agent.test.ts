@@ -509,6 +509,7 @@ describe('createStrategyAgentDeps', () => {
     strategyMcpUrl: 'http://t-rader-backend/mcp/strategy',
     llmApiKey: 'test-key',
     genAiProviderName: 'opencode',
+    llmCallTimeoutMs: 600_000,
   }
 
   const expectChatOpenAI = (model: BaseChatModel) => {
@@ -550,6 +551,17 @@ describe('createStrategyAgentDeps', () => {
     const model = expectChatOpenAI(deps.createChatModel('test-model'))
 
     expect(model.clientConfig.baseURL).toBe('https://litellm.example.com/v1')
+  })
+
+  it('configures the chat model with the configured call timeout', () => {
+    const deps = createStrategyAgentDeps({
+      ...baseConfig,
+      llmCallTimeoutMs: 123_000,
+    })
+
+    const model = expectChatOpenAI(deps.createChatModel('test-model'))
+
+    expect(model.timeout).toBe(123_000)
   })
 
   it('omits reasoning when no reasoning effort is given', () => {

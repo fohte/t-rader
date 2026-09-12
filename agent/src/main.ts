@@ -45,6 +45,7 @@ export const main = async (): Promise<void> => {
     llmApiKey: env.LLM_API_KEY,
     llmBaseUrl: env.LLM_BASE_URL,
     genAiProviderName: GEN_AI_PROVIDER_NAME,
+    llmCallTimeoutMs: env.LLM_CALL_TIMEOUT_MS,
   })
   const executor = new TraderAgentExecutor({
     taskStore,
