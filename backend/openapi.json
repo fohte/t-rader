@@ -8627,8 +8627,7 @@
         "required": [
           "id",
           "providers",
-          "supports_reasoning",
-          "supports_web_search"
+          "supports_reasoning"
         ],
         "properties": {
           "id": {
@@ -8655,9 +8654,6 @@
             }
           },
           "supports_reasoning": {
-            "type": "boolean"
-          },
-          "supports_web_search": {
             "type": "boolean"
           }
         }

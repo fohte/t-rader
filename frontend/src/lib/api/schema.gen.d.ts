@@ -1494,7 +1494,6 @@ export interface components {
       max_output_tokens?: number | null
       providers: string[]
       supports_reasoning: boolean
-      supports_web_search: boolean
     }
     /** @description `GET /api/agent-models` の戻り値。LLM ゲートウェイが未設定/応答不能なら `models` は空配列。 */
     AgentModelsResponse: {
