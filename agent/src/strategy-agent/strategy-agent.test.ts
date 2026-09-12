@@ -23,24 +23,16 @@ import type {
 } from '#strategy-agent/strategy-agent'
 import {
   createStrategyAgentDeps,
-  resolveMcpToolCallHeaders,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+import { createFirstOccurrenceLabeler } from '#test/first-occurrence-labeler'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
-type CapturedBeforeToolCall = (
-  toolCall: { name: string; args: unknown; serverName: string },
-  state: unknown,
-  runnableConfig: { configurable?: Record<string, unknown> },
-) => { headers?: Record<string, string>; args?: unknown } | undefined
-
-let capturedBeforeToolCall: CapturedBeforeToolCall | undefined
+let capturedMcpClientConfig: unknown
 
 vi.mock('@langchain/mcp-adapters', () => ({
-  MultiServerMCPClient: vi.fn(function (config: {
-    beforeToolCall?: CapturedBeforeToolCall
-  }) {
-    capturedBeforeToolCall = config.beforeToolCall
+  MultiServerMCPClient: vi.fn(function (config: unknown) {
+    capturedMcpClientConfig = config
   }),
 }))
 
@@ -76,6 +68,9 @@ const buildUserMessage = (text: string): Message => ({
 const NOOP_TRACE_ID = '00000000000000000000000000000000'
 const NOOP_SPAN_ID = '0000000000000000'
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
 const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
   skills: { 'ja-stock': 'skill body' },
@@ -88,7 +83,15 @@ interface BuildDepsOptions {
   readonly agentInvoke: CompiledStrategyAgent['invoke']
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
-  readonly buildPhaseAgentInvoke?: CompiledPhaseAgent['invoke']
+  readonly buildPhaseAgentInvoke?: (
+    input: Parameters<CompiledPhaseAgent['invoke']>[0],
+    calls: Calls,
+  ) => ReturnType<CompiledPhaseAgent['invoke']>
+}
+
+interface McpClientCall {
+  readonly executionId: string
+  closed: boolean
 }
 
 interface Calls {
@@ -96,6 +99,8 @@ interface Calls {
   createMcpClientStrategyId?: string
   createMcpClientTaskId?: string
   mcpClientClosed: boolean
+  // createMcpClient の呼び出しごとの 1 行。生成数と close タイミングの検証用。
+  mcpClients: McpClientCall[]
   createChatModelArg?: string
   createChatModelReturnValue?: unknown
   buildAgentOptions?: {
@@ -108,7 +113,7 @@ interface Calls {
 const buildDeps = (
   options: BuildDepsOptions,
 ): { deps: StrategyAgentDeps; calls: Calls } => {
-  const calls: Calls = { mcpClientClosed: false }
+  const calls: Calls = { mcpClientClosed: false, mcpClients: [] }
   const chatModel = new FakeChatModel({})
 
   const deps: StrategyAgentDeps = {
@@ -119,13 +124,16 @@ const buildDeps = (
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
       })
     },
-    createMcpClient: (strategyId, taskId): McpToolsClient => {
+    createMcpClient: (strategyId, executionId): McpToolsClient => {
       calls.createMcpClientStrategyId = strategyId
-      calls.createMcpClientTaskId = taskId
+      calls.createMcpClientTaskId = executionId
+      const client: McpClientCall = { executionId, closed: false }
+      calls.mcpClients.push(client)
       return {
         getTools: () => Promise.resolve([...(options.tools ?? [])]),
         close: () => {
           calls.mcpClientClosed = true
+          client.closed = true
           return Promise.resolve()
         },
       }
@@ -143,10 +151,9 @@ const buildDeps = (
     },
     buildPhaseAgent: () => ({
       invoke: (input) =>
-        (
-          options.buildPhaseAgentInvoke ??
-          (() => Promise.resolve({ structuredResponse: {} }))
-        )(input),
+        options.buildPhaseAgentInvoke !== undefined
+          ? options.buildPhaseAgentInvoke(input, calls)
+          : Promise.resolve({ structuredResponse: {} }),
     }),
   }
 
@@ -478,6 +485,82 @@ describe('runStrategyAgent', () => {
     expect(buildPhaseAgentInvokeCalls).toBe(1)
   })
 
+  it('opens one MCP client per graph step and closes it before the next step starts', async () => {
+    const snapshots: McpClientCall[][] = []
+    const { deps, calls } = buildDeps({
+      agentGraph: [
+        'phases:',
+        '  - key: plan',
+        '    label: Plan',
+        '    model: m',
+        '    prompt: do plan',
+        '  - key: work',
+        '    label: Work',
+        '    model: m',
+        '    prompt: do work',
+        '    for_each: plan.items',
+        '    max_parallel: 1',
+        '',
+      ].join('\n'),
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+      buildPhaseAgentInvoke: (_input, currentCalls) => {
+        snapshots.push(currentCalls.mcpClients.map((c) => ({ ...c })))
+        return Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
+      },
+    })
+
+    const result = await runStrategyAgent(
+      deps,
+      'strategy-1',
+      undefined,
+      'task-1',
+      buildUserMessage('do the thing'),
+      undefined,
+    )
+
+    // ステップ ID は crypto.randomUUID() 由来のため、出現順に番号を振って比較する。
+    const label = createFirstOccurrenceLabeler('step')
+    const normalize = (clients: readonly McpClientCall[]): McpClientCall[] =>
+      clients.map((client) => {
+        const [prefix, stepId] = client.executionId.split(':')
+        if (stepId === undefined) return { ...client }
+        expect(stepId).toMatch(UUID_PATTERN)
+        return {
+          executionId: `${String(prefix)}:${label(stepId)}`,
+          closed: client.closed,
+        }
+      })
+
+    expect.soft(result).toEqual({
+      status: 'completed',
+      message: '2フェーズの実行が完了しました (Plan → Work)',
+    })
+    expect.soft(snapshots.map(normalize)).toEqual([
+      [
+        { executionId: 'task-1', closed: false },
+        { executionId: 'task-1:<step-1>', closed: false },
+      ],
+      [
+        { executionId: 'task-1', closed: false },
+        { executionId: 'task-1:<step-1>', closed: true },
+        { executionId: 'task-1:<step-2>', closed: false },
+      ],
+      [
+        { executionId: 'task-1', closed: false },
+        { executionId: 'task-1:<step-1>', closed: true },
+        { executionId: 'task-1:<step-2>', closed: true },
+        { executionId: 'task-1:<step-3>', closed: false },
+      ],
+    ])
+    expect.soft(normalize(calls.mcpClients)).toEqual([
+      { executionId: 'task-1', closed: true },
+      { executionId: 'task-1:<step-1>', closed: true },
+      { executionId: 'task-1:<step-2>', closed: true },
+      { executionId: 'task-1:<step-3>', closed: true },
+    ])
+  })
+
   it('fails fast on malformed agent_graph without invoking any agent', async () => {
     const { deps } = buildDeps({
       agentGraph: 'phases: [',
@@ -517,19 +600,21 @@ describe('createStrategyAgentDeps', () => {
     return model
   }
 
-  it('wires createMcpClient beforeToolCall to resolve x-execution-id via the step id from RunnableConfig.configurable', () => {
-    createStrategyAgentDeps(baseConfig).createMcpClient('strategy-1', 'task-1')
-
-    const headers = capturedBeforeToolCall?.(
-      { serverName: 'strategy', name: 'write_note', args: {} },
-      {},
-      { configurable: { mcpExecutionStepId: 'step-1' } },
+  it('bakes the strategy and execution ids into the MCP client headers at construction', () => {
+    createStrategyAgentDeps(baseConfig).createMcpClient(
+      'strategy-1',
+      'task-1:step-1',
     )
 
-    expect(headers).toEqual({
-      headers: {
-        'x-strategy-id': 'strategy-1',
-        'x-execution-id': 'task-1:step-1',
+    expect(capturedMcpClientConfig).toEqual({
+      mcpServers: {
+        strategy: {
+          url: 'http://t-rader-backend/mcp/strategy',
+          headers: {
+            'x-strategy-id': 'strategy-1',
+            'x-execution-id': 'task-1:step-1',
+          },
+        },
       },
     })
   })
@@ -815,32 +900,5 @@ describe('createStrategyAgentDeps', () => {
     } finally {
       warnSpy.mockRestore()
     }
-  })
-})
-
-describe('resolveMcpToolCallHeaders', () => {
-  it.each([
-    { name: 'no configurable', configurable: undefined },
-    {
-      name: 'unrelated configurable key',
-      configurable: { someOtherKey: 'value' },
-    },
-  ])('returns no header override when given $name', ({ configurable }) => {
-    expect(
-      resolveMcpToolCallHeaders('strategy-1', 'task-1', configurable),
-    ).toEqual({})
-  })
-
-  it('scopes x-execution-id to the step while keeping x-strategy-id', () => {
-    expect(
-      resolveMcpToolCallHeaders('strategy-1', 'task-1', {
-        mcpExecutionStepId: 'step-1',
-      }),
-    ).toEqual({
-      headers: {
-        'x-strategy-id': 'strategy-1',
-        'x-execution-id': 'task-1:step-1',
-      },
-    })
   })
 })
