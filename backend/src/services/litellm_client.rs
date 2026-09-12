@@ -329,13 +329,28 @@ struct UrlCitation {
 }
 
 /// markdown リンク `[...](https://...)` の URL を手動パースで抽出する
-/// (`text.find("](")` → 直後から次の `)` まで、`http` で始まるものだけ)。
+/// (`text.find("](")` → 直後から、`(` のネストを数えつつ深さ 0 の `)` まで、`http` で
+/// 始まるものだけ)。ネストを数えないと `https://en.wikipedia.org/wiki/Rust_(language)`
+/// のような URL 中の括弧で URL が途中で切れてしまう。
 fn extract_markdown_link_urls(text: &str) -> Vec<String> {
     let mut urls = Vec::new();
     let mut rest = text;
     while let Some(open_idx) = rest.find("](") {
         let after_open = &rest[open_idx + 2..];
-        let Some(close_idx) = after_open.find(')') else {
+        let mut depth = 0usize;
+        let mut close_idx = None;
+        for (i, c) in after_open.char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' if depth == 0 => {
+                    close_idx = Some(i);
+                    break;
+                }
+                ')' => depth -= 1,
+                _ => {}
+            }
+        }
+        let Some(close_idx) = close_idx else {
             break;
         };
         let candidate = &after_open[..close_idx];
@@ -589,6 +604,21 @@ mod tests {
             citations: vec![
                 "https://a.example/1".to_string(),
                 "https://b.example/2".to_string(),
+            ],
+        }
+    )]
+    #[case::markdown_link_url_with_balanced_parens_is_not_truncated(
+        indoc! {r#"
+            data: {"choices":[{"delta":{"content":"see [Rust](https://en.wikipedia.org/wiki/Rust_(programming_language))"}}]}
+
+            data: [DONE]
+
+        "#},
+        WebSearchOutcome {
+            text: "see [Rust](https://en.wikipedia.org/wiki/Rust_(programming_language))"
+                .to_string(),
+            citations: vec![
+                "https://en.wikipedia.org/wiki/Rust_(programming_language)".to_string(),
             ],
         }
     )]
