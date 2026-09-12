@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
 import {
   extractPurpose,
+  extractResumeSteps,
   extractStrategyId,
   HEARTBEAT_INTERVAL_MS,
   TraderAgentExecutor,
@@ -93,6 +94,26 @@ describe('extractPurpose', () => {
 
   it('returns undefined when purpose is not a string', () => {
     expect(extractPurpose(buildUserMessage({ purpose: 123 }))).toBeUndefined()
+  })
+})
+
+describe('extractResumeSteps', () => {
+  it('reads resume_steps from message metadata', () => {
+    expect(
+      extractResumeSteps(
+        buildUserMessage({ resume_steps: [{ status: 'completed' }] }),
+      ),
+    ).toEqual([{ status: 'completed' }])
+  })
+
+  it('returns undefined when metadata is absent', () => {
+    expect(extractResumeSteps(buildUserMessage())).toBeUndefined()
+  })
+
+  it('returns undefined when resume_steps is not an array', () => {
+    expect(
+      extractResumeSteps(buildUserMessage({ resume_steps: 'not-an-array' })),
+    ).toBeUndefined()
   })
 })
 
@@ -228,6 +249,32 @@ describe('TraderAgentExecutor', () => {
     },
   )
 
+  it('forwards resume_steps to runStrategyAgent alongside an explicit strategy_id', async () => {
+    const calls: (unknown[] | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (
+        _strategyId,
+        _purpose,
+        _taskId,
+        _userMessage,
+        resumeSteps,
+      ) => {
+        calls.push(resumeSteps)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+      resume_steps: [{ execution_step_id: 'step-1', status: 'failed' }],
+    })
+    const requestContext = new RequestContext(userMessage, 'task-19', 'ctx-19')
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual([[{ execution_step_id: 'step-1', status: 'failed' }]])
+  })
+
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({
       runStrategyAgent: (
@@ -235,6 +282,7 @@ describe('TraderAgentExecutor', () => {
         _purpose,
         _taskId,
         _userMessage,
+        _resumeSteps,
         onStepsChanged,
       ) => {
         onStepsChanged?.([
@@ -316,6 +364,7 @@ describe('TraderAgentExecutor', () => {
           _purpose,
           _taskId,
           _userMessage,
+          _resumeSteps,
           onStepsChanged,
         ) => {
           onStepsChanged?.(steps)
@@ -407,6 +456,7 @@ describe('TraderAgentExecutor', () => {
           _purpose,
           _taskId,
           _userMessage,
+          _resumeSteps,
           onStepsChanged,
         ) => {
           onStepsChanged?.([

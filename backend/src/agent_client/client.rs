@@ -66,6 +66,9 @@ pub struct SubmitAgentTask {
     /// タスク実行に使う `agent_config` テーブルの purpose キー。`services::strategy_tasks::submit_task`
     /// が常に解決済みの値を詰めるため、実質的に `None` にはならない。
     pub purpose: Option<String>,
+    /// 再開対象タスクの全 strategy_task_step 行 (seq 昇順)。中身は解釈せず素通しする。
+    /// 新規タスクの投入では `None`。
+    pub resume_steps: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Clone)]
@@ -237,6 +240,7 @@ impl AgentTaskClient for HttpAgentTaskClient {
             strategy_id,
             prompt,
             purpose,
+            resume_steps: req.resume_steps.unwrap_or_default(),
         };
 
         let response = self
@@ -452,6 +456,7 @@ mod tests {
                 strategy_id,
                 prompt: "hello".into(),
                 purpose: None,
+                resume_steps: None,
             })
             .await
             .expect("submit ok");
@@ -485,6 +490,47 @@ mod tests {
                 strategy_id,
                 prompt: "hello".into(),
                 purpose,
+                resume_steps: None,
+            })
+            .await
+            .expect("submit ok");
+    }
+
+    #[rstest]
+    #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello" }))]
+    #[case::some(
+        Some(vec![json!({ "execution_step_id": "step-1", "status": "completed" })]),
+        json!({
+            "strategy_id": "12345678-1234-5678-1234-567812345678",
+            "prompt": "hello",
+            "resume_steps": [{ "execution_step_id": "step-1", "status": "completed" }],
+        })
+    )]
+    #[tokio::test]
+    async fn submit_body_includes_resume_steps_only_when_some(
+        #[case] resume_steps: Option<Vec<serde_json::Value>>,
+        #[case] expected_body: serde_json::Value,
+    ) {
+        let server = MockServer::start().await;
+        let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
+
+        Mock::given(method("POST"))
+            .and(path("/internal/tasks"))
+            .and(body_json(expected_body))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "task_id": "task-abc",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = http_client(&server);
+        client
+            .submit(SubmitAgentTask {
+                strategy_id,
+                prompt: "hello".into(),
+                purpose: None,
+                resume_steps,
             })
             .await
             .expect("submit ok");
@@ -506,6 +552,7 @@ mod tests {
                 strategy_id: uuid::Uuid::new_v4(),
                 prompt: "hello".into(),
                 purpose: None,
+                resume_steps: None,
             })
             .await
             .expect_err("expected error");

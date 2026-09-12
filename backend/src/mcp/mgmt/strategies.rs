@@ -9,12 +9,13 @@ use uuid::Uuid;
 use crate::agent_client::AgentTaskError;
 use crate::entities::{annotation, note, strategy};
 use crate::services::strategy_tasks::{
-    self, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
+    self, ResumeTaskError, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
 };
 
 use super::dto::{
     GetStrategyTaskStatusParams, GetStrategyTaskStatusResult, ListStrategiesResult,
-    StrategySummary, SubmitStrategyTaskParams, SubmitStrategyTaskResult,
+    ResumeStrategyTaskParams, ResumeStrategyTaskResult, StrategySummary, SubmitStrategyTaskParams,
+    SubmitStrategyTaskResult,
 };
 use super::{MgmtServer, db_error, internal_error, invalid_params};
 
@@ -108,6 +109,19 @@ impl MgmtServer {
         })
     }
 
+    pub(super) async fn resume_strategy_task_inner(
+        &self,
+        params: ResumeStrategyTaskParams,
+    ) -> Result<ResumeStrategyTaskResult, McpError> {
+        let submitted = strategy_tasks::resume_task(&self.db, &self.agent_client, params.task_id)
+            .await
+            .map_err(map_resume_error)?;
+        Ok(ResumeStrategyTaskResult {
+            task_id: submitted.task_id,
+            a2a_task_id: submitted.a2a_task_id,
+        })
+    }
+
     pub(super) async fn get_strategy_task_status_inner(
         &self,
         params: GetStrategyTaskStatusParams,
@@ -138,6 +152,19 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
         }
         SubmitTaskError::Database(db_err) => db_error(db_err),
         SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
+    }
+}
+
+fn map_resume_error(err: ResumeTaskError) -> McpError {
+    match err {
+        ResumeTaskError::NotFound(id) => {
+            McpError::resource_not_found(format!("strategy task {id} not found"), None)
+        }
+        ResumeTaskError::NotFailed(id, phase) => invalid_params(format!(
+            "strategy task {id} is not failed (current phase: {phase})"
+        )),
+        ResumeTaskError::Database(db_err) => db_error(db_err),
+        ResumeTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
 }
 
@@ -365,6 +392,98 @@ mod tests {
             rows[0].error_summary.as_deref(),
             Some("agent task submission failed: agent task api error (status 500): boom"),
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_strategy_task_resumes_a_failed_task_in_place(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::Api {
+            status: 500,
+            message: "boom".into(),
+        })
+        .await;
+        let server = build_server(db.clone(), fake.clone());
+        server
+            .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
+                strategy_id,
+                prompt: "p".into(),
+                purpose: None,
+            }))
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("submit should fail due to the injected agent error"));
+        let task_id = strategy_task::Entity::find()
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("failed task row exists")
+            .task_id;
+        fake.set_next_task_id("agent-task-resumed").await;
+
+        let Json(result) = server
+            .resume_strategy_task(Parameters(ResumeStrategyTaskParams { task_id }))
+            .await
+            .expect("resume ok");
+
+        assert_eq!(result.task_id, task_id);
+        assert_eq!(result.a2a_task_id, "agent-task-resumed");
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row still exists");
+        assert_eq!(row.phase, StrategyTaskPhase::Running);
+        assert_eq!(row.a2a_task_id.as_deref(), Some("agent-task-resumed"));
+        assert!(row.error_summary.is_none());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_strategy_task_rejects_when_not_failed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "x").await;
+        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+            .await
+            .expect("insert test agent_config");
+        let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
+        let Json(submitted) = server
+            .submit_strategy_task(Parameters(SubmitStrategyTaskParams {
+                strategy_id,
+                prompt: "p".into(),
+                purpose: None,
+            }))
+            .await
+            .expect("submit ok");
+
+        let err = server
+            .resume_strategy_task(Parameters(ResumeStrategyTaskParams {
+                task_id: submitted.task_id,
+            }))
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("expected error"));
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_strategy_task_not_found(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
+
+        let err = server
+            .resume_strategy_task(Parameters(ResumeStrategyTaskParams {
+                task_id: Uuid::new_v4(),
+            }))
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("expected error"));
+        assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
     }
 
     #[sqlx::test(migrations = false)]

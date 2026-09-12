@@ -29,6 +29,7 @@
 //!   スライスを時価で返す
 //! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、セクター上限比率・現金の各制約ごとに
 //!   計算して返す
+//! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -41,6 +42,7 @@
 //! - `interests`: 関心の追加 (`add_interest_inner`) / 監視対象一覧 (`list_watch_targets_inner`)
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
+//! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
 //! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
@@ -58,6 +60,7 @@ pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod interests;
 pub(super) mod media;
+pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod portfolio;
 pub(super) mod risk_check;

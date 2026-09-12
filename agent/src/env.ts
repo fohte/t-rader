@@ -9,6 +9,7 @@ export interface Env {
   BACKEND_WEBHOOK_TOKEN: string
   A2A_WATCHDOG_TIMEOUT_MS: number
   A2A_RETENTION_DAYS: number
+  LLM_CALL_TIMEOUT_MS: number
   // Base URL of t-rader backend, used to fetch AGENTS.md / skills / model
   // via GET {base}/api/agent-configs/{purpose}/agent-config.
   BACKEND_API_BASE_URL: string
@@ -24,6 +25,7 @@ export interface Env {
 
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_RETENTION_DAYS = 30
+const DEFAULT_LLM_CALL_TIMEOUT_MS = 10 * 60 * 1000
 
 export class EnvError extends Error {
   constructor(
@@ -99,6 +101,10 @@ export const loadEnv = (
     A2A_RETENTION_DAYS: parsePositiveIntWithDefault(
       'A2A_RETENTION_DAYS',
       DEFAULT_RETENTION_DAYS,
+    ),
+    LLM_CALL_TIMEOUT_MS: parsePositiveIntWithDefault(
+      'LLM_CALL_TIMEOUT_MS',
+      DEFAULT_LLM_CALL_TIMEOUT_MS,
     ),
     BACKEND_API_BASE_URL: requireString('BACKEND_API_BASE_URL'),
     STRATEGY_MCP_URL: requireString('STRATEGY_MCP_URL'),
