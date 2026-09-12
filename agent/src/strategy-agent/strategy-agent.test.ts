@@ -404,6 +404,80 @@ describe('runStrategyAgent', () => {
     ])
   })
 
+  it('skips a completed phase on resume when a valid resume step is provided', async () => {
+    let buildPhaseAgentInvokeCalls = 0
+    const { deps } = buildDeps({
+      agentGraph:
+        'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+      buildPhaseAgentInvoke: () => {
+        buildPhaseAgentInvokeCalls++
+        return Promise.resolve({ structuredResponse: {} })
+      },
+    })
+    const resumeSteps: unknown[] = [
+      {
+        phase_key: 'p',
+        execution_step_id: '11111111-1111-1111-1111-111111111111',
+        label: 'P',
+        model: 'm',
+        status: 'completed',
+        output: { note: 'from-resume' },
+        started_at: '2020-01-01T00:00:00.000Z',
+        finished_at: '2020-01-01T00:00:01.000Z',
+        trace_id: 'trace-1',
+        span_id: 'span-1',
+      },
+    ]
+
+    const result = await runStrategyAgent(
+      deps,
+      'strategy-1',
+      undefined,
+      'task-1',
+      buildUserMessage('do the thing'),
+      resumeSteps,
+    )
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (P)',
+    })
+    expect(buildPhaseAgentInvokeCalls).toBe(0)
+  })
+
+  it('ignores resume steps that fail schema validation and runs the phase fresh', async () => {
+    let buildPhaseAgentInvokeCalls = 0
+    const { deps } = buildDeps({
+      agentGraph:
+        'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+      buildPhaseAgentInvoke: () => {
+        buildPhaseAgentInvokeCalls++
+        return Promise.resolve({ structuredResponse: {} })
+      },
+    })
+    // phase_key など必須フィールドを欠いており strategyTaskStepJsonSchema を通らない。
+    const resumeSteps: unknown[] = [{ status: 'completed' }]
+
+    const result = await runStrategyAgent(
+      deps,
+      'strategy-1',
+      undefined,
+      'task-1',
+      buildUserMessage('do the thing'),
+      resumeSteps,
+    )
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (P)',
+    })
+    expect(buildPhaseAgentInvokeCalls).toBe(1)
+  })
+
   it('fails fast on malformed agent_graph without invoking any agent', async () => {
     const { deps } = buildDeps({
       agentGraph: 'phases: [',

@@ -29,9 +29,8 @@ const submitTaskBodySchema = z
     prompt: z.string().min(1),
     // 目的キー (agent_config.purpose)。省略時は既定の目的が使われる。
     purpose: z.string().min(1).optional(),
-    // 再開対象タスクの全 strategy_task_step 行 (seq 昇順)。中身は backend 側
-    // (StrategyTaskStepWireJson 相当) の契約で保証されている前提とし、steps
-    // 配列全般と同じ方針で検証しない。
+    // 再開対象タスクの全 strategy_task_step 行 (seq 昇順、backend の
+    // step_to_resume_wire_json が返す形)。
     resume_steps: z.array(z.unknown()).optional(),
   })
   .openapi('SubmitTaskBody')

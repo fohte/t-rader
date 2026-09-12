@@ -51,6 +51,8 @@ const DEFAULT_PURPOSE = 'default'
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
 const MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
   'strategy-agent.mcp-client-close-failed'
+const RESUME_STEPS_PARSE_FAILED_FINGERPRINT =
+  'strategy-agent.resume-steps-parse-failed'
 
 const structuredResponseSchema = z.object({
   status: z.enum(['completed', 'error']),
@@ -289,15 +291,32 @@ export const createStrategyAgentDeps = (
   buildPhaseAgent: createDefaultBuildPhaseAgent(config.genAiProviderName),
 })
 
-// resumeSteps の不正な要素 (backend が壊れた JSON を送ってくることは想定しないが、
-// 契約上 unknown の配列として届く) は無視し、パースできた分だけ再開情報として使う。
+// パースに失敗した要素は無視し、正常にパースできたステップのみ再開情報として扱う。
 const parseResumeSteps = (
   resumeSteps: unknown[] | undefined,
-): StrategyTaskStep[] | undefined =>
-  resumeSteps
-    ?.map((raw) => strategyTaskStepJsonSchema.safeParse(raw))
+  strategyId: string,
+): StrategyTaskStep[] | undefined => {
+  if (resumeSteps === undefined) return undefined
+  const results = resumeSteps.map((raw) =>
+    strategyTaskStepJsonSchema.safeParse(raw),
+  )
+  const failures = results.filter((result) => !result.success)
+  if (failures.length > 0) {
+    const error = new Error(
+      `${String(failures.length)} of ${String(results.length)} resume step(s) failed schema validation`,
+    )
+    console.error(
+      'failed to parse resume steps:',
+      failures.map((f) => f.error),
+    )
+    captureWithFingerprint(error, RESUME_STEPS_PARSE_FAILED_FINGERPRINT, {
+      extras: { strategyId, failedCount: failures.length },
+    })
+  }
+  return results
     .filter((result) => result.success)
     .map((result) => fromStepJson(result.data))
+}
 
 export const runStrategyAgent = async (
   deps: StrategyAgentDeps,
@@ -308,7 +327,7 @@ export const runStrategyAgent = async (
   resumeSteps: unknown[] | undefined,
   onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
 ): Promise<StrategyAgentResult> => {
-  const previousSteps = parseResumeSteps(resumeSteps)
+  const previousSteps = parseResumeSteps(resumeSteps, strategyId)
   const mcpClient = deps.createMcpClient(strategyId, taskId)
 
   const closeMcpClient = (): Promise<void> =>

@@ -7,6 +7,7 @@
 use chrono::{DateTime, FixedOffset};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::sea_query::{Expr, ExprTrait};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
@@ -288,6 +289,29 @@ pub async fn resume_task(
         return Err(ResumeTaskError::NotFailed(task_id, phase_str(&row.phase)));
     }
 
+    // 「Failed である」ことの確認と「Running に倒す」ことを 1 回の条件付き UPDATE
+    // で原子化する。上の事前チェックだけでは、同じ task_id への並行呼び出しが
+    // 両方とも Failed を読んでしまい二重に agent へ投入されうる。
+    let claimed = strategy_task::Entity::update_many()
+        .col_expr(
+            strategy_task::Column::Phase,
+            Expr::value(StrategyTaskPhase::Running),
+        )
+        .col_expr(
+            strategy_task::Column::UpdatedAt,
+            Expr::value(chrono::Utc::now().fixed_offset()),
+        )
+        .filter(
+            strategy_task::Column::TaskId
+                .eq(task_id)
+                .and(strategy_task::Column::Phase.eq(StrategyTaskPhase::Failed)),
+        )
+        .exec(db)
+        .await?;
+    if claimed.rows_affected == 0 {
+        return Err(ResumeTaskError::NotFailed(task_id, "failed"));
+    }
+
     let step_rows = strategy_task_step::Entity::find()
         .filter(strategy_task_step::Column::TaskId.eq(task_id))
         .order_by_asc(strategy_task_step::Column::Seq)
@@ -327,8 +351,8 @@ pub async fn resume_task(
                 ..Default::default()
             };
             if let Err(update_err) = failed.update(db).await {
-                // submit_task と同様、行は Failed のまま error_summary の更新にだけ失敗した
-                // 状態になり得る。ログから早期発見できるようにする。
+                // 直前の claim で phase は既に Running へ進んでいるため、この
+                // 更新が失敗すると行は Failed に戻せないまま Running で宙に浮く。
                 tracing::error!(
                     error = %update_err,
                     task_id = %task_id,
@@ -343,14 +367,25 @@ pub async fn resume_task(
     let running = strategy_task::ActiveModel {
         task_id: Set(task_id),
         a2a_task_id: Set(Some(agent_ref.task_id.clone())),
-        phase: Set(StrategyTaskPhase::Running),
         error_summary: Set(None),
         result_text: Set(None),
         deadline_at: Set(now + DEADLINE_DURATION),
         updated_at: Set(now),
         ..Default::default()
     };
-    running.update(db).await?;
+    if let Err(err) = running.update(db).await {
+        // claim で phase は既に Running へ進んでいるため、この行は a2a_task_id が
+        // 記録されないまま孤児化する。watcher が deadline 超過で failed 確定するが、
+        // 実際には agent 側でタスクが動いているので、追跡できるよう a2a_task_id を
+        // ログに残す。
+        tracing::error!(
+            error = %err,
+            task_id = %task_id,
+            a2a_task_id = %agent_ref.task_id,
+            "resumed strategy task submitted but failed to record a2a_task_id; row orphaned until deadline",
+        );
+        return Err(ResumeTaskError::Database(err));
+    }
 
     Ok(SubmittedTask {
         task_id,
@@ -506,49 +541,21 @@ fn step_to_wire_json(
 }
 
 /// `POST /internal/tasks` の `resume_steps` 配列 1 要素分の wire JSON 形状。
-/// `StrategyTaskStepWireJson` と異なり `execution_step_id` を含む: agent が再実行時に
+/// `step_to_wire_json` の出力に `execution_step_id` を足したもの: agent が再実行時に
 /// 同じ id を使い回すことで MCP tool 呼び出しの `x-execution-id` を安定させ、ノート書き込み
 /// (execution_id で既存ノートを探して更新する) の重複を防ぐ契約のため。
-#[derive(serde::Serialize)]
-struct ResumeStepWireJson {
-    execution_step_id: Uuid,
-    phase_key: String,
-    label: String,
-    model: String,
-    status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    item: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    item_label: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    output: Option<serde_json::Value>,
-    started_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    finished_at: Option<String>,
-    trace_id: String,
-    span_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
-
 fn step_to_resume_wire_json(
     row: strategy_task_step::Model,
 ) -> Result<serde_json::Value, serde_json::Error> {
-    serde_json::to_value(ResumeStepWireJson {
-        execution_step_id: row.execution_step_id,
-        phase_key: row.phase_key,
-        label: row.label,
-        model: row.model,
-        status: step_status_str(&row.status).to_string(),
-        item: row.item,
-        item_label: row.item_label,
-        output: row.output,
-        started_at: row.started_at.to_rfc3339(),
-        finished_at: row.finished_at.map(|t| t.to_rfc3339()),
-        trace_id: row.trace_id,
-        span_id: row.span_id,
-        error: row.error,
-    })
+    let execution_step_id = row.execution_step_id;
+    let mut value = step_to_wire_json(row)?;
+    if let serde_json::Value::Object(map) = &mut value {
+        map.insert(
+            "execution_step_id".into(),
+            serde_json::json!(execution_step_id),
+        );
+    }
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -789,5 +796,27 @@ mod tests {
                 row_result_text: None,
             },
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_task_rejects_a_second_call_after_the_first_claims_the_row(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id =
+            insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        resume_task(&db, &agent_client, task_id)
+            .await
+            .expect("first resume claims the row");
+
+        let err = resume_task(&db, &agent_client, task_id)
+            .await
+            .expect_err("second resume must not re-claim an already-running row");
+        assert!(
+            matches!(&err, ResumeTaskError::NotFailed(id, phase) if *id == task_id && *phase == "running")
+        );
+        assert_eq!(fake.submitted.lock().await.len(), 1);
     }
 }

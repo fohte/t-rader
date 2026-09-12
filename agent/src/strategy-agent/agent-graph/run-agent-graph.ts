@@ -355,6 +355,10 @@ const runForEachItems = async (
   const chunkSize = Math.max(phase.maxParallel ?? items.length, 1)
   const outputs: unknown[] = []
   let firstError: unknown
+  // マッチ済みの previous step をここから取り除きながら消費する。取り除か
+  // ないと、item の内容が重複する要素が複数ある場合に同じ previous step
+  // (同じ executionStepId) へ複数の item がマッチしてしまう。
+  const remainingPrevious = [...previousStepsForPhase]
 
   for (let start = 0; start < items.length; start += chunkSize) {
     const chunk = items.slice(start, start + chunkSize)
@@ -363,10 +367,15 @@ const runForEachItems = async (
         const index = start + offset
         const itemLabel = extractItemLabel(item, phase.labelField)
         // item の値そのもので前回実行との対応を取る (for_each の要素には
-        // 安定した ID が無いため)。要素の並び/内容が変わらない限り一致する。
-        const matched = previousStepsForPhase.find(
+        // 安定した ID が無いため)。chunk.map のコールバックは最初の await
+        // まで同期的に逐次実行されるため、共有配列への splice で安全に消費できる。
+        const matchedIndex = remainingPrevious.findIndex(
           (s) => JSON.stringify(s.item) === JSON.stringify(item),
         )
+        const matched =
+          matchedIndex === -1
+            ? undefined
+            : remainingPrevious.splice(matchedIndex, 1)[0]
         if (matched?.status === 'completed') {
           recorder.recordExisting(matched)
           return Promise.resolve(ok(matched.output))
