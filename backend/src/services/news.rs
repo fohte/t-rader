@@ -4,7 +4,9 @@ use std::time::Duration;
 
 use chrono::Utc;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -259,6 +261,7 @@ fn match_links(
                 ref_id: Set(term.ref_id.clone()),
                 matched_term: Set(term.term.clone()),
                 created_at: Set(now),
+                seq: NotSet,
             });
         }
     }
