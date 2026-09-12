@@ -21,7 +21,8 @@ use super::dto::{
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
     ReadCommentsParams, ReadCommentsResult, ReadHypothesisParams, ReadNewsParams, ReadNewsResult,
     ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
-    ResolveCommentParams, ResolveCommentResult, WriteNoteParams, WriteNoteResult,
+    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
+    WriteNoteParams, WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
@@ -285,6 +286,21 @@ impl StrategyServer {
             .map(Json)
     }
 
+    /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
+    #[tool(
+        name = "search_news",
+        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. Unlike read_news, this ignores news_strategy_link entirely, so results are not affected by whether the strategy has registered a matching interest term.",
+        annotations(read_only_hint = true)
+    )]
+    async fn search_news(
+        &self,
+        Parameters(params): Parameters<SearchNewsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<SearchNewsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.search_news_inner(sid, params).await.map(Json)
+    }
+
     /// 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
     #[tool(
         name = "search_refs",
@@ -413,6 +429,7 @@ mod tests {
                 ("read_portfolio", Some(true)),
                 ("reply_comment", None),
                 ("resolve_comment", None),
+                ("search_news", Some(true)),
                 ("search_refs", Some(true)),
                 ("write_note", None),
             ]
