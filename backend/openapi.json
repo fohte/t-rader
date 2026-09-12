@@ -3364,6 +3364,96 @@
         }
       }
     },
+    "/api/jquants/plan-setting": {
+      "get": {
+        "tags": [
+          "jquants"
+        ],
+        "summary": "J-Quants の契約プラン設定を取得。未設定なら null (自動検出) を返す",
+        "operationId": "get_jquants_plan_setting",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JQuantsPlanSettingResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "jquants"
+        ],
+        "summary": "J-Quants の契約プラン設定を更新 (upsert)。`null` で自動検出に戻す。\n保存後、稼働中の `JQuantsClient` があれば即座にインメモリ側も更新する\n(プロセス再起動なしで反映するため)。",
+        "operationId": "put_jquants_plan_setting",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutJQuantsPlanSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JQuantsPlanSettingResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/macro/ticks": {
       "get": {
         "tags": [
@@ -9422,6 +9512,59 @@
           }
         }
       },
+      "JQuantsFetchableRange": {
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date"
+          },
+          "to": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
+      "JQuantsPlan": {
+        "type": "string",
+        "description": "J-Quants の契約プラン\n\n各プランの配信遅延・提供期間は公式ドキュメント\n(<https://jpx.gitbook.io/j-quants-ja/outline/data-spec>) のデータ提供期間に基づく。",
+        "enum": [
+          "free",
+          "light",
+          "standard",
+          "premium"
+        ]
+      },
+      "JQuantsPlanSettingResponse": {
+        "type": "object",
+        "properties": {
+          "effective_range": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JQuantsFetchableRange",
+                "description": "現在有効な取得可能範囲。`plan` が手動設定されていればそのプランの範囲、\n未設定なら自動検出の結果 (未検出ならまだ null)。「未設定」は「何もしていない」\nではなく「システムが自動で検出し設定している」ことを表すため、その結果を必ず返す。"
+              }
+            ]
+          },
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JQuantsPlan"
+              }
+            ]
+          }
+        }
+      },
       "Layout": {
         "type": "string",
         "enum": [
@@ -9797,6 +9940,23 @@
             ],
             "format": "date-time",
             "description": "省略時はサーバー側で現在時刻を使う"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PutJQuantsPlanSettingRequest": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JQuantsPlan",
+                "description": "手動設定するプラン。`null` で自動検出 (契約範囲の検出 + TTL) に戻す"
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -11097,6 +11257,10 @@
     {
       "name": "account",
       "description": "口座全体の設定"
+    },
+    {
+      "name": "jquants",
+      "description": "J-Quants API の契約プラン設定"
     }
   ]
 }

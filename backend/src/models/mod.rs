@@ -9,6 +9,7 @@ pub mod hypothesis;
 pub mod import;
 pub mod instrument;
 pub mod interest;
+pub mod jquants_plan;
 pub mod note;
 pub mod note_hypothesis;
 pub mod refs;
@@ -39,6 +40,10 @@ pub use import::{
 };
 pub use instrument::Instrument;
 pub use interest::{CreateInterestRequest, UpdateInterestRequest};
+pub use jquants_plan::{
+    JQuantsFetchableRange, JQuantsPlan, JQuantsPlanSettingData, JQuantsPlanSettingResponse,
+    PutJQuantsPlanSettingRequest, parse_plan_setting, serialize_plan_setting,
+};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use note_hypothesis::CreateNoteHypothesisRequest;
 pub use refs::RefResolution;

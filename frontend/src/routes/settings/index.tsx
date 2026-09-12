@@ -21,6 +21,12 @@ const ITEMS: { to: string; label: string; description: string }[] = [
     description:
       '口座全体の保有銘柄時価合計に対するセクター集中度の上限を設定する',
   },
+  {
+    to: '/settings/jquants-plan',
+    label: 'J-Quants プラン',
+    description:
+      '契約プランを手動設定する。未設定なら契約範囲外エラーから自動検出する',
+  },
 ]
 
 function SettingsIndexPage() {

@@ -10,6 +10,7 @@ pub mod hypotheses;
 pub mod import;
 pub mod interests;
 pub mod investable_amount;
+pub mod jquants_plan_setting;
 pub mod litellm_client;
 pub mod market_price;
 pub mod news;

@@ -5,12 +5,12 @@ use crate::data_provider::{DataProvider, DateRange};
 use crate::models::Timeframe;
 use crate::repositories::bars::upsert_bars;
 
-/// 契約範囲が未学習のときに試す確認用の範囲 (Premium 相当の最大範囲)。この範囲で
-/// リクエストし、実際の契約範囲を成功レスポンスまたは 400 エラーメッセージから学習する。
-/// 学習後はこの範囲を使わず、学習済みの範囲 (`known_range`) を使い回す。
-const PROBE_MAX_HISTORY_DAYS: i64 = 365 * 20;
+/// 契約範囲が未検出のときに試す確認用の範囲 (Premium 相当の最大範囲)。この範囲で
+/// リクエストし、実際の契約範囲を成功レスポンスまたは 400 エラーメッセージから検出する。
+/// 検出後はこの範囲を使わず、検出済みの範囲 (`known_range`) を使い回す。
+pub(crate) const PROBE_MAX_HISTORY_DAYS: i64 = 365 * 20;
 
-/// 価格データを取得可能な最新日 (未学習時は today、学習済み時は契約上限日) を返す。
+/// 価格データを取得可能な最新日 (未検出時は today、検出済み時は契約上限日) を返す。
 /// 保有時価の評価上限 (`market_price::fetch_latest_prices`) もこの関数を経由するため、
 /// 取得側と評価側で上限がずれることはない。
 pub(crate) fn latest_fetchable_date(
@@ -19,7 +19,7 @@ pub(crate) fn latest_fetchable_date(
 ) -> NaiveDate {
     known_range.map_or_else(
         || {
-            tracing::warn!("契約範囲が未学習のため、上限を today として扱い取得を試みます");
+            tracing::warn!("契約範囲が未検出のため、上限を today として扱い取得を試みます");
             today
         },
         |(_, to)| to,
@@ -28,7 +28,7 @@ pub(crate) fn latest_fetchable_date(
 
 /// 指定銘柄の日足データをバックフィルする。
 ///
-/// 契約範囲が学習済みならその範囲を、未学習ならプローブ範囲を取得する。
+/// 契約範囲が検出済みならその範囲を、未検出ならプローブ範囲を取得する。
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
     db: &DatabaseConnection,
@@ -44,7 +44,16 @@ pub async fn backfill_daily_bars(
         },
     };
 
-    let bars = match data_provider.fetch_daily_bars(instrument_id, &range).await {
+    let fetch_result = data_provider.fetch_daily_bars(instrument_id, &range).await;
+
+    // 未設定の間だけ、検出済みの契約範囲を初回のプランとして推定・永続化する。
+    // fetch の成否に関わらず (400 検出はリトライ前に記録されるため) 呼んでよい。
+    // backfill 全体を失敗させたくないため warn ログのみに留める。
+    if let Err(e) = data_provider.persist_inferred_range_if_needed(db).await {
+        tracing::warn!(error = %e, "契約プランの推定結果の永続化に失敗しました");
+    }
+
+    let bars = match fetch_result {
         Ok(bars) => bars,
         Err(e) => {
             tracing::error!(instrument_id, error = %e, "日足データの取得に失敗しました");
@@ -161,11 +170,11 @@ mod tests {
     // --- テスト ---
 
     #[rstest]
-    #[case::unlearned_treats_today_as_the_upper_bound(
+    #[case::undetected_treats_today_as_the_upper_bound(
         None,
         NaiveDate::from_ymd_opt(2025, 6, 1).expect("date")
     )]
-    #[case::learned_uses_the_learned_upper_bound(
+    #[case::detected_uses_the_detected_upper_bound(
         Some((
             NaiveDate::from_ymd_opt(2020, 4, 1).expect("date"),
             NaiveDate::from_ymd_opt(2022, 4, 1).expect("date"),
@@ -204,7 +213,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn backfill_uses_known_fetchable_range_when_learned(pool: PgPool) {
+    async fn backfill_uses_known_fetchable_range_when_detected(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
@@ -223,13 +232,13 @@ mod tests {
 
         let result = find_all_bars(&db, "7203").await;
 
-        // 学習済み範囲外の bar はリクエストされないため保存されない
+        // 検出済み範囲外の bar はリクエストされないため保存されない
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].close, Decimal::new(100, 0));
     }
 
     #[sqlx::test(migrations = false)]
-    async fn backfill_probes_far_history_when_range_is_unlearned(pool: PgPool) {
+    async fn backfill_probes_far_history_when_range_is_undetected(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 

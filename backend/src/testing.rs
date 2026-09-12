@@ -184,6 +184,18 @@ pub async fn create_test_server_with_db(pool: PgPool) -> (DatabaseConnection, Te
     (db, server)
 }
 
+/// data_provider を差し替えて TestServer を作成する
+pub async fn create_test_server_with_data_provider(
+    pool: PgPool,
+    data_provider: Arc<crate::data_provider::DataProviderKind>,
+) -> TestServer {
+    let db = create_test_db(pool).await;
+    let mut state = base_state(db);
+    state.data_provider = Some(data_provider);
+    let router = create_router(state);
+    TestServer::new(router).expect("failed to create test server")
+}
+
 /// kata executor を差し替えて TestServer を作成する
 pub async fn create_test_server_with_kata(
     pool: PgPool,
@@ -274,7 +286,7 @@ impl MockProvider {
         self
     }
 
-    /// 契約範囲を学習済みの状態にする (未設定時は `None`)
+    /// 契約範囲を検出済みの状態にする (未設定時は `None`)
     pub fn with_known_fetchable_range(
         mut self,
         from: chrono::NaiveDate,

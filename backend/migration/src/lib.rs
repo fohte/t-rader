@@ -34,6 +34,7 @@ mod m20260912_022210_drop_strategy_risk_policy;
 mod m20260912_105611_add_checkpoint;
 mod m20260912_105634_add_trade_note_and_note_hypothesis_links;
 mod m20260912_105636_add_news_strategy_link_seq;
+mod m20260912_161307_add_jquants_plan_setting;
 
 pub struct Migrator;
 
@@ -74,6 +75,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260912_105611_add_checkpoint::Migration),
             Box::new(m20260912_105634_add_trade_note_and_note_hypothesis_links::Migration),
             Box::new(m20260912_105636_add_news_strategy_link_seq::Migration),
+            Box::new(m20260912_161307_add_jquants_plan_setting::Migration),
         ]
     }
 }

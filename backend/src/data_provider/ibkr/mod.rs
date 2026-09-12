@@ -325,9 +325,9 @@ impl DataProvider for IbkrClient {
         Ok(instrument)
     }
 
-    /// IBKR は契約範囲の学習機構を持たないライブデータプロバイダのため、常に
+    /// IBKR は契約範囲という概念を持たないライブデータプロバイダのため、常に
     /// 直近の確定営業日までを取得可能とみなす (`None` を返すと J-Quants 向けの
-    /// 「未学習時は today を上限とみなす」フォールバックに巻き込まれ、
+    /// 「未検出時は today を上限とみなす」フォールバックに巻き込まれ、
     /// `fetch_latest_prices` のたびに全期間の再取得が発生してしまう)。
     fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
         Some((

@@ -6,7 +6,7 @@ mod tests;
 
 use std::collections::VecDeque;
 
-use chrono::{NaiveDate, TimeZone, Utc};
+use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 use tokio::sync::Mutex;
@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
+use crate::models::jquants_plan::JQuantsPlan;
 use response::{DailyBarsResponse, EquitiesMasterResponse, ErrorResponse};
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
@@ -82,6 +83,28 @@ impl RateLimiter {
     }
 }
 
+/// 400 エラーメッセージから検出した契約範囲。プラン変更や日々のローリング
+/// ウィンドウにより実際の範囲は動きうるため、`DETECTED_RANGE_TTL_DAYS` を
+/// 超えたら期限切れとして扱い、再検出を促す。
+struct DetectedRange {
+    from: NaiveDate,
+    to: NaiveDate,
+    detected_at: NaiveDate,
+}
+
+/// 検出済みの契約範囲を再検出なしで使い回せる期間 (日数)
+const DETECTED_RANGE_TTL_DAYS: i64 = 1;
+
+/// `detected` が `today` 時点でまだ有効かどうかを判定し、有効なら範囲を返す。
+/// TTL を超えていれば `None` を返し、呼び出し側に再検出を促す。
+fn effective_range(
+    detected: Option<&DetectedRange>,
+    today: NaiveDate,
+) -> Option<(NaiveDate, NaiveDate)> {
+    let d = detected?;
+    (today - d.detected_at < Duration::days(DETECTED_RANGE_TTL_DAYS)).then_some((d.from, d.to))
+}
+
 /// J-Quants API V2 クライアント
 ///
 /// API Key 認証方式で J-Quants API V2 にアクセスする。
@@ -94,8 +117,10 @@ pub struct JQuantsClient {
     base_url: String,
     api_key: String,
     rate_limiter: RateLimiter,
-    /// 400 エラーメッセージから学習した契約範囲
-    learned_range: std::sync::Mutex<Option<(NaiveDate, NaiveDate)>>,
+    detected_range: std::sync::Mutex<Option<DetectedRange>>,
+    /// 設定ページから手動設定された契約プラン。`None` の間は自動検出
+    /// (`detected_range`) を使う。
+    manual_plan: std::sync::Mutex<Option<JQuantsPlan>>,
 }
 
 impl JQuantsClient {
@@ -110,7 +135,8 @@ impl JQuantsClient {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key,
             rate_limiter: RateLimiter::new(),
-            learned_range: std::sync::Mutex::new(None),
+            detected_range: std::sync::Mutex::new(None),
+            manual_plan: std::sync::Mutex::new(None),
         })
     }
 
@@ -127,16 +153,41 @@ impl JQuantsClient {
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
             rate_limiter: RateLimiter::new(),
-            learned_range: std::sync::Mutex::new(None),
+            detected_range: std::sync::Mutex::new(None),
+            manual_plan: std::sync::Mutex::new(None),
         })
     }
 
-    fn learned_range(&self) -> Option<(NaiveDate, NaiveDate)> {
-        *self.learned_range.lock().unwrap_or_else(|e| e.into_inner())
+    /// 設定ページからの手動プラン設定を反映する。プロセス再起動なしで即座に
+    /// `known_fetchable_range()` の結果へ反映される。
+    pub fn set_manual_plan(&self, plan: Option<JQuantsPlan>) {
+        let mut guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = plan;
     }
 
-    fn set_learned_range(&self, range: (NaiveDate, NaiveDate)) {
-        *self.learned_range.lock().unwrap_or_else(|e| e.into_inner()) = Some(range);
+    fn manual_plan(&self) -> Option<JQuantsPlan> {
+        let guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
+        *guard
+    }
+
+    fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        let guard = self
+            .detected_range
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        effective_range(guard.as_ref(), Utc::now().date_naive())
+    }
+
+    fn set_detected_range(&self, range: (NaiveDate, NaiveDate)) {
+        let mut guard = self
+            .detected_range
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *guard = Some(DetectedRange {
+            from: range.0,
+            to: range.1,
+            detected_at: Utc::now().date_naive(),
+        });
     }
 
     /// 指数バックオフ付き GET リクエスト
@@ -308,8 +359,8 @@ impl JQuantsClient {
 }
 
 impl DataProvider for JQuantsClient {
-    /// 契約範囲外エラー (400) 発生時は契約範囲を学習し、その範囲でこの呼び出し内で
-    /// 1 回だけ再試行する (学習済み範囲外の日付を再度指定すれば何度でも発動しうる)。
+    /// 契約範囲外エラー (400) 発生時は契約範囲を検出し、その範囲でこの呼び出し内で
+    /// 1 回だけ再試行する (検出済み範囲外の日付を再度指定すれば何度でも発動しうる)。
     async fn fetch_daily_bars(
         &self,
         instrument_id: &str,
@@ -330,9 +381,9 @@ impl DataProvider for JQuantsClient {
                     instrument_id,
                     %from,
                     %to,
-                    "契約範囲を学習しました。学習した範囲で再取得します"
+                    "契約範囲を検出しました。検出した範囲で再取得します"
                 );
-                self.set_learned_range((from, to));
+                self.set_detected_range((from, to));
                 self.fetch_daily_bars_once(instrument_id, &DateRange { from, to })
                     .await
             }
@@ -340,8 +391,64 @@ impl DataProvider for JQuantsClient {
         }
     }
 
+    /// 手動設定 (設定ページ) が優先。未設定なら 400 エラーからの自動検出結果を使う。
     fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
-        self.learned_range()
+        match self.manual_plan() {
+            Some(plan) => Some(plan.range(Utc::now().date_naive())),
+            None => self.detected_range(),
+        }
+    }
+
+    /// 手動設定 (推定して確定した後の値も含む) が既にあるなら何もしない。これが「初回だけ」
+    /// であることを保証する。まだ何も検出されていない、または DB 側で既に設定済み
+    /// (他プロセス/リクエストが先に推定・永続化した等) の場合も何もしない。
+    async fn persist_inferred_range_if_needed(
+        &self,
+        db: &sea_orm::DatabaseConnection,
+    ) -> Result<(), DataProviderError> {
+        if self.manual_plan().is_some() {
+            return Ok(());
+        }
+        let Some(range) = self.detected_range() else {
+            return Ok(());
+        };
+
+        let current = crate::services::jquants_plan_setting::find_current(db)
+            .await
+            .map_err(|e| DataProviderError::Database(e.to_string()))?;
+        let already_set = current
+            .map(|row| {
+                crate::models::parse_plan_setting::<crate::models::JQuantsPlanSettingData>(
+                    row.plan_setting,
+                )
+            })
+            .transpose()
+            .map_err(|e| DataProviderError::Database(e.to_string()))?
+            .and_then(|data| data.plan)
+            .is_some();
+        if already_set {
+            return Ok(());
+        }
+
+        let inferred = JQuantsPlan::infer_from_range(range);
+        let data = crate::models::JQuantsPlanSettingData {
+            schema_version: crate::models::jquants_plan::JQUANTS_PLAN_SETTING_SCHEMA_VERSION,
+            plan: Some(inferred),
+        };
+        let value = crate::models::serialize_plan_setting(&data)
+            .map_err(|e| DataProviderError::Database(e.to_string()))?;
+        crate::services::jquants_plan_setting::save(db, value)
+            .await
+            .map_err(|e| DataProviderError::Database(e.to_string()))?;
+
+        self.set_manual_plan(Some(inferred));
+        tracing::info!(
+            ?inferred,
+            from = %range.0,
+            to = %range.1,
+            "契約範囲を検出したためプランを推定し、設定として永続化しました (初回のみ)"
+        );
+        Ok(())
     }
 
     async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {

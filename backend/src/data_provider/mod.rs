@@ -68,10 +68,21 @@ pub trait DataProvider: Send + Sync {
     /// 指定銘柄の情報を取得する
     async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError>;
 
-    /// 学習済みの契約範囲 (取得可能な最古日・最新日)。学習の仕組みを持たないプロバイダは
+    /// 把握している契約範囲 (取得可能な最古日・最新日)。把握する仕組みを持たないプロバイダは
     /// 常に `None` を返す。
     fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
         None
+    }
+
+    /// 検出済みの契約範囲を、まだ手動設定 (推定含む) が無ければ初回のみプランとして推定し、
+    /// 永続化する。対応するプロバイダ (J-Quants) のみ意味のある実装を持ち、デフォルトは no-op。
+    /// 「継続的に自動追従し続ける」のではなく「未設定の間に一度だけ推定して固定する」ための
+    /// フック。
+    async fn persist_inferred_range_if_needed(
+        &self,
+        _db: &sea_orm::DatabaseConnection,
+    ) -> Result<(), DataProviderError> {
+        Ok(())
     }
 }
 
@@ -109,6 +120,16 @@ impl DataProvider for DataProviderKind {
         match self {
             DataProviderKind::JQuants(client) => client.known_fetchable_range(),
             DataProviderKind::Ibkr(client) => client.known_fetchable_range(),
+        }
+    }
+
+    async fn persist_inferred_range_if_needed(
+        &self,
+        db: &sea_orm::DatabaseConnection,
+    ) -> Result<(), DataProviderError> {
+        match self {
+            DataProviderKind::JQuants(client) => client.persist_inferred_range_if_needed(db).await,
+            DataProviderKind::Ibkr(client) => client.persist_inferred_range_if_needed(db).await,
         }
     }
 }

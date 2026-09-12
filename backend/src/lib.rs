@@ -37,9 +37,9 @@ use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, history, hooks, hypotheses, imports, interests, macro_data, news,
-    note_hypotheses, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
-    triggers, watchlists,
+    custom_indicators, history, hooks, hypotheses, imports, interests, jquants_plan_setting,
+    macro_data, news, note_hypotheses, notes, refs, risk_policy, rss_feeds, strategies, tasks,
+    trade_notes, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -116,6 +116,7 @@ impl AppState {
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
         (name = "config", description = "frontend 向けランタイム設定値"),
         (name = "account", description = "口座全体の設定"),
+        (name = "jquants", description = "J-Quants API の契約プラン設定"),
     ),
     info(
         title = "T-Rader API",
@@ -373,6 +374,11 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(
             risk_policy::get_account_risk_policy,
             risk_policy::put_account_risk_policy
+        ))
+        // jquants (J-Quants API の契約プラン設定)
+        .routes(routes!(
+            jquants_plan_setting::get_jquants_plan_setting,
+            jquants_plan_setting::put_jquants_plan_setting
         ))
 }
 
