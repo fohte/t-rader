@@ -9,6 +9,7 @@ pub mod custom_indicators;
 pub mod history;
 pub mod hooks;
 pub mod hypotheses;
+pub mod hypothesis_proposals;
 pub mod imports;
 pub mod interests;
 pub mod macro_data;

@@ -424,3 +424,47 @@ pub struct ReadNewsResult {
     /// true なら未読がまだ残っている (limit で切られた)。再度呼び出せば続きから読める
     pub has_more: bool,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListHypothesesParams {
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct HypothesisDto {
+    pub hypothesis_id: Uuid,
+    pub strategy_id: Option<Uuid>,
+    pub title: String,
+    pub body: String,
+    pub status: String,
+    pub related_note_ids: Vec<Uuid>,
+    pub related_interest_ids: Vec<Uuid>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ListHypothesesResult {
+    pub hypotheses: Vec<HypothesisDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReadHypothesisParams {
+    pub hypothesis_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ProposeHypothesisChangeParams {
+    pub hypothesis_id: Uuid,
+    pub proposed_title: Option<String>,
+    pub proposed_body: Option<String>,
+    pub proposed_status: Option<String>,
+    /// なぜこの変更を提案するかの根拠。人間のレビュー時に必須で参照される
+    pub rationale: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ProposeHypothesisChangeResult {
+    pub proposal_id: Uuid,
+    pub status: String,
+}

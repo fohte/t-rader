@@ -11,6 +11,7 @@ pub mod checkpoint;
 pub mod comment;
 pub mod custom_indicator;
 pub mod hypothesis;
+pub mod hypothesis_proposal;
 pub mod indicator;
 pub mod instruments;
 pub mod news_item;

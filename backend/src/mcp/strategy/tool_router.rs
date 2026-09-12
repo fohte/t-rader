@@ -15,12 +15,13 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use super::dto::{
     AddInterestParams, AddInterestResult, CheckBuyableQtyParams, CheckBuyableQtyResult,
     CreateAnnotationParams, CreateAnnotationResult, EvalIndicatorParams, EvalIndicatorResult,
-    EvalPythonParams, EvalPythonResult, ListNotesParams, ListNotesResult, ListWatchTargetsParams,
-    ListWatchTargetsResult, NoteDto, QueryDataParams, QueryDataResult, QueryMediaParams,
-    QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
-    ReadCommentsResult, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
-    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
-    WriteNoteParams, WriteNoteResult,
+    EvalPythonParams, EvalPythonResult, HypothesisDto, ListHypothesesParams, ListHypothesesResult,
+    ListNotesParams, ListNotesResult, ListWatchTargetsParams, ListWatchTargetsResult, NoteDto,
+    ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
+    QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
+    ReadCommentsParams, ReadCommentsResult, ReadHypothesisParams, ReadNewsParams, ReadNewsResult,
+    ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
+    ResolveCommentParams, ResolveCommentResult, WriteNoteParams, WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{StrategyServer, execution_id_from_ctx, strategy_id_from_ctx};
@@ -293,6 +294,52 @@ impl StrategyServer {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.search_refs_inner(sid, params).await.map(Json)
     }
+
+    /// 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
+    #[tool(
+        name = "list_hypotheses",
+        description = "List hypotheses visible to the current strategy: hypotheses owned by this strategy plus account-wide (global) hypotheses, newest first.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_hypotheses(
+        &self,
+        Parameters(params): Parameters<ListHypothesesParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ListHypothesesResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.list_hypotheses_inner(sid, params).await.map(Json)
+    }
+
+    /// 単一の仮説を読む (自戦略または global)
+    #[tool(
+        name = "read_hypothesis",
+        description = "Read a single hypothesis (its title, body, and status) visible to the current strategy (own or global).",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_hypothesis(
+        &self,
+        Parameters(params): Parameters<ReadHypothesisParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<HypothesisDto>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_hypothesis_inner(sid, params).await.map(Json)
+    }
+
+    /// 仮説へのタイトル/本文/status の変更を提案として永続化する (仮説本体には反映しない)
+    #[tool(
+        name = "propose_hypothesis_change",
+        description = "Propose a change to a hypothesis's title, body, and/or status, with a rationale. The proposal is persisted but not applied — a human must approve it via the API before the hypothesis itself is updated. The agent cannot write to hypotheses directly."
+    )]
+    async fn propose_hypothesis_change(
+        &self,
+        Parameters(params): Parameters<ProposeHypothesisChangeParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ProposeHypothesisChangeResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.propose_hypothesis_change_inner(sid, params)
+            .await
+            .map(Json)
+    }
 }
 
 impl StrategyServer {
@@ -347,12 +394,15 @@ mod tests {
                 ("create_annotation", None),
                 ("eval_indicator", None),
                 ("eval_python", None),
+                ("list_hypotheses", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_watch_targets", Some(true)),
+                ("propose_hypothesis_change", None),
                 ("query_data", Some(true)),
                 ("query_media", Some(true)),
                 ("read_annotations", Some(true)),
                 ("read_comments", Some(true)),
+                ("read_hypothesis", Some(true)),
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),

@@ -7,6 +7,7 @@ pub mod comment_anchor;
 pub mod custom_indicators;
 pub mod graph;
 pub mod hypotheses;
+pub mod hypothesis_proposals;
 pub mod import;
 pub mod interests;
 pub mod investable_amount;

@@ -6,6 +6,7 @@ pub mod comment;
 pub mod config;
 pub mod custom_indicator;
 pub mod hypothesis;
+pub mod hypothesis_proposal;
 pub mod import;
 pub mod instrument;
 pub mod interest;
@@ -33,6 +34,7 @@ pub use custom_indicator::{
     UpdateCustomIndicatorRequest,
 };
 pub use hypothesis::{CreateHypothesisRequest, UpdateHypothesisRequest};
+pub use hypothesis_proposal::{ApproveHypothesisProposalResponse, ReviewHypothesisProposalRequest};
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
     SbiPreviewRow,

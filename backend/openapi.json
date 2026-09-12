@@ -2553,6 +2553,404 @@
         }
       }
     },
+    "/api/hypotheses/{id}/proposals": {
+      "get": {
+        "tags": [
+          "hypotheses"
+        ],
+        "summary": "特定の仮説への変更提案一覧 (作成日時降順)",
+        "operationId": "list_proposals_for_hypothesis",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "仮説 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HypothesisProposal"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hypothesis-proposals": {
+      "get": {
+        "tags": [
+          "hypothesis_proposals"
+        ],
+        "summary": "仮説への変更提案一覧 (作成日時降順)。`hypothesis_id`/`status` で任意に絞り込める。",
+        "operationId": "list_hypothesis_proposals",
+        "parameters": [
+          {
+            "name": "hypothesis_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HypothesisProposal"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hypothesis-proposals/{id}": {
+      "get": {
+        "tags": [
+          "hypothesis_proposals"
+        ],
+        "summary": "提案を取得する",
+        "operationId": "get_hypothesis_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "提案 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisProposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hypothesis-proposals/{id}/approve": {
+      "post": {
+        "tags": [
+          "hypothesis_proposals"
+        ],
+        "summary": "提案を承認する。`pending` の場合のみ、指定されたフィールドだけを仮説本体に反映する\n(`approved`/`rejected` からの再承認・却下の扱いは `services::hypothesis_proposals` 参照)",
+        "operationId": "approve_hypothesis_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "提案 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewHypothesisProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveHypothesisProposalResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "既に却下済み",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hypothesis-proposals/{id}/reject": {
+      "post": {
+        "tags": [
+          "hypothesis_proposals"
+        ],
+        "summary": "提案を却下する。仮説本体には反映されない。",
+        "operationId": "reject_hypothesis_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "提案 ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewHypothesisProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HypothesisProposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "既に承認済み",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/imports/sbi/commit": {
       "post": {
         "tags": [
@@ -8392,6 +8790,22 @@
           }
         }
       },
+      "ApproveHypothesisProposalResponse": {
+        "type": "object",
+        "description": "提案承認のレスポンス。承認により反映された仮説本体を併せて返す。",
+        "required": [
+          "proposal",
+          "hypothesis"
+        ],
+        "properties": {
+          "hypothesis": {
+            "$ref": "#/components/schemas/Hypothesis"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/HypothesisProposal"
+          }
+        }
+      },
       "Bar": {
         "type": "object",
         "required": [
@@ -9383,6 +9797,67 @@
           }
         }
       },
+      "HypothesisProposal": {
+        "type": "object",
+        "required": [
+          "id",
+          "hypothesis_id",
+          "rationale",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "hypothesis_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "proposed_body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proposed_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "review_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "Indicator": {
         "type": "object",
         "required": [
@@ -9824,6 +10299,19 @@
             "description": "一致しなかった場合は None"
           }
         }
+      },
+      "ReviewHypothesisProposalRequest": {
+        "type": "object",
+        "properties": {
+          "review_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "任意のレビューコメント"
+          }
+        },
+        "additionalProperties": false
       },
       "RssFeed": {
         "type": "object",
@@ -11065,6 +11553,10 @@
     {
       "name": "hypotheses",
       "description": "仮説 (global 作成・戦略の有無を問わない generic エンドポイント)"
+    },
+    {
+      "name": "hypothesis_proposals",
+      "description": "仮説への変更提案 (エージェントが作成し、人間が承認/却下する)"
     },
     {
       "name": "imports",

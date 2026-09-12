@@ -9,6 +9,7 @@ pub use super::checkpoint::Entity as Checkpoint;
 pub use super::comment::Entity as Comment;
 pub use super::custom_indicator::Entity as CustomIndicator;
 pub use super::hypothesis::Entity as Hypothesis;
+pub use super::hypothesis_proposal::Entity as HypothesisProposal;
 pub use super::indicator::Entity as Indicator;
 pub use super::instruments::Entity as Instruments;
 pub use super::news_item::Entity as NewsItem;
