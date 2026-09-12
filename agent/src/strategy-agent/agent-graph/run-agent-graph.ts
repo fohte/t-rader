@@ -17,7 +17,10 @@ import type {
   AgentGraphConfig,
   AgentGraphPhase,
 } from '#strategy-agent/agent-graph/types'
-import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
+import type {
+  McpToolsClient,
+  StrategyAgentResult,
+} from '#strategy-agent/strategy-agent'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
@@ -54,7 +57,9 @@ export interface RunAgentGraphDeps {
 export interface RunAgentGraphContext {
   readonly agentsMd: string
   readonly skills: Readonly<Record<string, string>>
-  readonly tools: readonly DynamicStructuredTool[]
+  // 実行ステップ 1 件だけを担う MCP client を組み立てる。同時に開いている
+  // コネクション数を並列度で抑えるため、ステップの終了時に close される。
+  readonly createStepMcpClient: (executionStepId: string) => McpToolsClient
   readonly originalPromptText: string
   // 実行中のフェーズ/for_each 要素ごとの進捗を都度通知する。呼び出し側は
   // 受け取った配列全体を steps の最新状態として扱う (差分ではない)。
@@ -137,13 +142,14 @@ const createPhaseAgent = (
   deps: RunAgentGraphDeps,
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
+  tools: readonly DynamicStructuredTool[],
 ): CompiledPhaseAgent => {
   // 省略時は全 tool を許可する (単一フェーズの現行挙動と同じ)。
   const { tools: phaseTools } = phase
   const filteredTools =
     phaseTools === undefined
-      ? context.tools
-      : context.tools.filter((tool) => phaseTools.includes(tool.name))
+      ? tools
+      : tools.filter((tool) => phaseTools.includes(tool.name))
   const filteredSkills: Record<string, string> = {}
   for (const name of phase.skills) {
     const body = context.skills[name]
@@ -300,7 +306,9 @@ const resolveForEachItems = (
 // spanId (OTel 未設定時は NoopTracer により固定値になる) とは独立に
 // executionStepId を生成し、invokePhaseWithRetry の再試行間で使い回す。
 const invokeAndRecordStep = (
-  agent: CompiledPhaseAgent,
+  deps: RunAgentGraphDeps,
+  phase: AgentGraphPhase,
+  context: RunAgentGraphContext,
   messages: readonly HumanMessage[],
   requiredArrayFields: ReadonlySet<string>,
   recorder: StepRecorder,
@@ -323,32 +331,48 @@ const invokeAndRecordStep = (
       traceId: spanIds.traceId,
       spanId: spanIds.spanId,
     })
-    return invokePhaseWithRetry(
-      agent,
-      messages,
-      executionStepId,
-      requiredArrayFields,
-    ).then((result) => {
-      if (result.isErr()) {
-        recorder.finish(index, {
-          status: 'failed',
-          error: errorMessage(result.error),
+    const stepMcpClient = context.createStepMcpClient(executionStepId)
+    return (
+      Promise.resolve()
+        .then(async () =>
+          invokePhaseWithRetry(
+            createPhaseAgent(
+              deps,
+              phase,
+              context,
+              await stepMcpClient.getTools(),
+            ),
+            messages,
+            executionStepId,
+            requiredArrayFields,
+          ),
+        )
+        // getTools() の失敗 (コネクションを張れない等) も invoke の失敗と同じ
+        // 経路でステップの失敗として記録する。
+        .catch((error: unknown) => err(error))
+        .then((result) => {
+          recorder.finish(
+            index,
+            result.isErr()
+              ? { status: 'failed', error: errorMessage(result.error) }
+              : { status: 'completed', output: result.value },
+          )
+          return result
         })
-      } else {
-        recorder.finish(index, {
-          status: 'completed',
-          output: result.value,
-        })
-      }
-      return result
-    })
+        .finally(() =>
+          // close の失敗でステップの決着を取り消さない。
+          stepMcpClient.close().catch((closeError: unknown) => {
+            console.error('failed to close step MCP client:', closeError)
+          }),
+        )
+    )
   })
 
 const runForEachItems = async (
+  deps: RunAgentGraphDeps,
   phase: AgentGraphPhase,
   context: RunAgentGraphContext,
   priorResults: Readonly<Record<string, unknown>>,
-  agent: CompiledPhaseAgent,
   items: readonly unknown[],
   recorder: StepRecorder,
   requiredArrayFields: ReadonlySet<string>,
@@ -379,7 +403,9 @@ const runForEachItems = async (
           priorResults,
         })
         return invokeAndRecordStep(
-          agent,
+          deps,
+          phase,
+          context,
           [new HumanMessage(messageText)],
           requiredArrayFields,
           recorder,
@@ -430,7 +456,6 @@ const runPhase = async (
   recorder: StepRecorder,
   requiredArrayFieldsByPhase: ReadonlyMap<string, ReadonlySet<string>>,
 ): Promise<Result<unknown, unknown>> => {
-  const agent = createPhaseAgent(deps, phase, context)
   const requiredArrayFields =
     requiredArrayFieldsByPhase.get(phase.key) ?? new Set<string>()
 
@@ -448,7 +473,9 @@ const runPhase = async (
       priorResults,
     })
     return invokeAndRecordStep(
-      agent,
+      deps,
+      phase,
+      context,
       [new HumanMessage(messageText)],
       requiredArrayFields,
       recorder,
@@ -467,10 +494,10 @@ const runPhase = async (
     context.previousSteps?.filter((s) => s.phaseKey === phase.key) ?? []
 
   return runForEachItems(
+    deps,
     phase,
     context,
     priorResults,
-    agent,
     itemsResult.value,
     recorder,
     requiredArrayFields,

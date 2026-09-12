@@ -15,6 +15,7 @@ import {
 } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { AgentGraphConfig } from '#strategy-agent/agent-graph/types'
+import type { McpToolsClient } from '#strategy-agent/strategy-agent'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
 // NoopTracer (テスト環境では実 exporter を設定しないため) が返す固定の invalid
@@ -40,6 +41,13 @@ const buildFakeTool = (name: string): DynamicStructuredTool =>
     description: `fake ${name} tool`,
     schema: z.object({}),
     func: () => Promise.resolve('unused in these tests'),
+  })
+
+const buildStepMcpClientFactory =
+  (tools: readonly DynamicStructuredTool[] = []) =>
+  (): McpToolsClient => ({
+    getTools: () => Promise.resolve([...tools]),
+    close: () => Promise.resolve(),
   })
 
 interface InvokeCall {
@@ -145,7 +153,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'original request',
     })
 
@@ -216,7 +224,7 @@ describe('runAgentGraph', () => {
     await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -259,7 +267,7 @@ describe('runAgentGraph', () => {
     await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: { 'skill-a': 'body a', 'skill-b': 'body b' },
-      tools: [toolA, toolB],
+      createStepMcpClient: buildStepMcpClientFactory([toolA, toolB]),
       originalPromptText: 'req',
     })
 
@@ -303,7 +311,7 @@ describe('runAgentGraph', () => {
     await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [toolA, toolB],
+      createStepMcpClient: buildStepMcpClientFactory([toolA, toolB]),
       originalPromptText: 'req',
     })
 
@@ -356,7 +364,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -392,7 +400,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -433,7 +441,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -469,7 +477,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -531,7 +539,7 @@ describe('runAgentGraph', () => {
       const result = await runAgentGraph(deps, config, {
         agentsMd: 'AGENTS',
         skills: {},
-        tools: [],
+        createStepMcpClient: buildStepMcpClientFactory(),
         originalPromptText: 'req',
       })
 
@@ -568,7 +576,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -621,7 +629,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -654,7 +662,7 @@ describe('runAgentGraph', () => {
     await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
       onStepsChanged: (steps) => notifications.push(steps),
     })
@@ -730,7 +738,7 @@ describe('runAgentGraph', () => {
     await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
       onStepsChanged: (steps) => notifications.push(steps),
     })
@@ -817,7 +825,7 @@ describe('runAgentGraph', () => {
     await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -888,7 +896,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
       onStepsChanged: (steps) => notifications.push(steps),
     })
@@ -1010,7 +1018,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -1058,7 +1066,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
     })
 
@@ -1090,7 +1098,7 @@ describe('runAgentGraph', () => {
     await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
       onStepsChanged: (steps) => notifications.push(steps),
     })
@@ -1145,7 +1153,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
       onStepsChanged: (steps) => notifications.push(steps),
       previousSteps: [
@@ -1228,7 +1236,7 @@ describe('runAgentGraph', () => {
     const result = await runAgentGraph(deps, config, {
       agentsMd: 'AGENTS',
       skills: {},
-      tools: [],
+      createStepMcpClient: buildStepMcpClientFactory(),
       originalPromptText: 'req',
       previousSteps: [
         buildPreviousStep({
@@ -1303,7 +1311,7 @@ describe('runAgentGraph', () => {
       const result = await runAgentGraph(deps, buildForEachConfig(), {
         agentsMd: 'AGENTS',
         skills: {},
-        tools: [],
+        createStepMcpClient: buildStepMcpClientFactory(),
         originalPromptText: 'req',
         onStepsChanged: (steps) => notifications.push(steps),
         previousSteps: [
@@ -1378,7 +1386,7 @@ describe('runAgentGraph', () => {
       const result = await runAgentGraph(deps, buildForEachConfig(), {
         agentsMd: 'AGENTS',
         skills: {},
-        tools: [],
+        createStepMcpClient: buildStepMcpClientFactory(),
         originalPromptText: 'req',
         previousSteps: [
           buildPreviousStep({
@@ -1435,7 +1443,7 @@ describe('runAgentGraph', () => {
       const result = await runAgentGraph(deps, buildForEachConfig(), {
         agentsMd: 'AGENTS',
         skills: {},
-        tools: [],
+        createStepMcpClient: buildStepMcpClientFactory(),
         originalPromptText: 'req',
         // previousSteps 自体は存在するが、対象の item (H3) 分は含まれない
         // ケース: 未消費のまま残っている他要素分と誤ってマッチしないことを確認する。

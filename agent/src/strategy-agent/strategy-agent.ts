@@ -43,9 +43,6 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
 
-// RunnableConfig.configurable 経由で beforeToolCall まで実行ステップ ID を運ぶキー。
-const MCP_EXECUTION_STEP_ID_CONFIG_KEY = 'mcpExecutionStepId'
-
 const DEFAULT_PURPOSE = 'default'
 
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
@@ -86,7 +83,7 @@ export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
   readonly createMcpClient: (
     strategyId: string,
-    taskId: string,
+    executionId: string,
   ) => McpToolsClient
   readonly createChatModel: (
     model: string,
@@ -162,13 +159,6 @@ const buildCompiledAgent = (
           // 提出を強制するため、graph 自体の recursionLimit (デフォルト 25) は
           // それより十分先に置き、実際に効くのは finalTurnMiddleware 側にする。
           recursionLimit: MAX_MODEL_CALLS_PER_INVOKE * 3,
-          ...(input.executionStepId !== undefined
-            ? {
-                configurable: {
-                  [MCP_EXECUTION_STEP_ID_CONFIG_KEY]: input.executionStepId,
-                },
-              }
-            : {}),
         },
       )
       // createAgent の推論型では structuredResponse は常に存在する扱いだが、
@@ -220,23 +210,6 @@ const createDefaultBuildPhaseAgent =
       responseFormat: toolStrategy(options.responseSchema),
     })
 
-// client.fork() は headers をまるごと置き換える (元の headers とマージしない) ため、
-// x-execution-id を差し替える際は x-strategy-id も一緒に返す必要がある。
-export const resolveMcpToolCallHeaders = (
-  strategyId: string,
-  taskId: string,
-  configurable: Record<string, unknown> | undefined,
-): { headers?: Record<string, string> } => {
-  const stepId = configurable?.[MCP_EXECUTION_STEP_ID_CONFIG_KEY]
-  if (typeof stepId !== 'string') return {}
-  return {
-    headers: {
-      [STRATEGY_ID_HEADER]: strategyId,
-      [EXECUTION_ID_HEADER]: `${taskId}:${stepId}`,
-    },
-  }
-}
-
 type ReasoningEffort = NonNullable<
   NonNullable<
     NonNullable<ConstructorParameters<typeof ChatOpenAI>[0]>['reasoning']
@@ -248,26 +221,17 @@ export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
 ): StrategyAgentDeps => ({
   fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
-  createMcpClient: (strategyId, taskId) =>
+  createMcpClient: (strategyId, executionId) =>
     new MultiServerMCPClient({
       mcpServers: {
         strategy: {
           url: config.strategyMcpUrl,
           headers: {
             [STRATEGY_ID_HEADER]: strategyId,
-            [EXECUTION_ID_HEADER]: taskId,
+            [EXECUTION_ID_HEADER]: executionId,
           },
         },
       },
-      // headers を返すたびに client.fork() が新規コネクションを張る
-      // (@langchain/mcp-adapters の ConnectionManager#forkClient は既存コネクションを
-      // 再利用しない)。生成されたコネクションは mcpClient.close() まで閉じられない。
-      beforeToolCall: (_toolCall, _state, runnableConfig) =>
-        resolveMcpToolCallHeaders(
-          strategyId,
-          taskId,
-          runnableConfig.configurable,
-        ),
     }),
   createChatModel: (model, options) =>
     new ChatOpenAI({
@@ -363,73 +327,75 @@ export const runStrategyAgent = async (
   }
 
   // mcpClient is already constructed at this point, so chain construction
-  // itself throwing synchronously (e.g. getTools() or fetchAgentConfig)
-  // must still reach the .finally() below and close it. Wrapped in .then()
+  // itself throwing synchronously (e.g. fetchAgentConfig) must still reach
+  // the .finally() below and close it. Wrapped in .then()
   // (rather than relying on this function's own `async` to convert a
   // synchronous throw to a rejection) makes that explicit.
   return Promise.resolve()
-    .then(() => {
-      // Started before fetchAgentConfig is awaited below so it's already
-      // in flight rather than sequenced after it.
-      const toolsResult = ResultAsync.fromPromise(
-        mcpClient.getTools(),
-        (error) => error,
-      )
-
-      // Chained via andThen (rather than Promise.all) so a fetchAgentConfig
-      // failure fails fast instead of waiting out toolsResult first —
-      // ResultAsync.fromPromise never rejects, so Promise.all would
-      // otherwise wait for both to settle regardless of which one failed.
-      return deps
+    .then(() =>
+      deps
         .fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
-        .andThen((agentConfig) =>
-          toolsResult.andThen((tools) => {
-            const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
-            if (parsedGraph.isErr()) {
-              return errAsync(parsedGraph.error)
-            }
-            // agent_graph が設定されている場合は多段フェーズのオーケストレー
-            // ターに委譲する。これは既に StrategyAgentResult に resolve
-            // される (reject はしないが、fromPromise を通すことで想定外の
-            // throw も下の toErrorResult と同じ経路に流す)。
-            if (parsedGraph.value !== undefined) {
-              return ResultAsync.fromPromise(
-                runAgentGraph(deps, parsedGraph.value, {
-                  agentsMd: agentConfig.agentsMd,
-                  skills: agentConfig.skills,
-                  tools,
-                  originalPromptText: extractMessageText(userMessage),
-                  ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
-                  ...(previousSteps !== undefined ? { previousSteps } : {}),
-                }).then((result) => {
-                  if (result.status === 'failed') {
-                    console.error(
-                      'strategy agent execution failed:',
-                      result.message,
-                    )
-                    captureWithFingerprint(
-                      new Error(result.message),
-                      EXECUTION_FAILED_FINGERPRINT,
-                      { extras: { strategyId } },
-                    )
-                  }
-                  return result
-                }),
-                (error) => error,
-              )
-            }
-
-            const agent = deps.buildAgent({
-              model: deps.createChatModel(agentConfig.model),
-              tools,
-              systemPrompt: buildSystemPrompt(agentConfig),
-            })
+        .andThen((agentConfig) => {
+          const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
+          if (parsedGraph.isErr()) {
+            return errAsync(parsedGraph.error)
+          }
+          // agent_graph が設定されている場合は多段フェーズのオーケストレー
+          // ターに委譲する。これは既に StrategyAgentResult に resolve
+          // される (reject はしないが、fromPromise を通すことで想定外の
+          // throw も下の toErrorResult と同じ経路に流す)。
+          if (parsedGraph.value !== undefined) {
             return ResultAsync.fromPromise(
-              agent.invoke({
-                messages: [new HumanMessage(extractMessageText(userMessage))],
+              runAgentGraph(deps, parsedGraph.value, {
+                agentsMd: agentConfig.agentsMd,
+                skills: agentConfig.skills,
+                // ステップごとに専用の client を張り、そのステップの終了時に
+                // 閉じる。x-execution-id は構築時に固定するため、tool 呼び出し
+                // ごとにコネクションが増えない。
+                createStepMcpClient: (executionStepId) =>
+                  deps.createMcpClient(
+                    strategyId,
+                    `${taskId}:${executionStepId}`,
+                  ),
+                originalPromptText: extractMessageText(userMessage),
+                ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
+                ...(previousSteps !== undefined ? { previousSteps } : {}),
+              }).then((result) => {
+                if (result.status === 'failed') {
+                  console.error(
+                    'strategy agent execution failed:',
+                    result.message,
+                  )
+                  captureWithFingerprint(
+                    new Error(result.message),
+                    EXECUTION_FAILED_FINGERPRINT,
+                    { extras: { strategyId } },
+                  )
+                }
+                return result
               }),
               (error) => error,
-            ).map((invokeResult): StrategyAgentResult => {
+            )
+          }
+
+          return ResultAsync.fromPromise(mcpClient.getTools(), (error) => error)
+            .andThen((tools) =>
+              ResultAsync.fromPromise(
+                deps
+                  .buildAgent({
+                    model: deps.createChatModel(agentConfig.model),
+                    tools,
+                    systemPrompt: buildSystemPrompt(agentConfig),
+                  })
+                  .invoke({
+                    messages: [
+                      new HumanMessage(extractMessageText(userMessage)),
+                    ],
+                  }),
+                (error) => error,
+              ),
+            )
+            .map((invokeResult): StrategyAgentResult => {
               if (invokeResult.structuredResponse === undefined) {
                 return {
                   status: 'failed',
@@ -449,10 +415,9 @@ export const runStrategyAgent = async (
                 errorKind: 'agent_error',
               }
             })
-          }),
-        )
-        .match((r) => r, toErrorResult)
-    })
+        })
+        .match((r) => r, toErrorResult),
+    )
     .catch((error: unknown) => toErrorResult(error))
     .finally(() => closeMcpClient())
 }
