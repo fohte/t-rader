@@ -214,6 +214,6 @@ describe('FloatingChatView', () => {
 
     const input = screen.getByLabelText('メッセージ入力')
     expect(input).toBeDisabled()
-    expect(input).toHaveAttribute('placeholder', '戦略ホームを開いてください')
+    expect(input).toHaveAttribute('placeholder', '戦略ページを開いてください')
   })
 })

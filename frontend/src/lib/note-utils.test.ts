@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  buildSnippet,
-  extractRefs,
-  formatRelative,
-  isNewerThan,
-} from '#lib/note-utils'
+import { buildSnippet, extractRefs, formatRelative } from '#lib/note-utils'
 
 describe('extractRefs', () => {
   it('returns frontmatter refs when present', () => {
@@ -82,17 +77,5 @@ describe('formatRelative', () => {
 
   it('handles future timestamps as 「たった今」 instead of leaking clock skew', () => {
     expect(formatRelative('2026-06-07T13:00:00Z', now)).toBe('たった今')
-  })
-})
-
-describe('isNewerThan', () => {
-  it('treats null since as always newer', () => {
-    expect(isNewerThan('2020-01-01T00:00:00Z', null)).toBe(true)
-  })
-
-  it('compares against since timestamp', () => {
-    const since = new Date('2026-06-01T00:00:00Z').getTime()
-    expect(isNewerThan('2026-06-02T00:00:00Z', since)).toBe(true)
-    expect(isNewerThan('2026-05-30T00:00:00Z', since)).toBe(false)
   })
 })

@@ -72,11 +72,11 @@ export function HypothesisDetailPage({
     <div className="space-y-4 font-sans text-foreground">
       {hypothesis.strategy_id != null && (
         <Link
-          to="/strategies/$id"
+          to="/strategies/$id/performance"
           params={{ id: hypothesis.strategy_id }}
           className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-primary"
         >
-          &lt; 戦略ホームに戻る
+          &lt; 戦略成績に戻る
         </Link>
       )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-hypothesis-detail)">

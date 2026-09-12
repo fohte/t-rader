@@ -14,16 +14,18 @@ import { Input } from '#components/ui/input'
 import { $api } from '#lib/api/client'
 
 interface CreateHypothesisDialogProps {
-  strategyId: string
+  initialStrategyId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 export function CreateHypothesisDialog({
-  strategyId,
+  initialStrategyId,
   open,
   onOpenChange,
 }: CreateHypothesisDialogProps) {
+  const { data: strategies = [] } = $api.useQuery('get', '/api/strategies')
+  const [strategyId, setStrategyId] = useState(initialStrategyId ?? '')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
@@ -34,6 +36,7 @@ export function CreateHypothesisDialog({
   )
 
   function reset() {
+    setStrategyId(initialStrategyId ?? '')
     setTitle('')
     setBody('')
     setFormError(null)
@@ -44,6 +47,10 @@ export function CreateHypothesisDialog({
     if (createMutation.isPending) return
     const trimmedTitle = title.trim()
     const trimmedBody = body.trim()
+    if (strategyId === '') {
+      setFormError('戦略は必須です')
+      return
+    }
     if (trimmedTitle === '') {
       setFormError('title は必須です')
       return
@@ -60,11 +67,7 @@ export function CreateHypothesisDialog({
       {
         onSuccess: () => {
           void queryClient.invalidateQueries({
-            queryKey: $api.queryOptions(
-              'get',
-              '/api/strategies/{id}/hypotheses',
-              { params: { path: { id: strategyId } } },
-            ).queryKey,
+            queryKey: $api.queryOptions('get', '/api/hypotheses').queryKey,
           })
           reset()
           onOpenChange(false)
@@ -92,6 +95,29 @@ export function CreateHypothesisDialog({
               関心の組合せに対する検証可能な主張を書きます。
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-2">
+            <label
+              htmlFor="hypothesis-strategy"
+              className="block font-mono text-2xs uppercase tracking-wide text-muted-foreground"
+            >
+              戦略 *
+            </label>
+            <select
+              id="hypothesis-strategy"
+              value={strategyId}
+              onChange={(e) => {
+                setStrategyId(e.target.value)
+              }}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
+            >
+              <option value="">選択してください</option>
+              {strategies.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-2">
             <label
               htmlFor="hypothesis-title"

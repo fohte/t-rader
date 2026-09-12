@@ -1,16 +1,18 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { InterestTree } from '#components/strategy-home/interest-tree'
 import { RiskPolicyTab } from '#components/strategy-settings/risk-policy-tab'
 import { TriggersTab } from '#components/strategy-settings/triggers-tab'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
-type TabKey = 'triggers' | 'risk-policy'
+type TabKey = 'triggers' | 'risk-policy' | 'interests'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'triggers', label: 'Triggers' },
   { key: 'risk-policy', label: 'リスク上限' },
+  { key: 'interests', label: '関心' },
 ]
 
 export const Route = createFileRoute('/strategies/$id/settings')({
@@ -48,11 +50,10 @@ function StrategySettingsPage() {
     <div className="space-y-5">
       <div>
         <Link
-          to="/strategies/$id"
-          params={{ id }}
+          to="/strategies"
           className="font-mono text-xs text-muted-foreground hover:text-foreground"
         >
-          &lt; {strategy.name} に戻る
+          &lt; 戦略一覧に戻る
         </Link>
       </div>
       <header>
@@ -92,6 +93,7 @@ function StrategySettingsPage() {
       <section role="tabpanel">
         {tab === 'triggers' && <TriggersTab strategyId={id} />}
         {tab === 'risk-policy' && <RiskPolicyTab strategyId={id} />}
+        {tab === 'interests' && <InterestTree strategyId={id} />}
       </section>
     </div>
   )

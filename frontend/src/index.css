@@ -103,7 +103,6 @@
   --grid-cols-hypothesis-detail: minmax(0, 1fr) 280px;
   --grid-cols-annotation-fields: 120px minmax(0, 1fr);
   --grid-cols-note-detail: minmax(0, 1fr) 340px;
-  --grid-cols-strategy-home: minmax(0, 1fr) 320px;
   --grid-cols-task-run: minmax(0, 1fr) 360px;
   --grid-cols-step-detail: 64px 1fr;
   --grid-cols-history-entry: auto auto 1fr;

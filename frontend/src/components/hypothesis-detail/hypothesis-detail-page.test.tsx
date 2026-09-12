@@ -239,17 +239,17 @@ describe('HypothesisDetailPage', () => {
     expect(screen.getByLabelText('title')).toHaveValue('draft in progress')
   })
 
-  it('strategy_id がある場合、戦略ホームに戻るリンクが表示される', async () => {
+  it('strategy_id がある場合、戦略成績に戻るリンクが表示される', async () => {
     await renderInRouter(makeHypothesis({ strategy_id: 'strat-1' }))
     await screen.findByLabelText('title')
     expect(
-      screen.queryByRole('link', { name: /戦略ホームに戻る/ }),
+      screen.queryByRole('link', { name: /戦略成績に戻る/ }),
     ).not.toBeNull()
   })
 
-  it('strategy_id が null の場合、戦略ホームに戻るリンクは表示されない', async () => {
+  it('strategy_id が null の場合、戦略成績に戻るリンクは表示されない', async () => {
     await renderInRouter(makeHypothesis({ strategy_id: null }))
     await screen.findByLabelText('title')
-    expect(screen.queryByRole('link', { name: /戦略ホームに戻る/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /戦略成績に戻る/ })).toBeNull()
   })
 })

@@ -137,11 +137,11 @@ function AnnotationDetailPage() {
       {annotation.strategy_id != null && (
         <div>
           <Link
-            to="/strategies/$id"
+            to="/strategies/$id/performance"
             params={{ id: annotation.strategy_id }}
             className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground-strong hover:text-primary"
           >
-            ← 戦略ホームに戻る
+            ← 戦略成績に戻る
           </Link>
         </div>
       )}
