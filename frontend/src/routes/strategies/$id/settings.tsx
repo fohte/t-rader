@@ -63,7 +63,7 @@ function StrategySettingsPage() {
           戦略設定 — {strategy.name}
         </h1>
         <p className="text-sm text-muted-foreground-strong">
-          基本情報・trigger・リスク上限を編集します。
+          基本情報・trigger・リスク上限・関心を編集します。
         </p>
       </header>
 

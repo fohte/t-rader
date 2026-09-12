@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { DeleteStrategyDialog } from '#components/strategy-settings/delete-strategy-dialog'
 import { Button } from '#components/ui/button'
@@ -24,27 +24,27 @@ export function GeneralTab({ strategyId }: GeneralTabProps) {
   const initialDescription = strategy?.description ?? ''
   const [name, setName] = useState(initialName)
   const [description, setDescription] = useState(initialDescription)
-  // 前回 GET から作った初期値。これと現在値が一致していれば「ユーザー未編集」と判定できる
-  const lastInitialRef = useRef({
-    name: initialName,
-    description: initialDescription,
-  })
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  useEffect(() => {
-    if (
-      name === lastInitialRef.current.name &&
-      description === lastInitialRef.current.description
-    ) {
+  // レンダー中に GET 由来の初期値の変化を検知し、未編集のフィールドだけ同期する。
+  // name/description をまとめて 1 つの ref で追従させると、一方を編集中にもう一方が
+  // refetch で更新された場合に同期が丸ごとスキップされ、保存時に古い値で上書きして
+  // しまうため、hypothesis-editor.tsx と同じくフィールドごとに独立した ref で追従する
+  const prevInitialNameRef = useRef(initialName)
+  const prevInitialDescriptionRef = useRef(initialDescription)
+  if (prevInitialNameRef.current !== initialName) {
+    if (name === prevInitialNameRef.current) {
       setName(initialName)
+    }
+    prevInitialNameRef.current = initialName
+  }
+  if (prevInitialDescriptionRef.current !== initialDescription) {
+    if (description === prevInitialDescriptionRef.current) {
       setDescription(initialDescription)
     }
-    lastInitialRef.current = {
-      name: initialName,
-      description: initialDescription,
-    }
-  }, [initialName, initialDescription, name, description])
+    prevInitialDescriptionRef.current = initialDescription
+  }
 
   if (isPending) {
     return <Skeleton className="h-60 w-full max-w-lg" />

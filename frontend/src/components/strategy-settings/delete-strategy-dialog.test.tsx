@@ -149,6 +149,9 @@ describe('DeleteStrategyDialog', () => {
     await user.type(input, '途中まで入力')
     await user.click(screen.getByRole('button', { name: 'キャンセル' }))
 
+    await waitFor(() => {
+      expect(input).toHaveValue('')
+    })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

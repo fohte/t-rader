@@ -114,7 +114,7 @@ afterEach(() => {
 })
 
 describe('GeneralTab', () => {
-  it('GET の値が名前・説明の入力欄の初期値に反映される', async () => {
+  it('GET の値が名前の入力欄の初期値に反映される', async () => {
     setup({ id: 'strat-1', name: '半導体短期スイング', description: '狙い' })
 
     await waitFor(() => {
@@ -122,7 +122,14 @@ describe('GeneralTab', () => {
         '半導体短期スイング',
       )
     })
-    expect(screen.getByLabelText('説明')).toHaveValue('狙い')
+  })
+
+  it('GET の値が説明の入力欄の初期値に反映される', async () => {
+    setup({ id: 'strat-1', name: '半導体短期スイング', description: '狙い' })
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('説明')).toHaveValue('狙い')
+    })
   })
 
   it('説明が未設定なら入力欄を空にする', async () => {

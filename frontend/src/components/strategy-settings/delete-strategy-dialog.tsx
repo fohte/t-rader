@@ -34,6 +34,7 @@ export function DeleteStrategyDialog({
 
   function reset() {
     setConfirmText('')
+    deleteMutation.reset()
   }
 
   function handleDelete() {
@@ -92,6 +93,7 @@ export function DeleteStrategyDialog({
             type="button"
             variant="outline"
             onClick={() => {
+              reset()
               onOpenChange(false)
             }}
           >
