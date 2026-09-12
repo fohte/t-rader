@@ -7,6 +7,7 @@ describe('toStepJson', () => {
   it('converts a running for_each step to snake_case, keeping optional fields present', () => {
     const step: StrategyTaskStep = {
       phaseKey: 'investigate',
+      executionStepId: 'exec-1',
       label: '仮説の調査',
       model: 'deepseek-v4-flash',
       status: 'running',
@@ -19,6 +20,7 @@ describe('toStepJson', () => {
 
     expect(toStepJson(step)).toEqual({
       phase_key: 'investigate',
+      execution_step_id: 'exec-1',
       label: '仮説の調査',
       model: 'deepseek-v4-flash',
       status: 'running',
@@ -33,6 +35,7 @@ describe('toStepJson', () => {
   it('keeps output/finished_at and omits item/item_label/error when unset (non-for_each, completed step)', () => {
     const step: StrategyTaskStep = {
       phaseKey: 'plan',
+      executionStepId: 'exec-2',
       label: '調査計画',
       model: 'claude-opus-4',
       status: 'completed',
@@ -45,6 +48,7 @@ describe('toStepJson', () => {
 
     expect(toStepJson(step)).toEqual({
       phase_key: 'plan',
+      execution_step_id: 'exec-2',
       label: '調査計画',
       model: 'claude-opus-4',
       status: 'completed',
@@ -59,6 +63,7 @@ describe('toStepJson', () => {
   it('keeps item but omits item_label when label_field is not configured', () => {
     const step: StrategyTaskStep = {
       phaseKey: 'investigate',
+      executionStepId: 'exec-4',
       label: '仮説の調査',
       model: 'deepseek-v4-flash',
       status: 'running',
@@ -70,6 +75,7 @@ describe('toStepJson', () => {
 
     expect(toStepJson(step)).toEqual({
       phase_key: 'investigate',
+      execution_step_id: 'exec-4',
       label: '仮説の調査',
       model: 'deepseek-v4-flash',
       status: 'running',
@@ -83,6 +89,7 @@ describe('toStepJson', () => {
   it('includes error and omits output for a failed step', () => {
     const step: StrategyTaskStep = {
       phaseKey: 'plan',
+      executionStepId: 'exec-3',
       label: '調査計画',
       model: 'claude-opus-4',
       status: 'failed',
@@ -95,6 +102,7 @@ describe('toStepJson', () => {
 
     expect(toStepJson(step)).toEqual({
       phase_key: 'plan',
+      execution_step_id: 'exec-3',
       label: '調査計画',
       model: 'claude-opus-4',
       status: 'failed',

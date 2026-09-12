@@ -50,6 +50,7 @@ function makeStep(
   overrides: Partial<TaskStep> & Pick<TaskStep, 'phase_key'>,
 ): TaskStep {
   return {
+    execution_step_id: 'exec-1',
     label: '仮説の調査',
     model: 'deepseek-v4-flash',
     status: 'completed',

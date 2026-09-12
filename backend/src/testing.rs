@@ -107,7 +107,6 @@ pub async fn insert_test_strategy_task(
         error_summary: Set(None),
         result_text: Set(None),
         deadline_at: Set(created_at + chrono::Duration::minutes(15)),
-        steps: Set(serde_json::json!([])),
         purpose: Set(purpose.map(str::to_string)),
         created_at: Set(created_at),
         updated_at: Set(created_at),

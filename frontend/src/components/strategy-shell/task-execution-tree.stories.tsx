@@ -84,6 +84,7 @@ export const Completed: Story = {
           }),
           {
             phase_key: 'merge',
+            execution_step_id: 'exec-merge-0001',
             label: '統合',
             model: 'claude-sonnet-4',
             status: 'completed',

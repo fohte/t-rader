@@ -20,6 +20,7 @@ export const CONFIG_PHASES: AgentGraphPhaseSummary[] = [
 
 export const PLAN_STEP: TaskStep = {
   phase_key: 'plan',
+  execution_step_id: 'exec-plan-0001',
   label: '調査計画',
   model: 'claude-opus-4',
   status: 'completed',
@@ -48,6 +49,7 @@ export function investigateStep(
 ): TaskStep {
   return {
     phase_key: 'investigate',
+    execution_step_id: `exec-investigate-${title}`,
     label: '仮説の調査',
     model: 'deepseek-v4-flash',
     status,
