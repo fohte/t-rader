@@ -29,6 +29,7 @@ mod m20260910_034756_add_agent_config;
 mod m20260910_144115_add_strategy_task_purpose;
 mod m20260910_144144_add_strategy_interest_status;
 mod m20260911_005614_drop_strategy_agent_columns;
+mod m20260912_022210_drop_strategy_risk_policy;
 
 pub struct Migrator;
 
@@ -64,6 +65,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260910_144115_add_strategy_task_purpose::Migration),
             Box::new(m20260910_144144_add_strategy_interest_status::Migration),
             Box::new(m20260911_005614_drop_strategy_agent_columns::Migration),
+            Box::new(m20260912_022210_drop_strategy_risk_policy::Migration),
         ]
     }
 }

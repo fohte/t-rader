@@ -9,17 +9,6 @@ fn current_schema_version() -> i32 {
     RISK_POLICY_SCHEMA_VERSION
 }
 
-/// `strategy.risk_policy` の中身。分子は銘柄の保有時価、分母はその戦略の投資可能額
-/// (`strategy_investable_amount` の現在値)。
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct StrategyRiskPolicyData {
-    #[serde(default = "current_schema_version")]
-    pub schema_version: i32,
-    /// (0, 1] の範囲。未設定 (上限なし) なら `None`
-    #[serde(default)]
-    pub max_position_ratio: Option<Decimal>,
-}
-
 /// `account_risk_policy.risk_policy` の中身。分子はそのセクターに属する保有銘柄の時価合計
 /// (口座全体、全戦略横断)、分母は口座全体の保有銘柄時価合計。
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -68,26 +57,6 @@ pub fn serialize_risk_policy<T: serde::Serialize>(
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct PutStrategyRiskPolicyRequest {
-    /// 銘柄の保有時価 / 戦略の投資可能額 の上限比率。(0, 1] の範囲。`null` で上限を解除する
-    pub max_position_ratio: Option<Decimal>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct StrategyRiskPolicyResponse {
-    pub max_position_ratio: Option<Decimal>,
-}
-
-impl From<StrategyRiskPolicyData> for StrategyRiskPolicyResponse {
-    fn from(data: StrategyRiskPolicyData) -> Self {
-        Self {
-            max_position_ratio: data.max_position_ratio,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
 pub struct PutAccountRiskPolicyRequest {
     /// セクターに属する保有銘柄の時価合計 (口座全体) / 口座全体の保有銘柄時価合計 の上限比率。
     /// (0, 1] の範囲。`null` で上限を解除する
@@ -125,28 +94,28 @@ mod tests {
     }
 
     #[test]
-    fn test_strategy_risk_policy_data_defaults_unknown_and_missing_fields() {
-        let value: StrategyRiskPolicyData = serde_json::from_value(serde_json::json!({
+    fn test_account_risk_policy_data_defaults_unknown_and_missing_fields() {
+        let value: AccountRiskPolicyData = serde_json::from_value(serde_json::json!({
             "schema_version": 1,
-            "max_position_ratio": "0.15",
+            "max_sector_ratio": "0.15",
             "future_field": "x",
         }))
         .expect("parse");
         assert_eq!(
             value,
-            StrategyRiskPolicyData {
+            AccountRiskPolicyData {
                 schema_version: 1,
-                max_position_ratio: Some(Decimal::new(15, 2)),
+                max_sector_ratio: Some(Decimal::new(15, 2)),
             }
         );
 
-        let missing: StrategyRiskPolicyData =
+        let missing: AccountRiskPolicyData =
             serde_json::from_value(serde_json::json!({})).expect("parse with defaults");
         assert_eq!(
             missing,
-            StrategyRiskPolicyData {
+            AccountRiskPolicyData {
                 schema_version: RISK_POLICY_SCHEMA_VERSION,
-                max_position_ratio: None,
+                max_sector_ratio: None,
             }
         );
     }

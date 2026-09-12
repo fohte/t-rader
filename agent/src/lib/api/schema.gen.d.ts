@@ -1071,24 +1071,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/api/strategies/{id}/risk-policy': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** 戦略の銘柄集中度上限 (`max_position_ratio`) を取得 */
-    get: operations['get_risk_policy']
-    /** 戦略の銘柄集中度上限 (`max_position_ratio`) を更新。`null` で上限を解除する */
-    put: operations['put_risk_policy']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/strategies/{id}/tasks': {
     parameters: {
       query?: never
@@ -1845,13 +1827,6 @@ export interface components {
        */
       effective_at?: string | null
     }
-    PutStrategyRiskPolicyRequest: {
-      /**
-       * Format: double
-       * @description 銘柄の保有時価 / 戦略の投資可能額 の上限比率。(0, 1] の範囲。`null` で上限を解除する
-       */
-      max_position_ratio?: number | null
-    }
     /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
     RefResolution: {
       id: string
@@ -1952,7 +1927,6 @@ export interface components {
       /** Format: uuid */
       id: string
       name: string
-      risk_policy: components['schemas']['Value']
       /** Format: int32 */
       sort_order: number
       /** Format: date-time */
@@ -1993,10 +1967,6 @@ export interface components {
       source: string
       title: string
       url: string
-    }
-    StrategyRiskPolicyResponse: {
-      /** Format: double */
-      max_position_ratio?: number | null
     }
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
@@ -6862,120 +6832,6 @@ export interface operations {
         }
       }
       404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  get_risk_policy: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyRiskPolicyResponse']
-        }
-      }
-      /** @description リクエストパラメータが不正 */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  put_risk_policy: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PutStrategyRiskPolicyRequest']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyRiskPolicyResponse']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      422: {
         headers: {
           [name: string]: unknown
         }

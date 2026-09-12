@@ -203,7 +203,6 @@ mod tests {
             sort_order: Set(0),
             created_at: NotSet,
             updated_at: NotSet,
-            risk_policy: NotSet,
         }
         .insert(db)
         .await
