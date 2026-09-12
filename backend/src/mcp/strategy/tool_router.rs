@@ -22,7 +22,9 @@ use super::dto::{
     ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, WriteNoteParams,
     WriteNoteResult,
 };
-use super::{StrategyServer, execution_id_from_ctx, strategy_id_from_ctx};
+use super::{
+    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, strategy_id_from_ctx,
+};
 
 #[tool_router]
 impl StrategyServer {
@@ -38,7 +40,10 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<QueryDataResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
-        self.query_data_inner(sid, params).await.map(Json)
+        let execution_step_id = execution_step_id_from_ctx(&ctx);
+        self.query_data_inner(sid, execution_step_id, params)
+            .await
+            .map(Json)
     }
 
     /// ノートを作成または更新する

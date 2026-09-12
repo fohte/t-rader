@@ -25,6 +25,7 @@ pub mod strategy_interest;
 pub mod strategy_investable_amount;
 pub mod strategy_task;
 pub mod strategy_task_step;
+pub mod strategy_task_step_evidence;
 pub mod theme;
 pub mod trade;
 pub mod trigger;
