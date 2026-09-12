@@ -22,11 +22,12 @@ use super::dto::{
     ReadCommentsParams, ReadCommentsResult, ReadHypothesisParams, ReadNewsParams, ReadNewsResult,
     ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
     ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
-    WriteNoteParams, WriteNoteResult,
+    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
-    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, strategy_id_from_ctx,
+    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, execution_task_id_from_ctx,
+    strategy_id_from_ctx,
 };
 
 #[tool_router]
@@ -240,6 +241,24 @@ impl StrategyServer {
         self.query_media_inner(sid, params).await.map(Json)
     }
 
+    /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
+    #[tool(
+        name = "search_web",
+        description = "Search the web for a free-form query using an LLM with web search enabled (defaults to a ChatGPT Plus-backed model; override the model via the WEB_SEARCH_MODEL env var, e.g. to switch to Gemini). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes not yet tracked by add_interest / RSS feeds. Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        annotations(read_only_hint = true)
+    )]
+    async fn search_web(
+        &self,
+        Parameters(params): Parameters<SearchWebParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<SearchWebResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        let task_execution_id = execution_task_id_from_ctx(&ctx);
+        self.search_web_inner(sid, task_execution_id, params)
+            .await
+            .map(Json)
+    }
+
     /// 口座全体 (全戦略横断) の保有銘柄と実現損益、および接続元戦略のスライスを時価で返す
     #[tool(
         name = "read_portfolio",
@@ -431,6 +450,7 @@ mod tests {
                 ("resolve_comment", None),
                 ("search_news", Some(true)),
                 ("search_refs", Some(true)),
+                ("search_web", Some(true)),
                 ("write_note", None),
             ]
             .into_iter()

@@ -87,6 +87,12 @@ pub struct FilePart {
 struct ChatCompletionRequest<'a> {
     model: &'a str,
     messages: &'a [ChatMessage],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    web_search_options: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allowed_openai_params: Option<Vec<&'a str>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -201,6 +207,9 @@ impl LiteLlmClient {
             .json(&ChatCompletionRequest {
                 model,
                 messages: &messages,
+                stream: None,
+                web_search_options: None,
+                allowed_openai_params: None,
             })
             .send()
             .await
@@ -228,10 +237,168 @@ impl LiteLlmClient {
                 LiteLlmError::Parse("chat completion response has no message content".into())
             })
     }
+
+    /// OpenAI 互換の `/v1/chat/completions` を `stream: true` + `web_search_options` 付きで呼び、
+    /// web 検索結果を踏まえたテキストと出典 URL を返す。
+    ///
+    /// ChatGPT Plus 経由のモデル (`chatgpt/*`) は上流が `stream: true` でしか応答しないため
+    /// (非ストリーミングだと LiteLLM の Responses API bridge が output を復元できない)、
+    /// この tool は常にストリーミングで呼ぶ。他のモデル (Gemini 等) でも同じ経路で問題なく動く。
+    pub async fn web_search(
+        &self,
+        model: &str,
+        query: &str,
+    ) -> Result<WebSearchOutcome, LiteLlmError> {
+        let url = format!("{}/v1/chat/completions", self.base_url);
+        let messages = vec![ChatMessage {
+            role: "user",
+            content: vec![ContentPart::Text {
+                text: query.to_string(),
+            }],
+        }];
+        let response = self
+            .http
+            .post(url)
+            .timeout(CHAT_COMPLETION_TIMEOUT)
+            .json(&ChatCompletionRequest {
+                model,
+                messages: &messages,
+                stream: Some(true),
+                web_search_options: Some(serde_json::json!({})),
+                allowed_openai_params: Some(vec!["web_search_options"]),
+            })
+            .send()
+            .await
+            .map_err(|e| LiteLlmError::Network(e.to_string()))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let message = response.text().await.unwrap_or_default();
+            return Err(LiteLlmError::Api {
+                status: status.as_u16(),
+                message,
+            });
+        }
+
+        let body = response
+            .text()
+            .await
+            .map_err(|e| LiteLlmError::Network(e.to_string()))?;
+
+        parse_sse_chat_completion(&body)
+    }
+}
+
+/// `web_search` の結果
+#[derive(Debug, Clone, PartialEq)]
+pub struct WebSearchOutcome {
+    pub text: String,
+    /// 出典 URL。重複除去済み、出現順
+    pub citations: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ChatCompletionChunk {
+    #[serde(default)]
+    choices: Vec<ChatCompletionChunkChoice>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ChatCompletionChunkChoice {
+    #[serde(default)]
+    delta: ChatCompletionChunkDelta,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ChatCompletionChunkDelta {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    annotations: Vec<ChunkAnnotation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChunkAnnotation {
+    #[serde(default)]
+    url_citation: Option<UrlCitation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UrlCitation {
+    url: String,
+}
+
+/// markdown リンク `[...](https://...)` の URL を手動パースで抽出する
+/// (`text.find("](")` → 直後から次の `)` まで、`http` で始まるものだけ)。
+fn extract_markdown_link_urls(text: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    let mut rest = text;
+    while let Some(open_idx) = rest.find("](") {
+        let after_open = &rest[open_idx + 2..];
+        let Some(close_idx) = after_open.find(')') else {
+            break;
+        };
+        let candidate = &after_open[..close_idx];
+        if candidate.starts_with("http") {
+            urls.push(candidate.to_string());
+        }
+        rest = &after_open[close_idx + 1..];
+    }
+    urls
+}
+
+/// SSE 形式 (`data: {...}\n\n` の繰り返し、末尾 `data: [DONE]`) の chat completion
+/// ストリームをパースし、テキストと出典 URL に変換する。
+fn parse_sse_chat_completion(body: &str) -> Result<WebSearchOutcome, LiteLlmError> {
+    let mut text = String::new();
+    let mut citations: Vec<String> = Vec::new();
+    let mut saw_data_chunk = false;
+
+    for line in body.lines() {
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+
+        let chunk: ChatCompletionChunk = serde_json::from_str(data)
+            .map_err(|e| LiteLlmError::Parse(format!("failed to parse sse chunk: {e}")))?;
+        saw_data_chunk = true;
+
+        for choice in chunk.choices {
+            if let Some(content) = choice.delta.content {
+                text.push_str(&content);
+            }
+            for annotation in choice.delta.annotations {
+                if let Some(url_citation) = annotation.url_citation
+                    && !citations.contains(&url_citation.url)
+                {
+                    citations.push(url_citation.url);
+                }
+            }
+        }
+    }
+
+    if !saw_data_chunk {
+        return Err(LiteLlmError::Parse(
+            "sse response has no data chunks".into(),
+        ));
+    }
+
+    for url in extract_markdown_link_urls(&text) {
+        if !citations.contains(&url) {
+            citations.push(url);
+        }
+    }
+
+    Ok(WebSearchOutcome { text, citations })
 }
 
 #[cfg(test)]
 mod tests {
+    use indoc::indoc;
     use rstest::rstest;
     use serde_json::json;
     use wiremock::matchers::{method, path};
@@ -378,5 +545,105 @@ mod tests {
             .await
             .expect_err("expected error");
         assert!(matches!(err, LiteLlmError::Parse(_)));
+    }
+
+    #[rstest]
+    #[case::content_split_across_multiple_chunks(
+        indoc! {r#"
+            data: {"choices":[{"delta":{"content":"hello "}}]}
+
+            data: {"choices":[{"delta":{"content":"world"}}]}
+
+            data: [DONE]
+
+        "#},
+        WebSearchOutcome {
+            text: "hello world".to_string(),
+            citations: vec![],
+        }
+    )]
+    #[case::annotations_become_citations(
+        indoc! {r#"
+            data: {"choices":[{"delta":{"content":"summary","annotations":[{"url_citation":{"url":"https://a.example/1"}},{"url_citation":{"url":"https://a.example/1"}},{"url_citation":{"url":"https://a.example/2"}}]}}]}
+
+            data: [DONE]
+
+        "#},
+        WebSearchOutcome {
+            text: "summary".to_string(),
+            citations: vec![
+                "https://a.example/1".to_string(),
+                "https://a.example/2".to_string(),
+            ],
+        }
+    )]
+    #[case::markdown_link_fallback_only_adds_missing_urls(
+        indoc! {r#"
+            data: {"choices":[{"delta":{"content":"see [a](https://a.example/1) and [b](https://b.example/2)","annotations":[{"url_citation":{"url":"https://a.example/1"}}]}}]}
+
+            data: [DONE]
+
+        "#},
+        WebSearchOutcome {
+            text: "see [a](https://a.example/1) and [b](https://b.example/2)".to_string(),
+            citations: vec![
+                "https://a.example/1".to_string(),
+                "https://b.example/2".to_string(),
+            ],
+        }
+    )]
+    fn parse_sse_chat_completion_cases(#[case] body: &str, #[case] expected: WebSearchOutcome) {
+        assert_eq!(
+            parse_sse_chat_completion(body).expect("parse sse"),
+            expected
+        );
+    }
+
+    #[test]
+    fn parse_sse_chat_completion_errors_when_no_data_chunks() {
+        let err = parse_sse_chat_completion("\n").expect_err("expected error");
+        assert!(matches!(err, LiteLlmError::Parse(_)));
+    }
+
+    #[tokio::test]
+    async fn web_search_returns_text_and_citations_and_sends_stream_and_web_search_options() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(indoc! {r#"
+                data: {"choices":[{"delta":{"content":"半導体銘柄が上昇","annotations":[{"url_citation":{"url":"https://news.example/1"}}]}}]}
+
+                data: [DONE]
+
+            "#}))
+            .mount(&server)
+            .await;
+
+        let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
+        let outcome = client
+            .web_search("chatgpt/gpt-5.6-luna", "半導体関連の最新ニュース")
+            .await
+            .expect("web search ok");
+        assert_eq!(
+            outcome,
+            WebSearchOutcome {
+                text: "半導体銘柄が上昇".to_string(),
+                citations: vec!["https://news.example/1".to_string()],
+            }
+        );
+
+        let requests = server.received_requests().await.expect("recorded requests");
+        assert_eq!(requests.len(), 1);
+        let body: serde_json::Value = requests[0].body_json().expect("parse request body");
+        assert_eq!(
+            body,
+            json!({
+                "model": "chatgpt/gpt-5.6-luna",
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "半導体関連の最新ニュース"}]}],
+                "stream": true,
+                "web_search_options": {},
+                "allowed_openai_params": ["web_search_options"],
+            })
+        );
     }
 }
