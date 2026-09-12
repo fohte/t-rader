@@ -26,6 +26,10 @@ import type {
 import { runAgentGraph } from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import {
+  fromStepJson,
+  strategyTaskStepJsonSchema,
+} from '#strategy-agent/agent-graph/step'
+import {
   finalTurnMiddleware,
   MAX_MODEL_CALLS_PER_INVOKE,
 } from '#strategy-agent/final-turn-middleware'
@@ -285,14 +289,26 @@ export const createStrategyAgentDeps = (
   buildPhaseAgent: createDefaultBuildPhaseAgent(config.genAiProviderName),
 })
 
+// resumeSteps の不正な要素 (backend が壊れた JSON を送ってくることは想定しないが、
+// 契約上 unknown の配列として届く) は無視し、パースできた分だけ再開情報として使う。
+const parseResumeSteps = (
+  resumeSteps: unknown[] | undefined,
+): StrategyTaskStep[] | undefined =>
+  resumeSteps
+    ?.map((raw) => strategyTaskStepJsonSchema.safeParse(raw))
+    .filter((result) => result.success)
+    .map((result) => fromStepJson(result.data))
+
 export const runStrategyAgent = async (
   deps: StrategyAgentDeps,
   strategyId: string,
   purpose: string | undefined,
   taskId: string,
   userMessage: Message,
+  resumeSteps: unknown[] | undefined,
   onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
 ): Promise<StrategyAgentResult> => {
+  const previousSteps = parseResumeSteps(resumeSteps)
   const mcpClient = deps.createMcpClient(strategyId, taskId)
 
   const closeMcpClient = (): Promise<void> =>
@@ -360,6 +376,7 @@ export const runStrategyAgent = async (
                   tools,
                   originalPromptText: extractMessageText(userMessage),
                   ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
+                  ...(previousSteps !== undefined ? { previousSteps } : {}),
                 }).then((result) => {
                   if (result.status === 'failed') {
                     console.error(

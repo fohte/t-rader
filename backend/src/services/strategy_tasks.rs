@@ -139,6 +139,18 @@ pub enum GetTaskError {
     Database(#[from] sea_orm::DbErr),
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ResumeTaskError {
+    #[error("strategy task {0} not found")]
+    NotFound(Uuid),
+    #[error("strategy task {0} is not failed (current phase: {1})")]
+    NotFailed(Uuid, &'static str),
+    #[error(transparent)]
+    Database(#[from] sea_orm::DbErr),
+    #[error(transparent)]
+    AgentTask(#[from] AgentTaskError),
+}
+
 /// 戦略 Agent にタスクを投入する。
 ///
 /// Pending 行を先に INSERT してから t-rader-agent 内部 API に投入する。投入成功後は
@@ -199,6 +211,7 @@ pub async fn submit_task(
             strategy_id,
             prompt,
             purpose,
+            resume_steps: None,
         })
         .await
     {
@@ -249,6 +262,95 @@ pub async fn submit_task(
         );
         return Err(SubmitTaskError::Database(err));
     }
+
+    Ok(SubmittedTask {
+        task_id,
+        a2a_task_id: agent_ref.task_id,
+    })
+}
+
+/// failed な戦略タスクを、成功済みステップを再実行せずに同じ行のまま再開する。
+///
+/// 新しい strategy_task 行は作らない (a2a_task_id だけ差し替え、phase を Running に戻す)。
+/// 全 strategy_task_step 行 (completed/failed/running 問わず) を `resume_steps` として
+/// agent に渡し、どのステップをスキップするか (status=completed のみ) は agent 側の判断に
+/// 委ねる — backend は中身を解釈しない。
+pub async fn resume_task(
+    db: &DatabaseConnection,
+    agent_client: &SharedAgentTaskClient,
+    task_id: Uuid,
+) -> Result<SubmittedTask, ResumeTaskError> {
+    let row = strategy_task::Entity::find_by_id(task_id)
+        .one(db)
+        .await?
+        .ok_or(ResumeTaskError::NotFound(task_id))?;
+    if row.phase != StrategyTaskPhase::Failed {
+        return Err(ResumeTaskError::NotFailed(task_id, phase_str(&row.phase)));
+    }
+
+    let step_rows = strategy_task_step::Entity::find()
+        .filter(strategy_task_step::Column::TaskId.eq(task_id))
+        .order_by_asc(strategy_task_step::Column::Seq)
+        .all(db)
+        .await?;
+    let resume_steps = step_rows
+        .into_iter()
+        .map(step_to_resume_wire_json)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| {
+            ResumeTaskError::Database(sea_orm::DbErr::Custom(format!(
+                "failed to serialize strategy_task_step: {err}"
+            )))
+        })?;
+
+    let agent_ref = match agent_client
+        .submit(SubmitAgentTask {
+            strategy_id: row.strategy_id,
+            prompt: row.prompt.clone(),
+            purpose: row.purpose.clone(),
+            resume_steps: (!resume_steps.is_empty()).then_some(resume_steps),
+        })
+        .await
+    {
+        Ok(agent_ref) => agent_ref,
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                task_id = %task_id,
+                "agent task resume submission failed",
+            );
+            let failed = strategy_task::ActiveModel {
+                task_id: Set(task_id),
+                phase: Set(StrategyTaskPhase::Failed),
+                error_summary: Set(Some(format!("agent task resume submission failed: {err}"))),
+                updated_at: Set(chrono::Utc::now().fixed_offset()),
+                ..Default::default()
+            };
+            if let Err(update_err) = failed.update(db).await {
+                // submit_task と同様、行は Failed のまま error_summary の更新にだけ失敗した
+                // 状態になり得る。ログから早期発見できるようにする。
+                tracing::error!(
+                    error = %update_err,
+                    task_id = %task_id,
+                    "failed to record resume submission failure on strategy_task",
+                );
+            }
+            return Err(ResumeTaskError::AgentTask(err));
+        }
+    };
+
+    let now = chrono::Utc::now().fixed_offset();
+    let running = strategy_task::ActiveModel {
+        task_id: Set(task_id),
+        a2a_task_id: Set(Some(agent_ref.task_id.clone())),
+        phase: Set(StrategyTaskPhase::Running),
+        error_summary: Set(None),
+        result_text: Set(None),
+        deadline_at: Set(now + DEADLINE_DURATION),
+        updated_at: Set(now),
+        ..Default::default()
+    };
+    running.update(db).await?;
 
     Ok(SubmittedTask {
         task_id,
@@ -403,6 +505,52 @@ fn step_to_wire_json(
     })
 }
 
+/// `POST /internal/tasks` の `resume_steps` 配列 1 要素分の wire JSON 形状。
+/// `StrategyTaskStepWireJson` と異なり `execution_step_id` を含む: agent が再実行時に
+/// 同じ id を使い回すことで MCP tool 呼び出しの `x-execution-id` を安定させ、ノート書き込み
+/// (execution_id で既存ノートを探して更新する) の重複を防ぐ契約のため。
+#[derive(serde::Serialize)]
+struct ResumeStepWireJson {
+    execution_step_id: Uuid,
+    phase_key: String,
+    label: String,
+    model: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<serde_json::Value>,
+    started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    finished_at: Option<String>,
+    trace_id: String,
+    span_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn step_to_resume_wire_json(
+    row: strategy_task_step::Model,
+) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::to_value(ResumeStepWireJson {
+        execution_step_id: row.execution_step_id,
+        phase_key: row.phase_key,
+        label: row.label,
+        model: row.model,
+        status: step_status_str(&row.status).to_string(),
+        item: row.item,
+        item_label: row.item_label,
+        output: row.output,
+        started_at: row.started_at.to_rfc3339(),
+        finished_at: row.finished_at.map(|t| t.to_rfc3339()),
+        trace_id: row.trace_id,
+        span_id: row.span_id,
+        error: row.error,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -443,5 +591,203 @@ mod tests {
 
         let task_count = strategy_task::Entity::find().count(&db).await.unwrap();
         assert_eq!(task_count, 0);
+    }
+
+    async fn insert_task_with_phase(
+        db: &DatabaseConnection,
+        strategy_id: Uuid,
+        phase: StrategyTaskPhase,
+        prompt: &str,
+        purpose: Option<&str>,
+    ) -> Uuid {
+        let task_id = Uuid::new_v4();
+        let now = chrono::Utc::now().fixed_offset();
+        strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            strategy_id: Set(strategy_id),
+            a2a_task_id: Set(None),
+            source: Set(TaskSource::Review.as_str().to_string()),
+            prompt: Set(prompt.to_string()),
+            phase: Set(phase),
+            error_summary: Set(Some("boom".to_string())),
+            result_text: Set(Some("stale result".to_string())),
+            deadline_at: Set(now),
+            purpose: Set(purpose.map(str::to_string)),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(db)
+        .await
+        .expect("insert test strategy_task");
+        task_id
+    }
+
+    async fn insert_task_step(
+        db: &DatabaseConnection,
+        task_id: Uuid,
+        execution_step_id: Uuid,
+        phase_key: &str,
+        status: StrategyTaskStepStatus,
+        seq: i64,
+    ) {
+        strategy_task_step::ActiveModel {
+            execution_step_id: Set(execution_step_id),
+            task_id: Set(task_id),
+            phase_key: Set(phase_key.to_string()),
+            label: Set(phase_key.to_string()),
+            model: Set("m".to_string()),
+            status: Set(status),
+            item: Set(None),
+            item_label: Set(None),
+            output: Set(None),
+            started_at: Set(chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").unwrap()),
+            finished_at: Set(None),
+            trace_id: Set("trace-1".to_string()),
+            span_id: Set("span-1".to_string()),
+            error: Set(None),
+            seq: Set(seq),
+        }
+        .insert(db)
+        .await
+        .expect("insert test strategy_task_step");
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_task_rejects_when_not_failed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id =
+            insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Running, "p", None).await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let err = resume_task(&db, &agent_client, task_id)
+            .await
+            .expect_err("running task must not be resumable");
+        assert!(
+            matches!(&err, ResumeTaskError::NotFailed(id, phase) if *id == task_id && *phase == "running")
+        );
+        assert!(fake.submitted.lock().await.is_empty());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_task_not_found(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let task_id = Uuid::new_v4();
+
+        let err = resume_task(&db, &agent_client, task_id)
+            .await
+            .expect_err("missing task should fail");
+        assert!(matches!(err, ResumeTaskError::NotFound(id) if id == task_id));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_task_resubmits_all_steps_and_updates_the_row_in_place(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id = insert_task_with_phase(
+            &db,
+            strategy_id,
+            StrategyTaskPhase::Failed,
+            "prompt text",
+            Some("explore"),
+        )
+        .await;
+        let completed_step_id = Uuid::new_v4();
+        let failed_step_id = Uuid::new_v4();
+        insert_task_step(
+            &db,
+            task_id,
+            completed_step_id,
+            "plan",
+            StrategyTaskStepStatus::Completed,
+            1,
+        )
+        .await;
+        insert_task_step(
+            &db,
+            task_id,
+            failed_step_id,
+            "investigate",
+            StrategyTaskStepStatus::Failed,
+            2,
+        )
+        .await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_next_task_id("agent-task-resumed").await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let started_at = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .unwrap()
+            .to_rfc3339();
+
+        let submitted = resume_task(&db, &agent_client, task_id)
+            .await
+            .expect("resume ok");
+
+        let submitted_resume_steps = fake
+            .submitted
+            .lock()
+            .await
+            .first()
+            .expect("submit called once")
+            .resume_steps
+            .clone()
+            .expect("resume_steps present");
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row still exists");
+
+        #[derive(Debug, PartialEq)]
+        struct ResumeOutcome {
+            submitted_a2a_task_id: String,
+            resume_steps: Vec<serde_json::Value>,
+            row_a2a_task_id: Option<String>,
+            row_phase: StrategyTaskPhase,
+            row_error_summary: Option<String>,
+            row_result_text: Option<String>,
+        }
+
+        assert_eq!(
+            ResumeOutcome {
+                submitted_a2a_task_id: submitted.a2a_task_id,
+                resume_steps: submitted_resume_steps,
+                row_a2a_task_id: row.a2a_task_id,
+                row_phase: row.phase,
+                row_error_summary: row.error_summary,
+                row_result_text: row.result_text,
+            },
+            ResumeOutcome {
+                submitted_a2a_task_id: "agent-task-resumed".to_string(),
+                resume_steps: vec![
+                    serde_json::json!({
+                        "execution_step_id": completed_step_id,
+                        "phase_key": "plan",
+                        "label": "plan",
+                        "model": "m",
+                        "status": "completed",
+                        "started_at": started_at,
+                        "trace_id": "trace-1",
+                        "span_id": "span-1",
+                    }),
+                    serde_json::json!({
+                        "execution_step_id": failed_step_id,
+                        "phase_key": "investigate",
+                        "label": "investigate",
+                        "model": "m",
+                        "status": "failed",
+                        "started_at": started_at,
+                        "trace_id": "trace-1",
+                        "span_id": "span-1",
+                    }),
+                ],
+                row_a2a_task_id: Some("agent-task-resumed".to_string()),
+                row_phase: StrategyTaskPhase::Running,
+                row_error_summary: None,
+                row_result_text: None,
+            },
+        );
     }
 }

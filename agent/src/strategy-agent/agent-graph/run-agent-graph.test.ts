@@ -1097,6 +1097,350 @@ describe('runAgentGraph', () => {
       },
     ])
   })
+
+  it('skips a completed phase on resume, reusing its output for downstream phases', async () => {
+    const { deps, calls } = buildDeps(() =>
+      Promise.resolve({ structuredResponse: { value: 'B-OUT' } }),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+        {
+          key: 'stepB',
+          label: 'Step B',
+          model: 'model-b',
+          prompt: 'do B',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+    const notifications: (readonly StrategyTaskStep[])[] = []
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+      previousSteps: [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '11111111-1111-1111-1111-111111111111',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'completed',
+          output: { value: 'PREV-A-OUT' },
+          startedAt: '2020-01-01T00:00:00.000Z',
+          finishedAt: '2020-01-01T00:00:01.000Z',
+          traceId: 'prev-trace-a',
+          spanId: 'prev-span-a',
+        },
+      ],
+    })
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '2フェーズの実行が完了しました (Step A → Step B)',
+    })
+    // stepA は invoke されず、その出力だけが stepB のメッセージに引き継がれる。
+    expect(normalizeExecutionStepIds(calls)).toEqual([
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'do B',
+          item: undefined,
+          priorResults: { stepA: { value: 'PREV-A-OUT' } },
+        }),
+        executionStepId: '<execution-step-id-1>',
+      },
+    ])
+    const last = notifications.at(-1)
+    expect(
+      last === undefined ? undefined : normalizeStepTimestamps(last),
+    ).toEqual([
+      {
+        phaseKey: 'stepA',
+        executionStepId: '<execution-step-id-1>',
+        label: 'Step A',
+        model: 'model-a',
+        status: 'completed',
+        output: { value: 'PREV-A-OUT' },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: 'prev-trace-a',
+        spanId: 'prev-span-a',
+      },
+      {
+        phaseKey: 'stepB',
+        executionStepId: '<execution-step-id-2>',
+        label: 'Step B',
+        model: 'model-b',
+        status: 'completed',
+        output: { value: 'B-OUT' },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+    ])
+  })
+
+  it('re-runs a non-completed phase on resume, reusing its original executionStepId', async () => {
+    const { deps, calls } = buildDeps(() =>
+      Promise.resolve({ structuredResponse: { value: 'A-OUT' } }),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          skills: [],
+          tools: [],
+          output: { value: { type: 'string' } },
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+      previousSteps: [
+        {
+          phaseKey: 'stepA',
+          executionStepId: '22222222-2222-2222-2222-222222222222',
+          label: 'Step A',
+          model: 'model-a',
+          status: 'failed',
+          error: 'boom',
+          startedAt: '2020-01-01T00:00:00.000Z',
+          finishedAt: '2020-01-01T00:00:01.000Z',
+          traceId: 'prev-trace-a',
+          spanId: 'prev-span-a',
+        },
+      ],
+    })
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (Step A)',
+    })
+    expect(calls).toEqual([
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'do A',
+          item: undefined,
+          priorResults: {},
+        }),
+        executionStepId: '22222222-2222-2222-2222-222222222222',
+      },
+    ])
+  })
+
+  it('resumes a for_each phase: skips completed items, re-runs failed items reusing their executionStepId, and runs new items fresh', async () => {
+    // H1 は完了済みのためスキップされ invoke されない。for_each は要素の並びに
+    // 沿って同期的に呼ばれる (他のテストと同じ前提) ので、非 plan の呼び出しは
+    // 出現順に H2, H3 に対応する。
+    let nonPlanCalls = 0
+    const { deps, calls } = buildDeps((call) => {
+      if (call.messageText.includes('do plan')) {
+        return Promise.resolve({
+          structuredResponse: {
+            hypotheses: [{ title: 'H1' }, { title: 'H2' }, { title: 'H3' }],
+          },
+        })
+      }
+      nonPlanCalls++
+      return Promise.resolve({
+        structuredResponse: { note: nonPlanCalls === 1 ? 'H2-NEW' : 'H3-NEW' },
+      })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { hypotheses: { type: 'array' } },
+        },
+        {
+          key: 'investigate',
+          label: 'Investigate',
+          model: 'm',
+          prompt: 'do investigate',
+          forEach: 'plan.hypotheses',
+          labelField: 'title',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+    const notifications: (readonly StrategyTaskStep[])[] = []
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      tools: [],
+      originalPromptText: 'req',
+      onStepsChanged: (steps) => notifications.push(steps),
+      previousSteps: [
+        {
+          phaseKey: 'investigate',
+          executionStepId: '33333333-3333-3333-3333-333333333333',
+          label: 'Investigate',
+          model: 'm',
+          status: 'completed',
+          item: { title: 'H1' },
+          itemLabel: 'H1',
+          output: { note: 'H1-OLD' },
+          startedAt: '2020-01-01T00:00:00.000Z',
+          finishedAt: '2020-01-01T00:00:01.000Z',
+          traceId: 'prev-trace-h1',
+          spanId: 'prev-span-h1',
+        },
+        {
+          phaseKey: 'investigate',
+          executionStepId: '44444444-4444-4444-4444-444444444444',
+          label: 'Investigate',
+          model: 'm',
+          status: 'failed',
+          item: { title: 'H2' },
+          itemLabel: 'H2',
+          error: 'boom',
+          startedAt: '2020-01-01T00:00:00.000Z',
+          finishedAt: '2020-01-01T00:00:01.000Z',
+          traceId: 'prev-trace-h2',
+          spanId: 'prev-span-h2',
+        },
+      ],
+    })
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '2フェーズの実行が完了しました (Plan → Investigate)',
+    })
+    expect(normalizeExecutionStepIds(calls)).toEqual([
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'do plan',
+          item: undefined,
+          priorResults: {},
+        }),
+        executionStepId: '<execution-step-id-1>',
+      },
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'do investigate',
+          item: { title: 'H2' },
+          priorResults: {
+            plan: {
+              hypotheses: [{ title: 'H1' }, { title: 'H2' }, { title: 'H3' }],
+            },
+          },
+        }),
+        executionStepId: '<execution-step-id-2>',
+      },
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'do investigate',
+          item: { title: 'H3' },
+          priorResults: {
+            plan: {
+              hypotheses: [{ title: 'H1' }, { title: 'H2' }, { title: 'H3' }],
+            },
+          },
+        }),
+        executionStepId: '<execution-step-id-3>',
+      },
+    ])
+    const last = notifications.at(-1)
+    expect(
+      last === undefined ? undefined : normalizeStepTimestamps(last),
+    ).toEqual([
+      {
+        phaseKey: 'plan',
+        executionStepId: '<execution-step-id-1>',
+        label: 'Plan',
+        model: 'm',
+        status: 'completed',
+        output: {
+          hypotheses: [{ title: 'H1' }, { title: 'H2' }, { title: 'H3' }],
+        },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'investigate',
+        executionStepId: '<execution-step-id-2>',
+        label: 'Investigate',
+        model: 'm',
+        status: 'completed',
+        item: { title: 'H1' },
+        itemLabel: 'H1',
+        output: { note: 'H1-OLD' },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: 'prev-trace-h1',
+        spanId: 'prev-span-h1',
+      },
+      {
+        phaseKey: 'investigate',
+        executionStepId: '<execution-step-id-3>',
+        label: 'Investigate',
+        model: 'm',
+        status: 'completed',
+        item: { title: 'H2' },
+        itemLabel: 'H2',
+        output: { note: 'H2-NEW' },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+      {
+        phaseKey: 'investigate',
+        executionStepId: '<execution-step-id-4>',
+        label: 'Investigate',
+        model: 'm',
+        status: 'completed',
+        item: { title: 'H3' },
+        itemLabel: 'H3',
+        output: { note: 'H3-NEW' },
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+        traceId: NOOP_TRACE_ID,
+        spanId: NOOP_SPAN_ID,
+      },
+    ])
+  })
 })
 
 describe('buildPhaseMessageText', () => {

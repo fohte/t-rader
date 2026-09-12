@@ -170,6 +170,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect.soft(result).toEqual({ status: 'completed', message: 'done' })
@@ -201,6 +202,7 @@ describe('runStrategyAgent', () => {
       'purpose-a',
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(calls.fetchAgentConfigKey).toEqual({
@@ -222,6 +224,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(result).toEqual({
@@ -242,6 +245,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(result).toEqual({
@@ -267,6 +271,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(result).toEqual({
@@ -288,6 +293,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(result).toEqual({
@@ -311,6 +317,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(result).toEqual({
@@ -335,6 +342,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(result).toEqual({
@@ -358,6 +366,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       (steps) => notifications.push(steps),
     )
 
@@ -409,6 +418,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
     )
 
     expect(result).toEqual({
