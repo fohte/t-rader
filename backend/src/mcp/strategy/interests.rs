@@ -5,13 +5,16 @@
 //! (role / origin は変更しない)。
 //!
 //! 監視対象一覧 (`list_watch_targets`) は人間が `origin=human` で登録した
-//! 銘柄 (`ref_kind=stock`) のうち `status=active` のものだけを返す。保有状況は
+//! 銘柄 (`ref_kind=stock`) のうち `status=active` のものだけを返す。口座全体の
+//! 関心 (`strategy_id IS NULL`) と接続元戦略の関心の両方が対象。保有状況は
 //! 見ないため、除外したい場合は呼び出し側で `read_portfolio` 等と突き合わせること。
 
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, Condition, EntityTrait, ExprTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use uuid::Uuid;
 
 use crate::entities::strategy_interest;
@@ -116,16 +119,22 @@ impl StrategyServer {
     }
 
     /// 人間が `origin=human` で登録した監視対象銘柄 (`ref_kind=stock`,
-    /// `status=active`) を古い順に返す。エージェント自身が追加した interest
-    /// (`origin=llm`) や `status=archived` のものは含まれない。保有状況によるフィルタは
-    /// 行わないため、除外したい場合は `read_portfolio` / `check_buyable_qty` と組み合わせる。
+    /// `status=active`) を古い順に返す。口座全体の関心 (`strategy_id IS NULL`) と
+    /// 接続元戦略の関心の両方が対象で、他の戦略にだけ属する関心は含まれない。
+    /// エージェント自身が追加した interest (`origin=llm`) や `status=archived` の
+    /// ものは含まれない。保有状況によるフィルタは行わないため、除外したい場合は
+    /// `read_portfolio` / `check_buyable_qty` と組み合わせる。
     pub(crate) async fn list_watch_targets_inner(
         &self,
         session_strategy_id: Uuid,
         params: ListWatchTargetsParams,
     ) -> Result<ListWatchTargetsResult, McpError> {
         let rows = strategy_interest::Entity::find()
-            .filter(strategy_interest::Column::StrategyId.eq(session_strategy_id))
+            .filter(
+                Condition::any()
+                    .add(strategy_interest::Column::StrategyId.is_null())
+                    .add(strategy_interest::Column::StrategyId.eq(session_strategy_id)),
+            )
             .filter(strategy_interest::Column::RefKind.eq("stock"))
             .filter(strategy_interest::Column::Origin.eq("human"))
             .filter(strategy_interest::Column::Status.eq(DEFAULT_STATUS))
@@ -169,7 +178,7 @@ mod tests {
 
     async fn insert_interest(
         db: &DatabaseConnection,
-        strategy_id: Uuid,
+        strategy_id: Option<Uuid>,
         ref_kind: &str,
         ref_id: &str,
         origin: &str,
@@ -178,7 +187,7 @@ mod tests {
     ) {
         strategy_interest::ActiveModel {
             id: Set(Uuid::new_v4()),
-            strategy_id: Set(Some(strategy_id)),
+            strategy_id: Set(strategy_id),
             ref_kind: Set(ref_kind.into()),
             ref_id: Set(ref_id.into()),
             role: Set("seed".into()),
@@ -307,10 +316,19 @@ mod tests {
         let sid = insert_strategy(&db, "s").await;
         let server = build_server(db.clone());
 
-        insert_interest(&db, sid, "stock", "7203", "human", "active", ts(1)).await;
-        insert_interest(&db, sid, "stock", "9984", "human", "archived", ts(2)).await;
-        insert_interest(&db, sid, "stock", "6758", "llm", "active", ts(3)).await;
-        insert_interest(&db, sid, "indicator", "USDJPY", "human", "active", ts(4)).await;
+        insert_interest(&db, Some(sid), "stock", "7203", "human", "active", ts(1)).await;
+        insert_interest(&db, Some(sid), "stock", "9984", "human", "archived", ts(2)).await;
+        insert_interest(&db, Some(sid), "stock", "6758", "llm", "active", ts(3)).await;
+        insert_interest(
+            &db,
+            Some(sid),
+            "indicator",
+            "USDJPY",
+            "human",
+            "active",
+            ts(4),
+        )
+        .await;
 
         let result = server
             .list_watch_targets_inner(sid, ListWatchTargetsParams { limit: None })
@@ -326,9 +344,9 @@ mod tests {
         let sid = insert_strategy(&db, "s").await;
         let server = build_server(db.clone());
 
-        insert_interest(&db, sid, "stock", "3", "human", "active", ts(3)).await;
-        insert_interest(&db, sid, "stock", "1", "human", "active", ts(1)).await;
-        insert_interest(&db, sid, "stock", "2", "human", "active", ts(2)).await;
+        insert_interest(&db, Some(sid), "stock", "3", "human", "active", ts(3)).await;
+        insert_interest(&db, Some(sid), "stock", "1", "human", "active", ts(1)).await;
+        insert_interest(&db, Some(sid), "stock", "2", "human", "active", ts(2)).await;
 
         let result = server
             .list_watch_targets_inner(sid, ListWatchTargetsParams { limit: Some(2) })
@@ -342,14 +360,14 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn list_watch_targets_is_scoped_per_strategy(pool: PgPool) {
+    async fn list_watch_targets_excludes_other_strategy_interests(pool: PgPool) {
         let db = create_test_db(pool).await;
         let a = insert_strategy(&db, "a").await;
         let b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
 
-        insert_interest(&db, a, "stock", "7203", "human", "active", ts(1)).await;
-        insert_interest(&db, b, "stock", "9984", "human", "active", ts(1)).await;
+        insert_interest(&db, Some(a), "stock", "7203", "human", "active", ts(1)).await;
+        insert_interest(&db, Some(b), "stock", "9984", "human", "active", ts(1)).await;
 
         let result = server
             .list_watch_targets_inner(a, ListWatchTargetsParams { limit: None })
@@ -357,5 +375,27 @@ mod tests {
             .expect("list_watch_targets");
 
         assert_eq!(watch_target_ref_ids(result), vec!["7203".to_string()]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_watch_targets_includes_account_wide_interests(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let a = insert_strategy(&db, "a").await;
+        let b = insert_strategy(&db, "b").await;
+        let server = build_server(db.clone());
+
+        insert_interest(&db, None, "stock", "7203", "human", "active", ts(1)).await;
+        insert_interest(&db, Some(a), "stock", "9984", "human", "active", ts(2)).await;
+        insert_interest(&db, Some(b), "stock", "6758", "human", "active", ts(3)).await;
+
+        let result = server
+            .list_watch_targets_inner(a, ListWatchTargetsParams { limit: None })
+            .await
+            .expect("list_watch_targets");
+
+        assert_eq!(
+            watch_target_ref_ids(result),
+            vec!["7203".to_string(), "9984".to_string()],
+        );
     }
 }
