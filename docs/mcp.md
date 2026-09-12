@@ -52,7 +52,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 - ヘッダが欠落 / 非 UUID なら MCP 層で reject する。
 - tool 引数の `strategy_id` がヘッダの値と一致しない呼び出しも reject する。
 - 対象リソース (note / annotation) の `strategy_id` も Repository 層で二重検査し、戦略 A の Agent が戦略 B のリソースに触れないことを保証する。
-- 唯一の例外が `read_portfolio` で、戦略は口座内のお金の区分に過ぎず分析は口座全体を見る、という設計上、口座全体の集計には `x-strategy-id` をスコープとして使わない。ただし接続元戦略自身のスライス (投資可能額を含む) を追加で返すため、ヘッダの値もその選択に使う。
+- 例外が 2 つある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を見る、という設計上、口座全体の集計には `x-strategy-id` をスコープとして使わない (ただし接続元戦略自身のスライス (投資可能額を含む) を追加で返すため、ヘッダの値もその選択に使う)。`search_refs` は stock/indicator/sector/theme が戦略に属さないマスタデータであるため、`x-strategy-id` をそもそも検索条件に使わない。
 
 任意ヘッダ `x-execution-id` で実行単位を識別できる。値の単位は t-rader-agent 側の実行経路で異なる: agent_graph 実行ではフェーズ / for_each 要素ごとの実行ステップ 1 件 (`{a2a_task_id}:{step_id}`)、agent_graph 未設定の単一 invoke では `runStrategyAgent` 呼び出し全体 (A2A タスクの `taskId` そのもの) が単位になる。戦略境界の検査対象ではなく、`write_note` の冪等性 (下表参照) にのみ使う。
 

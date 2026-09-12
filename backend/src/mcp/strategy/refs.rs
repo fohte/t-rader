@@ -13,6 +13,8 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::handlers::refs::sanitize_like;
+
 use super::{StrategyServer, clamp_limit, db_error, invalid_params};
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -59,7 +61,7 @@ impl StrategyServer {
         if query.is_empty() {
             return Err(invalid_params("query must not be empty"));
         }
-        let pattern = format!("%{query}%");
+        let pattern = format!("%{}%", sanitize_like(query));
         let limit = clamp_limit(params.limit) as i64;
 
         let rows = self
@@ -93,11 +95,8 @@ mod tests {
     use crate::entities::{indicator, sector, stock, theme};
     use crate::testing::create_test_db;
 
-    use super::{RefDto, SearchRefsParams, SearchRefsResult, StrategyServer};
-
-    fn build_server(db: DatabaseConnection) -> StrategyServer {
-        StrategyServer::new(db, None)
-    }
+    use super::super::tests_common::build_server;
+    use super::{RefDto, SearchRefsParams, SearchRefsResult};
 
     async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
         stock::ActiveModel {
@@ -251,6 +250,28 @@ mod tests {
                 }],
             },
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_does_not_treat_underscore_as_single_char_wildcard(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        // "_" は ILIKE の単一文字ワイルドカードなので、素通しすると "AXB" が
+        // "A_B" にマッチしてしまう。sanitize_like で除去され、マッチしないことを確認する。
+        seed_theme(&db, "u1", "AXB").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "A_B".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(result, SearchRefsResult { refs: vec![] });
     }
 
     #[sqlx::test(migrations = false)]
