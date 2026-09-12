@@ -22,6 +22,7 @@ use super::dto::{
     ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
     WriteNoteParams, WriteNoteResult,
 };
+use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{StrategyServer, execution_id_from_ctx, strategy_id_from_ctx};
 
 #[tool_router]
@@ -277,6 +278,21 @@ impl StrategyServer {
             .await
             .map(Json)
     }
+
+    /// 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
+    #[tool(
+        name = "search_refs",
+        description = "Search across all first-class reference types (stock, indicator, sector, theme) by case-insensitive substring match against id or name. Returns ref_kind/ref_id/name sorted by name, usable directly as input to add_interest.",
+        annotations(read_only_hint = true)
+    )]
+    async fn search_refs(
+        &self,
+        Parameters(params): Parameters<SearchRefsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<SearchRefsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.search_refs_inner(sid, params).await.map(Json)
+    }
 }
 
 impl StrategyServer {
@@ -342,6 +358,7 @@ mod tests {
                 ("read_portfolio", Some(true)),
                 ("reply_comment", None),
                 ("resolve_comment", None),
+                ("search_refs", Some(true)),
                 ("write_note", None),
             ]
             .into_iter()

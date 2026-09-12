@@ -15,7 +15,7 @@ use crate::models::RefResolution;
 /// LIKE のメタ文字 (`%` `_` `\`) を入力から除去する。
 /// SeaORM の `like()` は ESCAPE 句を出さないため、エスケープではなく除去で対処する
 /// (検索 UI のサジェストとして `%` をそのまま検索したいケースは現状想定しない)。
-fn sanitize_like(value: &str) -> String {
+pub(crate) fn sanitize_like(value: &str) -> String {
     value
         .chars()
         .filter(|c| *c != '%' && *c != '_' && *c != '\\')

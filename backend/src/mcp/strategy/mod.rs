@@ -4,9 +4,11 @@
 //! HTTP ヘッダで自身の strategy_id を持ち込み、全 tool はこの値のみを戦略境界として
 //! 使う (tool 引数に strategy_id は含まれない)。さらに対象リソース (note / annotation)
 //! の strategy_id と一致するかを Repository 層で二重検査する。
-//! 唯一の例外が `read_portfolio` で、戦略は口座内のお金の区分に過ぎず分析は口座全体を
+//! 例外が 2 つある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を
 //! 見る、という設計上ヘッダの値を口座全体の集計にはスコープとして使わないが、
-//! 接続元戦略自身のスライスを追加で返すためにヘッダの値も使う。
+//! 接続元戦略自身のスライスを追加で返すためにヘッダの値も使う。`search_refs` は
+//! stock/indicator/sector/theme が戦略に属さないマスタデータであるため、
+//! ヘッダの値をそもそも検索条件に使わない。
 //!
 //! tool 一覧:
 //!
@@ -30,6 +32,7 @@
 //! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、セクター上限比率・現金の各制約ごとに
 //!   計算して返す
 //! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
+//! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -45,6 +48,7 @@
 //! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
 //! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
+//! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
 //!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
 //!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
@@ -63,6 +67,7 @@ pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod portfolio;
+pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;
 
