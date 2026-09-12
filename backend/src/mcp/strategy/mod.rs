@@ -33,6 +33,10 @@
 //!   計算して返す
 //! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
 //! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
+//! - `list_hypotheses`: 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
+//! - `read_hypothesis`: 単一の仮説を読む (自戦略または global)
+//! - `propose_hypothesis_change`: 仮説へのタイトル/本文/status の変更を提案として永続化する
+//!   (仮説本体には反映しない。人間が API 側で承認するまで適用されない)
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -45,6 +49,8 @@
 //! - `eval`: Python 実行 (`eval_python_inner`)
 //! - `interests`: 関心の追加 (`add_interest_inner`) / 監視対象一覧 (`list_watch_targets_inner`)
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
+//! - `hypotheses`: 仮説の読み取り / 変更提案 (`list_hypotheses_inner` / `read_hypothesis_inner` /
+//!   `propose_hypothesis_change_inner`)
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
 //! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
@@ -64,6 +70,7 @@ pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
+pub(super) mod hypotheses;
 pub(super) mod interests;
 pub(super) mod media;
 pub(super) mod news;

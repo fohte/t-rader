@@ -16,7 +16,7 @@ use crate::entities::{hypothesis, note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateHypothesisRequest, UpdateHypothesisRequest};
-use crate::services::hypotheses::{DEFAULT_STATUS, ensure_status};
+use crate::services::hypotheses::{DEFAULT_STATUS, ensure_status, find_hypothesis_or_404};
 use crate::services::strategies::ensure_strategy_exists;
 
 fn validate_text(field: &str, value: &str) -> Result<String, AppError> {
@@ -53,17 +53,6 @@ async fn ensure_notes_belong_to_scope<C: sea_orm::ConnectionTrait>(
         ));
     }
     Ok(())
-}
-
-/// 仮説を戦略の有無を問わず ID だけで検索する
-async fn find_hypothesis_or_404(
-    db: &sea_orm::DatabaseConnection,
-    hypothesis_id: Uuid,
-) -> Result<hypothesis::Model, AppError> {
-    hypothesis::Entity::find_by_id(hypothesis_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("hypothesis {hypothesis_id} not found")))
 }
 
 async fn find_hypothesis_for_strategy(

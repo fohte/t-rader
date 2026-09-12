@@ -36,9 +36,9 @@ use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, history, hooks, hypotheses, imports, interests, macro_data, news,
-    note_hypotheses, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
-    triggers, watchlists,
+    custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
+    macro_data, news, note_hypotheses, notes, refs, risk_policy, rss_feeds, strategies, tasks,
+    trade_notes, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -107,6 +107,7 @@ impl AppState {
         (name = "tasks", description = "戦略タスクの実行履歴 (口座横断)"),
         (name = "triggers", description = "戦略 trigger (cron / hook)"),
         (name = "hypotheses", description = "仮説 (global 作成・戦略の有無を問わない generic エンドポイント)"),
+        (name = "hypothesis_proposals", description = "仮説への変更提案 (エージェントが作成し、人間が承認/却下する)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
         (name = "macro", description = "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"),
@@ -231,6 +232,12 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             hypotheses::update_hypothesis,
             hypotheses::delete_hypothesis
         ))
+        // hypothesis proposals
+        .routes(routes!(hypothesis_proposals::list_proposals_for_hypothesis))
+        .routes(routes!(hypothesis_proposals::list_hypothesis_proposals))
+        .routes(routes!(hypothesis_proposals::get_hypothesis_proposal))
+        .routes(routes!(hypothesis_proposals::approve_hypothesis_proposal))
+        .routes(routes!(hypothesis_proposals::reject_hypothesis_proposal))
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
         .routes(routes!(strategies::list_strategy_tasks))

@@ -36,6 +36,7 @@ mod m20260912_103436_add_strategy_task_step_evidence;
 mod m20260912_105611_add_checkpoint;
 mod m20260912_105634_add_trade_note_and_note_hypothesis_links;
 mod m20260912_105636_add_news_strategy_link_seq;
+mod m20260912_130617_add_hypothesis_proposal;
 
 pub struct Migrator;
 
@@ -78,6 +79,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260912_105611_add_checkpoint::Migration),
             Box::new(m20260912_105634_add_trade_note_and_note_hypothesis_links::Migration),
             Box::new(m20260912_105636_add_news_strategy_link_seq::Migration),
+            Box::new(m20260912_130617_add_hypothesis_proposal::Migration),
         ]
     }
 }
