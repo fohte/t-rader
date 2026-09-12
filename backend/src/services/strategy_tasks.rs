@@ -89,6 +89,11 @@ pub struct TaskStatusView {
     /// 投入時に指定された purpose。`submit_task` は常に `Some` を書き込むため、`None` は
     /// このカラムが追加される前に作成された行に限られる。
     pub purpose: Option<String>,
+    /// 実行の論理的な基準時刻 (`submit_task` 投入時刻)。監査目的の記録に過ぎず、
+    /// 各フェーズが実際に参照したデータの取得時刻がこの時刻に揃うことは保証しない
+    /// (`query_data` 等のデータ取得層は基準時刻を受け取らず、呼び出された瞬間の
+    /// 外部データをそのまま返す)。`None` はこのカラムが追加される前に作成された行に限られる。
+    pub as_of: Option<DateTime<FixedOffset>>,
 }
 
 impl From<strategy_task::Model> for TaskStatusView {
@@ -109,6 +114,7 @@ impl From<strategy_task::Model> for TaskStatusView {
             // steps_json_for_task で上書きする。
             steps: serde_json::json!([]),
             purpose: row.purpose,
+            as_of: row.as_of,
         }
     }
 }
@@ -125,6 +131,7 @@ impl From<TaskStatusView> for StrategyTaskSummary {
             created_at: view.created_at,
             updated_at: view.updated_at,
             purpose: view.purpose,
+            as_of: view.as_of,
         }
     }
 }
@@ -187,6 +194,8 @@ pub async fn submit_task(
         result_text: Set(None),
         deadline_at: Set(deadline_at),
         purpose: Set(purpose.clone()),
+        // 投入時刻をそのまま基準時刻として記録する (guarantee level は TaskStatusView::as_of 参照)。
+        as_of: Set(Some(now)),
         created_at: NotSet,
         updated_at: NotSet,
     };

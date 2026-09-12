@@ -1971,6 +1971,13 @@ export interface components {
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
       a2a_task_id?: string | null
+      /**
+       * Format: date-time
+       * @description 実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した
+       *     データの取得時刻がこの時刻に揃うことは保証しない。`None` はこのカラムが
+       *     追加される前に作成された行に限られる。
+       */
+      as_of?: string | null
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
@@ -2001,6 +2008,13 @@ export interface components {
      *     は一覧では使わないため含めない。
      */
     StrategyTaskSummary: {
+      /**
+       * Format: date-time
+       * @description 実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した
+       *     データの取得時刻がこの時刻に揃うことは保証しない。`None` はこのカラムが
+       *     追加される前に作成された行に限られる。
+       */
+      as_of?: string | null
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
