@@ -159,19 +159,25 @@ async fn reconcile_one(
 
 /// エージェントが正常に応答したケース。エージェント側の状態がどうであれ、deadline を
 /// 超過していれば最終防衛として failed に確定する (heartbeat がある限り延命される
-/// working も、超過後に届いた completed も対象)。
+/// working も、超過後に届いた completed も対象)。result_text/steps はエージェントから
+/// 届いた分をそのまま反映する (deadline 超過は phase/error_summary のみを上書きする)。
 async fn apply_status(
     db: &DatabaseConnection,
     row: strategy_task::Model,
     status: AgentTaskStatus,
     now: DateTime<FixedOffset>,
 ) -> bool {
-    if now > row.deadline_at {
-        return apply_failed(db, row, "agent task exceeded deadline".to_string()).await;
-    }
-
-    let new_phase = phase_for_state(status.state);
-    let new_error = error_summary_for(&status, &new_phase);
+    let (new_phase, new_error) = if now > row.deadline_at {
+        let message = match &status.error_kind {
+            Some(kind) => format!("agent task exceeded deadline (agent reported: {kind})"),
+            None => "agent task exceeded deadline".to_string(),
+        };
+        (StrategyTaskPhase::Failed, Some(message))
+    } else {
+        let new_phase = phase_for_state(status.state);
+        let new_error = error_summary_for(&status, &new_phase);
+        (new_phase, new_error)
+    };
     let new_result_text = status.result_text.or_else(|| row.result_text.clone());
     let new_steps = status.steps.clone();
     apply_phase_logged(db, row, new_phase, new_error, new_result_text, new_steps).await
@@ -623,54 +629,74 @@ mod tests {
         );
     }
 
+    // deadline 超過時は agent の応答内容 (completed/working 問わず) より deadline を優先して
+    // failed に確定する。rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため
+    // for ループで列挙する。
     #[sqlx::test(migrations = false)]
-    async fn completed_after_deadline_marks_failed_with_deadline_reason(pool: PgPool) {
+    async fn agent_response_after_deadline_marks_failed_regardless_of_state(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
-        let task_id = insert_task(
-            &db,
-            strategy_id,
-            Some("t-late"),
-            StrategyTaskPhase::Running,
-            PAST,
-        )
-        .await;
 
-        let fake = Arc::new(FakeAgentTaskClient::new());
-        fake.set_status(
-            "t-late",
-            AgentTaskStatus {
-                state: AgentTaskState::Completed,
-                result_text: Some("all good".to_string()),
-                error_kind: None,
-                steps: None,
-            },
-        )
-        .await;
-        let agent_client: SharedAgentTaskClient = fake.clone();
-
-        let updated = run_once(&db, &agent_client).await;
-        assert_eq!(updated, 1);
-
-        let row = fetch_task(&db, task_id).await;
-        assert_eq!(
-            (row.phase, row.result_text, row.error_summary),
+        for (label, a2a_task_id, status, expected_result_text) in [
             (
-                StrategyTaskPhase::Failed,
-                None,
-                Some("agent task exceeded deadline".to_string()),
+                "completed",
+                "t-late",
+                AgentTaskStatus {
+                    state: AgentTaskState::Completed,
+                    result_text: Some("all good".to_string()),
+                    error_kind: None,
+                    steps: None,
+                },
+                Some("all good".to_string()),
             ),
-        );
+            (
+                "still_working",
+                "t-stuck",
+                AgentTaskStatus {
+                    state: AgentTaskState::Working,
+                    result_text: None,
+                    error_kind: None,
+                    steps: None,
+                },
+                None,
+            ),
+        ] {
+            let task_id = insert_task(
+                &db,
+                strategy_id,
+                Some(a2a_task_id),
+                StrategyTaskPhase::Running,
+                PAST,
+            )
+            .await;
+            let fake = Arc::new(FakeAgentTaskClient::new());
+            fake.set_status(a2a_task_id, status).await;
+            let agent_client: SharedAgentTaskClient = fake;
+
+            let updated = run_once(&db, &agent_client).await;
+            assert_eq!(updated, 1, "case {label}");
+
+            let row = fetch_task(&db, task_id).await;
+            assert_eq!(
+                (row.phase, row.result_text, row.error_summary),
+                (
+                    StrategyTaskPhase::Failed,
+                    expected_result_text,
+                    Some("agent task exceeded deadline".to_string()),
+                ),
+                "case {label}",
+            );
+        }
     }
 
     #[sqlx::test(migrations = false)]
-    async fn still_working_after_deadline_marks_failed(pool: PgPool) {
+    async fn deadline_exceeded_includes_agent_reported_error_kind(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
             strategy_id,
-            Some("t-stuck"),
+            Some("t-usage-limit"),
             StrategyTaskPhase::Running,
             PAST,
         )
@@ -678,16 +704,16 @@ mod tests {
 
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_status(
-            "t-stuck",
+            "t-usage-limit",
             AgentTaskStatus {
-                state: AgentTaskState::Working,
+                state: AgentTaskState::Failed,
                 result_text: None,
-                error_kind: None,
+                error_kind: Some("usage_limit".to_string()),
                 steps: None,
             },
         )
         .await;
-        let agent_client: SharedAgentTaskClient = fake.clone();
+        let agent_client: SharedAgentTaskClient = fake;
 
         let updated = run_once(&db, &agent_client).await;
         assert_eq!(updated, 1);
@@ -697,8 +723,77 @@ mod tests {
             (row.phase, row.error_summary),
             (
                 StrategyTaskPhase::Failed,
-                Some("agent task exceeded deadline".to_string()),
+                Some("agent task exceeded deadline (agent reported: usage_limit)".to_string()),
             ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn deadline_exceeded_still_upserts_steps_reported_by_agent(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-progress"),
+            StrategyTaskPhase::Running,
+            PAST,
+        )
+        .await;
+
+        let step_id = Uuid::new_v4();
+        let step = serde_json::json!({
+            "execution_step_id": step_id,
+            "phase_key": "investigate",
+            "label": "仮説の調査",
+            "model": "test-model",
+            "status": "running",
+            "started_at": "2026-01-01T00:00:00.000Z",
+            "trace_id": "trace-1",
+            "span_id": "span-1",
+        });
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-progress",
+            AgentTaskStatus {
+                state: AgentTaskState::Working,
+                result_text: None,
+                error_kind: None,
+                steps: Some(serde_json::json!([step])),
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake;
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(row.phase, StrategyTaskPhase::Failed);
+
+        let steps = fetch_steps(&db, task_id).await;
+        assert_eq!(steps.len(), 1);
+        let seq = steps[0].seq;
+        assert_eq!(
+            steps[0],
+            strategy_task_step::Model {
+                execution_step_id: step_id,
+                task_id,
+                phase_key: "investigate".to_string(),
+                label: "仮説の調査".to_string(),
+                model: "test-model".to_string(),
+                status: StrategyTaskStepStatus::Running,
+                item: None,
+                item_label: None,
+                output: None,
+                started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
+                finished_at: None,
+                trace_id: "trace-1".to_string(),
+                span_id: "span-1".to_string(),
+                error: None,
+                seq,
+            },
         );
     }
 
