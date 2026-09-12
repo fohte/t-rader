@@ -10,25 +10,15 @@ fn is_tse_year_end_closure(date: NaiveDate) -> bool {
 }
 
 /// `date` が日本の祝日 (振替休日含む) かどうかを判定する。
-///
-/// `chrono::NaiveDate` は常に実在する日付なので `jpholiday::Date` への変換が
-/// 失敗することは通常ないが、clippy で `unwrap`/`expect` が deny のため、万一
-/// 失敗した場合は「祝日ではない」として扱う (fail-open)。この関数の戻り値は
-/// `latest_business_day` の上限の見積もりにのみ使われ、休場日を誤って営業日と
-/// みなしても実害は無駄な再取得に留まるため、fail-open で問題ない。
 fn is_jp_holiday(date: NaiveDate) -> bool {
     jpholiday::Date::new(date.year(), date.month(), date.day())
         .map(jpholiday::is_holiday)
         .unwrap_or(false)
 }
 
-/// `date` 以前で直近の証券取引所の営業日を返す。土日・日本の祝日 (振替休日含む)・
-/// 東証の年末年始休場日 (12/31 〜 1/3) を休場日として扱い、該当する間は 1 日ずつ
-/// 遡る。それ以外の東証独自の臨時休場等までは考慮しないため、実際の最終取引日
-/// より新しい日付を返すことがまれにありうる。この関数の戻り値は「これ以降の
-/// データはまだ存在しないはず」という上限の見積もりにしか使われないため、誤差の
-/// 影響はその日に対応する bar が存在せず再取得を試みる (無害だが無駄になる)
-/// 程度に留まる。
+/// `date` 以前で直近の証券取引所の営業日を返す (土日・日本の祝日・東証年末年始休場日を除く)。
+///
+/// 上記以外の東証独自の臨時休場は考慮しないため、まれに実際の最終取引日より新しい日付を返すことがある。
 pub(crate) fn latest_business_day(date: NaiveDate) -> NaiveDate {
     let mut date = date;
     loop {

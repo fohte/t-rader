@@ -2,7 +2,7 @@
 //! 行が存在しない間は「未設定 (自動検出を使う)」を表し、初回保存時に作成する。
 
 use sea_orm::ActiveValue::Set;
-use sea_orm::sea_query::OnConflict;
+use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{DatabaseConnection, EntityTrait};
 
 use crate::entities::jquants_plan_setting;
@@ -48,6 +48,37 @@ pub async fn save(
         "updated jquants_plan_setting",
     );
     Ok(saved)
+}
+
+/// 未設定 (行が存在しない、または `plan` が null) の場合にのみ保存する。既に設定済みなら
+/// 何もしない。read-then-write ではなく単一の `INSERT ... ON CONFLICT DO UPDATE ... WHERE`
+/// で行うことで、手動設定 (PUT) との競合時に検出結果で上書きしてしまうレースを防ぐ。
+///
+/// 戻り値は実際に保存できたかどうか。
+pub async fn save_if_unset(
+    db: &DatabaseConnection,
+    plan_setting: serde_json::Value,
+) -> Result<bool, AppError> {
+    let model = jquants_plan_setting::ActiveModel {
+        id: Set(SINGLETON_ID),
+        plan_setting: Set(plan_setting),
+        updated_at: Set(chrono::Utc::now().fixed_offset()),
+    };
+    let rows_affected = jquants_plan_setting::Entity::insert(model)
+        .on_conflict(
+            OnConflict::column(jquants_plan_setting::Column::Id)
+                .update_columns([
+                    jquants_plan_setting::Column::PlanSetting,
+                    jquants_plan_setting::Column::UpdatedAt,
+                ])
+                .action_and_where(Expr::cust(
+                    "jquants_plan_setting.plan_setting->>'plan' IS NULL",
+                ))
+                .to_owned(),
+        )
+        .exec_without_returning(db)
+        .await?;
+    Ok(rows_affected == 1)
 }
 
 #[cfg(test)]

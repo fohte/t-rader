@@ -17,9 +17,8 @@ enum JQuantsPlanSetting {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // 口座全体の設定は単一行のみを持つ (id は常に 1 固定)。行が存在しない間は
-        // 「未設定 (自動検出を使う)」を表し、初回 PUT で upsert する
-        // (`services::jquants_plan_setting`)。
+        // 口座全体の設定を保持する単一行テーブル (id は常に 1 固定)。
+        // 行が存在しない間は「未設定 (自動検出を使う)」を表す。
         manager
             .create_table(
                 Table::create()

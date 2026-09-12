@@ -422,15 +422,21 @@ mod subscription_range_detection {
 // === 手動設定プラン (`set_manual_plan`) の優先順位 ===
 
 mod manual_plan_priority {
+    use rstest::{fixture, rstest};
+
     use crate::data_provider::DataProvider;
     use crate::models::jquants_plan::JQuantsPlan;
 
     use super::super::JQuantsClient;
     use super::date;
 
-    #[test]
-    fn falls_back_to_detected_range_when_manual_plan_is_unset() {
-        let client = JQuantsClient::with_base_url("http://localhost", "key").expect("client");
+    #[fixture]
+    fn client() -> JQuantsClient {
+        JQuantsClient::with_base_url("http://localhost", "key").expect("client")
+    }
+
+    #[rstest]
+    fn falls_back_to_detected_range_when_manual_plan_is_unset(client: JQuantsClient) {
         client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
 
         assert_eq!(
@@ -439,9 +445,8 @@ mod manual_plan_priority {
         );
     }
 
-    #[test]
-    fn manual_plan_overrides_already_detected_range() {
-        let client = JQuantsClient::with_base_url("http://localhost", "key").expect("client");
+    #[rstest]
+    fn manual_plan_overrides_already_detected_range(client: JQuantsClient) {
         client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
         client.set_manual_plan(Some(JQuantsPlan::Standard));
 
@@ -452,9 +457,8 @@ mod manual_plan_priority {
         );
     }
 
-    #[test]
-    fn clearing_manual_plan_restores_detected_range() {
-        let client = JQuantsClient::with_base_url("http://localhost", "key").expect("client");
+    #[rstest]
+    fn clearing_manual_plan_restores_detected_range(client: JQuantsClient) {
         client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
         client.set_manual_plan(Some(JQuantsPlan::Standard));
         client.set_manual_plan(None);
@@ -480,10 +484,16 @@ mod persist_inferred_range_if_needed {
     use super::super::JQuantsClient;
     use super::date;
 
+    // rstest の #[fixture] は #[sqlx::test] と組み合わせられないため、プレーンな
+    // ヘルパー関数として抽出する
+    fn test_client() -> JQuantsClient {
+        JQuantsClient::with_base_url("http://localhost", "key").expect("client")
+    }
+
     #[sqlx::test(migrations = false)]
     async fn does_nothing_when_manual_plan_already_set(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = JQuantsClient::with_base_url("http://localhost", "key").expect("client");
+        let client = test_client();
         client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
         client.set_manual_plan(Some(JQuantsPlan::Premium));
 
@@ -502,7 +512,7 @@ mod persist_inferred_range_if_needed {
     #[sqlx::test(migrations = false)]
     async fn does_nothing_when_no_range_detected(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = JQuantsClient::with_base_url("http://localhost", "key").expect("client");
+        let client = test_client();
 
         client
             .persist_inferred_range_if_needed(&db)
@@ -519,7 +529,7 @@ mod persist_inferred_range_if_needed {
     #[sqlx::test(migrations = false)]
     async fn infers_and_persists_plan_from_detected_range_once(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = JQuantsClient::with_base_url("http://localhost", "key").expect("client");
+        let client = test_client();
         // Standard の提供期間 (3650 日) ちょうどの範囲を検出させる
         let from = date(2010, 1, 1);
         let to = from + Duration::days(3650);
@@ -543,7 +553,7 @@ mod persist_inferred_range_if_needed {
     #[sqlx::test(migrations = false)]
     async fn does_not_overwrite_when_already_persisted_in_db(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = JQuantsClient::with_base_url("http://localhost", "key").expect("client");
+        let client = test_client();
         let from = date(2010, 1, 1);
         let to = from + Duration::days(3650);
         client.set_detected_range((from, to));

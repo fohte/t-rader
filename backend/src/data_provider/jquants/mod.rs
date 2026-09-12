@@ -413,23 +413,6 @@ impl DataProvider for JQuantsClient {
             return Ok(());
         };
 
-        let current = crate::services::jquants_plan_setting::find_current(db)
-            .await
-            .map_err(|e| DataProviderError::Database(e.to_string()))?;
-        let already_set = current
-            .map(|row| {
-                crate::models::parse_plan_setting::<crate::models::JQuantsPlanSettingData>(
-                    row.plan_setting,
-                )
-            })
-            .transpose()
-            .map_err(|e| DataProviderError::Database(e.to_string()))?
-            .and_then(|data| data.plan)
-            .is_some();
-        if already_set {
-            return Ok(());
-        }
-
         let inferred = JQuantsPlan::infer_from_range(range);
         let data = crate::models::JQuantsPlanSettingData {
             schema_version: crate::models::jquants_plan::JQUANTS_PLAN_SETTING_SCHEMA_VERSION,
@@ -437,9 +420,13 @@ impl DataProvider for JQuantsClient {
         };
         let value = crate::models::serialize_plan_setting(&data)
             .map_err(|e| DataProviderError::Database(e.to_string()))?;
-        crate::services::jquants_plan_setting::save(db, value)
+        let saved = crate::services::jquants_plan_setting::save_if_unset(db, value)
             .await
             .map_err(|e| DataProviderError::Database(e.to_string()))?;
+        if !saved {
+            // 手動設定 (PUT) と競合し、既に設定済みだったため何もしない
+            return Ok(());
+        }
 
         self.set_manual_plan(Some(inferred));
         tracing::info!(

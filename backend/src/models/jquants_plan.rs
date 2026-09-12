@@ -2,6 +2,10 @@ use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// 契約範囲が未検出のときに試す確認用の範囲 (Premium 相当の最大範囲)。
+/// この日数は Premium プランの「実質無制限」相当の提供期間としても使う。
+pub const PROBE_MAX_HISTORY_DAYS: i64 = 365 * 20;
+
 /// J-Quants の契約プラン
 ///
 /// 各プランの配信遅延・提供期間は公式ドキュメント
@@ -28,8 +32,7 @@ impl JQuantsPlan {
             JQuantsPlan::Light => (0, 1825),
             // 提供期間 10年 (3650日)
             JQuantsPlan::Standard => (0, 3650),
-            // 提供期間は無制限相当のため、契約範囲未検出時のプローブ範囲と同じ値を使う
-            JQuantsPlan::Premium => (0, crate::services::backfill::PROBE_MAX_HISTORY_DAYS),
+            JQuantsPlan::Premium => (0, PROBE_MAX_HISTORY_DAYS),
         }
     }
 
@@ -113,8 +116,7 @@ pub struct JQuantsFetchableRange {
 pub struct JQuantsPlanSettingResponse {
     pub plan: Option<JQuantsPlan>,
     /// 現在有効な取得可能範囲。`plan` が手動設定されていればそのプランの範囲、
-    /// 未設定なら自動検出の結果 (未検出ならまだ null)。「未設定」は「何もしていない」
-    /// ではなく「システムが自動で検出し設定している」ことを表すため、その結果を必ず返す。
+    /// 未設定なら自動検出の結果 (未検出なら null)。
     pub effective_range: Option<JQuantsFetchableRange>,
 }
 
@@ -188,10 +190,7 @@ mod tests {
     #[case::exactly_free(730, JQuantsPlan::Free)]
     #[case::exactly_light(1825, JQuantsPlan::Light)]
     #[case::exactly_standard(3650, JQuantsPlan::Standard)]
-    #[case::exactly_premium(
-        crate::services::backfill::PROBE_MAX_HISTORY_DAYS,
-        JQuantsPlan::Premium
-    )]
+    #[case::exactly_premium(PROBE_MAX_HISTORY_DAYS, JQuantsPlan::Premium)]
     // Free/Light の中間 (1277.5 日) の前後
     #[case::free_light_boundary_rounds_down_to_free(1277, JQuantsPlan::Free)]
     #[case::free_light_boundary_rounds_up_to_light(1278, JQuantsPlan::Light)]

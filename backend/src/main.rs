@@ -95,8 +95,6 @@ async fn main() -> Result<(), AppError> {
         "jquants" => match std::env::var("JQUANTS_API_KEY") {
             Ok(api_key) if !api_key.is_empty() => {
                 let client = JQuantsClient::new(api_key)?;
-                // 設定ページで手動設定済みのプランを読み込む。未設定 (None) なら
-                // 従来通り 400 エラーからの自動検出 (+ TTL) を使う。
                 let manual_plan =
                     backend::services::jquants_plan_setting::find_current(&db)
                         .await?

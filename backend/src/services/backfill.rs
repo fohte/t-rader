@@ -3,12 +3,8 @@ use sea_orm::DatabaseConnection;
 
 use crate::data_provider::{DataProvider, DateRange};
 use crate::models::Timeframe;
+use crate::models::jquants_plan::PROBE_MAX_HISTORY_DAYS;
 use crate::repositories::bars::upsert_bars;
-
-/// 契約範囲が未検出のときに試す確認用の範囲 (Premium 相当の最大範囲)。この範囲で
-/// リクエストし、実際の契約範囲を成功レスポンスまたは 400 エラーメッセージから検出する。
-/// 検出後はこの範囲を使わず、検出済みの範囲 (`known_range`) を使い回す。
-pub(crate) const PROBE_MAX_HISTORY_DAYS: i64 = 365 * 20;
 
 /// 価格データを取得可能な最新日 (未検出時は today、検出済み時は契約上限日) を返す。
 /// 保有時価の評価上限 (`market_price::fetch_latest_prices`) もこの関数を経由するため、
