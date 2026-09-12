@@ -5,8 +5,9 @@
 //! t-rader-agent からの webhook 受信は `notify` 経由で polling を即時発火させるための最適化に
 //! 過ぎず、決着の正 (最終的な整合性を保証する経路) は本 polling である。
 //!
-//! `deadline_at` を過ぎても決着しない行 (内部 API 到達不能、投入自体の記録漏れを含む) は
-//! failed に確定し、沈黙したまま残ることを防ぐ。
+//! `deadline_at` を過ぎた行は failed に確定する。内部 API 到達不能・投入自体の記録漏れは
+//! もちろん、内部 API が正常に応答 (working/completed 含む) しているケースも対象であり、
+//! 応答が生きている限り延命され続けることを防ぐ。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -131,7 +132,7 @@ async fn reconcile_one(
     };
 
     match agent_client.get(&a2a_task_id).await {
-        Ok(status) => apply_status(db, row, status).await,
+        Ok(status) => apply_status(db, row, status, now).await,
         Err(err) => {
             // 一時的な到達不能 (NotFound を含む)。t-rader-agent 側の task 作成と backend
             // 側の a2a_task_id 記録は別段階のため、insert 直後の一過性の不整合を誤って
@@ -156,11 +157,19 @@ async fn reconcile_one(
     }
 }
 
+/// エージェントが正常に応答したケース。エージェント側の状態がどうであれ、deadline を
+/// 超過していれば最終防衛として failed に確定する (heartbeat がある限り延命される
+/// working も、超過後に届いた completed も対象)。
 async fn apply_status(
     db: &DatabaseConnection,
     row: strategy_task::Model,
     status: AgentTaskStatus,
+    now: DateTime<FixedOffset>,
 ) -> bool {
+    if now > row.deadline_at {
+        return apply_failed(db, row, "agent task exceeded deadline".to_string()).await;
+    }
+
     let new_phase = phase_for_state(status.state);
     let new_error = error_summary_for(&status, &new_phase);
     let new_result_text = status.result_text.or_else(|| row.result_text.clone());
@@ -610,6 +619,85 @@ mod tests {
             (
                 StrategyTaskPhase::Failed,
                 Some("agent task failed".to_string())
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn completed_after_deadline_marks_failed_with_deadline_reason(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-late"),
+            StrategyTaskPhase::Running,
+            PAST,
+        )
+        .await;
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-late",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("all good".to_string()),
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(
+            (row.phase, row.result_text, row.error_summary),
+            (
+                StrategyTaskPhase::Failed,
+                None,
+                Some("agent task exceeded deadline".to_string()),
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn still_working_after_deadline_marks_failed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-stuck"),
+            StrategyTaskPhase::Running,
+            PAST,
+        )
+        .await;
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-stuck",
+            AgentTaskStatus {
+                state: AgentTaskState::Working,
+                result_text: None,
+                error_kind: None,
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(
+            (row.phase, row.error_summary),
+            (
+                StrategyTaskPhase::Failed,
+                Some("agent task exceeded deadline".to_string()),
             ),
         );
     }
