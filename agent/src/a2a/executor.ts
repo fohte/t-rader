@@ -174,9 +174,25 @@ export interface TraderAgentExecutorDeps {
 // delegating actual execution (AgentConfigApi lookup, LangGraph agent
 // construction, MCP tool calls) to the injected runStrategyAgent.
 export class TraderAgentExecutor implements AgentExecutor {
+  private readonly inFlightExecutions = new Set<Promise<void>>()
+
   constructor(private readonly deps: TraderAgentExecutorDeps) {}
 
-  async execute(
+  execute(
+    requestContext: RequestContext,
+    eventBus: ExecutionEventBus,
+  ): Promise<void> {
+    const execution = this.executeTask(requestContext, eventBus)
+    this.inFlightExecutions.add(execution)
+    void execution.finally(() => this.inFlightExecutions.delete(execution))
+    return execution
+  }
+
+  waitForInFlightExecutions(): Promise<void> {
+    return Promise.allSettled(this.inFlightExecutions).then(() => undefined)
+  }
+
+  private async executeTask(
     requestContext: RequestContext,
     eventBus: ExecutionEventBus,
   ): Promise<void> {

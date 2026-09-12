@@ -2,6 +2,7 @@ import {
   DefaultPushNotificationSender,
   DefaultRequestHandler,
 } from '@a2a-js/sdk/server'
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { serve } from '@hono/node-server'
 
 import { buildAgentCard } from '#a2a/agent-card'
@@ -22,10 +23,11 @@ import { createStrategyCandidatesFetcher } from '#strategy-resolution/mgmt-mcp-c
 
 const GEN_AI_PROVIDER_NAME = 'opencode'
 
-// Upper bound on graceful shutdown: server.close()'s callback only fires once
-// every open connection ends, so a client holding a keep-alive connection
-// open would otherwise hang the process indefinitely.
-const SHUTDOWN_FORCE_EXIT_MS = 10_000
+// Kept under Kubernetes' terminationGracePeriodSeconds (30s) with margin for
+// the Sentry flush below. Doesn't guarantee an in-progress phase finishes in time.
+const SHUTDOWN_FORCE_EXIT_MS = 20_000
+
+const SHUTDOWN_TIMED_OUT_FINGERPRINT = 'main.shutdown-timed-out'
 
 export const main = async (): Promise<void> => {
   const env = loadEnv()
@@ -77,6 +79,8 @@ export const main = async (): Promise<void> => {
     pushNotificationSender,
   )
 
+  let isShuttingDown = false
+
   const app = createApp({
     sql,
     agentCard,
@@ -86,6 +90,7 @@ export const main = async (): Promise<void> => {
       url: env.BACKEND_WEBHOOK_URL,
       token: env.BACKEND_WEBHOOK_TOKEN,
     },
+    isShuttingDown: () => isShuttingDown,
   })
 
   const lifecycleJobs = startTaskLifecycleJobs(taskStore, {
@@ -105,18 +110,35 @@ export const main = async (): Promise<void> => {
 
   const shutdown = (signal: NodeJS.Signals): void => {
     console.log(`received ${signal}, shutting down`)
+    isShuttingDown = true
+
     const forceExit = setTimeout(() => {
-      console.error('shutdown timed out, forcing exit')
-      process.exit(1)
+      console.error(
+        'graceful shutdown timed out, forcing exit (in-flight task(s) may be abandoned)',
+      )
+      captureWithFingerprint(
+        new Error('graceful shutdown timed out waiting for in-flight tasks'),
+        SHUTDOWN_TIMED_OUT_FINGERPRINT,
+      )
+      // 直前の captureWithFingerprint はイベントをキューに積むだけなので、
+      // 送信を待たずに exit すると Sentry に届く前にプロセスが消える。
+      void (observability?.shutdown() ?? Promise.resolve()).finally(() => {
+        process.exit(1)
+      })
     }, SHUTDOWN_FORCE_EXIT_MS)
 
     server.close((closeErr) => {
-      clearTimeout(forceExit)
-      void Promise.allSettled([
-        lifecycleJobs.stop(),
-        sql.end({ timeout: 5 }),
-        observability?.shutdown(),
-      ])
+      // executor.execute() の実行本体は HTTP コネクションに紐付かない
+      // 切り離された Promise なので、server.close() を待つだけでは保護されない。
+      void executor
+        .waitForInFlightExecutions()
+        .then(() =>
+          Promise.allSettled([
+            lifecycleJobs.stop(),
+            sql.end({ timeout: 5 }),
+            observability?.shutdown(),
+          ]),
+        )
         .then((results) => {
           for (const result of results) {
             if (result.status === 'rejected') {
@@ -125,6 +147,7 @@ export const main = async (): Promise<void> => {
           }
         })
         .finally(() => {
+          clearTimeout(forceExit)
           process.exit(closeErr ? 1 : 0)
         })
     })

@@ -23,6 +23,7 @@ export interface AppDeps {
   // Cluster-internal auth for the A2A JSON-RPC surface (agent-to-agent
   // callers). Left unset, that surface is unauthenticated.
   a2aBearerToken?: string
+  isShuttingDown?: () => boolean
 }
 
 const errorMessage = (err: unknown): string =>
@@ -73,6 +74,9 @@ export const createApp = (deps: AppDeps): OpenAPIHono<BlankEnv> => {
   mountInternalApiRoutes(app, {
     requestHandler: deps.requestHandler,
     pushNotificationConfig: deps.backendPushNotificationConfig,
+    ...(deps.isShuttingDown !== undefined
+      ? { isShuttingDown: deps.isShuttingDown }
+      : {}),
   })
 
   mountA2aRoutes(app, {
