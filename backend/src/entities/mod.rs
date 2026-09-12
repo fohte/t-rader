@@ -7,6 +7,7 @@ pub mod agent_config;
 pub mod annotation;
 pub mod bars;
 pub mod change_history;
+pub mod checkpoint;
 pub mod comment;
 pub mod custom_indicator;
 pub mod hypothesis;
