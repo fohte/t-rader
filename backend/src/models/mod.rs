@@ -10,10 +10,12 @@ pub mod import;
 pub mod instrument;
 pub mod interest;
 pub mod note;
+pub mod note_hypothesis;
 pub mod refs;
 pub mod risk_policy;
 pub mod strategy;
 pub mod trade;
+pub mod trade_note;
 pub mod trigger;
 pub mod watchlist;
 
@@ -38,6 +40,7 @@ pub use import::{
 pub use instrument::Instrument;
 pub use interest::{CreateInterestRequest, UpdateInterestRequest};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
+pub use note_hypothesis::CreateNoteHypothesisRequest;
 pub use refs::RefResolution;
 pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
@@ -49,5 +52,6 @@ pub use strategy::{
     UpdateStrategyRequest,
 };
 pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
+pub use trade_note::CreateTradeNoteRequest;
 pub use trigger::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};
 pub use watchlist::{AddWatchlistItemRequest, CreateWatchlistRequest};

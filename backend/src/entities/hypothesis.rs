@@ -28,6 +28,8 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::note_hypothesis::Entity")]
+    NoteHypothesis,
     #[sea_orm(
         belongs_to = "super::strategy::Entity",
         from = "Column::StrategyId",
@@ -38,9 +40,24 @@ pub enum Relation {
     Strategy,
 }
 
+impl Related<super::note_hypothesis::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::NoteHypothesis.def()
+    }
+}
+
 impl Related<super::strategy::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Strategy.def()
+    }
+}
+
+impl Related<super::note::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::note_hypothesis::Relation::Note.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::note_hypothesis::Relation::Hypothesis.def().rev())
     }
 }
 
