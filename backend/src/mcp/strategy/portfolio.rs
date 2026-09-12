@@ -274,7 +274,8 @@ mod tests {
         .await
         .expect("record investable amount");
 
-        // J-Quants Free プラン相当の取得可能範囲 (12 週間前) 内に収まる日付の bar を用意する
+        // IBKR の known_fetchable_range は latest_business_day(today) を上限とするため、
+        // それより古い日付なら fresh 判定される
         let bar_date = Utc::now().date_naive() - Duration::weeks(12) - Duration::days(1);
         let bar_millis = Utc
             .from_utc_datetime(&bar_date.and_hms_opt(0, 0, 0).expect("time"))

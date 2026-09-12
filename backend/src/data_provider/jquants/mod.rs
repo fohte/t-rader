@@ -94,8 +94,7 @@ pub struct JQuantsClient {
     base_url: String,
     api_key: String,
     rate_limiter: RateLimiter,
-    /// 400 エラーメッセージから学習した契約範囲。学習後はこの範囲を使い回し、
-    /// 契約範囲を確認するためだけの API 呼び出しを増やさない。
+    /// 400 エラーメッセージから学習した契約範囲
     learned_range: std::sync::Mutex<Option<(NaiveDate, NaiveDate)>>,
 }
 
@@ -309,9 +308,8 @@ impl JQuantsClient {
 }
 
 impl DataProvider for JQuantsClient {
-    /// 契約範囲外エラー (400) を学習して同じリクエストを 1 回だけ自己修復する。
-    /// 学習済みなら常に成功する範囲でリクエストするため、この自己修復が
-    /// 発動するのは未学習時の最初の 1 回だけになる。
+    /// 契約範囲外エラー (400) 発生時は契約範囲を学習し、その範囲でこの呼び出し内で
+    /// 1 回だけ再試行する (学習済み範囲外の日付を再度指定すれば何度でも発動しうる)。
     async fn fetch_daily_bars(
         &self,
         instrument_id: &str,

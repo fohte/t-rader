@@ -10,13 +10,9 @@ use crate::repositories::bars::upsert_bars;
 /// 学習後はこの範囲を使わず、学習済みの範囲 (`known_range`) を使い回す。
 const PROBE_MAX_HISTORY_DAYS: i64 = 365 * 20;
 
-/// `backfill_daily_bars` が実際に取得できる最新日。`known_range` が学習済みならその
-/// 上限日を返す。未学習の間は「今日より古いデータは全て取得を試みるべき」として
-/// `today` を返す (= 既存バーは常に stale 扱いになり、`fetch_latest_prices` が
-/// backfill を試みて学習のきっかけを作る)。契約範囲外だった Free プラン時代の上限
-/// (12 週前) に黙って留まり続けることは絶対にしない。
-/// 保有時価の評価上限 (`market_price::fetch_latest_prices`) もこの関数を経由して
-/// 同じ値を参照するため、取得側と評価側で上限がずれることはない。
+/// 価格データを取得可能な最新日 (未学習時は today、学習済み時は契約上限日) を返す。
+/// 保有時価の評価上限 (`market_price::fetch_latest_prices`) もこの関数を経由するため、
+/// 取得側と評価側で上限がずれることはない。
 pub(crate) fn latest_fetchable_date(
     today: NaiveDate,
     known_range: Option<(NaiveDate, NaiveDate)>,
@@ -32,10 +28,7 @@ pub(crate) fn latest_fetchable_date(
 
 /// 指定銘柄の日足データをバックフィルする。
 ///
-/// `data_provider.known_fetchable_range()` が契約範囲を学習済みならその範囲を、
-/// 未学習ならまず最大範囲 (Premium 相当) で問い合わせて実際の契約範囲を学習する
-/// (学習は `DataProvider` 実装側の責務。例えば J-Quants は 400 エラーメッセージから
-/// 学習し、以降のリクエストで使い回す)。
+/// 契約範囲が学習済みならその範囲を、未学習ならプローブ範囲を取得する。
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
     db: &DatabaseConnection,
@@ -125,6 +118,24 @@ mod tests {
         }
     }
 
+    async fn find_all_bars(
+        db: &DatabaseConnection,
+        instrument_id: &str,
+    ) -> Vec<crate::entities::bars::Model> {
+        use crate::repositories::bars::{BarsQuery, find_bars};
+        find_bars(
+            db,
+            BarsQuery {
+                instrument_id: instrument_id.to_string(),
+                timeframe: "1d".to_string(),
+                from: None,
+                to: None,
+            },
+        )
+        .await
+        .expect("find_bars failed")
+    }
+
     /// テスト用 instrument を DB に挿入する
     async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
         use crate::entities::instruments;
@@ -187,19 +198,7 @@ mod tests {
 
         backfill_daily_bars(&db, &provider, "7203").await;
 
-        // DB にデータが保存されたことを確認
-        use crate::repositories::bars::{BarsQuery, find_bars};
-        let result = find_bars(
-            &db,
-            BarsQuery {
-                instrument_id: "7203".to_string(),
-                timeframe: "1d".to_string(),
-                from: None,
-                to: None,
-            },
-        )
-        .await
-        .expect("find_bars failed");
+        let result = find_all_bars(&db, "7203").await;
 
         assert_eq!(result.len(), 2);
     }
@@ -212,7 +211,6 @@ mod tests {
         let known_from = NaiveDate::from_ymd_opt(2020, 4, 1).expect("date");
         let known_to = NaiveDate::from_ymd_opt(2022, 4, 1).expect("date");
 
-        // 学習済み範囲内の bar と範囲外の bar を両方用意する
         let in_range = make_bar("7203", known_from + Duration::days(1), 100);
         let out_of_range = make_bar("7203", known_to + Duration::days(1), 999);
 
@@ -223,18 +221,7 @@ mod tests {
 
         backfill_daily_bars(&db, &provider, "7203").await;
 
-        use crate::repositories::bars::{BarsQuery, find_bars};
-        let result = find_bars(
-            &db,
-            BarsQuery {
-                instrument_id: "7203".to_string(),
-                timeframe: "1d".to_string(),
-                from: None,
-                to: None,
-            },
-        )
-        .await
-        .expect("find_bars failed");
+        let result = find_all_bars(&db, "7203").await;
 
         // 学習済み範囲外の bar はリクエストされないため保存されない
         assert_eq!(result.len(), 1);
@@ -256,18 +243,7 @@ mod tests {
 
         backfill_daily_bars(&db, &provider, "7203").await;
 
-        use crate::repositories::bars::{BarsQuery, find_bars};
-        let result = find_bars(
-            &db,
-            BarsQuery {
-                instrument_id: "7203".to_string(),
-                timeframe: "1d".to_string(),
-                from: None,
-                to: None,
-            },
-        )
-        .await
-        .expect("find_bars failed");
+        let result = find_all_bars(&db, "7203").await;
 
         assert_eq!(result.len(), 1);
     }
