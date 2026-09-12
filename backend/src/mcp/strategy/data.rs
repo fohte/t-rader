@@ -93,7 +93,6 @@ mod tests {
     use super::super::dto::QueryDataParams;
     use super::super::tests_common::insert_strategy;
 
-    /// 2 本のバーを返すモック IBKR provider 付きの `StrategyServer` を組み立てる。
     async fn setup_server_with_two_bars(
         pool: PgPool,
     ) -> (DatabaseConnection, StrategyServer, Uuid) {
@@ -207,8 +206,6 @@ mod tests {
         let rows = fetch_evidence_by_step(&db, execution_step_id).await;
         assert_eq!(rows.len(), 1);
         let row = rows.into_iter().next().expect("row");
-        // observed_at は呼び出し時刻の動的な値なので、範囲だけ別途検証し、
-        // 全体比較では実測値をそのまま期待値に採用する。
         assert!(row.observed_at >= before && row.observed_at <= after);
         let observed_at = row.observed_at;
         let id = row.id;

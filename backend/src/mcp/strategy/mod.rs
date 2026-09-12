@@ -256,10 +256,8 @@ fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     execution_id_from_headers(&parts.headers)
 }
 
-/// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `step_id` 部分を取り出す。
-/// 対応する `strategy_task_step` 行は t-rader-agent への polling (`watcher.rs`) で非同期に
-/// 反映されるため、evidence テーブルではこの値を FK ではなく単なる相関用の UUID として扱う
-/// (`note.execution_id` と同じ方針)。
+/// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `step_id` を取り出す。
+/// FK を持たない理由は `backend/src/mcp/strategy/evidence.rs` を参照。
 fn execution_step_id_from_execution_id(execution_id: &str) -> Option<Uuid> {
     let (_, step_id) = execution_id.rsplit_once(':')?;
     Uuid::parse_str(step_id).ok()

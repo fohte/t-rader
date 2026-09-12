@@ -35,10 +35,8 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    // strategy_task_step 行は t-rader-agent への polling
-                    // (backend/src/mcp/watcher.rs) で非同期に反映されるため、MCP tool 呼び出し
-                    // 時点ではまだ存在しないことがある。FK にはせず単なる相関用の値として持つ
-                    // (note.execution_id と同じ方針)。
+                    // strategy_task_step は非同期に反映されるため FK にしない
+                    // (理由: backend/src/mcp/strategy/evidence.rs)
                     .col(
                         ColumnDef::new(StrategyTaskStepEvidence::ExecutionStepId)
                             .uuid()
