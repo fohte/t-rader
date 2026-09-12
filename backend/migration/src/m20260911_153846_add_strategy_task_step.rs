@@ -120,6 +120,38 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // steps 列を drop する前に、既存行の jsonb 配列を strategy_task_step へ展開する。
+        // 旧形式の要素には execution_step_id が無いため gen_random_uuid() で採番する
+        // (t-rader-agent 側の実行と紐づかない、移行専用の識別子になる)。配列内の順序を
+        // ordinality で保持し、seq (BIGSERIAL) に反映させる。
+        manager
+            .get_connection()
+            .execute_unprepared(
+                "INSERT INTO strategy_task_step (
+                    execution_step_id, task_id, phase_key, label, model, status,
+                    item, item_label, output, started_at, finished_at, trace_id, span_id, error
+                )
+                SELECT
+                    gen_random_uuid(),
+                    t.task_id,
+                    step ->> 'phase_key',
+                    step ->> 'label',
+                    step ->> 'model',
+                    (step ->> 'status')::strategy_task_step_status,
+                    step -> 'item',
+                    step ->> 'item_label',
+                    step -> 'output',
+                    (step ->> 'started_at')::timestamptz,
+                    (step ->> 'finished_at')::timestamptz,
+                    step ->> 'trace_id',
+                    step ->> 'span_id',
+                    step ->> 'error'
+                FROM strategy_task t
+                CROSS JOIN LATERAL jsonb_array_elements(t.steps) WITH ORDINALITY AS elems(step, ord)
+                ORDER BY t.task_id, ord",
+            )
+            .await?;
+
         manager
             .alter_table(
                 Table::alter()
