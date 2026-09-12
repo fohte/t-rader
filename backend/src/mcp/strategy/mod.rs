@@ -29,6 +29,7 @@
 //!   スライスを時価で返す
 //! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、セクター上限比率・現金の各制約ごとに
 //!   計算して返す
+//! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -43,6 +44,7 @@
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
 //! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
+//! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
 //!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
 //!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
@@ -60,6 +62,7 @@ pub(super) mod interests;
 pub(super) mod media;
 pub(super) mod notes;
 pub(super) mod portfolio;
+pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;
 
