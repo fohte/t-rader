@@ -25,6 +25,7 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+import { createFirstOccurrenceLabeler } from '#test/first-occurrence-labeler'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
 let capturedMcpClientConfig: unknown
@@ -519,17 +520,14 @@ describe('runStrategyAgent', () => {
     )
 
     // ステップ ID は crypto.randomUUID() 由来のため、出現順に番号を振って比較する。
-    const stepLabels = new Map<string, string>()
+    const label = createFirstOccurrenceLabeler('step')
     const normalize = (clients: readonly McpClientCall[]): McpClientCall[] =>
       clients.map((client) => {
         const [prefix, stepId] = client.executionId.split(':')
         if (stepId === undefined) return { ...client }
         expect(stepId).toMatch(UUID_PATTERN)
-        const label =
-          stepLabels.get(stepId) ?? `<step-${String(stepLabels.size + 1)}>`
-        stepLabels.set(stepId, label)
         return {
-          executionId: `${String(prefix)}:${label}`,
+          executionId: `${String(prefix)}:${label(stepId)}`,
           closed: client.closed,
         }
       })

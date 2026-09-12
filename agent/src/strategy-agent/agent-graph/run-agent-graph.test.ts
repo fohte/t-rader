@@ -16,6 +16,7 @@ import {
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import type { AgentGraphConfig } from '#strategy-agent/agent-graph/types'
 import type { McpToolsClient } from '#strategy-agent/strategy-agent'
+import { createFirstOccurrenceLabeler } from '#test/first-occurrence-labeler'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
 // NoopTracer (テスト環境では実 exporter を設定しないため) が返す固定の invalid
@@ -65,17 +66,12 @@ const UUID_PATTERN =
 const normalizeExecutionStepIds = (
   calls: readonly InvokeCall[],
 ): InvokeCall[] => {
-  const labels = new Map<string, string>()
+  const label = createFirstOccurrenceLabeler('execution-step-id')
   return calls.map((call) => {
     const { executionStepId } = call
     if (executionStepId === undefined) return call
     expect(executionStepId).toMatch(UUID_PATTERN)
-    let label = labels.get(executionStepId)
-    if (label === undefined) {
-      label = `<execution-step-id-${String(labels.size + 1)}>`
-      labels.set(executionStepId, label)
-    }
-    return { ...call, executionStepId: label }
+    return { ...call, executionStepId: label(executionStepId) }
   })
 }
 
