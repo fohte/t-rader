@@ -17,11 +17,11 @@ describe('isUsageLimitError', () => {
     expect(isUsageLimitError(error)).toBe(true)
   })
 
-  it('returns false for rateLimitType "wait" (retried internally, never reaches the caller)', () => {
+  it('returns true for rateLimitType "wait" (maxRetries: 0 means it reaches the caller on the first attempt)', () => {
     const error = Object.assign(new Error('rate limited'), {
       rateLimitType: 'wait',
     })
-    expect(isUsageLimitError(error)).toBe(false)
+    expect(isUsageLimitError(error)).toBe(true)
   })
 
   it('returns false for a plain Error without rate limit metadata', () => {

@@ -108,6 +108,7 @@ pub async fn insert_test_strategy_task(
         result_text: Set(None),
         deadline_at: Set(created_at + chrono::Duration::minutes(15)),
         purpose: Set(purpose.map(str::to_string)),
+        as_of: Set(Some(created_at)),
         created_at: Set(created_at),
         updated_at: Set(created_at),
     }

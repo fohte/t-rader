@@ -1,4 +1,8 @@
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
+import {
+  ATTR_GEN_AI_OPERATION_NAME,
+  GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+} from '@opentelemetry/semantic-conventions/incubating'
 import type { Result } from 'neverthrow'
 
 const TRACER_NAME = 't-rader-agent-graph'
@@ -18,7 +22,15 @@ export const withPhaseSpan = async <T, E>(
   fn: (spanIds: PhaseSpanIds) => Promise<Result<T, E>>,
 ): Promise<Result<T, E>> => {
   const tracer = trace.getTracer(TRACER_NAME)
-  const span = tracer.startSpan(name, { attributes })
+  // Langfuse は gen_ai.* 属性を持たない span を observation として取り込まない
+  // (LLM 関連の span のみ通すフィルタを持つため)。invoke_agent はエージェント
+  // 呼び出しループを表す正規の gen_ai.operation.name 値。
+  const span = tracer.startSpan(name, {
+    attributes: {
+      ...attributes,
+      [ATTR_GEN_AI_OPERATION_NAME]: GEN_AI_OPERATION_NAME_VALUE_INVOKE_AGENT,
+    },
+  })
   const { traceId, spanId } = span.spanContext()
   const spanContext = trace.setSpan(context.active(), span)
 

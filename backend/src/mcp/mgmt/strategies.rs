@@ -291,8 +291,10 @@ mod tests {
         assert_eq!(submitted, vec![Some("explore".to_string())]);
 
         let rows = strategy_task::Entity::find().all(&db).await.unwrap();
-        let purposes: Vec<Option<String>> = rows.into_iter().map(|r| r.purpose).collect();
+        let purposes: Vec<Option<String>> = rows.iter().map(|r| r.purpose.clone()).collect();
         assert_eq!(purposes, vec![Some("explore".to_string())]);
+        let as_ofs: Vec<bool> = rows.iter().map(|r| r.as_of.is_some()).collect();
+        assert_eq!(as_ofs, vec![true]);
     }
 
     #[derive(Debug, PartialEq, Eq)]

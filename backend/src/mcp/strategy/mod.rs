@@ -45,6 +45,7 @@
 //! - `annotations`: アノテーション操作 (`create_annotation_inner` / `read_annotations_inner`)
 //! - `comments`: コメント操作 (`read_comments_inner` / `resolve_comment_inner` / `reply_comment_inner`)
 //! - `data`: 価格データ取得 (`query_data_inner`)
+//! - `evidence`: 外部データ取得の証跡記録 (`record_query_data`)
 //! - `eval`: Python 実行 (`eval_python_inner`)
 //! - `interests`: 関心の追加 (`add_interest_inner`) / 監視対象一覧 (`list_watch_targets_inner`)
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
@@ -68,6 +69,7 @@ pub(super) mod data;
 pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
+pub(super) mod evidence;
 pub(super) mod hypotheses;
 pub(super) mod interests;
 pub(super) mod media;
@@ -269,6 +271,17 @@ fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     execution_id_from_headers(&parts.headers)
 }
 
+/// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `step_id` を取り出す。
+/// FK を持たない理由は `backend/src/mcp/strategy/evidence.rs` を参照。
+fn execution_step_id_from_execution_id(execution_id: &str) -> Option<Uuid> {
+    let (_, step_id) = execution_id.rsplit_once(':')?;
+    Uuid::parse_str(step_id).ok()
+}
+
+fn execution_step_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<Uuid> {
+    execution_id_from_ctx(ctx).and_then(|id| execution_step_id_from_execution_id(&id))
+}
+
 pub(super) async fn fetch_note_owned_by(
     db: &DatabaseConnection,
     note_id: Uuid,
@@ -417,5 +430,19 @@ mod tests {
     ) {
         let result = execution_id_from_headers(&execution_headers_with(header));
         assert_eq!(result, expected.map(str::to_string));
+    }
+
+    #[rstest]
+    #[case::valid(
+        "a2a-task-1:550e8400-e29b-41d4-a716-446655440000",
+        Some(uuid::uuid!("550e8400-e29b-41d4-a716-446655440000"))
+    )]
+    #[case::no_colon("no-colon-here", None)]
+    #[case::not_uuid_after_colon("task:not-a-uuid", None)]
+    fn execution_step_id_from_execution_id_cases(
+        #[case] execution_id: &str,
+        #[case] expected: Option<Uuid>,
+    ) {
+        assert_eq!(execution_step_id_from_execution_id(execution_id), expected);
     }
 }

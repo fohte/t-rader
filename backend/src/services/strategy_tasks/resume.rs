@@ -194,6 +194,7 @@ mod tests {
             result_text: Set(Some("stale result".to_string())),
             deadline_at: Set(now),
             purpose: Set(purpose.map(str::to_string)),
+            as_of: Set(Some(now)),
             created_at: Set(now),
             updated_at: Set(now),
         }

@@ -10778,6 +10778,14 @@
               "null"
             ]
           },
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した\nデータの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を\n受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの\nカラムが追加される前に作成された行に限られる。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
@@ -10841,6 +10849,14 @@
           "updated_at"
         ],
         "properties": {
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した\nデータの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を\n受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの\nカラムが追加される前に作成された行に限られる。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time"
