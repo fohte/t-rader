@@ -157,10 +157,11 @@ async fn reconcile_one(
     }
 }
 
-/// エージェントが正常に応答したケース。エージェント側の状態がどうであれ、deadline を
-/// 超過していれば最終防衛として failed に確定する (heartbeat がある限り延命される
-/// working も、超過後に届いた completed も対象)。result_text/steps はエージェントから
-/// 届いた分をそのまま反映する (deadline 超過は phase/error_summary のみを上書きする)。
+/// エージェントの応答から phase を確定する。`row.deadline_at` を超過していれば、
+/// エージェント側の状態 (heartbeat がある限り延命される working も、超過後に届いた
+/// completed も含む) に関わらず最終防衛として failed に上書きする。この場合も
+/// result_text/steps はエージェントから届いた内容をそのまま反映する
+/// (deadline 超過は phase/error_summary のみを上書きする)。
 async fn apply_status(
     db: &DatabaseConnection,
     row: strategy_task::Model,
