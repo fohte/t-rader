@@ -22,7 +22,7 @@
     "esbuild": "0.28.2",
     "eslint": "10.6.0",
     "eslint-plugin-storybook": "10.4.6",
-    "eslint-plugin-tailwindcss": "4.2.0",
+    "eslint-plugin-tailwindcss": "4.4.0",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
     "vitest": "4.1.11",
