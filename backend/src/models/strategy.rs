@@ -61,17 +61,20 @@ pub struct StrategyTaskStatusResponse {
     pub purpose: Option<String>,
 }
 
-/// `GET /api/strategies/:id/tasks` の一覧要素。`steps`/`result_text` は一覧では
-/// 使わないため含めない。
+/// `GET /api/strategies/:id/tasks` と `GET /api/tasks` の一覧要素。`steps`/`result_text`
+/// は一覧では使わないため含めない。
 #[derive(Debug, Serialize, ToSchema)]
 pub struct StrategyTaskSummary {
     pub task_id: Uuid,
+    pub strategy_id: Uuid,
     pub source: String,
     pub prompt: String,
     pub phase: String,
     pub error_summary: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    /// 投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。
+    pub purpose: Option<String>,
 }
 
 /// 戦略の投資可能額を新しい history 行として記録するリクエスト。

@@ -15,13 +15,14 @@ function TaskRunListPage() {
 
   return (
     <TaskRunListView
-      strategyId={id}
       tasks={
         data?.map((t) => ({
           taskId: t.task_id,
+          strategyId: t.strategy_id,
           prompt: t.prompt,
           source: t.source,
           phase: t.phase,
+          purpose: t.purpose ?? null,
           createdAt: t.created_at,
         })) ?? null
       }

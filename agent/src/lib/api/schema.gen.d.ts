@@ -1141,6 +1141,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/tasks': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 戦略タスクの実行履歴を口座横断で新しい順に一覧取得する。`strategy_id`/`purpose` で絞り込める。 */
+    get: operations['list_tasks']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/trades': {
     parameters: {
       query?: never
@@ -2010,8 +2027,8 @@ export interface components {
       updated_at: string
     }
     /**
-     * @description `GET /api/strategies/:id/tasks` の一覧要素。`steps`/`result_text` は一覧では
-     *     使わないため含めない。
+     * @description `GET /api/strategies/:id/tasks` と `GET /api/tasks` の一覧要素。`steps`/`result_text`
+     *     は一覧では使わないため含めない。
      */
     StrategyTaskSummary: {
       /** Format: date-time */
@@ -2019,7 +2036,11 @@ export interface components {
       error_summary?: string | null
       phase: string
       prompt: string
+      /** @description 投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。 */
+      purpose?: string | null
       source: string
+      /** Format: uuid */
+      strategy_id: string
       /** Format: uuid */
       task_id: string
       /** Format: date-time */
@@ -7183,6 +7204,45 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_tasks: {
+    parameters: {
+      query?: {
+        strategy_id?: string
+        purpose?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['StrategyTaskSummary'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
         headers: {
           [name: string]: unknown
         }

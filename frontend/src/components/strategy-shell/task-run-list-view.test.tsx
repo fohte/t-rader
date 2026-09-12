@@ -18,7 +18,7 @@ afterEach(cleanup)
 // Link が親ルートを要求するため、最低限のテストルーターを噛ませる
 async function renderInRouter(tasks: TaskRunListItem[]) {
   const rootRoute = createRootRoute({
-    component: () => <TaskRunListView strategyId="strategy-1" tasks={tasks} />,
+    component: () => <TaskRunListView tasks={tasks} />,
   })
   const detailRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -42,12 +42,45 @@ describe('TaskRunListView', () => {
     await renderInRouter([
       {
         taskId: 'task-1',
+        strategyId: 'strategy-1',
         prompt: 'p',
         source: 'frontend',
         phase: 'unknown-phase',
+        purpose: null,
         createdAt: '2026-08-15T00:00:00.000Z',
       },
     ])
     expect(screen.getByText('unknown-phase')).toBeInTheDocument()
+  })
+
+  it('strategyId ごとにリンク先が変わる', async () => {
+    await renderInRouter([
+      {
+        taskId: 't1',
+        strategyId: 'strategy-a',
+        prompt: 'a',
+        source: 'frontend',
+        phase: 'completed',
+        purpose: null,
+        createdAt: '2026-08-15T00:00:00.000Z',
+      },
+      {
+        taskId: 't2',
+        strategyId: 'strategy-b',
+        prompt: 'b',
+        source: 'frontend',
+        phase: 'completed',
+        purpose: null,
+        createdAt: '2026-08-15T00:00:00.000Z',
+      },
+    ])
+    expect(screen.getByRole('link', { name: /a/ })).toHaveAttribute(
+      'href',
+      '/strategies/strategy-a/runs/t1',
+    )
+    expect(screen.getByRole('link', { name: /b/ })).toHaveAttribute(
+      'href',
+      '/strategies/strategy-b/runs/t2',
+    )
   })
 })

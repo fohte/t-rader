@@ -11,7 +11,8 @@ use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
-use crate::entities::{strategy, trigger};
+use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
+use crate::entities::{strategy, strategy_task, trigger};
 use crate::kata_exec::SharedKataExecutor;
 use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
@@ -85,6 +86,36 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
     .await
     .expect("insert test strategy");
     id
+}
+
+/// テストで strategy_task を 1 件 seed する。`created_at`/`updated_at` を明示指定できる
+/// ため、一覧の並び順を検証するテストで使う。
+pub async fn insert_test_strategy_task(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+    prompt: &str,
+    purpose: Option<&str>,
+    created_at: DateTime<chrono::FixedOffset>,
+) -> Uuid {
+    let task_id = Uuid::new_v4();
+    strategy_task::ActiveModel {
+        task_id: Set(task_id),
+        strategy_id: Set(strategy_id),
+        a2a_task_id: Set(None),
+        source: Set("frontend".to_string()),
+        prompt: Set(prompt.to_string()),
+        phase: Set(StrategyTaskPhase::Completed),
+        error_summary: Set(None),
+        result_text: Set(None),
+        deadline_at: Set(created_at + chrono::Duration::minutes(15)),
+        purpose: Set(purpose.map(str::to_string)),
+        created_at: Set(created_at),
+        updated_at: Set(created_at),
+    }
+    .insert(db)
+    .await
+    .expect("insert test strategy task");
+    task_id
 }
 
 /// テストで cron trigger を 1 件 seed する。
