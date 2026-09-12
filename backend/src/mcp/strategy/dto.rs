@@ -426,6 +426,34 @@ pub struct ReadNewsResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct SearchNewsParams {
+    /// title / body_snippet の部分一致 (大文字小文字を区別しない)。省略時はキーワード条件なし
+    pub keyword: Option<String>,
+    /// 取得開始日 (YYYY-MM-DD, inclusive)
+    pub from: Option<NaiveDate>,
+    /// 取得終了日 (YYYY-MM-DD, inclusive)
+    pub to: Option<NaiveDate>,
+    pub limit: Option<u32>,
+}
+
+/// news_item を直接検索した 1 件。`read_news` と異なり戦略の interest 一致とは無関係なため
+/// ref_kind/ref_id/matched_term は持たない。
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct NewsItemDto {
+    pub id: Uuid,
+    pub source: String,
+    pub url: String,
+    pub title: String,
+    pub body_snippet: Option<String>,
+    pub published_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct SearchNewsResult {
+    pub items: Vec<NewsItemDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListHypothesesParams {
     pub limit: Option<u32>,
 }
