@@ -1,10 +1,26 @@
 use serde::Deserialize;
 
+/// `pagination_key` を持つ一覧系レスポンス。`fetch_all_pages` がこれを実装する
+/// レスポンス型からその 1 ページ分のアイテムと次ページキーを取り出す。
+pub(crate) trait Paginated {
+    type Item;
+
+    fn into_parts(self) -> (Vec<Self::Item>, Option<String>);
+}
+
 /// J-Quants API V2 日足レスポンス (`GET /v2/equities/bars/daily`)
 #[derive(Debug, Deserialize)]
 pub(crate) struct DailyBarsResponse {
     pub data: Vec<DailyBar>,
     pub pagination_key: Option<String>,
+}
+
+impl Paginated for DailyBarsResponse {
+    type Item = DailyBar;
+
+    fn into_parts(self) -> (Vec<DailyBar>, Option<String>) {
+        (self.data, self.pagination_key)
+    }
 }
 
 /// J-Quants API V2 日足データ 1 レコード
