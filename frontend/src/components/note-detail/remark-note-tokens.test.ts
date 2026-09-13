@@ -61,6 +61,34 @@ describe('remarkNoteTokens', () => {
     })
   })
 
+  it('replaces [[anno:<uuid>]] starting with a digit with a note-anno node', () => {
+    const tree = textTree(
+      'シグナル [[anno:0c2b6b3e-3f2a-4c9a-9e2a-3b7a2f6c9d1a]] を見る',
+    )
+    remarkNoteTokens()(tree)
+    expect(tree).toEqual({
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: 'シグナル ' },
+            {
+              type: 'noteToken',
+              data: {
+                hName: 'note-anno',
+                hProperties: {
+                  annoId: '0c2b6b3e-3f2a-4c9a-9e2a-3b7a2f6c9d1a',
+                },
+              },
+            },
+            { type: 'text', value: ' を見る' },
+          ],
+        },
+      ],
+    })
+  })
+
   it('leaves unknown prefixes as literal text', () => {
     const tree = textTree('未知 [[foo:bar]] は素通り')
     remarkNoteTokens()(tree)
