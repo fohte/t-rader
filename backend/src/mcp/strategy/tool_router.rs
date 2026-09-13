@@ -86,7 +86,7 @@ impl StrategyServer {
     /// 戦略のノート一覧を返す (新しい順)
     #[tool(
         name = "list_notes",
-        description = "List notes owned by the strategy, newest first.",
+        description = "List notes owned by the strategy, newest first. Filter by status and/or updated_after, and set include_body: false to omit body_md and save context.",
         annotations(read_only_hint = true)
     )]
     async fn list_notes(

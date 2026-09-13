@@ -33,13 +33,12 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
 use crate::data_provider::DataProviderKind;
-use crate::data_provider::macro_data::MacroCache;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
     custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
-    jquants_plan_setting, macro_data, news, note_hypotheses, notes, refs, risk_policy, rss_feeds,
-    strategies, tasks, trade_notes, trades, triggers, watchlists,
+    jquants_plan_setting, news, note_hypotheses, notes, refs, risk_policy, rss_feeds, strategies,
+    tasks, trade_notes, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -64,8 +63,6 @@ pub struct AppState {
     /// Kata Containers exec Pod executor。`KATA_EXEC_API_URL` 未設定時は `None` で
     /// 起動し、`eval_python` tool は MCP エラーを返す。
     pub kata_executor: Option<SharedKataExecutor>,
-    /// マクロ指標の最新値 cache (Stooq 等の poll task が書き込み、handler が読む)
-    pub macro_cache: Option<Arc<MacroCache>>,
     /// LLM ゲートウェイ client。`LLM_BASE_URL` 未設定時は `None` で起動し、
     /// `GET /api/agent-models` は空配列を返す。
     pub llm_gateway_client: Option<LlmGatewayClient>,
@@ -111,7 +108,6 @@ impl AppState {
         (name = "hypothesis_proposals", description = "仮説への変更提案 (エージェントが作成し、人間が承認/却下する)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
-        (name = "macro", description = "マクロ指標 (日経225 / TOPIX / USD/JPY 等の現在値)"),
         (name = "news", description = "ニュース (公開 RSS の集約結果と戦略への紐付け)"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
@@ -148,7 +144,6 @@ mod app_state_tests {
             agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
-            macro_cache: None,
             llm_gateway_client: None,
         };
         assert!(state.data_provider().is_ok());
@@ -163,7 +158,6 @@ mod app_state_tests {
             agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
-            macro_cache: None,
             llm_gateway_client: None,
         };
         let result = state.data_provider();
@@ -359,8 +353,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(custom_indicators::get_strategy_indicator))
         .routes(routes!(custom_indicators::preview_indicator))
-        // macro
-        .routes(routes!(macro_data::get_macro_ticks))
         // news
         .routes(routes!(news::list_strategy_news))
         // rss feeds
