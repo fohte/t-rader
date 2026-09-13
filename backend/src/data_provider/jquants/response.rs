@@ -31,9 +31,8 @@ impl Paginated for DailyBarsResponse {
 pub(crate) struct DailyBar {
     #[serde(rename = "Date")]
     pub date: String,
-    /// デシリアライズには必要だが、アプリ内部では fetch_daily_bars の引数 instrument_id を使う
     #[serde(rename = "Code")]
-    pub _code: String,
+    pub code: String,
     #[serde(rename = "AdjO")]
     pub adj_open: Option<f64>,
     #[serde(rename = "AdjH")]
@@ -63,6 +62,9 @@ pub(crate) struct EquityMaster {
     pub company_name: String,
     #[serde(rename = "S33Nm")]
     pub sector_name: Option<String>,
+    /// 商品区分コード (例: "011" = 内国株券、"014" = ETF)
+    #[serde(rename = "ProdCat")]
+    pub product_category: Option<String>,
 }
 
 /// J-Quants API V2 財務情報レスポンス (`GET /v2/fins/summary`)

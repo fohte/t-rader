@@ -62,6 +62,7 @@ mod fetch_instrument {
                 name: "TOYOTA MOTOR CORP".to_string(),
                 market: Market::Tse,
                 sector: None,
+                product_category: None,
             }
         );
         Ok(())
@@ -315,6 +316,7 @@ mod data_provider_kind {
                 name: "TOYOTA MOTOR CORP".to_string(),
                 market: Market::Tse,
                 sector: None,
+                product_category: None,
             }
         );
         Ok(())

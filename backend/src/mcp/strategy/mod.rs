@@ -23,6 +23,7 @@ pub(super) mod portfolio;
 pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;
+pub(super) mod trades;
 pub(super) mod web_search;
 
 #[cfg(test)]
