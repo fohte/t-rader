@@ -20,10 +20,10 @@ use super::dto::{
     ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
     ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
-    ReadHypothesisParams, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
-    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
-    SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams,
-    WriteNoteResult,
+    ReadHypothesisParams, ReadMarginParams, ReadMarginResult, ReadNewsParams, ReadNewsResult,
+    ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
+    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
+    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
@@ -351,6 +351,21 @@ impl StrategyServer {
         self.read_fin_summary_inner(sid, params).await.map(Json)
     }
 
+    /// 銘柄の信用残 (信用取引週末残高/信用取引残高、日々公表信用取引残高) を返す
+    #[tool(
+        name = "read_margin",
+        description = "Read a stock's margin trading balances: weekly (later daily) margin interest balances (margin_interest) newest first, tagged with the 5-digit J-Quants code and iss_type (1=margin-eligible, 2=loan-eligible, 3=other), plus daily-published margin balances (margin_alert, only for stocks the exchange has designated for daily publication — absence from this list does not mean a zero balance) with pub_reason flags and tse_mrgn_reg_cls. When the same application date has multiple corrections, only the one with the latest publication date is returned. symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters); from/to filter by date (inclusive) and default to no bound.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_margin(
+        &self,
+        Parameters(params): Parameters<ReadMarginParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadMarginResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_margin_inner(sid, params).await.map(Json)
+    }
+
     /// 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
     #[tool(
         name = "list_hypotheses",
@@ -460,6 +475,7 @@ mod tests {
                 ("read_comments", Some(true)),
                 ("read_fin_summary", Some(true)),
                 ("read_hypothesis", Some(true)),
+                ("read_margin", Some(true)),
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),

@@ -44,6 +44,7 @@ mod m20260913_072507_add_edinet_holdings;
 mod m20260913_072524_add_jquants_fin_summary;
 mod m20260913_082645_add_custom_indicator_to_change_history_target_kind;
 mod m20260913_091652_add_jquants_fin_summary_code_prefix_index;
+mod m20260913_133130_add_margin_code_prefix_indexes;
 
 pub struct Migrator;
 
@@ -96,6 +97,7 @@ impl MigratorTrait for Migrator {
                 m20260913_082645_add_custom_indicator_to_change_history_target_kind::Migration,
             ),
             Box::new(m20260913_091652_add_jquants_fin_summary_code_prefix_index::Migration),
+            Box::new(m20260913_133130_add_margin_code_prefix_indexes::Migration),
         ]
     }
 }

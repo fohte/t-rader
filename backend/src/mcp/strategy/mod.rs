@@ -22,6 +22,7 @@
 //! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
 //! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
 //! - `fin_summary`: 銘柄の財務情報の取得 (`read_fin_summary_inner`)
+//! - `margin`: 銘柄の信用残の取得 (`read_margin_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
 //!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
 //!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
@@ -39,6 +40,7 @@ pub(super) mod evidence;
 pub(super) mod fin_summary;
 pub(super) mod hypotheses;
 pub(super) mod interests;
+pub(super) mod margin;
 pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
