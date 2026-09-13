@@ -85,16 +85,9 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// session の keep_alive (idle timeout) を戦略タスクの deadline より長く設定した
-/// `LocalSessionManager` を作る。mgmt/strategy 共通で使う (mgmt にとって deadline は
-/// 無関係な値だが、keep_alive を長くする分には zombie session の回収が遅れるだけで
-/// 害はないため、値を分ける必要はない)。
-///
-/// `LocalSessionManager` のデフォルトの keep_alive (5 分) は「最後にリクエストを
-/// 送ってからの idle 時間」で切れる。モデルが tool を呼ばずに考え込む時間が
-/// これを超えると session が破棄され、以降そのステップは tool を呼べなくなる。
-/// deadline を過ぎたタスクは backend 側で failed に確定するため、keep_alive を
-/// それより長くしておけば実行中の session が先に消えることはない。
+/// keep_alive (idle timeout) を戦略タスクの deadline より長くした `LocalSessionManager`。
+/// デフォルト (5 分) だと、モデルが tool を呼ばずに長考した際に deadline 前に session が
+/// 破棄されうる。mgmt にも同じ値を使うが、長い分には害がない。
 fn session_manager() -> LocalSessionManager {
     let mut manager = LocalSessionManager::default();
     manager.session_config.keep_alive = Some(session_keep_alive());
@@ -102,9 +95,8 @@ fn session_manager() -> LocalSessionManager {
 }
 
 fn session_keep_alive() -> Duration {
-    // to_std() は DEADLINE_DURATION が負の場合のみ失敗するが、正の定数なので実際には
-    // 起こらない。万一の変更で失敗しても deadline を下回る値へ倒れないよう、
-    // フォールバックは安全側 (無効化に近い最大値) にする。
+    // to_std() は負の Duration でのみ失敗する (起こらない想定)。フォールバックは
+    // deadline を下回らない安全側 (Duration::MAX) にする。
     DEADLINE_DURATION
         .to_std()
         .map(|deadline| deadline + Duration::from_secs(60))
@@ -418,9 +410,7 @@ mod tests {
         );
     }
 
-    /// session の idle timeout が戦略タスクの deadline より短いと、deadline 内の
-    /// タスクでも session が先に破棄されうる (今回の修正対象のバグ)。この関係が
-    /// 保たれていることの回帰テスト。
+    /// keep_alive が deadline を下回ると、deadline 内でも session が破棄されうる。
     #[test]
     fn session_keep_alive_exceeds_task_deadline() {
         let deadline = DEADLINE_DURATION
