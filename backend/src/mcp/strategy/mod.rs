@@ -4,12 +4,13 @@
 //! HTTP ヘッダで自身の strategy_id を持ち込み、全 tool はこの値のみを戦略境界として
 //! 使う (tool 引数に strategy_id は含まれない)。さらに対象リソース (note / annotation)
 //! の strategy_id と一致するかを Repository 層で二重検査する。
-//! 例外が 3 つある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を
+//! 例外が 4 つある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を
 //! 見る、という設計上ヘッダの値を口座全体の集計にはスコープとして使わないが、
 //! 接続元戦略自身のスライスを追加で返すためにヘッダの値も使う。`search_refs` は
 //! stock/indicator/sector/theme が戦略に属さないマスタデータであるため、
 //! ヘッダの値をそもそも検索条件に使わない。`search_news` も同様に news_item 全体を対象に
-//! 検索するため、ヘッダの値を検索条件に使わない。
+//! 検索するため、ヘッダの値を検索条件に使わない。`read_shareholding_structure` も同様に
+//! EDINET 保有構造データが戦略に属さない市場データであるため、ヘッダの値を検索条件に使わない。
 //!
 //! tool 一覧:
 //!
@@ -36,6 +37,8 @@
 //!   計算して返す
 //! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
 //! - `search_news`: news_item をキーワード / 期間で直接検索する (news_strategy_link 非経由)
+//! - `read_shareholding_structure`: 銘柄の保有構造 (大量保有報告書・変更報告書、大株主状況、
+//!   政策保有株式) を EDINET 取り込みデータから返す
 //! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
 //! - `list_hypotheses`: 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
 //! - `read_hypothesis`: 単一の仮説を読む (自戦略または global)
@@ -55,6 +58,7 @@
 //! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
 //! - `hypotheses`: 仮説の読み取り / 変更提案 (`list_hypotheses_inner` / `read_hypothesis_inner` /
 //!   `propose_hypothesis_change_inner`)
+//! - `holdings`: 銘柄の保有構造読み取り (`read_shareholding_structure_inner`)
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
 //! - `web_search`: 問い合わせ文の web 検索、テキストと出典 URL の返却 (`search_web_inner`)
 //! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`) /
@@ -76,6 +80,7 @@ pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
+pub(super) mod holdings;
 pub(super) mod hypotheses;
 pub(super) mod interests;
 pub(super) mod media;
