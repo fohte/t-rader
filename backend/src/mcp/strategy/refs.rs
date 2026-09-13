@@ -585,7 +585,6 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn search_refs_ignores_dangling_alias_not_in_master(pool: PgPool) {
         let db = create_test_db(pool).await;
-        // master に存在しない ref_id (9999) を指す dangling な別名
         seed_ref_term(&db, "stock", "9999", "Ghost Co").await;
         let server = build_server(db);
 
