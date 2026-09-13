@@ -60,6 +60,22 @@ pub(super) async fn set_note_status(db: &DatabaseConnection, note_id: Uuid, stat
     .expect("set note status");
 }
 
+/// note の updated_at を直接書き換える (`updated_after` フィルタの境界値テスト用)
+pub(super) async fn set_note_updated_at(
+    db: &DatabaseConnection,
+    note_id: Uuid,
+    updated_at: DateTime<FixedOffset>,
+) {
+    note::ActiveModel {
+        id: Set(note_id),
+        updated_at: Set(updated_at),
+        ..Default::default()
+    }
+    .update(db)
+    .await
+    .expect("set note updated_at");
+}
+
 pub(super) fn normalize_comment(mut c: CommentDto) -> CommentDto {
     c.created_at = ts_sentinel();
     c
