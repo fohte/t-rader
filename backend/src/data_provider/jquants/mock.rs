@@ -61,6 +61,22 @@ impl JQuantsMockServer {
         }
     }
 
+    pub fn short_sale_report(&self) -> MockShortSaleReportBuilder<'_> {
+        MockShortSaleReportBuilder {
+            server: &self.server,
+            disc_date: "",
+            reports: Vec::new(),
+        }
+    }
+
+    pub fn short_ratio(&self) -> MockShortRatioBuilder<'_> {
+        MockShortRatioBuilder {
+            server: &self.server,
+            date: "",
+            ratios: Vec::new(),
+        }
+    }
+
     pub fn margin_interest(&self) -> MockMarginInterestBuilder<'_> {
         MockMarginInterestBuilder {
             server: &self.server,
@@ -335,6 +351,120 @@ impl<'a> MockInstrumentBuilder<'a> {
             .and(header("x-api-key", "test-api-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "data": [],
+            })))
+            .mount(self.server)
+            .await;
+    }
+}
+
+/// テスト用の空売り残高報告レコード
+pub(crate) struct MockShortSaleReport {
+    pub code: &'static str,
+    pub ss_name: &'static str,
+    pub short_position_ratio: f64,
+}
+
+pub(crate) struct MockShortSaleReportBuilder<'a> {
+    server: &'a MockServer,
+    disc_date: &'a str,
+    reports: Vec<MockShortSaleReport>,
+}
+
+impl<'a> MockShortSaleReportBuilder<'a> {
+    pub fn disc_date(mut self, disc_date: &'a str) -> Self {
+        self.disc_date = disc_date;
+        self
+    }
+
+    pub fn reports(mut self, reports: Vec<MockShortSaleReport>) -> Self {
+        self.reports = reports;
+        self
+    }
+
+    pub async fn ok(self) {
+        let disc_date = self.disc_date;
+        let data: Vec<serde_json::Value> = self
+            .reports
+            .iter()
+            .map(|r| {
+                json!({
+                    "DiscDate": disc_date,
+                    "CalcDate": disc_date,
+                    "Code": r.code,
+                    "SSName": r.ss_name,
+                    "SSAddr": "テスト住所",
+                    "DICName": "テスト委託者",
+                    "DICAddr": "テスト住所",
+                    "FundName": "",
+                    "ShrtPosToSO": r.short_position_ratio,
+                    "ShrtPosShares": 1000,
+                    "ShrtPosUnits": 10,
+                    "PrevRptDate": "",
+                    "PrevRptRatio": null,
+                    "Notes": "",
+                })
+            })
+            .collect();
+
+        Mock::given(method("GET"))
+            .and(path("/markets/short-sale-report"))
+            .and(query_param("disc_date", disc_date))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": data,
+                "pagination_key": null,
+            })))
+            .mount(self.server)
+            .await;
+    }
+}
+
+/// テスト用の業種別空売り比率レコード
+pub(crate) struct MockShortRatio {
+    pub sector33_code: &'static str,
+    pub sell_excluding_short_value: Option<f64>,
+}
+
+pub(crate) struct MockShortRatioBuilder<'a> {
+    server: &'a MockServer,
+    date: &'a str,
+    ratios: Vec<MockShortRatio>,
+}
+
+impl<'a> MockShortRatioBuilder<'a> {
+    pub fn date(mut self, date: &'a str) -> Self {
+        self.date = date;
+        self
+    }
+
+    pub fn ratios(mut self, ratios: Vec<MockShortRatio>) -> Self {
+        self.ratios = ratios;
+        self
+    }
+
+    pub async fn ok(self) {
+        let date = self.date;
+        let data: Vec<serde_json::Value> = self
+            .ratios
+            .iter()
+            .map(|r| {
+                json!({
+                    "Date": date,
+                    "S33": r.sector33_code,
+                    "SellExShortVa": r.sell_excluding_short_value,
+                    "ShrtWithResVa": r.sell_excluding_short_value,
+                    "ShrtNoResVa": r.sell_excluding_short_value,
+                })
+            })
+            .collect();
+
+        Mock::given(method("GET"))
+            .and(path("/markets/short-ratio"))
+            .and(query_param("date", date))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": data,
+                "pagination_key": null,
             })))
             .mount(self.server)
             .await;

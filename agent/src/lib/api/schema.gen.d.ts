@@ -1484,7 +1484,6 @@ export interface components {
       skills: {
         [key: string]: string
       }
-      small_model: string
     }
     /** @description 目的ごとの多段フェーズ実行設定 (YAML)。未設定の場合は `content` が空文字列。 */
     AgentGraphBody: {
