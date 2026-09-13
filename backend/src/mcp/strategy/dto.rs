@@ -841,3 +841,6 @@ pub struct ReadMacroIndicatorResult {
     /// 日付昇順。データが無ければ空配列
     pub observations: Vec<IndicatorObservationDto>,
 }
+
+mod short_selling;
+pub use short_selling::*;
