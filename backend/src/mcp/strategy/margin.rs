@@ -76,8 +76,7 @@ pub struct MarginAlertDto {
     pub tse_mrgn_reg_cls: String,
 }
 
-/// 日々公表信用取引残高の公表理由フラグ。ingestion 側の `models::PubReason` と同じ形だが、
-/// MCP tool のレスポンススキーマとして独立に公開するため別型として定義する。
+/// 日々公表信用取引残高の公表理由フラグ。
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct MarginPubReasonDto {
     pub restricted: bool,
@@ -608,5 +607,101 @@ mod tests {
 
         let app_dates: Vec<chrono::NaiveDate> = result.alerts.iter().map(|a| a.app_date).collect();
         assert_eq!(app_dates, vec![ymd(2026, 9, 15), ymd(2026, 9, 8)]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn read_margin_matches_alerts_5_digit_code_by_prefix(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db.clone());
+
+        seed_alert(
+            &db,
+            ymd(2026, 9, 8),
+            ymd(2026, 9, 8),
+            "72030",
+            no_pub_reason(),
+            100,
+            200,
+        )
+        .await;
+        seed_alert(
+            &db,
+            ymd(2026, 9, 8),
+            ymd(2026, 9, 8),
+            "99840",
+            no_pub_reason(),
+            999,
+            999,
+        )
+        .await;
+
+        let result = server
+            .read_margin_inner(
+                Uuid::new_v4(),
+                ReadMarginParams {
+                    symbol: "7203".to_string(),
+                    from: None,
+                    to: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("read_margin");
+
+        let codes: Vec<String> = result.alerts.iter().map(|a| a.code.clone()).collect();
+        assert_eq!(codes, vec!["72030".to_string()]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn read_margin_filters_alerts_by_date_range_inclusive(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db.clone());
+
+        seed_alert(
+            &db,
+            ymd(2026, 9, 1),
+            ymd(2026, 9, 1),
+            "72030",
+            no_pub_reason(),
+            1,
+            1,
+        )
+        .await;
+        seed_alert(
+            &db,
+            ymd(2026, 9, 8),
+            ymd(2026, 9, 8),
+            "72030",
+            no_pub_reason(),
+            2,
+            2,
+        )
+        .await;
+        seed_alert(
+            &db,
+            ymd(2026, 9, 15),
+            ymd(2026, 9, 15),
+            "72030",
+            no_pub_reason(),
+            3,
+            3,
+        )
+        .await;
+
+        let result = server
+            .read_margin_inner(
+                Uuid::new_v4(),
+                ReadMarginParams {
+                    symbol: "7203".to_string(),
+                    from: Some(ymd(2026, 9, 8)),
+                    to: Some(ymd(2026, 9, 8)),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("read_margin");
+
+        let app_dates: Vec<chrono::NaiveDate> = result.alerts.iter().map(|a| a.app_date).collect();
+        assert_eq!(app_dates, vec![ymd(2026, 9, 8)]);
     }
 }
