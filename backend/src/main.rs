@@ -227,14 +227,14 @@ async fn main() -> Result<(), AppError> {
     if let Some(provider) = &data_provider
         && matches!(provider.as_ref(), DataProviderKind::JQuants(_))
     {
-        let _sector_backfill_poll = backend::services::sector_backfill::spawn_poll(
+        let _instrument_backfill_poll = backend::services::instrument_backfill::spawn_poll(
             db.clone(),
             provider.clone(),
-            backend::services::sector_backfill::DEFAULT_INTERVAL,
+            backend::services::instrument_backfill::DEFAULT_INTERVAL,
         );
         tracing::info!(
-            interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
-            "sector backfill poll task started",
+            interval_secs = backend::services::instrument_backfill::DEFAULT_INTERVAL.as_secs(),
+            "instrument backfill poll task started",
         );
 
         let _short_sale_report_ingest_poll =

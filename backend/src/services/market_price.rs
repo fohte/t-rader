@@ -137,6 +137,7 @@ mod tests {
             name: format!("Test {id}"),
             market: Market::Tse,
             sector: None,
+            product_category: None,
         }
     }
 

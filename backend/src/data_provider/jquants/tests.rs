@@ -406,6 +406,7 @@ mod fetch_instrument {
             .code("72030")
             .company_name("トヨタ自動車")
             .sector_name(Some("輸送用機器"))
+            .product_category(Some("011"))
             .ok()
             .await;
 
@@ -415,6 +416,7 @@ mod fetch_instrument {
         assert_eq!(instrument.id, "72030");
         assert_eq!(instrument.name, "トヨタ自動車");
         assert_eq!(instrument.sector, Some("輸送用機器".to_string()));
+        assert_eq!(instrument.product_category, Some("011".to_string()));
         Ok(())
     }
 
@@ -439,6 +441,7 @@ mod fetch_instrument {
             .code("86970")
             .company_name("日本取引所グループ")
             .sector_name(None)
+            .product_category(None)
             .ok()
             .await;
 
@@ -446,6 +449,7 @@ mod fetch_instrument {
         let instrument = client.fetch_instrument("86970").await?;
 
         assert!(instrument.sector.is_none());
+        assert!(instrument.product_category.is_none());
         Ok(())
     }
 }

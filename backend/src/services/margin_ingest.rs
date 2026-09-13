@@ -37,7 +37,7 @@ fn margin_alert_start_date() -> NaiveDate {
 const REFETCH_LOOKBACK_DAYS: i64 = 30;
 
 /// 1 サイクルで取得を試みる日数の上限。JQuantsClient の RateLimiter はウォッチリスト
-/// 追加時の日足取得や sector_backfill と共有のため、大規模バックフィル時に専有しすぎ
+/// 追加時の日足取得や instrument_backfill と共有のため、大規模バックフィル時に専有しすぎ
 /// ないよう抑える。上限に達した分は次サイクルに繰り越される。
 const MAX_REQUESTS_PER_CYCLE: usize = 30;
 

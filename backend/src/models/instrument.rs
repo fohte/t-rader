@@ -27,4 +27,6 @@ pub struct Instrument {
     pub market: Market,
     /// 業種 (セクター)
     pub sector: Option<String>,
+    /// J-Quants の商品区分コード (例: "014" = ETF)。データソースの生コードをそのまま保持する
+    pub product_category: Option<String>,
 }
