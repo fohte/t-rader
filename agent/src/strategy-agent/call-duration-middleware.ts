@@ -1,5 +1,9 @@
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
-import { Runnable, RunnableBinding } from '@langchain/core/runnables'
+import {
+  mergeConfigs,
+  Runnable,
+  RunnableBinding,
+} from '@langchain/core/runnables'
 import { createMiddleware } from 'langchain'
 
 const CALL_DURATION_TIMEOUT_FINGERPRINT = 'call-duration-middleware.timeout'
@@ -16,16 +20,22 @@ export const createCallDurationMiddleware = (timeoutMs: number) =>
       if (!(request.model instanceof Runnable)) return handler(request)
 
       const signal = AbortSignal.timeout(timeoutMs)
-      return Promise.resolve(
-        handler({
-          ...request,
-          model: new RunnableBinding({
+      // createAgent の bindTools 解決 (langchain の _simpleBindTools) は
+      // RunnableBinding を 1 段しか unwrap しない。tool-call-cap-middleware も
+      // 同じ手段で signal を注入するため、既に RunnableBinding ならその
+      // config に merge し、二重にラップして bindTools 解決を壊さないようにする。
+      const model = RunnableBinding.isRunnableBinding(request.model)
+        ? new RunnableBinding({
+            bound: request.model.bound,
+            config: mergeConfigs(request.model.config, { signal }),
+            kwargs: request.model.kwargs ?? {},
+          })
+        : new RunnableBinding({
             bound: request.model,
             config: { signal },
             kwargs: {},
-          }),
-        }),
-      ).finally(() => {
+          })
+      return Promise.resolve(handler({ ...request, model })).finally(() => {
         if (!signal.aborted) return
         const error = new Error(
           `callDurationMiddleware: aborted model call after exceeding ${String(timeoutMs)}ms`,

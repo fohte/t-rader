@@ -25,6 +25,7 @@ import {
   createStrategyAgentDeps,
   runStrategyAgent,
 } from '#strategy-agent/strategy-agent'
+import { MAX_TOOL_CALLS_PER_MODEL_CALL } from '#strategy-agent/tool-call-cap-middleware'
 import { createFirstOccurrenceLabeler } from '#test/first-occurrence-labeler'
 import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 
@@ -928,5 +929,101 @@ describe('createStrategyAgentDeps', () => {
       agent.invoke({ messages: [new HumanMessage('hi')] }),
     ).rejects.toThrow('aborted')
     expect(capturedSignal?.aborted).toBe(true)
+  })
+
+  it('aborts the model call once distinct tool call indices exceed MAX_TOOL_CALLS_PER_MODEL_CALL, even mid-stream', async () => {
+    const encoder = new TextEncoder()
+    // OpenAI chat completions のストリーミング delta。1 chunk につき
+    // 新しい index の tool_call_chunk を 1 件ずつ流す。
+    const toolCallDeltaChunk = (index: number): Uint8Array =>
+      encoder.encode(
+        `data: ${JSON.stringify({
+          id: 'call-1',
+          model: 'chatgpt/gpt-5',
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                role: 'assistant',
+                tool_calls: [
+                  {
+                    index,
+                    id: `call-${String(index)}`,
+                    type: 'function',
+                    function: { name: 'search', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
+        })}\n\n`,
+      )
+
+    const model = new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      streaming: true,
+      configuration: {
+        baseURL: 'http://localhost',
+        fetch: (_url, init) => {
+          const signal = init?.signal
+          const stream = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              const onAbort = (): void => {
+                controller.error(new Error('tool call cap test: aborted'))
+              }
+              signal?.addEventListener('abort', onAbort)
+              // 打ち切りしきい値を大きく超える件数を用意し、最後まで
+              // 送り切る前に実際に打ち切られることを検証する。
+              const totalToolCalls = MAX_TOOL_CALLS_PER_MODEL_CALL * 4
+              for (let index = 0; index < totalToolCalls; index += 1) {
+                if (signal?.aborted === true) return
+                controller.enqueue(toolCallDeltaChunk(index))
+                // handleLLMNewToken は p-queue 経由の非同期キューで呼ばれる
+                // ため、次の chunk を送る前にタイマー境界を挟んでそのキューを
+                // 消化させる (Promise.resolve() だけだと 1 microtask しか
+                // 進まず間に合わないことがある)。
+                await new Promise((resolve) => setTimeout(resolve, 0))
+              }
+              signal?.removeEventListener('abort', onAbort)
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              controller.close()
+            },
+          })
+          return Promise.resolve(
+            new Response(stream, {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            }),
+          )
+        },
+      },
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      await expect(
+        agent.invoke({ messages: [new HumanMessage('hi')] }),
+      ).rejects.toThrow()
+
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          `toolCallCapMiddleware: aborted model call after exceeding ${String(MAX_TOOL_CALLS_PER_MODEL_CALL)} tool call(s) in a single response`,
+        ],
+      ])
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
