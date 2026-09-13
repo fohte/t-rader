@@ -11,7 +11,9 @@ use uuid::Uuid;
 
 use crate::models::PubReason;
 
-use super::{StrategyServer, clamp_limit, db_error, decimal_to_f64, internal_error};
+use super::{
+    StrategyServer, clamp_limit, db_error, decimal_to_f64, internal_error, invalid_params,
+};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadMarginParams {
@@ -26,7 +28,7 @@ pub struct ReadMarginParams {
 }
 
 /// 信用取引週末残高 (2026-09-28 以降の切替後は日次の信用取引残高) 1 行分。
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+#[derive(Debug, Serialize, JsonSchema, PartialEq, FromQueryResult)]
 pub struct MarginInterestDto {
     pub date: NaiveDate,
     /// J-Quants の5桁コード。同一銘柄でも普通株/優先株など株式の種類ごとに別コードで並び得る
@@ -54,10 +56,9 @@ pub struct MarginInterestDto {
 pub struct MarginAlertDto {
     /// 申込日。同一 app_date に訂正が複数あれば公表日 (pub_date) が最新の 1 件のみ返る
     pub app_date: NaiveDate,
-    /// この行の公表日
     pub pub_date: NaiveDate,
     pub code: String,
-    pub pub_reason: PubReason,
+    pub pub_reason: MarginPubReasonDto,
     pub shrt_out: i64,
     pub long_out: i64,
     /// 前日に公表されていなければ null
@@ -73,6 +74,31 @@ pub struct MarginAlertDto {
     pub long_std_out: i64,
     /// 規制区分 (文字列。J-Quants 側の分類をそのまま保持)
     pub tse_mrgn_reg_cls: String,
+}
+
+/// 日々公表信用取引残高の公表理由フラグ。ingestion 側の `models::PubReason` と同じ形だが、
+/// MCP tool のレスポンススキーマとして独立に公開するため別型として定義する。
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct MarginPubReasonDto {
+    pub restricted: bool,
+    pub daily_publication: bool,
+    pub monitoring: bool,
+    pub restricted_by_jsf: bool,
+    pub precaution_by_jsf: bool,
+    pub unclear_or_sec_on_alert: bool,
+}
+
+impl From<PubReason> for MarginPubReasonDto {
+    fn from(r: PubReason) -> Self {
+        MarginPubReasonDto {
+            restricted: r.restricted,
+            daily_publication: r.daily_publication,
+            monitoring: r.monitoring,
+            restricted_by_jsf: r.restricted_by_jsf,
+            precaution_by_jsf: r.precaution_by_jsf,
+            unclear_or_sec_on_alert: r.unclear_or_sec_on_alert,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
@@ -116,47 +142,6 @@ const READ_MARGIN_ALERT_SQL: &str = indoc::indoc! {"
 "};
 
 #[derive(Debug, FromQueryResult)]
-struct MarginInterestRow {
-    date: NaiveDate,
-    code: String,
-    iss_type: i16,
-    shrt_vol: i64,
-    long_vol: i64,
-    shrt_neg_vol: i64,
-    long_neg_vol: i64,
-    shrt_std_vol: i64,
-    long_std_vol: i64,
-    shrt_val: Option<i64>,
-    long_val: Option<i64>,
-    shrt_neg_val: Option<i64>,
-    long_neg_val: Option<i64>,
-    shrt_std_val: Option<i64>,
-    long_std_val: Option<i64>,
-}
-
-impl From<MarginInterestRow> for MarginInterestDto {
-    fn from(r: MarginInterestRow) -> Self {
-        MarginInterestDto {
-            date: r.date,
-            code: r.code,
-            iss_type: r.iss_type,
-            shrt_vol: r.shrt_vol,
-            long_vol: r.long_vol,
-            shrt_neg_vol: r.shrt_neg_vol,
-            long_neg_vol: r.long_neg_vol,
-            shrt_std_vol: r.shrt_std_vol,
-            long_std_vol: r.long_std_vol,
-            shrt_val: r.shrt_val,
-            long_val: r.long_val,
-            shrt_neg_val: r.shrt_neg_val,
-            long_neg_val: r.long_neg_val,
-            shrt_std_val: r.shrt_std_val,
-            long_std_val: r.long_std_val,
-        }
-    }
-}
-
-#[derive(Debug, FromQueryResult)]
 struct MarginAlertRow {
     pub_date: NaiveDate,
     code: String,
@@ -183,7 +168,7 @@ fn margin_alert_dto_from_row(r: MarginAlertRow) -> Result<MarginAlertDto, McpErr
         app_date: r.app_date,
         pub_date: r.pub_date,
         code: r.code,
-        pub_reason,
+        pub_reason: pub_reason.into(),
         shrt_out: r.shrt_out,
         long_out: r.long_out,
         shrt_out_chg: r.shrt_out_chg,
@@ -206,6 +191,12 @@ impl StrategyServer {
         _session_strategy_id: Uuid,
         params: ReadMarginParams,
     ) -> Result<ReadMarginResult, McpError> {
+        if let (Some(from), Some(to)) = (params.from, params.to)
+            && from > to
+        {
+            return Err(invalid_params("from must be on or before to"));
+        }
+
         let limit = clamp_limit(params.limit) as i64;
         let values = [
             params.symbol.into(),
@@ -225,12 +216,9 @@ impl StrategyServer {
             .map_err(db_error)?;
         let interest = interest_rows
             .iter()
-            .map(|row| MarginInterestRow::from_query_result(row, ""))
+            .map(|row| MarginInterestDto::from_query_result(row, ""))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(db_error)?
-            .into_iter()
-            .map(MarginInterestDto::from)
-            .collect();
+            .map_err(db_error)?;
 
         let alert_rows = self
             .db
@@ -267,7 +255,9 @@ mod tests {
     use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
-    use super::{MarginAlertDto, MarginInterestDto, ReadMarginParams, ReadMarginResult};
+    use super::{
+        MarginAlertDto, MarginInterestDto, MarginPubReasonDto, ReadMarginParams, ReadMarginResult,
+    };
 
     fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -282,6 +272,10 @@ mod tests {
             precaution_by_jsf: false,
             unclear_or_sec_on_alert: false,
         }
+    }
+
+    fn no_pub_reason_dto() -> MarginPubReasonDto {
+        no_pub_reason().into()
     }
 
     async fn seed_interest(
@@ -466,6 +460,25 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn read_margin_rejects_from_after_to(pool: PgPool) {
+        let db = create_test_db(pool).await;
+
+        let err = build_server(db)
+            .read_margin_inner(
+                Uuid::new_v4(),
+                ReadMarginParams {
+                    symbol: "7203".to_string(),
+                    from: Some(ymd(2026, 9, 10)),
+                    to: Some(ymd(2026, 9, 1)),
+                    limit: None,
+                },
+            )
+            .await
+            .expect_err("from after to should be rejected");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn read_margin_orders_interest_newest_first_and_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -541,9 +554,9 @@ mod tests {
                     app_date: ymd(2026, 9, 1),
                     pub_date: ymd(2026, 9, 3),
                     code: "72030".to_string(),
-                    pub_reason: PubReason {
+                    pub_reason: MarginPubReasonDto {
                         restricted: true,
-                        ..no_pub_reason()
+                        ..no_pub_reason_dto()
                     },
                     shrt_out: 1100,
                     long_out: 2100,

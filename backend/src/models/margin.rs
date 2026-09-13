@@ -1,6 +1,5 @@
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
-use schemars::JsonSchema;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +52,7 @@ impl From<MarginInterestRecord> for margin_interest::ActiveModel {
 }
 
 /// PubReason (日々公表信用取引残高の公表理由フラグ)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PubReason {
     pub restricted: bool,
     pub daily_publication: bool,
