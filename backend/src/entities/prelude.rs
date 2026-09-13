@@ -12,6 +12,7 @@ pub use super::hypothesis::Entity as Hypothesis;
 pub use super::hypothesis_proposal::Entity as HypothesisProposal;
 pub use super::indicator::Entity as Indicator;
 pub use super::instruments::Entity as Instruments;
+pub use super::jquants_fin_summary::Entity as JquantsFinSummary;
 pub use super::jquants_plan_setting::Entity as JquantsPlanSetting;
 pub use super::margin_alert::Entity as MarginAlert;
 pub use super::margin_interest::Entity as MarginInterest;

@@ -16,7 +16,9 @@ use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-use response::{DailyBarsResponse, EquitiesMasterResponse, ErrorResponse, Paginated};
+use response::{
+    DailyBarsResponse, EquitiesMasterResponse, ErrorResponse, FinSummaryResponse, Paginated,
+};
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
 const MAX_RETRIES: u32 = 3;
@@ -30,6 +32,10 @@ const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(60
 /// 上限を実際の契約より高く見積もると 429 のリトライでは済まない大幅な超過に
 /// つながるため、未設定時は最も低い Free プランの値に倒す。
 const RATE_LIMIT_MAX_REQUESTS: usize = 5;
+
+/// `/fins/summary` (財務情報) 固有のレート制限 (契約プランと別枠、公式ページ記載の値)。
+/// 大幅に超過すると 5 分程度アクセスが完全に遮断されるため、契約プラン上限より低い方を使う。
+const FIN_SUMMARY_RATE_LIMIT_PER_MINUTE: usize = 60;
 
 /// スライディングウィンドウ方式のレートリミッター
 ///
@@ -171,6 +177,8 @@ impl JQuantsClient {
         *guard = plan;
     }
 
+    /// 信用残・財務情報の取り込み (`services::margin_ingest`, `services::fin_summary_ingest`)
+    /// が、契約プラン未設定の間は取り込みをスキップする判定に使う。
     pub(crate) fn manual_plan(&self) -> Option<JQuantsPlan> {
         let guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
         *guard
@@ -209,14 +217,19 @@ impl JQuantsClient {
     /// 指数バックオフ付き GET リクエスト
     ///
     /// レートリミッターで送信間隔を制御した上で、429 と 5xx に対してリトライする。
-    /// それ以外のエラーは即座に返す。
-    async fn get_with_retry(&self, url: &Url) -> Result<reqwest::Response, DataProviderError> {
+    /// それ以外のエラーは即座に返す。`max_requests` はウィンドウ内の許容リクエスト数
+    /// (通常は `current_rate_limit()`。エンドポイント固有の上限がある場合はそれとの min)。
+    async fn get_with_retry(
+        &self,
+        url: &Url,
+        max_requests: usize,
+    ) -> Result<reqwest::Response, DataProviderError> {
         let mut last_error = None;
         let url_str = url.as_str();
 
         for attempt in 0..=MAX_RETRIES {
             // 各リクエスト (リトライ含む) の前にレートリミッターの許可を取得
-            self.rate_limiter.acquire(self.current_rate_limit()).await;
+            self.rate_limiter.acquire(max_requests).await;
 
             if attempt > 0 {
                 let backoff =
@@ -298,6 +311,7 @@ impl JQuantsClient {
         &self,
         path: &str,
         params: &[(&str, &str)],
+        max_requests: usize,
     ) -> Result<Vec<R::Item>, DataProviderError>
     where
         R: serde::de::DeserializeOwned + Paginated,
@@ -315,7 +329,7 @@ impl JQuantsClient {
 
             tracing::debug!(%url, "J-Quants API からページを取得中");
 
-            let response = self.get_with_retry(&url).await?;
+            let response = self.get_with_retry(&url, max_requests).await?;
             let body: R = response
                 .json()
                 .await
@@ -356,7 +370,11 @@ impl JQuantsClient {
         ];
 
         let raw_bars = self
-            .fetch_all_pages::<DailyBarsResponse>("/equities/bars/daily", &params)
+            .fetch_all_pages::<DailyBarsResponse>(
+                "/equities/bars/daily",
+                &params,
+                self.current_rate_limit(),
+            )
             .await?;
 
         let mut all_bars = Vec::with_capacity(raw_bars.len());
@@ -392,6 +410,23 @@ impl JQuantsClient {
 
         all_bars.sort_by_key(|b| b.timestamp);
         Ok(all_bars)
+    }
+
+    /// `/fins/summary` を `date` (開示日) 指定で取得する。全上場銘柄のその日の開示分が
+    /// まとめて返る。フィールド数が多く記載欄も可変 (IFRS 適用会社は経常利益が空欄等) のため、
+    /// 個別フィールドへのパースはせず生の JSON のまま返す (呼び出し側で必要な値を取り出す)。
+    pub(crate) async fn fetch_fin_summary_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<serde_json::Value>, DataProviderError> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let params = [("date", date_str.as_str())];
+        let max_requests = self
+            .current_rate_limit()
+            .min(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE);
+
+        self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params, max_requests)
+            .await
     }
 }
 
@@ -480,7 +515,7 @@ impl DataProvider for JQuantsClient {
 
         tracing::debug!(%url, instrument_id, "J-Quants API から銘柄情報を取得中");
 
-        let response = self.get_with_retry(&url).await?;
+        let response = self.get_with_retry(&url, self.current_rate_limit()).await?;
         let body: EquitiesMasterResponse = response
             .json()
             .await
