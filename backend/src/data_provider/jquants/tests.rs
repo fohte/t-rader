@@ -173,6 +173,120 @@ mod fetch_daily_bars {
     }
 }
 
+// === fetch_edinet_documents ===
+
+mod fetch_edinet_documents {
+    use super::*;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_parses_single_document() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let doc = json!({
+            "DocId": "S100ABCD",
+            "Code": "72030",
+            "EdinetCode": "E00001",
+            "SubDate": "2025-01-06",
+        });
+        mock.edinet_documents("/edinet/large-volume-shareholders")
+            .docs(vec![doc.clone()])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/large-volume-shareholders", date(2025, 1, 6))
+            .await?;
+
+        assert_eq!(docs, vec![doc]);
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_returns_empty_vec_when_no_data() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.edinet_documents("/edinet/cross-shareholdings")
+            .docs(vec![])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/cross-shareholdings", date(2025, 1, 6))
+            .await?;
+
+        assert!(docs.is_empty());
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_pagination_fetches_all_pages() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let doc1 = json!({
+            "DocId": "S100ABCD",
+            "Code": "72030",
+            "EdinetCode": "E00001",
+            "SubDate": "2025-01-06",
+        });
+        let doc2 = json!({
+            "DocId": "S100EFGH",
+            "Code": "67580",
+            "EdinetCode": "E00002",
+            "SubDate": "2025-01-06",
+        });
+
+        // 1 ページ目: pagination_key を含むレスポンス (1 回のみマッチ)
+        mock.edinet_documents("/edinet/major-shareholders")
+            .docs(vec![doc1.clone()])
+            .pagination_key("page2")
+            .up_to_n_times(1)
+            .ok()
+            .await;
+
+        // 2 ページ目: pagination_key なし (最終ページ)
+        mock.edinet_documents("/edinet/major-shareholders")
+            .docs(vec![doc2.clone()])
+            .with_pagination_key_param("page2")
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/major-shareholders", date(2025, 1, 6))
+            .await?;
+
+        assert_eq!(docs, vec![doc1, doc2]);
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_sends_date_param_in_yyyymmdd_format() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let doc = json!({
+            "DocId": "S100ABCD",
+            "Code": "72030",
+            "EdinetCode": "E00001",
+            "SubDate": "2025-01-06",
+        });
+        mock.edinet_documents("/edinet/large-volume-shareholders")
+            .date("20250106")
+            .docs(vec![doc.clone()])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/large-volume-shareholders", date(2025, 1, 6))
+            .await?;
+
+        assert_eq!(docs, vec![doc]);
+        Ok(())
+    }
+}
+
 // === fetch_instrument ===
 
 mod fetch_instrument {
