@@ -85,6 +85,41 @@ impl Paginated for FinSummaryResponse {
     }
 }
 
+/// J-Quants API V2 決算発表予定日レスポンス (`GET /v2/fins/earnings-date`)
+#[derive(Debug, Deserialize)]
+pub(crate) struct EarningsDateResponse {
+    pub data: Vec<EarningsDateRecord>,
+    pub pagination_key: Option<String>,
+}
+
+impl Paginated for EarningsDateResponse {
+    type Item = EarningsDateRecord;
+
+    fn into_parts(self) -> (Vec<EarningsDateRecord>, Option<String>) {
+        (self.data, self.pagination_key)
+    }
+}
+
+/// J-Quants API V2 決算発表予定日 1 レコード
+#[derive(Debug, Deserialize)]
+pub(crate) struct EarningsDateRecord {
+    #[serde(rename = "PubDate")]
+    pub pub_date: String,
+    /// 決算発表予定日が未定の場合は空文字列で返る
+    #[serde(rename = "SchDate")]
+    pub sch_date: String,
+    #[serde(rename = "FQName")]
+    pub fq_name: String,
+    #[serde(rename = "FYE")]
+    pub fye: String,
+    #[serde(rename = "Code")]
+    pub code: String,
+    #[serde(rename = "CoName")]
+    pub co_name: String,
+    #[serde(rename = "CoNameEn")]
+    pub co_name_en: String,
+}
+
 /// EDINET 由来のデータ (大量保有報告書 / 政策保有株式 / 大株主状況) の一覧レスポンス。
 /// 書類ごとの内部構造はエンドポイントごとに異なるため、要素は serde_json::Value のまま保持する。
 #[derive(Debug, Deserialize)]

@@ -278,6 +278,16 @@ async fn main() -> Result<(), AppError> {
             "fin summary ingest poll task started",
         );
 
+        let _earnings_date_ingest_poll = backend::services::earnings_date_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::earnings_date_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::earnings_date_ingest::DEFAULT_INTERVAL.as_secs(),
+            "earnings date ingest poll task started",
+        );
+
         let _edinet_holdings_poll = backend::services::edinet_holdings::spawn_poll(
             db.clone(),
             provider.clone(),
