@@ -20,12 +20,10 @@ use crate::entities::jquants_fin_summary;
 use crate::error::AppError;
 use crate::models::jquants_plan::JQuantsPlan;
 
-/// poll task のデフォルト実行間隔。財務情報の更新は日次 (18 時頃速報 / 24:30 頃確報) のため
-/// sector backfill と同じ 1 日間隔にする。
+/// poll task のデフォルト実行間隔。財務情報の更新頻度 (日次) に合わせて 1 日とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// 格納済み最新開示日からさかのぼって再取得する日数。訂正の反映タイミングは公式ドキュメントに
-/// 記載が無いため固定値とする。
+/// 格納済み最新開示日から開示訂正を取りこぼさないためにさかのぼる日数。
 const LOOKBACK_DAYS: i64 = 30;
 
 /// `/fins/summary` のデータ提供開始日 (公式ページ記載)。これより前を取得しても空振りになる。
@@ -36,15 +34,12 @@ fn provision_start_date() -> NaiveDate {
 /// poll サイクルの結果統計
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IngestStats {
-    pub days_fetched: usize,
+    pub days_attempted: usize,
     pub upserted: usize,
 }
 
-/// 取り込み対象の日付範囲 `(from, to)` を決定する。
-///
-/// 契約プランの取得可能範囲とデータ提供開始日のうち遅いほうを起点とし、格納済みデータが
-/// あればそこから `LOOKBACK_DAYS` 日さかのぼる (起点より前には戻らない)。契約プランの範囲が
-/// データ提供開始日に届かない (範囲が反転する) 場合は `None` を返す。
+/// 契約プランの提供範囲とデータ提供開始日、格納済み最新日 (ルックバック含む) から
+/// 取り込み対象の日付範囲 `(from, to)` を決定する。範囲が反転する場合は `None`。
 fn fetch_range(
     today: NaiveDate,
     plan: JQuantsPlan,
@@ -154,11 +149,14 @@ pub async fn run_ingest_cycle(
     let mut date = from;
     while date <= to {
         if crate::date_utils::latest_business_day(date) == date {
-            stats.days_fetched += 1;
+            stats.days_attempted += 1;
             match client.fetch_fin_summary_by_date(date).await {
-                Ok(items) => {
-                    stats.upserted += upsert_fin_summaries(db, items).await?;
-                }
+                Ok(items) => match upsert_fin_summaries(db, items).await {
+                    Ok(n) => stats.upserted += n,
+                    Err(e) => {
+                        tracing::warn!(%date, error = %e, "財務情報の格納に失敗、この日をスキップします");
+                    }
+                },
                 Err(e) => {
                     tracing::warn!(%date, error = %e, "財務情報の取得に失敗、この日をスキップします");
                 }
@@ -190,7 +188,7 @@ pub fn spawn_poll(
             match run_ingest_cycle(&db, client).await {
                 Ok(stats) => {
                     tracing::debug!(
-                        days_fetched = stats.days_fetched,
+                        days_attempted = stats.days_attempted,
                         upserted = stats.upserted,
                         "fin summary ingest cycle completed",
                     );
@@ -218,7 +216,17 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
 
-    // --- fetch_range ---
+    fn count_business_days(from: NaiveDate, to: NaiveDate) -> usize {
+        let mut count = 0;
+        let mut date = from;
+        while date <= to {
+            if crate::date_utils::latest_business_day(date) == date {
+                count += 1;
+            }
+            date += chrono::Duration::days(1);
+        }
+        count
+    }
 
     #[rstest]
     #[case::empty_table_starts_at_plan_from(
@@ -249,8 +257,6 @@ mod tests {
         let today = date(2026, 9, 13);
         assert_eq!(fetch_range(today, plan, latest_stored), Some(expected));
     }
-
-    // --- run_ingest_cycle ---
 
     #[sqlx::test(migrations = false)]
     async fn test_skips_when_plan_is_unset(pool: PgPool) {
@@ -299,7 +305,15 @@ mod tests {
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
-        assert_eq!(stats.upserted, 1);
+        let (range_from, range_to) =
+            fetch_range(today, JQuantsPlan::Standard, Some(seed_disc_date)).expect("range");
+        assert_eq!(
+            stats,
+            IngestStats {
+                days_attempted: count_business_days(range_from, range_to),
+                upserted: 1,
+            }
+        );
 
         let row = jquants_fin_summary::Entity::find_by_id(("72030".to_string(), "1".to_string()))
             .one(&db)
@@ -344,7 +358,15 @@ mod tests {
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
-        assert_eq!(stats.upserted, 1);
+        let (range_from, range_to) =
+            fetch_range(today, JQuantsPlan::Standard, Some(seed_disc_date)).expect("range");
+        assert_eq!(
+            stats,
+            IngestStats {
+                days_attempted: count_business_days(range_from, range_to),
+                upserted: 1,
+            }
+        );
     }
 
     async fn seed_fin_summary(
