@@ -7,11 +7,10 @@
 //!
 //! `jquants_fin_summary.code` は J-Quants の 5 桁コードだが、MCP 引数の `symbol` は
 //! 既存 tool と揃えて 4 桁で受け取る。5 桁 → 4 桁の変換仕様は J-Quants 側に無いため、
-//! 先頭 4 文字の一致で突き合わせる (優先株式等の追加桁を切り捨てる形になるが、
-//! 財務情報自体は会社単位で 4 桁と 1:1 なので問題にならない)。
+//! 先頭 4 文字の一致で突き合わせる。
 //!
-//! 同じ (開示書類種別, 当会計期間) の開示が複数あるとき (訂正等) は、開示番号
-//! (`DiscNo`) が最大の 1 件だけを返す。
+//! 同じ (開示書類種別, 当会計期間) の開示が複数あるとき (訂正、あるいは同一期間内での
+//! 業績予想修正の再修正) は、開示番号 (`DiscNo`) が最大の 1 件だけを返す。
 
 use chrono::NaiveDate;
 use rmcp::ErrorData as McpError;
@@ -105,6 +104,8 @@ fn fin_summary_dto_from_row(disc_date: NaiveDate, raw: &serde_json::Value) -> Fi
         next_forecast_sales: f64_field(raw, "NxFSales"),
         next_forecast_operating_profit: f64_field(raw, "NxFOP"),
         next_forecast_ordinary_profit: f64_field(raw, "NxFOdP"),
+        // J-Quants 仕様上このキーのみ NxFNp (p が小文字)。他の翌期予想キー (NxFOP 等) との
+        // 表記ゆれで typo ではない。
         next_forecast_net_profit: f64_field(raw, "NxFNp"),
         next_forecast_eps: f64_field(raw, "NxFEPS"),
     }
@@ -145,8 +146,6 @@ mod tests {
         chrono::NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
     }
 
-    /// 全フィールド `None` の `FinSummaryDto`。テストでは `..blank_dto(date)` で
-    /// 必要なフィールドだけ上書きする。
     fn blank_dto(disc_date: chrono::NaiveDate) -> FinSummaryDto {
         FinSummaryDto {
             disc_date,
@@ -353,7 +352,6 @@ mod tests {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
 
-        // 同じ期・同じ書類種別の訂正: disc_no が大きい方 (2) のみ残るべき
         seed(
             &db,
             "72030",
@@ -384,7 +382,6 @@ mod tests {
             }),
         )
         .await;
-        // 別の書類種別 (予想修正) は別行として残る
         seed(
             &db,
             "72030",
