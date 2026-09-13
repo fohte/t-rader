@@ -9,10 +9,11 @@ pub mod strategy;
 pub mod watcher;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
-use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::streamable_http_server::session::local::{LocalSessionManager, SessionConfig};
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 use sea_orm::DatabaseConnection;
 
@@ -20,6 +21,7 @@ use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::DataProviderKind;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient;
+use crate::services::strategy_tasks::DEADLINE_DURATION;
 pub use mgmt::MgmtServer;
 pub use strategy::StrategyServer;
 
@@ -38,7 +40,7 @@ pub fn router(
     let mgmt_db = db.clone();
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_db.clone(), agent_client.clone())),
-        LocalSessionManager::default().into(),
+        session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
@@ -47,7 +49,7 @@ pub fn router(
                 .with_kata_executor(kata_executor.clone())
                 .with_litellm_client(litellm_client.clone()))
         },
-        LocalSessionManager::default().into(),
+        session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
 
@@ -81,6 +83,27 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+/// session の keep_alive (idle timeout) を戦略タスクの deadline より長く設定した
+/// `LocalSessionManager` を作る。
+///
+/// `LocalSessionManager` のデフォルトの keep_alive (5 分) は「最後にリクエストを
+/// 送ってからの idle 時間」で切れる。モデルが tool を呼ばずに考え込む時間が
+/// これを超えると session が破棄され、以降そのステップは tool を呼べなくなる。
+/// deadline を過ぎたタスクは backend 側で failed に確定するため、keep_alive を
+/// それより長くしておけば実行中の session が先に消えることはない。
+fn session_manager() -> LocalSessionManager {
+    let mut manager = LocalSessionManager::default();
+    manager.session_config.keep_alive = Some(session_keep_alive());
+    manager
+}
+
+fn session_keep_alive() -> Duration {
+    DEADLINE_DURATION
+        .to_std()
+        .unwrap_or(SessionConfig::DEFAULT_KEEP_ALIVE)
+        + Duration::from_secs(60)
 }
 
 fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
@@ -387,6 +410,21 @@ mod tests {
             resume.status_code(),
             axum::http::StatusCode::NOT_FOUND,
             "session should not be resumable after a backend restart"
+        );
+    }
+
+    /// session の idle timeout が戦略タスクの deadline より短いと、deadline 内の
+    /// タスクでも session が先に破棄されうる (今回の修正対象のバグ)。この関係が
+    /// 保たれていることの回帰テスト。
+    #[test]
+    fn session_keep_alive_exceeds_task_deadline() {
+        let deadline = DEADLINE_DURATION
+            .to_std()
+            .expect("DEADLINE_DURATION should be a positive duration");
+        assert!(
+            session_keep_alive() > deadline,
+            "session keep_alive ({:?}) must exceed the task deadline ({deadline:?})",
+            session_keep_alive(),
         );
     }
 
