@@ -374,10 +374,10 @@ impl StrategyServer {
         self.search_news_inner(sid, params).await.map(Json)
     }
 
-    /// 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
+    /// 参照型 (stock/indicator/sector/theme) を id/name/別名の部分一致で横断検索する
     #[tool(
         name = "search_refs",
-        description = "Search across all first-class reference types (stock, indicator, sector, theme) by case-insensitive substring match against id or name. Returns ref_kind/ref_id/name sorted by name, usable directly as input to add_interest.",
+        description = "Search across all first-class reference types (stock, indicator, sector, theme) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name, usable directly as input to add_interest.",
         annotations(read_only_hint = true)
     )]
     async fn search_refs(
