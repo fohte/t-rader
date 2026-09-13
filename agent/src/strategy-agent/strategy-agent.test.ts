@@ -981,10 +981,7 @@ describe('createStrategyAgentDeps', () => {
               for (let index = 0; index < totalToolCalls; index += 1) {
                 if (signal?.aborted === true) return
                 controller.enqueue(toolCallDeltaChunk(index))
-                // handleLLMNewToken は p-queue 経由の非同期キューで呼ばれる
-                // ため、次の chunk を送る前にタイマー境界を挟んでそのキューを
-                // 消化させる (Promise.resolve() だけだと 1 microtask しか
-                // 進まず間に合わないことがある)。
+                // handleLLMNewToken の非同期キューを消化させるため、タイマー境界を挟む。
                 await new Promise((resolve) => setTimeout(resolve, 0))
               }
               signal?.removeEventListener('abort', onAbort)
@@ -1022,6 +1019,150 @@ describe('createStrategyAgentDeps', () => {
           `toolCallCapMiddleware: aborted model call after exceeding ${String(MAX_TOOL_CALLS_PER_MODEL_CALL)} tool call(s) in a single response`,
         ],
       ])
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('completes normally when a response has exactly MAX_TOOL_CALLS_PER_MODEL_CALL distinct tool call indices', async () => {
+    const encoder = new TextEncoder()
+    const buildToolCallStream = (
+      toolCalls: ReadonlyArray<{
+        index: number
+        id: string
+        name: string
+        arguments: string
+      }>,
+    ): ReadableStream<Uint8Array> =>
+      new ReadableStream({
+        async start(controller) {
+          for (const toolCall of toolCalls) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  id: 'call-1',
+                  model: 'chatgpt/gpt-5',
+                  choices: [
+                    {
+                      index: 0,
+                      finish_reason: null,
+                      delta: {
+                        role: 'assistant',
+                        tool_calls: [
+                          {
+                            index: toolCall.index,
+                            id: toolCall.id,
+                            type: 'function',
+                            function: {
+                              name: toolCall.name,
+                              arguments: toolCall.arguments,
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                })}\n\n`,
+              ),
+            )
+            // handleLLMNewToken の非同期キューを消化させるため、タイマー境界を挟む。
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          }
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                id: 'call-1',
+                model: 'chatgpt/gpt-5',
+                choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }],
+              })}\n\n`,
+            ),
+          )
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      })
+
+    let callCount = 0
+    const model = new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      streaming: true,
+      configuration: {
+        baseURL: 'http://localhost',
+        fetch: (_url, init) => {
+          callCount += 1
+          const body = init?.body
+          if (typeof body !== 'string') throw new Error('expected string body')
+
+          if (callCount === 1) {
+            const toolCalls = Array.from(
+              { length: MAX_TOOL_CALLS_PER_MODEL_CALL },
+              (_, index) => ({
+                index,
+                id: `call-${String(index)}`,
+                name: 'search',
+                arguments: '{}',
+              }),
+            )
+            return Promise.resolve(
+              new Response(buildToolCallStream(toolCalls), {
+                status: 200,
+                headers: { 'content-type': 'text/event-stream' },
+              }),
+            )
+          }
+
+          // 2 回目: 宣言済みの `search` 以外の tool (=構造化出力 tool、動的な
+          // `extract-N` 名) を呼んで正常終了させる。
+          const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
+          const structuredOutputToolName = tools.find(
+            (tool) => tool.function.name !== 'search',
+          )?.function.name
+          if (structuredOutputToolName === undefined) {
+            throw new Error('expected a structured-output tool to be declared')
+          }
+          return Promise.resolve(
+            new Response(
+              buildToolCallStream([
+                {
+                  index: 0,
+                  id: 'call-final',
+                  name: structuredOutputToolName,
+                  arguments: JSON.stringify({
+                    status: 'completed',
+                    message: 'done',
+                  }),
+                },
+              ]),
+              {
+                status: 200,
+                headers: { 'content-type': 'text/event-stream' },
+              },
+            ),
+          )
+        },
+      },
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+      expect(result.structuredResponse).toEqual({
+        status: 'completed',
+        message: 'done',
+      })
+      expect(warnSpy).not.toHaveBeenCalled()
     } finally {
       warnSpy.mockRestore()
     }
