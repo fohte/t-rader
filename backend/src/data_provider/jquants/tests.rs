@@ -477,10 +477,10 @@ mod error_handling {
 
     #[rstest]
     #[tokio::test]
-    async fn test_429_retries_then_succeeds() -> Result<(), DataProviderError> {
+    async fn test_429_waits_for_cooldown_then_succeeds() -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
 
-        // 最初の 2 回は 429 を返し、3 回目で成功する
+        // 最初の 2 回は 429 を返し、3 回目 (2 回の cooldown 明け後) で成功する
         Mock::given(method("GET"))
             .and(path("/equities/master"))
             .and(query_param("code", "86970"))
@@ -514,7 +514,7 @@ mod error_handling {
 
     #[rstest]
     #[tokio::test]
-    async fn test_429_exhausts_retries() -> Result<(), DataProviderError> {
+    async fn test_429_exhausts_cooldown_retries() -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
         mock.error().rate_limited("/equities/master").await;
 
@@ -532,6 +532,7 @@ mod fetch_fin_summary_by_date {
     use super::*;
     use crate::data_provider::jquants::FIN_SUMMARY_RATE_LIMIT_PER_MINUTE;
     use crate::data_provider::jquants::JQuantsClient;
+    use crate::data_provider::jquants::apply_safety_margin;
     use crate::models::jquants_plan::JQuantsPlan;
 
     #[rstest]
@@ -559,12 +560,13 @@ mod fetch_fin_summary_by_date {
     }
 
     /// `/fins/summary` は契約プランと別枠で 60 req/分の上限があるため、契約プランの上限
-    /// (Standard=120, Premium=500) がそれより高くても 60 に抑えられる必要がある
+    /// (Standard=120, Premium=500) がそれより高くても 60 に抑えられる必要がある。
+    /// 両者とも安全マージン (半分) を適用した値同士の min になる
     #[rstest]
-    #[case::free(JQuantsPlan::Free, 5)]
-    #[case::light(JQuantsPlan::Light, 60)]
-    #[case::standard(JQuantsPlan::Standard, 60)]
-    #[case::premium(JQuantsPlan::Premium, 60)]
+    #[case::free(JQuantsPlan::Free, 2)]
+    #[case::light(JQuantsPlan::Light, 30)]
+    #[case::standard(JQuantsPlan::Standard, 30)]
+    #[case::premium(JQuantsPlan::Premium, 30)]
     fn test_rate_limit_never_exceeds_endpoint_specific_cap(
         #[case] plan: JQuantsPlan,
         #[case] expected: usize,
@@ -574,7 +576,7 @@ mod fetch_fin_summary_by_date {
 
         let capped = client
             .current_rate_limit()
-            .min(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE);
+            .min(apply_safety_margin(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE));
 
         assert_eq!(capped, expected);
     }
@@ -583,7 +585,8 @@ mod fetch_fin_summary_by_date {
 // === レートリミッター ===
 
 mod rate_limiter {
-    use super::super::{RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW, RateLimiter};
+    use super::super::rate_limiter::{RATE_LIMIT_WINDOW, RateLimiter};
+    use super::super::{RATE_LIMIT_COOLDOWN, RATE_LIMIT_MAX_REQUESTS};
     use rstest::rstest;
 
     #[rstest]
@@ -591,7 +594,7 @@ mod rate_limiter {
     #[case::higher_limit(RATE_LIMIT_MAX_REQUESTS * 2)]
     #[tokio::test]
     async fn test_allows_requests_within_limit(#[case] limit: usize) {
-        let limiter = RateLimiter::new();
+        let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
 
         // 上限以内のリクエストは即座に通過する
         for _ in 0..limit {
@@ -602,7 +605,7 @@ mod rate_limiter {
     #[rstest]
     #[tokio::test(start_paused = true)]
     async fn test_blocks_when_limit_exceeded() {
-        let limiter = RateLimiter::new();
+        let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
 
         // 上限まで消費
         for _ in 0..RATE_LIMIT_MAX_REQUESTS {
@@ -621,6 +624,29 @@ mod rate_limiter {
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert!(result.is_ok(), "ウィンドウ経過後に acquire が通過するべき");
+    }
+
+    #[rstest]
+    #[tokio::test(start_paused = true)]
+    async fn test_cooldown_blocks_all_acquires_until_elapsed() {
+        let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
+
+        // ウィンドウの空きがあっても、cooldown 中は acquire がブロックされる
+        limiter.note_rate_limited().await;
+        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
+        assert!(
+            result.is_err(),
+            "cooldown 中は acquire がブロックされるべき"
+        );
+
+        // cooldown を経過させると通過する
+        tokio::time::advance(RATE_LIMIT_COOLDOWN).await;
+        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
+        assert!(result.is_ok(), "cooldown 経過後に acquire が通過するべき");
     }
 }
 
@@ -749,6 +775,8 @@ mod manual_plan_priority {
         );
     }
 
+    /// プラン未検出のブートストラップ期間は安全マージンを適用せず
+    /// `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) をそのまま返すこと
     #[rstest]
     fn current_rate_limit_falls_back_to_free_plan_when_manual_plan_is_unset(client: JQuantsClient) {
         assert_eq!(
@@ -757,14 +785,12 @@ mod manual_plan_priority {
         );
     }
 
+    /// 安全マージン (半分) 適用後の値になること (Standard: 120 → 60)
     #[rstest]
     fn current_rate_limit_follows_manual_plan(client: JQuantsClient) {
         client.set_manual_plan(Some(JQuantsPlan::Standard));
 
-        assert_eq!(
-            client.current_rate_limit(),
-            JQuantsPlan::Standard.rate_limit_per_minute()
-        );
+        assert_eq!(client.current_rate_limit(), 60);
     }
 }
 
