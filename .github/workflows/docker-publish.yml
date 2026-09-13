@@ -11,24 +11,51 @@ permissions:
   packages: write
 
 jobs:
+  # push イベントではビルド入力が変わったコンポーネントのみを検出する。
+  # workflow_dispatch では常に全コンポーネントを対象にする (手動実行の意図に合わせる)。
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      components: ${{ github.event_name == 'workflow_dispatch' && '["backend","frontend","agent","python-exec"]' || steps.filter.outputs.changes }}
+    steps:
+      - if: github.event_name != 'workflow_dispatch'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - if: github.event_name != 'workflow_dispatch'
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          # main への push は直前コミットとの差分を見る。
+          base: ${{ github.ref }}
+          # backend フィルタで python-exec 配下を除外するために必要。
+          predicate-quantifier: some-with-excludes
+          filters: |
+            backend:
+              - 'backend/**'
+              - '!backend/docker/python-exec/**'
+              # backend/build.rs が progenitor で agent の内部 API client を生成する際に読む。
+              - 'agent/openapi.json'
+            frontend:
+              - 'frontend/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            agent:
+              - 'agent/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            python-exec:
+              - 'backend/docker/python-exec/**'
+
   build:
+    needs: changes
+    if: needs.changes.outputs.components != '[]'
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        include:
-          - component: backend
-            context: .
-            dockerfile: backend/Dockerfile
-          - component: frontend
-            context: .
-            dockerfile: frontend/Dockerfile
-          - component: agent
-            context: .
-            dockerfile: agent/Dockerfile
-          - component: python-exec
-            context: backend/docker/python-exec
-            dockerfile: backend/docker/python-exec/Dockerfile
+        component: ${{ fromJson(needs.changes.outputs.components) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -79,8 +106,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          context: ${{ matrix.component == 'python-exec' && 'backend/docker/python-exec' || '.' }}
+          file: ${{ matrix.component == 'python-exec' && 'backend/docker/python-exec/Dockerfile' || format('{0}/Dockerfile', matrix.component) }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
