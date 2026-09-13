@@ -54,6 +54,7 @@ pub async fn get_jquants_plan_setting(
     request_body = PutJQuantsPlanSettingRequest,
     responses(
         (status = 200, body = JQuantsPlanSettingResponse),
+        (status = 400, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, body = ErrorResponse),
         (status = 500, body = ErrorResponse),

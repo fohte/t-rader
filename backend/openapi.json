@@ -3819,6 +3819,16 @@
               }
             }
           },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "415": {
             "description": "Content-Type ヘッダが application/json ではない",
             "content": {

@@ -5333,6 +5333,14 @@ export interface operations {
           'application/json': components['schemas']['JQuantsPlanSettingResponse']
         }
       }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       /** @description Content-Type ヘッダが application/json ではない */
       415: {
         headers: {
