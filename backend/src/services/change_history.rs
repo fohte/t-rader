@@ -1,6 +1,6 @@
 //! change_history テーブルへの記録ヘルパー。
 //!
-//! note / annotation / strategy / trade / comment の CRUD・status 変更を記録する。
+//! note / annotation / strategy / trade / comment / custom_indicator の CRUD・status 変更を記録する。
 //! HTTP API 経由の記録は `record` (= "human"/"user" 固定) を使う。MCP 経由など human 以外の
 //! actor を記録したい呼び出し元は `record_as` に `Actor` を渡す。
 
@@ -43,6 +43,7 @@ pub enum TargetKind {
     Strategy,
     Trade,
     Comment,
+    CustomIndicator,
 }
 
 impl TargetKind {
@@ -53,6 +54,7 @@ impl TargetKind {
             TargetKind::Strategy => "strategy",
             TargetKind::Trade => "trade",
             TargetKind::Comment => "comment",
+            TargetKind::CustomIndicator => "custom_indicator",
         }
     }
 }

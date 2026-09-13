@@ -18,6 +18,7 @@ pub mod jquants_plan_setting;
 pub mod litellm_client;
 pub mod market_price;
 pub mod news;
+pub mod note_refs;
 pub mod rss_feed;
 pub mod strategies;
 pub mod strategy_config;
