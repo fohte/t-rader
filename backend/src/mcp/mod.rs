@@ -9,6 +9,7 @@ pub mod strategy;
 pub mod watcher;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
@@ -20,6 +21,7 @@ use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::DataProviderKind;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient;
+use crate::services::strategy_tasks::DEADLINE_DURATION;
 pub use mgmt::MgmtServer;
 pub use strategy::StrategyServer;
 
@@ -38,7 +40,7 @@ pub fn router(
     let mgmt_db = db.clone();
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_db.clone(), agent_client.clone())),
-        LocalSessionManager::default().into(),
+        session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
@@ -47,7 +49,7 @@ pub fn router(
                 .with_kata_executor(kata_executor.clone())
                 .with_litellm_client(litellm_client.clone()))
         },
-        LocalSessionManager::default().into(),
+        session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
 
@@ -81,6 +83,23 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
         .collect()
+}
+
+/// デフォルトの idle timeout (5 分) でタスク実行中に session が破棄されないよう、
+/// deadline を超える keep_alive を設定する。
+fn session_manager() -> LocalSessionManager {
+    let mut manager = LocalSessionManager::default();
+    manager.session_config.keep_alive = Some(session_keep_alive());
+    manager
+}
+
+fn session_keep_alive() -> Duration {
+    // to_std() は負の Duration でのみ失敗する (起こらない想定)。フォールバックは
+    // deadline を下回らない安全側 (Duration::MAX) にする。
+    DEADLINE_DURATION
+        .to_std()
+        .map(|deadline| deadline + Duration::from_secs(60))
+        .unwrap_or(Duration::MAX)
 }
 
 fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
@@ -387,6 +406,19 @@ mod tests {
             resume.status_code(),
             axum::http::StatusCode::NOT_FOUND,
             "session should not be resumable after a backend restart"
+        );
+    }
+
+    /// keep_alive が deadline を下回ると、deadline 内でも session が破棄されうる。
+    #[test]
+    fn session_keep_alive_exceeds_task_deadline() {
+        let deadline = DEADLINE_DURATION
+            .to_std()
+            .expect("DEADLINE_DURATION should be a positive duration");
+        assert!(
+            session_keep_alive() > deadline,
+            "session keep_alive ({:?}) must exceed the task deadline ({deadline:?})",
+            session_keep_alive(),
         );
     }
 
