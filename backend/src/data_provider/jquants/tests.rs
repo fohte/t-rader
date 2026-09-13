@@ -173,6 +173,120 @@ mod fetch_daily_bars {
     }
 }
 
+// === fetch_edinet_documents ===
+
+mod fetch_edinet_documents {
+    use super::*;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_parses_single_document() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let doc = json!({
+            "DocId": "S100ABCD",
+            "Code": "72030",
+            "EdinetCode": "E00001",
+            "SubDate": "2025-01-06",
+        });
+        mock.edinet_documents("/edinet/large-volume-shareholders")
+            .docs(vec![doc.clone()])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/large-volume-shareholders", date(2025, 1, 6))
+            .await?;
+
+        assert_eq!(docs, vec![doc]);
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_returns_empty_vec_when_no_data() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.edinet_documents("/edinet/cross-shareholdings")
+            .docs(vec![])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/cross-shareholdings", date(2025, 1, 6))
+            .await?;
+
+        assert!(docs.is_empty());
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_pagination_fetches_all_pages() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let doc1 = json!({
+            "DocId": "S100ABCD",
+            "Code": "72030",
+            "EdinetCode": "E00001",
+            "SubDate": "2025-01-06",
+        });
+        let doc2 = json!({
+            "DocId": "S100EFGH",
+            "Code": "67580",
+            "EdinetCode": "E00002",
+            "SubDate": "2025-01-06",
+        });
+
+        // 1 ページ目: pagination_key を含むレスポンス (1 回のみマッチ)
+        mock.edinet_documents("/edinet/major-shareholders")
+            .docs(vec![doc1.clone()])
+            .pagination_key("page2")
+            .up_to_n_times(1)
+            .ok()
+            .await;
+
+        // 2 ページ目: pagination_key なし (最終ページ)
+        mock.edinet_documents("/edinet/major-shareholders")
+            .docs(vec![doc2.clone()])
+            .with_pagination_key_param("page2")
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/major-shareholders", date(2025, 1, 6))
+            .await?;
+
+        assert_eq!(docs, vec![doc1, doc2]);
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_sends_date_param_in_yyyymmdd_format() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let doc = json!({
+            "DocId": "S100ABCD",
+            "Code": "72030",
+            "EdinetCode": "E00001",
+            "SubDate": "2025-01-06",
+        });
+        mock.edinet_documents("/edinet/large-volume-shareholders")
+            .date("20250106")
+            .docs(vec![doc.clone()])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let docs = client
+            .fetch_edinet_documents("/edinet/large-volume-shareholders", date(2025, 1, 6))
+            .await?;
+
+        assert_eq!(docs, vec![doc]);
+        Ok(())
+    }
+}
+
 // === fetch_instrument ===
 
 mod fetch_instrument {
@@ -299,6 +413,60 @@ mod error_handling {
 
         assert!(matches!(result, Err(DataProviderError::RateLimited { .. })));
         Ok(())
+    }
+}
+
+// === fetch_fin_summary_by_date ===
+
+mod fetch_fin_summary_by_date {
+    use super::*;
+    use crate::data_provider::jquants::FIN_SUMMARY_RATE_LIMIT_PER_MINUTE;
+    use crate::data_provider::jquants::JQuantsClient;
+    use crate::models::jquants_plan::JQuantsPlan;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_returns_raw_items_unchanged() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let item = json!({
+            "DiscDate": "2025-01-06",
+            "Code": "72030",
+            "DiscNo": "1",
+            "Sales": "1000000",
+            "OdP": "",
+        });
+        mock.fin_summary()
+            .date("2025-01-06")
+            .items(vec![item.clone()])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let items = client.fetch_fin_summary_by_date(date(2025, 1, 6)).await?;
+
+        assert_eq!(items, vec![item]);
+        Ok(())
+    }
+
+    /// `/fins/summary` は契約プランと別枠で 60 req/分の上限があるため、契約プランの上限
+    /// (Standard=120, Premium=500) がそれより高くても 60 に抑えられる必要がある
+    #[rstest]
+    #[case::free(JQuantsPlan::Free, 5)]
+    #[case::light(JQuantsPlan::Light, 60)]
+    #[case::standard(JQuantsPlan::Standard, 60)]
+    #[case::premium(JQuantsPlan::Premium, 60)]
+    fn test_rate_limit_never_exceeds_endpoint_specific_cap(
+        #[case] plan: JQuantsPlan,
+        #[case] expected: usize,
+    ) {
+        let client = JQuantsClient::new("test-api-key".to_string()).expect("client");
+        client.set_manual_plan(Some(plan));
+
+        let capped = client
+            .current_rate_limit()
+            .min(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE);
+
+        assert_eq!(capped, expected);
     }
 }
 

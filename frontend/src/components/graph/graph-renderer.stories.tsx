@@ -1,7 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import type { GraphDef } from '#components/graph/types'
+import { mockResolveRef } from '#storybook/mock-resolve-ref'
+
+const queryClient = new QueryClient()
 
 const meta = {
   title: 'Graph/GraphRenderer',
@@ -11,11 +15,16 @@ const meta = {
   // className: react-flow は `.react-flow { height: 100% }` で親の高さを継承する。
   // 未指定だと decorator の固定高さ div から高さが伝播せず 0 に潰れ、何も描画されない
   args: { fitViewDuration: 0, className: 'h-full' },
+  parameters: {
+    msw: { handlers: [mockResolveRef({})] },
+  },
   decorators: [
     (Story) => (
-      <div style={{ width: '100%', height: '500px' }}>
-        <Story />
-      </div>
+      <QueryClientProvider client={queryClient}>
+        <div style={{ width: '100%', height: '500px' }}>
+          <Story />
+        </div>
+      </QueryClientProvider>
     ),
   ],
 } satisfies Meta<typeof GraphRenderer>

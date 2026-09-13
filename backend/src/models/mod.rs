@@ -11,6 +11,7 @@ pub mod import;
 pub mod instrument;
 pub mod interest;
 pub mod jquants_plan;
+pub mod margin;
 pub mod note;
 pub mod note_hypothesis;
 pub mod refs;
@@ -48,6 +49,7 @@ pub use jquants_plan::{
     JQuantsFetchableRange, JQuantsPlan, JQuantsPlanSettingData, JQuantsPlanSettingResponse,
     PutJQuantsPlanSettingRequest, parse_plan_setting, serialize_plan_setting,
 };
+pub use margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use note_hypothesis::CreateNoteHypothesisRequest;
 pub use refs::RefResolution;

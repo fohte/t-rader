@@ -19,7 +19,11 @@ impl JQuantsClient {
         let params = [("disc_date", disc_date_str.as_str())];
 
         let raw_records = self
-            .fetch_all_pages::<ShortSaleReportResponse>("/markets/short-sale-report", &params)
+            .fetch_all_pages::<ShortSaleReportResponse>(
+                "/markets/short-sale-report",
+                &params,
+                self.current_rate_limit(),
+            )
             .await?;
 
         let mut reports = Vec::with_capacity(raw_records.len());
@@ -73,7 +77,11 @@ impl JQuantsClient {
         let params = [("date", date_str.as_str())];
 
         let raw_records = self
-            .fetch_all_pages::<ShortRatioResponse>("/markets/short-ratio", &params)
+            .fetch_all_pages::<ShortRatioResponse>(
+                "/markets/short-ratio",
+                &params,
+                self.current_rate_limit(),
+            )
             .await?;
 
         let mut ratios = Vec::with_capacity(raw_records.len());

@@ -4,7 +4,7 @@ import { findAndReplace } from 'mdast-util-find-and-replace'
 import { REF_PREFIX_RE } from '#lib/note-utils'
 
 const TOKEN_RE = /\[\[([^\]]+)\]\]/g
-const ANNO_RE = /^anno:([A-Za-z][\w-]*)$/
+const ANNO_RE = /^anno:([A-Za-z0-9][\w-]*)$/
 const GRAPH_TOKEN_RE = /^\[\[graph:([A-Za-z][\w-]*)\]\]$/
 
 interface NoteToken extends Node {
