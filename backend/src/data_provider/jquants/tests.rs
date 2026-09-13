@@ -309,13 +309,15 @@ mod rate_limiter {
     use rstest::rstest;
 
     #[rstest]
+    #[case::default_limit(RATE_LIMIT_MAX_REQUESTS)]
+    #[case::higher_limit(RATE_LIMIT_MAX_REQUESTS * 2)]
     #[tokio::test]
-    async fn test_allows_requests_within_limit() {
+    async fn test_allows_requests_within_limit(#[case] limit: usize) {
         let limiter = RateLimiter::new();
 
         // 上限以内のリクエストは即座に通過する
-        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
-            limiter.acquire(RATE_LIMIT_MAX_REQUESTS).await;
+        for _ in 0..limit {
+            limiter.acquire(limit).await;
         }
     }
 
@@ -341,18 +343,6 @@ mod rate_limiter {
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert!(result.is_ok(), "ウィンドウ経過後に acquire が通過するべき");
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_higher_limit_allows_more_requests_within_window() {
-        let limiter = RateLimiter::new();
-        let higher_limit = RATE_LIMIT_MAX_REQUESTS * 2;
-
-        // Free プランの上限を超える件数でも、より高い上限を渡せば即座に通過する
-        for _ in 0..higher_limit {
-            limiter.acquire(higher_limit).await;
-        }
     }
 }
 

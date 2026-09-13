@@ -78,6 +78,7 @@ impl RateLimiter {
             drop(timestamps); // ロックを解放してから sleep
 
             tracing::info!(
+                max_requests,
                 wait_ms = sleep_target.saturating_duration_since(now).as_millis() as u64,
                 "レートリミットに到達、待機中"
             );
