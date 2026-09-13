@@ -85,9 +85,8 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// keep_alive (idle timeout) を戦略タスクの deadline より長くした `LocalSessionManager`。
-/// デフォルト (5 分) だと、モデルが tool を呼ばずに長考した際に deadline 前に session が
-/// 破棄されうる。mgmt にも同じ値を使うが、長い分には害がない。
+/// デフォルトの idle timeout (5 分) でタスク実行中に session が破棄されないよう、
+/// deadline を超える keep_alive を設定する。
 fn session_manager() -> LocalSessionManager {
     let mut manager = LocalSessionManager::default();
     manager.session_config.keep_alive = Some(session_keep_alive());
