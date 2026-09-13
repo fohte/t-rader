@@ -1,17 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
+import { REF_RESOLVE_STUBS } from '#components/note-detail/note-detail.fixtures'
 import { NoteHeader } from '#components/note-detail/note-header'
 import type { components } from '#lib/api/schema.gen'
-import type { RefResolveStub } from '#lib/refs.test-helper'
 import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
 
 type Note = components['schemas']['Note']
-
-const STUBS: RefResolveStub[] = [
-  { kind: 'stock', id: '3436', name: 'SUMCO' },
-  { kind: 'indicator', id: 'USDJPY', name: 'USD/JPY' },
-  { kind: 'sector', id: '半導体', name: '半導体' },
-]
 
 const note: Note = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -35,7 +29,7 @@ const meta = {
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
-      <RefResolveQueryDecorator stubs={STUBS}>
+      <RefResolveQueryDecorator stubs={REF_RESOLVE_STUBS}>
         <div className="max-w-3xl bg-background p-5 text-foreground">
           <Story />
         </div>
