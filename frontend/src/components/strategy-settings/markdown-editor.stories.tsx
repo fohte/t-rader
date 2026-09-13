@@ -1,14 +1,20 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
+import type { RefResolveStub } from '#lib/refs.test-helper'
 import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
+
+const STUBS: RefResolveStub[] = [
+  { kind: 'stock', id: '7203', name: 'トヨタ自動車' },
+  { kind: 'indicator', id: 'USDJPY', name: 'USD/JPY' },
+]
 
 const meta = {
   title: 'StrategySettings/MarkdownEditor',
   component: MarkdownEditor,
   decorators: [
     (Story) => (
-      <RefResolveQueryDecorator>
+      <RefResolveQueryDecorator stubs={STUBS}>
         <Story />
       </RefResolveQueryDecorator>
     ),

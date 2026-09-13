@@ -2,7 +2,14 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
+import type { RefResolveStub } from '#lib/refs.test-helper'
 import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
+
+const STUBS: RefResolveStub[] = [
+  { kind: 'stock', id: '3436', name: 'SUMCO' },
+  { kind: 'indicator', id: 'USDJPY', name: 'USD/JPY' },
+  { kind: 'sector', id: '半導体', name: '半導体' },
+]
 
 const SAMPLE = `# SUMCO レンジ回帰の確度評価
 
@@ -44,7 +51,7 @@ const meta = {
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
-      <RefResolveQueryDecorator>
+      <RefResolveQueryDecorator stubs={STUBS}>
         <div className="max-w-3xl bg-background p-5 text-foreground">
           <Story />
         </div>

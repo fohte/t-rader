@@ -4,10 +4,9 @@ import { RefChip } from '#components/strategy-shell/ref-chip'
 import type { RefResolveStub } from '#lib/refs.test-helper'
 import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
 
-// 以下の銘柄名はすべて架空のもの。実在の企業とは無関係
 const STUBS: RefResolveStub[] = [
-  { kind: 'stock', id: '7203', name: 'アルファ製作所' },
-  { kind: 'stock', id: '3436', name: 'ベータマテリアル' },
+  { kind: 'stock', id: '7203', name: 'トヨタ自動車' },
+  { kind: 'stock', id: '3436', name: 'SUMCO' },
   { kind: 'indicator', id: 'USDJPY', name: 'USD/JPY' },
   { kind: 'sector', id: '半導体', name: '半導体' },
   { kind: 'theme', id: '円安', name: '円安' },
