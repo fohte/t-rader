@@ -24,8 +24,79 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 /// 1 tick で並列に呼び出す `fire_trigger` 数の上限。
 const MAX_CONCURRENT_FIRES: usize = 8;
 
+/// POSIX cron の曜日表記 (日曜=0, 月曜=1, ..., 土曜=6, 7 も日曜) を、cron crate が採用する
+/// Quartz 表記 (日曜=1, ..., 土曜=7) に変換する。0-7 の範囲外はそのまま返し、後段の
+/// `Schedule::from_str` にエラー判定を委ねる。
+fn posix_to_quartz_dow(n: u32) -> u32 {
+    if n <= 7 { n % 7 + 1 } else { n }
+}
+
+/// dow フィールド中の数字トークンだけを POSIX から Quartz に変換する。`1,3,5` (リスト) は
+/// 要素ごとに `convert_dow_item` へ委譲する。
+fn convert_dow_field(field: &str) -> String {
+    field
+        .split(',')
+        .map(convert_dow_item)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// dow の 1 要素 (`5` / `1-5` (範囲) / `1-5/2` (ステップ)) を変換する。`MON`-`SUN` の
+/// 英字表記は曜日番号ではないためそのまま素通しする。
+fn convert_dow_item(item: &str) -> String {
+    let (value, step) = match item.split_once('/') {
+        Some((v, s)) => (v, Some(s)),
+        None => (item, None),
+    };
+    match value.split_once('-') {
+        Some((start, end)) => convert_dow_range(item, start, end, step),
+        None => convert_dow_value(value, step),
+    }
+}
+
+/// 範囲を伴わない単独の値 (`5`, `*` 等) を変換する。
+fn convert_dow_value(value: &str, step: Option<&str>) -> String {
+    let converted = match value.parse::<u32>() {
+        Ok(n) => posix_to_quartz_dow(n).to_string(),
+        Err(_) => value.to_string(),
+    };
+    match step {
+        Some(s) => format!("{converted}/{s}"),
+        None => converted,
+    }
+}
+
+/// POSIX の範囲 (`start-end`) を Quartz に変換する。POSIX では 0 と 7 がともに日曜を指すため、
+/// 両端を個別に変換すると `5-7` (金-日) が `6-1` のような開始>終了の逆順範囲になり
+/// `cron::Schedule::from_str` がエラーにする。これを避けるため、範囲を実際の曜日の集合に
+/// 展開してからカンマ区切りリストとして返す。数値でない (英字表記) 範囲・開始>終了の範囲・
+/// ステップが数値として解釈できない場合は `original` をそのまま返し、後段の
+/// `Schedule::from_str` に判定を委ねる。
+fn convert_dow_range(original: &str, start: &str, end: &str, step: Option<&str>) -> String {
+    let (Ok(s), Ok(e)) = (start.parse::<u32>(), end.parse::<u32>()) else {
+        return original.to_string();
+    };
+    if s > e {
+        return original.to_string();
+    }
+    let step_n = match step {
+        Some(step_str) => match step_str.parse::<usize>() {
+            Ok(n) if n > 0 => n,
+            _ => return original.to_string(),
+        },
+        None => 1,
+    };
+    (s..=e)
+        .step_by(step_n)
+        .map(posix_to_quartz_dow)
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// 5 フィールド標準 cron 式 (`min hour dom month dow`) を 6 フィールド (`sec min hour dom month dow`)
 /// に変換して `cron::Schedule` をパースする。秒は 0 固定。フィールド数が 6 以上のときはそのまま流す。
+/// dow フィールド (6 番目) は POSIX の曜日表記として解釈し、Quartz 表記に変換してから渡す。
 fn parse_schedule(expr: &str) -> Result<Schedule, cron::error::Error> {
     let trimmed = expr.trim();
     let field_count = trimmed.split_whitespace().count();
@@ -34,7 +105,12 @@ fn parse_schedule(expr: &str) -> Result<Schedule, cron::error::Error> {
     } else {
         trimmed.to_string()
     };
-    Schedule::from_str(&normalized)
+
+    let mut fields: Vec<String> = normalized.split_whitespace().map(str::to_string).collect();
+    if let Some(dow) = fields.get_mut(5) {
+        *dow = convert_dow_field(dow);
+    }
+    Schedule::from_str(&fields.join(" "))
 }
 
 /// `schedule` と `last_fired_at` から、`now` 時点で発火すべきか判定する。
@@ -174,6 +250,35 @@ mod parse_tests {
 
     fn ts(s: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&Utc)
+    }
+
+    #[rstest]
+    #[case::posix_weekday_range("0 9 * * 1-5", "2026-01-04T00:00:00Z", "2026-01-05T09:00:00Z")]
+    #[case::posix_sunday_zero("0 9 * * 0", "2026-01-01T00:00:00Z", "2026-01-04T09:00:00Z")]
+    #[case::posix_sunday_seven("0 9 * * 7", "2026-01-01T00:00:00Z", "2026-01-04T09:00:00Z")]
+    #[case::alpha_weekday_range_unaffected(
+        "0 9 * * MON-FRI",
+        "2026-01-04T00:00:00Z",
+        "2026-01-05T09:00:00Z"
+    )]
+    #[case::posix_range_crossing_sunday_enters_friday(
+        "0 9 * * 5-7",
+        "2026-01-08T00:00:00Z",
+        "2026-01-09T09:00:00Z"
+    )]
+    #[case::posix_range_crossing_sunday_skips_weekdays(
+        "0 9 * * 5-7",
+        "2026-01-11T10:00:00Z",
+        "2026-01-16T09:00:00Z"
+    )]
+    fn parse_schedule_interprets_dow_as_posix(
+        #[case] expr: &str,
+        #[case] after: &str,
+        #[case] expected_next: &str,
+    ) {
+        let schedule = parse_schedule(expr).unwrap();
+        let next = schedule.after(&ts(after)).next().unwrap();
+        assert_eq!(next, ts(expected_next));
     }
 
     #[rstest]
