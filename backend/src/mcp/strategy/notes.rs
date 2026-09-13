@@ -68,10 +68,13 @@ fn build_new_note_model(
     ))
 }
 
+/// note.status の CHECK 制約 (migration `m20260601_142149_redesign_schema.rs` の `STATUSES`) と一致させる。
+const ALLOWED_NOTE_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
+
 /// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
 /// 必ず `Some` になるはずだが、不変条件が壊れた場合に別 strategy の id を誤って
 /// 返さないよう fail-loud にする。
-fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
+fn note_to_dto(m: note::Model, include_body: bool) -> Result<NoteDto, McpError> {
     let strategy_id = m.strategy_id.ok_or_else(|| {
         internal_error(format!(
             "note {} has no strategy_id despite session scoping",
@@ -89,7 +92,7 @@ fn note_to_dto(m: note::Model) -> Result<NoteDto, McpError> {
         note_id: m.id,
         strategy_id,
         title: m.title,
-        body_md: m.body_md,
+        body_md: include_body.then_some(m.body_md),
         frontmatter_json,
         type_tag: m.type_tag,
         status: m.status,
@@ -286,7 +289,7 @@ impl StrategyServer {
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
-        note_to_dto(row)
+        note_to_dto(row, true)
     }
 
     pub(crate) async fn list_notes_inner(
@@ -294,8 +297,24 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
-        let rows = note::Entity::find()
-            .filter(note::Column::StrategyId.eq(session_strategy_id))
+        if let Some(status) = params.status.as_deref()
+            && !ALLOWED_NOTE_STATUS.contains(&status)
+        {
+            return Err(invalid_params(format!(
+                "invalid status: {status} (expected one of {ALLOWED_NOTE_STATUS:?})"
+            )));
+        }
+        let include_body = params.include_body.unwrap_or(true);
+
+        let mut query =
+            note::Entity::find().filter(note::Column::StrategyId.eq(session_strategy_id));
+        if let Some(status) = params.status {
+            query = query.filter(note::Column::Status.eq(status));
+        }
+        if let Some(updated_after) = params.updated_after {
+            query = query.filter(note::Column::UpdatedAt.gte(updated_after));
+        }
+        let rows = query
             .order_by_desc(note::Column::UpdatedAt)
             .limit(clamp_limit(params.limit))
             .all(&self.db)
@@ -304,7 +323,7 @@ impl StrategyServer {
         Ok(ListNotesResult {
             notes: rows
                 .into_iter()
-                .map(note_to_dto)
+                .map(|m| note_to_dto(m, include_body))
                 .collect::<Result<Vec<_>, _>>()?,
         })
     }
@@ -328,7 +347,7 @@ mod tests {
     };
     use super::super::tests_common::{
         build_server, insert_strategy, normalize_comment_model, normalize_note, seed_foreign_note,
-        seed_note_comment_with_anchor, set_note_status, ts_sentinel,
+        seed_note_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
     use super::super::{DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR};
 
@@ -418,7 +437,7 @@ mod tests {
                 note_id: written.note_id,
                 strategy_id,
                 title: "first note".into(),
-                body_md: "body".into(),
+                body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: Some("observation".into()),
                 status: DEFAULT_NOTE_STATUS.into(),
@@ -497,7 +516,7 @@ mod tests {
                     note_id: created.note_id,
                     strategy_id,
                     title: "original".into(),
-                    body_md: "v2".into(),
+                    body_md: Some("v2".into()),
                     frontmatter_json: serde_json::Map::new(),
                     type_tag: None,
                     status: DEFAULT_NOTE_STATUS.into(),
@@ -649,7 +668,15 @@ mod tests {
         }
 
         let result = server
-            .list_notes_inner(strategy_a, ListNotesParams { limit: None })
+            .list_notes_inner(
+                strategy_a,
+                ListNotesParams {
+                    limit: None,
+                    status: None,
+                    updated_after: None,
+                    include_body: None,
+                },
+            )
             .await
             .expect("list");
         // 戦略 B のノートは含まれず、戦略 A の 2 件のみが新しい順に並ぶ
@@ -659,6 +686,169 @@ mod tests {
             (titles, strategies),
             (vec!["a2", "a1"], vec![strategy_a, strategy_a]),
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_notes_filters_by_status(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "a").await;
+        let server = build_server(db.clone());
+
+        for (title, status) in [
+            ("u", None),
+            ("a", Some("approved")),
+            ("r", Some("rejected")),
+        ] {
+            let created = server
+                .write_note_inner(
+                    strategy_id,
+                    None,
+                    WriteNoteParams {
+                        note_id: None,
+                        title: Some(title.into()),
+                        body_md: None,
+                        type_tag: None,
+                        frontmatter_json: None,
+                        graphs: None,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("write {title} failed: {e}"));
+            if let Some(status) = status {
+                set_note_status(&db, created.note_id, status).await;
+            }
+        }
+
+        let result = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: None,
+                    status: Some("approved".into()),
+                    updated_after: None,
+                    include_body: None,
+                },
+            )
+            .await
+            .expect("list");
+        let titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
+        assert_eq!(titles, vec!["a"]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_notes_rejects_invalid_status(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "a").await;
+        let server = build_server(db);
+
+        let err = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: None,
+                    status: Some("bogus".into()),
+                    updated_after: None,
+                    include_body: None,
+                },
+            )
+            .await
+            .expect_err("invalid status expected to be rejected");
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_notes_filters_by_updated_after(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "a").await;
+        let server = build_server(db.clone());
+
+        let old = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("old".into()),
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write old");
+        let new = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("new".into()),
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write new");
+
+        let now = chrono::Utc::now().fixed_offset();
+        set_note_updated_at(&db, old.note_id, now - chrono::Duration::days(2)).await;
+        set_note_updated_at(&db, new.note_id, now - chrono::Duration::hours(1)).await;
+
+        let result = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: None,
+                    status: None,
+                    updated_after: Some(now - chrono::Duration::days(1)),
+                    include_body: None,
+                },
+            )
+            .await
+            .expect("list");
+        let titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
+        assert_eq!(titles, vec!["new"]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn list_notes_include_body_false_omits_body(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "a").await;
+        let server = build_server(db);
+
+        server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("t".into()),
+                    body_md: Some("secret".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write");
+
+        let result = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: None,
+                    status: None,
+                    updated_after: None,
+                    include_body: Some(false),
+                },
+            )
+            .await
+            .expect("list");
+        let bodies: Vec<Option<&str>> = result.notes.iter().map(|n| n.body_md.as_deref()).collect();
+        assert_eq!(bodies, vec![None]);
     }
 
     #[sqlx::test(migrations = false)]
@@ -700,7 +890,7 @@ mod tests {
                 note_id: written.note_id,
                 strategy_id,
                 title: "note with graph".into(),
-                body_md: "[[graph:g1]]".into(),
+                body_md: Some("[[graph:g1]]".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
                 status: DEFAULT_NOTE_STATUS.into(),
@@ -736,7 +926,15 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
 
         let result = server
-            .list_notes_inner(strategy_id, ListNotesParams { limit: None })
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: None,
+                    status: None,
+                    updated_after: None,
+                    include_body: None,
+                },
+            )
             .await
             .expect("list");
         assert_eq!(result.notes, vec![]);
@@ -812,7 +1010,7 @@ mod tests {
                     note_id: created.note_id,
                     strategy_id,
                     title: "t".into(),
-                    body_md: expected_body,
+                    body_md: Some(expected_body),
                     frontmatter_json: serde_json::Map::new(),
                     type_tag: None,
                     status: DEFAULT_NOTE_STATUS.into(),
@@ -933,7 +1131,7 @@ mod tests {
                 note_id: created.note_id,
                 strategy_id,
                 title: "t".into(),
-                body_md: "orig".into(),
+                body_md: Some("orig".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
                 status: DEFAULT_NOTE_STATUS.into(),
@@ -1155,7 +1353,7 @@ mod tests {
                 note_id: first.note_id,
                 strategy_id,
                 title: "second".into(),
-                body_md: "v2".into(),
+                body_md: Some("v2".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
                 status: DEFAULT_NOTE_STATUS.into(),
@@ -1206,7 +1404,15 @@ mod tests {
             .expect("second write");
 
         let result = server
-            .list_notes_inner(strategy_id, ListNotesParams { limit: None })
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: None,
+                    status: None,
+                    updated_after: None,
+                    include_body: None,
+                },
+            )
             .await
             .expect("list");
         let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
@@ -1261,7 +1467,15 @@ mod tests {
             .expect("second write");
 
         let result = server
-            .list_notes_inner(strategy_id, ListNotesParams { limit: None })
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: None,
+                    status: None,
+                    updated_after: None,
+                    include_body: None,
+                },
+            )
             .await
             .expect("list");
         let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
@@ -1366,7 +1580,10 @@ mod tests {
                 normalize_note(read_a).body_md,
                 normalize_note(read_b).body_md
             ),
-            ("a body updated".to_string(), "b body".to_string()),
+            (
+                Some("a body updated".to_string()),
+                Some("b body".to_string())
+            ),
         );
     }
 
