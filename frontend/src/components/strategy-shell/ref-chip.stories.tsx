@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { http, HttpResponse } from 'msw'
 
 import { RefChip } from '#components/strategy-shell/ref-chip'
+import { mockResolveRef } from '#storybook/mock-resolve-ref'
 
 const queryClient = new QueryClient()
 
@@ -25,21 +25,7 @@ const meta = {
     ),
   ],
   parameters: {
-    msw: {
-      handlers: [
-        http.get('/api/refs/resolve', ({ request }) => {
-          const link = new URL(request.url).searchParams.get('link') ?? ''
-          const i = link.indexOf(':')
-          return HttpResponse.json([
-            {
-              kind: i < 0 ? link : link.slice(0, i),
-              id: i < 0 ? link : link.slice(i + 1),
-              name: NAMES[link] ?? null,
-            },
-          ])
-        }),
-      ],
-    },
+    msw: { handlers: [mockResolveRef(NAMES)] },
   },
 } satisfies Meta<typeof RefChip>
 

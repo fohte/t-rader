@@ -19,7 +19,8 @@ export function RefChip({
   const kindJP = REF_KIND_JP[ref.kind]
   const resolved = ref.name != null
   const displayName = ref.name ?? ref.id
-  const sub = resolved && ref.id !== ref.name ? ref.id : undefined
+  const sub =
+    resolved && ref.kind === 'stock' && ref.id !== ref.name ? ref.id : undefined
 
   const baseInner =
     'inline-flex items-baseline gap-1 font-mono text-em-88 leading-tight whitespace-nowrap text-foreground'

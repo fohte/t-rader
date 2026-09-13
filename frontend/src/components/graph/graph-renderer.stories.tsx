@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { http, HttpResponse } from 'msw'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import type { GraphDef } from '#components/graph/types'
+import { mockResolveRef } from '#storybook/mock-resolve-ref'
 
 const queryClient = new QueryClient()
 
@@ -16,22 +16,7 @@ const meta = {
   // 未指定だと decorator の固定高さ div から高さが伝播せず 0 に潰れ、何も描画されない
   args: { fitViewDuration: 0, className: 'h-full' },
   parameters: {
-    msw: {
-      // ノードの ref はすべて架空の銘柄コードなので、いずれも未解決 (name: null) として返す
-      handlers: [
-        http.get('/api/refs/resolve', ({ request }) => {
-          const link = new URL(request.url).searchParams.get('link') ?? ''
-          const i = link.indexOf(':')
-          return HttpResponse.json([
-            {
-              kind: i < 0 ? link : link.slice(0, i),
-              id: i < 0 ? link : link.slice(i + 1),
-              name: null,
-            },
-          ])
-        }),
-      ],
-    },
+    msw: { handlers: [mockResolveRef({})] },
   },
   decorators: [
     (Story) => (

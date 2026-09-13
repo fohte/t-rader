@@ -13,8 +13,7 @@ export interface ResolvedRef {
 
 /**
  * `kind:id` 形式の参照 token を GET /api/refs/resolve で解決する。
- * kind が未知、あるいは `:` を含まない token は API を呼ばず未解決として扱う
- * (呼ぶとバリデーションエラーになるため)。
+ * 不正な形式や未知の kind の token は API を呼ばず未解決 (name: null) として扱う。
  */
 export function useResolveRef(token: string): ResolvedRef {
   const i = token.indexOf(':')
