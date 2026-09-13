@@ -75,7 +75,6 @@ const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
   skills: { 'ja-stock': 'skill body' },
   model: 'opencode-go/minimax-m3',
-  smallModel: 'opencode-go/deepseek-v4-flash',
   agentGraph: '',
 }
 
