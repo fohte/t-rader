@@ -589,7 +589,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn get_agent_config_bundle_returns_agents_md_skills_and_model(pool: PgPool) {
-        use crate::services::agent_config::{DEFAULT_AGENT_MODEL, DEFAULT_AGENT_SMALL_MODEL};
+        use crate::services::agent_config::DEFAULT_AGENT_MODEL;
 
         let server = create_test_server(pool).await;
         server
@@ -620,7 +620,6 @@ mod tests {
                 "agents_md": agents_md,
                 "skills": { "scout": "scout body" },
                 "model": DEFAULT_AGENT_MODEL,
-                "small_model": DEFAULT_AGENT_SMALL_MODEL,
                 "agent_graph": "",
             }),
         );
