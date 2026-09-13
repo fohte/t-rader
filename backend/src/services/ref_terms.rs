@@ -2,7 +2,8 @@
 //!
 //! 別名の追加・削除は `mcp/strategy/ref_terms.rs` の MCP tool から行う。ここは
 //! 正規化を持たない (ref_kind, ref_id, term) の集合をそのまま読み出すだけの層で、
-//! ニュースの語マッチ・内部リンク解決などの利用側は後続の別 PR で追加される。
+//! ニュースの語マッチ (`services/news.rs`) から利用する。内部リンク解決からの
+//! 利用は後続の別 PR で追加される。
 
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter};
 
