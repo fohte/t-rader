@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use axum::Router;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
-use rmcp::transport::streamable_http_server::session::local::{LocalSessionManager, SessionConfig};
+use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 use sea_orm::DatabaseConnection;
 
@@ -86,7 +86,9 @@ fn parse_allowed_hosts(raw: &str) -> Vec<String> {
 }
 
 /// session の keep_alive (idle timeout) を戦略タスクの deadline より長く設定した
-/// `LocalSessionManager` を作る。
+/// `LocalSessionManager` を作る。mgmt/strategy 共通で使う (mgmt にとって deadline は
+/// 無関係な値だが、keep_alive を長くする分には zombie session の回収が遅れるだけで
+/// 害はないため、値を分ける必要はない)。
 ///
 /// `LocalSessionManager` のデフォルトの keep_alive (5 分) は「最後にリクエストを
 /// 送ってからの idle 時間」で切れる。モデルが tool を呼ばずに考え込む時間が
@@ -100,10 +102,13 @@ fn session_manager() -> LocalSessionManager {
 }
 
 fn session_keep_alive() -> Duration {
+    // to_std() は DEADLINE_DURATION が負の場合のみ失敗するが、正の定数なので実際には
+    // 起こらない。万一の変更で失敗しても deadline を下回る値へ倒れないよう、
+    // フォールバックは安全側 (無効化に近い最大値) にする。
     DEADLINE_DURATION
         .to_std()
-        .unwrap_or(SessionConfig::DEFAULT_KEEP_ALIVE)
-        + Duration::from_secs(60)
+        .map(|deadline| deadline + Duration::from_secs(60))
+        .unwrap_or(Duration::MAX)
 }
 
 fn build_config(extra_allowed_hosts: &[String]) -> StreamableHttpServerConfig {
