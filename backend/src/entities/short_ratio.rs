@@ -6,25 +6,19 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
 )]
-#[sea_orm(table_name = "indicator")]
-#[schema(as = Indicator)]
+#[sea_orm(table_name = "short_ratio")]
+#[schema(as = ShortRatio)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
-    pub name: String,
-    pub kind: String,
+    pub date: Date,
+    #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
+    pub sector33_code: String,
+    pub sell_excluding_short_value: Option<Decimal>,
+    pub short_with_restriction_value: Option<Decimal>,
+    pub short_without_restriction_value: Option<Decimal>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-    #[sea_orm(has_many = "super::indicator_observation::Entity")]
-    IndicatorObservation,
-}
-
-impl Related<super::indicator_observation::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::IndicatorObservation.def()
-    }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

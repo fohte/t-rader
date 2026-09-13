@@ -1,31 +1,6 @@
 //! 戦略実行 MCP server の tool 実装。各戦略の t-rader-agent から呼ばれる。
 //! 戦略境界の保証の仕組みと各 tool の契約は docs/mcp.md 参照。
 //!
-//! 実装はドメインごとに分割している:
-//!
-//! - `dto`: 各 tool の入出力スキーマ
-//! - `notes`: ノート操作 (`write_note_inner` / `read_note_inner` / `list_notes_inner`)
-//! - `annotations`: アノテーション操作 (`create_annotation_inner` / `read_annotations_inner`)
-//! - `comments`: コメント操作 (`read_comments_inner` / `resolve_comment_inner` / `reply_comment_inner`)
-//! - `data`: 価格データ取得 (`query_data_inner`)
-//! - `evidence`: 外部データ取得の証跡記録 (`record_query_data`)
-//! - `eval`: Python 実行 (`eval_python_inner`)
-//! - `interests`: 関心の追加 (`add_interest_inner`) / 監視対象一覧 (`list_watch_targets_inner`)
-//! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
-//! - `hypotheses`: 仮説の読み取り / 変更提案 (`list_hypotheses_inner` / `read_hypothesis_inner` /
-//!   `propose_hypothesis_change_inner`)
-//! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
-//! - `web_search`: 問い合わせ文の web 検索、テキストと出典 URL の返却 (`search_web_inner`)
-//! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`) /
-//!   news_item のキーワード・期間検索 (`search_news_inner`)
-//! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
-//! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
-//! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
-//! - `fin_summary`: 銘柄の財務情報の取得 (`read_fin_summary_inner`)
-//! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
-//!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
-//!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
-//!
 //! 本モジュールは `StrategyServer` の構造体定義と、戦略境界・エラー変換などドメイン横断の
 //! ヘルパを担う。
 
@@ -37,6 +12,7 @@ pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
 pub(super) mod fin_summary;
+pub(super) mod holdings;
 pub(super) mod hypotheses;
 pub(super) mod interests;
 pub(super) mod media;
