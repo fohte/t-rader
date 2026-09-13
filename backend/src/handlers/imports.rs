@@ -232,6 +232,7 @@ async fn ensure_stock<C: ConnectionTrait>(
         name: Set(resolved_name),
         market: Set(None),
         sector_id: Set(None),
+        product_category: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
     };

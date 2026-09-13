@@ -63,6 +63,9 @@ pub(crate) struct EquityMaster {
     pub company_name: String,
     #[serde(rename = "S33Nm")]
     pub sector_name: Option<String>,
+    /// 商品区分コード (例: "011" = 内国株券、"014" = ETF)
+    #[serde(rename = "ProdCat")]
+    pub product_category: Option<String>,
 }
 
 /// J-Quants API V2 財務情報レスポンス (`GET /v2/fins/summary`)
