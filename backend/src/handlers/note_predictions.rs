@@ -4,21 +4,12 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{note, prediction};
+use crate::entities::prediction;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonPath;
+use crate::handlers::notes::find_note_or_404;
 
-async fn find_note_or_404(
-    db: &sea_orm::DatabaseConnection,
-    note_id: Uuid,
-) -> Result<note::Model, AppError> {
-    note::Entity::find_by_id(note_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))
-}
-
-/// ノートに紐づく予測一覧 (記録順)。予測は記録後に書き換えない前提のため読み取り専用。
+/// ノートに紐づく予測一覧 (記録順)。
 #[utoipa::path(
     get,
     path = "/api/notes/{id}/predictions",
@@ -49,28 +40,15 @@ pub async fn list_note_predictions(
 mod tests {
     use chrono::{DateTime, FixedOffset, NaiveDate};
     use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::ActiveValue::Set;
     use sea_orm::DatabaseConnection;
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::{prediction, stock};
-    use crate::testing::{create_test_server_with_db, insert_test_note, insert_test_strategy};
-
-    async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
-        stock::ActiveModel {
-            id: Set(id.into()),
-            name: Set(name.into()),
-            market: Set(None),
-            sector_id: Set(None),
-            product_category: Set(None),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("seed stock");
-    }
+    use crate::entities::prediction;
+    use crate::testing::{
+        create_test_server_with_db, insert_test_note, insert_test_stock, insert_test_strategy,
+    };
 
     async fn seed_prediction(
         db: &DatabaseConnection,
@@ -80,10 +58,9 @@ mod tests {
         benchmark_stock_id: &str,
         due_date: NaiveDate,
         created_at: DateTime<FixedOffset>,
-    ) -> Uuid {
-        let id = Uuid::new_v4();
+    ) -> prediction::Model {
         prediction::ActiveModel {
-            prediction_id: Set(id),
+            prediction_id: Set(Uuid::new_v4()),
             strategy_id: Set(strategy_id),
             note_id: Set(note_id),
             target_stock_id: Set(target_stock_id.into()),
@@ -97,7 +74,6 @@ mod tests {
         .insert(db)
         .await
         .expect("seed prediction")
-        .prediction_id
     }
 
     fn ts(minute: u32) -> DateTime<FixedOffset> {
@@ -110,8 +86,8 @@ mod tests {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
         let nid = insert_test_note(&db, sid, "t", "b").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let other_note = insert_test_note(&db, sid, "other", "b").await;
 
         let first = seed_prediction(
@@ -147,12 +123,7 @@ mod tests {
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
         res.assert_status_ok();
-        let ids: Vec<Uuid> = res
-            .json::<Vec<prediction::Model>>()
-            .into_iter()
-            .map(|p| p.prediction_id)
-            .collect();
-        assert_eq!(ids, vec![first, second]);
+        assert_eq!(res.json::<Vec<prediction::Model>>(), vec![first, second]);
     }
 
     #[sqlx::test(migrations = false)]

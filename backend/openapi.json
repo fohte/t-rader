@@ -4541,7 +4541,7 @@
         "tags": [
           "notes"
         ],
-        "summary": "ノートに紐づく予測一覧 (記録順)。予測は記録後に書き換えない前提のため読み取り専用。",
+        "summary": "ノートに紐づく予測一覧 (記録順)。",
         "operationId": "list_note_predictions",
         "parameters": [
           {

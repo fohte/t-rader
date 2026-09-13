@@ -795,7 +795,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** ノートに紐づく予測一覧 (記録順)。予測は記録後に書き換えない前提のため読み取り専用。 */
+    /** ノートに紐づく予測一覧 (記録順)。 */
     get: operations['list_note_predictions']
     put?: never
     post?: never
