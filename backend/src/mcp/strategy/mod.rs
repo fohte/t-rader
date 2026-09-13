@@ -16,6 +16,7 @@ pub(super) mod holdings;
 pub(super) mod hypotheses;
 pub(super) mod interests;
 pub(super) mod macro_indicator;
+pub(super) mod margin;
 pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
