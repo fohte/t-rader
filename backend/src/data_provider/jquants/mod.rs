@@ -43,29 +43,68 @@ const RATE_LIMIT_MAX_REQUESTS: usize = 5;
 /// 大幅に超過すると 5 分程度アクセスが完全に遮断されるため、契約プラン上限より低い方を使う。
 const FIN_SUMMARY_RATE_LIMIT_PER_MINUTE: usize = 60;
 
+/// 契約プランの公称上限をそのまま使い切らないための安全係数。公式ページに「システムの
+/// 状況等により調整される場合があります」とある上、ローリング更新中は新旧 2 つの pod
+/// (= 2 つの RateLimiter) が同時に動き、実際の合計送信数は公称値の 2 倍になりうるため、
+/// 公称値の半分を実効上限とする。
+const RATE_LIMIT_SAFETY_FACTOR: usize = 2;
+
+/// 429 を受けてから、このクライアントの全呼び出しの送信を止める時間。公式ページ記載の
+/// 「5 分程度アクセスが完全に遮断されることがあります」に合わせる。
+const RATE_LIMIT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+/// 429 の cooldown 待ちを何回まで繰り返すか。これを超えてなお 429 が続く場合は異常事態
+/// とみなしエラーを返す (この回数分は待つだけなので `MAX_RETRIES` の指数バックオフとは別枠)。
+const MAX_RATE_LIMIT_RETRIES: u32 = 3;
+
 /// スライディングウィンドウ方式のレートリミッター
 ///
 /// 直近 60 秒間のリクエスト送信時刻を記録し、上限に達している場合は
-/// 最も古いリクエストがウィンドウから外れるまで待機する。
+/// 最も古いリクエストがウィンドウから外れるまで待機する。429 を受けた場合は
+/// `note_rate_limited` により全呼び出しの送信を一定時間止める (cooldown)。
 struct RateLimiter {
     /// 直近のリクエスト送信時刻 (古い順)
     timestamps: Mutex<VecDeque<tokio::time::Instant>>,
+    /// 429 受信時に設定される、送信を再開してよい時刻
+    cooldown_until: Mutex<Option<tokio::time::Instant>>,
+    /// 429 を受けてから送信を止める時間。テストでは実時間での待ちを短くするために
+    /// `RATE_LIMIT_COOLDOWN` 以外の値を注入できるようにしている。
+    cooldown: std::time::Duration,
 }
 
 impl RateLimiter {
-    fn new() -> Self {
+    fn new(cooldown: std::time::Duration) -> Self {
         Self {
             timestamps: Mutex::new(VecDeque::with_capacity(RATE_LIMIT_MAX_REQUESTS)),
+            cooldown_until: Mutex::new(None),
+            cooldown,
         }
+    }
+
+    /// 429 を受けたことを記録し、`cooldown` の間このクライアントの全呼び出しの送信を止める。
+    async fn note_rate_limited(&self) {
+        *self.cooldown_until.lock().await = Some(tokio::time::Instant::now() + self.cooldown);
     }
 
     /// リクエスト送信の許可を取得する
     ///
-    /// ウィンドウ内のリクエスト数が `max_requests` に達している場合、最も古い
-    /// リクエストがウィンドウから外れるまで待機する。`max_requests` は契約プランに
-    /// 応じて呼び出しごとに変わりうる (`JQuantsClient::current_rate_limit`)。
+    /// cooldown 中であればまずそれが明けるまで待つ。明けていれば、ウィンドウ内の
+    /// リクエスト数が `max_requests` に達している場合、最も古いリクエストがウィンドウ
+    /// から外れるまで待機する。`max_requests` は契約プランに応じて呼び出しごとに変わり
+    /// うる (`JQuantsClient::current_rate_limit`)。
     async fn acquire(&self, max_requests: usize) {
         loop {
+            if let Some(until) = *self.cooldown_until.lock().await {
+                let now = tokio::time::Instant::now();
+                if now < until {
+                    tracing::warn!(
+                        wait_ms = until.saturating_duration_since(now).as_millis() as u64,
+                        "429 の cooldown 中のため送信を停止して待機中"
+                    );
+                    tokio::time::sleep_until(until).await;
+                    continue;
+                }
+            }
+
             let now = tokio::time::Instant::now();
 
             let mut timestamps = self.timestamps.lock().await;
@@ -125,9 +164,11 @@ fn effective_range(
 /// J-Quants API V2 クライアント
 ///
 /// API Key 認証方式で J-Quants API V2 にアクセスする。
-/// アプリケーションレベルのレートリミッターを内蔵し、429 (Rate Limited) と
-/// 5xx に対して指数バックオフでリトライする。レートリミッターの上限は契約プラン
-/// (`manual_plan`) に追従し、未設定時は Free プラン相当に倒す。
+/// アプリケーションレベルのレートリミッターを内蔵する。5xx には指数バックオフで
+/// リトライし、429 を受けた場合は全呼び出しの送信を `RATE_LIMIT_COOLDOWN` の間止めて
+/// 待つ (cooldown)。レートリミッターの上限は契約プラン (`manual_plan`) に追従し、
+/// 未設定時は Free プラン相当に倒した上で `RATE_LIMIT_SAFETY_FACTOR` による
+/// 安全マージンを適用する。
 ///
 /// Debug は意図的に derive しない (api_key の漏洩防止)
 pub struct JQuantsClient {
@@ -152,7 +193,7 @@ impl JQuantsClient {
             http,
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key,
-            rate_limiter: RateLimiter::new(),
+            rate_limiter: RateLimiter::new(RATE_LIMIT_COOLDOWN),
             detected_range: std::sync::Mutex::new(None),
             manual_plan: std::sync::Mutex::new(None),
         })
@@ -170,7 +211,8 @@ impl JQuantsClient {
             http,
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
-            rate_limiter: RateLimiter::new(),
+            // 429 の cooldown を実時間で短くし、テストが実際に数分待つのを避ける
+            rate_limiter: RateLimiter::new(std::time::Duration::from_millis(50)),
             detected_range: std::sync::Mutex::new(None),
             manual_plan: std::sync::Mutex::new(None),
         })
@@ -194,12 +236,14 @@ impl JQuantsClient {
 
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
     ///
-    /// 契約プランが設定されていればそのプランの値、未設定なら
-    /// `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) を返す。
+    /// 契約プランが設定されていれば、その公称値に `RATE_LIMIT_SAFETY_FACTOR` による
+    /// 安全マージンを適用した値を返す。未設定 (プラン検出前のブートストラップ期間) なら
+    /// 元々余裕を持たせてある `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) をそのまま返す。
     fn current_rate_limit(&self) -> usize {
-        self.manual_plan()
-            .map(|plan| plan.rate_limit_per_minute())
-            .unwrap_or(RATE_LIMIT_MAX_REQUESTS)
+        match self.manual_plan() {
+            Some(plan) => (plan.rate_limit_per_minute() / RATE_LIMIT_SAFETY_FACTOR).max(1),
+            None => RATE_LIMIT_MAX_REQUESTS,
+        }
     }
 
     fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
@@ -229,23 +273,30 @@ impl JQuantsClient {
     /// レートリミッターで送信間隔を制御した上で、429 と 5xx に対してリトライする。
     /// それ以外のエラーは即座に返す。`max_requests` はウィンドウ内の許容リクエスト数
     /// (通常は `current_rate_limit()`。エンドポイント固有の上限がある場合はそれとの min)。
+    ///
+    /// 429 はレートリミッターの cooldown 待ち (`RateLimiter::acquire` 内) に任せるため
+    /// 指数バックオフは行わず、`MAX_RATE_LIMIT_RETRIES` 回まで cooldown 明けを待って
+    /// 再試行する。5xx は従来通り `MAX_RETRIES` 回まで指数バックオフでリトライする。
     async fn get_with_retry(
         &self,
         url: &Url,
         max_requests: usize,
     ) -> Result<reqwest::Response, DataProviderError> {
-        let mut last_error = None;
         let url_str = url.as_str();
+        let mut retry_attempt = 0u32;
+        let mut rate_limit_attempt = 0u32;
 
-        for attempt in 0..=MAX_RETRIES {
-            // 各リクエスト (リトライ含む) の前にレートリミッターの許可を取得
+        loop {
+            // 各リクエスト (リトライ含む) の前にレートリミッターの許可を取得。
+            // 429 の cooldown 中はここで明けるまで待機する。
             self.rate_limiter.acquire(max_requests).await;
 
-            if attempt > 0 {
-                let backoff =
-                    std::time::Duration::from_millis(INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1));
+            if retry_attempt > 0 {
+                let backoff = std::time::Duration::from_millis(
+                    INITIAL_BACKOFF_MS * 2u64.pow(retry_attempt - 1),
+                );
                 tracing::warn!(
-                    attempt,
+                    attempt = retry_attempt,
                     backoff_ms = backoff.as_millis() as u64,
                     url = url_str,
                     "リトライ待機中"
@@ -266,13 +317,27 @@ impl JQuantsClient {
             match status {
                 200..=299 => return Ok(response),
                 429 => {
-                    tracing::warn!(attempt, url = url_str, "レートリミット超過 (429)");
-                    last_error = Some(DataProviderError::RateLimited { retries: attempt });
+                    tracing::warn!(
+                        url = url_str,
+                        "レートリミット超過 (429)、送信を停止して待機します"
+                    );
+                    self.rate_limiter.note_rate_limited().await;
+
+                    rate_limit_attempt += 1;
+                    if rate_limit_attempt > MAX_RATE_LIMIT_RETRIES {
+                        return Err(DataProviderError::RateLimited {
+                            retries: rate_limit_attempt,
+                        });
+                    }
                 }
                 500..=599 => {
                     let message = Self::extract_error_message(response).await;
-                    tracing::warn!(attempt, status, url = url_str, %message, "サーバーエラー、リトライ実行");
-                    last_error = Some(DataProviderError::Api { status, message });
+                    tracing::warn!(attempt = retry_attempt, status, url = url_str, %message, "サーバーエラー、リトライ実行");
+
+                    retry_attempt += 1;
+                    if retry_attempt > MAX_RETRIES {
+                        return Err(DataProviderError::Api { status, message });
+                    }
                 }
                 _ => {
                     let message = Self::extract_error_message(response).await;
@@ -280,10 +345,6 @@ impl JQuantsClient {
                 }
             }
         }
-
-        Err(last_error.unwrap_or(DataProviderError::RateLimited {
-            retries: MAX_RETRIES,
-        }))
     }
 
     /// レスポンスボディからエラーメッセージを抽出する
@@ -451,7 +512,7 @@ impl JQuantsClient {
         let params = [("date", date_str.as_str())];
         let max_requests = self
             .current_rate_limit()
-            .min(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE);
+            .min((FIN_SUMMARY_RATE_LIMIT_PER_MINUTE / RATE_LIMIT_SAFETY_FACTOR).max(1));
 
         self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params, max_requests)
             .await
