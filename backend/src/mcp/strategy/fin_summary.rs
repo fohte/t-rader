@@ -1,16 +1,5 @@
-//! 戦略実行 MCP の `read_fin_summary` tool。
-//!
-//! `jquants_fin_summary.raw` (J-Quants `/fins/summary` のレスポンス 1 件をそのまま
-//! 格納した JSONB) を意味の分かるフィールド名に変換して返す。財務情報は会社単位の
-//! 開示であり戦略に属さないマスタデータのため `search_refs` / `search_news` 同様
-//! `x-strategy-id` を検索条件に使わない。
-//!
-//! `jquants_fin_summary.code` は J-Quants の 5 桁コードだが、MCP 引数の `symbol` は
-//! 既存 tool と揃えて 4 桁で受け取る。5 桁 → 4 桁の変換仕様は J-Quants 側に無いため、
-//! 先頭 4 文字の一致で突き合わせる。
-//!
-//! 同じ (開示書類種別, 当会計期間) の開示が複数あるとき (訂正、あるいは同一期間内での
-//! 業績予想修正の再修正) は、開示番号 (`DiscNo`) が最大の 1 件だけを返す。
+//! 戦略実行 MCP の `read_fin_summary` tool。`jquants_fin_summary.raw` (J-Quants
+//! `/fins/summary` の raw JSONB) を意味の分かるフィールド名に変換して返す。
 
 use chrono::NaiveDate;
 use rmcp::ErrorData as McpError;
@@ -21,10 +10,13 @@ use super::dto::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
 use super::{StrategyServer, clamp_limit, db_error};
 
 const READ_FIN_SUMMARY_SQL: &str = indoc::indoc! {"
+    -- 同じ (DocType, 当会計期間) の開示が複数あれば DiscNo 最大の 1 件のみ残す
+    -- (訂正、あるいは業績予想修正の再修正)
     WITH deduped AS (
         SELECT DISTINCT ON (raw->>'DocType', raw->>'CurPerSt', raw->>'CurPerEn')
             disc_date, raw, (raw->>'DiscNo')::bigint AS disc_no_num
         FROM jquants_fin_summary
+        -- code は J-Quants の 5 桁コード。4 桁 symbol への変換仕様が無いため先頭 4 文字一致で突き合わせる
         WHERE LEFT(code, 4) = $1
         ORDER BY raw->>'DocType', raw->>'CurPerSt', raw->>'CurPerEn', disc_no_num DESC
     )
@@ -42,6 +34,7 @@ struct FinSummaryRow {
 impl StrategyServer {
     pub(crate) async fn read_fin_summary_inner(
         &self,
+        // 財務情報は会社単位の開示であり戦略に属さないマスタデータのため検索条件に使わない
         _session_strategy_id: Uuid,
         params: ReadFinSummaryParams,
     ) -> Result<ReadFinSummaryResult, McpError> {
