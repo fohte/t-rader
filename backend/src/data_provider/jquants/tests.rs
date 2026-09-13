@@ -23,10 +23,10 @@ fn default_range() -> DateRange {
     }
 }
 
-fn sample_bar(date_str: &'static str, close: f64) -> MockBar {
+fn sample_bar(date_str: &str, close: f64) -> MockBar {
     MockBar {
-        date: date_str,
-        code: "86970",
+        date: date_str.to_string(),
+        code: "86970".to_string(),
         adj_open: Some(100.0),
         adj_high: Some(110.0),
         adj_low: Some(95.0),
@@ -68,8 +68,8 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[case::all_null(MockBar {
-        date: "2025-01-07",
-        code: "86970",
+        date: "2025-01-07".to_string(),
+        code: "86970".to_string(),
         adj_open: None,
         adj_high: None,
         adj_low: None,
@@ -77,8 +77,8 @@ mod fetch_daily_bars {
         adj_volume: None,
     })]
     #[case::partial_null(MockBar {
-        date: "2025-01-07",
-        code: "86970",
+        date: "2025-01-07".to_string(),
+        code: "86970".to_string(),
         adj_open: None,
         adj_high: Some(110.0),
         adj_low: Some(95.0),
@@ -173,8 +173,6 @@ mod fetch_daily_bars {
     }
 }
 
-// === fetch_daily_bars_by_date ===
-
 mod fetch_daily_bars_by_date {
     use super::*;
 
@@ -184,7 +182,10 @@ mod fetch_daily_bars_by_date {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars_by_date()
             .date("2025-01-06")
-            .bars(vec![sample_bar("2025-01-06", 105.0)])
+            .bars(vec![MockBar {
+                code: "86970".to_string(),
+                ..sample_bar("2025-01-06", 105.0)
+            }])
             .ok()
             .await;
 
@@ -192,7 +193,6 @@ mod fetch_daily_bars_by_date {
         let bars = client.fetch_daily_bars_by_date(date(2025, 1, 6)).await?;
 
         assert_eq!(bars.len(), 1);
-        // sample_bar の Code は "86970" (5 桁、末尾 "0" の普通株)
         assert_eq!(bars[0].instrument_id, "8697");
         assert_eq!(bars[0].close, dec(105.0));
         Ok(())
@@ -205,8 +205,8 @@ mod fetch_daily_bars_by_date {
         mock.daily_bars_by_date()
             .date("2025-01-06")
             .bars(vec![MockBar {
-                date: "2025-01-06",
-                code: "86971",
+                date: "2025-01-06".to_string(),
+                code: "86971".to_string(),
                 adj_open: Some(100.0),
                 adj_high: Some(110.0),
                 adj_low: Some(95.0),
@@ -232,11 +232,11 @@ mod fetch_daily_bars_by_date {
             .date("2025-01-06")
             .bars(vec![
                 MockBar {
-                    code: "72030",
+                    code: "72030".to_string(),
                     ..sample_bar("2025-01-06", 100.0)
                 },
                 MockBar {
-                    code: "67580",
+                    code: "67580".to_string(),
                     ..sample_bar("2025-01-06", 200.0)
                 },
             ])
@@ -260,8 +260,8 @@ mod fetch_daily_bars_by_date {
         mock.daily_bars_by_date()
             .date("2025-01-06")
             .bars(vec![MockBar {
-                date: "2025-01-06",
-                code: "72030",
+                date: "2025-01-06".to_string(),
+                code: "72030".to_string(),
                 adj_open: None,
                 adj_high: None,
                 adj_low: None,

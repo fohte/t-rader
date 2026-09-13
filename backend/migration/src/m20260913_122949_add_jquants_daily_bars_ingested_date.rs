@@ -9,7 +9,7 @@ impl MigrationName for Migration {
 }
 
 #[derive(DeriveIden)]
-enum JquantsDailyBarsIngestedDate {
+enum JQuantsDailyBarsIngestedDate {
     // DeriveIden の既定の snake_case 変換は連続大文字 "JQ" を "j_q" と別語扱いしてしまう
     // (`j_quants_daily_bars_ingested_date` になる) ため、テーブル名は明示的に上書きする。
     #[sea_orm(iden = "jquants_daily_bars_ingested_date")]
@@ -20,15 +20,13 @@ enum JquantsDailyBarsIngestedDate {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // 日足の全銘柄一括取り込みが完了した営業日を記録する。直近の営業日は
-        // 訂正取り込みのため記録の有無にかかわらず再取得するので、参照するのは
-        // 「この日より前は取り込み済み」の判定のみ。
+        // 日足の全銘柄一括取り込みが完了した営業日を記録する。
         manager
             .create_table(
                 Table::create()
-                    .table(JquantsDailyBarsIngestedDate::Table)
+                    .table(JQuantsDailyBarsIngestedDate::Table)
                     .col(
-                        ColumnDef::new(JquantsDailyBarsIngestedDate::Date)
+                        ColumnDef::new(JQuantsDailyBarsIngestedDate::Date)
                             .date()
                             .not_null()
                             .primary_key(),
@@ -42,7 +40,7 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(
                 Table::drop()
-                    .table(JquantsDailyBarsIngestedDate::Table)
+                    .table(JQuantsDailyBarsIngestedDate::Table)
                     .to_owned(),
             )
             .await

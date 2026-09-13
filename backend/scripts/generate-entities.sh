@@ -53,6 +53,7 @@ for file in "$ENTITIES_DIR"/*.rs; do
     instruments) name=Instrument ;;
     jquants_plan_setting) name=JQuantsPlanSetting ;;
     jquants_fin_summary) name=JQuantsFinSummary ;;
+    jquants_daily_bars_ingested_date) name=JQuantsDailyBarsIngestedDate ;;
     *) name="$(pascal_case "$base")" ;;
   esac
   insert_before "$file" "pub struct Model {" "#[schema(as = $name)]"

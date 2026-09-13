@@ -88,8 +88,8 @@ impl JQuantsMockServer {
 
 /// テスト用の日足データ
 pub(crate) struct MockBar {
-    pub date: &'static str,
-    pub code: &'static str,
+    pub date: String,
+    pub code: String,
     pub adj_open: Option<f64>,
     pub adj_high: Option<f64>,
     pub adj_low: Option<f64>,

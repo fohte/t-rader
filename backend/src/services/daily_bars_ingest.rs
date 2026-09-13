@@ -81,8 +81,7 @@ async fn find_ingested_dates(
 }
 
 /// `bars` の FK 制約のため `instruments` 行を保証する。銘柄名などの詳細は把握できないため、
-/// 銘柄コードをそのまま仮の name として登録する (既存の `market_price::ensure_instrument_exists`
-/// と同じ方針)。
+/// 銘柄コードをそのまま仮の name として登録する。
 async fn ensure_instruments_exist(
     db: &DatabaseConnection,
     instrument_ids: &HashSet<String>,
@@ -157,13 +156,16 @@ pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
     client: &JQuantsClient,
 ) -> Result<IngestStats, AppError> {
-    if client.manual_plan().is_none() {
+    let Some(plan) = client.manual_plan() else {
         tracing::debug!("J-Quants 契約プランが未設定のため日足の取り込みをスキップします");
         return Ok(IngestStats::default());
-    }
+    };
 
     let today = Utc::now().date_naive();
-    let to = latest_business_day(today);
+    // Free プランは配信遅延 (84日) があり、素の today だとまだ提供されていない日を
+    // 対象にして 400 エラーを繰り返してしまうため、プランの提供可能範囲でクランプする。
+    let (_, plan_to) = plan.range(today);
+    let to = latest_business_day(plan_to.min(today));
     let business_days = recent_business_days(to, TARGET_BUSINESS_DAYS);
     let Some(&earliest) = business_days.first() else {
         return Ok(IngestStats::default());
@@ -238,16 +240,10 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
 
-    /// `NaiveDate` を計算して得た日付文字列は `'static` を要求する `MockBar` の
-    /// フィールドに直接渡せないため、テスト内でリークして `'static` にする。
-    fn leak(s: String) -> &'static str {
-        Box::leak(s.into_boxed_str())
-    }
-
-    fn mock_bar(date_str: &'static str, code: &'static str, close: f64) -> MockBar {
+    fn mock_bar(date_str: &str, code: &str, close: f64) -> MockBar {
         MockBar {
-            date: date_str,
-            code,
+            date: date_str.to_string(),
+            code: code.to_string(),
             adj_open: Some(close),
             adj_high: Some(close + 10.0),
             adj_low: Some(close - 10.0),
@@ -337,16 +333,17 @@ mod tests {
         let today = Utc::now().date_naive();
         let to = latest_business_day(today);
 
-        // 直近 400 営業日のうち、`to` を除く全日を既に記録済みにしておき、対象を `to` 1 日に絞る
+        // 直近 400 営業日のうち、`to` を除く全日を既に記録済みにしておき、対象を未記録の `to` を
+        // 含む直近 7 営業日に絞る
         let business_days = recent_business_days(to, TARGET_BUSINESS_DAYS);
         for &d in &business_days[..business_days.len() - 1] {
             seed_ingested(&db, d).await;
         }
 
-        let to_str = leak(to.format("%Y-%m-%d").to_string());
+        let to_str = to.format("%Y-%m-%d").to_string();
         mock.daily_bars_by_date()
-            .date(to_str)
-            .bars(vec![mock_bar(to_str, "72030", 100.0)])
+            .date(&to_str)
+            .bars(vec![mock_bar(&to_str, "72030", 100.0)])
             .ok()
             .await;
 
@@ -439,10 +436,10 @@ mod tests {
 
         // `prev` 以外の日は mock を用意しない (マッチせず 404 → fetch エラー) が、
         // サイクル全体は失敗させず、直近 7 営業日すべてを attempted として扱う
-        let prev_str = leak(prev.format("%Y-%m-%d").to_string());
+        let prev_str = prev.format("%Y-%m-%d").to_string();
         mock.daily_bars_by_date()
-            .date(prev_str)
-            .bars(vec![mock_bar(prev_str, "72030", 100.0)])
+            .date(&prev_str)
+            .bars(vec![mock_bar(&prev_str, "72030", 100.0)])
             .ok()
             .await;
 
