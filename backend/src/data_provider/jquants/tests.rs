@@ -344,6 +344,283 @@ mod rate_limiter {
     }
 }
 
+// === 契約範囲の自己検出 (400 エラーメッセージからの検出) ===
+
+mod subscription_range_detection {
+    use super::*;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_detects_range_from_400_and_retries_successfully() -> Result<(), DataProviderError>
+    {
+        let mock = JQuantsMockServer::start().await;
+
+        // 検出後の再取得リクエスト。先に mount することで、from/to が一致するリクエストは
+        // こちらが優先される (wiremock は同一 priority ならマウント順を優先する)
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("code", "8697"))
+            .and(query_param("from", "20200401"))
+            .and(query_param("to", "20220401"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{
+                    "Date": "2025-01-06",
+                    "Code": "86970",
+                    "AdjO": 100.0,
+                    "AdjH": 110.0,
+                    "AdjL": 95.0,
+                    "AdjC": 105.0,
+                    "AdjVo": 1000.0,
+                }],
+                "pagination_key": null,
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        // 契約範囲外を指定した初回リクエストへの応答。このメッセージから契約範囲を検出する
+        mock.error()
+            .subscription_range("/equities/bars/daily", "2020-04-01", "2022-04-01")
+            .await;
+
+        let client = mock.client()?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].close, dec(105.0));
+        assert_eq!(
+            client.known_fetchable_range(),
+            Some((date(2020, 4, 1), date(2022, 4, 1)))
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_unparsable_400_message_is_returned_as_is() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("code", "8697"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "message": "Bad Request",
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        let client = mock.client()?;
+        let result = client.fetch_daily_bars("8697", &default_range()).await;
+
+        assert!(matches!(
+            result,
+            Err(DataProviderError::Api { status: 400, .. })
+        ));
+        assert_eq!(client.known_fetchable_range(), None);
+        Ok(())
+    }
+}
+
+// === 手動設定プラン (`set_manual_plan`) の優先順位 ===
+
+mod manual_plan_priority {
+    use rstest::{fixture, rstest};
+
+    use crate::data_provider::DataProvider;
+    use crate::models::jquants_plan::JQuantsPlan;
+
+    use super::super::JQuantsClient;
+    use super::date;
+
+    #[fixture]
+    fn client() -> JQuantsClient {
+        JQuantsClient::with_base_url("http://localhost", "key").expect("client")
+    }
+
+    #[rstest]
+    fn falls_back_to_detected_range_when_manual_plan_is_unset(client: JQuantsClient) {
+        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
+
+        assert_eq!(
+            client.known_fetchable_range(),
+            Some((date(2020, 4, 1), date(2022, 4, 1)))
+        );
+    }
+
+    #[rstest]
+    fn manual_plan_overrides_already_detected_range(client: JQuantsClient) {
+        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
+        client.set_manual_plan(Some(JQuantsPlan::Standard));
+
+        let today = chrono::Utc::now().date_naive();
+        assert_eq!(
+            client.known_fetchable_range(),
+            Some(JQuantsPlan::Standard.range(today))
+        );
+    }
+
+    #[rstest]
+    fn clearing_manual_plan_restores_detected_range(client: JQuantsClient) {
+        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
+        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        client.set_manual_plan(None);
+
+        assert_eq!(
+            client.known_fetchable_range(),
+            Some((date(2020, 4, 1), date(2022, 4, 1)))
+        );
+    }
+}
+
+// === 検出範囲からの初回プラン推定・永続化 (`persist_inferred_range_if_needed`) ===
+
+mod persist_inferred_range_if_needed {
+    use chrono::Duration;
+    use sqlx::PgPool;
+
+    use crate::data_provider::DataProvider;
+    use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
+    use crate::services::jquants_plan_setting;
+    use crate::testing::create_test_db;
+
+    use super::super::JQuantsClient;
+    use super::date;
+
+    // rstest の #[fixture] は #[sqlx::test] と組み合わせられないため、プレーンな
+    // ヘルパー関数として抽出する
+    fn test_client() -> JQuantsClient {
+        JQuantsClient::with_base_url("http://localhost", "key").expect("client")
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn does_nothing_when_manual_plan_already_set(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let client = test_client();
+        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
+        client.set_manual_plan(Some(JQuantsPlan::Premium));
+
+        client
+            .persist_inferred_range_if_needed(&db)
+            .await
+            .expect("persist");
+
+        let current = jquants_plan_setting::find_current(&db)
+            .await
+            .expect("query");
+        assert_eq!(current, None, "手動設定がある間は DB に書き込まない");
+        assert_eq!(client.manual_plan(), Some(JQuantsPlan::Premium));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn does_nothing_when_no_range_detected(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let client = test_client();
+
+        client
+            .persist_inferred_range_if_needed(&db)
+            .await
+            .expect("persist");
+
+        let current = jquants_plan_setting::find_current(&db)
+            .await
+            .expect("query");
+        assert_eq!(current, None);
+        assert_eq!(client.manual_plan(), None);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn infers_and_persists_plan_from_detected_range_once(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let client = test_client();
+        // Standard の提供期間 (3650 日) ちょうどの範囲を検出させる
+        let from = date(2010, 1, 1);
+        let to = from + Duration::days(3650);
+        client.set_detected_range((from, to));
+
+        client
+            .persist_inferred_range_if_needed(&db)
+            .await
+            .expect("persist");
+
+        assert_eq!(client.manual_plan(), Some(JQuantsPlan::Standard));
+
+        let saved = jquants_plan_setting::find_current(&db)
+            .await
+            .expect("query")
+            .expect("row exists");
+        let data = parse_plan_setting::<JQuantsPlanSettingData>(saved.plan_setting).expect("parse");
+        assert_eq!(data.plan, Some(JQuantsPlan::Standard));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn does_not_overwrite_when_already_persisted_in_db(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let client = test_client();
+        let from = date(2010, 1, 1);
+        let to = from + Duration::days(3650);
+        client.set_detected_range((from, to));
+        client
+            .persist_inferred_range_if_needed(&db)
+            .await
+            .expect("first persist");
+
+        // 別プロセス/リクエストが先に推定・永続化した状態を模すため、in-memory の
+        // manual_plan だけをクリアし、別範囲を検出させる
+        client.set_manual_plan(None);
+        let other_from = date(2005, 1, 1);
+        let other_to = other_from + Duration::days(730);
+        client.set_detected_range((other_from, other_to));
+
+        client
+            .persist_inferred_range_if_needed(&db)
+            .await
+            .expect("second persist");
+
+        let saved = jquants_plan_setting::find_current(&db)
+            .await
+            .expect("query")
+            .expect("row exists");
+        let data = parse_plan_setting::<JQuantsPlanSettingData>(saved.plan_setting).expect("parse");
+        assert_eq!(
+            data.plan,
+            Some(JQuantsPlan::Standard),
+            "初回の推定結果が保持され、2 回目の検出では上書きされないこと"
+        );
+    }
+}
+
+// === 検出済み契約範囲の TTL (`effective_range`) ===
+
+mod detected_range_ttl {
+    use chrono::Duration;
+    use rstest::rstest;
+
+    use super::super::{DETECTED_RANGE_TTL_DAYS, DetectedRange, effective_range};
+    use super::date;
+
+    #[rstest]
+    #[case::same_day_still_valid(0, Some((date(2020, 1, 1), date(2020, 4, 1))))]
+    #[case::at_ttl_boundary_expired(DETECTED_RANGE_TTL_DAYS, None)]
+    #[case::well_past_ttl_expired(DETECTED_RANGE_TTL_DAYS + 4, None)]
+    fn effective_range_expires_after_ttl(
+        #[case] days_elapsed: i64,
+        #[case] expected: Option<(chrono::NaiveDate, chrono::NaiveDate)>,
+    ) {
+        let detected_at = date(2020, 4, 1);
+        let detected = DetectedRange {
+            from: date(2020, 1, 1),
+            to: date(2020, 4, 1),
+            detected_at,
+        };
+
+        let today = detected_at + Duration::days(days_elapsed);
+        assert_eq!(effective_range(Some(&detected), today), expected);
+    }
+
+    #[test]
+    fn effective_range_returns_none_when_nothing_detected_yet() {
+        assert_eq!(effective_range(None, date(2020, 4, 1)), None);
+    }
+}
+
 // === DataProviderKind ===
 
 mod data_provider_kind {

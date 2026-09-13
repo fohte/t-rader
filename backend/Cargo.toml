@@ -51,6 +51,7 @@ clap = { workspace = true, features = ["derive"] }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
+jpholiday = "=0.2.0"
 jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }

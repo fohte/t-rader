@@ -42,9 +42,8 @@ apply_overrides() {
   done <<< "$lines"
 }
 
-# utoipa の ToSchema はデフォルトで struct 名をスキーマ名にするが、entity の struct は
-# 全て `Model` という名前で衝突する。ファイル名から PascalCase 名を導出し
-# `#[schema(as = ...)]` で個別に上書きする (英語の不規則複数形は例外テーブルで対応)。
+# entity の Model struct 名の衝突を避けるため、ファイル名から導出した PascalCase 名で
+# `#[schema(as = ...)]` を付与する。
 for file in "$ENTITIES_DIR"/*.rs; do
   base="$(basename "$file" .rs)"
   case "$base" in
@@ -52,6 +51,7 @@ for file in "$ENTITIES_DIR"/*.rs; do
     bars) name=Bar ;;
     watchlist_items) name=WatchlistItem ;;
     instruments) name=Instrument ;;
+    jquants_plan_setting) name=JQuantsPlanSetting ;;
     *) name="$(pascal_case "$base")" ;;
   esac
   insert_before "$file" "pub struct Model {" "#[schema(as = $name)]"

@@ -95,6 +95,17 @@ async fn main() -> Result<(), AppError> {
         "jquants" => match std::env::var("JQUANTS_API_KEY") {
             Ok(api_key) if !api_key.is_empty() => {
                 let client = JQuantsClient::new(api_key)?;
+                let manual_plan =
+                    backend::services::jquants_plan_setting::find_current(&db)
+                        .await?
+                        .map(|row| {
+                            backend::models::parse_plan_setting::<
+                                backend::models::JQuantsPlanSettingData,
+                            >(row.plan_setting)
+                        })
+                        .transpose()?
+                        .and_then(|data| data.plan);
+                client.set_manual_plan(manual_plan);
                 tracing::info!("J-Quants DataProvider を初期化しました");
                 Some(Arc::new(DataProviderKind::JQuants(client)))
             }

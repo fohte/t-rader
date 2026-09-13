@@ -3,12 +3,13 @@
 
 use std::collections::HashMap;
 
-use chrono::{Datelike, Duration, NaiveDate, Utc, Weekday};
+use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait, Set};
 
 use crate::data_provider::DataProvider;
+use crate::date_utils::latest_business_day;
 use crate::entities::instruments;
 use crate::models::Timeframe;
 use crate::repositories::bars::find_latest_bar;
@@ -23,15 +24,6 @@ pub struct LatestPrices {
     pub priced_at: Option<NaiveDate>,
 }
 
-/// `date` が土日ならその直前の金曜日を返す。祝日は考慮しない。
-fn latest_business_day(date: NaiveDate) -> NaiveDate {
-    match date.weekday() {
-        Weekday::Sat => date - Duration::days(1),
-        Weekday::Sun => date - Duration::days(2),
-        _ => date,
-    }
-}
-
 /// `symbols` それぞれの最新終値を返す。取得可能上限日に届いていない銘柄は
 /// DataProvider から再取得を試みる。全銘柄中の最新観測日 (`priced_at`) に満たない
 /// 銘柄は結果から省かれる。
@@ -41,7 +33,9 @@ pub async fn fetch_latest_prices<P: DataProvider>(
     symbols: &[String],
 ) -> LatestPrices {
     let timeframe = Timeframe::Daily.to_string();
-    let fetchable_ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive()));
+    let known_range = provider.and_then(|p| p.known_fetchable_range());
+    let fetchable_ceiling =
+        latest_business_day(latest_fetchable_date(Utc::now().date_naive(), known_range));
     let mut bars: HashMap<String, (NaiveDate, Decimal)> = HashMap::new();
 
     for symbol in symbols {
@@ -127,7 +121,6 @@ async fn ensure_instrument_exists(
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, NaiveDate, TimeZone, Utc};
-    use rstest::rstest;
     use rust_decimal::Decimal;
     use sqlx::PgPool;
 
@@ -155,8 +148,10 @@ mod tests {
     }
 
     /// fetch_latest_prices が「これ以上新しくならない」と判定する境界日ちょうどの bar を作る
+    /// (MockProvider は known_fetchable_range を明示設定しない限り None を返すため、
+    /// 契約範囲が未検出のときの上限 = today で判定する)
     fn ceiling_bar(instrument_id: &str, close: i64) -> Bar {
-        let ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive()));
+        let ceiling = latest_business_day(latest_fetchable_date(Utc::now().date_naive(), None));
         make_bar(instrument_id, ceiling, close)
     }
 
@@ -193,26 +188,6 @@ mod tests {
         .exec_without_returning(db)
         .await
         .expect("failed to insert test instrument");
-    }
-
-    #[rstest]
-    #[case::saturday(
-        NaiveDate::from_ymd_opt(2025, 1, 4).expect("date"),
-        NaiveDate::from_ymd_opt(2025, 1, 3).expect("date")
-    )]
-    #[case::sunday(
-        NaiveDate::from_ymd_opt(2025, 1, 5).expect("date"),
-        NaiveDate::from_ymd_opt(2025, 1, 3).expect("date")
-    )]
-    #[case::weekday(
-        NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"),
-        NaiveDate::from_ymd_opt(2025, 1, 6).expect("date")
-    )]
-    fn latest_business_day_steps_back_from_weekends(
-        #[case] date: NaiveDate,
-        #[case] expected: NaiveDate,
-    ) {
-        assert_eq!(latest_business_day(date), expected);
     }
 
     #[test]
