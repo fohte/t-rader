@@ -48,6 +48,9 @@ async fn main() -> Result<(), AppError> {
 
     let mut opt = ConnectOptions::new(&database_url);
     opt.max_connections(5);
+    // insert_many の SQL は行数ごとに distinct なため prepared statement cache に積み続け、
+    // 起動時の過去分取り込みで OOM する (statement_cache_capacity のデフォルトは 100/接続)
+    opt.map_sqlx_postgres_opts(|opts| opts.statement_cache_capacity(0));
 
     let db = Database::connect(opt).await?;
 
