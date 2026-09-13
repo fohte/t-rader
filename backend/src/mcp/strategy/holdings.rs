@@ -163,6 +163,36 @@ fn validate_symbol(symbol: &str) -> Result<(), McpError> {
     }
 }
 
+/// `code LIKE 'symbol%'` は Postgres のデフォルト照合順序 (en_US.utf8) では既存の plain
+/// B-tree index を使えず毎回フルスキャンになるため、同じ絞り込みを range 条件で表現する。
+/// `code` は検証済みの 4 桁 `symbol` + 1 桁の 5 桁数字文字列なので、末尾に `'0'`〜`'9'` の
+/// 範囲を与えれば同じ index でカバーできる。
+fn code_range(symbol: &str) -> (String, String) {
+    (format!("{symbol}0"), format!("{symbol}9"))
+}
+
+/// symbol の code range に一致する最新行 (sub_date 降順、doc_id で tie-break) を 1 件取得する。
+/// major_shareholders / cross_shareholdings は「直近の書類のみ返す」という同じクエリ形を
+/// entity 違いで繰り返すため、ここに切り出す。
+async fn latest_matching_document<E>(
+    db: &sea_orm::DatabaseConnection,
+    code_column: E::Column,
+    sub_date_column: E::Column,
+    doc_id_column: E::Column,
+    symbol: &str,
+) -> Result<Option<E::Model>, sea_orm::DbErr>
+where
+    E: EntityTrait,
+{
+    let (lower, upper) = code_range(symbol);
+    E::find()
+        .filter(code_column.between(lower, upper))
+        .order_by_desc(sub_date_column)
+        .order_by_desc(doc_id_column)
+        .one(db)
+        .await
+}
+
 impl StrategyServer {
     pub(crate) async fn read_shareholding_structure_inner(
         &self,
@@ -171,9 +201,10 @@ impl StrategyServer {
     ) -> Result<ReadShareholdingStructureResult, McpError> {
         validate_symbol(&params.symbol)?;
         let limit = clamp_limit(params.limit);
+        let (lower, upper) = code_range(&params.symbol);
 
         let large_volume_rows = edinet_large_volume_shareholdings::Entity::find()
-            .filter(edinet_large_volume_shareholdings::Column::Code.starts_with(&params.symbol))
+            .filter(edinet_large_volume_shareholdings::Column::Code.between(lower, upper))
             .order_by_desc(edinet_large_volume_shareholdings::Column::SubDate)
             .order_by_desc(edinet_large_volume_shareholdings::Column::DocId)
             .limit(limit)
@@ -184,12 +215,17 @@ impl StrategyServer {
         let mut large_volume_reports = Vec::with_capacity(large_volume_rows.len());
         for row in large_volume_rows {
             let doc_id = row.doc_id;
-            let doc: RawLargeVolumeDocument =
-                serde_json::from_value(row.document).map_err(|e| {
-                    internal_error(format!(
-                        "malformed edinet_large_volume_shareholdings document {doc_id}: {e}"
-                    ))
-                })?;
+            let doc: RawLargeVolumeDocument = match serde_json::from_value(row.document) {
+                Ok(doc) => doc,
+                Err(e) => {
+                    tracing::warn!(
+                        doc_id,
+                        error = %e,
+                        "malformed edinet_large_volume_shareholdings document, skipping"
+                    );
+                    continue;
+                }
+            };
             large_volume_reports.push(LargeVolumeReportDto {
                 doc_id,
                 submitted_on: row.sub_date,
@@ -211,13 +247,15 @@ impl StrategyServer {
             });
         }
 
-        let major_shareholders_row = edinet_major_shareholders::Entity::find()
-            .filter(edinet_major_shareholders::Column::Code.starts_with(&params.symbol))
-            .order_by_desc(edinet_major_shareholders::Column::SubDate)
-            .order_by_desc(edinet_major_shareholders::Column::DocId)
-            .one(&self.db)
-            .await
-            .map_err(db_error)?;
+        let major_shareholders_row = latest_matching_document::<edinet_major_shareholders::Entity>(
+            &self.db,
+            edinet_major_shareholders::Column::Code,
+            edinet_major_shareholders::Column::SubDate,
+            edinet_major_shareholders::Column::DocId,
+            &params.symbol,
+        )
+        .await
+        .map_err(db_error)?;
         let major_shareholders = major_shareholders_row
             .map(|row| -> Result<_, McpError> {
                 let doc_id = row.doc_id;
@@ -246,11 +284,14 @@ impl StrategyServer {
             })
             .transpose()?;
 
-        let cross_shareholdings_row = edinet_cross_shareholdings::Entity::find()
-            .filter(edinet_cross_shareholdings::Column::Code.starts_with(&params.symbol))
-            .order_by_desc(edinet_cross_shareholdings::Column::SubDate)
-            .order_by_desc(edinet_cross_shareholdings::Column::DocId)
-            .one(&self.db)
+        let cross_shareholdings_row =
+            latest_matching_document::<edinet_cross_shareholdings::Entity>(
+                &self.db,
+                edinet_cross_shareholdings::Column::Code,
+                edinet_cross_shareholdings::Column::SubDate,
+                edinet_cross_shareholdings::Column::DocId,
+                &params.symbol,
+            )
             .await
             .map_err(db_error)?;
         let cross_shareholdings = cross_shareholdings_row
@@ -521,7 +562,6 @@ mod tests {
             }),
         )
         .await;
-        // 別銘柄 (先頭 4 文字が一致しない) は対象外
         insert_large_volume(
             &db,
             "S100OTHER",

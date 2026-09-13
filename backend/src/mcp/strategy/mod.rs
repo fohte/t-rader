@@ -35,10 +35,10 @@
 //!   スライスを時価で返す
 //! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、セクター上限比率・現金の各制約ごとに
 //!   計算して返す
-//! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
-//! - `search_news`: news_item をキーワード / 期間で直接検索する (news_strategy_link 非経由)
 //! - `read_shareholding_structure`: 銘柄の保有構造 (大量保有報告書・変更報告書、大株主状況、
 //!   政策保有株式) を EDINET 取り込みデータから返す
+//! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
+//! - `search_news`: news_item をキーワード / 期間で直接検索する (news_strategy_link 非経由)
 //! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
 //! - `list_hypotheses`: 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
 //! - `read_hypothesis`: 単一の仮説を読む (自戦略または global)
