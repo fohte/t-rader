@@ -43,17 +43,18 @@ const RATE_LIMIT_MAX_REQUESTS: usize = 5;
 /// 大幅に超過すると 5 分程度アクセスが完全に遮断されるため、契約プラン上限より低い方を使う。
 const FIN_SUMMARY_RATE_LIMIT_PER_MINUTE: usize = 60;
 
-/// 契約プランの公称上限をそのまま使い切らないための安全係数。公式ページに「システムの
-/// 状況等により調整される場合があります」とある上、ローリング更新中は新旧 2 つの pod
-/// (= 2 つの RateLimiter) が同時に動き、実際の合計送信数は公称値の 2 倍になりうるため、
-/// 公称値の半分を実効上限とする。
+/// API 側の制限調整や複数インスタンス稼働に備え、契約プランの公称レートリミットの
+/// 半分を実効上限とする安全係数。
 const RATE_LIMIT_SAFETY_FACTOR: usize = 2;
 
-/// 429 を受けてから、このクライアントの全呼び出しの送信を止める時間。公式ページ記載の
-/// 「5 分程度アクセスが完全に遮断されることがあります」に合わせる。
+/// `limit` に `RATE_LIMIT_SAFETY_FACTOR` を適用し、下限 1 でフロアする。
+fn apply_safety_margin(limit: usize) -> usize {
+    (limit / RATE_LIMIT_SAFETY_FACTOR).max(1)
+}
+
+/// 429 を受けてから、このクライアントの全呼び出しの送信を止める時間。
 const RATE_LIMIT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(5 * 60);
-/// 429 の cooldown 待ちを何回まで繰り返すか。これを超えてなお 429 が続く場合は異常事態
-/// とみなしエラーを返す (この回数分は待つだけなので `MAX_RETRIES` の指数バックオフとは別枠)。
+/// 429 の cooldown 待ちを何回まで繰り返すか。これを超えてなお 429 が続く場合はエラーを返す。
 const MAX_RATE_LIMIT_RETRIES: u32 = 3;
 
 /// スライディングウィンドウ方式のレートリミッター
@@ -66,8 +67,7 @@ struct RateLimiter {
     timestamps: Mutex<VecDeque<tokio::time::Instant>>,
     /// 429 受信時に設定される、送信を再開してよい時刻
     cooldown_until: Mutex<Option<tokio::time::Instant>>,
-    /// 429 を受けてから送信を止める時間。テストでは実時間での待ちを短くするために
-    /// `RATE_LIMIT_COOLDOWN` 以外の値を注入できるようにしている。
+    /// 429 を受けてから送信を止める時間
     cooldown: std::time::Duration,
 }
 
@@ -166,9 +166,8 @@ fn effective_range(
 /// API Key 認証方式で J-Quants API V2 にアクセスする。
 /// アプリケーションレベルのレートリミッターを内蔵する。5xx には指数バックオフで
 /// リトライし、429 を受けた場合は全呼び出しの送信を `RATE_LIMIT_COOLDOWN` の間止めて
-/// 待つ (cooldown)。レートリミッターの上限は契約プラン (`manual_plan`) に追従し、
-/// 未設定時は Free プラン相当に倒した上で `RATE_LIMIT_SAFETY_FACTOR` による
-/// 安全マージンを適用する。
+/// 待つ (cooldown)。レートリミッターの上限は契約プラン (`manual_plan`) に安全マージンを
+/// 適用して追従し、未設定時は Free プラン相当 (`RATE_LIMIT_MAX_REQUESTS`) をそのまま使う。
 ///
 /// Debug は意図的に derive しない (api_key の漏洩防止)
 pub struct JQuantsClient {
@@ -238,10 +237,10 @@ impl JQuantsClient {
     ///
     /// 契約プランが設定されていれば、その公称値に `RATE_LIMIT_SAFETY_FACTOR` による
     /// 安全マージンを適用した値を返す。未設定 (プラン検出前のブートストラップ期間) なら
-    /// 元々余裕を持たせてある `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) をそのまま返す。
+    /// `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) をそのまま返す。
     fn current_rate_limit(&self) -> usize {
         match self.manual_plan() {
-            Some(plan) => (plan.rate_limit_per_minute() / RATE_LIMIT_SAFETY_FACTOR).max(1),
+            Some(plan) => apply_safety_margin(plan.rate_limit_per_minute()),
             None => RATE_LIMIT_MAX_REQUESTS,
         }
     }
@@ -287,8 +286,6 @@ impl JQuantsClient {
         let mut rate_limit_attempt = 0u32;
 
         loop {
-            // 各リクエスト (リトライ含む) の前にレートリミッターの許可を取得。
-            // 429 の cooldown 中はここで明けるまで待機する。
             self.rate_limiter.acquire(max_requests).await;
 
             if retry_attempt > 0 {
@@ -317,16 +314,17 @@ impl JQuantsClient {
             match status {
                 200..=299 => return Ok(response),
                 429 => {
+                    rate_limit_attempt += 1;
                     tracing::warn!(
+                        attempt = rate_limit_attempt,
                         url = url_str,
                         "レートリミット超過 (429)、送信を停止して待機します"
                     );
                     self.rate_limiter.note_rate_limited().await;
 
-                    rate_limit_attempt += 1;
                     if rate_limit_attempt > MAX_RATE_LIMIT_RETRIES {
                         return Err(DataProviderError::RateLimited {
-                            retries: rate_limit_attempt,
+                            retries: MAX_RATE_LIMIT_RETRIES,
                         });
                     }
                 }
@@ -512,7 +510,7 @@ impl JQuantsClient {
         let params = [("date", date_str.as_str())];
         let max_requests = self
             .current_rate_limit()
-            .min((FIN_SUMMARY_RATE_LIMIT_PER_MINUTE / RATE_LIMIT_SAFETY_FACTOR).max(1));
+            .min(apply_safety_margin(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE));
 
         self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params, max_requests)
             .await

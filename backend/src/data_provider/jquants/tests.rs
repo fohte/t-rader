@@ -532,7 +532,7 @@ mod fetch_fin_summary_by_date {
     use super::*;
     use crate::data_provider::jquants::FIN_SUMMARY_RATE_LIMIT_PER_MINUTE;
     use crate::data_provider::jquants::JQuantsClient;
-    use crate::data_provider::jquants::RATE_LIMIT_SAFETY_FACTOR;
+    use crate::data_provider::jquants::apply_safety_margin;
     use crate::models::jquants_plan::JQuantsPlan;
 
     #[rstest]
@@ -576,7 +576,7 @@ mod fetch_fin_summary_by_date {
 
         let capped = client
             .current_rate_limit()
-            .min((FIN_SUMMARY_RATE_LIMIT_PER_MINUTE / RATE_LIMIT_SAFETY_FACTOR).max(1));
+            .min(apply_safety_margin(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE));
 
         assert_eq!(capped, expected);
     }
