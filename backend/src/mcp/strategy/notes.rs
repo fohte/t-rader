@@ -668,15 +668,7 @@ mod tests {
         }
 
         let result = server
-            .list_notes_inner(
-                strategy_a,
-                ListNotesParams {
-                    limit: None,
-                    status: None,
-                    updated_after: None,
-                    include_body: None,
-                },
-            )
+            .list_notes_inner(strategy_a, ListNotesParams::default())
             .await
             .expect("list");
         // 戦略 B のノートは含まれず、戦略 A の 2 件のみが新しい順に並ぶ
@@ -723,10 +715,8 @@ mod tests {
             .list_notes_inner(
                 strategy_id,
                 ListNotesParams {
-                    limit: None,
                     status: Some("approved".into()),
-                    updated_after: None,
-                    include_body: None,
+                    ..Default::default()
                 },
             )
             .await
@@ -745,10 +735,8 @@ mod tests {
             .list_notes_inner(
                 strategy_id,
                 ListNotesParams {
-                    limit: None,
                     status: Some("bogus".into()),
-                    updated_after: None,
-                    include_body: None,
+                    ..Default::default()
                 },
             )
             .await
@@ -801,10 +789,8 @@ mod tests {
             .list_notes_inner(
                 strategy_id,
                 ListNotesParams {
-                    limit: None,
-                    status: None,
                     updated_after: Some(now - chrono::Duration::days(1)),
-                    include_body: None,
+                    ..Default::default()
                 },
             )
             .await
@@ -839,10 +825,8 @@ mod tests {
             .list_notes_inner(
                 strategy_id,
                 ListNotesParams {
-                    limit: None,
-                    status: None,
-                    updated_after: None,
                     include_body: Some(false),
+                    ..Default::default()
                 },
             )
             .await
@@ -926,15 +910,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
 
         let result = server
-            .list_notes_inner(
-                strategy_id,
-                ListNotesParams {
-                    limit: None,
-                    status: None,
-                    updated_after: None,
-                    include_body: None,
-                },
-            )
+            .list_notes_inner(strategy_id, ListNotesParams::default())
             .await
             .expect("list");
         assert_eq!(result.notes, vec![]);
@@ -1404,15 +1380,7 @@ mod tests {
             .expect("second write");
 
         let result = server
-            .list_notes_inner(
-                strategy_id,
-                ListNotesParams {
-                    limit: None,
-                    status: None,
-                    updated_after: None,
-                    include_body: None,
-                },
-            )
+            .list_notes_inner(strategy_id, ListNotesParams::default())
             .await
             .expect("list");
         let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();
@@ -1467,15 +1435,7 @@ mod tests {
             .expect("second write");
 
         let result = server
-            .list_notes_inner(
-                strategy_id,
-                ListNotesParams {
-                    limit: None,
-                    status: None,
-                    updated_after: None,
-                    include_body: None,
-                },
-            )
+            .list_notes_inner(strategy_id, ListNotesParams::default())
             .await
             .expect("list");
         let mut titles: Vec<&str> = result.notes.iter().map(|n| n.title.as_str()).collect();

@@ -177,7 +177,8 @@ pub struct NoteDto {
     pub note_id: Uuid,
     pub strategy_id: Uuid,
     pub title: String,
-    /// `list_notes` で `include_body: false` を指定したときは省略される (null)
+    /// `list_notes` で `include_body: false` を指定したときのみ省略される (null)。
+    /// `read_note` の結果では常に値を含む
     pub body_md: Option<String>,
     pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
     pub type_tag: Option<String>,
@@ -188,7 +189,7 @@ pub struct NoteDto {
     pub graphs: Vec<GraphDef>,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Default, Deserialize, JsonSchema)]
 pub struct ListNotesParams {
     pub limit: Option<u32>,
     /// "approved" / "unread" / "rejected" のいずれかで絞り込む。省略時は全 status
