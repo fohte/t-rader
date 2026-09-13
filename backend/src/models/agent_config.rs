@@ -43,7 +43,6 @@ pub struct AgentConfigResponse {
     pub agents_md: String,
     pub skills: BTreeMap<String, String>,
     pub model: String,
-    pub small_model: String,
     /// 多段フェーズ実行設定 (YAML)。未設定なら空文字列。
     pub agent_graph: String,
 }
