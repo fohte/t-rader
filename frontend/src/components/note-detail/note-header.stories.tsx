@@ -1,9 +1,19 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { NoteHeader } from '#components/note-detail/note-header'
 import type { components } from '#lib/api/schema.gen'
+import { mockResolveRef } from '#storybook/mock-resolve-ref'
 
 type Note = components['schemas']['Note']
+
+const queryClient = new QueryClient()
+
+const NAMES: Record<string, string> = {
+  'stock:3436': 'SUMCO',
+  'indicator:USDJPY': 'USD/JPY',
+  'sector:半導体': '半導体',
+}
 
 const note: Note = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -24,12 +34,17 @@ const note: Note = {
 const meta = {
   title: 'NoteDetail/NoteHeader',
   component: NoteHeader,
-  parameters: { layout: 'padded' },
+  parameters: {
+    layout: 'padded',
+    msw: { handlers: [mockResolveRef(NAMES)] },
+  },
   decorators: [
     (Story) => (
-      <div className="max-w-3xl bg-background p-5 text-foreground">
-        <Story />
-      </div>
+      <QueryClientProvider client={queryClient}>
+        <div className="max-w-3xl bg-background p-5 text-foreground">
+          <Story />
+        </div>
+      </QueryClientProvider>
     ),
   ],
 } satisfies Meta<typeof NoteHeader>

@@ -76,6 +76,18 @@ impl JQuantsMockServer {
         }
     }
 
+    pub fn edinet_documents(&self, path: &'static str) -> MockEdinetDocumentsBuilder<'_> {
+        MockEdinetDocumentsBuilder {
+            server: &self.server,
+            path,
+            date: "20250106",
+            docs: Vec::new(),
+            pagination_key: None,
+            with_pagination_key_param: None,
+            max_times: None,
+        }
+    }
+
     /// テストで直接 wiremock の Mock を登録する際に使用する
     pub fn server_ref(&self) -> &MockServer {
         &self.server
@@ -200,6 +212,70 @@ impl<'a> MockFinSummaryBuilder<'a> {
             })))
             .mount(self.server)
             .await;
+    }
+}
+
+pub(crate) struct MockEdinetDocumentsBuilder<'a> {
+    server: &'a MockServer,
+    path: &'a str,
+    date: &'a str,
+    docs: Vec<serde_json::Value>,
+    pagination_key: Option<&'a str>,
+    /// このパラメータが指定されたリクエストにのみマッチさせる
+    with_pagination_key_param: Option<&'a str>,
+    /// レスポンスを返す回数の上限 (ページネーションテスト時に使用)
+    max_times: Option<u64>,
+}
+
+impl<'a> MockEdinetDocumentsBuilder<'a> {
+    pub fn date(mut self, date: &'a str) -> Self {
+        self.date = date;
+        self
+    }
+
+    pub fn docs(mut self, docs: Vec<serde_json::Value>) -> Self {
+        self.docs = docs;
+        self
+    }
+
+    /// レスポンスに含める pagination_key (次ページがある場合)
+    pub fn pagination_key(mut self, key: &'a str) -> Self {
+        self.pagination_key = Some(key);
+        self
+    }
+
+    /// pagination_key クエリパラメータを持つリクエストにマッチさせる
+    pub fn with_pagination_key_param(mut self, key: &'a str) -> Self {
+        self.with_pagination_key_param = Some(key);
+        self
+    }
+
+    /// この mock がレスポンスを返す回数の上限
+    pub fn up_to_n_times(mut self, n: u64) -> Self {
+        self.max_times = Some(n);
+        self
+    }
+
+    pub async fn ok(self) {
+        let mut mock = Mock::given(method("GET"))
+            .and(path(self.path))
+            .and(query_param("date", self.date))
+            .and(header("x-api-key", "test-api-key"));
+
+        if let Some(key) = self.with_pagination_key_param {
+            mock = mock.and(query_param("pagination_key", key));
+        }
+
+        let mut mock = mock.respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "data": self.docs,
+            "pagination_key": self.pagination_key,
+        })));
+
+        if let Some(n) = self.max_times {
+            mock = mock.up_to_n_times(n);
+        }
+
+        mock.mount(self.server).await;
     }
 }
 

@@ -4,8 +4,8 @@ import { useState } from 'react'
 
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
+import { useResolveRef } from '#hooks/use-resolve-ref'
 import { $api } from '#lib/api/client'
-import { resolveRef } from '#lib/strategy-mock'
 
 export const Route = createFileRoute('/annotations/$annoId')({
   component: AnnotationDetailPage,
@@ -39,6 +39,8 @@ function AnnotationDetailPage() {
   const { data: history } = $api.useQuery('get', '/api/history', {
     params: { query: { target_kind: 'annotation', target_id: annoId } },
   })
+
+  const stockRef = useResolveRef(`stock:${annotation?.target_symbol ?? ''}`)
 
   const invalidate = () => {
     void queryClient.invalidateQueries({
@@ -100,8 +102,6 @@ function AnnotationDetailPage() {
     )
   }
 
-  const stockRef = resolveRef(`stock:${annotation.target_symbol}`)
-
   function handleApprove() {
     if (approveMutation.isPending) return
     approveMutation.mutate({ params: { path: { id: annoId } }, body: {} })
@@ -162,7 +162,9 @@ function AnnotationDetailPage() {
         <dl className="grid grid-cols-1 gap-y-1.5 font-mono text-xs text-muted-foreground-strong sm:grid-cols-(--grid-cols-annotation-fields)">
           <dt>銘柄</dt>
           <dd>
-            {stockRef.name}
+            {stockRef.name ?? (
+              <span className="italic text-muted-foreground">未解決</span>
+            )}
             <span className="ml-2 text-muted-foreground">
               {annotation.target_symbol}
             </span>

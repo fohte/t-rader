@@ -17,7 +17,8 @@ use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
 use response::{
-    DailyBarsResponse, EquitiesMasterResponse, ErrorResponse, FinSummaryResponse, Paginated,
+    DailyBarsResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
+    FinSummaryResponse, Paginated,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
@@ -202,7 +203,9 @@ impl JQuantsClient {
         effective_range(guard.as_ref(), Utc::now().date_naive())
     }
 
-    fn set_detected_range(&self, range: (NaiveDate, NaiveDate)) {
+    /// crate 内テスト (`services::edinet_holdings` 等) から 400 検出フローを経由せず
+    /// 狭い範囲を直接設定できるように、crate 内に可視性を広げている。
+    pub(crate) fn set_detected_range(&self, range: (NaiveDate, NaiveDate)) {
         let mut guard = self
             .detected_range
             .lock()
@@ -353,6 +356,19 @@ impl JQuantsClient {
         }
 
         Ok(all_items)
+    }
+
+    /// EDINET 由来のデータ (大量保有報告書 / 政策保有株式 / 大株主状況) を `date` (提出日) 指定で取得する。
+    /// `path` は `/edinet/large-volume-shareholders` 等。該当書類が無ければ空配列を返す。
+    pub async fn fetch_edinet_documents(
+        &self,
+        path: &str,
+        date: NaiveDate,
+    ) -> Result<Vec<serde_json::Value>, DataProviderError> {
+        let date_str = date.format("%Y%m%d").to_string();
+        let params = [("date", date_str.as_str())];
+        self.fetch_all_pages::<EdinetDocumentsResponse>(path, &params, self.current_rate_limit())
+            .await
     }
 
     /// `/equities/bars/daily` を実際に呼び出す (契約範囲外エラーの自己修復はしない)
