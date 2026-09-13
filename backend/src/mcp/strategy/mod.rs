@@ -4,12 +4,14 @@
 //! HTTP ヘッダで自身の strategy_id を持ち込み、全 tool はこの値のみを戦略境界として
 //! 使う (tool 引数に strategy_id は含まれない)。さらに対象リソース (note / annotation)
 //! の strategy_id と一致するかを Repository 層で二重検査する。
-//! 例外が 3 つある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を
+//! 例外が 4 つある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を
 //! 見る、という設計上ヘッダの値を口座全体の集計にはスコープとして使わないが、
 //! 接続元戦略自身のスライスを追加で返すためにヘッダの値も使う。`search_refs` は
 //! stock/indicator/sector/theme が戦略に属さないマスタデータであるため、
 //! ヘッダの値をそもそも検索条件に使わない。`search_news` も同様に news_item 全体を対象に
-//! 検索するため、ヘッダの値を検索条件に使わない。
+//! 検索するため、ヘッダの値を検索条件に使わない。`read_trades` も `read_portfolio` の
+//! account スコープと同じ規則で全戦略横断の trade を対象にし、ヘッダの値を検索条件には
+//! 使わない (返り値の `strategy_id` でどの戦略の約定かを判別する)。
 //!
 //! tool 一覧:
 //!
@@ -34,6 +36,8 @@
 //!   スライスを時価で返す
 //! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、セクター上限比率・現金の各制約ごとに
 //!   計算して返す
+//! - `read_trades`: `read_portfolio` の account スコープと同じ規則 (全戦略横断) で個々の約定
+//!   (約定日・銘柄・売買区分・数量・価格) を返す。銘柄・約定日下限で絞り込み可能
 //! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
 //! - `search_news`: news_item をキーワード / 期間で直接検索する (news_strategy_link 非経由)
 //! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
@@ -61,6 +65,7 @@
 //!   news_item のキーワード・期間検索 (`search_news_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
 //! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
+//! - `trades`: 個々の約定の取得 (`read_trades_inner`)
 //! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
 //!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
@@ -85,6 +90,7 @@ pub(super) mod portfolio;
 pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;
+pub(super) mod trades;
 pub(super) mod web_search;
 
 #[cfg(test)]
