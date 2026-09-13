@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{hypothesis, hypothesis_proposal, strategy, strategy_task, trigger};
+use crate::entities::{hypothesis, hypothesis_proposal, note, strategy, strategy_task, trigger};
 use crate::kata_exec::SharedKataExecutor;
 use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
@@ -83,6 +83,36 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
     .insert(db)
     .await
     .expect("insert test strategy");
+    id
+}
+
+/// テストで note を 1 件 seed する。
+pub async fn insert_test_note(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+    title: &str,
+    body_md: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    note::ActiveModel {
+        id: Set(id),
+        strategy_id: Set(Some(strategy_id)),
+        title: Set(title.to_string()),
+        body_md: Set(body_md.to_string()),
+        frontmatter_json: Set(serde_json::json!({})),
+        type_tag: Set(None),
+        status: Set("unread".to_string()),
+        trigger: Set(None),
+        trigger_label: Set(None),
+        created_by_kind: Set("human".to_string()),
+        created_at: NotSet,
+        updated_at: NotSet,
+        graphs_json: Set(serde_json::json!([])),
+        execution_id: Set(None),
+    }
+    .insert(db)
+    .await
+    .expect("insert test note");
     id
 }
 

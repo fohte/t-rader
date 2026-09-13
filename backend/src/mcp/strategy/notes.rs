@@ -14,19 +14,37 @@ use uuid::Uuid;
 
 use crate::entities::note;
 use crate::services::graph::{GraphDef, validate_graphs};
+use crate::services::note_refs::sync_note_refs;
 
 use super::dto::{
     ListNotesParams, ListNotesResult, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
 };
 use super::{
-    DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
+    DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, clamp_limit,
+    db_error, ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
 };
 
 /// 検証済みの `graphs` を `note.graphs_json` へ入れる JSON へ変換する。
 fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> {
     serde_json::to_value(graphs)
         .map_err(|e| internal_error(format!("failed to serialize graphs: {e}")))
+}
+
+/// insert 済みの note に対して note_ref を同期し、同一トランザクションを commit する。
+/// `insert_note` / `insert_note_or_conflict` の作成成功パスで共有する。
+async fn commit_new_note(
+    txn: sea_orm::DatabaseTransaction,
+    id: Uuid,
+    created: &note::Model,
+) -> Result<WriteNoteResult, McpError> {
+    sync_note_refs(&txn, id, &created.body_md, &created.graphs_json)
+        .await
+        .map_err(app_error_to_mcp)?;
+    txn.commit().await.map_err(db_error)?;
+    Ok(WriteNoteResult {
+        note_id: id,
+        created: true,
+    })
 }
 
 /// 新規ノートの `ActiveModel` を組み立てる。`Uuid` はクライアント側で生成した id で、
@@ -184,6 +202,7 @@ impl StrategyServer {
         let mut active = current.clone().into_active_model();
         let mut touched = false;
         let mut new_body_md = None;
+        let mut refs_dirty = false;
         if let Some(title) = params.title {
             let title = title.trim().to_string();
             if title.is_empty() {
@@ -196,6 +215,7 @@ impl StrategyServer {
             new_body_md = Some(body.clone());
             active.body_md = Set(body);
             touched = true;
+            refs_dirty = true;
         }
         if let Some(tag) = params.type_tag {
             active.type_tag = Set(tag);
@@ -208,6 +228,7 @@ impl StrategyServer {
         if let Some(graphs) = params.graphs {
             active.graphs_json = Set(graphs_to_json(graphs)?);
             touched = true;
+            refs_dirty = true;
         }
         if !touched {
             return Err(invalid_params(
@@ -219,7 +240,12 @@ impl StrategyServer {
         active.status = Set(DEFAULT_NOTE_STATUS.to_string());
         active.updated_at = Set(chrono::Utc::now().fixed_offset());
         let txn = self.db.begin().await.map_err(db_error)?;
-        active.update(&txn).await.map_err(db_error)?;
+        let updated = active.update(&txn).await.map_err(db_error)?;
+        if refs_dirty {
+            sync_note_refs(&txn, note_id, &updated.body_md, &updated.graphs_json)
+                .await
+                .map_err(app_error_to_mcp)?;
+        }
         if let Some(body_md) = new_body_md {
             crate::services::comment_anchor::reanchor_note_comments(&txn, note_id, &body_md)
                 .await
@@ -239,14 +265,12 @@ impl StrategyServer {
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
         let (id, model) = build_new_note_model(session_strategy_id, execution_id, params)?;
-        note::Entity::insert(model)
-            .exec_without_returning(&self.db)
+        let txn = self.db.begin().await.map_err(db_error)?;
+        let created = note::Entity::insert(model)
+            .exec_with_returning(&txn)
             .await
             .map_err(db_error)?;
-        Ok(WriteNoteResult {
-            note_id: id,
-            created: true,
-        })
+        commit_new_note(txn, id, &created).await
     }
 
     /// `execution_id` 付きの新規作成を `ON CONFLICT (strategy_id, execution_id) DO NOTHING` で
@@ -261,6 +285,7 @@ impl StrategyServer {
         params: WriteNoteParams,
     ) -> Result<Option<WriteNoteResult>, McpError> {
         let (id, model) = build_new_note_model(session_strategy_id, Some(execution_id), params)?;
+        let txn = self.db.begin().await.map_err(db_error)?;
         let insert_result = note::Entity::insert(model)
             .on_conflict(
                 OnConflict::columns([note::Column::StrategyId, note::Column::ExecutionId])
@@ -268,17 +293,17 @@ impl StrategyServer {
                     .do_nothing()
                     .to_owned(),
             )
-            .exec_with_returning(&self.db)
+            .exec_with_returning(&txn)
             .await;
         match insert_result {
-            Ok(_) => Ok(Some(WriteNoteResult {
-                note_id: id,
-                created: true,
-            })),
+            Ok(created) => commit_new_note(txn, id, &created).await.map(Some),
             // ON CONFLICT DO NOTHING で skip されたとき、SeaORM 2.0 では
             // `exec_with_returning` は `RecordNotFound` を返す (RETURNING 行が空のため)。
             // 念のため `RecordNotInserted` も同じパスで扱う (interests.rs の add_interest_inner と同様)。
-            Err(sea_orm::DbErr::RecordNotInserted | sea_orm::DbErr::RecordNotFound(_)) => Ok(None),
+            Err(sea_orm::DbErr::RecordNotInserted | sea_orm::DbErr::RecordNotFound(_)) => {
+                txn.rollback().await.map_err(db_error)?;
+                Ok(None)
+            }
             Err(err) => Err(db_error(err)),
         }
     }
@@ -336,9 +361,9 @@ mod tests {
 
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::EntityTrait;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-    use crate::entities::{comment, note};
+    use crate::entities::{comment, note, note_ref};
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::testing::create_test_db;
 
@@ -446,6 +471,101 @@ mod tests {
                 updated_at: ts_sentinel(),
                 graphs: vec![],
             },
+        );
+    }
+
+    async fn note_refs_of(
+        db: &sea_orm::DatabaseConnection,
+        note_id: Uuid,
+    ) -> Vec<(String, String)> {
+        let mut refs = note_ref::Entity::find()
+            .filter(note_ref::Column::NoteId.eq(note_id))
+            .all(db)
+            .await
+            .expect("query note_ref");
+        refs.sort_by(|a, b| (&a.ref_kind, &a.ref_id).cmp(&(&b.ref_kind, &b.ref_id)));
+        refs.into_iter().map(|r| (r.ref_kind, r.ref_id)).collect()
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_creates_note_ref_from_body_and_graphs(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        let mut graph = sample_graph("g1");
+        graph.nodes[0].r#ref = Some("stock:7203".into());
+
+        let written = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("note with refs".into()),
+                    body_md: Some("mentions [[theme:weak-jpy]]".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![graph]),
+                },
+            )
+            .await
+            .expect("write_note");
+
+        assert_eq!(
+            note_refs_of(&db, written.note_id).await,
+            vec![
+                ("stock".to_string(), "7203".to_string()),
+                ("theme".to_string(), "weak-jpy".to_string()),
+            ],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_update_resyncs_note_refs(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("note".into()),
+                    body_md: Some("mentions [[stock:7203]]".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("create");
+        assert_eq!(
+            note_refs_of(&db, created.note_id).await,
+            vec![("stock".to_string(), "7203".to_string())],
+        );
+
+        server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: Some("now mentions [[indicator:USDJPY]]".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("update");
+
+        assert_eq!(
+            note_refs_of(&db, created.note_id).await,
+            vec![("indicator".to_string(), "USDJPY".to_string())],
         );
     }
 
