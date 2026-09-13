@@ -3,7 +3,11 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    TransactionTrait,
+};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -14,6 +18,7 @@ use crate::models::{
     CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
     UpdateCustomIndicatorRequest,
 };
+use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::custom_indicators::{PreviewInput, SCOPE_GLOBAL, SCOPE_STRATEGY, run_preview};
 use crate::services::strategies::ensure_strategy_exists;
 
@@ -146,7 +151,9 @@ pub async fn create_global_indicator(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<custom_indicator::Model>), AppError> {
-    let model = insert_indicator(&state.db, payload, None).await?;
+    let txn = state.db.begin().await?;
+    let model = insert_indicator(&txn, payload, None).await?;
+    txn.commit().await?;
     Ok((StatusCode::CREATED, Json(model)))
 }
 
@@ -172,13 +179,15 @@ pub async fn create_strategy_indicator(
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<custom_indicator::Model>), AppError> {
-    ensure_strategy_exists(&state.db, strategy_id).await?;
-    let model = insert_indicator(&state.db, payload, Some(strategy_id)).await?;
+    let txn = state.db.begin().await?;
+    ensure_strategy_exists(&txn, strategy_id).await?;
+    let model = insert_indicator(&txn, payload, Some(strategy_id)).await?;
+    txn.commit().await?;
     Ok((StatusCode::CREATED, Json(model)))
 }
 
-async fn insert_indicator(
-    db: &sea_orm::DatabaseConnection,
+async fn insert_indicator<C: ConnectionTrait>(
+    db: &C,
     payload: CreateCustomIndicatorRequest,
     strategy_id: Option<Uuid>,
 ) -> Result<custom_indicator::Model, AppError> {
@@ -192,9 +201,10 @@ async fn insert_indicator(
         SCOPE_GLOBAL
     };
 
+    let indicator_id = Uuid::new_v4();
     let active = custom_indicator::ActiveModel {
-        indicator_id: Set(Uuid::new_v4()),
-        name: Set(name),
+        indicator_id: Set(indicator_id),
+        name: Set(name.clone()),
         scope: Set(scope.to_string()),
         strategy_id: Set(strategy_id),
         code: Set(payload.code),
@@ -207,6 +217,17 @@ async fn insert_indicator(
     let created = custom_indicator::Entity::insert(active)
         .exec_with_returning(db)
         .await?;
+
+    change_history::record(
+        db,
+        TargetKind::CustomIndicator,
+        indicator_id,
+        Op::Create,
+        json!({ "name": name, "scope": scope, "strategy_id": strategy_id }),
+        None,
+    )
+    .await?;
+
     Ok(created)
 }
 
@@ -233,28 +254,63 @@ pub async fn update_indicator(
     JsonBody(payload): JsonBody<UpdateCustomIndicatorRequest>,
 ) -> Result<Json<custom_indicator::Model>, AppError> {
     let current = find_indicator_or_404(&state.db, indicator_id).await?;
-    let mut active = current.into_active_model();
+    let mut active = current.clone().into_active_model();
+    let mut diff = serde_json::Map::new();
 
     if let Some(name) = payload.name {
-        active.name = Set(validate_name(&name)?);
+        let validated = validate_name(&name)?;
+        diff.insert(
+            "name".into(),
+            json!({ "from": current.name, "to": validated }),
+        );
+        active.name = Set(validated);
     }
     if let Some(code) = payload.code {
+        diff.insert(
+            "code".into(),
+            json!({ "len_from": current.code.len(), "len_to": code.len() }),
+        );
         active.code = Set(code);
     }
     if let Some(input_schema) = payload.input_schema {
         ensure_json_object("input_schema", &input_schema)?;
+        diff.insert(
+            "input_schema".into(),
+            json!({ "from": current.input_schema, "to": input_schema }),
+        );
         active.input_schema = Set(input_schema);
     }
     if let Some(output_schema) = payload.output_schema {
         ensure_json_object("output_schema", &output_schema)?;
+        diff.insert(
+            "output_schema".into(),
+            json!({ "from": current.output_schema, "to": output_schema }),
+        );
         active.output_schema = Set(output_schema);
     }
     if let Some(description) = payload.description {
+        diff.insert(
+            "description".into(),
+            json!({ "from": current.description, "to": description }),
+        );
         active.description = Set(description);
     }
     active.updated_at = Set(chrono::Utc::now().fixed_offset());
 
-    let updated = active.update(&state.db).await?;
+    let txn = state.db.begin().await?;
+    let updated = active.update(&txn).await?;
+    if !diff.is_empty() {
+        change_history::record(
+            &txn,
+            TargetKind::CustomIndicator,
+            indicator_id,
+            Op::Update,
+            serde_json::Value::Object(diff),
+            None,
+        )
+        .await?;
+    }
+    txn.commit().await?;
     Ok(Json(updated))
 }
 
@@ -275,14 +331,25 @@ pub async fn delete_indicator(
     State(state): State<AppState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
+    let txn = state.db.begin().await?;
     let res = custom_indicator::Entity::delete_by_id(indicator_id)
-        .exec(&state.db)
+        .exec(&txn)
         .await?;
     if res.rows_affected == 0 {
         return Err(AppError::NotFound(format!(
             "indicator {indicator_id} not found"
         )));
     }
+    change_history::record(
+        &txn,
+        TargetKind::CustomIndicator,
+        indicator_id,
+        Op::Delete,
+        json!({}),
+        None,
+    )
+    .await?;
+    txn.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -396,6 +463,26 @@ mod tests {
         }
     }
 
+    /// 指定 indicator の最新の change_history 行を返す (`/api/history` は created_at 降順)
+    async fn latest_history_for(
+        server: &axum_test::TestServer,
+        indicator_id: &str,
+    ) -> serde_json::Value {
+        let res = server
+            .get(&format!(
+                "/api/history?target_kind=custom_indicator&target_id={indicator_id}"
+            ))
+            .await;
+        res.assert_status_ok();
+        let mut rows = res.json::<Vec<serde_json::Value>>();
+        assert!(!rows.is_empty(), "expected at least one history row");
+        let mut row = rows.remove(0);
+        for key in ["id", "created_at"] {
+            row[key] = json!("<dyn>");
+        }
+        row
+    }
+
     #[sqlx::test(migrations = false)]
     async fn create_global_indicator_returns_201(pool: PgPool) {
         let server = create_test_server(pool).await;
@@ -448,6 +535,34 @@ mod tests {
                 "description": null,
                 "created_at": "<dyn>",
                 "updated_at": "<dyn>",
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_records_change_history(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let res = server
+            .post("/api/indicators")
+            .json(&create_payload("rsi", "print('{}')"))
+            .await;
+        let id = res.json::<serde_json::Value>()["indicator_id"]
+            .as_str()
+            .map(str::to_string)
+            .expect("id");
+
+        assert_eq!(
+            latest_history_for(&server, &id).await,
+            json!({
+                "id": "<dyn>",
+                "target_kind": "custom_indicator",
+                "target_id": id,
+                "actor_kind": "human",
+                "actor_label": "user",
+                "op": "create",
+                "diff_json": {"name": "rsi", "scope": "global", "strategy_id": null},
+                "summary": null,
+                "created_at": "<dyn>",
             }),
         );
     }
@@ -611,6 +726,43 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn update_records_change_history_diff(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let created = server
+            .post("/api/indicators")
+            .json(&create_payload("rsi", "old"))
+            .await;
+        let id = created.json::<serde_json::Value>()["indicator_id"]
+            .as_str()
+            .map(str::to_string)
+            .expect("id");
+
+        server
+            .put(&format!("/api/indicators/{id}"))
+            .json(&json!({"code": "new", "description": "rsi indicator"}))
+            .await
+            .assert_status_ok();
+
+        assert_eq!(
+            latest_history_for(&server, &id).await,
+            json!({
+                "id": "<dyn>",
+                "target_kind": "custom_indicator",
+                "target_id": id,
+                "actor_kind": "human",
+                "actor_label": "user",
+                "op": "update",
+                "diff_json": {
+                    "code": {"len_from": 3, "len_to": 3},
+                    "description": {"from": null, "to": "rsi indicator"},
+                },
+                "summary": null,
+                "created_at": "<dyn>",
+            }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn delete_removes_indicator(pool: PgPool) {
         let server = create_test_server(pool).await;
         let created = server
@@ -626,6 +778,39 @@ mod tests {
         del.assert_status(StatusCode::NO_CONTENT);
         let get = server.get(&format!("/api/indicators/{id}")).await;
         get.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn delete_records_change_history(pool: PgPool) {
+        let server = create_test_server(pool).await;
+        let created = server
+            .post("/api/indicators")
+            .json(&create_payload("rsi", "print('{}')"))
+            .await;
+        let id = created.json::<serde_json::Value>()["indicator_id"]
+            .as_str()
+            .map(str::to_string)
+            .expect("id");
+
+        server
+            .delete(&format!("/api/indicators/{id}"))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+
+        assert_eq!(
+            latest_history_for(&server, &id).await,
+            json!({
+                "id": "<dyn>",
+                "target_kind": "custom_indicator",
+                "target_id": id,
+                "actor_kind": "human",
+                "actor_label": "user",
+                "op": "delete",
+                "diff_json": {},
+                "summary": null,
+                "created_at": "<dyn>",
+            }),
+        );
     }
 
     #[sqlx::test(migrations = false)]
