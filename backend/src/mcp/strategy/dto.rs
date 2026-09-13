@@ -10,9 +10,6 @@ use uuid::Uuid;
 
 use crate::services::graph::GraphDef;
 
-mod margin;
-pub use margin::{MarginAlertDto, MarginInterestDto, ReadMarginParams, ReadMarginResult};
-
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryDataParams {
     pub instrument_id: String,

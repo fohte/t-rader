@@ -20,13 +20,13 @@ use super::dto::{
     ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
     ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
-    ReadHypothesisParams, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadMarginParams,
-    ReadMarginResult, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
-    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadTradesParams,
-    ReadTradesResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
-    ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
-    WriteNoteParams, WriteNoteResult,
+    ReadHypothesisParams, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams,
+    ReadNewsResult, ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
+    ReadShareholdingStructureResult, ReadTradesParams, ReadTradesResult, ReplyCommentParams,
+    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
+    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
+use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
