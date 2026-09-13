@@ -30,6 +30,23 @@ fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> 
         .map_err(|e| internal_error(format!("failed to serialize graphs: {e}")))
 }
 
+/// insert 済みの note に対して note_ref を同期し、同一トランザクションを commit する。
+/// `insert_note` / `insert_note_or_conflict` の作成成功パスで共有する。
+async fn commit_new_note(
+    txn: sea_orm::DatabaseTransaction,
+    id: Uuid,
+    created: &note::Model,
+) -> Result<WriteNoteResult, McpError> {
+    sync_note_refs(&txn, id, &created.body_md, &created.graphs_json)
+        .await
+        .map_err(app_error_to_mcp)?;
+    txn.commit().await.map_err(db_error)?;
+    Ok(WriteNoteResult {
+        note_id: id,
+        created: true,
+    })
+}
+
 /// 新規ノートの `ActiveModel` を組み立てる。`Uuid` はクライアント側で生成した id で、
 /// 通常 insert / ON CONFLICT 経由 insert のどちらでも `note_id` として使い回せる。
 fn build_new_note_model(
@@ -250,14 +267,7 @@ impl StrategyServer {
             .exec_with_returning(&txn)
             .await
             .map_err(db_error)?;
-        sync_note_refs(&txn, id, &created.body_md, &created.graphs_json)
-            .await
-            .map_err(app_error_to_mcp)?;
-        txn.commit().await.map_err(db_error)?;
-        Ok(WriteNoteResult {
-            note_id: id,
-            created: true,
-        })
+        commit_new_note(txn, id, &created).await
     }
 
     /// `execution_id` 付きの新規作成を `ON CONFLICT (strategy_id, execution_id) DO NOTHING` で
@@ -283,16 +293,7 @@ impl StrategyServer {
             .exec_with_returning(&txn)
             .await;
         match insert_result {
-            Ok(created) => {
-                sync_note_refs(&txn, id, &created.body_md, &created.graphs_json)
-                    .await
-                    .map_err(app_error_to_mcp)?;
-                txn.commit().await.map_err(db_error)?;
-                Ok(Some(WriteNoteResult {
-                    note_id: id,
-                    created: true,
-                }))
-            }
+            Ok(created) => commit_new_note(txn, id, &created).await.map(Some),
             // ON CONFLICT DO NOTHING で skip されたとき、SeaORM 2.0 では
             // `exec_with_returning` は `RecordNotFound` を返す (RETURNING 行が空のため)。
             // 念のため `RecordNotInserted` も同じパスで扱う (interests.rs の add_interest_inner と同様)。
