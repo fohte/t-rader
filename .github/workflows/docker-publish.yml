@@ -11,23 +11,26 @@ permissions:
   packages: write
 
 jobs:
-  # push イベントではビルド入力が変わったコンポーネントのみを検出する。
-  # workflow_dispatch では常に全コンポーネントを対象にする (手動実行の意図に合わせる)。
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       components: ${{ github.event_name == 'workflow_dispatch' && '["backend","frontend","agent","python-exec"]' || steps.filter.outputs.changes }}
     steps:
       - if: github.event_name != 'workflow_dispatch'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       - if: github.event_name != 'workflow_dispatch'
         id: filter
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
-          # main への push は直前コミットとの差分を見る。
+          # push で base を同一ブランチ (github.ref) にすると、dorny/paths-filter は
+          # 直前コミットとの diff に切り替える (仕様上の特殊扱い)。
           base: ${{ github.ref }}
-          # backend フィルタで python-exec 配下を除外するために必要。
+          # 否定パターン (!) による除外を有効化するために必要。
           predicate-quantifier: some-with-excludes
           filters: |
             backend:
