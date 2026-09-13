@@ -91,7 +91,8 @@ impl FredClient {
             .get(url)
             .send()
             .await
-            .map_err(|e| DataProviderError::Network(e.to_string()))?;
+            // URL に api_key を含むため、エラーメッセージに残らないよう取り除く
+            .map_err(|e| DataProviderError::Network(e.without_url().to_string()))?;
 
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
@@ -104,7 +105,7 @@ impl FredClient {
         let body = response
             .text()
             .await
-            .map_err(|e| DataProviderError::Network(e.to_string()))?;
+            .map_err(|e| DataProviderError::Network(e.without_url().to_string()))?;
         parse_observations(&body)
     }
 }
@@ -170,30 +171,20 @@ mod tests {
     }
 
     #[rstest]
-    fn test_build_url_omits_observation_start_when_none() {
+    #[case::without_observation_start(
+        None,
+        "https://api.stlouisfed.org/fred/series/observations?series_id=DEXJPUS&api_key=test-key&file_type=json"
+    )]
+    #[case::with_observation_start(
+        Some(date(2026, 1, 1)),
+        "https://api.stlouisfed.org/fred/series/observations?series_id=DEXJPUS&api_key=test-key&file_type=json&observation_start=2026-01-01"
+    )]
+    fn test_build_url(#[case] observation_start: Option<NaiveDate>, #[case] expected: &str) {
         let client =
             FredClient::with_base_url("test-key".to_string(), DEFAULT_BASE_URL).expect("client");
 
-        let url = client.build_url("DEXJPUS", None).expect("url");
+        let url = client.build_url("DEXJPUS", observation_start).expect("url");
 
-        assert_eq!(
-            url.as_str(),
-            "https://api.stlouisfed.org/fred/series/observations?series_id=DEXJPUS&api_key=test-key&file_type=json",
-        );
-    }
-
-    #[rstest]
-    fn test_build_url_includes_observation_start_when_present() {
-        let client =
-            FredClient::with_base_url("test-key".to_string(), DEFAULT_BASE_URL).expect("client");
-
-        let url = client
-            .build_url("DEXJPUS", Some(date(2026, 1, 1)))
-            .expect("url");
-
-        assert_eq!(
-            url.as_str(),
-            "https://api.stlouisfed.org/fred/series/observations?series_id=DEXJPUS&api_key=test-key&file_type=json&observation_start=2026-01-01",
-        );
+        assert_eq!(url.as_str(), expected);
     }
 }

@@ -191,9 +191,6 @@ async fn main() -> Result<(), AppError> {
     );
     tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
-    // FRED からマクロ指標 (ドル円、VIX、米10年債利回り、日経225) の日次履歴を取り込む
-    // poll task を起動する。DATA_PROVIDER の設定とは独立に、FRED_API_KEY の有無だけで
-    // 起動可否を決める。
     match std::env::var("FRED_API_KEY") {
         Ok(api_key) if !api_key.is_empty() => {
             let fred_client = FredClient::new(api_key)?;
