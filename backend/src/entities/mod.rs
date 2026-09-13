@@ -17,6 +17,7 @@ pub mod hypothesis;
 pub mod hypothesis_proposal;
 pub mod indicator;
 pub mod instruments;
+pub mod jquants_daily_bars_ingested_date;
 pub mod jquants_fin_summary;
 pub mod jquants_plan_setting;
 pub mod mcp_tool_call_count;
