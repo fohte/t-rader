@@ -49,6 +49,7 @@ mod m20260913_091652_add_jquants_fin_summary_code_prefix_index;
 mod m20260913_122738_add_indicator_observation;
 mod m20260913_122746_add_stock_product_category;
 mod m20260913_122949_add_jquants_daily_bars_ingested_date;
+mod m20260913_142709_add_jquants_earnings_date;
 
 pub struct Migrator;
 
@@ -106,6 +107,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260913_122738_add_indicator_observation::Migration),
             Box::new(m20260913_122746_add_stock_product_category::Migration),
             Box::new(m20260913_122949_add_jquants_daily_bars_ingested_date::Migration),
+            Box::new(m20260913_142709_add_jquants_earnings_date::Migration),
         ]
     }
 }
