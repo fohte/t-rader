@@ -41,6 +41,7 @@ mod m20260912_161307_add_jquants_plan_setting;
 mod m20260912_162403_add_mcp_tool_call_count;
 mod m20260913_072507_add_edinet_holdings;
 mod m20260913_072524_add_jquants_fin_summary;
+mod m20260913_122746_add_stock_product_category;
 
 pub struct Migrator;
 
@@ -88,6 +89,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260912_162403_add_mcp_tool_call_count::Migration),
             Box::new(m20260913_072507_add_edinet_holdings::Migration),
             Box::new(m20260913_072524_add_jquants_fin_summary::Migration),
+            Box::new(m20260913_122746_add_stock_product_category::Migration),
         ]
     }
 }

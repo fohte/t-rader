@@ -10756,6 +10756,12 @@
           "name": {
             "type": "string"
           },
+          "product_category": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "sector_id": {
             "type": [
               "string",

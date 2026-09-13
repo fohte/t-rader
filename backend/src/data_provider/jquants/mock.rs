@@ -51,6 +51,7 @@ impl JQuantsMockServer {
             company_name: "テスト株式会社",
             market_name: "プライム",
             sector_name: Some("情報通信"),
+            product_category: Some("011"),
         }
     }
 
@@ -269,6 +270,7 @@ pub(crate) struct MockInstrumentBuilder<'a> {
     company_name: &'a str,
     market_name: &'a str,
     sector_name: Option<&'a str>,
+    product_category: Option<&'a str>,
 }
 
 impl<'a> MockInstrumentBuilder<'a> {
@@ -287,6 +289,11 @@ impl<'a> MockInstrumentBuilder<'a> {
         self
     }
 
+    pub fn product_category(mut self, product_category: Option<&'a str>) -> Self {
+        self.product_category = product_category;
+        self
+    }
+
     pub async fn ok(self) {
         Mock::given(method("GET"))
             .and(path("/equities/master"))
@@ -298,6 +305,7 @@ impl<'a> MockInstrumentBuilder<'a> {
                     "CoName": self.company_name,
                     "MktNm": self.market_name,
                     "S33Nm": self.sector_name,
+                    "ProdCat": self.product_category,
                 }],
             })))
             .mount(self.server)

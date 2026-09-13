@@ -2163,6 +2163,7 @@ export interface components {
       id: string
       market?: string | null
       name: string
+      product_category?: string | null
       sector_id?: string | null
       /** Format: date-time */
       updated_at: string

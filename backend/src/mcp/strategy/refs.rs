@@ -30,6 +30,8 @@ pub struct RefDto {
     pub ref_kind: String,
     pub ref_id: String,
     pub name: String,
+    /// J-Quants の商品区分コード (例: "014" = ETF)。`ref_kind` が `stock` 以外では常に None
+    pub product_category: Option<String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
@@ -38,13 +40,14 @@ pub struct SearchRefsResult {
 }
 
 const SEARCH_REFS_SQL: &str = indoc! {"
-    SELECT 'stock' AS ref_kind, id AS ref_id, name FROM stock WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'stock' AS ref_kind, id AS ref_id, name, product_category
+        FROM stock WHERE id ILIKE $1 OR name ILIKE $1
     UNION ALL
-    SELECT 'indicator', id, name FROM indicator WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'indicator', id, name, NULL FROM indicator WHERE id ILIKE $1 OR name ILIKE $1
     UNION ALL
-    SELECT 'sector', id, name FROM sector WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'sector', id, name, NULL FROM sector WHERE id ILIKE $1 OR name ILIKE $1
     UNION ALL
-    SELECT 'theme', id, name FROM theme WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'theme', id, name, NULL FROM theme WHERE id ILIKE $1 OR name ILIKE $1
     ORDER BY name, ref_kind
     LIMIT $2
 "};
@@ -99,11 +102,21 @@ mod tests {
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
 
     async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
+        seed_stock_with_product_category(db, id, name, None).await;
+    }
+
+    async fn seed_stock_with_product_category(
+        db: &DatabaseConnection,
+        id: &str,
+        name: &str,
+        product_category: Option<&str>,
+    ) {
         stock::ActiveModel {
             id: Set(id.into()),
             name: Set(name.into()),
             market: Set(None),
             sector_id: Set(None),
+            product_category: Set(product_category.map(str::to_string)),
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -173,21 +186,25 @@ mod tests {
                         ref_kind: "indicator".into(),
                         ref_id: "IND1".into(),
                         name: "Alpha Indicator".into(),
+                        product_category: None,
                     },
                     RefDto {
                         ref_kind: "sector".into(),
                         ref_id: "SEC1".into(),
                         name: "Alpha Sector".into(),
+                        product_category: None,
                     },
                     RefDto {
                         ref_kind: "stock".into(),
                         ref_id: "STK1".into(),
                         name: "Alpha Stock".into(),
+                        product_category: None,
                     },
                     RefDto {
                         ref_kind: "theme".into(),
                         ref_id: "THM1".into(),
                         name: "Alpha Theme".into(),
+                        product_category: None,
                     },
                 ],
             },
@@ -218,6 +235,7 @@ mod tests {
                     ref_kind: "stock".into(),
                     ref_id: "TOY7203".into(),
                     name: "Something".into(),
+                    product_category: None,
                 }],
             },
         );
@@ -247,6 +265,7 @@ mod tests {
                     ref_kind: "sector".into(),
                     ref_id: "semi".into(),
                     name: "Semiconductors".into(),
+                    product_category: None,
                 }],
             },
         );
@@ -301,11 +320,52 @@ mod tests {
                         ref_kind: "theme".into(),
                         ref_id: "t1".into(),
                         name: "Match A".into(),
+                        product_category: None,
                     },
                     RefDto {
                         ref_kind: "theme".into(),
                         ref_id: "t2".into(),
                         name: "Match B".into(),
+                        product_category: None,
+                    },
+                ],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_includes_stock_product_category(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        seed_stock_with_product_category(&db, "ETF1", "Alpha ETF", Some("014")).await;
+        seed_stock(&db, "STK1", "Alpha Stock").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "Alpha".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(
+            result,
+            SearchRefsResult {
+                refs: vec![
+                    RefDto {
+                        ref_kind: "stock".into(),
+                        ref_id: "ETF1".into(),
+                        name: "Alpha ETF".into(),
+                        product_category: Some("014".into()),
+                    },
+                    RefDto {
+                        ref_kind: "stock".into(),
+                        ref_id: "STK1".into(),
+                        name: "Alpha Stock".into(),
+                        product_category: None,
                     },
                 ],
             },

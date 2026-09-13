@@ -546,6 +546,7 @@ impl DataProvider for JQuantsClient {
             // J-Quants は東証上場銘柄のみを提供する
             market: Market::Tse,
             sector: master.sector_name,
+            product_category: master.product_category,
         })
     }
 }
