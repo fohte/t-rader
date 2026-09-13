@@ -43,6 +43,7 @@ pub enum TargetKind {
     Strategy,
     Trade,
     Comment,
+    CustomIndicator,
 }
 
 impl TargetKind {
@@ -53,6 +54,7 @@ impl TargetKind {
             TargetKind::Strategy => "strategy",
             TargetKind::Trade => "trade",
             TargetKind::Comment => "comment",
+            TargetKind::CustomIndicator => "custom_indicator",
         }
     }
 }
