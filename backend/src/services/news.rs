@@ -73,7 +73,10 @@ fn db_err(e: sea_orm::DbErr) -> DataProviderError {
 }
 
 fn app_err(e: AppError) -> DataProviderError {
-    DataProviderError::Database(e.to_string())
+    match e {
+        AppError::Database(e) => db_err(e),
+        other => DataProviderError::Database(other.to_string()),
+    }
 }
 
 /// `news_item` テーブルに upsert し、対象行の Model 全件 (title / body_snippet 等を含む)
