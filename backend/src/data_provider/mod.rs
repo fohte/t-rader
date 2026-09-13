@@ -1,3 +1,4 @@
+pub mod fred;
 pub mod ibkr;
 pub mod jquants;
 pub mod macro_data;

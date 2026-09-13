@@ -7,6 +7,7 @@ pub mod comment_anchor;
 pub mod custom_indicators;
 pub mod edinet_holdings;
 pub mod fin_summary_ingest;
+pub mod fred_ingest;
 pub mod graph;
 pub mod hypotheses;
 pub mod hypothesis_proposals;
