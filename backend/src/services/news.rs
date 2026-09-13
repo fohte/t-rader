@@ -235,8 +235,8 @@ fn push_unique(
     });
 }
 
-/// 全角/半角・大文字小文字の表記揺れを吸収する正規化。NFKC を先に適用しないと
-/// 全角英字の大文字が lowercase をすり抜ける
+/// 全角/半角・大文字小文字の表記揺れを吸収する正規化。lowercase だけでは
+/// 全角/半角の幅統一が行われないため、NFKC を先に適用して統一する
 fn normalize(s: &str) -> String {
     s.nfkc().collect::<String>().to_lowercase()
 }
@@ -424,6 +424,22 @@ mod tests {
         l
     }
 
+    fn link_keys(
+        links: Vec<news_strategy_link::ActiveModel>,
+    ) -> Vec<(Uuid, String, String, String)> {
+        links
+            .into_iter()
+            .map(|a| {
+                (
+                    a.strategy_id.unwrap(),
+                    a.ref_kind.unwrap(),
+                    a.ref_id.unwrap(),
+                    a.matched_term.unwrap(),
+                )
+            })
+            .collect()
+    }
+
     #[rstest]
     fn expand_terms_includes_name_then_id() {
         let interests = vec![interest(STRATEGY_A, "stock", "7203")];
@@ -470,20 +486,9 @@ mod tests {
                 term: "トヨタ自動車".into(),
             },
         ];
-        let active = match_links(&news, &terms);
         // strategy A は (7203 文字列で false / トヨタ で true) でも 1 link、
         // strategy B も トヨタ で 1 link
-        let mut keys: Vec<(Uuid, String, String, String)> = active
-            .into_iter()
-            .map(|a| {
-                (
-                    a.strategy_id.unwrap(),
-                    a.ref_kind.unwrap(),
-                    a.ref_id.unwrap(),
-                    a.matched_term.unwrap(),
-                )
-            })
-            .collect();
+        let mut keys = link_keys(match_links(&news, &terms));
         keys.sort();
         assert_eq!(
             keys,
@@ -525,17 +530,7 @@ mod tests {
             ref_id: "semiconductor".into(),
             term: "半導体".into(),
         }];
-        let keys: Vec<(Uuid, String, String, String)> = match_links(&news, &terms)
-            .into_iter()
-            .map(|a| {
-                (
-                    a.strategy_id.unwrap(),
-                    a.ref_kind.unwrap(),
-                    a.ref_id.unwrap(),
-                    a.matched_term.unwrap(),
-                )
-            })
-            .collect();
+        let keys = link_keys(match_links(&news, &terms));
         assert_eq!(
             keys,
             vec![(
@@ -587,17 +582,7 @@ mod tests {
             ref_id: "USDJPY".into(),
             term: "USDJPY".into(),
         }];
-        let keys: Vec<(Uuid, String, String, String)> = match_links(&news, &terms)
-            .into_iter()
-            .map(|a| {
-                (
-                    a.strategy_id.unwrap(),
-                    a.ref_kind.unwrap(),
-                    a.ref_id.unwrap(),
-                    a.matched_term.unwrap(),
-                )
-            })
-            .collect();
+        let keys = link_keys(match_links(&news, &terms));
         assert_eq!(
             keys,
             vec![(
