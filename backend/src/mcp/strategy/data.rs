@@ -1,15 +1,23 @@
 //! 価格データ取得の inner method 実装。
 //!
-//! DataProvider 抽象 (`super::data_provider`) 経由でバーデータを取得し、
-//! MCP の wire 表現 ([`BarDto`]) に変換する。
+//! DB (`repositories::bars`) から複数銘柄分のバーデータをまとめて取得し、
+//! MCP の wire 表現 ([`InstrumentBarsDto`]) に変換する。日足は全上場銘柄分が
+//! `services::daily_bars_ingest` で定期的に取り込まれているため、ここでは
+//! データプロバイダへの問い合わせは行わない (呼び出しのたびに叩くとレート制限に
+//! 当たるため)。
+
+use std::collections::HashMap;
 
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
-use crate::data_provider::{DataProvider, DateRange};
+use crate::repositories::bars::find_bars_by_instruments;
 
-use super::dto::{BarDto, QueryDataParams, QueryDataResult};
-use super::{StrategyServer, data_provider_error, decimal_to_f64, internal_error, invalid_params};
+use super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
+use super::{StrategyServer, app_error_to_mcp, decimal_to_f64, invalid_params};
+
+/// 1 回の呼び出しで指定できる銘柄数の上限
+const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
 
 impl StrategyServer {
     pub(crate) async fn query_data_inner(
@@ -18,114 +26,205 @@ impl StrategyServer {
         execution_step_id: Option<Uuid>,
         params: QueryDataParams,
     ) -> Result<QueryDataResult, McpError> {
-        let instrument_id = params.instrument_id.trim().to_string();
-        if instrument_id.is_empty() {
-            return Err(invalid_params("instrument_id must not be empty"));
+        if params.instrument_ids.is_empty() {
+            return Err(invalid_params("instrument_ids must not be empty"));
+        }
+        if params.instrument_ids.len() > MAX_QUERY_DATA_INSTRUMENTS {
+            return Err(invalid_params(format!(
+                "instrument_ids must not exceed {MAX_QUERY_DATA_INSTRUMENTS} entries"
+            )));
         }
         if params.from > params.to {
             return Err(invalid_params("from must be on or before to"));
         }
 
-        let provider = self
-            .data_provider
-            .as_deref()
-            .ok_or_else(|| internal_error("data provider is not configured"))?;
-
-        let bars = provider
-            .fetch_daily_bars(
-                &instrument_id,
-                &DateRange {
-                    from: params.from,
-                    to: params.to,
-                },
-            )
-            .await
-            .map_err(data_provider_error)?;
-
-        let bars: Vec<BarDto> = bars
-            .into_iter()
-            .map(|b| BarDto {
-                timestamp: b.timestamp.fixed_offset(),
-                open: decimal_to_f64(b.open),
-                high: decimal_to_f64(b.high),
-                low: decimal_to_f64(b.low),
-                close: decimal_to_f64(b.close),
-                volume: b.volume,
-            })
+        let instrument_ids: Vec<String> = params
+            .instrument_ids
+            .iter()
+            .map(|id| id.trim().to_string())
             .collect();
-
-        if let Some(execution_step_id) = execution_step_id
-            && let Err(err) = super::evidence::record_query_data(
-                &self.db,
-                execution_step_id,
-                &instrument_id,
-                params.from,
-                params.to,
-                &bars,
-            )
-            .await
+        if instrument_ids.iter().any(String::is_empty) {
+            return Err(invalid_params(
+                "instrument_ids must not contain empty values",
+            ));
+        }
         {
-            tracing::warn!(error = %err, %execution_step_id, "failed to record query_data evidence");
+            let mut seen = std::collections::HashSet::with_capacity(instrument_ids.len());
+            if !instrument_ids.iter().all(|id| seen.insert(id)) {
+                return Err(invalid_params("instrument_ids must not contain duplicates"));
+            }
         }
 
-        Ok(QueryDataResult {
-            instrument_id,
-            bars,
-        })
+        let from = params
+            .from
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| dt.and_utc().fixed_offset());
+        let to = params
+            .to
+            .and_hms_opt(23, 59, 59)
+            .map(|dt| dt.and_utc().fixed_offset());
+
+        let rows = find_bars_by_instruments(&self.db, &instrument_ids, "1d", from, to)
+            .await
+            .map_err(app_error_to_mcp)?;
+
+        let mut bars_by_instrument: HashMap<String, Vec<BarDto>> = HashMap::new();
+        for row in rows {
+            bars_by_instrument
+                .entry(row.instrument_id.clone())
+                .or_default()
+                .push(BarDto {
+                    timestamp: row.timestamp,
+                    open: decimal_to_f64(row.open),
+                    high: decimal_to_f64(row.high),
+                    low: decimal_to_f64(row.low),
+                    close: decimal_to_f64(row.close),
+                    volume: row.volume,
+                });
+        }
+
+        let mut results = Vec::with_capacity(instrument_ids.len());
+        for instrument_id in &instrument_ids {
+            let bars = bars_by_instrument.remove(instrument_id).unwrap_or_default();
+
+            if let Some(execution_step_id) = execution_step_id
+                && let Err(err) = super::evidence::record_query_data(
+                    &self.db,
+                    execution_step_id,
+                    instrument_id,
+                    params.from,
+                    params.to,
+                    &bars,
+                )
+                .await
+            {
+                tracing::warn!(
+                    error = %err,
+                    %execution_step_id,
+                    %instrument_id,
+                    "failed to record query_data evidence",
+                );
+            }
+
+            results.push(InstrumentBarsDto {
+                instrument_id: instrument_id.clone(),
+                bars,
+            });
+        }
+
+        Ok(QueryDataResult { results })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use chrono::NaiveDate;
-    use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+    use chrono::{NaiveDate, TimeZone, Utc};
+    use rstest::rstest;
+    use rust_decimal::Decimal;
+    use sea_orm::sea_query::OnConflict;
+    use sea_orm::{
+        ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, MockDatabase, QueryFilter,
+        Set,
+    };
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::data_provider::DataProviderKind;
-    use crate::data_provider::ibkr::mock::{IbkrMockServer, MockHistoryBar};
-    use crate::entities::strategy_task_step_evidence;
+    use crate::entities::{instruments, strategy_task_step_evidence};
+    use crate::models::Bar;
+    use crate::models::bar::Timeframe;
+    use crate::repositories::bars::upsert_bars;
     use crate::testing::create_test_db;
 
     use super::super::StrategyServer;
-    use super::super::dto::QueryDataParams;
+    use super::super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
     use super::super::tests_common::insert_strategy;
+    use super::MAX_QUERY_DATA_INSTRUMENTS;
 
-    async fn setup_server_with_two_bars(
-        pool: PgPool,
-    ) -> (DatabaseConnection, StrategyServer, Uuid) {
+    fn mock_db() -> DatabaseConnection {
+        MockDatabase::new(DatabaseBackend::Postgres).into_connection()
+    }
+
+    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+        instruments::Entity::insert(instruments::ActiveModel {
+            id: Set(id.to_string()),
+            name: Set(format!("Test {id}")),
+            market: Set("TSE".to_string()),
+            sector: Set(None),
+        })
+        .on_conflict(
+            OnConflict::column(instruments::Column::Id)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(db)
+        .await
+        .expect("failed to insert test instrument");
+    }
+
+    fn make_test_bar(instrument_id: &str, date: NaiveDate, close: i64) -> Bar {
+        let timestamp = date
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| Utc.from_utc_datetime(&dt))
+            .expect("invalid date");
+        Bar {
+            instrument_id: instrument_id.to_string(),
+            timeframe: Timeframe::Daily,
+            timestamp,
+            open: Decimal::new(close, 0),
+            high: Decimal::new(close + 10, 0),
+            low: Decimal::new(close - 10, 0),
+            close: Decimal::new(close, 0),
+            volume: 1_000,
+        }
+    }
+
+    /// `make_test_bar` と同じ OHLCV 規則で期待値の [`BarDto`] を作る
+    fn bar_dto(date: NaiveDate, close: i64) -> BarDto {
+        let timestamp = date
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| dt.and_utc().fixed_offset())
+            .expect("invalid date");
+        BarDto {
+            timestamp,
+            open: close as f64,
+            high: (close + 10) as f64,
+            low: (close - 10) as f64,
+            close: close as f64,
+            volume: 1_000,
+        }
+    }
+
+    async fn setup_server_with_bars(pool: PgPool) -> (DatabaseConnection, StrategyServer, Uuid) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
 
-        let ibkr = IbkrMockServer::start().await;
-        ibkr.stocks().ok().await;
-        ibkr.history()
-            .bars(vec![
-                MockHistoryBar {
-                    t: 1_736_121_600_000,
-                    o: 100.0,
-                    h: 110.0,
-                    l: 90.0,
-                    c: 105.0,
-                    v: 1_000.0,
-                },
-                MockHistoryBar {
-                    t: 1_736_208_000_000,
-                    o: 105.0,
-                    h: 115.0,
-                    l: 95.0,
-                    c: 110.0,
-                    v: 1_500.0,
-                },
-            ])
-            .ok()
-            .await;
-        let client = ibkr.client().expect("client");
-        let provider = Arc::new(DataProviderKind::Ibkr(client));
+        insert_test_instrument(&db, "7203").await;
+        insert_test_instrument(&db, "9984").await;
 
-        let server = StrategyServer::new(db.clone(), Some(provider));
+        upsert_bars(
+            &db,
+            vec![
+                make_test_bar(
+                    "7203",
+                    NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"),
+                    100,
+                ),
+                make_test_bar(
+                    "7203",
+                    NaiveDate::from_ymd_opt(2025, 1, 7).expect("date"),
+                    105,
+                ),
+                make_test_bar(
+                    "9984",
+                    NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"),
+                    200,
+                ),
+            ],
+        )
+        .await
+        .expect("seed bars");
+
+        let server = StrategyServer::new(db.clone(), None);
         (db, server, strategy_id)
     }
 
@@ -133,108 +232,127 @@ mod tests {
         db: &DatabaseConnection,
         execution_step_id: Uuid,
     ) -> Vec<strategy_task_step_evidence::Model> {
-        strategy_task_step_evidence::Entity::find()
+        let mut rows = strategy_task_step_evidence::Entity::find()
             .filter(strategy_task_step_evidence::Column::ExecutionStepId.eq(execution_step_id))
             .all(db)
             .await
-            .expect("fetch evidence")
+            .expect("fetch evidence");
+        rows.sort_by(|a, b| a.source_ref.cmp(&b.source_ref));
+        rows
     }
 
     #[sqlx::test(migrations = false)]
-    async fn query_data_returns_bars_from_mock_ibkr(pool: PgPool) {
-        let (_db, server, strategy_id) = setup_server_with_two_bars(pool).await;
+    async fn query_data_returns_bars_for_each_requested_instrument(pool: PgPool) {
+        let (_db, server, strategy_id) = setup_server_with_bars(pool).await;
 
         let result = server
             .query_data_inner(
                 strategy_id,
                 None,
                 QueryDataParams {
-                    instrument_id: "7203".into(),
+                    instrument_ids: vec!["7203".into(), "9984".into()],
                     from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
                     to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
                 },
             )
             .await
             .expect("query");
-        let bars: Vec<(f64, f64, f64, f64, i64)> = result
-            .bars
-            .iter()
-            .map(|b| (b.open, b.high, b.low, b.close, b.volume))
-            .collect();
+
         assert_eq!(
-            (result.instrument_id.as_str(), bars),
-            (
-                "7203",
-                vec![
-                    (100.0, 110.0, 90.0, 105.0, 1_000),
-                    (105.0, 115.0, 95.0, 110.0, 1_500),
+            result,
+            QueryDataResult {
+                results: vec![
+                    InstrumentBarsDto {
+                        instrument_id: "7203".to_string(),
+                        bars: vec![
+                            bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 100),
+                            bar_dto(NaiveDate::from_ymd_opt(2025, 1, 7).expect("date"), 105),
+                        ],
+                    },
+                    InstrumentBarsDto {
+                        instrument_id: "9984".to_string(),
+                        bars: vec![bar_dto(
+                            NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"),
+                            200
+                        )],
+                    },
                 ],
-            ),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn query_data_records_evidence_when_execution_step_id_present(pool: PgPool) {
-        let (db, server, strategy_id) = setup_server_with_two_bars(pool).await;
-        let execution_step_id = Uuid::new_v4();
-
-        let before = chrono::Utc::now().fixed_offset();
-        let result = server
-            .query_data_inner(
-                strategy_id,
-                Some(execution_step_id),
-                QueryDataParams {
-                    instrument_id: "7203".into(),
-                    from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
-                    to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
-                },
-            )
-            .await
-            .expect("query");
-        let after = chrono::Utc::now().fixed_offset();
-        let last_ts = result.bars.last().map(|b| b.timestamp).expect("last bar");
-
-        let expected_snapshot = serde_json::json!({
-            "instrument_id": "7203",
-            "from": "2025-01-06",
-            "to": "2025-01-07",
-            "bars": result.bars,
-            "total_bars": 2,
-            "truncated": false,
-        });
-
-        let rows = fetch_evidence_by_step(&db, execution_step_id).await;
-        assert_eq!(rows.len(), 1);
-        let row = rows.into_iter().next().expect("row");
-        assert!(row.observed_at >= before && row.observed_at <= after);
-        let observed_at = row.observed_at;
-        let id = row.id;
-
-        assert_eq!(
-            row,
-            strategy_task_step_evidence::Model {
-                id,
-                execution_step_id,
-                source: "query_data".to_string(),
-                source_ref: "7203".to_string(),
-                observed_at,
-                published_at: Some(last_ts),
-                effective_at: Some(last_ts),
-                snapshot: expected_snapshot,
             },
         );
     }
 
     #[sqlx::test(migrations = false)]
+    async fn query_data_returns_empty_bars_for_instrument_with_no_data(pool: PgPool) {
+        let (_db, server, strategy_id) = setup_server_with_bars(pool).await;
+
+        let result = server
+            .query_data_inner(
+                strategy_id,
+                None,
+                QueryDataParams {
+                    instrument_ids: vec!["7203".into(), "0000".into()],
+                    from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
+                    to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
+                },
+            )
+            .await
+            .expect("query");
+
+        assert_eq!(
+            result,
+            QueryDataResult {
+                results: vec![
+                    InstrumentBarsDto {
+                        instrument_id: "7203".to_string(),
+                        bars: vec![
+                            bar_dto(NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"), 100),
+                            bar_dto(NaiveDate::from_ymd_opt(2025, 1, 7).expect("date"), 105),
+                        ],
+                    },
+                    InstrumentBarsDto {
+                        instrument_id: "0000".to_string(),
+                        bars: vec![],
+                    },
+                ],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn query_data_records_evidence_per_instrument_when_execution_step_id_present(
+        pool: PgPool,
+    ) {
+        let (db, server, strategy_id) = setup_server_with_bars(pool).await;
+        let execution_step_id = Uuid::new_v4();
+
+        server
+            .query_data_inner(
+                strategy_id,
+                Some(execution_step_id),
+                QueryDataParams {
+                    instrument_ids: vec!["7203".into(), "9984".into()],
+                    from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
+                    to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
+                },
+            )
+            .await
+            .expect("query");
+
+        let rows = fetch_evidence_by_step(&db, execution_step_id).await;
+        let source_refs: Vec<String> = rows.into_iter().map(|r| r.source_ref).collect();
+        assert_eq!(source_refs, vec!["7203".to_string(), "9984".to_string()]);
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn query_data_records_no_evidence_when_execution_step_id_absent(pool: PgPool) {
-        let (db, server, strategy_id) = setup_server_with_two_bars(pool).await;
+        let (db, server, strategy_id) = setup_server_with_bars(pool).await;
 
         server
             .query_data_inner(
                 strategy_id,
                 None,
                 QueryDataParams {
-                    instrument_id: "7203".into(),
+                    instrument_ids: vec!["7203".into()],
                     from: NaiveDate::from_ymd_opt(2025, 1, 6).expect("from"),
                     to: NaiveDate::from_ymd_opt(2025, 1, 7).expect("to"),
                 },
@@ -247,5 +365,62 @@ mod tests {
             .await
             .expect("fetch evidence");
         assert_eq!(rows, Vec::new());
+    }
+
+    #[rstest]
+    #[case::empty_instrument_ids(
+        vec![],
+        "2025-01-06",
+        "2025-01-07",
+        "instrument_ids must not be empty"
+    )]
+    #[case::too_many_instrument_ids(
+        (0..MAX_QUERY_DATA_INSTRUMENTS + 1).map(|i| i.to_string()).collect(),
+        "2025-01-06",
+        "2025-01-07",
+        "instrument_ids must not exceed 100 entries"
+    )]
+    #[case::blank_instrument_id(
+        vec!["  ".to_string()],
+        "2025-01-06",
+        "2025-01-07",
+        "instrument_ids must not contain empty values"
+    )]
+    #[case::duplicate_instrument_id(
+        vec!["7203".to_string(), "7203".to_string()],
+        "2025-01-06",
+        "2025-01-07",
+        "instrument_ids must not contain duplicates"
+    )]
+    #[case::from_after_to(
+        vec!["7203".to_string()],
+        "2025-01-07",
+        "2025-01-06",
+        "from must be on or before to"
+    )]
+    #[tokio::test]
+    async fn query_data_inner_rejects_invalid_params(
+        #[case] instrument_ids: Vec<String>,
+        #[case] from: &str,
+        #[case] to: &str,
+        #[case] expected_message: &str,
+    ) {
+        let server = StrategyServer::new(mock_db(), None);
+        let err = server
+            .query_data_inner(
+                Uuid::new_v4(),
+                None,
+                QueryDataParams {
+                    instrument_ids,
+                    from: from.parse().expect("from date"),
+                    to: to.parse().expect("to date"),
+                },
+            )
+            .await
+            .expect_err("expected invalid params");
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (rmcp::model::ErrorCode::INVALID_PARAMS, expected_message),
+        );
     }
 }
