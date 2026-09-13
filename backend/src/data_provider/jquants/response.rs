@@ -82,6 +82,22 @@ impl Paginated for FinSummaryResponse {
     }
 }
 
+/// EDINET 由来のデータ (大量保有報告書 / 政策保有株式 / 大株主状況) の一覧レスポンス。
+/// 書類ごとの内部構造はエンドポイントごとに異なるため、要素は serde_json::Value のまま保持する。
+#[derive(Debug, Deserialize)]
+pub(crate) struct EdinetDocumentsResponse {
+    pub data: Vec<serde_json::Value>,
+    pub pagination_key: Option<String>,
+}
+
+impl Paginated for EdinetDocumentsResponse {
+    type Item = serde_json::Value;
+
+    fn into_parts(self) -> (Vec<Self::Item>, Option<String>) {
+        (self.data, self.pagination_key)
+    }
+}
+
 /// J-Quants API V2 エラーレスポンス
 #[derive(Debug, Deserialize)]
 pub(crate) struct ErrorResponse {

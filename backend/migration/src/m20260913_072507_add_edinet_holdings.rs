@@ -1,0 +1,285 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[derive(DeriveIden)]
+enum EdinetLargeVolumeShareholding {
+    #[sea_orm(iden = "edinet_large_volume_shareholdings")]
+    Table,
+    DocId,
+    Code,
+    EdinetCode,
+    SubDate,
+    Document,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum EdinetCrossShareholding {
+    #[sea_orm(iden = "edinet_cross_shareholdings")]
+    Table,
+    DocId,
+    Code,
+    EdinetCode,
+    SubDate,
+    Document,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum EdinetMajorShareholder {
+    #[sea_orm(iden = "edinet_major_shareholders")]
+    Table,
+    DocId,
+    Code,
+    EdinetCode,
+    SubDate,
+    Document,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // edinet_large_volume_shareholdings テーブル (大量保有報告書)
+        manager
+            .create_table(
+                Table::create()
+                    .table(EdinetLargeVolumeShareholding::Table)
+                    .col(
+                        ColumnDef::new(EdinetLargeVolumeShareholding::DocId)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(EdinetLargeVolumeShareholding::Code).text())
+                    .col(
+                        ColumnDef::new(EdinetLargeVolumeShareholding::EdinetCode)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetLargeVolumeShareholding::SubDate)
+                            .date()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetLargeVolumeShareholding::Document)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetLargeVolumeShareholding::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetLargeVolumeShareholding::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_large_volume_shareholdings_edinet_code")
+                    .table(EdinetLargeVolumeShareholding::Table)
+                    .col(EdinetLargeVolumeShareholding::EdinetCode)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_large_volume_shareholdings_code")
+                    .table(EdinetLargeVolumeShareholding::Table)
+                    .col(EdinetLargeVolumeShareholding::Code)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_large_volume_shareholdings_sub_date")
+                    .table(EdinetLargeVolumeShareholding::Table)
+                    .col(EdinetLargeVolumeShareholding::SubDate)
+                    .to_owned(),
+            )
+            .await?;
+
+        // edinet_cross_shareholdings テーブル (政策保有株式)
+        manager
+            .create_table(
+                Table::create()
+                    .table(EdinetCrossShareholding::Table)
+                    .col(
+                        ColumnDef::new(EdinetCrossShareholding::DocId)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(EdinetCrossShareholding::Code).text())
+                    .col(
+                        ColumnDef::new(EdinetCrossShareholding::EdinetCode)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetCrossShareholding::SubDate)
+                            .date()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetCrossShareholding::Document)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetCrossShareholding::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetCrossShareholding::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_cross_shareholdings_edinet_code")
+                    .table(EdinetCrossShareholding::Table)
+                    .col(EdinetCrossShareholding::EdinetCode)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_cross_shareholdings_code")
+                    .table(EdinetCrossShareholding::Table)
+                    .col(EdinetCrossShareholding::Code)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_cross_shareholdings_sub_date")
+                    .table(EdinetCrossShareholding::Table)
+                    .col(EdinetCrossShareholding::SubDate)
+                    .to_owned(),
+            )
+            .await?;
+
+        // edinet_major_shareholders テーブル (大株主状況)
+        manager
+            .create_table(
+                Table::create()
+                    .table(EdinetMajorShareholder::Table)
+                    .col(
+                        ColumnDef::new(EdinetMajorShareholder::DocId)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(EdinetMajorShareholder::Code).text())
+                    .col(
+                        ColumnDef::new(EdinetMajorShareholder::EdinetCode)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetMajorShareholder::SubDate)
+                            .date()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetMajorShareholder::Document)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetMajorShareholder::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(EdinetMajorShareholder::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_major_shareholders_edinet_code")
+                    .table(EdinetMajorShareholder::Table)
+                    .col(EdinetMajorShareholder::EdinetCode)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_major_shareholders_code")
+                    .table(EdinetMajorShareholder::Table)
+                    .col(EdinetMajorShareholder::Code)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_edinet_major_shareholders_sub_date")
+                    .table(EdinetMajorShareholder::Table)
+                    .col(EdinetMajorShareholder::SubDate)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(EdinetLargeVolumeShareholding::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(EdinetCrossShareholding::Table)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(EdinetMajorShareholder::Table)
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+}

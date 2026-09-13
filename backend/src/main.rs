@@ -237,6 +237,16 @@ async fn main() -> Result<(), AppError> {
             interval_secs = backend::services::fin_summary_ingest::DEFAULT_INTERVAL.as_secs(),
             "fin summary ingest poll task started",
         );
+
+        let _edinet_holdings_poll = backend::services::edinet_holdings::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::edinet_holdings::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::edinet_holdings::DEFAULT_INTERVAL.as_secs(),
+            "EDINET holdings ingest poll task started",
+        );
     }
 
     let llm_gateway_client = LlmGatewayClient::from_env();
