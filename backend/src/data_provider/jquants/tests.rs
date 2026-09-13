@@ -585,9 +585,8 @@ mod fetch_fin_summary_by_date {
 // === レートリミッター ===
 
 mod rate_limiter {
-    use super::super::{
-        RATE_LIMIT_COOLDOWN, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW, RateLimiter,
-    };
+    use super::super::rate_limiter::{RATE_LIMIT_WINDOW, RateLimiter};
+    use super::super::{RATE_LIMIT_COOLDOWN, RATE_LIMIT_MAX_REQUESTS};
     use rstest::rstest;
 
     #[rstest]

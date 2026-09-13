@@ -2,19 +2,18 @@ mod equities_master;
 mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
+mod rate_limiter;
 mod response;
 mod short_selling;
 #[cfg(test)]
 mod tests;
 
-use std::collections::VecDeque;
-
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
-use tokio::sync::Mutex;
 
 pub(crate) use equities_master::EquityMasterEntry;
+use rate_limiter::RateLimiter;
 
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
@@ -32,8 +31,6 @@ const INITIAL_BACKOFF_MS: u64 = 500;
 /// API サーバーのバグで同じ pagination_key が返り続けた場合の安全策
 const MAX_PAGES: u32 = 100;
 
-/// レートリミットのウィンドウ幅 (60 秒)
-const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
 /// 契約プラン未設定時のウィンドウ内最大リクエスト数 (J-Quants 無料プラン相当)。
 /// 上限を実際の契約より高く見積もると 429 のリトライでは済まない大幅な超過に
 /// つながるため、未設定時は最も低い Free プランの値に倒す。
@@ -56,88 +53,6 @@ fn apply_safety_margin(limit: usize) -> usize {
 const RATE_LIMIT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 /// 429 の cooldown 待ちを何回まで繰り返すか。これを超えてなお 429 が続く場合はエラーを返す。
 const MAX_RATE_LIMIT_RETRIES: u32 = 3;
-
-/// スライディングウィンドウ方式のレートリミッター
-///
-/// 直近 60 秒間のリクエスト送信時刻を記録し、上限に達している場合は
-/// 最も古いリクエストがウィンドウから外れるまで待機する。429 を受けた場合は
-/// `note_rate_limited` により全呼び出しの送信を一定時間止める (cooldown)。
-struct RateLimiter {
-    /// 直近のリクエスト送信時刻 (古い順)
-    timestamps: Mutex<VecDeque<tokio::time::Instant>>,
-    /// 429 受信時に設定される、送信を再開してよい時刻
-    cooldown_until: Mutex<Option<tokio::time::Instant>>,
-    /// 429 を受けてから送信を止める時間
-    cooldown: std::time::Duration,
-}
-
-impl RateLimiter {
-    fn new(cooldown: std::time::Duration) -> Self {
-        Self {
-            timestamps: Mutex::new(VecDeque::with_capacity(RATE_LIMIT_MAX_REQUESTS)),
-            cooldown_until: Mutex::new(None),
-            cooldown,
-        }
-    }
-
-    /// 429 を受けたことを記録し、`cooldown` の間このクライアントの全呼び出しの送信を止める。
-    async fn note_rate_limited(&self) {
-        *self.cooldown_until.lock().await = Some(tokio::time::Instant::now() + self.cooldown);
-    }
-
-    /// リクエスト送信の許可を取得する
-    ///
-    /// cooldown 中であればまずそれが明けるまで待つ。明けていれば、ウィンドウ内の
-    /// リクエスト数が `max_requests` に達している場合、最も古いリクエストがウィンドウ
-    /// から外れるまで待機する。`max_requests` は契約プランに応じて呼び出しごとに変わり
-    /// うる (`JQuantsClient::current_rate_limit`)。
-    async fn acquire(&self, max_requests: usize) {
-        loop {
-            if let Some(until) = *self.cooldown_until.lock().await {
-                let now = tokio::time::Instant::now();
-                if now < until {
-                    tracing::warn!(
-                        wait_ms = until.saturating_duration_since(now).as_millis() as u64,
-                        "429 の cooldown 中のため送信を停止して待機中"
-                    );
-                    tokio::time::sleep_until(until).await;
-                    continue;
-                }
-            }
-
-            let now = tokio::time::Instant::now();
-
-            let mut timestamps = self.timestamps.lock().await;
-
-            // ウィンドウ外のタイムスタンプを削除
-            while let Some(&oldest) = timestamps.front() {
-                if now.duration_since(oldest) >= RATE_LIMIT_WINDOW {
-                    timestamps.pop_front();
-                } else {
-                    break;
-                }
-            }
-
-            if timestamps.len() < max_requests {
-                // 枠がある: タイムスタンプを記録して通過
-                timestamps.push_back(now);
-                return;
-            }
-
-            // 枠がない: 最も古いリクエストがウィンドウから外れるまで待つ
-            let oldest = timestamps[0];
-            let sleep_target = oldest + RATE_LIMIT_WINDOW;
-            drop(timestamps); // ロックを解放してから sleep
-
-            tracing::info!(
-                max_requests,
-                wait_ms = sleep_target.saturating_duration_since(now).as_millis() as u64,
-                "レートリミットに到達、待機中"
-            );
-            tokio::time::sleep_until(sleep_target).await;
-        }
-    }
-}
 
 /// 400 エラーメッセージから検出した契約範囲。プラン変更や日々のローリング
 /// ウィンドウにより実際の範囲は動きうるため、`DETECTED_RANGE_TTL_DAYS` を
