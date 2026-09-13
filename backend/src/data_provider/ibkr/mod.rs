@@ -210,7 +210,6 @@ impl IbkrClient {
                         name,
                         market: Market::Tse,
                         sector: None,
-                        // IBKR には商品区分に対応するデータが無い
                         product_category: None,
                     },
                 ));
