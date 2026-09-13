@@ -64,6 +64,24 @@ pub(crate) struct EquityMaster {
     pub sector_name: Option<String>,
 }
 
+/// J-Quants API V2 財務情報レスポンス (`GET /v2/fins/summary`)
+///
+/// フィールド数が多く記載欄も可変 (未記載の数値項目も空文字で返る等) なため、要素は
+/// 個別の構造体にせず生の JSON のまま保持する。
+#[derive(Debug, Deserialize)]
+pub(crate) struct FinSummaryResponse {
+    pub data: Vec<serde_json::Value>,
+    pub pagination_key: Option<String>,
+}
+
+impl Paginated for FinSummaryResponse {
+    type Item = serde_json::Value;
+
+    fn into_parts(self) -> (Vec<serde_json::Value>, Option<String>) {
+        (self.data, self.pagination_key)
+    }
+}
+
 /// J-Quants API V2 エラーレスポンス
 #[derive(Debug, Deserialize)]
 pub(crate) struct ErrorResponse {

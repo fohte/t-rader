@@ -214,7 +214,7 @@ async fn main() -> Result<(), AppError> {
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
-    // IBKR provider は fetch_instrument で業種を返さないため対象外。
+    // IBKR provider には業種・財務情報に対応するデータが無いため対象外。
     if let Some(provider) = &data_provider
         && matches!(provider.as_ref(), DataProviderKind::JQuants(_))
     {
@@ -226,6 +226,16 @@ async fn main() -> Result<(), AppError> {
         tracing::info!(
             interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
             "sector backfill poll task started",
+        );
+
+        let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::fin_summary_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::fin_summary_ingest::DEFAULT_INTERVAL.as_secs(),
+            "fin summary ingest poll task started",
         );
     }
 

@@ -36,6 +36,14 @@ impl JQuantsMockServer {
         }
     }
 
+    pub fn fin_summary(&self) -> MockFinSummaryBuilder<'_> {
+        MockFinSummaryBuilder {
+            server: &self.server,
+            date: "2025-01-06",
+            items: Vec::new(),
+        }
+    }
+
     pub fn instrument(&self) -> MockInstrumentBuilder<'_> {
         MockInstrumentBuilder {
             server: &self.server,
@@ -145,6 +153,37 @@ impl<'a> MockDailyBarsBuilder<'a> {
         }
 
         mock.mount(self.server).await;
+    }
+}
+
+pub(crate) struct MockFinSummaryBuilder<'a> {
+    server: &'a MockServer,
+    date: &'a str,
+    items: Vec<serde_json::Value>,
+}
+
+impl<'a> MockFinSummaryBuilder<'a> {
+    pub fn date(mut self, date: &'a str) -> Self {
+        self.date = date;
+        self
+    }
+
+    pub fn items(mut self, items: Vec<serde_json::Value>) -> Self {
+        self.items = items;
+        self
+    }
+
+    pub async fn ok(self) {
+        Mock::given(method("GET"))
+            .and(path("/fins/summary"))
+            .and(query_param("date", self.date))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": self.items,
+                "pagination_key": Option::<&str>::None,
+            })))
+            .mount(self.server)
+            .await;
     }
 }
 
