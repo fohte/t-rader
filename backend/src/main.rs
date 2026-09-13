@@ -216,6 +216,37 @@ async fn main() -> Result<(), AppError> {
             "sector backfill poll task started",
         );
 
+        let _short_sale_report_ingest_poll =
+            backend::services::short_sale_report_ingest::spawn_poll(
+                db.clone(),
+                provider.clone(),
+                backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
+            );
+        tracing::info!(
+            interval_secs = backend::services::short_sale_report_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short sale report ingest poll task started",
+        );
+
+        let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::short_ratio_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short ratio ingest poll task started",
+        );
+
+        let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::margin_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::margin_ingest::DEFAULT_INTERVAL.as_secs(),
+            "margin ingest poll task started",
+        );
+
         let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
             db.clone(),
             provider.clone(),

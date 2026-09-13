@@ -1,6 +1,8 @@
+mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
 mod response;
+mod short_selling;
 #[cfg(test)]
 mod tests;
 
@@ -177,8 +179,10 @@ impl JQuantsClient {
         *guard = plan;
     }
 
-    /// 財務情報の取り込み (`services::fin_summary_ingest`) が、契約プラン未設定の間は
-    /// 取り込みをスキップする判定に使う。
+    /// 信用残・財務情報・空売り関連の取り込み (`services::margin_ingest`,
+    /// `services::fin_summary_ingest`, `services::short_sale_report_ingest`,
+    /// `services::short_ratio_ingest`) が、契約プラン未設定の間は取り込みをスキップする
+    /// 判定に使う。
     pub(crate) fn manual_plan(&self) -> Option<JQuantsPlan> {
         let guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
         *guard

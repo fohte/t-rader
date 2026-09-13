@@ -11,10 +11,13 @@ pub mod import;
 pub mod instrument;
 pub mod interest;
 pub mod jquants_plan;
+pub mod margin;
 pub mod note;
 pub mod note_hypothesis;
 pub mod refs;
 pub mod risk_policy;
+pub mod short_ratio;
+pub mod short_sale_report;
 pub mod strategy;
 pub mod trade;
 pub mod trade_note;
@@ -46,6 +49,7 @@ pub use jquants_plan::{
     JQuantsFetchableRange, JQuantsPlan, JQuantsPlanSettingData, JQuantsPlanSettingResponse,
     PutJQuantsPlanSettingRequest, parse_plan_setting, serialize_plan_setting,
 };
+pub use margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
 pub use note_hypothesis::CreateNoteHypothesisRequest;
 pub use refs::RefResolution;
@@ -53,6 +57,8 @@ pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
     parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
+pub use short_ratio::ShortRatio;
+pub use short_sale_report::ShortSaleReport;
 pub use strategy::{
     CreateStrategyRequest, InvestableAmountResponse, PutInvestableAmountRequest,
     StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,
