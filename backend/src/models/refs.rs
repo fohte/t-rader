@@ -2,7 +2,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 /// `[[kind:id]]` のリンクテキストを解決した結果
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RefResolution {
     /// "stock" | "indicator" | "sector" | "theme"
     pub kind: String,

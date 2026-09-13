@@ -11,6 +11,7 @@ use crate::entities::{indicator, sector, stock, theme};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::RefResolution;
+use crate::services::ref_terms;
 
 /// LIKE のメタ文字 (`%` `_` `\`) を入力から除去する。
 /// SeaORM の `like()` は ESCAPE 句を出さないため、エスケープではなく除去で対処する
@@ -262,7 +263,6 @@ pub async fn resolve_refs(
 ) -> Result<Json<Vec<RefResolution>>, AppError> {
     const MAX_LINKS: usize = 200;
 
-    // 入力順序を保つために (kind, id) リストを保持し、解決は kind 単位で 1 クエリにまとめる
     let mut requested: Vec<(String, String)> = Vec::new();
     for raw in params.link.split(',') {
         let Some((kind, id)) = raw.split_once(':') else {
@@ -288,65 +288,6 @@ pub async fn resolve_refs(
         }
     }
 
-    let mut ids_by_kind: std::collections::HashMap<&'static str, Vec<String>> =
-        std::collections::HashMap::new();
-    for (kind, id) in &requested {
-        let key: &'static str = match kind.as_str() {
-            "stock" => "stock",
-            "indicator" => "indicator",
-            "sector" => "sector",
-            "theme" => "theme",
-            _ => unreachable!(),
-        };
-        ids_by_kind.entry(key).or_default().push(id.clone());
-    }
-
-    let mut names: std::collections::HashMap<(String, String), String> =
-        std::collections::HashMap::new();
-    if let Some(ids) = ids_by_kind.get("stock") {
-        for m in stock::Entity::find()
-            .filter(stock::Column::Id.is_in(ids.clone()))
-            .all(&state.db)
-            .await?
-        {
-            names.insert(("stock".into(), m.id.clone()), m.name);
-        }
-    }
-    if let Some(ids) = ids_by_kind.get("indicator") {
-        for m in indicator::Entity::find()
-            .filter(indicator::Column::Id.is_in(ids.clone()))
-            .all(&state.db)
-            .await?
-        {
-            names.insert(("indicator".into(), m.id.clone()), m.name);
-        }
-    }
-    if let Some(ids) = ids_by_kind.get("sector") {
-        for m in sector::Entity::find()
-            .filter(sector::Column::Id.is_in(ids.clone()))
-            .all(&state.db)
-            .await?
-        {
-            names.insert(("sector".into(), m.id.clone()), m.name);
-        }
-    }
-    if let Some(ids) = ids_by_kind.get("theme") {
-        for m in theme::Entity::find()
-            .filter(theme::Column::Id.is_in(ids.clone()))
-            .all(&state.db)
-            .await?
-        {
-            names.insert(("theme".into(), m.id.clone()), m.name);
-        }
-    }
-
-    let out: Vec<RefResolution> = requested
-        .into_iter()
-        .map(|(kind, id)| RefResolution {
-            name: names.get(&(kind.clone(), id.clone())).cloned(),
-            kind,
-            id,
-        })
-        .collect();
+    let out = ref_terms::resolve_refs(&state.db, &requested).await?;
     Ok(Json(out))
 }

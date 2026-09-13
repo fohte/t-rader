@@ -8,7 +8,6 @@ use sea_orm::{
     ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
 use tokio::task::JoinHandle;
-use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use crate::data_provider::DataProviderError;
@@ -16,6 +15,7 @@ use crate::data_provider::news::{NewsAggregator, NewsItem};
 use crate::entities::{
     indicator, news_item, news_strategy_link, sector, stock, strategy_interest, theme,
 };
+use crate::text_normalize::normalize;
 
 /// 戦略の interest から match 用語に展開した 1 行
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -233,12 +233,6 @@ fn push_unique(
         ref_id: ref_id.to_string(),
         term: term.to_string(),
     });
-}
-
-/// 全角/半角・大文字小文字の表記揺れを吸収する正規化。lowercase だけでは
-/// 全角/半角の幅統一が行われないため、NFKC を先に適用して統一する
-fn normalize(s: &str) -> String {
-    s.nfkc().collect::<String>().to_lowercase()
 }
 
 /// ASCII だけの語は lowercase 化で誤検知が増える (`AI` が `explained` に当たる、
