@@ -21,7 +21,6 @@ describe('createAgentConfigFetcher', () => {
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
             model: 'opencode-go/minimax-m3',
-            small_model: 'opencode-go/deepseek-v4-flash',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -38,7 +37,6 @@ describe('createAgentConfigFetcher', () => {
         agentsMd: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
         model: 'opencode-go/minimax-m3',
-        smallModel: 'opencode-go/deepseek-v4-flash',
         agentGraph: 'phases: []',
       }),
     )
@@ -57,7 +55,6 @@ describe('createAgentConfigFetcher', () => {
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
             model: 'opencode-go/minimax-m3',
-            small_model: 'opencode-go/deepseek-v4-flash',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -139,7 +136,6 @@ describe('createAgentConfigFetcher', () => {
         agents_md: '# AGENTS',
         skills: ['ja-stock'],
         model: 'opencode-go/minimax-m3',
-        small_model: 'opencode-go/deepseek-v4-flash',
         agent_graph: '',
       },
     },
@@ -149,7 +145,6 @@ describe('createAgentConfigFetcher', () => {
         agents_md: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
         model: 'opencode-go/minimax-m3',
-        small_model: 'opencode-go/deepseek-v4-flash',
       },
     },
   ])('returns an error when $name', async ({ body }) => {
@@ -166,7 +161,7 @@ describe('createAgentConfigFetcher', () => {
     expect(result).toEqual(
       err(
         new AgentConfigFetchError(
-          'malformed agent-config response for purpose purpose-a: expected agents_md/model/small_model/agent_graph strings and a skills map of strings',
+          'malformed agent-config response for purpose purpose-a: expected agents_md/model/agent_graph strings and a skills map of strings',
         ),
       ),
     )

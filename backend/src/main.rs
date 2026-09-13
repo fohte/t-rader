@@ -9,10 +9,9 @@ use backend::agent_client::{
 use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::DataProviderKind;
+use backend::data_provider::fred::FredClient;
 use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
-use backend::data_provider::macro_data::stooq::StooqClient;
-use backend::data_provider::macro_data::{MacroCache, MacroDataProvider, spawn_poll};
 use backend::data_provider::news::NewsAggregator;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
@@ -180,16 +179,6 @@ async fn main() -> Result<(), AppError> {
         }
     };
 
-    // Stooq から 5min 間隔で macro tick を取得する poll task を起動する
-    let macro_cache: Arc<MacroCache> = Arc::new(MacroCache::new());
-    let macro_provider: Arc<dyn MacroDataProvider> = Arc::new(StooqClient::new()?);
-    let _macro_poll = spawn_poll(
-        macro_provider,
-        macro_cache.clone(),
-        std::time::Duration::from_secs(300),
-    );
-    tracing::info!("macro data poll task started (Stooq, interval=5min)");
-
     // 公開 RSS から 1h 間隔でニュースを集約する poll task を起動する。
     // フィード一覧は `rss_feed` テーブルから tick ごとに読み直す (UI / MCP からの追加・無効化を
     // 再起動なしで反映するため)。0 件運用も許容する。
@@ -201,6 +190,26 @@ async fn main() -> Result<(), AppError> {
         std::time::Duration::from_secs(3600),
     );
     tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
+
+    match std::env::var("FRED_API_KEY") {
+        Ok(api_key) if !api_key.is_empty() => {
+            let fred_client = FredClient::new(api_key)?;
+            let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
+                db.clone(),
+                fred_client,
+                backend::services::fred_ingest::DEFAULT_INTERVAL,
+            );
+            tracing::info!(
+                interval_secs = backend::services::fred_ingest::DEFAULT_INTERVAL.as_secs(),
+                "FRED macro history ingest poll task started",
+            );
+        }
+        _ => {
+            tracing::warn!(
+                "FRED_API_KEY が未設定のため、FRED マクロ指標履歴の取り込みを起動しません"
+            );
+        }
+    }
 
     // cron trigger を schedule どおりに発火させる worker を起動する。
     // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
@@ -228,6 +237,37 @@ async fn main() -> Result<(), AppError> {
             "sector backfill poll task started",
         );
 
+        let _short_sale_report_ingest_poll =
+            backend::services::short_sale_report_ingest::spawn_poll(
+                db.clone(),
+                provider.clone(),
+                backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
+            );
+        tracing::info!(
+            interval_secs = backend::services::short_sale_report_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short sale report ingest poll task started",
+        );
+
+        let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::short_ratio_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short ratio ingest poll task started",
+        );
+
+        let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::margin_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::margin_ingest::DEFAULT_INTERVAL.as_secs(),
+            "margin ingest poll task started",
+        );
+
         let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
             db.clone(),
             provider.clone(),
@@ -236,6 +276,16 @@ async fn main() -> Result<(), AppError> {
         tracing::info!(
             interval_secs = backend::services::fin_summary_ingest::DEFAULT_INTERVAL.as_secs(),
             "fin summary ingest poll task started",
+        );
+
+        let _edinet_holdings_poll = backend::services::edinet_holdings::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::edinet_holdings::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::edinet_holdings::DEFAULT_INTERVAL.as_secs(),
+            "EDINET holdings ingest poll task started",
         );
     }
 
@@ -248,7 +298,6 @@ async fn main() -> Result<(), AppError> {
         agent_task_notify,
         agent_webhook_token: Arc::from(agent_webhook_token),
         kata_executor,
-        macro_cache: Some(macro_cache),
         llm_gateway_client,
     };
 

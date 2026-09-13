@@ -1,74 +1,5 @@
-//! 戦略実行 MCP server の tool 実装
-//!
-//! 各戦略の t-rader-agent から呼ばれる。接続コンテキストに `x-strategy-id`
-//! HTTP ヘッダで自身の strategy_id を持ち込み、全 tool はこの値のみを戦略境界として
-//! 使う (tool 引数に strategy_id は含まれない)。さらに対象リソース (note / annotation)
-//! の strategy_id と一致するかを Repository 層で二重検査する。
-//! 例外がある。`read_portfolio` は、戦略は口座内のお金の区分に過ぎず分析は口座全体を
-//! 見る、という設計上ヘッダの値を口座全体の集計にはスコープとして使わないが、
-//! 接続元戦略自身のスライスを追加で返すためにヘッダの値も使う。`search_refs` /
-//! `add_ref_terms` / `remove_ref_terms` は stock/indicator/sector/theme が戦略に
-//! 属さないマスタデータであるため、ヘッダの値をそもそも検索・更新条件に使わない。
-//! `search_news` も同様に news_item 全体を対象に検索するため、ヘッダの値を検索条件に
-//! 使わない。
-//!
-//! tool 一覧:
-//!
-//! - `query_data`: 銘柄 + 期間で価格時系列を返す (DataProvider 経由)
-//! - `write_note`: ノートを作成または更新する
-//! - `read_note`: ノートを取得する
-//! - `list_notes`: ノート一覧を返す
-//! - `create_annotation`: アノテーションを作成する
-//! - `read_annotations`: アノテーション一覧を返す
-//! - `read_comments`: ノート / アノテーションに付いたレビューコメントを読み出す (resolved で絞り込み可)
-//! - `resolve_comment`: レビューコメントを解決済み/未解決に切り替える
-//! - `reply_comment`: レビューコメントに返信する
-//! - `eval_python`: Python コードを exec Pod (Kata Containers) 上で実行する
-//! - `add_interest`: 戦略の関心 (derived / origin=llm) を追加する
-//! - `list_watch_targets`: 人間が `origin=human` で登録した監視対象銘柄
-//!   (`ref_kind=stock`, `status=active`) を一覧する。保有状況によるフィルタは行わない
-//! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
-//! - `query_media`: 動画/音声 URL (YouTube 等) の内容を Gemini でテキスト化する
-//! - `search_web`: 問い合わせ文で web 検索し、テキストと出典 URL を返す。モデルは既定で
-//!   ChatGPT Plus 経由、`WEB_SEARCH_MODEL` で上書き可。戦略タスク実行単位で呼び出し回数に上限あり
-//! - `read_portfolio`: 口座全体 (全戦略横断) の保有銘柄と実現損益に加え、接続元戦略自身の
-//!   スライスを時価で返す
-//! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、セクター上限比率・現金の各制約ごとに
-//!   計算して返す
-//! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
-//! - `search_news`: news_item をキーワード / 期間で直接検索する (news_strategy_link 非経由)
-//! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
-//! - `add_ref_terms`: 参照型に別名 (表記揺れ・略称・旧社名等) を追加する
-//! - `remove_ref_terms`: 参照型から別名を削除する
-//! - `list_hypotheses`: 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
-//! - `read_hypothesis`: 単一の仮説を読む (自戦略または global)
-//! - `propose_hypothesis_change`: 仮説へのタイトル/本文/status の変更を提案として永続化する
-//!   (仮説本体には反映しない。人間が API 側で承認するまで適用されない)
-//!
-//! 実装はドメインごとに分割している:
-//!
-//! - `dto`: 各 tool の入出力スキーマ
-//! - `notes`: ノート操作 (`write_note_inner` / `read_note_inner` / `list_notes_inner`)
-//! - `annotations`: アノテーション操作 (`create_annotation_inner` / `read_annotations_inner`)
-//! - `comments`: コメント操作 (`read_comments_inner` / `resolve_comment_inner` / `reply_comment_inner`)
-//! - `data`: 価格データ取得 (`query_data_inner`)
-//! - `evidence`: 外部データ取得の証跡記録 (`record_query_data`)
-//! - `eval`: Python 実行 (`eval_python_inner`)
-//! - `interests`: 関心の追加 (`add_interest_inner`) / 監視対象一覧 (`list_watch_targets_inner`)
-//! - `eval_indicator`: 永続化された indicator の評価 (`eval_indicator_inner`)
-//! - `hypotheses`: 仮説の読み取り / 変更提案 (`list_hypotheses_inner` / `read_hypothesis_inner` /
-//!   `propose_hypothesis_change_inner`)
-//! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
-//! - `web_search`: 問い合わせ文の web 検索、テキストと出典 URL の返却 (`search_web_inner`)
-//! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`) /
-//!   news_item のキーワード・期間検索 (`search_news_inner`)
-//! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
-//! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
-//! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
-//! - `ref_terms`: 参照型の別名の追加 (`add_ref_terms_inner`) / 削除 (`remove_ref_terms_inner`)
-//! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
-//!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
-//!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
+//! 戦略実行 MCP server の tool 実装。各戦略の t-rader-agent から呼ばれる。
+//! 戦略境界の保証の仕組みと各 tool の契約は docs/mcp.md 参照。
 //!
 //! 本モジュールは `StrategyServer` の構造体定義と、戦略境界・エラー変換などドメイン横断の
 //! ヘルパを担う。
@@ -80,6 +11,8 @@ pub(super) mod dto;
 pub(super) mod eval;
 pub(super) mod eval_indicator;
 pub(super) mod evidence;
+pub(super) mod fin_summary;
+pub(super) mod holdings;
 pub(super) mod hypotheses;
 pub(super) mod interests;
 pub(super) mod media;

@@ -19,10 +19,11 @@ use super::dto::{
     ListNotesParams, ListNotesResult, ListWatchTargetsParams, ListWatchTargetsResult, NoteDto,
     ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
-    ReadCommentsParams, ReadCommentsResult, ReadHypothesisParams, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
-    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
-    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
+    ReadHypothesisParams, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
+    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReplyCommentParams,
+    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
+    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
@@ -88,7 +89,7 @@ impl StrategyServer {
     /// 戦略のノート一覧を返す (新しい順)
     #[tool(
         name = "list_notes",
-        description = "List notes owned by the strategy, newest first.",
+        description = "List notes owned by the strategy, newest first. Filter by status and/or updated_after, and set include_body: false to omit body_md and save context.",
         annotations(read_only_hint = true)
     )]
     async fn list_notes(
@@ -291,6 +292,23 @@ impl StrategyServer {
         self.check_buyable_qty_inner(sid, params).await.map(Json)
     }
 
+    /// 銘柄の保有構造 (大量保有報告書・大株主状況・政策保有株式) を返す
+    #[tool(
+        name = "read_shareholding_structure",
+        description = "Return the ownership structure of a stock (given as a 4-digit symbol) from ingested EDINET filings: large-volume shareholding reports and amendments for the stock (large_volume_reports, newest first, each with document_type, change_reason for amendments, total_shares_ratio/total_shares_ratio_last, and per-holder holding_purpose/shares_ratio/shares_ratio_last — all ratios are fractions, e.g. 0.1 = 10%); the most recent major-shareholders filing's top holders (major_shareholders, ranked); and the company's own most recent cross-shareholding (policy holdings) disclosure, per counterparty (cross_shareholdings, with current/previous shares and book value plus mutual_holding indicating whether the counterparty reciprocally holds this company's stock). Matches EDINET's 5-digit code by its first 4 characters against symbol, since the exact correspondence isn't documented by J-Quants. major_shareholders/cross_shareholdings are null and large_volume_reports is empty when no matching filing has been ingested.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_shareholding_structure(
+        &self,
+        Parameters(params): Parameters<ReadShareholdingStructureParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadShareholdingStructureResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_shareholding_structure_inner(sid, params)
+            .await
+            .map(Json)
+    }
+
     /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
     #[tool(
         name = "read_news",
@@ -364,6 +382,21 @@ impl StrategyServer {
     ) -> Result<Json<RemoveRefTermsResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.remove_ref_terms_inner(sid, params).await.map(Json)
+    }
+
+    /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す
+    #[tool(
+        name = "read_fin_summary",
+        description = "Read a stock's financial disclosures (J-Quants /fins/summary): actual results and company forecasts from earnings reports, plus earnings/dividend forecast revisions, newest first. symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters). When the same disclosure period and document type appears more than once (e.g. a correction), only the one with the highest disclosure number is returned. Fields not reported by the filer (e.g. ordinary_profit under IFRS/US GAAP) are null.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_fin_summary(
+        &self,
+        Parameters(params): Parameters<ReadFinSummaryParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadFinSummaryResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_fin_summary_inner(sid, params).await.map(Json)
     }
 
     /// 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
@@ -474,10 +507,12 @@ mod tests {
                 ("query_media", Some(true)),
                 ("read_annotations", Some(true)),
                 ("read_comments", Some(true)),
+                ("read_fin_summary", Some(true)),
                 ("read_hypothesis", Some(true)),
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
+                ("read_shareholding_structure", Some(true)),
                 ("remove_ref_terms", None),
                 ("reply_comment", None),
                 ("resolve_comment", None),

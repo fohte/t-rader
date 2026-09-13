@@ -493,6 +493,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "unicode-normalization",
  "utoipa",
  "utoipa-axum",
  "utoipa-swagger-ui",

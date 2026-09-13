@@ -40,26 +40,35 @@ describe('remarkNoteTokens', () => {
     })
   })
 
-  it('replaces [[anno:A2]] with a note-anno node', () => {
-    const tree = textTree('シグナル [[anno:A2]] を見る')
-    remarkNoteTokens()(tree)
-    expect(tree).toEqual({
-      type: 'root',
-      children: [
-        {
-          type: 'paragraph',
-          children: [
-            { type: 'text', value: 'シグナル ' },
-            {
-              type: 'noteToken',
-              data: { hName: 'note-anno', hProperties: { annoId: 'A2' } },
-            },
-            { type: 'text', value: ' を見る' },
-          ],
-        },
-      ],
-    })
-  })
+  it.each([
+    { name: 'letter-leading', annoId: 'A2' },
+    {
+      name: 'digit-leading uuid',
+      annoId: '0c2b6b3e-3f2a-4c9a-9e2a-3b7a2f6c9d1a',
+    },
+  ])(
+    'replaces [[anno:$annoId]] with a note-anno node ($name)',
+    ({ annoId }) => {
+      const tree = textTree(`シグナル [[anno:${annoId}]] を見る`)
+      remarkNoteTokens()(tree)
+      expect(tree).toEqual({
+        type: 'root',
+        children: [
+          {
+            type: 'paragraph',
+            children: [
+              { type: 'text', value: 'シグナル ' },
+              {
+                type: 'noteToken',
+                data: { hName: 'note-anno', hProperties: { annoId } },
+              },
+              { type: 'text', value: ' を見る' },
+            ],
+          },
+        ],
+      })
+    },
+  )
 
   it('leaves unknown prefixes as literal text', () => {
     const tree = textTree('未知 [[foo:bar]] は素通り')
