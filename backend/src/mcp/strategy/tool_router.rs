@@ -20,10 +20,11 @@ use super::dto::{
     ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
     ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
-    ReadHypothesisParams, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
-    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReplyCommentParams,
-    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
-    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ReadHypothesisParams, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams,
+    ReadNewsResult, ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
+    ReadShareholdingStructureResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
+    ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
+    WriteNoteParams, WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
@@ -306,6 +307,21 @@ impl StrategyServer {
             .map(Json)
     }
 
+    /// マクロ指標 (ドル円, VIX, 米10年債利回り, 日経225 等) の日次観測値を期間指定で返す
+    #[tool(
+        name = "read_macro_indicator",
+        description = "Read daily observations (date + value) for a macro indicator between from and to (inclusive), oldest first. Discover available indicator_id values via search_refs (ref_kind=indicator), e.g. USDJPY, VIX, US10Y, NIKKEI225. Values are in the source's native units (USDJPY: yen per dollar, VIX: index level, US10Y: percent). Days with no observation (holidays, no update) are simply absent rather than interpolated; USDJPY in particular is batched weekly at the source and can lag by up to about a week, so the last item's date shows how fresh the latest available value is. Returns an empty list if the indicator_id is unknown or has no data in range.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_macro_indicator(
+        &self,
+        Parameters(params): Parameters<ReadMacroIndicatorParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadMacroIndicatorResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_macro_indicator_inner(sid, params).await.map(Json)
+    }
+
     /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
     #[tool(
         name = "read_news",
@@ -477,6 +493,7 @@ mod tests {
                 ("read_comments", Some(true)),
                 ("read_fin_summary", Some(true)),
                 ("read_hypothesis", Some(true)),
+                ("read_macro_indicator", Some(true)),
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
