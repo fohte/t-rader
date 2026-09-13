@@ -90,6 +90,34 @@ pub struct ReadPortfolioResult {
     pub strategy: StrategyPortfolioScopeDto,
 }
 
+/// 個々の約定 (account-wide、全戦略横断)
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct TradeDto {
+    pub trade_id: Uuid,
+    pub strategy_id: Uuid,
+    /// 約定日
+    pub date: NaiveDate,
+    pub symbol: String,
+    /// "buy" | "sell"
+    pub side: String,
+    pub qty: f64,
+    pub price: f64,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+pub struct ReadTradesParams {
+    /// この銘柄コードに一致する取引のみ返す。省略時は全銘柄
+    pub symbol: Option<String>,
+    /// この約定日以降 (inclusive) の取引のみ返す。省略時は下限なし
+    pub date_from: Option<NaiveDate>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ReadTradesResult {
+    pub trades: Vec<TradeDto>,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CheckBuyableQtyParams {
     /// 対象銘柄コード (例: "7203")
