@@ -231,7 +231,6 @@ mod tests {
         let db = create_test_db(pool).await;
         seed(&db, "3700", ymd(2026, 1, 5), Some(("700", "200", "100"))).await;
         seed(&db, "3700", ymd(2026, 1, 6), None).await;
-        // 別業種、混入しないことを確認する
         seed(&db, "3650", ymd(2026, 1, 6), Some(("100", "50", "50"))).await;
 
         let result = build_server(db)

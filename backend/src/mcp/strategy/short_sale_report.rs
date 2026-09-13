@@ -79,6 +79,7 @@ impl StrategyServer {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
+    use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
     use sea_orm::DatabaseConnection;
@@ -127,10 +128,11 @@ mod tests {
         .expect("seed short sale report");
     }
 
-    #[test]
-    fn blank_to_none_treats_empty_string_as_absent() {
-        assert_eq!(blank_to_none(String::new()), None);
-        assert_eq!(blank_to_none("foo".to_string()), Some("foo".to_string()));
+    #[rstest]
+    #[case::blank(String::new(), None)]
+    #[case::non_blank("foo".to_string(), Some("foo".to_string()))]
+    fn blank_to_none_cases(#[case] input: String, #[case] expected: Option<String>) {
+        assert_eq!(blank_to_none(input), expected);
     }
 
     #[sqlx::test(migrations = false)]
