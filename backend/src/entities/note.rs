@@ -46,6 +46,8 @@ pub enum Relation {
     NoteHypothesis,
     #[sea_orm(has_many = "super::note_ref::Entity")]
     NoteRef,
+    #[sea_orm(has_many = "super::prediction::Entity")]
+    Prediction,
     #[sea_orm(
         belongs_to = "super::strategy::Entity",
         from = "Column::StrategyId",
@@ -73,6 +75,12 @@ impl Related<super::note_hypothesis::Entity> for Entity {
 impl Related<super::note_ref::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::NoteRef.def()
+    }
+}
+
+impl Related<super::prediction::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Prediction.def()
     }
 }
 
