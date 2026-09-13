@@ -41,6 +41,9 @@
 //! - `read_hypothesis`: 単一の仮説を読む (自戦略または global)
 //! - `propose_hypothesis_change`: 仮説へのタイトル/本文/status の変更を提案として永続化する
 //!   (仮説本体には反映しない。人間が API 側で承認するまで適用されない)
+//! - `record_prediction`: 対象銘柄が比較対象銘柄を上回る/下回る確率を記録する
+//!   (書き込み専用。更新・削除 tool は存在しない)
+//! - `list_predictions`: 接続元戦略が記録した予測を一覧する (due_after/due_before で絞り込み可)
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -60,6 +63,7 @@
 //! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`) /
 //!   news_item のキーワード・期間検索 (`search_news_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
+//! - `predictions`: 予測の記録 (`record_prediction_inner`) / 一覧 (`list_predictions_inner`)
 //! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
 //! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
@@ -82,6 +86,7 @@ pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod portfolio;
+pub(super) mod predictions;
 pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;

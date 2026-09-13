@@ -23,6 +23,7 @@ pub use super::news_strategy_link::Entity as NewsStrategyLink;
 pub use super::note::Entity as Note;
 pub use super::note_hypothesis::Entity as NoteHypothesis;
 pub use super::note_ref::Entity as NoteRef;
+pub use super::prediction::Entity as Prediction;
 pub use super::rss_feed::Entity as RssFeed;
 pub use super::sector::Entity as Sector;
 pub use super::stock::Entity as Stock;

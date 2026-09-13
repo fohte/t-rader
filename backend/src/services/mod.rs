@@ -18,6 +18,7 @@ pub mod litellm_client;
 pub mod market_price;
 pub mod news;
 pub mod note_refs;
+pub mod predictions;
 pub mod rss_feed;
 pub mod sector_backfill;
 pub mod strategies;
