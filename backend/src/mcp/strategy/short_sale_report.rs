@@ -60,6 +60,10 @@ impl StrategyServer {
         let rows = query
             .order_by_desc(short_sale_report::Column::DiscDate)
             .order_by_asc(short_sale_report::Column::SsName)
+            .order_by_asc(short_sale_report::Column::SsAddr)
+            .order_by_asc(short_sale_report::Column::DicName)
+            .order_by_asc(short_sale_report::Column::DicAddr)
+            .order_by_asc(short_sale_report::Column::FundName)
             .limit(limit)
             .all(&self.db)
             .await
