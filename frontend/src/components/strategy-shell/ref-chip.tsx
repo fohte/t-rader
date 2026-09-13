@@ -1,4 +1,5 @@
-import { REF_KIND_JP, resolveRef } from '#lib/strategy-mock'
+import { useResolveRef } from '#hooks/use-resolve-ref'
+import { REF_KIND_JP } from '#lib/strategy-mock'
 
 interface RefChipProps {
   // `stock:7203` のような prefix 付き token (markdown 中の [[...]] と同形式)
@@ -14,8 +15,11 @@ export function RefChip({
   showKind = true,
   onOpen,
 }: RefChipProps) {
-  const ref = resolveRef(token)
+  const ref = useResolveRef(token)
   const kindJP = REF_KIND_JP[ref.kind]
+  const resolved = ref.name != null
+  const displayName = ref.name ?? ref.id
+  const sub = resolved && ref.id !== ref.name ? ref.id : undefined
 
   const baseInner =
     'inline-flex items-baseline gap-1 font-mono text-em-88 leading-tight whitespace-nowrap text-foreground'
@@ -26,6 +30,7 @@ export function RefChip({
     ? 'cursor-pointer hover:text-primary hover:border-primary'
     : ''
   const className = `${baseInner} ${wrapper} ${interactive}`.trim()
+  const title = resolved ? `[[${token}]]` : `[[${token}]] (未解決)`
 
   const inner = (
     <>
@@ -34,9 +39,11 @@ export function RefChip({
           {kindJP}
         </span>
       )}
-      <span>{ref.name}</span>
-      {ref.sub != null && ref.sub !== '' && (
-        <span className="text-em-85 text-muted-foreground">{ref.sub}</span>
+      <span className={resolved ? undefined : 'italic text-muted-foreground'}>
+        {displayName}
+      </span>
+      {sub != null && sub !== '' && (
+        <span className="text-em-85 text-muted-foreground">{sub}</span>
       )}
     </>
   )
@@ -46,7 +53,7 @@ export function RefChip({
       <button
         type="button"
         data-kind={ref.kind}
-        title={`[[${token}]]`}
+        title={title}
         onClick={(e) => {
           e.stopPropagation()
           onOpen(token)
@@ -59,7 +66,7 @@ export function RefChip({
   }
 
   return (
-    <span data-kind={ref.kind} title={`[[${token}]]`} className={className}>
+    <span data-kind={ref.kind} title={title} className={className}>
       {inner}
     </span>
   )

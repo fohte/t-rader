@@ -1,0 +1,34 @@
+import { $api } from '#lib/api/client'
+import { REF_KIND_JP, type RefKind } from '#lib/strategy-mock'
+
+function isRefKind(value: string): value is RefKind {
+  return value in REF_KIND_JP
+}
+
+export interface ResolvedRef {
+  kind: RefKind
+  id: string
+  name: string | null
+}
+
+/**
+ * `kind:id` 形式の参照 token を GET /api/refs/resolve で解決する。
+ * kind が未知、あるいは `:` を含まない token は API を呼ばず未解決として扱う
+ * (呼ぶとバリデーションエラーになるため)。
+ */
+export function useResolveRef(token: string): ResolvedRef {
+  const i = token.indexOf(':')
+  const prefix = i < 0 ? '' : token.slice(0, i)
+  const id = i < 0 ? token : token.slice(i + 1)
+  const kind: RefKind = isRefKind(prefix) ? prefix : 'stock'
+  const canResolve = isRefKind(prefix) && id !== ''
+
+  const { data } = $api.useQuery(
+    'get',
+    '/api/refs/resolve',
+    { params: { query: { link: token } } },
+    { enabled: canResolve },
+  )
+
+  return { kind, id, name: data?.[0]?.name ?? null }
+}

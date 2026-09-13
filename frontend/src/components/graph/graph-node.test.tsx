@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -12,7 +13,12 @@ import type { GraphNode, Layout } from '#components/graph/types'
 
 afterEach(cleanup)
 
-// GraphNodeView は内部で Handle (@xyflow/react) を使うため ReactFlowProvider が要る
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
+
+// GraphNodeView は内部で Handle (@xyflow/react) を使うため ReactFlowProvider が要る。
+// ref 付きノードは RefChip 経由で /api/refs/resolve を呼ぶため QueryClientProvider も要る
 function renderNode(
   data: GraphNode,
   context: Partial<GraphRenderContextValue> = {},
@@ -24,11 +30,13 @@ function renderNode(
     ...context,
   }
   return render(
-    <ReactFlowProvider>
-      <GraphRenderContextProvider value={value}>
-        <GraphNodeView {...buildNodeProps(data, 'graphNode')} />
-      </GraphRenderContextProvider>
-    </ReactFlowProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ReactFlowProvider>
+        <GraphRenderContextProvider value={value}>
+          <GraphNodeView {...buildNodeProps(data, 'graphNode')} />
+        </GraphRenderContextProvider>
+      </ReactFlowProvider>
+    </QueryClientProvider>,
   )
 }
 

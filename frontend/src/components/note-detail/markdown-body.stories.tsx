@@ -1,7 +1,17 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { http, HttpResponse } from 'msw'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
+
+const queryClient = new QueryClient()
+
+const NAMES: Record<string, string> = {
+  'stock:3436': 'SUMCO',
+  'indicator:USDJPY': 'USD/JPY',
+  'sector:半導体': '半導体',
+}
 
 const SAMPLE = `# SUMCO レンジ回帰の確度評価
 
@@ -40,12 +50,31 @@ print("nsjail で集計したサンプル")
 const meta = {
   title: 'NoteDetail/MarkdownBody',
   component: MarkdownBody,
-  parameters: { layout: 'padded' },
+  parameters: {
+    layout: 'padded',
+    msw: {
+      handlers: [
+        http.get('/api/refs/resolve', ({ request }) => {
+          const link = new URL(request.url).searchParams.get('link') ?? ''
+          const i = link.indexOf(':')
+          return HttpResponse.json([
+            {
+              kind: i < 0 ? link : link.slice(0, i),
+              id: i < 0 ? link : link.slice(i + 1),
+              name: NAMES[link] ?? null,
+            },
+          ])
+        }),
+      ],
+    },
+  },
   decorators: [
     (Story) => (
-      <div className="max-w-3xl bg-background p-5 text-foreground">
-        <Story />
-      </div>
+      <QueryClientProvider client={queryClient}>
+        <div className="max-w-3xl bg-background p-5 text-foreground">
+          <Story />
+        </div>
+      </QueryClientProvider>
     ),
   ],
 } satisfies Meta<typeof MarkdownBody>
