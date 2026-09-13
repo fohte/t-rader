@@ -28,6 +28,7 @@ pub use super::note::Entity as Note;
 pub use super::note_hypothesis::Entity as NoteHypothesis;
 pub use super::note_ref::Entity as NoteRef;
 pub use super::prediction::Entity as Prediction;
+pub use super::ref_term::Entity as RefTerm;
 pub use super::rss_feed::Entity as RssFeed;
 pub use super::sector::Entity as Sector;
 pub use super::short_ratio::Entity as ShortRatio;

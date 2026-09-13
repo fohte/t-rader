@@ -43,6 +43,7 @@ mod m20260913_072329_add_margin_tables;
 mod m20260913_072507_add_edinet_holdings;
 mod m20260913_072524_add_jquants_fin_summary;
 mod m20260913_073037_add_short_selling_data;
+mod m20260913_081737_add_ref_term;
 mod m20260913_082645_add_custom_indicator_to_change_history_target_kind;
 mod m20260913_091652_add_jquants_fin_summary_code_prefix_index;
 mod m20260913_122738_add_indicator_observation;
@@ -98,6 +99,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260913_072507_add_edinet_holdings::Migration),
             Box::new(m20260913_072524_add_jquants_fin_summary::Migration),
             Box::new(m20260913_073037_add_short_selling_data::Migration),
+            Box::new(m20260913_081737_add_ref_term::Migration),
             Box::new(
                 m20260913_082645_add_custom_indicator_to_change_history_target_kind::Migration,
             ),

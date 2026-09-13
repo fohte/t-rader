@@ -27,6 +27,9 @@ use super::dto::{
     ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
     SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
+use super::ref_terms::{
+    AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
+};
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
     StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, execution_task_id_from_ctx,
@@ -370,6 +373,34 @@ impl StrategyServer {
         self.search_refs_inner(sid, params).await.map(Json)
     }
 
+    /// 参照型に別名 (表記揺れ・略称・旧社名等) を追加する
+    #[tool(
+        name = "add_ref_terms",
+        description = "Add aliases (alternate spellings, abbreviations, former names, etc.) to a first-class reference (stock/indicator/sector/theme). Idempotent: terms already registered for the same (ref_kind, ref_id) are silently skipped and excluded from the returned added list. Blank terms are ignored."
+    )]
+    async fn add_ref_terms(
+        &self,
+        Parameters(params): Parameters<AddRefTermsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<AddRefTermsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.add_ref_terms_inner(sid, params).await.map(Json)
+    }
+
+    /// 参照型から別名を削除する
+    #[tool(
+        name = "remove_ref_terms",
+        description = "Remove aliases from a first-class reference (stock/indicator/sector/theme). Idempotent: terms not currently registered are silently skipped and excluded from the returned removed list."
+    )]
+    async fn remove_ref_terms(
+        &self,
+        Parameters(params): Parameters<RemoveRefTermsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<RemoveRefTermsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.remove_ref_terms_inner(sid, params).await.map(Json)
+    }
+
     /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す
     #[tool(
         name = "read_fin_summary",
@@ -509,6 +540,7 @@ mod tests {
             read_only_hints,
             [
                 ("add_interest", None),
+                ("add_ref_terms", None),
                 ("check_buyable_qty", Some(true)),
                 ("create_annotation", None),
                 ("eval_indicator", None),
@@ -530,6 +562,7 @@ mod tests {
                 ("read_shareholding_structure", Some(true)),
                 ("read_trades", Some(true)),
                 ("record_prediction", None),
+                ("remove_ref_terms", None),
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),
