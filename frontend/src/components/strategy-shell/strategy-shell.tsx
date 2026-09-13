@@ -15,7 +15,7 @@ export function StrategyShell({ children }: { children: ReactNode }) {
           {children}
         </div>
       </main>
-      <footer className="border-t border-border px-3 py-3 text-center font-mono text-xs text-muted-foreground-strong md:px-5">
+      <footer className="border-t border-border px-3 py-3 pr-20 text-center font-mono text-xs text-muted-foreground-strong md:px-5 md:pr-24">
         <a
           href={FRED_TERMS_OF_USE_URL}
           target="_blank"
