@@ -45,6 +45,8 @@ mod m20260913_072524_add_jquants_fin_summary;
 mod m20260913_073037_add_short_selling_data;
 mod m20260913_082645_add_custom_indicator_to_change_history_target_kind;
 mod m20260913_091652_add_jquants_fin_summary_code_prefix_index;
+mod m20260913_122738_add_indicator_observation;
+mod m20260913_122746_add_stock_product_category;
 mod m20260913_125042_add_prediction;
 
 pub struct Migrator;
@@ -99,6 +101,8 @@ impl MigratorTrait for Migrator {
                 m20260913_082645_add_custom_indicator_to_change_history_target_kind::Migration,
             ),
             Box::new(m20260913_091652_add_jquants_fin_summary_code_prefix_index::Migration),
+            Box::new(m20260913_122738_add_indicator_observation::Migration),
+            Box::new(m20260913_122746_add_stock_product_category::Migration),
             Box::new(m20260913_125042_add_prediction::Migration),
         ]
     }

@@ -161,6 +161,7 @@ mod tests {
             name: Set(name.into()),
             market: Set(None),
             sector_id: Set(None),
+            product_category: Set(None),
             created_at: NotSet,
             updated_at: NotSet,
         }
