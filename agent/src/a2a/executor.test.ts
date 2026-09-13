@@ -257,8 +257,8 @@ describe('TraderAgentExecutor', () => {
     async ({ metadata, expected }) => {
       const calls: (string | undefined)[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (_strategyId, purpose) => {
-          calls.push(purpose)
+        runStrategyAgent: (input) => {
+          calls.push(input.purpose)
           return Promise.resolve(defaultStrategyAgentResult)
         },
       })
@@ -279,14 +279,8 @@ describe('TraderAgentExecutor', () => {
   it('forwards resume_steps to runStrategyAgent alongside an explicit strategy_id', async () => {
     const calls: (unknown[] | undefined)[] = []
     const executor = buildExecutor({
-      runStrategyAgent: (
-        _strategyId,
-        _purpose,
-        _taskId,
-        _userMessage,
-        resumeSteps,
-      ) => {
-        calls.push(resumeSteps)
+      runStrategyAgent: (input) => {
+        calls.push(input.resumeSteps)
         return Promise.resolve(defaultStrategyAgentResult)
       },
     })
@@ -305,15 +299,8 @@ describe('TraderAgentExecutor', () => {
   it('forwards an AbortSignal to runStrategyAgent when deadline_at is present in message metadata', async () => {
     const calls: (AbortSignal | undefined)[] = []
     const executor = buildExecutor({
-      runStrategyAgent: (
-        _strategyId,
-        _purpose,
-        _taskId,
-        _userMessage,
-        _resumeSteps,
-        deadlineSignal,
-      ) => {
-        calls.push(deadlineSignal)
+      runStrategyAgent: (input) => {
+        calls.push(input.deadlineSignal)
         return Promise.resolve(defaultStrategyAgentResult)
       },
     })
@@ -334,15 +321,8 @@ describe('TraderAgentExecutor', () => {
   it('forwards undefined to runStrategyAgent when deadline_at is absent from message metadata', async () => {
     const calls: (AbortSignal | undefined)[] = []
     const executor = buildExecutor({
-      runStrategyAgent: (
-        _strategyId,
-        _purpose,
-        _taskId,
-        _userMessage,
-        _resumeSteps,
-        deadlineSignal,
-      ) => {
-        calls.push(deadlineSignal)
+      runStrategyAgent: (input) => {
+        calls.push(input.deadlineSignal)
         return Promise.resolve(defaultStrategyAgentResult)
       },
     })
@@ -359,16 +339,8 @@ describe('TraderAgentExecutor', () => {
 
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({
-      runStrategyAgent: (
-        _strategyId,
-        _purpose,
-        _taskId,
-        _userMessage,
-        _resumeSteps,
-        _deadlineSignal,
-        onStepsChanged,
-      ) => {
-        onStepsChanged?.([
+      runStrategyAgent: (input) => {
+        input.onStepsChanged?.([
           {
             phaseKey: 'plan',
             executionStepId: 'exec-1',
@@ -442,16 +414,8 @@ describe('TraderAgentExecutor', () => {
       steps: readonly StrategyTaskStep[],
     ): Promise<TaskStatusUpdateEvent[]> => {
       const executor = buildExecutor({
-        runStrategyAgent: (
-          _strategyId,
-          _purpose,
-          _taskId,
-          _userMessage,
-          _resumeSteps,
-          _deadlineSignal,
-          onStepsChanged,
-        ) => {
-          onStepsChanged?.(steps)
+        runStrategyAgent: (input) => {
+          input.onStepsChanged?.(steps)
           return Promise.resolve(defaultStrategyAgentResult)
         },
       })
@@ -535,22 +499,14 @@ describe('TraderAgentExecutor', () => {
 
     it('reuses the same heartbeat messageId across step changes so history dedup keeps only the first entry', async () => {
       const executor = buildExecutor({
-        runStrategyAgent: (
-          _strategyId,
-          _purpose,
-          _taskId,
-          _userMessage,
-          _resumeSteps,
-          _deadlineSignal,
-          onStepsChanged,
-        ) => {
-          onStepsChanged?.([
+        runStrategyAgent: (input) => {
+          input.onStepsChanged?.([
             buildStep({
               status: 'running',
               startedAt: '2026-01-01T00:00:00.000Z',
             }),
           ])
-          onStepsChanged?.([
+          input.onStepsChanged?.([
             buildStep({
               status: 'completed',
               startedAt: '2026-01-01T00:00:00.000Z',
@@ -763,12 +719,12 @@ describe('TraderAgentExecutor', () => {
         text: string
       }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, purpose, taskId, userMessage) => {
+        runStrategyAgent: (input) => {
           calls.push({
-            strategyId,
-            purpose,
-            taskId,
-            text: userMessage.parts
+            strategyId: input.strategyId,
+            purpose: input.purpose,
+            taskId: input.taskId,
+            text: input.userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
               .join('\n'),
           })
@@ -945,12 +901,12 @@ describe('TraderAgentExecutor', () => {
         text: string
       }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, purpose, taskId, userMessage) => {
+        runStrategyAgent: (input) => {
           calls.push({
-            strategyId,
-            purpose,
-            taskId,
-            text: userMessage.parts
+            strategyId: input.strategyId,
+            purpose: input.purpose,
+            taskId: input.taskId,
+            text: input.userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
               .join('\n'),
           })
@@ -1017,8 +973,8 @@ describe('TraderAgentExecutor', () => {
     it('forwards message metadata.purpose to runStrategyAgent when present, alongside a strategy resolved from free text', async () => {
       const calls: (string | undefined)[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (_strategyId, purpose) => {
-          calls.push(purpose)
+        runStrategyAgent: (input) => {
+          calls.push(input.purpose)
           return Promise.resolve(defaultStrategyAgentResult)
         },
       })

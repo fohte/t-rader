@@ -308,16 +308,29 @@ const parseResumeSteps = (
     .map((result) => fromStepJson(result.data))
 }
 
+export interface RunStrategyAgentInput {
+  readonly strategyId: string
+  readonly purpose: string | undefined
+  readonly taskId: string
+  readonly userMessage: Message
+  readonly resumeSteps: unknown[] | undefined
+  readonly deadlineSignal: AbortSignal | undefined
+  readonly onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void
+}
+
 export const runStrategyAgent = async (
   deps: StrategyAgentDeps,
-  strategyId: string,
-  purpose: string | undefined,
-  taskId: string,
-  userMessage: Message,
-  resumeSteps: unknown[] | undefined,
-  deadlineSignal: AbortSignal | undefined,
-  onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
+  input: RunStrategyAgentInput,
 ): Promise<StrategyAgentResult> => {
+  const {
+    strategyId,
+    purpose,
+    taskId,
+    userMessage,
+    resumeSteps,
+    deadlineSignal,
+    onStepsChanged,
+  } = input
   const previousSteps = parseResumeSteps(resumeSteps, strategyId)
   const mcpClient = deps.createMcpClient(strategyId, taskId)
 

@@ -20,7 +20,10 @@ import {
   AGENT_GRAPH_STEPS_ARTIFACT_ID,
   toStepJson,
 } from '#strategy-agent/agent-graph/step'
-import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
+import type {
+  RunStrategyAgentInput,
+  StrategyAgentResult,
+} from '#strategy-agent/strategy-agent'
 import type { FetchStrategyCandidates } from '#strategy-resolution/mgmt-mcp-client'
 import type {
   StrategyCandidate,
@@ -164,13 +167,7 @@ const errorMessage = (error: unknown): string =>
 export interface TraderAgentExecutorDeps {
   taskStore: Pick<TaskStore, 'load'>
   runStrategyAgent: (
-    strategyId: string,
-    purpose: string | undefined,
-    taskId: string,
-    userMessage: Message,
-    resumeSteps: unknown[] | undefined,
-    deadlineSignal: AbortSignal | undefined,
-    onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
+    input: RunStrategyAgentInput,
   ) => Promise<StrategyAgentResult>
   // Looks up the current strategy list (via the backend's management MCP)
   // to resolve a strategy_id from free text when the caller doesn't supply
@@ -390,9 +387,6 @@ export class TraderAgentExecutor implements AgentExecutor {
       publishHeartbeat(latestSteps)
     }, HEARTBEAT_INTERVAL_MS)
 
-    // backend の strategy_task.deadline_at を過ぎたら実行全体を打ち切るための
-    // signal。deadline_at が無い (旧 backend との組み合わせ等) 場合は
-    // AbortController 自体を作らず、打ち切りを行わない。
     const deadlineController =
       deadlineAt !== undefined ? new AbortController() : undefined
     const deadlineTimer =
@@ -407,15 +401,15 @@ export class TraderAgentExecutor implements AgentExecutor {
 
     // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
-      const result = await this.deps.runStrategyAgent(
+      const result = await this.deps.runStrategyAgent({
         strategyId,
         purpose,
         taskId,
-        promptMessage,
+        userMessage: promptMessage,
         resumeSteps,
-        deadlineController?.signal,
-        publishSteps,
-      )
+        deadlineSignal: deadlineController?.signal,
+        onStepsChanged: publishSteps,
+      })
       eventBus.publish({
         kind: 'status-update',
         taskId,
