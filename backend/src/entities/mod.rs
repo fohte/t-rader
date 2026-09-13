@@ -22,6 +22,7 @@ pub mod news_strategy_link;
 pub mod note;
 pub mod note_hypothesis;
 pub mod note_ref;
+pub mod ref_term;
 pub mod rss_feed;
 pub mod sea_orm_active_enums;
 pub mod sector;

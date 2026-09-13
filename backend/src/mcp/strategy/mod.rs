@@ -37,6 +37,8 @@
 //! - `read_news`: 戦略に紐づく未読ニュースを checkpoint 以降分だけ古い順に返す
 //! - `search_news`: news_item をキーワード / 期間で直接検索する (news_strategy_link 非経由)
 //! - `search_refs`: 参照型 (stock/indicator/sector/theme) を id/name の部分一致で横断検索する
+//! - `add_ref_terms`: 参照型に別名 (表記揺れ・略称・旧社名等) を追加する
+//! - `remove_ref_terms`: 参照型から別名を削除する
 //! - `list_hypotheses`: 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
 //! - `read_hypothesis`: 単一の仮説を読む (自戦略または global)
 //! - `propose_hypothesis_change`: 仮説へのタイトル/本文/status の変更を提案として永続化する
@@ -62,6 +64,7 @@
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
 //! - `risk_check`: 銘柄の追加購入可能株数の算出 (`check_buyable_qty_inner`)
 //! - `refs`: 参照型 (stock/indicator/sector/theme) の横断検索 (`search_refs_inner`)
+//! - `ref_terms`: 参照型の別名の追加 (`add_ref_terms_inner`) / 削除 (`remove_ref_terms_inner`)
 //! - `tool_router`: `#[tool_router]` 登録、ctx から strategy_id を取り出し `*_inner` に
 //!   委譲する薄い tool wrapper、`#[tool_handler] impl ServerHandler`
 //!   (`tool_router()` が生成する関連関数がモジュール private なため同居させている)
@@ -82,6 +85,7 @@ pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod portfolio;
+pub(super) mod ref_terms;
 pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;
