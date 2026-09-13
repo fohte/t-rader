@@ -36,6 +36,10 @@ import {
 } from '#strategy-agent/final-turn-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
+import {
+  createToolCallCapMiddleware,
+  MAX_TOOL_CALLS_PER_MODEL_CALL,
+} from '#strategy-agent/tool-call-cap-middleware'
 import { isUsageLimitError } from '#strategy-agent/usage-limit'
 
 // OpenCode Go's OpenAI-compatible endpoint.
@@ -150,7 +154,8 @@ const buildCompiledAgent = (
       // finalTurnMiddleware より内側 (モデル呼び出しに最も近い位置) に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
-      // 実際の HTTP リクエストに一番近い位置で signal を差し込む。
+      // 実際の HTTP リクエストに一番近い位置で signal / callback を差し込む。
+      createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
       createCallDurationMiddleware(llmCallTimeoutMs),
     ],
   })

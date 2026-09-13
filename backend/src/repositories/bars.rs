@@ -69,6 +69,36 @@ pub async fn find_bars(
     Ok(results)
 }
 
+/// 複数銘柄に一致するバーデータをまとめて取得する。日付範囲は全銘柄共通の条件として扱う。
+/// 結果は instrument_id 昇順 → timestamp 昇順。
+pub async fn find_bars_by_instruments(
+    db: &DatabaseConnection,
+    instrument_ids: &[String],
+    timeframe: &str,
+    from: Option<DateTime<FixedOffset>>,
+    to: Option<DateTime<FixedOffset>>,
+) -> Result<Vec<bars::Model>, AppError> {
+    let mut select = bars::Entity::find()
+        .filter(bars::Column::InstrumentId.is_in(instrument_ids.to_vec()))
+        .filter(bars::Column::Timeframe.eq(timeframe));
+
+    if let Some(from) = from {
+        select = select.filter(bars::Column::Timestamp.gte(from));
+    }
+
+    if let Some(to) = to {
+        select = select.filter(bars::Column::Timestamp.lte(to));
+    }
+
+    let results = select
+        .order_by_asc(bars::Column::InstrumentId)
+        .order_by_asc(bars::Column::Timestamp)
+        .all(db)
+        .await?;
+
+    Ok(results)
+}
+
 /// 銘柄の最新の日足バーを 1 件返す。無ければ `None`。
 pub async fn find_latest_bar(
     db: &DatabaseConnection,
@@ -239,6 +269,44 @@ mod tests {
         let result = find_bars(&db, query).await.expect("find failed");
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].close, Decimal::new(105, 0));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn find_bars_by_instruments_filters_to_requested_instruments(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_test_instrument(&db, "7203").await;
+        insert_test_instrument(&db, "9984").await;
+        insert_test_instrument(&db, "6758").await;
+
+        let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date");
+        let bars = vec![
+            make_test_bar("7203", date, 100),
+            make_test_bar("9984", date, 200),
+            make_test_bar("6758", date, 300),
+        ];
+        upsert_bars(&db, bars).await.expect("upsert failed");
+
+        let result = find_bars_by_instruments(
+            &db,
+            &["7203".to_string(), "9984".to_string()],
+            "1d",
+            None,
+            None,
+        )
+        .await
+        .expect("find failed");
+
+        let closes: Vec<(String, Decimal)> = result
+            .into_iter()
+            .map(|b| (b.instrument_id, b.close))
+            .collect();
+        assert_eq!(
+            closes,
+            vec![
+                ("7203".to_string(), Decimal::new(100, 0)),
+                ("9984".to_string(), Decimal::new(200, 0)),
+            ],
+        );
     }
 
     #[sqlx::test(migrations = false)]

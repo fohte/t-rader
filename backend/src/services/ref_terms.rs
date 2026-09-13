@@ -1,6 +1,7 @@
 //! ref_term (参照型の別名) の読み出しと、id 優先 -> 別名フォールバックの解決ロジック。
 //!
 //! 別名の追加・削除は `mcp/strategy/ref_terms.rs` の MCP tool から行う。
+//! ニュースの語マッチ (`services/news.rs`) と内部リンク解決の両方から利用する。
 
 use std::collections::HashMap;
 

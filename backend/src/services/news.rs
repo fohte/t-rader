@@ -13,8 +13,10 @@ use uuid::Uuid;
 use crate::data_provider::DataProviderError;
 use crate::data_provider::news::{NewsAggregator, NewsItem};
 use crate::entities::{
-    indicator, news_item, news_strategy_link, sector, stock, strategy_interest, theme,
+    indicator, news_item, news_strategy_link, ref_term, sector, stock, strategy_interest, theme,
 };
+use crate::error::AppError;
+use crate::services::ref_terms;
 use crate::text_normalize::normalize;
 
 /// 戦略の interest から match 用語に展開した 1 行
@@ -45,7 +47,11 @@ pub async fn run_aggregation_cycle(
     let news_rows = upsert_news_items(db, &fetched).await.map_err(db_err)?;
     let interests = load_strategy_interests(db).await.map_err(db_err)?;
     let lookup = load_ref_names(db, &interests).await.map_err(db_err)?;
-    let terms = expand_interest_terms(&interests, &lookup);
+    let ref_terms_rows = ref_terms::load_terms(db, &collect_ref_pairs(&interests))
+        .await
+        .map_err(app_err)?;
+    let alias_lookup = group_ref_terms(ref_terms_rows);
+    let terms = expand_interest_terms(&interests, &lookup, &alias_lookup);
     let link_count = link_news_to_strategies(db, &news_rows, &terms)
         .await
         .map_err(db_err)?;
@@ -64,6 +70,13 @@ pub struct AggregationStats {
 
 fn db_err(e: sea_orm::DbErr) -> DataProviderError {
     DataProviderError::Database(e.to_string())
+}
+
+fn app_err(e: AppError) -> DataProviderError {
+    match e {
+        AppError::Database(e) => db_err(e),
+        other => DataProviderError::Database(other.to_string()),
+    }
 }
 
 /// `news_item` テーブルに upsert し、対象行の Model 全件 (title / body_snippet 等を含む)
@@ -185,13 +198,13 @@ async fn load_ref_names(
     })
 }
 
-/// 各 interest を id / 名前の両方で match 用語に展開する。
-/// 名前を先に push することで、後段の `match_links` が name term を優先採用する
-/// (id 文字列がたまたま title に含まれるケースでも、ユーザーに見える `matched_term`
-/// は読める名前になる)。
+/// 各 interest を 名前 / 別名 / id の順で match 用語に展開する。先に push した語ほど
+/// 後段の `match_links` に優先採用されるため、この順で並べることで、ユーザーに見える
+/// `matched_term` は読める表記になる (id は読めないため最後)。
 fn expand_interest_terms(
     interests: &[strategy_interest::Model],
     lookup: &RefNameLookup,
+    alias_lookup: &HashMap<(String, String), Vec<String>>,
 ) -> Vec<InterestTerm> {
     let mut out = Vec::new();
     for i in interests {
@@ -211,9 +224,42 @@ fn expand_interest_terms(
         {
             push_unique(&mut out, &strategy_id, &i.ref_kind, &i.ref_id, name);
         }
+        let key = (i.ref_kind.clone(), i.ref_id.clone());
+        if let Some(aliases) = alias_lookup.get(&key) {
+            for alias in aliases {
+                push_unique(&mut out, &strategy_id, &i.ref_kind, &i.ref_id, alias);
+            }
+        }
         push_unique(&mut out, &strategy_id, &i.ref_kind, &i.ref_id, &i.ref_id);
     }
     out
+}
+
+/// interest に登場する (ref_kind, ref_id) の重複なし集合。`ref_terms::load_terms` の
+/// 引数として渡し、OR 条件の重複生成を避ける
+fn collect_ref_pairs(interests: &[strategy_interest::Model]) -> Vec<(String, String)> {
+    let mut pairs: Vec<(String, String)> = interests
+        .iter()
+        .map(|i| (i.ref_kind.clone(), i.ref_id.clone()))
+        .collect();
+    pairs.sort();
+    pairs.dedup();
+    pairs
+}
+
+/// (ref_kind, ref_id) ごとに別名をまとめる。DB の返却順は保証されないため、
+/// term の優先順位に意味を持たせないよう辞書順に固定する
+fn group_ref_terms(rows: Vec<ref_term::Model>) -> HashMap<(String, String), Vec<String>> {
+    let mut map: HashMap<(String, String), Vec<String>> = HashMap::new();
+    for row in rows {
+        map.entry((row.ref_kind, row.ref_id))
+            .or_default()
+            .push(row.term);
+    }
+    for terms in map.values_mut() {
+        terms.sort();
+    }
+    map
 }
 
 fn push_unique(
@@ -418,6 +464,10 @@ mod tests {
         l
     }
 
+    fn no_aliases() -> HashMap<(String, String), Vec<String>> {
+        HashMap::new()
+    }
+
     fn link_keys(
         links: Vec<news_strategy_link::ActiveModel>,
     ) -> Vec<(Uuid, String, String, String)> {
@@ -439,7 +489,7 @@ mod tests {
         let interests = vec![interest(STRATEGY_A, "stock", "7203")];
         let lookup = lookup_with_stock("7203", "トヨタ自動車");
         assert_eq!(
-            expand_interest_terms(&interests, &lookup),
+            expand_interest_terms(&interests, &lookup, &no_aliases()),
             vec![
                 InterestTerm {
                     strategy_id: STRATEGY_A,
@@ -540,14 +590,121 @@ mod tests {
     fn expand_terms_skips_single_character_term() {
         let interests = vec![interest(STRATEGY_A, "theme", "A")];
         let lookup = RefNameLookup::default();
-        assert_eq!(expand_interest_terms(&interests, &lookup), vec![]);
+        assert_eq!(
+            expand_interest_terms(&interests, &lookup, &no_aliases()),
+            vec![]
+        );
     }
 
     #[rstest]
     fn expand_terms_excludes_global_interest() {
         let interests = vec![global_interest("indicator", "N225")];
         let lookup = RefNameLookup::default();
-        assert_eq!(expand_interest_terms(&interests, &lookup), vec![]);
+        assert_eq!(
+            expand_interest_terms(&interests, &lookup, &no_aliases()),
+            vec![]
+        );
+    }
+
+    #[rstest]
+    fn expand_terms_includes_aliases_between_name_and_id() {
+        let interests = vec![interest(STRATEGY_A, "stock", "7203")];
+        let lookup = lookup_with_stock("7203", "トヨタ自動車");
+        let mut alias_lookup = HashMap::new();
+        alias_lookup.insert(
+            ("stock".to_string(), "7203".to_string()),
+            vec!["Toyota".to_string(), "トヨタ".to_string()],
+        );
+        assert_eq!(
+            expand_interest_terms(&interests, &lookup, &alias_lookup),
+            vec![
+                InterestTerm {
+                    strategy_id: STRATEGY_A,
+                    ref_kind: "stock".into(),
+                    ref_id: "7203".into(),
+                    term: "トヨタ自動車".into(),
+                },
+                InterestTerm {
+                    strategy_id: STRATEGY_A,
+                    ref_kind: "stock".into(),
+                    ref_id: "7203".into(),
+                    term: "Toyota".into(),
+                },
+                InterestTerm {
+                    strategy_id: STRATEGY_A,
+                    ref_kind: "stock".into(),
+                    ref_id: "7203".into(),
+                    term: "トヨタ".into(),
+                },
+                InterestTerm {
+                    strategy_id: STRATEGY_A,
+                    ref_kind: "stock".into(),
+                    ref_id: "7203".into(),
+                    term: "7203".into(),
+                },
+            ],
+        );
+    }
+
+    #[rstest]
+    fn expand_terms_skips_single_character_alias() {
+        let interests = vec![interest(STRATEGY_A, "sector", "semiconductor")];
+        let lookup = RefNameLookup::default();
+        let mut alias_lookup = HashMap::new();
+        alias_lookup.insert(
+            ("sector".to_string(), "semiconductor".to_string()),
+            vec!["半".to_string()],
+        );
+        assert_eq!(
+            expand_interest_terms(&interests, &lookup, &alias_lookup),
+            vec![InterestTerm {
+                strategy_id: STRATEGY_A,
+                ref_kind: "sector".into(),
+                ref_id: "semiconductor".into(),
+                term: "semiconductor".into(),
+            }],
+        );
+    }
+
+    #[rstest]
+    fn group_ref_terms_sorts_aliases_per_ref() {
+        let rows = vec![
+            ref_term::Model {
+                ref_kind: "stock".into(),
+                ref_id: "7203".into(),
+                term: "トヨタ".into(),
+                origin: "human".into(),
+                created_at: ymd_hms(2026, 6, 25, 0, 0, 0).into(),
+            },
+            ref_term::Model {
+                ref_kind: "stock".into(),
+                ref_id: "7203".into(),
+                term: "Toyota".into(),
+                origin: "human".into(),
+                created_at: ymd_hms(2026, 6, 25, 0, 0, 0).into(),
+            },
+        ];
+        let map = group_ref_terms(rows);
+        assert_eq!(
+            map.get(&("stock".to_string(), "7203".to_string())),
+            Some(&vec!["Toyota".to_string(), "トヨタ".to_string()]),
+        );
+    }
+
+    #[rstest]
+    fn collect_ref_pairs_dedupes() {
+        let interests = vec![
+            interest(STRATEGY_A, "stock", "7203"),
+            interest(STRATEGY_B, "stock", "7203"),
+            interest(STRATEGY_A, "theme", "semiconductor"),
+        ];
+        assert_eq!(
+            collect_ref_pairs(&interests),
+            vec![
+                ("stock".to_string(), "7203".to_string()),
+                ("theme".to_string(), "semiconductor".to_string()),
+            ],
+        );
     }
 
     #[rstest]
