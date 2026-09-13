@@ -48,6 +48,12 @@ impl StrategyServer {
                 "instrument_ids must not contain empty values",
             ));
         }
+        {
+            let mut seen = std::collections::HashSet::with_capacity(instrument_ids.len());
+            if !instrument_ids.iter().all(|id| seen.insert(id)) {
+                return Err(invalid_params("instrument_ids must not contain duplicates"));
+            }
+        }
 
         let from = params
             .from
@@ -379,6 +385,12 @@ mod tests {
         "2025-01-06",
         "2025-01-07",
         "instrument_ids must not contain empty values"
+    )]
+    #[case::duplicate_instrument_id(
+        vec!["7203".to_string(), "7203".to_string()],
+        "2025-01-06",
+        "2025-01-07",
+        "instrument_ids must not contain duplicates"
     )]
     #[case::from_after_to(
         vec!["7203".to_string()],

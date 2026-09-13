@@ -13,6 +13,7 @@ use crate::services::graph::GraphDef;
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryDataParams {
     /// 対象銘柄コードの配列。1 回の呼び出しで複数銘柄をまとめて取得できる
+    /// (最大 100 件、重複不可)
     pub instrument_ids: Vec<String>,
     /// 取得開始日 (YYYY-MM-DD, inclusive)
     pub from: NaiveDate,

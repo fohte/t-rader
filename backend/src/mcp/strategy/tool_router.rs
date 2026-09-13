@@ -36,7 +36,7 @@ impl StrategyServer {
     /// 複数銘柄 + 期間で日足バーデータをまとめて取得する
     #[tool(
         name = "query_data",
-        description = "Fetch daily OHLCV bars for one or more instruments over a shared date range from the DB. Results are in the same order as instrument_ids; an instrument with no ingested data returns an empty bars array rather than an error.",
+        description = "Fetch daily OHLCV bars for one or more instruments (up to 100 per call, no duplicates) over a shared date range from the DB. Results are in the same order as instrument_ids; an instrument with no ingested data returns an empty bars array rather than an error.",
         annotations(read_only_hint = true)
     )]
     async fn query_data(
