@@ -19,11 +19,11 @@ use super::dto::{
     ListNotesParams, ListNotesResult, ListWatchTargetsParams, ListWatchTargetsResult, NoteDto,
     ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
-    ReadCommentsParams, ReadCommentsResult, ReadHypothesisParams, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
-    ReadShareholdingStructureResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
-    ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
-    WriteNoteParams, WriteNoteResult,
+    ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
+    ReadHypothesisParams, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
+    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReplyCommentParams,
+    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
+    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
@@ -353,6 +353,21 @@ impl StrategyServer {
         self.search_refs_inner(sid, params).await.map(Json)
     }
 
+    /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す
+    #[tool(
+        name = "read_fin_summary",
+        description = "Read a stock's financial disclosures (J-Quants /fins/summary): actual results and company forecasts from earnings reports, plus earnings/dividend forecast revisions, newest first. symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters). When the same disclosure period and document type appears more than once (e.g. a correction), only the one with the highest disclosure number is returned. Fields not reported by the filer (e.g. ordinary_profit under IFRS/US GAAP) are null.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_fin_summary(
+        &self,
+        Parameters(params): Parameters<ReadFinSummaryParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadFinSummaryResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_fin_summary_inner(sid, params).await.map(Json)
+    }
+
     /// 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
     #[tool(
         name = "list_hypotheses",
@@ -460,6 +475,7 @@ mod tests {
                 ("query_media", Some(true)),
                 ("read_annotations", Some(true)),
                 ("read_comments", Some(true)),
+                ("read_fin_summary", Some(true)),
                 ("read_hypothesis", Some(true)),
                 ("read_news", None),
                 ("read_note", Some(true)),
