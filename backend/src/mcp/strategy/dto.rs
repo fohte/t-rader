@@ -12,7 +12,8 @@ use crate::services::graph::GraphDef;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryDataParams {
-    pub instrument_id: String,
+    /// 対象銘柄コードの配列。1 回の呼び出しで複数銘柄をまとめて取得できる
+    pub instrument_ids: Vec<String>,
     /// 取得開始日 (YYYY-MM-DD, inclusive)
     pub from: NaiveDate,
     /// 取得終了日 (YYYY-MM-DD, inclusive)
@@ -29,10 +30,17 @@ pub struct BarDto {
     pub volume: i64,
 }
 
+/// 1 銘柄分の日足バー。データが 1 件も無い銘柄は `bars: []` になる
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct QueryDataResult {
+pub struct InstrumentBarsDto {
     pub instrument_id: String,
     pub bars: Vec<BarDto>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct QueryDataResult {
+    /// `instrument_ids` と同じ順序
+    pub results: Vec<InstrumentBarsDto>,
 }
 
 /// 銘柄ごとの未決済ポジションと損益 (FIFO ベース)
