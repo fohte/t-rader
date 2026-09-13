@@ -108,12 +108,19 @@ interface Calls {
     tools: readonly DynamicStructuredTool[]
     systemPrompt: string
   }
+  // legacy (buildAgent) / agent_graph (buildPhaseAgent) いずれの経路でも、
+  // deadlineSignal がどちらに転送されたかを見分けるための捕捉フィールド。
+  capturedDeadlineSignal: AbortSignal | undefined
 }
 
 const buildDeps = (
   options: BuildDepsOptions,
 ): { deps: StrategyAgentDeps; calls: Calls } => {
-  const calls: Calls = { mcpClientClosed: false, mcpClients: [] }
+  const calls: Calls = {
+    mcpClientClosed: false,
+    mcpClients: [],
+    capturedDeadlineSignal: undefined,
+  }
   const chatModel = new FakeChatModel({})
 
   const deps: StrategyAgentDeps = {
@@ -145,16 +152,20 @@ const buildDeps = (
     },
     buildAgent: (buildOptions) => {
       calls.buildAgentOptions = buildOptions
+      calls.capturedDeadlineSignal = buildOptions.deadlineSignal
       return {
         invoke: (input) => options.agentInvoke(input),
       }
     },
-    buildPhaseAgent: () => ({
-      invoke: (input) =>
-        options.buildPhaseAgentInvoke !== undefined
-          ? options.buildPhaseAgentInvoke(input, calls)
-          : Promise.resolve({ structuredResponse: {} }),
-    }),
+    buildPhaseAgent: (buildOptions) => {
+      calls.capturedDeadlineSignal = buildOptions.deadlineSignal
+      return {
+        invoke: (input) =>
+          options.buildPhaseAgentInvoke !== undefined
+            ? options.buildPhaseAgentInvoke(input, calls)
+            : Promise.resolve({ structuredResponse: {} }),
+      }
+    },
   }
 
   return { deps, calls }
@@ -177,6 +188,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       undefined,
     )
 
@@ -210,6 +222,7 @@ describe('runStrategyAgent', () => {
       'task-1',
       buildUserMessage('do the thing'),
       undefined,
+      undefined,
     )
 
     expect(calls.fetchAgentConfigKey).toEqual({
@@ -232,6 +245,7 @@ describe('runStrategyAgent', () => {
       'task-1',
       buildUserMessage('do the thing'),
       undefined,
+      undefined,
     )
 
     expect(result).toEqual({
@@ -252,6 +266,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       undefined,
     )
 
@@ -279,6 +294,7 @@ describe('runStrategyAgent', () => {
       'task-1',
       buildUserMessage('do the thing'),
       undefined,
+      undefined,
     )
 
     expect(result).toEqual({
@@ -300,6 +316,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       undefined,
     )
 
@@ -324,6 +341,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       undefined,
     )
 
@@ -350,6 +368,7 @@ describe('runStrategyAgent', () => {
       'task-1',
       buildUserMessage('do the thing'),
       undefined,
+      undefined,
     )
 
     expect(result).toEqual({
@@ -373,6 +392,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       undefined,
       (steps) => notifications.push(steps),
     )
@@ -411,6 +431,54 @@ describe('runStrategyAgent', () => {
     ])
   })
 
+  it('forwards deadlineSignal through to runAgentGraph (and then buildPhaseAgent) when agent_graph is configured', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = buildDeps({
+      agentGraph:
+        'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+    })
+
+    const result = await runStrategyAgent(
+      deps,
+      'strategy-1',
+      undefined,
+      'task-1',
+      buildUserMessage('do the thing'),
+      undefined,
+      controller.signal,
+    )
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (P)',
+    })
+    expect(calls.capturedDeadlineSignal).toBe(controller.signal)
+  })
+
+  it('forwards deadlineSignal through to deps.buildAgent when agent_graph is not configured', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = buildDeps({
+      agentInvoke: () =>
+        Promise.resolve({
+          structuredResponse: { status: 'completed', message: 'done' },
+        }),
+    })
+
+    await runStrategyAgent(
+      deps,
+      'strategy-1',
+      undefined,
+      'task-1',
+      buildUserMessage('do the thing'),
+      undefined,
+      controller.signal,
+    )
+
+    expect(calls.capturedDeadlineSignal).toBe(controller.signal)
+  })
+
   it('skips a completed phase on resume when a valid resume step is provided', async () => {
     let buildPhaseAgentInvokeCalls = 0
     const { deps } = buildDeps({
@@ -445,6 +513,7 @@ describe('runStrategyAgent', () => {
       'task-1',
       buildUserMessage('do the thing'),
       resumeSteps,
+      undefined,
     )
 
     expect(result).toEqual({
@@ -476,6 +545,7 @@ describe('runStrategyAgent', () => {
       'task-1',
       buildUserMessage('do the thing'),
       resumeSteps,
+      undefined,
     )
 
     expect(result).toEqual({
@@ -516,6 +586,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       undefined,
     )
 
@@ -575,6 +646,7 @@ describe('runStrategyAgent', () => {
       undefined,
       'task-1',
       buildUserMessage('do the thing'),
+      undefined,
       undefined,
     )
 

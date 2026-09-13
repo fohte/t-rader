@@ -55,6 +55,13 @@ export const extractResumeSteps = (message: Message): unknown[] | undefined => {
   return Array.isArray(raw) ? raw : undefined
 }
 
+export const extractDeadlineAt = (message: Message): Date | undefined => {
+  const raw = message.metadata?.['deadline_at']
+  if (typeof raw !== 'string') return undefined
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
 const buildAgentMessage = (
@@ -162,6 +169,7 @@ export interface TraderAgentExecutorDeps {
     taskId: string,
     userMessage: Message,
     resumeSteps: unknown[] | undefined,
+    deadlineSignal: AbortSignal | undefined,
     onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
   ) => Promise<StrategyAgentResult>
   // Looks up the current strategy list (via the backend's management MCP)
@@ -200,6 +208,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     const rawStrategyId = extractStrategyId(userMessage)
     const purpose = extractPurpose(userMessage)
     const resumeSteps = extractResumeSteps(userMessage)
+    const deadlineAt = extractDeadlineAt(userMessage)
 
     if (rawStrategyId !== undefined && !isValidStrategyId(rawStrategyId)) {
       const rejectedStatus = {
@@ -381,6 +390,21 @@ export class TraderAgentExecutor implements AgentExecutor {
       publishHeartbeat(latestSteps)
     }, HEARTBEAT_INTERVAL_MS)
 
+    // backend の strategy_task.deadline_at を過ぎたら実行全体を打ち切るための
+    // signal。deadline_at が無い (旧 backend との組み合わせ等) 場合は
+    // AbortController 自体を作らず、打ち切りを行わない。
+    const deadlineController =
+      deadlineAt !== undefined ? new AbortController() : undefined
+    const deadlineTimer =
+      deadlineAt !== undefined && deadlineController !== undefined
+        ? setTimeout(
+            () => {
+              deadlineController.abort()
+            },
+            Math.max(deadlineAt.getTime() - Date.now(), 0),
+          )
+        : undefined
+
     // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
       const result = await this.deps.runStrategyAgent(
@@ -389,6 +413,7 @@ export class TraderAgentExecutor implements AgentExecutor {
         taskId,
         promptMessage,
         resumeSteps,
+        deadlineController?.signal,
         publishSteps,
       )
       eventBus.publish({
@@ -429,6 +454,7 @@ export class TraderAgentExecutor implements AgentExecutor {
       } satisfies TaskStatusUpdateEvent)
     } finally {
       clearInterval(heartbeatTimer)
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer)
       eventBus.finished()
     }
   }

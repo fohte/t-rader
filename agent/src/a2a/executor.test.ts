@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
 import {
+  extractDeadlineAt,
   extractPurpose,
   extractResumeSteps,
   extractStrategyId,
@@ -113,6 +114,32 @@ describe('extractResumeSteps', () => {
   it('returns undefined when resume_steps is not an array', () => {
     expect(
       extractResumeSteps(buildUserMessage({ resume_steps: 'not-an-array' })),
+    ).toBeUndefined()
+  })
+})
+
+describe('extractDeadlineAt', () => {
+  it('reads deadline_at from message metadata as a Date', () => {
+    expect(
+      extractDeadlineAt(
+        buildUserMessage({ deadline_at: '2026-01-01T00:15:00.000Z' }),
+      ),
+    ).toEqual(new Date('2026-01-01T00:15:00.000Z'))
+  })
+
+  it('returns undefined when metadata is absent', () => {
+    expect(extractDeadlineAt(buildUserMessage())).toBeUndefined()
+  })
+
+  it('returns undefined when deadline_at is not a string', () => {
+    expect(
+      extractDeadlineAt(buildUserMessage({ deadline_at: 123 })),
+    ).toBeUndefined()
+  })
+
+  it('returns undefined when deadline_at is not a valid date string', () => {
+    expect(
+      extractDeadlineAt(buildUserMessage({ deadline_at: 'not-a-date' })),
     ).toBeUndefined()
   })
 })
@@ -275,6 +302,61 @@ describe('TraderAgentExecutor', () => {
     expect(calls).toEqual([[{ execution_step_id: 'step-1', status: 'failed' }]])
   })
 
+  it('forwards an AbortSignal to runStrategyAgent when deadline_at is present in message metadata', async () => {
+    const calls: (AbortSignal | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (
+        _strategyId,
+        _purpose,
+        _taskId,
+        _userMessage,
+        _resumeSteps,
+        deadlineSignal,
+      ) => {
+        calls.push(deadlineSignal)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    // 15 分後 (本番の deadline と同程度先) を指定する。setTimeout の 32bit 上限
+    // を超える極端な未来日時にすると Node が警告を出すため避ける。
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+      deadline_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    })
+    const requestContext = new RequestContext(userMessage, 'task-20', 'ctx-20')
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual([expect.any(AbortSignal)])
+  })
+
+  it('forwards undefined to runStrategyAgent when deadline_at is absent from message metadata', async () => {
+    const calls: (AbortSignal | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (
+        _strategyId,
+        _purpose,
+        _taskId,
+        _userMessage,
+        _resumeSteps,
+        deadlineSignal,
+      ) => {
+        calls.push(deadlineSignal)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-21', 'ctx-21')
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual([undefined])
+  })
+
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({
       runStrategyAgent: (
@@ -283,6 +365,7 @@ describe('TraderAgentExecutor', () => {
         _taskId,
         _userMessage,
         _resumeSteps,
+        _deadlineSignal,
         onStepsChanged,
       ) => {
         onStepsChanged?.([
@@ -365,6 +448,7 @@ describe('TraderAgentExecutor', () => {
           _taskId,
           _userMessage,
           _resumeSteps,
+          _deadlineSignal,
           onStepsChanged,
         ) => {
           onStepsChanged?.(steps)
@@ -457,6 +541,7 @@ describe('TraderAgentExecutor', () => {
           _taskId,
           _userMessage,
           _resumeSteps,
+          _deadlineSignal,
           onStepsChanged,
         ) => {
           onStepsChanged?.([

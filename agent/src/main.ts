@@ -57,6 +57,7 @@ export const main = async (): Promise<void> => {
       taskId,
       userMessage,
       resumeSteps,
+      deadlineSignal,
       onStepsChanged,
     ) =>
       runStrategyAgent(
@@ -66,6 +67,7 @@ export const main = async (): Promise<void> => {
         taskId,
         userMessage,
         resumeSteps,
+        deadlineSignal,
         onStepsChanged,
       ),
     fetchStrategyCandidates: createStrategyCandidatesFetcher(env.MGMT_MCP_URL),

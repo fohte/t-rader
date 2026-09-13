@@ -94,6 +94,9 @@ const createPhaseAgent = (
       skills: filteredSkills,
     }),
     responseSchema: buildOutputJsonSchema(phase.output),
+    ...(context.deadlineSignal !== undefined
+      ? { deadlineSignal: context.deadlineSignal }
+      : {}),
   })
 }
 

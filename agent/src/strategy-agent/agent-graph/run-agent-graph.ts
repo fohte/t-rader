@@ -32,6 +32,11 @@ export type {
   RunAgentGraphDeps,
 } from '#strategy-agent/agent-graph/run-agent-graph/types'
 
+const DEADLINE_EXCEEDED_MESSAGE = 'deadline を超過したため実行を中断しました'
+
+const isDeadlineExceeded = (context: RunAgentGraphContext): boolean =>
+  context.deadlineSignal?.aborted === true
+
 const buildFailureResult = (
   phase: AgentGraphPhase,
   error: unknown,
@@ -141,6 +146,9 @@ const runForEachItems = async (
   const previousStepMatcher = createPreviousStepMatcher(previousStepsForPhase)
 
   for (let start = 0; start < items.length; start += chunkSize) {
+    if (isDeadlineExceeded(context)) {
+      return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+    }
     const chunk = items.slice(start, start + chunkSize)
     const chunkResults = await Promise.all(
       chunk.map((item, offset) => {
@@ -211,6 +219,10 @@ const runPhase = async (
   recorder: StepRecorder,
   requiredArrayFieldsByPhase: ReadonlyMap<string, ReadonlySet<string>>,
 ): Promise<Result<unknown, unknown>> => {
+  if (isDeadlineExceeded(context)) {
+    return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
+  }
+
   const requiredArrayFields =
     requiredArrayFieldsByPhase.get(phase.key) ?? new Set<string>()
 

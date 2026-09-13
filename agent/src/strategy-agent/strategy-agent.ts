@@ -30,6 +30,7 @@ import {
   strategyTaskStepJsonSchema,
 } from '#strategy-agent/agent-graph/step'
 import { createCallDurationMiddleware } from '#strategy-agent/call-duration-middleware'
+import { createDeadlineMiddleware } from '#strategy-agent/deadline-middleware'
 import {
   finalTurnMiddleware,
   MAX_MODEL_CALLS_PER_INVOKE,
@@ -82,6 +83,7 @@ export interface BuildStrategyAgentOptions {
   readonly model: BaseChatModel
   readonly tools: readonly DynamicStructuredTool[]
   readonly systemPrompt: string
+  readonly deadlineSignal?: AbortSignal
 }
 
 export interface StrategyAgentDeps {
@@ -125,6 +127,7 @@ const buildCompiledAgent = (
     tools: readonly DynamicStructuredTool[]
     systemPrompt: string
     responseFormat: ReturnType<typeof toolStrategy>
+    deadlineSignal?: AbortSignal
   },
 ): CompiledPhaseAgent => {
   const agent = createAgent({
@@ -157,6 +160,9 @@ const buildCompiledAgent = (
       // 実際の HTTP リクエストに一番近い位置で signal / callback を差し込む。
       createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
       createCallDurationMiddleware(llmCallTimeoutMs),
+      ...(options.deadlineSignal !== undefined
+        ? [createDeadlineMiddleware(options.deadlineSignal)]
+        : []),
     ],
   })
   return {
@@ -309,6 +315,7 @@ export const runStrategyAgent = async (
   taskId: string,
   userMessage: Message,
   resumeSteps: unknown[] | undefined,
+  deadlineSignal: AbortSignal | undefined,
   onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
 ): Promise<StrategyAgentResult> => {
   const previousSteps = parseResumeSteps(resumeSteps, strategyId)
@@ -377,6 +384,7 @@ export const runStrategyAgent = async (
                 originalPromptText: extractMessageText(userMessage),
                 ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
                 ...(previousSteps !== undefined ? { previousSteps } : {}),
+                ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
               }).then((result) => {
                 if (result.status === 'failed') {
                   console.error(
@@ -403,6 +411,7 @@ export const runStrategyAgent = async (
                     model: deps.createChatModel(agentConfig.model),
                     tools,
                     systemPrompt: buildSystemPrompt(agentConfig),
+                    ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
                   })
                   .invoke({
                     messages: [
