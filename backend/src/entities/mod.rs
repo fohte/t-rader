@@ -30,6 +30,8 @@ pub mod note_ref;
 pub mod rss_feed;
 pub mod sea_orm_active_enums;
 pub mod sector;
+pub mod short_ratio;
+pub mod short_sale_report;
 pub mod stock;
 pub mod strategy;
 pub mod strategy_interest;

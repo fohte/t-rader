@@ -27,6 +27,8 @@ pub use super::note_hypothesis::Entity as NoteHypothesis;
 pub use super::note_ref::Entity as NoteRef;
 pub use super::rss_feed::Entity as RssFeed;
 pub use super::sector::Entity as Sector;
+pub use super::short_ratio::Entity as ShortRatio;
+pub use super::short_sale_report::Entity as ShortSaleReport;
 pub use super::stock::Entity as Stock;
 pub use super::strategy::Entity as Strategy;
 pub use super::strategy_interest::Entity as StrategyInterest;
