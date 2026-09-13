@@ -15,7 +15,7 @@ use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-use response::{DailyBarsResponse, EquitiesMasterResponse, ErrorResponse};
+use response::{DailyBarsResponse, EquitiesMasterResponse, ErrorResponse, Paginated};
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
 const MAX_RETRIES: u32 = 3;
@@ -291,81 +291,102 @@ impl JQuantsClient {
         Ok(url)
     }
 
-    /// `/equities/bars/daily` を実際に呼び出す (契約範囲外エラーの自己修復はしない)
-    async fn fetch_daily_bars_once(
+    /// `path` に `params` を付けて `pagination_key` が尽きるまでページを追い、
+    /// 各ページの要素を 1 つの配列に連結して返す。暴走防止に `MAX_PAGES` で打ち切る。
+    async fn fetch_all_pages<R>(
         &self,
-        instrument_id: &str,
-        range: &DateRange,
-    ) -> Result<Vec<Bar>, DataProviderError> {
-        let mut all_bars = Vec::new();
+        path: &str,
+        params: &[(&str, &str)],
+    ) -> Result<Vec<R::Item>, DataProviderError>
+    where
+        R: serde::de::DeserializeOwned + Paginated,
+    {
+        let mut all_items = Vec::new();
         let mut pagination_key: Option<String> = None;
-        let from_str = range.from.format("%Y%m%d").to_string();
-        let to_str = range.to.format("%Y%m%d").to_string();
 
         for page in 0..MAX_PAGES {
-            let mut params = vec![
-                ("code", instrument_id),
-                ("from", &from_str),
-                ("to", &to_str),
-            ];
-
+            let mut page_params = params.to_vec();
             if let Some(key) = &pagination_key {
-                params.push(("pagination_key", key));
+                page_params.push(("pagination_key", key));
             }
 
-            let url = self.build_url("/equities/bars/daily", &params)?;
+            let url = self.build_url(path, &page_params)?;
 
-            tracing::debug!(%url, instrument_id, "J-Quants API から日足データを取得中");
+            tracing::debug!(%url, "J-Quants API からページを取得中");
 
             let response = self.get_with_retry(&url).await?;
-            let body: DailyBarsResponse = response
+            let body: R = response
                 .json()
                 .await
                 .map_err(|e| DataProviderError::Parse(e.to_string()))?;
 
-            for d in body.data {
-                // 調整後価格が null のレコードはスキップ (非取引日等)
-                let (Some(adj_open), Some(adj_high), Some(adj_low), Some(adj_close)) =
-                    (d.adj_open, d.adj_high, d.adj_low, d.adj_close)
-                else {
-                    continue;
-                };
+            let (items, next_key) = body.into_parts();
+            all_items.extend(items);
 
-                let date = NaiveDate::parse_from_str(&d.date, "%Y-%m-%d").map_err(|e| {
-                    DataProviderError::Parse(format!("invalid date '{}': {e}", d.date))
-                })?;
-
-                let timestamp = Utc.from_utc_datetime(
-                    &date
-                        .and_hms_opt(0, 0, 0)
-                        .ok_or_else(|| DataProviderError::Parse("invalid time".to_string()))?,
-                );
-
-                all_bars.push(Bar {
-                    // API レスポンスの Code (5 桁) ではなく、引数の instrument_id (4 桁) を使う
-                    instrument_id: instrument_id.to_string(),
-                    timeframe: Timeframe::Daily,
-                    timestamp,
-                    open: Self::to_decimal(adj_open)?,
-                    high: Self::to_decimal(adj_high)?,
-                    low: Self::to_decimal(adj_low)?,
-                    close: Self::to_decimal(adj_close)?,
-                    volume: d.adj_volume.map(|v| v.round() as i64).unwrap_or(0),
-                });
-            }
-
-            pagination_key = body.pagination_key;
+            pagination_key = next_key;
             if pagination_key.is_none() {
                 break;
             }
 
             if page == MAX_PAGES - 1 {
                 tracing::warn!(
-                    instrument_id,
+                    %url,
                     max_pages = MAX_PAGES,
                     "ページネーション上限に到達、取得を打ち切り"
                 );
             }
+        }
+
+        Ok(all_items)
+    }
+
+    /// `/equities/bars/daily` を実際に呼び出す (契約範囲外エラーの自己修復はしない)
+    async fn fetch_daily_bars_once(
+        &self,
+        instrument_id: &str,
+        range: &DateRange,
+    ) -> Result<Vec<Bar>, DataProviderError> {
+        let from_str = range.from.format("%Y%m%d").to_string();
+        let to_str = range.to.format("%Y%m%d").to_string();
+        let params = [
+            ("code", instrument_id),
+            ("from", &from_str),
+            ("to", &to_str),
+        ];
+
+        let raw_bars = self
+            .fetch_all_pages::<DailyBarsResponse>("/equities/bars/daily", &params)
+            .await?;
+
+        let mut all_bars = Vec::with_capacity(raw_bars.len());
+        for d in raw_bars {
+            // 調整後価格が null のレコードはスキップ (非取引日等)
+            let (Some(adj_open), Some(adj_high), Some(adj_low), Some(adj_close)) =
+                (d.adj_open, d.adj_high, d.adj_low, d.adj_close)
+            else {
+                continue;
+            };
+
+            let date = NaiveDate::parse_from_str(&d.date, "%Y-%m-%d")
+                .map_err(|e| DataProviderError::Parse(format!("invalid date '{}': {e}", d.date)))?;
+
+            let timestamp = Utc.from_utc_datetime(
+                &date
+                    .and_hms_opt(0, 0, 0)
+                    .ok_or_else(|| DataProviderError::Parse("invalid time".to_string()))?,
+            );
+
+            all_bars.push(Bar {
+                // API レスポンスの Code (5 桁) ではなく、引数の instrument_id (4 桁) を使う
+                instrument_id: instrument_id.to_string(),
+                timeframe: Timeframe::Daily,
+                timestamp,
+                open: Self::to_decimal(adj_open)?,
+                high: Self::to_decimal(adj_high)?,
+                low: Self::to_decimal(adj_low)?,
+                close: Self::to_decimal(adj_close)?,
+                volume: d.adj_volume.map(|v| v.round() as i64).unwrap_or(0),
+            });
         }
 
         all_bars.sort_by_key(|b| b.timestamp);
