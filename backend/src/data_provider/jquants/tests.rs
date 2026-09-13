@@ -302,6 +302,60 @@ mod error_handling {
     }
 }
 
+// === fetch_fin_summary_by_date ===
+
+mod fetch_fin_summary_by_date {
+    use super::*;
+    use crate::data_provider::jquants::FIN_SUMMARY_RATE_LIMIT_PER_MINUTE;
+    use crate::data_provider::jquants::JQuantsClient;
+    use crate::models::jquants_plan::JQuantsPlan;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_returns_raw_items_unchanged() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let item = json!({
+            "DiscDate": "2025-01-06",
+            "Code": "72030",
+            "DiscNo": "1",
+            "Sales": "1000000",
+            "OdP": "",
+        });
+        mock.fin_summary()
+            .date("2025-01-06")
+            .items(vec![item.clone()])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let items = client.fetch_fin_summary_by_date(date(2025, 1, 6)).await?;
+
+        assert_eq!(items, vec![item]);
+        Ok(())
+    }
+
+    /// `/fins/summary` は契約プランと別枠で 60 req/分の上限があるため、契約プランの上限
+    /// (Standard=120, Premium=500) がそれより高くても 60 に抑えられる必要がある
+    #[rstest]
+    #[case::free(JQuantsPlan::Free, 5)]
+    #[case::light(JQuantsPlan::Light, 60)]
+    #[case::standard(JQuantsPlan::Standard, 60)]
+    #[case::premium(JQuantsPlan::Premium, 60)]
+    fn test_rate_limit_never_exceeds_endpoint_specific_cap(
+        #[case] plan: JQuantsPlan,
+        #[case] expected: usize,
+    ) {
+        let client = JQuantsClient::new("test-api-key".to_string()).expect("client");
+        client.set_manual_plan(Some(plan));
+
+        let capped = client
+            .current_rate_limit()
+            .min(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE);
+
+        assert_eq!(capped, expected);
+    }
+}
+
 // === レートリミッター ===
 
 mod rate_limiter {

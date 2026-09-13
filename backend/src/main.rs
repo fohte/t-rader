@@ -229,6 +229,21 @@ async fn main() -> Result<(), AppError> {
         );
     }
 
+    // IBKR provider には財務情報に対応するデータが無いため対象外。
+    if let Some(provider) = &data_provider
+        && matches!(provider.as_ref(), DataProviderKind::JQuants(_))
+    {
+        let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::fin_summary_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::fin_summary_ingest::DEFAULT_INTERVAL.as_secs(),
+            "fin summary ingest poll task started",
+        );
+    }
+
     let llm_gateway_client = LlmGatewayClient::from_env();
 
     let state = AppState {

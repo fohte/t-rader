@@ -5,6 +5,7 @@ pub mod backfill;
 pub mod change_history;
 pub mod comment_anchor;
 pub mod custom_indicators;
+pub mod fin_summary_ingest;
 pub mod graph;
 pub mod hypotheses;
 pub mod hypothesis_proposals;
