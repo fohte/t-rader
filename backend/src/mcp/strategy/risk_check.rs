@@ -552,6 +552,7 @@ mod integration_tests {
             name: Set(symbol.to_string()),
             market: Set(None),
             sector_id: Set(sector_id.map(str::to_string)),
+            product_category: Set(None),
             created_at: NotSet,
             updated_at: NotSet,
         }

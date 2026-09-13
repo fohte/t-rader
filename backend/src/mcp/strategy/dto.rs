@@ -93,6 +93,34 @@ pub struct ReadPortfolioResult {
     pub strategy: StrategyPortfolioScopeDto,
 }
 
+/// 個々の約定 (account-wide、全戦略横断)
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct TradeDto {
+    pub trade_id: Uuid,
+    pub strategy_id: Uuid,
+    /// 約定日
+    pub date: NaiveDate,
+    pub symbol: String,
+    /// "buy" | "sell"
+    pub side: String,
+    pub qty: f64,
+    pub price: f64,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+pub struct ReadTradesParams {
+    /// この銘柄コードに一致する取引のみ返す。省略時は全銘柄
+    pub symbol: Option<String>,
+    /// この約定日以降 (inclusive) の取引のみ返す。省略時は下限なし
+    pub date_from: Option<NaiveDate>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ReadTradesResult {
+    pub trades: Vec<TradeDto>,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CheckBuyableQtyParams {
     /// 対象銘柄コード (例: "7203")
@@ -731,4 +759,28 @@ pub struct ReadShareholdingStructureResult {
     pub major_shareholders: Option<MajorShareholdersReportDto>,
     /// 直近の政策保有株式 (自社が保有する側、保有先ごと)。取り込み済みデータが無ければ null
     pub cross_shareholdings: Option<CrossShareholdingsReportDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReadMacroIndicatorParams {
+    /// indicator の id (例: "USDJPY", "VIX", "US10Y", "NIKKEI225")。search_refs で発見できる
+    pub indicator_id: String,
+    /// 取得開始日 (YYYY-MM-DD, inclusive)
+    pub from: NaiveDate,
+    /// 取得終了日 (YYYY-MM-DD, inclusive)
+    pub to: NaiveDate,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct IndicatorObservationDto {
+    pub date: NaiveDate,
+    /// FRED 由来の単位そのまま (例: USDJPY は 1 ドルあたりの円、US10Y は %)
+    pub value: f64,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ReadMacroIndicatorResult {
+    pub indicator_id: String,
+    /// 日付昇順。データが無ければ空配列
+    pub observations: Vec<IndicatorObservationDto>,
 }

@@ -20,11 +20,15 @@ use super::dto::{
     ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
     ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
-    ReadHypothesisParams, ReadMarginParams, ReadMarginResult, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
-    ReadShareholdingStructureResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
+    ReadHypothesisParams, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadMarginParams,
+    ReadMarginResult, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
+    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadTradesParams,
+    ReadTradesResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
     ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
     WriteNoteParams, WriteNoteResult,
+};
+use super::ref_terms::{
+    AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
@@ -275,6 +279,21 @@ impl StrategyServer {
         self.read_portfolio_inner(sid).await.map(Json)
     }
 
+    /// 個々の約定を account-wide (全戦略横断) で返す
+    #[tool(
+        name = "read_trades",
+        description = "Return individual trade executions (date, symbol, side, qty, price) across the entire account, using the same account-wide scope as read_portfolio (not limited to the connecting strategy; each trade carries its own strategy_id). Optionally filter by symbol and a lower bound on trade date. Use this to inspect the actual fills behind a past decision, newest first.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_trades(
+        &self,
+        Parameters(params): Parameters<ReadTradesParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadTradesResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_trades_inner(sid, params).await.map(Json)
+    }
+
     /// 指定銘柄をあと何株買えるかを、制約ごとの上限株数とともに返す
     #[tool(
         name = "check_buyable_qty",
@@ -305,6 +324,21 @@ impl StrategyServer {
         self.read_shareholding_structure_inner(sid, params)
             .await
             .map(Json)
+    }
+
+    /// マクロ指標 (ドル円, VIX, 米10年債利回り, 日経225 等) の日次観測値を期間指定で返す
+    #[tool(
+        name = "read_macro_indicator",
+        description = "Read daily observations (date + value) for a macro indicator between from and to (inclusive), oldest first. Discover available indicator_id values via search_refs (ref_kind=indicator), e.g. USDJPY, VIX, US10Y, NIKKEI225. Values are in the source's native units (USDJPY: yen per dollar, VIX: index level, US10Y: percent). Days with no observation (holidays, no update) are simply absent rather than interpolated; USDJPY in particular is batched weekly at the source and can lag by up to about a week, so the last item's date shows how fresh the latest available value is. Returns an empty list if the indicator_id is unknown or has no data in range.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_macro_indicator(
+        &self,
+        Parameters(params): Parameters<ReadMacroIndicatorParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadMacroIndicatorResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_macro_indicator_inner(sid, params).await.map(Json)
     }
 
     /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
@@ -352,6 +386,34 @@ impl StrategyServer {
     ) -> Result<Json<SearchRefsResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.search_refs_inner(sid, params).await.map(Json)
+    }
+
+    /// 参照型に別名 (表記揺れ・略称・旧社名等) を追加する
+    #[tool(
+        name = "add_ref_terms",
+        description = "Add aliases (alternate spellings, abbreviations, former names, etc.) to a first-class reference (stock/indicator/sector/theme). Idempotent: terms already registered for the same (ref_kind, ref_id) are silently skipped and excluded from the returned added list. Blank terms are ignored."
+    )]
+    async fn add_ref_terms(
+        &self,
+        Parameters(params): Parameters<AddRefTermsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<AddRefTermsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.add_ref_terms_inner(sid, params).await.map(Json)
+    }
+
+    /// 参照型から別名を削除する
+    #[tool(
+        name = "remove_ref_terms",
+        description = "Remove aliases from a first-class reference (stock/indicator/sector/theme). Idempotent: terms not currently registered are silently skipped and excluded from the returned removed list."
+    )]
+    async fn remove_ref_terms(
+        &self,
+        Parameters(params): Parameters<RemoveRefTermsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<RemoveRefTermsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.remove_ref_terms_inner(sid, params).await.map(Json)
     }
 
     /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す
@@ -479,6 +541,7 @@ mod tests {
             read_only_hints,
             [
                 ("add_interest", None),
+                ("add_ref_terms", None),
                 ("check_buyable_qty", Some(true)),
                 ("create_annotation", None),
                 ("eval_indicator", None),
@@ -493,11 +556,14 @@ mod tests {
                 ("read_comments", Some(true)),
                 ("read_fin_summary", Some(true)),
                 ("read_hypothesis", Some(true)),
+                ("read_macro_indicator", Some(true)),
                 ("read_margin", Some(true)),
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
                 ("read_shareholding_structure", Some(true)),
+                ("read_trades", Some(true)),
+                ("remove_ref_terms", None),
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),

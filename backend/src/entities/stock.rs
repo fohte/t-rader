@@ -18,6 +18,7 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
+    pub product_category: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

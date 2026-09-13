@@ -15,14 +15,17 @@ pub(super) mod fin_summary;
 pub(super) mod holdings;
 pub(super) mod hypotheses;
 pub(super) mod interests;
+pub(super) mod macro_indicator;
 pub(super) mod margin;
 pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod portfolio;
+pub(super) mod ref_terms;
 pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;
+pub(super) mod trades;
 pub(super) mod web_search;
 
 #[cfg(test)]
