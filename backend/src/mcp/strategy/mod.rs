@@ -28,6 +28,8 @@
 //!   (`ref_kind=stock`, `status=active`) を一覧する。保有状況によるフィルタは行わない
 //! - `eval_indicator`: DB の indicator (戦略 scope 優先、無ければ global) を exec Pod 上で評価する
 //! - `query_media`: 動画/音声 URL (YouTube 等) の内容を Gemini でテキスト化する
+//! - `search_web`: 問い合わせ文で web 検索し、テキストと出典 URL を返す。モデルは既定で
+//!   ChatGPT Plus 経由、`WEB_SEARCH_MODEL` で上書き可。戦略タスク実行単位で呼び出し回数に上限あり
 //! - `read_portfolio`: 口座全体 (全戦略横断) の保有銘柄と実現損益に加え、接続元戦略自身の
 //!   スライスを時価で返す
 //! - `check_buyable_qty`: 指定銘柄をあと何株買えるかを、セクター上限比率・現金の各制約ごとに
@@ -54,6 +56,7 @@
 //! - `hypotheses`: 仮説の読み取り / 変更提案 (`list_hypotheses_inner` / `read_hypothesis_inner` /
 //!   `propose_hypothesis_change_inner`)
 //! - `media`: 動画/音声 URL の Gemini によるテキスト化 (`query_media_inner`)
+//! - `web_search`: 問い合わせ文の web 検索、テキストと出典 URL の返却 (`search_web_inner`)
 //! - `news`: checkpoint を進めながら未読ニュースを返す (`read_news_inner`) /
 //!   news_item のキーワード・期間検索 (`search_news_inner`)
 //! - `portfolio`: 口座全体のポートフォリオ集計 (`read_portfolio_inner`)
@@ -82,6 +85,7 @@ pub(super) mod portfolio;
 pub(super) mod refs;
 pub(super) mod risk_check;
 mod tool_router;
+pub(super) mod web_search;
 
 #[cfg(test)]
 mod tests_common;
@@ -285,6 +289,21 @@ fn execution_step_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<Uuid> 
     execution_id_from_ctx(ctx).and_then(|id| execution_step_id_from_execution_id(&id))
 }
 
+/// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `a2a_task_id` 部分を取り出す。
+fn execution_task_id_from_execution_id(execution_id: &str) -> Option<&str> {
+    let (task_id, _) = execution_id.rsplit_once(':')?;
+    if task_id.is_empty() {
+        None
+    } else {
+        Some(task_id)
+    }
+}
+
+fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
+    let execution_id = execution_id_from_ctx(ctx)?;
+    execution_task_id_from_execution_id(&execution_id).map(str::to_string)
+}
+
 pub(super) async fn fetch_note_owned_by(
     db: &DatabaseConnection,
     note_id: Uuid,
@@ -447,5 +466,16 @@ mod tests {
         #[case] expected: Option<Uuid>,
     ) {
         assert_eq!(execution_step_id_from_execution_id(execution_id), expected);
+    }
+
+    #[rstest]
+    #[case::valid("a2a-task-1:550e8400-e29b-41d4-a716-446655440000", Some("a2a-task-1"))]
+    #[case::no_colon("no-colon-here", None)]
+    #[case::empty_task_id_part(":550e8400-e29b-41d4-a716-446655440000", None)]
+    fn execution_task_id_from_execution_id_cases(
+        #[case] execution_id: &str,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(execution_task_id_from_execution_id(execution_id), expected);
     }
 }
