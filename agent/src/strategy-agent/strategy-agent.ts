@@ -29,6 +29,7 @@ import {
   fromStepJson,
   strategyTaskStepJsonSchema,
 } from '#strategy-agent/agent-graph/step'
+import { createCallDurationMiddleware } from '#strategy-agent/call-duration-middleware'
 import {
   finalTurnMiddleware,
   MAX_MODEL_CALLS_PER_INVOKE,
@@ -114,6 +115,7 @@ export interface StrategyAgentConfig {
 // narrowing し直す。
 const buildCompiledAgent = (
   genAiProviderName: string,
+  llmCallTimeoutMs: number,
   options: {
     model: BaseChatModel
     tools: readonly DynamicStructuredTool[]
@@ -148,6 +150,8 @@ const buildCompiledAgent = (
       // finalTurnMiddleware より内側 (モデル呼び出しに最も近い位置) に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
+      // 実際の HTTP リクエストに一番近い位置で signal を差し込む。
+      createCallDurationMiddleware(llmCallTimeoutMs),
     ],
   })
   return {
@@ -177,9 +181,9 @@ const buildCompiledAgent = (
 }
 
 const createDefaultBuildAgent =
-  (genAiProviderName: string) =>
+  (genAiProviderName: string, llmCallTimeoutMs: number) =>
   (options: BuildStrategyAgentOptions): CompiledStrategyAgent => {
-    const compiled = buildCompiledAgent(genAiProviderName, {
+    const compiled = buildCompiledAgent(genAiProviderName, llmCallTimeoutMs, {
       ...options,
       responseFormat: toolStrategy(structuredResponseSchema),
     })
@@ -203,9 +207,9 @@ const createDefaultBuildAgent =
 // 受け付ける。CompiledPhaseAgent 自身の structuredResponse 型は既に erase
 // された Record<string, unknown> 形のため、narrowing は不要。
 const createDefaultBuildPhaseAgent =
-  (genAiProviderName: string) =>
+  (genAiProviderName: string, llmCallTimeoutMs: number) =>
   (options: BuildPhaseAgentOptions): CompiledPhaseAgent =>
-    buildCompiledAgent(genAiProviderName, {
+    buildCompiledAgent(genAiProviderName, llmCallTimeoutMs, {
       ...options,
       responseFormat: toolStrategy(options.responseSchema),
     })
@@ -256,8 +260,14 @@ export const createStrategyAgentDeps = (
           }
         : {}),
     }),
-  buildAgent: createDefaultBuildAgent(config.genAiProviderName),
-  buildPhaseAgent: createDefaultBuildPhaseAgent(config.genAiProviderName),
+  buildAgent: createDefaultBuildAgent(
+    config.genAiProviderName,
+    config.llmCallTimeoutMs,
+  ),
+  buildPhaseAgent: createDefaultBuildPhaseAgent(
+    config.genAiProviderName,
+    config.llmCallTimeoutMs,
+  ),
 })
 
 // パースに失敗した要素は無視し、正常にパースできたステップのみ再開情報として扱う。
