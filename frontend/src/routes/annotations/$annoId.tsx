@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { StatusPill } from '#components/strategy-home/status-pill'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
-import { resolveRef } from '#lib/strategy-mock'
+import { useResolveRef } from '#lib/refs'
 
 export const Route = createFileRoute('/annotations/$annoId')({
   component: AnnotationDetailPage,
@@ -79,6 +79,10 @@ function AnnotationDetailPage() {
 
   const [commentDraft, setCommentDraft] = useState('')
 
+  const stockRef = useResolveRef(`stock:${annotation?.target_symbol ?? ''}`, {
+    enabled: annotation != null,
+  })
+
   if (annoPending) {
     return (
       <div className="space-y-4">
@@ -99,8 +103,6 @@ function AnnotationDetailPage() {
       </div>
     )
   }
-
-  const stockRef = resolveRef(`stock:${annotation.target_symbol}`)
 
   function handleApprove() {
     if (approveMutation.isPending) return

@@ -1,4 +1,4 @@
-import { REF_KIND_JP, resolveRef } from '#lib/strategy-mock'
+import { REF_KIND_JP, useResolveRef } from '#lib/refs'
 
 interface RefChipProps {
   // `stock:7203` のような prefix 付き token (markdown 中の [[...]] と同形式)
@@ -14,7 +14,7 @@ export function RefChip({
   showKind = true,
   onOpen,
 }: RefChipProps) {
-  const ref = resolveRef(token)
+  const ref = useResolveRef(token)
   const kindJP = REF_KIND_JP[ref.kind]
 
   const baseInner =

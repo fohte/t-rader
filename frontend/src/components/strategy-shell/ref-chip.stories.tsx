@@ -1,10 +1,18 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { RefChip } from '#components/strategy-shell/ref-chip'
+import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
 
 const meta = {
   title: 'StrategyShell/RefChip',
   component: RefChip,
+  decorators: [
+    (Story) => (
+      <RefResolveQueryDecorator>
+        <Story />
+      </RefResolveQueryDecorator>
+    ),
+  ],
 } satisfies Meta<typeof RefChip>
 
 export default meta

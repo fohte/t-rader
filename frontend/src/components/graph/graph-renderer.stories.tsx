@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { GraphRenderer } from '#components/graph/graph-renderer'
 import type { GraphDef } from '#components/graph/types'
+import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
 
 const meta = {
   title: 'Graph/GraphRenderer',
@@ -13,9 +14,11 @@ const meta = {
   args: { fitViewDuration: 0, className: 'h-full' },
   decorators: [
     (Story) => (
-      <div style={{ width: '100%', height: '500px' }}>
-        <Story />
-      </div>
+      <RefResolveQueryDecorator>
+        <div style={{ width: '100%', height: '500px' }}>
+          <Story />
+        </div>
+      </RefResolveQueryDecorator>
     ),
   ],
 } satisfies Meta<typeof GraphRenderer>

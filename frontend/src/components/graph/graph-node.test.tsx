@@ -1,6 +1,8 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import type { Middleware } from 'openapi-fetch'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { buildNodeProps } from '#components/graph/flow-node-props.test-helper'
 import { GraphNodeView } from '#components/graph/graph-node'
@@ -9,10 +11,29 @@ import {
   type GraphRenderContextValue,
 } from '#components/graph/graph-render-context'
 import type { GraphNode, Layout } from '#components/graph/types'
+import { fetchClient } from '#lib/api/client'
 
 afterEach(cleanup)
 
-// GraphNodeView は内部で Handle (@xyflow/react) を使うため ReactFlowProvider が要る
+// RefChip が使う $api.useQuery('/api/refs/resolve') 用のモック。常に未解決を返す
+const refResolveMiddleware: Middleware = {
+  onRequest({ request }) {
+    if (!/\/api\/refs\/resolve(\?|$)/.test(request.url)) return undefined
+    return new Response('[]', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  },
+}
+beforeEach(() => {
+  fetchClient.use(refResolveMiddleware)
+})
+afterEach(() => {
+  fetchClient.eject(refResolveMiddleware)
+})
+
+// GraphNodeView は内部で Handle (@xyflow/react) を使うため ReactFlowProvider が、
+// RefChip が $api.useQuery を使うため QueryClientProvider が要る
 function renderNode(
   data: GraphNode,
   context: Partial<GraphRenderContextValue> = {},
@@ -23,12 +44,17 @@ function renderNode(
     citeNumbers: new Map(),
     ...context,
   }
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   return render(
-    <ReactFlowProvider>
-      <GraphRenderContextProvider value={value}>
-        <GraphNodeView {...buildNodeProps(data, 'graphNode')} />
-      </GraphRenderContextProvider>
-    </ReactFlowProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ReactFlowProvider>
+        <GraphRenderContextProvider value={value}>
+          <GraphNodeView {...buildNodeProps(data, 'graphNode')} />
+        </GraphRenderContextProvider>
+      </ReactFlowProvider>
+    </QueryClientProvider>,
   )
 }
 

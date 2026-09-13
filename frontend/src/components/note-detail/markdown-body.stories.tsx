@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
+import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
 
 const SAMPLE = `# SUMCO レンジ回帰の確度評価
 
@@ -43,9 +44,11 @@ const meta = {
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
-      <div className="max-w-3xl bg-background p-5 text-foreground">
-        <Story />
-      </div>
+      <RefResolveQueryDecorator>
+        <div className="max-w-3xl bg-background p-5 text-foreground">
+          <Story />
+        </div>
+      </RefResolveQueryDecorator>
     ),
   ],
 } satisfies Meta<typeof MarkdownBody>

@@ -119,6 +119,14 @@ function installMiddleware(initial: StrategyInterest[] = []) {
         }
       }
 
+      // RefChip が使う $api.useQuery('/api/refs/resolve') 用のモック。常に未解決を返す
+      if (/\/api\/refs\/resolve(\?|$)/.test(url)) {
+        return new Response('[]', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
       throw new Error(`unmocked request: ${method} ${url}`)
     },
   }

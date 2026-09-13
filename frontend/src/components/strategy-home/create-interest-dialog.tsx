@@ -13,7 +13,7 @@ import {
 } from '#components/ui/dialog'
 import { Input } from '#components/ui/input'
 import { $api } from '#lib/api/client'
-import { REF_KIND_JP, type RefKind } from '#lib/strategy-mock'
+import { REF_KIND_JP, type RefKind } from '#lib/refs'
 
 const REF_KINDS: RefKind[] = ['stock', 'indicator', 'sector', 'theme']
 const ROLES = ['seed', 'derived'] as const

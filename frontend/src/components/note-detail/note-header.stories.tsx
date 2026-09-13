@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { NoteHeader } from '#components/note-detail/note-header'
 import type { components } from '#lib/api/schema.gen'
+import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
 
 type Note = components['schemas']['Note']
 
@@ -27,9 +28,11 @@ const meta = {
   parameters: { layout: 'padded' },
   decorators: [
     (Story) => (
-      <div className="max-w-3xl bg-background p-5 text-foreground">
-        <Story />
-      </div>
+      <RefResolveQueryDecorator>
+        <div className="max-w-3xl bg-background p-5 text-foreground">
+          <Story />
+        </div>
+      </RefResolveQueryDecorator>
     ),
   ],
 } satisfies Meta<typeof NoteHeader>

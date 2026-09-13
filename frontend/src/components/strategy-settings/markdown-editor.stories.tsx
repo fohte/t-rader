@@ -1,10 +1,18 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
 import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
+import { RefResolveQueryDecorator } from '#storybook/ref-resolve-mock'
 
 const meta = {
   title: 'StrategySettings/MarkdownEditor',
   component: MarkdownEditor,
+  decorators: [
+    (Story) => (
+      <RefResolveQueryDecorator>
+        <Story />
+      </RefResolveQueryDecorator>
+    ),
+  ],
 } satisfies Meta<typeof MarkdownEditor>
 
 export default meta
