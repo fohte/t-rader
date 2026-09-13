@@ -1,10 +1,29 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { MarkdownEditor } from '#components/strategy-settings/markdown-editor'
+import { mockResolveRef } from '#storybook/mock-resolve-ref'
+
+const queryClient = new QueryClient()
+
+const NAMES: Record<string, string> = {
+  'stock:7203': 'トヨタ自動車',
+  'indicator:USDJPY': 'USD/JPY',
+}
 
 const meta = {
   title: 'StrategySettings/MarkdownEditor',
   component: MarkdownEditor,
+  parameters: {
+    msw: { handlers: [mockResolveRef(NAMES)] },
+  },
+  decorators: [
+    (Story) => (
+      <QueryClientProvider client={queryClient}>
+        <Story />
+      </QueryClientProvider>
+    ),
+  ],
 } satisfies Meta<typeof MarkdownEditor>
 
 export default meta
