@@ -8649,7 +8649,6 @@
           "agents_md",
           "skills",
           "model",
-          "small_model",
           "agent_graph"
         ],
         "properties": {
@@ -8671,9 +8670,6 @@
             "propertyNames": {
               "type": "string"
             }
-          },
-          "small_model": {
-            "type": "string"
           }
         }
       },

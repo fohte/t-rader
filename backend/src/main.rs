@@ -9,6 +9,7 @@ use backend::agent_client::{
 use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::DataProviderKind;
+use backend::data_provider::fred::FredClient;
 use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::NewsAggregator;
@@ -190,6 +191,26 @@ async fn main() -> Result<(), AppError> {
     );
     tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
+    match std::env::var("FRED_API_KEY") {
+        Ok(api_key) if !api_key.is_empty() => {
+            let fred_client = FredClient::new(api_key)?;
+            let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
+                db.clone(),
+                fred_client,
+                backend::services::fred_ingest::DEFAULT_INTERVAL,
+            );
+            tracing::info!(
+                interval_secs = backend::services::fred_ingest::DEFAULT_INTERVAL.as_secs(),
+                "FRED macro history ingest poll task started",
+            );
+        }
+        _ => {
+            tracing::warn!(
+                "FRED_API_KEY が未設定のため、FRED マクロ指標履歴の取り込みを起動しません"
+            );
+        }
+    }
+
     // cron trigger を schedule どおりに発火させる worker を起動する。
     // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
     tracing::info!(
@@ -214,6 +235,27 @@ async fn main() -> Result<(), AppError> {
         tracing::info!(
             interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
             "sector backfill poll task started",
+        );
+
+        let _short_sale_report_ingest_poll =
+            backend::services::short_sale_report_ingest::spawn_poll(
+                db.clone(),
+                provider.clone(),
+                backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
+            );
+        tracing::info!(
+            interval_secs = backend::services::short_sale_report_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short sale report ingest poll task started",
+        );
+
+        let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::short_ratio_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short ratio ingest poll task started",
         );
 
         let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(

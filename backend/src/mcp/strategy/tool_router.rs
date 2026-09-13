@@ -21,9 +21,10 @@ use super::dto::{
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
     ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
     ReadHypothesisParams, ReadMarginParams, ReadMarginResult, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReplyCommentParams, ReplyCommentResult,
-    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
-    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
+    ReadShareholdingStructureResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
+    ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
+    WriteNoteParams, WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
@@ -289,6 +290,23 @@ impl StrategyServer {
         self.check_buyable_qty_inner(sid, params).await.map(Json)
     }
 
+    /// 銘柄の保有構造 (大量保有報告書・大株主状況・政策保有株式) を返す
+    #[tool(
+        name = "read_shareholding_structure",
+        description = "Return the ownership structure of a stock (given as a 4-digit symbol) from ingested EDINET filings: large-volume shareholding reports and amendments for the stock (large_volume_reports, newest first, each with document_type, change_reason for amendments, total_shares_ratio/total_shares_ratio_last, and per-holder holding_purpose/shares_ratio/shares_ratio_last — all ratios are fractions, e.g. 0.1 = 10%); the most recent major-shareholders filing's top holders (major_shareholders, ranked); and the company's own most recent cross-shareholding (policy holdings) disclosure, per counterparty (cross_shareholdings, with current/previous shares and book value plus mutual_holding indicating whether the counterparty reciprocally holds this company's stock). Matches EDINET's 5-digit code by its first 4 characters against symbol, since the exact correspondence isn't documented by J-Quants. major_shareholders/cross_shareholdings are null and large_volume_reports is empty when no matching filing has been ingested.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_shareholding_structure(
+        &self,
+        Parameters(params): Parameters<ReadShareholdingStructureParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadShareholdingStructureResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_shareholding_structure_inner(sid, params)
+            .await
+            .map(Json)
+    }
+
     /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
     #[tool(
         name = "read_news",
@@ -479,6 +497,7 @@ mod tests {
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
+                ("read_shareholding_structure", Some(true)),
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),

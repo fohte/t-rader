@@ -665,3 +665,136 @@ pub struct ProposeHypothesisChangeResult {
     pub proposal_id: Uuid,
     pub status: String,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReadShareholdingStructureParams {
+    /// 4桁の銘柄コード (例: "7203")
+    pub symbol: String,
+    /// large_volume_reports の返却件数上限
+    pub limit: Option<u32>,
+}
+
+/// 大量保有報告書 / 変更報告書の書類種別 (EDINET `LargeHldgTypeCode`)
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LargeVolumeDocumentType {
+    LargeVolumeReport,
+    Amendment,
+    AmendmentRapidTransfer,
+    LargeVolumeReportSpecial,
+    AmendmentSpecial,
+    Unknown,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct LargeVolumeHolderDto {
+    pub holder_name: String,
+    pub holding_purpose: Option<String>,
+    pub shares_held: Option<i64>,
+    /// 保有割合 (小数。0.1 = 10%)
+    pub shares_ratio: Option<f64>,
+    /// 直前の報告における保有割合 (変更報告書のみ)
+    pub shares_ratio_last: Option<f64>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct LargeVolumeReportDto {
+    pub doc_id: String,
+    pub submitted_on: NaiveDate,
+    pub document_type: LargeVolumeDocumentType,
+    /// 変更事由 (変更報告書のみ)
+    pub change_reason: Option<String>,
+    /// 保有割合合計 (小数。0.1 = 10%)
+    pub total_shares_ratio: Option<f64>,
+    /// 直前の報告における保有割合合計 (変更報告書のみ)
+    pub total_shares_ratio_last: Option<f64>,
+    pub holders: Vec<LargeVolumeHolderDto>,
+}
+
+/// 大株主状況の書類種別 (EDINET `DocTypeCode`)
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MajorShareholdersDocumentType {
+    AnnualReport,
+    QuarterlyReport,
+    SemiAnnualReport,
+    Unknown,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct MajorShareholderDto {
+    /// 順位。通常 1-10 位だが件数は書類ごとに異なる
+    pub rank: Option<i32>,
+    pub holder_name: String,
+    pub shares_held: Option<i64>,
+    /// 発行済株式に対する所有割合 (小数。0.1 = 10%)
+    pub shares_ratio: Option<f64>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct MajorShareholdersReportDto {
+    pub doc_id: String,
+    pub submitted_on: NaiveDate,
+    /// 事業年度末
+    pub period_end: Option<NaiveDate>,
+    pub document_type: MajorShareholdersDocumentType,
+    /// 順位昇順
+    pub holders: Vec<MajorShareholderDto>,
+}
+
+/// 政策保有株式の種別 (EDINET の `Spec`/`Deem` 配列の別)
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CrossShareholdingCategory {
+    /// 特定投資株式
+    Specified,
+    /// みなし保有株式
+    Deemed,
+}
+
+/// 保有先が当社株式を保有しているか (EDINET `IsrHoldsCode`)
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MutualHolding {
+    Held,
+    NotHeld,
+    Unknown,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct CrossShareholdingDto {
+    /// 保有先の会社名
+    pub issuer_name: String,
+    /// 保有先の銘柄コード (5桁、J-Quants による名寄せ済み)。判別できない場合は null
+    pub issuer_code: Option<String>,
+    pub category: CrossShareholdingCategory,
+    /// 当事業年度末の保有株式数
+    pub current_shares: Option<i64>,
+    /// 前事業年度末の保有株式数
+    pub previous_shares: Option<i64>,
+    /// 当事業年度末の貸借対照表計上額 (円)
+    pub current_book_value: Option<i64>,
+    /// 前事業年度末の貸借対照表計上額 (円)
+    pub previous_book_value: Option<i64>,
+    pub mutual_holding: MutualHolding,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct CrossShareholdingsReportDto {
+    pub doc_id: String,
+    pub submitted_on: NaiveDate,
+    /// 事業年度末
+    pub period_end: Option<NaiveDate>,
+    pub holdings: Vec<CrossShareholdingDto>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ReadShareholdingStructureResult {
+    pub symbol: String,
+    /// 大量保有報告書 + 変更報告書。新しい順。取り込み済みデータが無ければ空配列
+    pub large_volume_reports: Vec<LargeVolumeReportDto>,
+    /// 直近の大株主状況。取り込み済みデータが無ければ null
+    pub major_shareholders: Option<MajorShareholdersReportDto>,
+    /// 直近の政策保有株式 (自社が保有する側、保有先ごと)。取り込み済みデータが無ければ null
+    pub cross_shareholdings: Option<CrossShareholdingsReportDto>,
+}
