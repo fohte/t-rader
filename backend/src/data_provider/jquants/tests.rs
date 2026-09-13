@@ -23,10 +23,10 @@ fn default_range() -> DateRange {
     }
 }
 
-fn sample_bar(date_str: &'static str, close: f64) -> MockBar {
+fn sample_bar(date_str: &str, close: f64) -> MockBar {
     MockBar {
-        date: date_str,
-        code: "86970",
+        date: date_str.to_string(),
+        code: "86970".to_string(),
         adj_open: Some(100.0),
         adj_high: Some(110.0),
         adj_low: Some(95.0),
@@ -68,8 +68,8 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[case::all_null(MockBar {
-        date: "2025-01-07",
-        code: "86970",
+        date: "2025-01-07".to_string(),
+        code: "86970".to_string(),
         adj_open: None,
         adj_high: None,
         adj_low: None,
@@ -77,8 +77,8 @@ mod fetch_daily_bars {
         adj_volume: None,
     })]
     #[case::partial_null(MockBar {
-        date: "2025-01-07",
-        code: "86970",
+        date: "2025-01-07".to_string(),
+        code: "86970".to_string(),
         adj_open: None,
         adj_high: Some(110.0),
         adj_low: Some(95.0),
@@ -169,6 +169,112 @@ mod fetch_daily_bars {
         assert_eq!(bars.len(), 2);
         assert_eq!(bars[0].close, dec(100.0));
         assert_eq!(bars[1].close, dec(102.0));
+        Ok(())
+    }
+}
+
+mod fetch_daily_bars_by_date {
+    use super::*;
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_normalizes_ordinary_stock_code_to_4_digits() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.daily_bars_by_date()
+            .date("2025-01-06")
+            .bars(vec![MockBar {
+                code: "86970".to_string(),
+                ..sample_bar("2025-01-06", 105.0)
+            }])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let bars = client.fetch_daily_bars_by_date(date(2025, 1, 6)).await?;
+
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].instrument_id, "8697");
+        assert_eq!(bars[0].close, dec(105.0));
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_keeps_non_ordinary_stock_code_as_is() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.daily_bars_by_date()
+            .date("2025-01-06")
+            .bars(vec![MockBar {
+                date: "2025-01-06".to_string(),
+                code: "86971".to_string(),
+                adj_open: Some(100.0),
+                adj_high: Some(110.0),
+                adj_low: Some(95.0),
+                adj_close: Some(105.0),
+                adj_volume: Some(1000.0),
+            }])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let bars = client.fetch_daily_bars_by_date(date(2025, 1, 6)).await?;
+
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].instrument_id, "86971");
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_returns_multiple_instruments_for_the_date() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.daily_bars_by_date()
+            .date("2025-01-06")
+            .bars(vec![
+                MockBar {
+                    code: "72030".to_string(),
+                    ..sample_bar("2025-01-06", 100.0)
+                },
+                MockBar {
+                    code: "67580".to_string(),
+                    ..sample_bar("2025-01-06", 200.0)
+                },
+            ])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let mut bars = client.fetch_daily_bars_by_date(date(2025, 1, 6)).await?;
+        bars.sort_by(|a, b| a.instrument_id.cmp(&b.instrument_id));
+
+        assert_eq!(bars.len(), 2);
+        assert_eq!(bars[0].instrument_id, "6758");
+        assert_eq!(bars[1].instrument_id, "7203");
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_skips_bars_with_null_prices() -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        mock.daily_bars_by_date()
+            .date("2025-01-06")
+            .bars(vec![MockBar {
+                date: "2025-01-06".to_string(),
+                code: "72030".to_string(),
+                adj_open: None,
+                adj_high: None,
+                adj_low: None,
+                adj_close: None,
+                adj_volume: None,
+            }])
+            .ok()
+            .await;
+
+        let client = mock.client()?;
+        let bars = client.fetch_daily_bars_by_date(date(2025, 1, 6)).await?;
+
+        assert!(bars.is_empty());
         Ok(())
     }
 }

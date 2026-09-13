@@ -287,6 +287,16 @@ async fn main() -> Result<(), AppError> {
             interval_secs = backend::services::edinet_holdings::DEFAULT_INTERVAL.as_secs(),
             "EDINET holdings ingest poll task started",
         );
+
+        let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::daily_bars_ingest::DEFAULT_INTERVAL.as_secs(),
+            "daily bars ingest poll task started",
+        );
     }
 
     let llm_gateway_client = LlmGatewayClient::from_env();
