@@ -36,6 +36,14 @@ impl JQuantsMockServer {
         }
     }
 
+    pub fn daily_bars_by_date(&self) -> MockDailyBarsByDateBuilder<'_> {
+        MockDailyBarsByDateBuilder {
+            server: &self.server,
+            date: "2025-01-06",
+            bars: Vec::new(),
+        }
+    }
+
     pub fn fin_summary(&self) -> MockFinSummaryBuilder<'_> {
         MockFinSummaryBuilder {
             server: &self.server,
@@ -51,6 +59,7 @@ impl JQuantsMockServer {
             company_name: "テスト株式会社",
             market_name: "プライム",
             sector_name: Some("情報通信"),
+            product_category: Some("011"),
         }
     }
 
@@ -112,8 +121,8 @@ impl JQuantsMockServer {
 
 /// テスト用の日足データ
 pub(crate) struct MockBar {
-    pub date: &'static str,
-    pub code: &'static str,
+    pub date: String,
+    pub code: String,
     pub adj_open: Option<f64>,
     pub adj_high: Option<f64>,
     pub adj_low: Option<f64>,
@@ -197,6 +206,53 @@ impl<'a> MockDailyBarsBuilder<'a> {
         }
 
         mock.mount(self.server).await;
+    }
+}
+
+pub(crate) struct MockDailyBarsByDateBuilder<'a> {
+    server: &'a MockServer,
+    date: &'a str,
+    bars: Vec<MockBar>,
+}
+
+impl<'a> MockDailyBarsByDateBuilder<'a> {
+    pub fn date(mut self, date: &'a str) -> Self {
+        self.date = date;
+        self
+    }
+
+    pub fn bars(mut self, bars: Vec<MockBar>) -> Self {
+        self.bars = bars;
+        self
+    }
+
+    pub async fn ok(self) {
+        let data: Vec<serde_json::Value> = self
+            .bars
+            .iter()
+            .map(|b| {
+                json!({
+                    "Date": b.date,
+                    "Code": b.code,
+                    "AdjO": b.adj_open,
+                    "AdjH": b.adj_high,
+                    "AdjL": b.adj_low,
+                    "AdjC": b.adj_close,
+                    "AdjVo": b.adj_volume,
+                })
+            })
+            .collect();
+
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("date", self.date))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": data,
+                "pagination_key": Option::<&str>::None,
+            })))
+            .mount(self.server)
+            .await;
     }
 }
 
@@ -301,6 +357,7 @@ pub(crate) struct MockInstrumentBuilder<'a> {
     company_name: &'a str,
     market_name: &'a str,
     sector_name: Option<&'a str>,
+    product_category: Option<&'a str>,
 }
 
 impl<'a> MockInstrumentBuilder<'a> {
@@ -319,6 +376,11 @@ impl<'a> MockInstrumentBuilder<'a> {
         self
     }
 
+    pub fn product_category(mut self, product_category: Option<&'a str>) -> Self {
+        self.product_category = product_category;
+        self
+    }
+
     pub async fn ok(self) {
         Mock::given(method("GET"))
             .and(path("/equities/master"))
@@ -330,6 +392,7 @@ impl<'a> MockInstrumentBuilder<'a> {
                     "CoName": self.company_name,
                     "MktNm": self.market_name,
                     "S33Nm": self.sector_name,
+                    "ProdCat": self.product_category,
                 }],
             })))
             .mount(self.server)

@@ -36,11 +36,6 @@ fn margin_alert_start_date() -> NaiveDate {
 /// 拾われない (新しい PubDate 側は次サイクル以降の forward 差分で取得される)。
 const REFETCH_LOOKBACK_DAYS: i64 = 30;
 
-/// 1 サイクルで取得を試みる日数の上限。JQuantsClient の RateLimiter はウォッチリスト
-/// 追加時の日足取得や sector_backfill と共有のため、大規模バックフィル時に専有しすぎ
-/// ないよう抑える。上限に達した分は次サイクルに繰り越される。
-const MAX_REQUESTS_PER_CYCLE: usize = 30;
-
 /// 取得開始日を決定する。テーブルが空なら `earliest` から、既にデータがあれば
 /// 最新日付から `REFETCH_LOOKBACK_DAYS` 日さかのぼった日 (ただし `earliest` 未満にはしない) から。
 fn resolve_start_date(latest_stored: Option<NaiveDate>, earliest: NaiveDate) -> NaiveDate {
@@ -58,8 +53,7 @@ pub struct IngestStats {
 }
 
 /// `start` から `end` (両端含む) まで日付を 1 日ずつ進め、`fetch`/`upsert` で取得・保存する。
-/// 1 日分の取得・保存に失敗しても残りの日付は続行する。`MAX_REQUESTS_PER_CYCLE` に達したら
-/// 打ち切り、残りは次サイクルに持ち越す。
+/// 1 日分の取得・保存に失敗しても残りの日付は続行する。
 async fn ingest_daily<'c, T, F, FetchFut, G, UpsertFut>(
     db: &'c DatabaseConnection,
     client: &'c JQuantsClient,
@@ -77,9 +71,7 @@ where
 {
     let mut stats = IngestStats::default();
     let mut date = start;
-    let mut requests = 0usize;
-    while date <= end && requests < MAX_REQUESTS_PER_CYCLE {
-        requests += 1;
+    while date <= end {
         match fetch(client, date).await {
             Ok(records) => {
                 let count = records.len();
@@ -187,7 +179,8 @@ mod tests {
     use sqlx::PgPool;
 
     use super::*;
-    use crate::data_provider::jquants::mock::JQuantsMockServer;
+    use crate::data_provider::jquants::mock::{JQuantsMockServer, MockMarginInterestRow};
+    use crate::models::jquants_plan::JQuantsPlan;
     use crate::testing::create_test_db;
 
     #[rstest]
@@ -228,6 +221,65 @@ mod tests {
         assert_eq!(
             (interest_stats, alert_stats),
             (IngestStats::default(), IngestStats::default())
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn ingest_daily_fetches_past_the_former_per_cycle_cap(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let mock = JQuantsMockServer::start().await;
+        let client = mock.client().expect("client");
+        client.set_manual_plan(Some(JQuantsPlan::Standard));
+
+        let start = NaiveDate::from_ymd_opt(2024, 1, 1).expect("date");
+        let end = NaiveDate::from_ymd_opt(2024, 2, 10).expect("date"); // start から 40 日
+        let target = NaiveDate::from_ymd_opt(2024, 2, 5).expect("date"); // start から 35 日 (旧上限 30 を超える)
+
+        mock.margin_interest()
+            .date("2024-02-05")
+            .rows(vec![MockMarginInterestRow {
+                date: "2024-02-05",
+                code: "86970",
+                iss_type: "1",
+                shrt_vol: 100.0,
+                long_vol: 200.0,
+                shrt_neg_vol: 10.0,
+                long_neg_vol: 20.0,
+                shrt_std_vol: 90.0,
+                long_std_vol: 180.0,
+                shrt_val: Some(1000.0),
+                long_val: Some(2000.0),
+                shrt_neg_val: Some(100.0),
+                long_neg_val: Some(200.0),
+                shrt_std_val: Some(900.0),
+                long_std_val: Some(1800.0),
+            }])
+            .ok()
+            .await;
+
+        let stats = ingest_daily(
+            &db,
+            &client,
+            start,
+            end,
+            "テスト",
+            JQuantsClient::fetch_margin_interest,
+            margin_interest::upsert_margin_interest,
+        )
+        .await;
+
+        assert_eq!(
+            stats,
+            IngestStats {
+                days_fetched: 1,
+                rows_upserted: 1,
+            }
+        );
+        assert_eq!(
+            margin_interest::find_latest_margin_interest_date(&db)
+                .await
+                .expect("query ok"),
+            Some(target)
         );
     }
 }

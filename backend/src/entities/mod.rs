@@ -18,6 +18,7 @@ pub mod hypothesis_proposal;
 pub mod indicator;
 pub mod indicator_observation;
 pub mod instruments;
+pub mod jquants_daily_bars_ingested_date;
 pub mod jquants_fin_summary;
 pub mod jquants_plan_setting;
 pub mod margin_alert;
