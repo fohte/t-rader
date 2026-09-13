@@ -8,6 +8,7 @@ use sea_orm::{
     ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
 use tokio::task::JoinHandle;
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use crate::data_provider::DataProviderError;
@@ -234,20 +235,51 @@ fn push_unique(
     });
 }
 
-/// news_item の title + body_snippet を term と substring match して link を作る
+/// 全角/半角・大文字小文字の表記揺れを吸収する正規化。lowercase だけでは
+/// 全角/半角の幅統一が行われないため、NFKC を先に適用して統一する
+fn normalize(s: &str) -> String {
+    s.nfkc().collect::<String>().to_lowercase()
+}
+
+/// ASCII だけの語は lowercase 化で誤検知が増える (`AI` が `explained` に当たる、
+/// 証券コードが無関係な数字列に当たる) ため、前後が英数字でないことを確認する。
+/// 非 ASCII を含む語 (`AI技術` 等) はこれまで通り単純な部分一致で当てる
+fn term_matches(haystack: &str, term: &str) -> bool {
+    if !term.is_ascii() {
+        return haystack.contains(term);
+    }
+    let bytes = haystack.as_bytes();
+    let mut start = 0;
+    while let Some(offset) = haystack[start..].find(term) {
+        let pos = start + offset;
+        let end = pos + term.len();
+        let before_ok = pos == 0 || !bytes[pos - 1].is_ascii_alphanumeric();
+        let after_ok = end == bytes.len() || !bytes[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        start = pos + 1;
+    }
+    false
+}
+
+/// news_item の title + body_snippet を term と正規化した上で match して link を作る
 fn match_links(
     news_rows: &[news_item::Model],
     terms: &[InterestTerm],
 ) -> Vec<news_strategy_link::ActiveModel> {
     let now = Utc::now().into();
+    // matched_term には元の表記を残すため、正規化した語は比較用に別途持つ
+    let normalized_terms: Vec<(String, &InterestTerm)> =
+        terms.iter().map(|t| (normalize(&t.term), t)).collect();
     let mut out: Vec<news_strategy_link::ActiveModel> = Vec::new();
     for news in news_rows {
         // (strategy_id, ref_kind, ref_id) 単位で重複登録を避ける
         let mut seen: std::collections::HashSet<(Uuid, String, String)> =
             std::collections::HashSet::new();
-        let haystack = build_haystack(news);
-        for term in terms {
-            if !haystack.contains(&term.term) {
+        let haystack = normalize(&build_haystack(news));
+        for (normalized_term, term) in &normalized_terms {
+            if !term_matches(&haystack, normalized_term) {
                 continue;
             }
             let key = (term.strategy_id, term.ref_kind.clone(), term.ref_id.clone());
@@ -392,6 +424,22 @@ mod tests {
         l
     }
 
+    fn link_keys(
+        links: Vec<news_strategy_link::ActiveModel>,
+    ) -> Vec<(Uuid, String, String, String)> {
+        links
+            .into_iter()
+            .map(|a| {
+                (
+                    a.strategy_id.unwrap(),
+                    a.ref_kind.unwrap(),
+                    a.ref_id.unwrap(),
+                    a.matched_term.unwrap(),
+                )
+            })
+            .collect()
+    }
+
     #[rstest]
     fn expand_terms_includes_name_then_id() {
         let interests = vec![interest(STRATEGY_A, "stock", "7203")];
@@ -438,20 +486,9 @@ mod tests {
                 term: "トヨタ自動車".into(),
             },
         ];
-        let active = match_links(&news, &terms);
         // strategy A は (7203 文字列で false / トヨタ で true) でも 1 link、
         // strategy B も トヨタ で 1 link
-        let mut keys: Vec<(Uuid, String, String, String)> = active
-            .into_iter()
-            .map(|a| {
-                (
-                    a.strategy_id.unwrap(),
-                    a.ref_kind.unwrap(),
-                    a.ref_id.unwrap(),
-                    a.matched_term.unwrap(),
-                )
-            })
-            .collect();
+        let mut keys = link_keys(match_links(&news, &terms));
         keys.sort();
         assert_eq!(
             keys,
@@ -493,17 +530,7 @@ mod tests {
             ref_id: "semiconductor".into(),
             term: "半導体".into(),
         }];
-        let keys: Vec<(Uuid, String, String, String)> = match_links(&news, &terms)
-            .into_iter()
-            .map(|a| {
-                (
-                    a.strategy_id.unwrap(),
-                    a.ref_kind.unwrap(),
-                    a.ref_id.unwrap(),
-                    a.matched_term.unwrap(),
-                )
-            })
-            .collect();
+        let keys = link_keys(match_links(&news, &terms));
         assert_eq!(
             keys,
             vec![(
@@ -527,5 +554,43 @@ mod tests {
         let interests = vec![global_interest("indicator", "N225")];
         let lookup = RefNameLookup::default();
         assert_eq!(expand_interest_terms(&interests, &lookup), vec![]);
+    }
+
+    #[rstest]
+    #[case::zenkaku_hankaku_normalizes("USDJPY", "ドル円 ＵＳＤＪＰＹ 急伸", true)]
+    #[case::case_insensitive("USDJPY", "usdjpy 急伸", true)]
+    #[case::ascii_term_rejects_substring_of_larger_word("AI", "well explained", false)]
+    #[case::ascii_digit_term_rejects_substring_of_larger_number(
+        "1234",
+        "コード 12345 を参照",
+        false
+    )]
+    #[case::non_ascii_term_matches_without_boundary_check("AI技術", "AI技術速報", true)]
+    fn term_matches_cases(#[case] term: &str, #[case] haystack: &str, #[case] expected: bool) {
+        assert_eq!(
+            term_matches(&normalize(haystack), &normalize(term)),
+            expected,
+        );
+    }
+
+    #[rstest]
+    fn match_links_keeps_original_term_casing_in_matched_term() {
+        let news = vec![fake_news(4, "為替市場", Some("ＵＳＤＪＰＹ が急伸"))];
+        let terms = vec![InterestTerm {
+            strategy_id: STRATEGY_A,
+            ref_kind: "indicator".into(),
+            ref_id: "USDJPY".into(),
+            term: "USDJPY".into(),
+        }];
+        let keys = link_keys(match_links(&news, &terms));
+        assert_eq!(
+            keys,
+            vec![(
+                STRATEGY_A,
+                "indicator".into(),
+                "USDJPY".into(),
+                "USDJPY".into(),
+            )],
+        );
     }
 }

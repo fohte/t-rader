@@ -39,8 +39,11 @@ mod m20260912_105636_add_news_strategy_link_seq;
 mod m20260912_130617_add_hypothesis_proposal;
 mod m20260912_161307_add_jquants_plan_setting;
 mod m20260912_162403_add_mcp_tool_call_count;
+mod m20260913_072329_add_margin_tables;
 mod m20260913_072507_add_edinet_holdings;
 mod m20260913_072524_add_jquants_fin_summary;
+mod m20260913_082645_add_custom_indicator_to_change_history_target_kind;
+mod m20260913_091652_add_jquants_fin_summary_code_prefix_index;
 mod m20260913_122949_add_jquants_daily_bars_ingested_date;
 
 pub struct Migrator;
@@ -87,8 +90,13 @@ impl MigratorTrait for Migrator {
             Box::new(m20260912_130617_add_hypothesis_proposal::Migration),
             Box::new(m20260912_161307_add_jquants_plan_setting::Migration),
             Box::new(m20260912_162403_add_mcp_tool_call_count::Migration),
+            Box::new(m20260913_072329_add_margin_tables::Migration),
             Box::new(m20260913_072507_add_edinet_holdings::Migration),
             Box::new(m20260913_072524_add_jquants_fin_summary::Migration),
+            Box::new(
+                m20260913_082645_add_custom_indicator_to_change_history_target_kind::Migration,
+            ),
+            Box::new(m20260913_091652_add_jquants_fin_summary_code_prefix_index::Migration),
             Box::new(m20260913_122949_add_jquants_daily_bars_ingested_date::Migration),
         ]
     }

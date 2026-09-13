@@ -475,6 +475,85 @@ pub struct SearchNewsResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReadFinSummaryParams {
+    /// 対象銘柄コード (4桁、例: "7203")
+    pub symbol: String,
+    pub limit: Option<u32>,
+}
+
+/// `jquants_fin_summary.raw` の 1 開示分を意味の分かるフィールド名に変換したもの。
+/// 記載の無い項目 (raw 側では空文字 `""`) は null。IFRS/米国基準では ordinary_profit
+/// (経常利益) が概念自体存在せず null になる。
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct FinSummaryDto {
+    /// 開示日
+    pub disc_date: NaiveDate,
+    /// 開示書類種別 (例: "FYFinancialStatements_Consolidated_JP", "EarnForecastRevision")
+    pub doc_type: Option<String>,
+    /// 当会計期間の種類 (1Q/2Q/3Q/4Q/5Q/FY)
+    pub current_period_type: Option<String>,
+    pub current_period_start: Option<NaiveDate>,
+    pub current_period_end: Option<NaiveDate>,
+    pub current_fiscal_year_start: Option<NaiveDate>,
+    pub current_fiscal_year_end: Option<NaiveDate>,
+    /// 売上高 (実績)
+    pub sales: Option<f64>,
+    /// 営業利益 (実績)
+    pub operating_profit: Option<f64>,
+    /// 経常利益 (実績)。IFRS/米国基準では null
+    pub ordinary_profit: Option<f64>,
+    /// 当期純利益 (実績)
+    pub net_profit: Option<f64>,
+    /// 1 株当たり当期純利益 (実績)
+    pub eps: Option<f64>,
+    /// 1 株当たり純資産 (実績)
+    pub bps: Option<f64>,
+    /// 総資産 (実績)
+    pub total_assets: Option<f64>,
+    /// 純資産 (実績)
+    pub equity: Option<f64>,
+    /// 自己資本比率 (実績)
+    pub equity_to_asset_ratio: Option<f64>,
+    /// 自己資本利益率 (実績)
+    pub roe: Option<f64>,
+    pub cf_operating: Option<f64>,
+    pub cf_investing: Option<f64>,
+    pub cf_financing: Option<f64>,
+    pub cash_and_equivalents: Option<f64>,
+    /// 年間配当実績 (1 株当たり合計)
+    pub dividend_annual: Option<f64>,
+    /// 年間配当予想 (当事業年度、1 株当たり合計)
+    pub dividend_annual_forecast: Option<f64>,
+    /// 年間配当予想 (翌事業年度、1 株当たり合計)
+    pub dividend_annual_forecast_next: Option<f64>,
+    /// 会社予想 売上高 (当期通期)
+    pub forecast_sales: Option<f64>,
+    /// 会社予想 営業利益 (当期通期)
+    pub forecast_operating_profit: Option<f64>,
+    /// 会社予想 経常利益 (当期通期)
+    pub forecast_ordinary_profit: Option<f64>,
+    /// 会社予想 当期純利益 (当期通期)
+    pub forecast_net_profit: Option<f64>,
+    /// 会社予想 1 株当たり当期純利益 (当期通期)
+    pub forecast_eps: Option<f64>,
+    /// 会社予想 売上高 (翌期通期)
+    pub next_forecast_sales: Option<f64>,
+    /// 会社予想 営業利益 (翌期通期)
+    pub next_forecast_operating_profit: Option<f64>,
+    /// 会社予想 経常利益 (翌期通期)
+    pub next_forecast_ordinary_profit: Option<f64>,
+    /// 会社予想 当期純利益 (翌期通期)
+    pub next_forecast_net_profit: Option<f64>,
+    /// 会社予想 1 株当たり当期純利益 (翌期通期)
+    pub next_forecast_eps: Option<f64>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ReadFinSummaryResult {
+    pub items: Vec<FinSummaryDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListHypothesesParams {
     pub limit: Option<u32>,
 }
