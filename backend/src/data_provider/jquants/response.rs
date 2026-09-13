@@ -52,14 +52,15 @@ pub(crate) struct EquitiesMasterResponse {
 }
 
 /// J-Quants API V2 銘柄マスタ 1 レコード
-///
-/// J-Quants は東証上場銘柄のみを提供するため、`MktNm` は構造体には含めない。
 #[derive(Debug, Deserialize)]
 pub(crate) struct EquityMaster {
     #[serde(rename = "Code")]
     pub code: String,
     #[serde(rename = "CoName")]
     pub company_name: String,
+    /// 市場区分名 (例: "プライム", "スタンダード", "グロース")
+    #[serde(rename = "MktNm")]
+    pub market_name: Option<String>,
     #[serde(rename = "S33Nm")]
     pub sector_name: Option<String>,
     /// 商品区分コード (例: "011" = 内国株券、"014" = ETF)

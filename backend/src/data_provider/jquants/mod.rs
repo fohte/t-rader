@@ -1,3 +1,4 @@
+mod equities_master;
 mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
@@ -12,6 +13,8 @@ use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 use tokio::sync::Mutex;
+
+pub(crate) use equities_master::EquityMasterEntry;
 
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
