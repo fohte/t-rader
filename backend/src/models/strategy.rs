@@ -59,6 +59,11 @@ pub struct StrategyTaskStatusResponse {
     /// 投入時に指定された purpose。タスクは常に purpose キーの実行グラフでフェーズを
     /// 表示する。`None` はこのカラムが追加される前に作成された行に限られる。
     pub purpose: Option<String>,
+    /// 実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した
+    /// データの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を
+    /// 受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの
+    /// カラムが追加される前に作成された行に限られる。
+    pub as_of: Option<DateTime<FixedOffset>>,
 }
 
 /// `GET /api/strategies/:id/tasks` と `GET /api/tasks` の一覧要素。`steps`/`result_text`
@@ -75,6 +80,11 @@ pub struct StrategyTaskSummary {
     pub updated_at: DateTime<FixedOffset>,
     /// 投入時に指定された purpose。`None` は purpose カラム追加前に作成された行に限られる。
     pub purpose: Option<String>,
+    /// 実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した
+    /// データの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を
+    /// 受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの
+    /// カラムが追加される前に作成された行に限られる。
+    pub as_of: Option<DateTime<FixedOffset>>,
 }
 
 /// 戦略の投資可能額を新しい history 行として記録するリクエスト。

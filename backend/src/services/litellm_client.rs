@@ -47,8 +47,6 @@ struct ModelGroupInfo {
     max_output_tokens: Option<f64>,
     #[serde(default)]
     supports_reasoning: bool,
-    #[serde(default)]
-    supports_web_search: bool,
 }
 
 impl From<ModelGroupInfo> for AgentModel {
@@ -59,7 +57,6 @@ impl From<ModelGroupInfo> for AgentModel {
             max_input_tokens: m.max_input_tokens,
             max_output_tokens: m.max_output_tokens,
             supports_reasoning: m.supports_reasoning,
-            supports_web_search: m.supports_web_search,
         }
     }
 }
@@ -280,7 +277,6 @@ mod tests {
                         "max_input_tokens": 200000.0,
                         "max_output_tokens": 8192.0,
                         "supports_reasoning": true,
-                        "supports_web_search": false,
                     },
                 ],
             })))
@@ -297,7 +293,6 @@ mod tests {
                 max_input_tokens: Some(200000.0),
                 max_output_tokens: Some(8192.0),
                 supports_reasoning: true,
-                supports_web_search: false,
             }],
         );
     }

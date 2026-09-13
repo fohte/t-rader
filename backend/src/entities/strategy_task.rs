@@ -32,6 +32,8 @@ pub struct Model {
     pub deadline_at: DateTimeWithTimeZone,
     #[sea_orm(column_type = "Text", nullable)]
     pub purpose: Option<String>,
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub as_of: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

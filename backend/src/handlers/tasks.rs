@@ -51,12 +51,13 @@ mod tests {
         insert_test_strategy_task,
     };
 
-    /// JSON body から動的フィールド (created_at/updated_at) を除去し、
+    /// JSON body から動的フィールド (created_at/updated_at/as_of) を除去し、
     /// 単一の assert_eq! で残りのフィールドを比較できるようにする。
     fn strip_timestamps(v: &mut serde_json::Value) {
         if let Some(obj) = v.as_object_mut() {
             obj.remove("created_at");
             obj.remove("updated_at");
+            obj.remove("as_of");
         }
     }
 

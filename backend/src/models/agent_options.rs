@@ -9,7 +9,6 @@ pub struct AgentModel {
     pub max_input_tokens: Option<f64>,
     pub max_output_tokens: Option<f64>,
     pub supports_reasoning: bool,
-    pub supports_web_search: bool,
 }
 
 /// `GET /api/agent-models` の戻り値。LLM ゲートウェイが未設定/応答不能なら `models` は空配列。

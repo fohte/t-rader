@@ -50,7 +50,6 @@ const MODELS = [
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: true,
-    supports_web_search: false,
   },
   {
     id: 'deepseek-v4-flash',
@@ -58,7 +57,6 @@ const MODELS = [
     max_input_tokens: null,
     max_output_tokens: null,
     supports_reasoning: false,
-    supports_web_search: false,
   },
 ]
 const TOOLS = [

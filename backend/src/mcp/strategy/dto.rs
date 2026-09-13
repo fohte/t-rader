@@ -424,3 +424,75 @@ pub struct ReadNewsResult {
     /// true なら未読がまだ残っている (limit で切られた)。再度呼び出せば続きから読める
     pub has_more: bool,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SearchNewsParams {
+    /// title / body_snippet の部分一致 (大文字小文字を区別しない)。省略時はキーワード条件なし
+    pub keyword: Option<String>,
+    /// 取得開始日 (YYYY-MM-DD, inclusive)
+    pub from: Option<NaiveDate>,
+    /// 取得終了日 (YYYY-MM-DD, inclusive)
+    pub to: Option<NaiveDate>,
+    pub limit: Option<u32>,
+}
+
+/// news_item を直接検索した 1 件。`read_news` と異なり戦略の interest 一致とは無関係なため
+/// ref_kind/ref_id/matched_term は持たない。
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct NewsItemDto {
+    pub id: Uuid,
+    pub source: String,
+    pub url: String,
+    pub title: String,
+    pub body_snippet: Option<String>,
+    pub published_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct SearchNewsResult {
+    pub items: Vec<NewsItemDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListHypothesesParams {
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct HypothesisDto {
+    pub hypothesis_id: Uuid,
+    pub strategy_id: Option<Uuid>,
+    pub title: String,
+    pub body: String,
+    pub status: String,
+    pub related_note_ids: Vec<Uuid>,
+    pub related_interest_ids: Vec<Uuid>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ListHypothesesResult {
+    pub hypotheses: Vec<HypothesisDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ReadHypothesisParams {
+    pub hypothesis_id: Uuid,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ProposeHypothesisChangeParams {
+    pub hypothesis_id: Uuid,
+    pub proposed_title: Option<String>,
+    pub proposed_body: Option<String>,
+    pub proposed_status: Option<String>,
+    /// なぜこの変更を提案するかの根拠。人間のレビュー時に必須で参照される
+    pub rationale: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ProposeHypothesisChangeResult {
+    pub proposal_id: Uuid,
+    pub status: String,
+}

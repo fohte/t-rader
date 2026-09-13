@@ -459,6 +459,94 @@ export interface paths {
     patch: operations['update_hypothesis']
     trace?: never
   }
+  '/api/hypotheses/{id}/proposals': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 特定の仮説への変更提案一覧 (作成日時降順) */
+    get: operations['list_proposals_for_hypothesis']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/hypothesis-proposals': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 仮説への変更提案一覧 (作成日時降順)。`hypothesis_id`/`status` で任意に絞り込める。 */
+    get: operations['list_hypothesis_proposals']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/hypothesis-proposals/{id}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 提案を取得する */
+    get: operations['get_hypothesis_proposal']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/hypothesis-proposals/{id}/approve': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * 提案を承認する。`pending` の場合のみ指定されたフィールドを仮説本体に反映する。
+     *     既に `approved` の場合は再適用せず現在値を返し (200)、`rejected` の場合は 409 を返す。
+     */
+    post: operations['approve_hypothesis_proposal']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/hypothesis-proposals/{id}/reject': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** 提案を却下する。仮説本体には反映されない。 */
+    post: operations['reject_hypothesis_proposal']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/imports/sbi/commit': {
     parameters: {
       query?: never
@@ -1428,7 +1516,6 @@ export interface components {
       max_output_tokens?: number | null
       providers: string[]
       supports_reasoning: boolean
-      supports_web_search: boolean
     }
     /** @description `GET /api/agent-models` の戻り値。LLM ゲートウェイが未設定/応答不能なら `models` は空配列。 */
     AgentModelsResponse: {
@@ -1466,6 +1553,11 @@ export interface components {
       timestamp: string
       /** Format: date-time */
       updated_at: string
+    }
+    /** @description 提案承認のレスポンス。承認により反映された仮説本体を併せて返す。 */
+    ApproveHypothesisProposalResponse: {
+      hypothesis: components['schemas']['Hypothesis']
+      proposal: components['schemas']['HypothesisProposal']
     }
     Bar: {
       /** Format: double */
@@ -1776,6 +1868,22 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    HypothesisProposal: {
+      /** Format: date-time */
+      created_at: string
+      /** Format: uuid */
+      hypothesis_id: string
+      /** Format: uuid */
+      id: string
+      proposed_body?: string | null
+      proposed_status?: string | null
+      proposed_title?: string | null
+      rationale: string
+      review_note?: string | null
+      /** Format: date-time */
+      reviewed_at?: string | null
+      status: string
+    }
     Indicator: {
       id: string
       kind: string
@@ -1970,6 +2078,10 @@ export interface components {
       /** @description 一致しなかった場合は None */
       name?: string | null
     }
+    ReviewHypothesisProposalRequest: {
+      /** @description 任意のレビューコメント */
+      review_note?: string | null
+    }
     RssFeed: {
       /** Format: date-time */
       created_at: string
@@ -2106,6 +2218,14 @@ export interface components {
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
       a2a_task_id?: string | null
+      /**
+       * Format: date-time
+       * @description 実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した
+       *     データの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を
+       *     受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの
+       *     カラムが追加される前に作成された行に限られる。
+       */
+      as_of?: string | null
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
@@ -2136,6 +2256,14 @@ export interface components {
      *     は一覧では使わないため含めない。
      */
     StrategyTaskSummary: {
+      /**
+       * Format: date-time
+       * @description 実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した
+       *     データの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を
+       *     受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの
+       *     カラムが追加される前に作成された行に限られる。
+       */
+      as_of?: string | null
       /** Format: date-time */
       created_at: string
       error_summary?: string | null
@@ -4204,6 +4332,291 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_proposals_for_hypothesis: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 仮説 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HypothesisProposal'][]
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_hypothesis_proposals: {
+    parameters: {
+      query?: {
+        hypothesis_id?: string
+        status?: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HypothesisProposal'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_hypothesis_proposal: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 提案 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HypothesisProposal']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  approve_hypothesis_proposal: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 提案 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReviewHypothesisProposalRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ApproveHypothesisProposalResponse']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 既に却下済み */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  reject_hypothesis_proposal: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description 提案 ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReviewHypothesisProposalRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HypothesisProposal']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 既に承認済み */
+      409: {
         headers: {
           [name: string]: unknown
         }

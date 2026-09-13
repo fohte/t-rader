@@ -6,7 +6,7 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment, note, strategy};
+use crate::entities::{annotation, comment, hypothesis, note, strategy};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
@@ -145,6 +145,32 @@ pub(super) async fn seed_comment(
     .insert(db)
     .await
     .expect("seed comment");
+    id
+}
+
+/// 指定 strategy_id (`None` なら global) の仮説を seed する
+pub(super) async fn seed_hypothesis(
+    db: &DatabaseConnection,
+    strategy_id: Option<Uuid>,
+    title: &str,
+    body: &str,
+    status: &str,
+) -> Uuid {
+    let id = Uuid::new_v4();
+    hypothesis::ActiveModel {
+        hypothesis_id: Set(id),
+        strategy_id: Set(strategy_id),
+        title: Set(title.to_string()),
+        body: Set(body.to_string()),
+        status: Set(status.to_string()),
+        related_note_ids: Set(vec![]),
+        related_interest_ids: Set(vec![]),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("seed hypothesis");
     id
 }
 
