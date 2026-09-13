@@ -23,7 +23,7 @@ use super::dto::{
     MajorShareholdersDocumentType, MajorShareholdersReportDto, MutualHolding,
     ReadShareholdingStructureParams, ReadShareholdingStructureResult,
 };
-use super::{StrategyServer, clamp_limit, db_error, internal_error, invalid_params};
+use super::{StrategyServer, clamp_limit, code_range, db_error, internal_error, validate_symbol};
 
 #[derive(Debug, Deserialize)]
 struct RawHolder {
@@ -151,24 +151,6 @@ fn cross_shareholding_dto(
         previous_book_value: entry.pri_book_val,
         mutual_holding: mutual_holding(entry.isr_holds_code.as_deref()),
     }
-}
-
-fn validate_symbol(symbol: &str) -> Result<(), McpError> {
-    if symbol.len() == 4 && symbol.bytes().all(|b| b.is_ascii_digit()) {
-        Ok(())
-    } else {
-        Err(invalid_params(format!(
-            "symbol must be a 4-digit stock code, got {symbol:?}"
-        )))
-    }
-}
-
-/// `code LIKE 'symbol%'` は Postgres のデフォルト照合順序 (en_US.utf8) では既存の plain
-/// B-tree index を使えず毎回フルスキャンになるため、同じ絞り込みを range 条件で表現する。
-/// `code` は検証済みの 4 桁 `symbol` + 1 桁の 5 桁数字文字列なので、末尾に `'0'`〜`'9'` の
-/// 範囲を与えれば同じ index でカバーできる。
-fn code_range(symbol: &str) -> (String, String) {
-    (format!("{symbol}0"), format!("{symbol}9"))
 }
 
 /// symbol の code range に一致する最新行 (sub_date 降順、doc_id で tie-break) を 1 件取得する。

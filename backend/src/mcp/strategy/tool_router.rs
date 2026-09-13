@@ -21,9 +21,11 @@ use super::dto::{
     QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
     ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
     ReadHypothesisParams, ReadNewsParams, ReadNewsResult, ReadNoteParams, ReadPortfolioResult,
-    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReplyCommentParams,
-    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
-    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ReadSectorShortRatioParams, ReadSectorShortRatioResult, ReadShareholdingStructureParams,
+    ReadShareholdingStructureResult, ReadShortSaleReportsParams, ReadShortSaleReportsResult,
+    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
+    SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
@@ -306,6 +308,40 @@ impl StrategyServer {
             .map(Json)
     }
 
+    /// 銘柄の空売り残高報告を新しい順に返す
+    #[tool(
+        name = "read_short_sale_reports",
+        description = "Read a stock's short-sale position reports (J-Quants /markets/short-sale-report), newest disclosure date first (ties broken by reporter name). Only positions of 0.5% or more of shares outstanding are reportable, so an empty result means no reportable short position, not necessarily no short position at all. Each row is one reporter's report for one disclosure date; short_position_ratio and prev_report_ratio are fractions (e.g. 0.01 = 1%) so their difference is the change since that reporter's previous report (prev_report_ratio/prev_report_date are null on a reporter's first report). symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters). from/to filter by disclosure date (inclusive) and are both optional.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_short_sale_reports(
+        &self,
+        Parameters(params): Parameters<ReadShortSaleReportsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadShortSaleReportsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_short_sale_reports_inner(sid, params)
+            .await
+            .map(Json)
+    }
+
+    /// 業種別の空売りの売買代金と空売り比率を日ごとに返す
+    #[tool(
+        name = "read_sector_short_ratio",
+        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is the same 33-sector name used by the sector table / search_refs / check_buyable_qty (e.g. \"輸送用機器\"); unrecognized names are rejected. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_sector_short_ratio(
+        &self,
+        Parameters(params): Parameters<ReadSectorShortRatioParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadSectorShortRatioResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_sector_short_ratio_inner(sid, params)
+            .await
+            .map(Json)
+    }
+
     /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
     #[tool(
         name = "read_news",
@@ -480,7 +516,9 @@ mod tests {
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
+                ("read_sector_short_ratio", Some(true)),
                 ("read_shareholding_structure", Some(true)),
+                ("read_short_sale_reports", Some(true)),
                 ("reply_comment", None),
                 ("resolve_comment", None),
                 ("search_news", Some(true)),
