@@ -1,3 +1,4 @@
+mod margin;
 #[cfg(test)]
 mod mock;
 mod response;
@@ -170,7 +171,7 @@ impl JQuantsClient {
         *guard = plan;
     }
 
-    fn manual_plan(&self) -> Option<JQuantsPlan> {
+    pub(crate) fn manual_plan(&self) -> Option<JQuantsPlan> {
         let guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
         *guard
     }

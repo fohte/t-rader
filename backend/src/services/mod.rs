@@ -13,6 +13,7 @@ pub mod interests;
 pub mod investable_amount;
 pub mod jquants_plan_setting;
 pub mod litellm_client;
+pub mod margin_ingest;
 pub mod market_price;
 pub mod news;
 pub mod rss_feed;

@@ -227,6 +227,16 @@ async fn main() -> Result<(), AppError> {
             interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
             "sector backfill poll task started",
         );
+
+        let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::margin_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::margin_ingest::DEFAULT_INTERVAL.as_secs(),
+            "margin ingest poll task started",
+        );
     }
 
     let llm_gateway_client = LlmGatewayClient::from_env();

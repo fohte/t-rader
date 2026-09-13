@@ -15,6 +15,8 @@ pub mod hypothesis_proposal;
 pub mod indicator;
 pub mod instruments;
 pub mod jquants_plan_setting;
+pub mod margin_alert;
+pub mod margin_interest;
 pub mod mcp_tool_call_count;
 pub mod news_item;
 pub mod news_strategy_link;
