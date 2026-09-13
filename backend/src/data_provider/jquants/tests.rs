@@ -309,13 +309,15 @@ mod rate_limiter {
     use rstest::rstest;
 
     #[rstest]
+    #[case::default_limit(RATE_LIMIT_MAX_REQUESTS)]
+    #[case::higher_limit(RATE_LIMIT_MAX_REQUESTS * 2)]
     #[tokio::test]
-    async fn test_allows_requests_within_limit() {
+    async fn test_allows_requests_within_limit(#[case] limit: usize) {
         let limiter = RateLimiter::new();
 
         // 上限以内のリクエストは即座に通過する
-        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
-            limiter.acquire().await;
+        for _ in 0..limit {
+            limiter.acquire(limit).await;
         }
     }
 
@@ -326,18 +328,18 @@ mod rate_limiter {
 
         // 上限まで消費
         for _ in 0..RATE_LIMIT_MAX_REQUESTS {
-            limiter.acquire().await;
+            limiter.acquire(RATE_LIMIT_MAX_REQUESTS).await;
         }
 
         // 次の acquire は待機するはず
-        let acquire_future = limiter.acquire();
+        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert!(result.is_err(), "上限超過時に acquire がブロックされるべき");
 
         // ウィンドウを経過させると通過する
         tokio::time::advance(RATE_LIMIT_WINDOW).await;
-        let acquire_future = limiter.acquire();
+        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert!(result.is_ok(), "ウィンドウ経過後に acquire が通過するべき");
@@ -466,6 +468,24 @@ mod manual_plan_priority {
         assert_eq!(
             client.known_fetchable_range(),
             Some((date(2020, 4, 1), date(2022, 4, 1)))
+        );
+    }
+
+    #[rstest]
+    fn current_rate_limit_falls_back_to_free_plan_when_manual_plan_is_unset(client: JQuantsClient) {
+        assert_eq!(
+            client.current_rate_limit(),
+            JQuantsPlan::Free.rate_limit_per_minute()
+        );
+    }
+
+    #[rstest]
+    fn current_rate_limit_follows_manual_plan(client: JQuantsClient) {
+        client.set_manual_plan(Some(JQuantsPlan::Standard));
+
+        assert_eq!(
+            client.current_rate_limit(),
+            JQuantsPlan::Standard.rate_limit_per_minute()
         );
     }
 }

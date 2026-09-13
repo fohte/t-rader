@@ -44,6 +44,20 @@ impl JQuantsPlan {
         (from, to)
     }
 
+    /// このプランのレート制限 (1 分あたりのリクエスト数)
+    ///
+    /// 公式ページ (<https://jpx-jquants.com/ja/spec/rate-limits>) 記載の基本値。
+    /// 「システムの状況等により調整される場合があります」との注記があり、
+    /// エンドポイント別上限 (`/v2/fins/summary`, `/v2/fins/details` の 60) は未対応。
+    pub fn rate_limit_per_minute(&self) -> usize {
+        match self {
+            JQuantsPlan::Free => 5,
+            JQuantsPlan::Light => 60,
+            JQuantsPlan::Standard => 120,
+            JQuantsPlan::Premium => 500,
+        }
+    }
+
     /// 検出された取得可能範囲から、最も近いプランを推定する。
     /// 範囲の日数 (to - from) と各プランの提供期間 (offsets().1) の差が最小のプランを選ぶ。
     pub fn infer_from_range(detected: (NaiveDate, NaiveDate)) -> JQuantsPlan {
@@ -177,6 +191,15 @@ mod tests {
         #[case] expected: (NaiveDate, NaiveDate),
     ) {
         assert_eq!(plan.range(today), expected);
+    }
+
+    #[rstest]
+    #[case::free(JQuantsPlan::Free, 5)]
+    #[case::light(JQuantsPlan::Light, 60)]
+    #[case::standard(JQuantsPlan::Standard, 120)]
+    #[case::premium(JQuantsPlan::Premium, 500)]
+    fn test_rate_limit_per_minute(#[case] plan: JQuantsPlan, #[case] expected: usize) {
+        assert_eq!(plan.rate_limit_per_minute(), expected);
     }
 
     /// `from` を固定し、`history_days` 日後を `to` とした検出範囲を組み立てる

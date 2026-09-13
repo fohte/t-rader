@@ -25,7 +25,9 @@ const MAX_PAGES: u32 = 100;
 
 /// レートリミットのウィンドウ幅 (60 秒)
 const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
-/// ウィンドウ内の最大リクエスト数 (J-Quants 無料プラン: 1 分間に 5 リクエスト)
+/// 契約プラン未設定時のウィンドウ内最大リクエスト数 (J-Quants 無料プラン相当)。
+/// 上限を実際の契約より高く見積もると 429 のリトライでは済まない大幅な超過に
+/// つながるため、未設定時は最も低い Free プランの値に倒す。
 const RATE_LIMIT_MAX_REQUESTS: usize = 5;
 
 /// スライディングウィンドウ方式のレートリミッター
@@ -46,9 +48,10 @@ impl RateLimiter {
 
     /// リクエスト送信の許可を取得する
     ///
-    /// ウィンドウ内のリクエスト数が上限に達している場合、最も古いリクエストが
-    /// ウィンドウから外れるまで待機する。
-    async fn acquire(&self) {
+    /// ウィンドウ内のリクエスト数が `max_requests` に達している場合、最も古い
+    /// リクエストがウィンドウから外れるまで待機する。`max_requests` は契約プランに
+    /// 応じて呼び出しごとに変わりうる (`JQuantsClient::current_rate_limit`)。
+    async fn acquire(&self, max_requests: usize) {
         loop {
             let now = tokio::time::Instant::now();
 
@@ -63,7 +66,7 @@ impl RateLimiter {
                 }
             }
 
-            if timestamps.len() < RATE_LIMIT_MAX_REQUESTS {
+            if timestamps.len() < max_requests {
                 // 枠がある: タイムスタンプを記録して通過
                 timestamps.push_back(now);
                 return;
@@ -75,6 +78,7 @@ impl RateLimiter {
             drop(timestamps); // ロックを解放してから sleep
 
             tracing::info!(
+                max_requests,
                 wait_ms = sleep_target.saturating_duration_since(now).as_millis() as u64,
                 "レートリミットに到達、待機中"
             );
@@ -108,8 +112,9 @@ fn effective_range(
 /// J-Quants API V2 クライアント
 ///
 /// API Key 認証方式で J-Quants API V2 にアクセスする。
-/// アプリケーションレベルのレートリミッター (1 分間 5 リクエスト) を内蔵し、
-/// 429 (Rate Limited) と 5xx に対して指数バックオフでリトライする。
+/// アプリケーションレベルのレートリミッターを内蔵し、429 (Rate Limited) と
+/// 5xx に対して指数バックオフでリトライする。レートリミッターの上限は契約プラン
+/// (`manual_plan`) に追従し、未設定時は Free プラン相当に倒す。
 ///
 /// Debug は意図的に derive しない (api_key の漏洩防止)
 pub struct JQuantsClient {
@@ -170,6 +175,16 @@ impl JQuantsClient {
         *guard
     }
 
+    /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
+    ///
+    /// 契約プランが設定されていればそのプランの値、未設定なら
+    /// `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) を返す。
+    fn current_rate_limit(&self) -> usize {
+        self.manual_plan()
+            .map(|plan| plan.rate_limit_per_minute())
+            .unwrap_or(RATE_LIMIT_MAX_REQUESTS)
+    }
+
     fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
         let guard = self
             .detected_range
@@ -200,7 +215,7 @@ impl JQuantsClient {
 
         for attempt in 0..=MAX_RETRIES {
             // 各リクエスト (リトライ含む) の前にレートリミッターの許可を取得
-            self.rate_limiter.acquire().await;
+            self.rate_limiter.acquire(self.current_rate_limit()).await;
 
             if attempt > 0 {
                 let backoff =
