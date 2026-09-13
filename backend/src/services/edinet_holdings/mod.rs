@@ -17,8 +17,7 @@ use tokio::task::JoinHandle;
 use crate::data_provider::jquants::JQuantsClient;
 use crate::data_provider::{DataProvider, DataProviderKind};
 
-/// poll task のデフォルト実行間隔。sector_backfill と同じ理由 (リアルタイム性を求めない
-/// pull 型プロダクト方針) で 1 日間隔にする。
+/// ポーリング実行間隔。リアルタイム性を求めない pull 型運用のプロダクト方針に基づき 1 日間隔とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 既存データの最新 sub_date からこの日数分遡って再取得する幅。EDINET の訂正報告書は
@@ -31,6 +30,9 @@ const REFETCH_WINDOW_DAYS: i64 = 30;
 pub struct IngestStats {
     pub days_processed: usize,
     pub documents_saved: usize,
+    /// 同じ cycle 内の再試行 (2 回目のパス) でも取得に失敗した日数。この日付は
+    /// `latest_sub_date` 基準の再取得対象からも外れるため、書類が永久に欠落する。
+    pub failed_dates: usize,
 }
 
 /// EDINET 取り込み対象の 1 エンドポイント (テーブル) が実装する設定。
@@ -48,7 +50,7 @@ trait EdinetEndpoint {
 }
 
 /// 書類オブジェクトから DB カラムに必要な最小限のフィールドを取り出す。
-struct DocumentMeta {
+pub(crate) struct DocumentMeta {
     doc_id: String,
     code: Option<String>,
     edinet_code: String,
@@ -80,6 +82,8 @@ fn extract_meta(doc: &Value) -> Option<DocumentMeta> {
         }
     };
 
+    // J-Quants API が返す Code は 5 桁のまま保存する (stock/instruments 等の既存 4 桁との
+    // 突き合わせは、この列を読み出す側の実装が持つべき関心事のため、ここでは行わない)
     let code = doc.get("Code").and_then(Value::as_str).map(str::to_string);
 
     Some(DocumentMeta {
@@ -90,8 +94,60 @@ fn extract_meta(doc: &Value) -> Option<DocumentMeta> {
     })
 }
 
-/// 取得可能範囲・既存データの最新 sub_date から、この cycle で取得する日付範囲を決める。
-/// 契約プランが未検出 (`known_fetchable_range` が `None`) ならスキップする。
+/// `docs` から `DocumentMeta` を取り出せた書類だけを `build` で `E::ActiveModel` に変換し、
+/// `doc_id` の重複を `conflict` の指定で upsert する。3 エンドポイントの `upsert` 実装が
+/// entity の型名以外まったく同一なため、ここに共通化する。
+pub(crate) async fn upsert_documents<E>(
+    db: &DatabaseConnection,
+    docs: Vec<Value>,
+    build: impl Fn(DocumentMeta, Value) -> E::ActiveModel,
+    conflict: sea_orm::sea_query::OnConflict,
+) -> Result<usize, sea_orm::DbErr>
+where
+    E: sea_orm::EntityTrait,
+    E::ActiveModel: Send,
+{
+    let models: Vec<E::ActiveModel> = docs
+        .iter()
+        .filter_map(|doc| extract_meta(doc).map(|meta| build(meta, doc.clone())))
+        .collect();
+
+    if models.is_empty() {
+        return Ok(0);
+    }
+    let count = models.len();
+
+    E::insert_many(models)
+        .on_conflict(conflict)
+        .exec_without_returning(db)
+        .await?;
+
+    Ok(count)
+}
+
+/// `sub_date_column` で降順ソートした最新 1 行から `sub_date` を取り出す。3 エンドポイントの
+/// `latest_sub_date` 実装が entity の型名以外まったく同一なため、ここに共通化する。
+pub(crate) async fn latest_sub_date_of<E, C>(
+    db: &DatabaseConnection,
+    sub_date_column: C,
+    sub_date: impl Fn(&E::Model) -> NaiveDate,
+) -> Result<Option<NaiveDate>, sea_orm::DbErr>
+where
+    E: sea_orm::EntityTrait,
+    C: sea_orm::ColumnTrait,
+{
+    use sea_orm::QueryOrder;
+
+    let latest = E::find().order_by_desc(sub_date_column).one(db).await?;
+    Ok(latest.map(|m| sub_date(&m)))
+}
+
+/// 取得可能範囲・既存データの最新 sub_date から、この cycle で取得する日付範囲を決め、
+/// 1 日ずつ書類を取得して DB に保存する。契約プランが未検出 (`known_fetchable_range` が
+/// `None`) ならスキップする。取得に失敗した日付はメインループでは記録するだけにして
+/// ループを最後まで走らせ、完了後に同じ cycle 内でその日付だけ再取得する (`start` は
+/// 次 cycle 時点の `latest_sub_date` から決まるため、次 cycle を待つと `REFETCH_WINDOW_DAYS`
+/// を過ぎた時点で再取得対象から外れてしまう)。
 async fn run_ingest_cycle<T: EdinetEndpoint>(
     db: &DatabaseConnection,
     client: &JQuantsClient,
@@ -111,6 +167,7 @@ async fn run_ingest_cycle<T: EdinetEndpoint>(
     };
 
     let mut stats = IngestStats::default();
+    let mut retry_dates = Vec::new();
     let mut date = start;
     while date <= plan_to {
         match client.fetch_edinet_documents(T::PATH, date).await {
@@ -119,11 +176,30 @@ async fn run_ingest_cycle<T: EdinetEndpoint>(
             }
             Ok(_) => {}
             Err(e) => {
-                tracing::warn!(endpoint = T::NAME, %date, error = %e, "EDINET 書類の取得に失敗、次サイクルで再試行します");
+                tracing::warn!(endpoint = T::NAME, %date, error = %e, "EDINET 書類の取得に失敗、この cycle 終了後に再試行します");
+                retry_dates.push(date);
             }
         }
         stats.days_processed += 1;
         date += ChronoDuration::days(1);
+    }
+
+    for date in retry_dates {
+        match client.fetch_edinet_documents(T::PATH, date).await {
+            Ok(docs) if !docs.is_empty() => {
+                stats.documents_saved += T::upsert(db, docs).await?;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                stats.failed_dates += 1;
+                tracing::error!(
+                    endpoint = T::NAME,
+                    %date,
+                    error = %e,
+                    "EDINET 書類の再取得にも失敗しました。latest_sub_date 基準の再取得対象からも外れるため、この日付の書類は取り込めていません"
+                );
+            }
+        }
     }
 
     Ok(stats)
@@ -315,6 +391,7 @@ mod tests {
             IngestStats {
                 days_processed: 3,
                 documents_saved: 3,
+                failed_dates: 0,
             }
         );
 
@@ -332,9 +409,6 @@ mod tests {
         let from = large_volume_shareholdings::Endpoint::available_from();
         let latest = from + ChronoDuration::days(60);
         let expected_start = latest - ChronoDuration::days(REFETCH_WINDOW_DAYS);
-        // JQuantsClient のレートリミッター (Free プラン相当 5 req/60s) にテスト中に
-        // 引っかからないよう、契約範囲の上限 (to) は expected_start のすぐ後に置き、
-        // リクエスト数を抑える。
         let to = expected_start + ChronoDuration::days(1);
 
         // 既存データの最新 sub_date を作る
@@ -374,6 +448,7 @@ mod tests {
             IngestStats {
                 days_processed: expected_days,
                 documents_saved: 0,
+                failed_dates: 0,
             }
         );
     }
@@ -434,5 +509,116 @@ mod tests {
                 updated_at: fixed,
             }]
         );
+    }
+
+    // --- run_ingest_cycle の同一 cycle 内リトライ ---
+
+    #[sqlx::test(migrations = false)]
+    async fn retries_a_failed_date_within_the_same_cycle_and_recovers(pool: PgPool) {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let db = create_test_db(pool).await;
+        let mock = JQuantsMockServer::start().await;
+
+        let from = large_volume_shareholdings::Endpoint::available_from();
+        let to = from + ChronoDuration::days(1);
+        let recovered_doc = doc(
+            "S-RECOVERED",
+            "72030",
+            "E00001",
+            &from.format("%Y-%m-%d").to_string(),
+        );
+
+        // from 日: 1 回目 (メインループ) は 403 (リトライ非対象のエラー) で失敗し、
+        // 2 回目 (cycle 内の再試行) で成功する
+        Mock::given(method("GET"))
+            .and(path(large_volume_shareholdings::Endpoint::PATH))
+            .and(query_param("date", from.format("%Y%m%d").to_string()))
+            .respond_with(
+                ResponseTemplate::new(403).set_body_json(json!({ "message": "Forbidden" })),
+            )
+            .up_to_n_times(1)
+            .mount(mock.server_ref())
+            .await;
+        mock.edinet_documents(large_volume_shareholdings::Endpoint::PATH)
+            .date(&from.format("%Y%m%d").to_string())
+            .docs(vec![recovered_doc])
+            .ok()
+            .await;
+
+        // to 日: 通常成功 (空)
+        mock.edinet_documents(large_volume_shareholdings::Endpoint::PATH)
+            .date(&to.format("%Y%m%d").to_string())
+            .docs(vec![])
+            .ok()
+            .await;
+
+        let client = mock.client().expect("client");
+        client.set_detected_range((from, to));
+
+        let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
+            .await
+            .expect("cycle ok");
+
+        assert_eq!(
+            stats,
+            IngestStats {
+                days_processed: 2,
+                documents_saved: 1,
+                failed_dates: 0,
+            }
+        );
+
+        let rows = find_all(&db).await;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].doc_id, "S-RECOVERED");
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn counts_failed_dates_when_the_retry_also_fails(pool: PgPool) {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let db = create_test_db(pool).await;
+        let mock = JQuantsMockServer::start().await;
+
+        let from = large_volume_shareholdings::Endpoint::available_from();
+        let to = from + ChronoDuration::days(1);
+
+        // from 日: 何度リクエストしても失敗する
+        Mock::given(method("GET"))
+            .and(path(large_volume_shareholdings::Endpoint::PATH))
+            .and(query_param("date", from.format("%Y%m%d").to_string()))
+            .respond_with(
+                ResponseTemplate::new(403).set_body_json(json!({ "message": "Forbidden" })),
+            )
+            .mount(mock.server_ref())
+            .await;
+
+        // to 日: 通常成功 (空)
+        mock.edinet_documents(large_volume_shareholdings::Endpoint::PATH)
+            .date(&to.format("%Y%m%d").to_string())
+            .docs(vec![])
+            .ok()
+            .await;
+
+        let client = mock.client().expect("client");
+        client.set_detected_range((from, to));
+
+        let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
+            .await
+            .expect("cycle ok");
+
+        assert_eq!(
+            stats,
+            IngestStats {
+                days_processed: 2,
+                documents_saved: 0,
+                failed_dates: 1,
+            }
+        );
+
+        assert_eq!(find_all(&db).await.len(), 0);
     }
 }

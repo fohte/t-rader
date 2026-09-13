@@ -45,7 +45,6 @@ enum EdinetMajorShareholder {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // edinet_large_volume_shareholdings テーブル (大量保有報告書)
         manager
             .create_table(
                 Table::create()
@@ -115,7 +114,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // edinet_cross_shareholdings テーブル (政策保有株式)
         manager
             .create_table(
                 Table::create()
@@ -185,7 +183,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // edinet_major_shareholders テーブル (大株主状況)
         manager
             .create_table(
                 Table::create()
