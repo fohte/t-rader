@@ -56,8 +56,6 @@ impl StrategyServer {
         }
         ensure_strategy_exists(&self.db, session_strategy_id).await?;
 
-        // master に無い ref_id は別名を試す。1 件だけ当たれば正規の id に読み替え、
-        // 当たらなければ自由文字列のまま通す
         let ref_id = ref_terms::resolve_ref_id(&self.db, ref_kind, ref_id)
             .await
             .map_err(app_error_to_mcp)?
@@ -179,7 +177,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::{ref_term, strategy_interest};
+    use crate::entities::{ref_term, stock, strategy_interest};
     use crate::testing::create_test_db;
 
     use super::super::dto::{
@@ -198,6 +196,21 @@ mod tests {
         .insert(db)
         .await
         .expect("seed ref_term");
+    }
+
+    async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
+        stock::ActiveModel {
+            id: Set(id.into()),
+            name: Set(name.into()),
+            market: Set(None),
+            sector_id: Set(None),
+            product_category: Set(None),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("seed stock");
     }
 
     fn ts(secs: i64) -> DateTime<FixedOffset> {
@@ -275,6 +288,7 @@ mod tests {
     async fn add_interest_resolves_alias_to_canonical_ref_id(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
+        seed_stock(&db, "7203", "トヨタ自動車").await;
         seed_ref_term(&db, "stock", "7203", "Ｔｏｙｏｔａ").await;
         let server = build_server(db);
 
@@ -310,6 +324,28 @@ mod tests {
             .expect("add_interest");
 
         assert_eq!(result.ref_id, "未知の銘柄".to_string());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn add_interest_keeps_free_text_ref_id_when_alias_target_is_not_in_master(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let sid = insert_strategy(&db, "s").await;
+        // master に存在しない ref_id (9999) を指す dangling な別名
+        seed_ref_term(&db, "stock", "9999", "トヨタ").await;
+        let server = build_server(db);
+
+        let result = server
+            .add_interest_inner(
+                sid,
+                AddInterestParams {
+                    ref_kind: "stock".into(),
+                    ref_id: "トヨタ".into(),
+                },
+            )
+            .await
+            .expect("add_interest");
+
+        assert_eq!(result.ref_id, "トヨタ".to_string());
     }
 
     #[sqlx::test(migrations = false)]

@@ -245,7 +245,9 @@ pub struct ResolveQuery {
 /// `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
 ///
 /// `link=stock:7203,indicator:USDJPY` のようにカンマ区切りで複数渡せる。
-/// 不一致のものは name = null で返す。
+/// id が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の
+/// id と name を返す (レスポンスの id が入力と異なることがある)。
+/// どちらにも一致しないものは name = null、id は入力のまま返す。
 #[utoipa::path(
     get,
     path = "/api/refs/resolve",

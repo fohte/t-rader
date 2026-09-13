@@ -191,7 +191,7 @@ impl StrategyServer {
     /// 戦略 Agent が新しい関心 (derived / origin=llm 固定) を追加する
     #[tool(
         name = "add_interest",
-        description = "Add a derived interest (role=derived, origin=llm) to the current strategy. Idempotent: returns created=false if the same (ref_kind, ref_id) already exists for the strategy."
+        description = "Add a derived interest (role=derived, origin=llm) to the current strategy. Idempotent: returns created=false if the same (ref_kind, ref_id) already exists for the strategy. If ref_id doesn't match a master id but uniquely matches a registered alias, it is resolved to the canonical id before being stored."
     )]
     async fn add_interest(
         &self,

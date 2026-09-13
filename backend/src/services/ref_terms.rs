@@ -32,7 +32,6 @@ pub async fn load_terms(
     Ok(terms)
 }
 
-/// ref_id が指定 ref_kind の master に存在するか確認する
 async fn exists_in_master(
     db: &DatabaseConnection,
     ref_kind: &str,
@@ -64,10 +63,14 @@ pub async fn resolve_many_by_term(
         .await?;
     let mut by_normalized: HashMap<String, Vec<String>> = HashMap::new();
     for row in rows {
-        by_normalized
-            .entry(normalize(&row.term))
-            .or_default()
-            .push(row.ref_id);
+        // 表記違いの別名 (例: "Toyota" / "TOYOTA") が同じ ref_id に複数登録されて
+        // いても、正規化後は 1 件の候補として扱う。dedup しないと同じ ref_id が
+        // 2 件以上の「候補」に見えてしまい、本来一意に解決できるはずの別名が
+        // 誤って曖昧判定される
+        let candidates = by_normalized.entry(normalize(&row.term)).or_default();
+        if !candidates.contains(&row.ref_id) {
+            candidates.push(row.ref_id);
+        }
     }
     Ok(terms
         .iter()
@@ -95,6 +98,8 @@ pub async fn resolve_by_term(
 
 /// id の完全一致を優先し、当たらなければ別名で解決する。別名が 1 件だけ当たれば
 /// 正規の ref_id を返す。id にも当たらず、別名が 0 件 or 2 件以上のときは None。
+/// ref_term は master 存在チェックなしで登録できるため、別名の解決先が master に
+/// 存在しない場合も None を返す。
 pub async fn resolve_ref_id(
     db: &DatabaseConnection,
     ref_kind: &str,
@@ -104,10 +109,14 @@ pub async fn resolve_ref_id(
         return Ok(Some(ref_id.to_string()));
     }
     let candidates = resolve_by_term(db, ref_kind, ref_id).await?;
-    Ok(match candidates.as_slice() {
-        [only] => Some(only.clone()),
-        _ => None,
-    })
+    let [only] = candidates.as_slice() else {
+        return Ok(None);
+    };
+    if exists_in_master(db, ref_kind, only).await? {
+        Ok(Some(only.clone()))
+    } else {
+        Ok(None)
+    }
 }
 
 /// ref_kind ごとに master テーブルから id -> name を引く
@@ -199,7 +208,12 @@ pub async fn resolve_refs(
             .collect::<Vec<_>>(),
     );
     if !target_ids_by_kind.is_empty() {
-        names.extend(fetch_master_names(db, &target_ids_by_kind).await?);
+        let target_names = fetch_master_names(db, &target_ids_by_kind).await?;
+        // 別名の解決先が master に存在しない (dangling な別名) 場合は解決扱いにしない
+        alias_target.retain(|(kind, _), target_id| {
+            target_names.contains_key(&(kind.clone(), target_id.clone()))
+        });
+        names.extend(target_names);
     }
 
     Ok(requested
@@ -337,27 +351,33 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn resolve_by_term_matches_zenkaku_input_against_hankaku_term(pool: PgPool) {
+    async fn resolve_by_term_matches_normalized_variants(pool: PgPool) {
         let db = create_test_db(pool).await;
         seed_term(&db, "indicator", "USDJPY", "USDJPY").await;
 
-        let ref_ids = resolve_by_term(&db, "indicator", "ＵＳＤＪＰＹ")
-            .await
-            .expect("resolve_by_term");
-
-        assert_eq!(ref_ids, vec!["USDJPY".to_string()]);
+        for (label, input) in [("zenkaku", "ＵＳＤＪＰＹ"), ("lowercase", "usdjpy")] {
+            let ref_ids = resolve_by_term(&db, "indicator", input)
+                .await
+                .unwrap_or_else(|e| panic!("resolve_by_term ({label}): {e}"));
+            assert_eq!(ref_ids, vec!["USDJPY".to_string()], "case: {label}");
+        }
     }
 
     #[sqlx::test(migrations = false)]
-    async fn resolve_by_term_matches_lowercase_input_against_uppercase_term(pool: PgPool) {
+    async fn resolve_by_term_dedups_candidates_from_normalized_variant_aliases_on_same_ref_id(
+        pool: PgPool,
+    ) {
         let db = create_test_db(pool).await;
-        seed_term(&db, "indicator", "USDJPY", "USDJPY").await;
+        // 表記違いの別名 (大文字/小文字) が同じ ref_id に 2 件登録されていても、
+        // 候補は 1 件に集約される
+        seed_term(&db, "stock", "7203", "Toyota").await;
+        seed_term(&db, "stock", "7203", "TOYOTA").await;
 
-        let ref_ids = resolve_by_term(&db, "indicator", "usdjpy")
+        let ref_ids = resolve_by_term(&db, "stock", "toyota")
             .await
             .expect("resolve_by_term");
 
-        assert_eq!(ref_ids, vec!["USDJPY".to_string()]);
+        assert_eq!(ref_ids, vec!["7203".to_string()]);
     }
 
     #[sqlx::test(migrations = false)]
@@ -394,6 +414,19 @@ mod tests {
         seed_stock(&db, "9984", "ソフトバンクグループ").await;
         seed_term(&db, "stock", "7203", "トヨタ").await;
         seed_term(&db, "stock", "9984", "トヨタ").await;
+
+        let resolved = resolve_ref_id(&db, "stock", "トヨタ")
+            .await
+            .expect("resolve_ref_id");
+
+        assert_eq!(resolved, None);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resolve_ref_id_returns_none_when_alias_target_is_not_in_master(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        // master に存在しない ref_id (9999) を指す dangling な別名
+        seed_term(&db, "stock", "9999", "トヨタ").await;
 
         let resolved = resolve_ref_id(&db, "stock", "トヨタ")
             .await
@@ -460,6 +493,26 @@ mod tests {
         seed_stock(&db, "9984", "ソフトバンクグループ").await;
         seed_term(&db, "stock", "7203", "トヨタ").await;
         seed_term(&db, "stock", "9984", "トヨタ").await;
+
+        let result = resolve_refs(&db, &[("stock".into(), "トヨタ".into())])
+            .await
+            .expect("resolve_refs");
+
+        assert_eq!(
+            result,
+            vec![RefResolution {
+                kind: "stock".into(),
+                id: "トヨタ".into(),
+                name: None,
+            }],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resolve_refs_leaves_dangling_alias_unresolved(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        // master に存在しない ref_id (9999) を指す dangling な別名
+        seed_term(&db, "stock", "9999", "トヨタ").await;
 
         let result = resolve_refs(&db, &[("stock".into(), "トヨタ".into())])
             .await
