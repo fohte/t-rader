@@ -901,4 +901,33 @@ describe('createStrategyAgentDeps', () => {
       warnSpy.mockRestore()
     }
   })
+
+  it('aborts the underlying HTTP request once llmCallTimeoutMs elapses, even mid-stream', async () => {
+    let capturedSignal: AbortSignal | undefined
+    const model = buildStubModel((_url, init) => {
+      capturedSignal = init?.signal ?? undefined
+      // ストリームが流れ続けて resolve/reject しない応答を模す。signal が
+      // 実際に fetch まで届いて abort されない限り、この Promise は解決しない。
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new Error('aborted'))
+        })
+      })
+    })
+    const deps = createStrategyAgentDeps({
+      ...baseConfig,
+      llmCallTimeoutMs: 10,
+    })
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    await expect(
+      agent.invoke({ messages: [new HumanMessage('hi')] }),
+    ).rejects.toThrow('aborted')
+    expect(capturedSignal?.aborted).toBe(true)
+  })
 })
