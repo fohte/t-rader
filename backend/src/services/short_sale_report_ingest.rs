@@ -1,20 +1,21 @@
 //! J-Quants `/markets/short-sale-report` (空売り残高報告) を日次で取り込むバックグラウンドタスク。
 //!
 //! Standard 以上のプランでのみ提供されるデータのため、契約プランがそれ未満の間は
-//! スキップする。日ごとに 1 リクエストずつ順に取得し、DB 上の最新公表日から
-//! 再開することで重複取得を避ける。
+//! スキップする。日次取り込みの共通ロジックは `jquants_daily_ingest` を参照。
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
 use crate::data_provider::jquants::JQuantsClient;
 use crate::data_provider::{DataProviderError, DataProviderKind};
-use crate::models::jquants_plan::JQuantsPlan;
+use crate::error::AppError;
+use crate::models::ShortSaleReport;
 use crate::repositories::short_sale_report::{find_latest_disc_date, upsert_short_sale_reports};
+use crate::services::jquants_daily_ingest::{self, DailyIngestStats, DailyJQuantsIngest};
 
 /// エンドポイントのデータ提供開始日 (公式ドキュメント記載)
 const SHORT_SALE_REPORT_START_DATE: NaiveDate = match NaiveDate::from_ymd_opt(2013, 11, 7) {
@@ -22,75 +23,33 @@ const SHORT_SALE_REPORT_START_DATE: NaiveDate = match NaiveDate::from_ymd_opt(20
     None => panic!("invalid constant date"),
 };
 
-/// 既存データの再取得で遡る日数。J-Quants は差分取得非対応で訂正が上書き反映されるため、
-/// 直近の訂正を拾えるよう毎サイクル少し遡って取り直す。この日数より前まで遡る訂正
-/// (例: 全期間の数値を一括で正規化する訂正) は次サイクルでは拾われない。
-const CATCH_UP_LOOKBACK_DAYS: i64 = 7;
-
 /// poll task のデフォルト実行間隔。空売り残高報告は日次更新のデータのため、
 /// リアルタイム性を重視しないプロダクト方針も踏まえ 1 日間隔にする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// poll サイクルの結果統計
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ShortSaleReportIngestStats {
-    pub days_fetched: usize,
-    pub rows_upserted: usize,
+impl DailyJQuantsIngest for ShortSaleReport {
+    const START_DATE: NaiveDate = SHORT_SALE_REPORT_START_DATE;
+
+    async fn fetch(client: &JQuantsClient, day: NaiveDate) -> Result<Vec<Self>, DataProviderError> {
+        client.fetch_short_sale_reports(day).await
+    }
+
+    async fn upsert(db: &DatabaseConnection, items: Vec<Self>) -> Result<(), AppError> {
+        upsert_short_sale_reports(db, items).await
+    }
+
+    async fn find_latest_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+        find_latest_disc_date(db).await
+    }
 }
 
-/// 空売り残高報告を DB 上の最新公表日の翌日以降 (訂正を拾うため少し遡る) から
-/// 当日まで、日ごとに 1 リクエストずつ取得して upsert する。
+/// 空売り残高報告を DB 上の最新公表日から訂正分を遡った日付から当日まで、
+/// 日ごとに 1 リクエストずつ取得して upsert する。
 pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
     client: &JQuantsClient,
-) -> Result<ShortSaleReportIngestStats, DataProviderError> {
-    let mut stats = ShortSaleReportIngestStats::default();
-
-    let Some(plan) = client.manual_plan() else {
-        tracing::debug!("契約プラン未設定のため空売り残高報告の取り込みをスキップ");
-        return Ok(stats);
-    };
-    if !matches!(plan, JQuantsPlan::Standard | JQuantsPlan::Premium) {
-        tracing::debug!(
-            ?plan,
-            "空売り残高報告は Standard 以上のプランが必要なためスキップ"
-        );
-        return Ok(stats);
-    }
-
-    let today = Utc::now().date_naive();
-    let floor = plan.range(today).0.max(SHORT_SALE_REPORT_START_DATE);
-    let latest = find_latest_disc_date(db)
-        .await
-        .map_err(|e| DataProviderError::Database(e.to_string()))?;
-    let from = latest
-        .map(|d| (d - chrono::Duration::days(CATCH_UP_LOOKBACK_DAYS)).max(floor))
-        .unwrap_or(floor);
-
-    let mut day = from;
-    while day <= today {
-        match client.fetch_short_sale_reports(day).await {
-            Ok(reports) => {
-                stats.days_fetched += 1;
-                if !reports.is_empty() {
-                    stats.rows_upserted += reports.len();
-                    upsert_short_sale_reports(db, reports)
-                        .await
-                        .map_err(|e| DataProviderError::Database(e.to_string()))?;
-                }
-            }
-            Err(err) => {
-                // 次サイクルは DB 上の最新 disc_date から遡って再開するため、失敗日をスキップして
-                // 先に進めると、後続日が成功して最新日付が進んだ時点でこの日が二度と再試行されなく
-                // なる。そのため continue ではなく break で打ち切り、同じ from から再開させる。
-                tracing::warn!(%day, %err, "空売り残高報告の取得に失敗、サイクルを打ち切り");
-                break;
-            }
-        }
-        day += chrono::Duration::days(1);
-    }
-
-    Ok(stats)
+) -> Result<DailyIngestStats, DataProviderError> {
+    jquants_daily_ingest::run_ingest_cycle::<ShortSaleReport>(db, client).await
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す
@@ -99,35 +58,17 @@ pub fn spawn_poll(
     provider: Arc<DataProviderKind>,
     interval: Duration,
 ) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            let DataProviderKind::JQuants(client) = provider.as_ref() else {
-                tracing::warn!(
-                    "J-Quants 以外の DataProvider のため空売り残高報告の取り込みをスキップ"
-                );
-                continue;
-            };
-            match run_ingest_cycle(&db, client).await {
-                Ok(stats) => {
-                    tracing::debug!(
-                        days_fetched = stats.days_fetched,
-                        rows_upserted = stats.rows_upserted,
-                        "short sale report ingest cycle completed",
-                    );
-                }
-                Err(err) => {
-                    tracing::warn!(%err, "short sale report ingest cycle failed");
-                }
-            }
-        }
-    })
+    jquants_daily_ingest::spawn_poll::<ShortSaleReport>(
+        db,
+        provider,
+        interval,
+        "short sale report ingest",
+    )
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
     use rstest::rstest;
     use rust_decimal::Decimal;
     use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};
@@ -136,7 +77,7 @@ mod tests {
     use super::*;
     use crate::data_provider::jquants::mock::{JQuantsMockServer, MockShortSaleReport};
     use crate::entities::short_sale_report;
-    use crate::models::ShortSaleReport;
+    use crate::models::jquants_plan::JQuantsPlan;
     use crate::testing::create_test_db;
 
     fn sample_report(ratio: f64) -> MockShortSaleReport {
@@ -190,7 +131,7 @@ mod tests {
 
         assert_eq!(
             stats,
-            ShortSaleReportIngestStats {
+            DailyIngestStats {
                 days_fetched: 1,
                 rows_upserted: 1,
             }
@@ -207,7 +148,8 @@ mod tests {
             .await
             .expect("seed");
 
-        let expected_from = latest - chrono::Duration::days(CATCH_UP_LOOKBACK_DAYS);
+        let expected_from =
+            latest - chrono::Duration::days(jquants_daily_ingest::CATCH_UP_LOOKBACK_DAYS);
         let mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&mock, expected_from, 0.06).await;
         let client = mock.client().expect("client");
@@ -217,7 +159,7 @@ mod tests {
 
         assert_eq!(
             stats,
-            ShortSaleReportIngestStats {
+            DailyIngestStats {
                 days_fetched: 1,
                 rows_upserted: 1,
             }
@@ -258,7 +200,7 @@ mod tests {
 
         assert_eq!(
             stats,
-            ShortSaleReportIngestStats {
+            DailyIngestStats {
                 days_fetched: 1,
                 rows_upserted: 1,
             }
@@ -282,7 +224,7 @@ mod tests {
 
         assert_eq!(
             stats,
-            ShortSaleReportIngestStats {
+            DailyIngestStats {
                 days_fetched: 1,
                 rows_upserted: 1,
             }
@@ -306,7 +248,7 @@ mod tests {
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
-        assert_eq!(stats, ShortSaleReportIngestStats::default());
+        assert_eq!(stats, DailyIngestStats::default());
     }
 
     #[sqlx::test(migrations = false)]
