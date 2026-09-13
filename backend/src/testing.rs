@@ -43,7 +43,6 @@ fn base_state(db: DatabaseConnection) -> AppState {
         agent_task_notify: Arc::new(tokio::sync::Notify::new()),
         agent_webhook_token: Arc::from(TEST_AGENT_WEBHOOK_TOKEN),
         kata_executor: None,
-        macro_cache: None,
         llm_gateway_client: None,
     }
 }
