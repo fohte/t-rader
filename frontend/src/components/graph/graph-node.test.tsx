@@ -1,8 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'
-import type { Middleware } from 'openapi-fetch'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { buildNodeProps } from '#components/graph/flow-node-props.test-helper'
 import { GraphNodeView } from '#components/graph/graph-node'
@@ -11,25 +10,16 @@ import {
   type GraphRenderContextValue,
 } from '#components/graph/graph-render-context'
 import type { GraphNode, Layout } from '#components/graph/types'
-import { fetchClient } from '#lib/api/client'
+import {
+  installRefResolveMock,
+  type RefResolveStub,
+} from '#lib/refs.test-helper'
 
 afterEach(cleanup)
 
-// RefChip が使う $api.useQuery('/api/refs/resolve') 用のモック。常に未解決を返す
-const refResolveMiddleware: Middleware = {
-  onRequest({ request }) {
-    if (!/\/api\/refs\/resolve(\?|$)/.test(request.url)) return undefined
-    return new Response('[]', {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    })
-  },
-}
-beforeEach(() => {
-  fetchClient.use(refResolveMiddleware)
-})
+let ejectRefResolveMock = () => {}
 afterEach(() => {
-  fetchClient.eject(refResolveMiddleware)
+  ejectRefResolveMock()
 })
 
 // GraphNodeView は内部で Handle (@xyflow/react) を使うため ReactFlowProvider が、
@@ -37,7 +27,9 @@ afterEach(() => {
 function renderNode(
   data: GraphNode,
   context: Partial<GraphRenderContextValue> = {},
+  refStubs: RefResolveStub[] = [],
 ) {
+  ejectRefResolveMock = installRefResolveMock(refStubs)
   const value: GraphRenderContextValue = {
     layout: 'flow',
     maxNodeValue: 100,
@@ -64,9 +56,11 @@ describe('GraphNodeView', () => {
     expect(screen.getByText('ノードA')).toBeInTheDocument()
   })
 
-  it('ref があれば RefChip (トークンが解決された表示) を出す', () => {
-    renderNode({ id: 'a', label: 'A', ref: 'stock:ACME' })
-    expect(screen.getByText('ACME')).toBeInTheDocument()
+  it('ref があれば RefChip (トークンが解決された表示) を出す', async () => {
+    renderNode({ id: 'a', label: 'A', ref: 'stock:ACME' }, {}, [
+      { kind: 'stock', id: 'ACME', name: 'アセム工業' },
+    ])
+    expect(await screen.findByText('アセム工業')).toBeInTheDocument()
   })
 
   it('ref が無ければ RefChip を出さない', () => {

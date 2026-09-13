@@ -1,31 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Middleware } from 'openapi-fetch'
 import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
-import { fetchClient } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
+import { installRefResolveMock } from '#lib/refs.test-helper'
 
 afterEach(cleanup)
 
-// RefChip が使う $api.useQuery('/api/refs/resolve') 用のモック。常に未解決を返す
-const refResolveMiddleware: Middleware = {
-  onRequest({ request }) {
-    if (!/\/api\/refs\/resolve(\?|$)/.test(request.url)) return undefined
-    return new Response('[]', {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    })
-  },
-}
+let ejectRefResolveMock = () => {}
 beforeEach(() => {
-  fetchClient.use(refResolveMiddleware)
+  ejectRefResolveMock = installRefResolveMock()
 })
 afterEach(() => {
-  fetchClient.eject(refResolveMiddleware)
+  ejectRefResolveMock()
 })
 
 // RefChip が $api.useQuery を使うため QueryClientProvider が要る

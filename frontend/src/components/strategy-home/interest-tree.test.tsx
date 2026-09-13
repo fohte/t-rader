@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InterestTree } from '#components/strategy-home/interest-tree'
 import { fetchClient } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
+import { installRefResolveMock } from '#lib/refs.test-helper'
 
 type StrategyInterest = components['schemas']['StrategyInterest']
 
@@ -119,14 +120,6 @@ function installMiddleware(initial: StrategyInterest[] = []) {
         }
       }
 
-      // RefChip が使う $api.useQuery('/api/refs/resolve') 用のモック。常に未解決を返す
-      if (/\/api\/refs\/resolve(\?|$)/.test(url)) {
-        return new Response('[]', {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })
-      }
-
       throw new Error(`unmocked request: ${method} ${url}`)
     },
   }
@@ -140,10 +133,12 @@ function installMiddleware(initial: StrategyInterest[] = []) {
 }
 
 let activeMiddleware: ReturnType<typeof installMiddleware> | null = null
+let ejectRefResolveMock = () => {}
 
 function setup(initial: StrategyInterest[] = []) {
   activeMiddleware?.eject()
   activeMiddleware = installMiddleware(initial)
+  ejectRefResolveMock = installRefResolveMock()
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -157,6 +152,7 @@ afterEach(() => {
   cleanup()
   activeMiddleware?.eject()
   activeMiddleware = null
+  ejectRefResolveMock()
   vi.restoreAllMocks()
 })
 
