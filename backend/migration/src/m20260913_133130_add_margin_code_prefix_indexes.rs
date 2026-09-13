@@ -11,10 +11,8 @@ impl MigrationName for Migration {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // read_margin は 4 桁銘柄コードを LEFT(code, 4) で突き合わせる。既存の (code, date) /
-        // (code, pub_date) インデックスは関数呼び出しに対しては使えず、この index が無いと
-        // 毎回全表スキャンになる (m20260913_091652_add_jquants_fin_summary_code_prefix_index
-        // と同じ理由)。
+        // LEFT(code, 4) 検索用。既存の (code, date) / (code, pub_date) インデックスは
+        // 関数呼び出しに対しては使えないため式インデックスを張る。
         manager
             .get_connection()
             .execute_unprepared(

@@ -286,7 +286,6 @@ mod tests {
 
         seed_interest(&db, ymd(2026, 9, 1), "72030", 1, 100, 200).await;
         seed_interest(&db, ymd(2026, 9, 8), "72030", 1, 110, 210).await;
-        // 別銘柄 (先頭4文字が一致しない) は含めない
         seed_interest(&db, ymd(2026, 9, 8), "99840", 1, 999, 999).await;
 
         let result = server
@@ -398,6 +397,32 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn read_margin_orders_interest_newest_first_and_respects_limit(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db.clone());
+
+        for (i, day) in [1u32, 8, 15].into_iter().enumerate() {
+            seed_interest(&db, ymd(2026, 9, day), "72030", 1, i as i64, i as i64).await;
+        }
+
+        let result = server
+            .read_margin_inner(
+                Uuid::new_v4(),
+                ReadMarginParams {
+                    symbol: "7203".to_string(),
+                    from: None,
+                    to: None,
+                    limit: Some(2),
+                },
+            )
+            .await
+            .expect("read_margin");
+
+        let dates: Vec<chrono::NaiveDate> = result.interest.iter().map(|i| i.date).collect();
+        assert_eq!(dates, vec![ymd(2026, 9, 15), ymd(2026, 9, 8)]);
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn read_margin_keeps_only_latest_pub_date_per_app_date_for_alerts(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -412,7 +437,6 @@ mod tests {
             2000,
         )
         .await;
-        // 同一 app_date の訂正 (pub_date が新しい)
         seed_alert(
             &db,
             ymd(2026, 9, 3),
