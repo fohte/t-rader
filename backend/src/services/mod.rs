@@ -23,6 +23,7 @@ pub mod margin_ingest;
 pub mod market_price;
 pub mod news;
 pub mod note_refs;
+pub mod ref_terms;
 pub mod rss_feed;
 pub mod short_ratio_ingest;
 pub mod short_sale_report_ingest;
