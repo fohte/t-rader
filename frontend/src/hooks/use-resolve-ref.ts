@@ -18,9 +18,9 @@ export interface ResolvedRef {
 export function useResolveRef(token: string): ResolvedRef {
   const i = token.indexOf(':')
   const prefix = i < 0 ? '' : token.slice(0, i)
-  const id = i < 0 ? token : token.slice(i + 1)
+  const parsedId = i < 0 ? token : token.slice(i + 1)
   const kind: RefKind = isRefKind(prefix) ? prefix : 'stock'
-  const canResolve = isRefKind(prefix) && id !== ''
+  const canResolve = isRefKind(prefix) && parsedId !== ''
 
   const { data } = $api.useQuery(
     'get',
@@ -29,5 +29,11 @@ export function useResolveRef(token: string): ResolvedRef {
     { enabled: canResolve },
   )
 
-  return { kind, id, name: data?.[0]?.name ?? null }
+  // 別名で解決できた場合、API は正規の id を返す (トークンの id とは異なりうる)
+  const resolution = data?.[0]
+  return {
+    kind,
+    id: resolution?.id ?? parsedId,
+    name: resolution?.name ?? null,
+  }
 }

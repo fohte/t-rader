@@ -19,12 +19,15 @@ use uuid::Uuid;
 
 use crate::entities::strategy_interest;
 use crate::services::interests::{DEFAULT_STATUS, ensure_ref_kind, ensure_role};
+use crate::services::ref_terms;
 
 use super::dto::{
     AddInterestParams, AddInterestResult, ListWatchTargetsParams, ListWatchTargetsResult,
     WatchTargetDto,
 };
-use super::{StrategyServer, clamp_limit, db_error, ensure_strategy_exists, invalid_params};
+use super::{
+    StrategyServer, app_error_to_mcp, clamp_limit, db_error, ensure_strategy_exists, invalid_params,
+};
 
 /// 戦略 Agent が追加する derived interest の固定 role / origin。
 const AGENT_INTEREST_ROLE: &str = "derived";
@@ -53,6 +56,11 @@ impl StrategyServer {
         }
         ensure_strategy_exists(&self.db, session_strategy_id).await?;
 
+        let ref_id = ref_terms::resolve_ref_id(&self.db, ref_kind, ref_id)
+            .await
+            .map_err(app_error_to_mcp)?
+            .unwrap_or_else(|| ref_id.to_string());
+
         // ON CONFLICT DO NOTHING で挿入を試み、衝突時は SELECT で既存行を返す。
         // 単純な check-then-insert だと並行呼び出し時に片方が UNIQUE 違反で失敗し、
         // tool description の「idempotent」契約を破る。
@@ -60,7 +68,7 @@ impl StrategyServer {
             id: NotSet,
             strategy_id: Set(Some(session_strategy_id)),
             ref_kind: Set(ref_kind.to_string()),
-            ref_id: Set(ref_id.to_string()),
+            ref_id: Set(ref_id.clone()),
             role: Set(AGENT_INTEREST_ROLE.to_string()),
             origin: Set(AGENT_INTEREST_ORIGIN.to_string()),
             status: Set(DEFAULT_STATUS.to_string()),
@@ -169,13 +177,41 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::strategy_interest;
+    use crate::entities::{ref_term, stock, strategy_interest};
     use crate::testing::create_test_db;
 
     use super::super::dto::{
         AddInterestParams, ListWatchTargetsParams, ListWatchTargetsResult, WatchTargetDto,
     };
     use super::super::tests_common::{build_server, insert_strategy};
+
+    async fn seed_ref_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
+        ref_term::ActiveModel {
+            ref_kind: Set(ref_kind.into()),
+            ref_id: Set(ref_id.into()),
+            term: Set(term.into()),
+            origin: Set("human".into()),
+            created_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("seed ref_term");
+    }
+
+    async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
+        stock::ActiveModel {
+            id: Set(id.into()),
+            name: Set(name.into()),
+            market: Set(None),
+            sector_id: Set(None),
+            product_category: Set(None),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("seed stock");
+    }
 
     fn ts(secs: i64) -> DateTime<FixedOffset> {
         DateTime::from_timestamp(secs, 0)
@@ -246,6 +282,70 @@ mod tests {
                 true
             ),
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn add_interest_resolves_alias_to_canonical_ref_id(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let sid = insert_strategy(&db, "s").await;
+        seed_stock(&db, "7203", "トヨタ自動車").await;
+        seed_ref_term(&db, "stock", "7203", "Ｔｏｙｏｔａ").await;
+        let server = build_server(db);
+
+        let result = server
+            .add_interest_inner(
+                sid,
+                AddInterestParams {
+                    ref_kind: "stock".into(),
+                    ref_id: "toyota".into(),
+                },
+            )
+            .await
+            .expect("add_interest");
+
+        assert_eq!(result.ref_id, "7203".to_string());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn add_interest_keeps_free_text_ref_id_when_no_alias_matches(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let sid = insert_strategy(&db, "s").await;
+        let server = build_server(db);
+
+        let result = server
+            .add_interest_inner(
+                sid,
+                AddInterestParams {
+                    ref_kind: "stock".into(),
+                    ref_id: "未知の銘柄".into(),
+                },
+            )
+            .await
+            .expect("add_interest");
+
+        assert_eq!(result.ref_id, "未知の銘柄".to_string());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn add_interest_keeps_free_text_ref_id_when_alias_target_is_not_in_master(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let sid = insert_strategy(&db, "s").await;
+        // master に存在しない ref_id (9999) を指す dangling な別名
+        seed_ref_term(&db, "stock", "9999", "トヨタ").await;
+        let server = build_server(db);
+
+        let result = server
+            .add_interest_inner(
+                sid,
+                AddInterestParams {
+                    ref_kind: "stock".into(),
+                    ref_id: "トヨタ".into(),
+                },
+            )
+            .await
+            .expect("add_interest");
+
+        assert_eq!(result.ref_id, "トヨタ".to_string());
     }
 
     #[sqlx::test(migrations = false)]
