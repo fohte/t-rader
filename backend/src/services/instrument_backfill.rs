@@ -9,7 +9,9 @@ use std::time::Duration;
 use chrono::Utc;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{DataProvider, DataProviderKind};
@@ -45,6 +47,7 @@ pub async fn run_backfill_cycle<P: DataProvider>(
                 .add(stock::Column::SectorId.is_null())
                 .add(stock::Column::ProductCategory.is_null()),
         )
+        .order_by_asc(stock::Column::UpdatedAt)
         .limit(BATCH_LIMIT)
         .all(db)
         .await?;
@@ -64,6 +67,16 @@ pub async fn run_backfill_cycle<P: DataProvider>(
             Ok(i) => i,
             Err(err) => {
                 tracing::warn!(stock_id = %target.id, %err, "instrument 情報取得に失敗、次サイクルで再試行");
+                let touch = stock::ActiveModel {
+                    id: Unchanged(target.id),
+                    sector_id: NotSet,
+                    product_category: NotSet,
+                    updated_at: Set(Utc::now().fixed_offset()),
+                    name: NotSet,
+                    market: NotSet,
+                    created_at: NotSet,
+                };
+                stock::Entity::update(touch).exec(db).await?;
                 continue;
             }
         };
@@ -384,6 +397,24 @@ mod tests {
                 None,
             )
         );
+    }
+
+    /// 取得失敗時も updated_at を更新しないと、対象クエリが ORDER BY updated_at ASC で
+    /// 並ぶ際に恒久的に失敗する銘柄が先頭を占有し続け、他の対象が処理されなくなる
+    #[sqlx::test(migrations = false)]
+    async fn touches_updated_at_when_provider_fetch_fails(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_stock(&db, "1111", "取得失敗銘柄", None, None).await;
+        let before = fetch_stock(&db, "1111").await;
+
+        let provider = MockProvider {
+            instruments: vec![],
+        };
+
+        run_backfill_cycle(&db, &provider).await.expect("cycle ok");
+        let after = fetch_stock(&db, "1111").await;
+
+        assert!(after.updated_at > before.updated_at);
     }
 
     /// 2 件目の upsert_sector は同じ id への ON CONFLICT DO NOTHING を踏む。conflict を
