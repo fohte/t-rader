@@ -131,7 +131,7 @@ fn margin_alert_dto_from_row(r: MarginAlertRow) -> Result<MarginAlertDto, McpErr
 impl StrategyServer {
     pub(crate) async fn read_margin_inner(
         &self,
-        // 信用残は銘柄単位の市場データであり戦略に属さないマスタデータのため検索条件に使わない
+        // 信用残は銘柄単位の市場データであり戦略に属さないため検索条件に使わない
         _session_strategy_id: Uuid,
         params: ReadMarginParams,
     ) -> Result<ReadMarginResult, McpError> {
