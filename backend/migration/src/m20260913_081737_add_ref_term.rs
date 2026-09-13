@@ -38,6 +38,10 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
+                    // PK が (ref_kind, ref_id, term) の順なので、その prefix である
+                    // (ref_kind) / (ref_kind, ref_id) の絞り込みは PK の索引で足りる。
+                    // note_ref / strategy_interest と違い別途 (ref_kind, ref_id) の
+                    // 索引は追加しない
                     .primary_key(
                         Index::create()
                             .col(RefTerm::RefKind)
@@ -46,17 +50,6 @@ impl MigrationTrait for Migration {
                     )
                     .check(Expr::col(RefTerm::RefKind).is_in(REF_KINDS))
                     .check(Expr::col(RefTerm::Origin).is_in(ORIGINS))
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_ref_term_ref_kind_id")
-                    .table(RefTerm::Table)
-                    .col(RefTerm::RefKind)
-                    .col(RefTerm::RefId)
                     .to_owned(),
             )
             .await?;

@@ -60,6 +60,17 @@ fn validation_to_mcp(err: crate::error::AppError) -> McpError {
     }
 }
 
+/// ref_kind / ref_id を trim + 値域チェックする。add/remove 両 tool で共通。
+fn normalize_ref(ref_kind: &str, ref_id: &str) -> Result<(String, String), McpError> {
+    let ref_kind = ref_kind.trim();
+    ensure_ref_kind(ref_kind).map_err(validation_to_mcp)?;
+    let ref_id = ref_id.trim();
+    if ref_id.is_empty() {
+        return Err(invalid_params("ref_id must not be empty"));
+    }
+    Ok((ref_kind.to_string(), ref_id.to_string()))
+}
+
 impl StrategyServer {
     /// 別名を追加する。同じ (ref_kind, ref_id, term) が既にあれば idempotent に無視する。
     pub(crate) async fn add_ref_terms_inner(
@@ -67,12 +78,7 @@ impl StrategyServer {
         _session_strategy_id: Uuid,
         params: AddRefTermsParams,
     ) -> Result<AddRefTermsResult, McpError> {
-        let ref_kind = params.ref_kind.trim();
-        ensure_ref_kind(ref_kind).map_err(validation_to_mcp)?;
-        let ref_id = params.ref_id.trim();
-        if ref_id.is_empty() {
-            return Err(invalid_params("ref_id must not be empty"));
-        }
+        let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
 
         let mut added = Vec::new();
         for term in &params.terms {
@@ -81,8 +87,8 @@ impl StrategyServer {
                 continue;
             }
             let model = ref_term::ActiveModel {
-                ref_kind: Set(ref_kind.to_string()),
-                ref_id: Set(ref_id.to_string()),
+                ref_kind: Set(ref_kind.clone()),
+                ref_id: Set(ref_id.clone()),
                 term: Set(term.to_string()),
                 origin: Set(AGENT_TERM_ORIGIN.to_string()),
                 created_at: NotSet,
@@ -114,12 +120,7 @@ impl StrategyServer {
         _session_strategy_id: Uuid,
         params: RemoveRefTermsParams,
     ) -> Result<RemoveRefTermsResult, McpError> {
-        let ref_kind = params.ref_kind.trim();
-        ensure_ref_kind(ref_kind).map_err(validation_to_mcp)?;
-        let ref_id = params.ref_id.trim();
-        if ref_id.is_empty() {
-            return Err(invalid_params("ref_id must not be empty"));
-        }
+        let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
 
         let mut removed = Vec::new();
         for term in &params.terms {
@@ -128,8 +129,8 @@ impl StrategyServer {
                 continue;
             }
             let result = ref_term::Entity::delete_many()
-                .filter(ref_term::Column::RefKind.eq(ref_kind))
-                .filter(ref_term::Column::RefId.eq(ref_id))
+                .filter(ref_term::Column::RefKind.eq(ref_kind.as_str()))
+                .filter(ref_term::Column::RefId.eq(ref_id.as_str()))
                 .filter(ref_term::Column::Term.eq(term))
                 .exec(&self.db)
                 .await
