@@ -48,6 +48,10 @@ async fn main() -> Result<(), AppError> {
 
     let mut opt = ConnectOptions::new(&database_url);
     opt.max_connections(5);
+    // insert_many は行数ごとに distinct な SQL になり、キャッシュに積み続けると OOM する。
+    // capacity 0 だと evict 時の Close が送られず prepared statement が PG 側に残り続けるため、
+    // 1 にして evict のたびに Close させる
+    opt.map_sqlx_postgres_opts(|opts| opts.statement_cache_capacity(1));
 
     let db = Database::connect(opt).await?;
 
