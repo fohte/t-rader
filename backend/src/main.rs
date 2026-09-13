@@ -227,6 +227,27 @@ async fn main() -> Result<(), AppError> {
             interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
             "sector backfill poll task started",
         );
+
+        let _short_sale_report_ingest_poll =
+            backend::services::short_sale_report_ingest::spawn_poll(
+                db.clone(),
+                provider.clone(),
+                backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
+            );
+        tracing::info!(
+            interval_secs = backend::services::short_sale_report_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short sale report ingest poll task started",
+        );
+
+        let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::short_ratio_ingest::DEFAULT_INTERVAL.as_secs(),
+            "short ratio ingest poll task started",
+        );
     }
 
     let llm_gateway_client = LlmGatewayClient::from_env();

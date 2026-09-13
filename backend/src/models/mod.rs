@@ -15,6 +15,8 @@ pub mod note;
 pub mod note_hypothesis;
 pub mod refs;
 pub mod risk_policy;
+pub mod short_ratio;
+pub mod short_sale_report;
 pub mod strategy;
 pub mod trade;
 pub mod trade_note;
@@ -53,6 +55,8 @@ pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
     parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
+pub use short_ratio::ShortRatio;
+pub use short_sale_report::ShortSaleReport;
 pub use strategy::{
     CreateStrategyRequest, InvestableAmountResponse, PutInvestableAmountRequest,
     StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,

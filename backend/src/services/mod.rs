@@ -17,6 +17,8 @@ pub mod market_price;
 pub mod news;
 pub mod rss_feed;
 pub mod sector_backfill;
+pub mod short_ratio_ingest;
+pub mod short_sale_report_ingest;
 pub mod strategies;
 pub mod strategy_config;
 pub mod strategy_tasks;
