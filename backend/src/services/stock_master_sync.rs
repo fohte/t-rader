@@ -1,8 +1,6 @@
 //! J-Quants の全上場銘柄マスタを日次で `stock` に同期する定期タスク。
 //!
-//! `stock` 行は取引履歴の import 時にしか作られず、保有・取引したことのある銘柄しか
-//! 存在しない。search_refs で未保有の候補銘柄や比較対象 ETF を見つけられるよう、全
-//! 上場銘柄を `stock` に upsert し、名前・市場区分・業種・商品区分を最新に保つ。
+//! 全上場銘柄を `stock` に upsert し、名前・市場区分・業種・商品区分を最新に保つ。
 //! master に含まれなくなった行 (上場廃止した保有銘柄等) は削除せずそのまま残す。
 
 use std::collections::HashSet;
@@ -29,7 +27,6 @@ pub struct SyncStats {
     pub stocks_upserted: usize,
 }
 
-/// `entries` に含まれる業種名を sector として upsert する
 async fn upsert_sectors(
     db: &DatabaseConnection,
     entries: &[EquityMasterEntry],
@@ -60,8 +57,6 @@ async fn upsert_sectors(
     Ok(())
 }
 
-/// `entries` を `stock` に upsert する。既存行は名前・市場区分・業種・商品区分を
-/// 最新の値で上書きする。
 async fn upsert_stocks(
     db: &DatabaseConnection,
     entries: &[EquityMasterEntry],

@@ -1,3 +1,4 @@
+mod equities_master;
 mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
@@ -12,6 +13,8 @@ use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 use tokio::sync::Mutex;
+
+pub(crate) use equities_master::EquityMasterEntry;
 
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
@@ -452,43 +455,6 @@ impl JQuantsClient {
         self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params, max_requests)
             .await
     }
-
-    /// `/equities/master` をパラメータ無しで呼び出し、実行日時点の全上場銘柄を取得する。
-    pub(crate) async fn fetch_all_equities_master(
-        &self,
-    ) -> Result<Vec<EquityMasterEntry>, DataProviderError> {
-        let url = self.build_url("/equities/master", &[])?;
-
-        tracing::debug!(%url, "J-Quants API から全銘柄マスタを取得中");
-
-        let response = self.get_with_retry(&url, self.current_rate_limit()).await?;
-        let body: EquitiesMasterResponse = response
-            .json()
-            .await
-            .map_err(|e| DataProviderError::Parse(e.to_string()))?;
-
-        Ok(body
-            .data
-            .into_iter()
-            .map(|m| EquityMasterEntry {
-                id: normalize_local_code(&m.code).to_string(),
-                name: m.company_name,
-                market: m.market_name,
-                sector_name: m.sector_name,
-                product_category: m.product_category,
-            })
-            .collect())
-    }
-}
-
-/// `fetch_all_equities_master` が返す 1 銘柄分のマスタ情報。`id` は 4 桁規約に正規化済み。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EquityMasterEntry {
-    pub id: String,
-    pub name: String,
-    pub market: Option<String>,
-    pub sector_name: Option<String>,
-    pub product_category: Option<String>,
 }
 
 impl DataProvider for JQuantsClient {

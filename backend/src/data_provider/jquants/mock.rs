@@ -1,5 +1,5 @@
 use serde_json::json;
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::JQuantsClient;
@@ -457,6 +457,7 @@ impl<'a> MockEquitiesMasterBuilder<'a> {
 
         Mock::given(method("GET"))
             .and(path("/equities/master"))
+            .and(query_param_is_missing("code"))
             .and(header("x-api-key", "test-api-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "data": data,
