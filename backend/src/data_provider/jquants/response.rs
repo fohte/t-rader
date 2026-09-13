@@ -31,9 +31,8 @@ impl Paginated for DailyBarsResponse {
 pub(crate) struct DailyBar {
     #[serde(rename = "Date")]
     pub date: String,
-    /// デシリアライズには必要だが、アプリ内部では fetch_daily_bars の引数 instrument_id を使う
     #[serde(rename = "Code")]
-    pub _code: String,
+    pub code: String,
     #[serde(rename = "AdjO")]
     pub adj_open: Option<f64>,
     #[serde(rename = "AdjH")]
@@ -53,16 +52,20 @@ pub(crate) struct EquitiesMasterResponse {
 }
 
 /// J-Quants API V2 銘柄マスタ 1 レコード
-///
-/// J-Quants は東証上場銘柄のみを提供するため、`MktNm` は構造体には含めない。
 #[derive(Debug, Deserialize)]
 pub(crate) struct EquityMaster {
     #[serde(rename = "Code")]
     pub code: String,
     #[serde(rename = "CoName")]
     pub company_name: String,
+    /// 市場区分名 (例: "プライム", "スタンダード", "グロース")
+    #[serde(rename = "MktNm")]
+    pub market_name: Option<String>,
     #[serde(rename = "S33Nm")]
     pub sector_name: Option<String>,
+    /// 商品区分コード (例: "011" = 内国株券、"014" = ETF)
+    #[serde(rename = "ProdCat")]
+    pub product_category: Option<String>,
 }
 
 /// J-Quants API V2 財務情報レスポンス (`GET /v2/fins/summary`)
@@ -81,6 +84,41 @@ impl Paginated for FinSummaryResponse {
     fn into_parts(self) -> (Vec<serde_json::Value>, Option<String>) {
         (self.data, self.pagination_key)
     }
+}
+
+/// J-Quants API V2 決算発表予定日レスポンス (`GET /v2/fins/earnings-date`)
+#[derive(Debug, Deserialize)]
+pub(crate) struct EarningsDateResponse {
+    pub data: Vec<EarningsDateRecord>,
+    pub pagination_key: Option<String>,
+}
+
+impl Paginated for EarningsDateResponse {
+    type Item = EarningsDateRecord;
+
+    fn into_parts(self) -> (Vec<EarningsDateRecord>, Option<String>) {
+        (self.data, self.pagination_key)
+    }
+}
+
+/// J-Quants API V2 決算発表予定日 1 レコード
+#[derive(Debug, Deserialize)]
+pub(crate) struct EarningsDateRecord {
+    #[serde(rename = "PubDate")]
+    pub pub_date: String,
+    /// 決算発表予定日が未定の場合は空文字列で返る
+    #[serde(rename = "SchDate")]
+    pub sch_date: String,
+    #[serde(rename = "FQName")]
+    pub fq_name: String,
+    #[serde(rename = "FYE")]
+    pub fye: String,
+    #[serde(rename = "Code")]
+    pub code: String,
+    #[serde(rename = "CoName")]
+    pub co_name: String,
+    #[serde(rename = "CoNameEn")]
+    pub co_name_en: String,
 }
 
 /// EDINET 由来のデータ (大量保有報告書 / 政策保有株式 / 大株主状況) の一覧レスポンス。

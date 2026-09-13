@@ -15,15 +15,20 @@ pub(super) mod fin_summary;
 pub(super) mod holdings;
 pub(super) mod hypotheses;
 pub(super) mod interests;
+pub(super) mod macro_indicator;
+pub(super) mod margin;
 pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
 pub(super) mod portfolio;
+pub(super) mod predictions;
+pub(super) mod ref_terms;
 pub(super) mod refs;
 pub(super) mod risk_check;
 pub(super) mod short_ratio;
 pub(super) mod short_sale_report;
 mod tool_router;
+pub(super) mod trades;
 pub(super) mod web_search;
 
 #[cfg(test)]
@@ -38,7 +43,7 @@ use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use uuid::Uuid;
 
-use crate::data_provider::{DataProviderError, DataProviderKind};
+use crate::data_provider::DataProviderKind;
 use crate::entities::{annotation, note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmClient, LiteLlmError};
@@ -159,16 +164,6 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
 pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
     tracing::error!(error = %err, "strategy mcp db error");
     internal_error(format!("database error: {err}"))
-}
-
-pub(super) fn data_provider_error(err: DataProviderError) -> McpError {
-    tracing::warn!(error = %err, "strategy mcp data provider error");
-    match err {
-        DataProviderError::NotFound(msg) => {
-            McpError::resource_not_found(format!("instrument not found: {msg}"), None)
-        }
-        other => internal_error(format!("data provider error: {other}")),
-    }
 }
 
 pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {

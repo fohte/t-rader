@@ -1,3 +1,4 @@
+mod equities_master;
 mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
@@ -13,13 +14,16 @@ use reqwest::Url;
 use rust_decimal::Decimal;
 use tokio::sync::Mutex;
 
+pub(crate) use equities_master::EquityMasterEntry;
+
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
+pub(crate) use response::EarningsDateRecord;
 use response::{
-    DailyBarsResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
-    FinSummaryResponse, Paginated,
+    DailyBarsResponse, EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse,
+    ErrorResponse, FinSummaryResponse, Paginated,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
@@ -398,36 +402,41 @@ impl JQuantsClient {
 
         let mut all_bars = Vec::with_capacity(raw_bars.len());
         for d in raw_bars {
-            // 調整後価格が null のレコードはスキップ (非取引日等)
-            let (Some(adj_open), Some(adj_high), Some(adj_low), Some(adj_close)) =
-                (d.adj_open, d.adj_high, d.adj_low, d.adj_close)
-            else {
-                continue;
-            };
-
-            let date = NaiveDate::parse_from_str(&d.date, "%Y-%m-%d")
-                .map_err(|e| DataProviderError::Parse(format!("invalid date '{}': {e}", d.date)))?;
-
-            let timestamp = Utc.from_utc_datetime(
-                &date
-                    .and_hms_opt(0, 0, 0)
-                    .ok_or_else(|| DataProviderError::Parse("invalid time".to_string()))?,
-            );
-
-            all_bars.push(Bar {
-                // API レスポンスの Code (5 桁) ではなく、引数の instrument_id (4 桁) を使う
-                instrument_id: instrument_id.to_string(),
-                timeframe: Timeframe::Daily,
-                timestamp,
-                open: Self::to_decimal(adj_open)?,
-                high: Self::to_decimal(adj_high)?,
-                low: Self::to_decimal(adj_low)?,
-                close: Self::to_decimal(adj_close)?,
-                volume: d.adj_volume.map(|v| v.round() as i64).unwrap_or(0),
-            });
+            // API レスポンスの Code (5 桁) ではなく、引数の instrument_id (4 桁) を使う
+            if let Some(bar) = parse_daily_bar(d, instrument_id.to_string())? {
+                all_bars.push(bar);
+            }
         }
 
         all_bars.sort_by_key(|b| b.timestamp);
+        Ok(all_bars)
+    }
+
+    /// `/equities/bars/daily` を `date` のみ指定して呼び出し、その日の全上場銘柄分の
+    /// 日足をまとめて取得する。銘柄コードはレスポンスの 5 桁 Code から正規化する。
+    pub(crate) async fn fetch_daily_bars_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<Bar>, DataProviderError> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let params = [("date", date_str.as_str())];
+
+        let raw_bars = self
+            .fetch_all_pages::<DailyBarsResponse>(
+                "/equities/bars/daily",
+                &params,
+                self.current_rate_limit(),
+            )
+            .await?;
+
+        let mut all_bars = Vec::with_capacity(raw_bars.len());
+        for d in raw_bars {
+            let instrument_id = normalize_local_code(&d.code).to_string();
+            if let Some(bar) = parse_daily_bar(d, instrument_id)? {
+                all_bars.push(bar);
+            }
+        }
+
         Ok(all_bars)
     }
 
@@ -446,6 +455,23 @@ impl JQuantsClient {
 
         self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params, max_requests)
             .await
+    }
+
+    /// `/fins/earnings-date` を `date` (公表日) 指定で取得する。全上場銘柄のその日の公表分が
+    /// まとめて返る。予定日の変更も新しい公表日の行として返るため、同じ (code, fq_name) の
+    /// 過去の公表日の行は上書きされず変更履歴として蓄積される。
+    pub(crate) async fn fetch_earnings_date_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<response::EarningsDateRecord>, DataProviderError> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let params = [("date", date_str.as_str())];
+        self.fetch_all_pages::<EarningsDateResponse>(
+            "/fins/earnings-date",
+            &params,
+            self.current_rate_limit(),
+        )
+        .await
     }
 }
 
@@ -550,6 +576,7 @@ impl DataProvider for JQuantsClient {
             // J-Quants は東証上場銘柄のみを提供する
             market: Market::Tse,
             sector: master.sector_name,
+            product_category: master.product_category,
         })
     }
 }
@@ -566,4 +593,48 @@ fn parse_subscription_range(message: &str) -> Option<(NaiveDate, NaiveDate)> {
     let from = dates.next()?;
     let to = dates.next()?;
     Some((from, to))
+}
+
+/// J-Quants の 5 桁ローカルコードをアプリ内の 4 桁銘柄コード規約に正規化する。
+/// 末尾桁は銘柄種別 (普通株は "0") を表すため、"0" 終わりのときだけ 4 桁に短縮する。
+/// それ以外 (優先株等、稀) は対応する 4 桁銘柄が無いため 5 桁のまま扱う。
+fn normalize_local_code(code: &str) -> &str {
+    if code.len() == 5 && code.ends_with('0') {
+        &code[..4]
+    } else {
+        code
+    }
+}
+
+/// `DailyBar` 1 件を `Bar` に変換する。調整後価格が null (非取引日等) のレコードは
+/// `None` を返す。
+fn parse_daily_bar(
+    d: response::DailyBar,
+    instrument_id: String,
+) -> Result<Option<Bar>, DataProviderError> {
+    let (Some(adj_open), Some(adj_high), Some(adj_low), Some(adj_close)) =
+        (d.adj_open, d.adj_high, d.adj_low, d.adj_close)
+    else {
+        return Ok(None);
+    };
+
+    let date = NaiveDate::parse_from_str(&d.date, "%Y-%m-%d")
+        .map_err(|e| DataProviderError::Parse(format!("invalid date '{}': {e}", d.date)))?;
+
+    let timestamp = Utc.from_utc_datetime(
+        &date
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| DataProviderError::Parse("invalid time".to_string()))?,
+    );
+
+    Ok(Some(Bar {
+        instrument_id,
+        timeframe: Timeframe::Daily,
+        timestamp,
+        open: JQuantsClient::to_decimal(adj_open)?,
+        high: JQuantsClient::to_decimal(adj_high)?,
+        low: JQuantsClient::to_decimal(adj_low)?,
+        close: JQuantsClient::to_decimal(adj_close)?,
+        volume: d.adj_volume.map(|v| v.round() as i64).unwrap_or(0),
+    }))
 }

@@ -210,6 +210,7 @@ impl IbkrClient {
                         name,
                         market: Market::Tse,
                         sector: None,
+                        product_category: None,
                     },
                 ));
             }

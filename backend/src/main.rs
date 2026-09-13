@@ -227,14 +227,14 @@ async fn main() -> Result<(), AppError> {
     if let Some(provider) = &data_provider
         && matches!(provider.as_ref(), DataProviderKind::JQuants(_))
     {
-        let _sector_backfill_poll = backend::services::sector_backfill::spawn_poll(
+        let _stock_master_sync_poll = backend::services::stock_master_sync::spawn_poll(
             db.clone(),
             provider.clone(),
-            backend::services::sector_backfill::DEFAULT_INTERVAL,
+            backend::services::stock_master_sync::DEFAULT_INTERVAL,
         );
         tracing::info!(
-            interval_secs = backend::services::sector_backfill::DEFAULT_INTERVAL.as_secs(),
-            "sector backfill poll task started",
+            interval_secs = backend::services::stock_master_sync::DEFAULT_INTERVAL.as_secs(),
+            "stock master sync poll task started",
         );
 
         let _short_sale_report_ingest_poll =
@@ -278,6 +278,16 @@ async fn main() -> Result<(), AppError> {
             "fin summary ingest poll task started",
         );
 
+        let _earnings_date_ingest_poll = backend::services::earnings_date_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::earnings_date_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::earnings_date_ingest::DEFAULT_INTERVAL.as_secs(),
+            "earnings date ingest poll task started",
+        );
+
         let _edinet_holdings_poll = backend::services::edinet_holdings::spawn_poll(
             db.clone(),
             provider.clone(),
@@ -286,6 +296,16 @@ async fn main() -> Result<(), AppError> {
         tracing::info!(
             interval_secs = backend::services::edinet_holdings::DEFAULT_INTERVAL.as_secs(),
             "EDINET holdings ingest poll task started",
+        );
+
+        let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::daily_bars_ingest::DEFAULT_INTERVAL.as_secs(),
+            "daily bars ingest poll task started",
         );
     }
 

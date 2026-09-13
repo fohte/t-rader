@@ -106,6 +106,7 @@ fn sample_instrument(id: &str) -> Instrument {
         name: format!("Test Instrument {id}"),
         market: Market::Tse,
         sector: Some("Technology".to_string()),
+        product_category: Some("011".to_string()),
     }
 }
 
