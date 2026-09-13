@@ -12,6 +12,7 @@ pub use super::hypothesis::Entity as Hypothesis;
 pub use super::hypothesis_proposal::Entity as HypothesisProposal;
 pub use super::indicator::Entity as Indicator;
 pub use super::instruments::Entity as Instruments;
+pub use super::mcp_tool_call_count::Entity as McpToolCallCount;
 pub use super::news_item::Entity as NewsItem;
 pub use super::news_strategy_link::Entity as NewsStrategyLink;
 pub use super::note::Entity as Note;

@@ -380,6 +380,19 @@ pub struct QueryMediaResult {
     pub text: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SearchWebParams {
+    /// 検索したい内容を表す自然文の問い合わせ
+    pub query: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct SearchWebResult {
+    pub text: String,
+    /// 出典 URL。重複除去済み
+    pub citations: Vec<String>,
+}
+
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct EvalIndicatorResult {
     /// 評価された indicator の id。

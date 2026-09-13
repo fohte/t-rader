@@ -14,6 +14,7 @@ pub mod hypothesis;
 pub mod hypothesis_proposal;
 pub mod indicator;
 pub mod instruments;
+pub mod mcp_tool_call_count;
 pub mod news_item;
 pub mod news_strategy_link;
 pub mod note;
