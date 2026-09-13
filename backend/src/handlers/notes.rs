@@ -44,7 +44,7 @@ pub struct ListNotesQuery {
     pub type_tag: Option<String>,
 }
 
-async fn find_note_or_404(
+pub(crate) async fn find_note_or_404(
     db: &sea_orm::DatabaseConnection,
     id: Uuid,
 ) -> Result<note::Model, AppError> {

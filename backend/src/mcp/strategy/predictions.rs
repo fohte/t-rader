@@ -143,32 +143,14 @@ impl StrategyServer {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ActiveModelTrait, DatabaseConnection};
     use sqlx::PgPool;
 
-    use crate::entities::stock;
-    use crate::testing::create_test_db;
+    use crate::testing::{create_test_db, insert_test_stock};
 
     use super::super::dto::{ListPredictionsParams, PredictionDto, RecordPredictionParams};
     use super::super::tests_common::{
         build_server, insert_strategy, seed_foreign_note, ts_sentinel,
     };
-
-    async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
-        stock::ActiveModel {
-            id: Set(id.into()),
-            name: Set(name.into()),
-            market: Set(None),
-            sector_id: Set(None),
-            product_category: Set(None),
-            created_at: NotSet,
-            updated_at: NotSet,
-        }
-        .insert(db)
-        .await
-        .expect("seed stock");
-    }
 
     fn normalize_prediction(mut p: PredictionDto) -> PredictionDto {
         p.created_at = ts_sentinel();
@@ -191,8 +173,8 @@ mod tests {
     async fn record_prediction_creates_prediction_with_given_values(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
 
         let result = server
@@ -219,7 +201,7 @@ mod tests {
     async fn record_prediction_rejects_same_target_and_benchmark(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
         let server = build_server(db);
 
         let err = server
@@ -233,8 +215,8 @@ mod tests {
     async fn record_prediction_rejects_invalid_direction(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
 
         let mut params = base_params("TGT1", "BM1");
@@ -250,8 +232,8 @@ mod tests {
     async fn record_prediction_rejects_invalid_probability(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
 
         let mut params = base_params("TGT1", "BM1");
@@ -267,8 +249,8 @@ mod tests {
     async fn record_prediction_rejects_due_date_not_after_base_date(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
 
         let mut params = base_params("TGT1", "BM1");
@@ -284,7 +266,7 @@ mod tests {
     async fn record_prediction_rejects_missing_target_stock(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
 
         let err = server
@@ -298,7 +280,7 @@ mod tests {
     async fn record_prediction_rejects_missing_benchmark_stock(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
         let server = build_server(db);
 
         let err = server
@@ -313,8 +295,8 @@ mod tests {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let foreign_note = seed_foreign_note(&db, strategy_b, "b's note").await;
         let server = build_server(db);
 
@@ -332,8 +314,8 @@ mod tests {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
 
         let own = server
@@ -372,8 +354,8 @@ mod tests {
     async fn list_predictions_filters_by_due_date_range(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
-        seed_stock(&db, "TGT1", "Target").await;
-        seed_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TGT1", "Target").await;
+        insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
 
         let mut early = base_params("TGT1", "BM1");
