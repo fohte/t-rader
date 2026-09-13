@@ -315,7 +315,7 @@ impl JQuantsClient {
 
             if page == MAX_PAGES - 1 {
                 tracing::warn!(
-                    path,
+                    %url,
                     max_pages = MAX_PAGES,
                     "ページネーション上限に到達、取得を打ち切り"
                 );

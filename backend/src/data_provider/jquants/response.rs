@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
-/// `pagination_key` を持つ一覧系レスポンス。`fetch_all_pages` がこれを実装する
-/// レスポンス型からその 1 ページ分のアイテムと次ページキーを取り出す。
+/// `data` + `pagination_key` を持つ一覧系レスポンスが実装するトレイト。
+/// `fetch_all_pages` が `into_parts` でアイテム列と次ページキーを取り出す。
 pub(crate) trait Paginated {
     type Item;
 
