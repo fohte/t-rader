@@ -6,6 +6,7 @@ pub mod change_history;
 pub mod comment_anchor;
 pub mod custom_indicators;
 pub mod daily_bars_ingest;
+pub mod earnings_date_ingest;
 pub mod edinet_holdings;
 pub mod fin_summary_ingest;
 pub mod fred_ingest;

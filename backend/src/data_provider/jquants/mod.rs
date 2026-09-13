@@ -20,9 +20,10 @@ use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
+pub(crate) use response::EarningsDateRecord;
 use response::{
-    DailyBarsResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
-    FinSummaryResponse, Paginated,
+    DailyBarsResponse, EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse,
+    ErrorResponse, FinSummaryResponse, Paginated,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
@@ -454,6 +455,23 @@ impl JQuantsClient {
 
         self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params, max_requests)
             .await
+    }
+
+    /// `/fins/earnings-date` を `date` (公表日) 指定で取得する。全上場銘柄のその日の公表分が
+    /// まとめて返る。予定日の変更も新しい公表日の行として返るため、同じ (code, fq_name) の
+    /// 過去の公表日の行は上書きされず変更履歴として蓄積される。
+    pub(crate) async fn fetch_earnings_date_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<response::EarningsDateRecord>, DataProviderError> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let params = [("date", date_str.as_str())];
+        self.fetch_all_pages::<EarningsDateResponse>(
+            "/fins/earnings-date",
+            &params,
+            self.current_rate_limit(),
+        )
+        .await
     }
 }
 
