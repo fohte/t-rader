@@ -927,7 +927,7 @@ describe('createStrategyAgentDeps', () => {
 
     await expect(
       agent.invoke({ messages: [new HumanMessage('hi')] }),
-    ).rejects.toThrow()
+    ).rejects.toThrow('aborted')
     expect(capturedSignal?.aborted).toBe(true)
   })
 })

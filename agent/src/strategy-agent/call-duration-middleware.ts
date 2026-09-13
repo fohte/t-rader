@@ -1,36 +1,37 @@
-import type { Runnable } from '@langchain/core/runnables'
-import { RunnableBinding } from '@langchain/core/runnables'
+import { captureWithFingerprint } from '@fohte/service-kit/observability'
+import { Runnable, RunnableBinding } from '@langchain/core/runnables'
 import { createMiddleware } from 'langchain'
 
-// ChatOpenAI の `timeout` はヘッダ受信までしか縛らず、streaming: true では
-// ボディ読み取り中のタイムアウト判定を openai SDK が明示的にスキップする
-// (ストリームが流れ続ける限り打ち切られない)。呼び出しごとに新しい
-// AbortSignal を作ってモデルに渡すことで、ストリーミング中でも実際の HTTP
-// リクエストを呼び出し単位で打ち切る。
-//
-// signal は modelSettings ではなく RunnableBinding.config 経由で渡す必要がある。
-// ChatOpenAI.bindTools/.withConfig は RunnableBinding を作らず自身のクローンに
-// defaultOptions として保持するだけなので、AgentNode が invoke 時に渡す
-// config (signal 含む) と `{...defaultOptions, ...options}` という単純な
-// object spread でマージされ、後勝ちで signal が上書き消失する。
-// request.model を RunnableBinding でラップしておけば、AgentNode 側の
-// bindTools 処理がそのバインディングの config/kwargs を引き継いだ新しい
-// RunnableBinding を返し、invoke 時は @langchain/core の mergeConfigs が
-// signal を AbortSignal.any で正しく合成する。
+const CALL_DURATION_TIMEOUT_FINGERPRINT = 'call-duration-middleware.timeout'
+
+// ChatOpenAI の timeout はヘッダ受信までしか縛らず、streaming 中の暴走を止められない。
+// 呼び出しごとに RunnableBinding 経由で AbortSignal を注入し、AgentNode 側の config
+// マージで signal が上書き消失しないようにする。
 export const createCallDurationMiddleware = (timeoutMs: number) =>
   createMiddleware({
     name: 'callDurationMiddleware',
-    wrapModelCall: (request, handler) =>
-      handler({
-        ...request,
-        model: new RunnableBinding({
-          // request.model の型 (AgentLanguageModelLike) は invoke/stream 等
-          // 最小限の RunnableInterface までしか保証しないが、実行時は
-          // createChatModel が返す具象 Runnable (ChatOpenAI) が渡ってくる。
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- 上記の通り実行時は必ず具象 Runnable であるため、RunnableBinding.bound に渡すための narrowing。
-          bound: request.model as Runnable,
-          config: { signal: AbortSignal.timeout(timeoutMs) },
-          kwargs: {},
+    wrapModelCall: (request, handler) => {
+      // request.model の型 (AgentLanguageModelLike) は RunnableBinding.bound が
+      // 要求する具象 Runnable より緩いため、実行時に確認できない場合は素通しする。
+      if (!(request.model instanceof Runnable)) return handler(request)
+
+      const signal = AbortSignal.timeout(timeoutMs)
+      return Promise.resolve(
+        handler({
+          ...request,
+          model: new RunnableBinding({
+            bound: request.model,
+            config: { signal },
+            kwargs: {},
+          }),
         }),
-      }),
+      ).finally(() => {
+        if (!signal.aborted) return
+        const error = new Error(
+          `callDurationMiddleware: aborted model call after exceeding ${String(timeoutMs)}ms`,
+        )
+        console.warn(error.message)
+        captureWithFingerprint(error, CALL_DURATION_TIMEOUT_FINGERPRINT)
+      })
+    },
   })
