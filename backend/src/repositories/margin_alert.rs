@@ -6,9 +6,9 @@ use crate::entities::margin_alert;
 use crate::error::AppError;
 use crate::models::margin::MarginAlertRecord;
 
-/// 日々公表信用取引残高を一括 upsert する。複合 PK (pub_date, code) で重複排除する。
-/// 訂正は同じ AppDate で PubDate が新しい行として追加されるため通常は新規 insert のみが
-/// 発生するが、再取得時の冪等性のため ON CONFLICT DO UPDATE にしておく。
+/// 日々公表信用取引残高を一括 upsert する。
+///
+/// (pub_date, code) が一致する既存行は最新の値で更新される。
 pub async fn upsert_margin_alert(
     db: &DatabaseConnection,
     records: Vec<MarginAlertRecord>,
@@ -47,7 +47,6 @@ pub async fn upsert_margin_alert(
     Ok(())
 }
 
-/// テーブル中の最新公表日 (PubDate) を返す。1 行も無ければ None。
 pub async fn find_latest_margin_alert_pub_date(
     db: &DatabaseConnection,
 ) -> Result<Option<NaiveDate>, AppError> {
@@ -117,7 +116,6 @@ mod tests {
             .expect("query ok");
         assert_eq!(latest, Some(correction_pub_date));
 
-        // 訂正前の行が上書きで消えていないことを確認する
         let all = margin_alert::Entity::find()
             .all(&db)
             .await

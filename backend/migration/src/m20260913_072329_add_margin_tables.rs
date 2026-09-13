@@ -49,10 +49,7 @@ enum MarginAlert {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // margin_interest テーブル。J-Quants の Code (5 桁) をそのまま保存し、
-        // stock/instruments への外部キーは張らない (4 桁/5 桁の突き合わせは読む側の責務)。
-        // Val 系カラムは新仕様 (2026-09-28 切替、2026-09-25 申込分以降) の金額項目で、
-        // 切替前の日付では null。切替に備えてテーブルは最初から持っておく。
+        // J-Quants の銘柄コード (5 桁) をそのまま保存するため、instruments への外部キーは張らない。
         manager
             .create_table(
                 Table::create()
@@ -111,8 +108,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 銘柄単位の時系列参照 (「この銘柄の信用残の推移」) を素早く引けるようにする。
-        // PK は (date, code, iss_type) の順のため、date を指定しない code 単体の絞り込みには効かない。
         manager
             .create_index(
                 Index::create()
@@ -124,9 +119,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // margin_alert テーブル。訂正は上書きではなく、同じ AppDate で PubDate が新しい行として
-        // 追加される。PubDate を PK に含めないと訂正前後のどちらかが上書きで消えるため、
-        // (pub_date, code) を PK にする。
+        // 日々公表の訂正データは同一 AppDate に対して新しい PubDate で追加配信される。
         manager
             .create_table(
                 Table::create()

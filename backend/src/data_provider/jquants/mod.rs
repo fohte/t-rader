@@ -1,6 +1,6 @@
 mod margin;
 #[cfg(test)]
-mod mock;
+pub(crate) mod mock;
 mod response;
 #[cfg(test)]
 mod tests;

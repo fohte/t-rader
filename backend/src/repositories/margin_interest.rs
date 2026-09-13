@@ -48,7 +48,6 @@ pub async fn upsert_margin_interest(
     Ok(())
 }
 
-/// テーブル中の最新日付を返す。1 行も無ければ None。
 pub async fn find_latest_margin_interest_date(
     db: &DatabaseConnection,
 ) -> Result<Option<NaiveDate>, AppError> {

@@ -187,8 +187,26 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2020, 1, 6).expect("date");
         let result = client.fetch_margin_interest(date).await.expect("fetch ok");
 
-        assert_eq!(result[0].shrt_val, None);
-        assert_eq!(result[0].iss_type, 2);
+        assert_eq!(
+            result,
+            vec![MarginInterestRecord {
+                date,
+                code: "86970".to_string(),
+                iss_type: 2,
+                shrt_vol: 100,
+                long_vol: 200,
+                shrt_neg_vol: 10,
+                long_neg_vol: 20,
+                shrt_std_vol: 90,
+                long_std_vol: 180,
+                shrt_val: None,
+                long_val: None,
+                shrt_neg_val: None,
+                long_neg_val: None,
+                shrt_std_val: None,
+                long_std_val: None,
+            }]
+        );
     }
 
     #[tokio::test]
@@ -221,9 +239,33 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2024, 2, 8).expect("date");
         let result = client.fetch_margin_alert(date).await.expect("fetch ok");
 
-        assert_eq!(result[0].shrt_out_chg, None);
-        assert_eq!(result[0].long_out_chg, Some(50));
-        assert_eq!(result[0].shrt_out_ratio, None);
-        assert!(result[0].long_out_ratio.is_some());
+        assert_eq!(
+            result,
+            vec![MarginAlertRecord {
+                pub_date: date,
+                code: "27800".to_string(),
+                app_date: NaiveDate::from_ymd_opt(2024, 2, 7).expect("date"),
+                pub_reason: PubReason {
+                    restricted: false,
+                    daily_publication: true,
+                    monitoring: false,
+                    restricted_by_jsf: false,
+                    precaution_by_jsf: false,
+                    unclear_or_sec_on_alert: false,
+                },
+                shrt_out: 1000,
+                long_out: 2000,
+                shrt_out_chg: None,
+                long_out_chg: Some(50),
+                shrt_out_ratio: None,
+                long_out_ratio: Some(rust_decimal::Decimal::try_from(12.5).expect("decimal")),
+                sl_ratio: Some(rust_decimal::Decimal::try_from(30.0).expect("decimal")),
+                shrt_neg_out: 100,
+                shrt_std_out: 900,
+                long_neg_out: 200,
+                long_std_out: 1800,
+                tse_mrgn_reg_cls: "001".to_string(),
+            }]
+        );
     }
 }

@@ -3,6 +3,7 @@
 //! IBKR には対応するデータが無いため DataProvider trait には追加せず、JQuantsClient を
 //! 直接使う。契約プランが未設定の間は取り込まない (未設定時のレート制限は 5 req/min のため)。
 
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
+use crate::data_provider::DataProviderError;
 use crate::data_provider::DataProviderKind;
 use crate::data_provider::jquants::JQuantsClient;
 use crate::error::AppError;
@@ -29,9 +31,15 @@ fn margin_alert_start_date() -> NaiveDate {
 }
 
 /// 専用のチェックポイントテーブルは持たず、テーブル内の最新日付から再開する。
-/// 既にデータがある場合はこの日数分さかのぼって再取得し、J-Quants 側の訂正
-/// (上書きで反映される) を拾う。
+/// margin_interest の訂正は上書きで反映されるため、この日数分さかのぼって再取得する。
+/// margin_alert の訂正は PubDate が新しい行として追加されるため、この lookback では
+/// 拾われない (新しい PubDate 側は次サイクル以降の forward 差分で取得される)。
 const REFETCH_LOOKBACK_DAYS: i64 = 30;
+
+/// 1 サイクルで取得を試みる日数の上限。JQuantsClient の RateLimiter はウォッチリスト
+/// 追加時の日足取得や sector_backfill と共有のため、大規模バックフィル時に専有しすぎ
+/// ないよう抑える。上限に達した分は次サイクルに繰り越される。
+const MAX_REQUESTS_PER_CYCLE: usize = 30;
 
 /// 取得開始日を決定する。テーブルが空なら `earliest` から、既にデータがあれば
 /// 最新日付から `REFETCH_LOOKBACK_DAYS` 日さかのぼった日 (ただし `earliest` 未満にはしない) から。
@@ -49,65 +57,44 @@ pub struct IngestStats {
     pub rows_upserted: usize,
 }
 
-/// `start` から `end` (両端含む) まで日付を 1 日ずつ進め、信用取引週末残高を取得・保存する。
-/// 1 日分の取得・保存に失敗しても残りの日付は続行する。
-async fn ingest_margin_interest(
-    db: &DatabaseConnection,
-    client: &JQuantsClient,
+/// `start` から `end` (両端含む) まで日付を 1 日ずつ進め、`fetch`/`upsert` で取得・保存する。
+/// 1 日分の取得・保存に失敗しても残りの日付は続行する。`MAX_REQUESTS_PER_CYCLE` に達したら
+/// 打ち切り、残りは次サイクルに持ち越す。
+async fn ingest_daily<'c, T, F, FetchFut, G, UpsertFut>(
+    db: &'c DatabaseConnection,
+    client: &'c JQuantsClient,
     start: NaiveDate,
     end: NaiveDate,
-) -> IngestStats {
+    label: &str,
+    fetch: F,
+    upsert: G,
+) -> IngestStats
+where
+    F: Fn(&'c JQuantsClient, NaiveDate) -> FetchFut,
+    FetchFut: Future<Output = Result<Vec<T>, DataProviderError>>,
+    G: Fn(&'c DatabaseConnection, Vec<T>) -> UpsertFut,
+    UpsertFut: Future<Output = Result<(), AppError>>,
+{
     let mut stats = IngestStats::default();
     let mut date = start;
-    while date <= end {
-        match client.fetch_margin_interest(date).await {
+    let mut requests = 0usize;
+    while date <= end && requests < MAX_REQUESTS_PER_CYCLE {
+        requests += 1;
+        match fetch(client, date).await {
             Ok(records) => {
                 let count = records.len();
-                match margin_interest::upsert_margin_interest(db, records).await {
+                match upsert(db, records).await {
                     Ok(()) => {
                         stats.days_fetched += 1;
                         stats.rows_upserted += count;
                     }
                     Err(e) => {
-                        tracing::warn!(%date, error = %e, "信用取引週末残高の保存に失敗、次の日に進みます");
+                        tracing::warn!(%date, %label, error = %e, "保存に失敗、次の日に進みます");
                     }
                 }
             }
             Err(e) => {
-                tracing::warn!(%date, error = %e, "信用取引週末残高の取得に失敗、次の日に進みます");
-            }
-        }
-        date += ChronoDuration::days(1);
-    }
-    stats
-}
-
-/// `start` から `end` (両端含む) まで日付を 1 日ずつ進め、日々公表信用取引残高を取得・保存する。
-/// 1 日分の取得・保存に失敗しても残りの日付は続行する。
-async fn ingest_margin_alert(
-    db: &DatabaseConnection,
-    client: &JQuantsClient,
-    start: NaiveDate,
-    end: NaiveDate,
-) -> IngestStats {
-    let mut stats = IngestStats::default();
-    let mut date = start;
-    while date <= end {
-        match client.fetch_margin_alert(date).await {
-            Ok(records) => {
-                let count = records.len();
-                match margin_alert::upsert_margin_alert(db, records).await {
-                    Ok(()) => {
-                        stats.days_fetched += 1;
-                        stats.rows_upserted += count;
-                    }
-                    Err(e) => {
-                        tracing::warn!(%date, error = %e, "日々公表信用取引残高の保存に失敗、次の日に進みます");
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!(%date, error = %e, "日々公表信用取引残高の取得に失敗、次の日に進みます");
+                tracing::warn!(%date, %label, error = %e, "取得に失敗、次の日に進みます");
             }
         }
         date += ChronoDuration::days(1);
@@ -120,24 +107,43 @@ async fn ingest_margin_alert(
 pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
     client: &JQuantsClient,
+    today: NaiveDate,
 ) -> Result<(IngestStats, IngestStats), AppError> {
     let Some(plan) = client.manual_plan() else {
         tracing::debug!("J-Quants 契約プラン未設定のため、信用残データの取り込みをスキップします");
         return Ok((IngestStats::default(), IngestStats::default()));
     };
 
-    let today = Utc::now().date_naive();
-    let (plan_from, _) = plan.range(today);
+    // 配信遅延を反映した契約上限日 (plan_to) を超えては取得できない (backfill.rs::latest_fetchable_date と同様)
+    let (plan_from, plan_to) = plan.range(today);
 
     let interest_earliest = plan_from.max(margin_interest_start_date());
     let interest_latest = margin_interest::find_latest_margin_interest_date(db).await?;
     let interest_start = resolve_start_date(interest_latest, interest_earliest);
-    let interest_stats = ingest_margin_interest(db, client, interest_start, today).await;
+    let interest_stats = ingest_daily(
+        db,
+        client,
+        interest_start,
+        plan_to,
+        "信用取引週末残高",
+        JQuantsClient::fetch_margin_interest,
+        margin_interest::upsert_margin_interest,
+    )
+    .await;
 
     let alert_earliest = plan_from.max(margin_alert_start_date());
     let alert_latest = margin_alert::find_latest_margin_alert_pub_date(db).await?;
     let alert_start = resolve_start_date(alert_latest, alert_earliest);
-    let alert_stats = ingest_margin_alert(db, client, alert_start, today).await;
+    let alert_stats = ingest_daily(
+        db,
+        client,
+        alert_start,
+        plan_to,
+        "日々公表信用取引残高",
+        JQuantsClient::fetch_margin_alert,
+        margin_alert::upsert_margin_alert,
+    )
+    .await;
 
     Ok((interest_stats, alert_stats))
 }
@@ -158,7 +164,8 @@ pub fn spawn_poll(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_ingest_cycle(&db, client).await {
+            let today = Utc::now().date_naive();
+            match run_ingest_cycle(&db, client, today).await {
                 Ok((interest_stats, alert_stats)) => {
                     tracing::info!(
                         ?interest_stats,
@@ -177,8 +184,11 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use sqlx::PgPool;
 
     use super::*;
+    use crate::data_provider::jquants::mock::JQuantsMockServer;
+    use crate::testing::create_test_db;
 
     #[rstest]
     #[case::empty_table_uses_earliest(
@@ -202,5 +212,22 @@ mod tests {
         #[case] expected: NaiveDate,
     ) {
         assert_eq!(resolve_start_date(latest_stored, earliest), expected);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn run_ingest_cycle_skips_when_no_manual_plan(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let mock = JQuantsMockServer::start().await;
+        let client = mock.client().expect("client");
+        let today = NaiveDate::from_ymd_opt(2024, 6, 1).expect("date");
+
+        let (interest_stats, alert_stats) = run_ingest_cycle(&db, &client, today)
+            .await
+            .expect("cycle ok");
+
+        assert_eq!(
+            (interest_stats, alert_stats),
+            (IngestStats::default(), IngestStats::default())
+        );
     }
 }
