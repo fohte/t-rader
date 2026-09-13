@@ -635,6 +635,57 @@ pub struct ProposeHypothesisChangeResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecordPredictionParams {
+    /// 根拠となるノート (自戦略所有のもの)。省略可
+    pub note_id: Option<Uuid>,
+    /// 対象銘柄コード
+    pub target_stock_id: String,
+    /// 比較対象の銘柄コード (例: TOPIX 連動 ETF)
+    pub benchmark_stock_id: String,
+    /// 対象が比較対象を上回るか下回るか (`outperform` / `underperform`)
+    pub direction: String,
+    /// 固定刻み (0.55/0.6/0.65/0.7/0.75/0.8/0.85/0.9) のいずれかのみ受け付ける
+    pub probability: f64,
+    /// この日の終値を基準とする (YYYY-MM-DD)
+    pub base_date: NaiveDate,
+    /// 期限日 (YYYY-MM-DD)。base_date より後である必要がある
+    pub due_date: NaiveDate,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct PredictionDto {
+    pub prediction_id: Uuid,
+    pub strategy_id: Uuid,
+    pub note_id: Option<Uuid>,
+    pub target_stock_id: String,
+    pub benchmark_stock_id: String,
+    pub direction: String,
+    pub probability: f64,
+    pub base_date: NaiveDate,
+    pub due_date: NaiveDate,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct RecordPredictionResult {
+    pub prediction: PredictionDto,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListPredictionsParams {
+    pub limit: Option<u32>,
+    /// 期限がこの日付以降 (inclusive) の予測のみ返す。「まだ結果が出ていない予測」を絞るときに使う
+    pub due_after: Option<NaiveDate>,
+    /// 期限がこの日付以前 (inclusive) の予測のみ返す
+    pub due_before: Option<NaiveDate>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ListPredictionsResult {
+    pub predictions: Vec<PredictionDto>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadShareholdingStructureParams {
     /// 4桁の銘柄コード (例: "7203")
     pub symbol: String,

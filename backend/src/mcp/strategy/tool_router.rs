@@ -16,15 +16,17 @@ use super::dto::{
     AddInterestParams, AddInterestResult, CheckBuyableQtyParams, CheckBuyableQtyResult,
     CreateAnnotationParams, CreateAnnotationResult, EvalIndicatorParams, EvalIndicatorResult,
     EvalPythonParams, EvalPythonResult, HypothesisDto, ListHypothesesParams, ListHypothesesResult,
-    ListNotesParams, ListNotesResult, ListWatchTargetsParams, ListWatchTargetsResult, NoteDto,
-    ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
-    QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
-    ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
-    ReadHypothesisParams, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams,
-    ReadNewsResult, ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
-    ReadShareholdingStructureResult, ReadTradesParams, ReadTradesResult, ReplyCommentParams,
-    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
-    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ListNotesParams, ListNotesResult, ListPredictionsParams, ListPredictionsResult,
+    ListWatchTargetsParams, ListWatchTargetsResult, NoteDto, ProposeHypothesisChangeParams,
+    ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult, QueryMediaParams,
+    QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
+    ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadHypothesisParams,
+    ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams, ReadNewsResult,
+    ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
+    ReadShareholdingStructureResult, ReadTradesParams, ReadTradesResult, RecordPredictionParams,
+    RecordPredictionResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
+    ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
+    WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
@@ -491,6 +493,35 @@ impl StrategyServer {
             .await
             .map(Json)
     }
+
+    /// 予測を記録する (書き込み専用。更新・削除 tool は存在しない)
+    #[tool(
+        name = "record_prediction",
+        description = "Record a prediction that target_stock_id will outperform or underperform benchmark_stock_id (measured from base_date's close to due_date) with a fixed-step probability (0.55/0.6/0.65/0.7/0.75/0.8/0.85/0.9). Write-once: there is no update or delete tool, since changing a recorded prediction would invalidate later grading."
+    )]
+    async fn record_prediction(
+        &self,
+        Parameters(params): Parameters<RecordPredictionParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<RecordPredictionResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.record_prediction_inner(sid, params).await.map(Json)
+    }
+
+    /// 接続元戦略が記録した予測を一覧する
+    #[tool(
+        name = "list_predictions",
+        description = "List predictions recorded by the current strategy, newest first. Filter by due_after/due_before (e.g. due_after=today to see only predictions not yet graded).",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_predictions(
+        &self,
+        Parameters(params): Parameters<ListPredictionsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ListPredictionsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.list_predictions_inner(sid, params).await.map(Json)
+    }
 }
 
 impl StrategyServer {
@@ -548,6 +579,7 @@ mod tests {
                 ("eval_python", None),
                 ("list_hypotheses", Some(true)),
                 ("list_notes", Some(true)),
+                ("list_predictions", Some(true)),
                 ("list_watch_targets", Some(true)),
                 ("propose_hypothesis_change", None),
                 ("query_data", Some(true)),
@@ -563,6 +595,7 @@ mod tests {
                 ("read_portfolio", Some(true)),
                 ("read_shareholding_structure", Some(true)),
                 ("read_trades", Some(true)),
+                ("record_prediction", None),
                 ("remove_ref_terms", None),
                 ("reply_comment", None),
                 ("resolve_comment", None),
