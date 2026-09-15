@@ -122,6 +122,7 @@ describeIfDb('PostgresTaskStore', () => {
         status: {
           state: 'failed',
           timestamp: expired[0]?.status.timestamp,
+          message: expired[0]?.status.message,
         },
       })
       expect.soft(await store.load('fresh')).toEqual(
@@ -138,6 +139,37 @@ describeIfDb('PostgresTaskStore', () => {
           timestamp: '2026-01-01T00:00:00.000Z',
         }),
       )
+    })
+
+    it('attaches a message carrying error_kind execution_lost to the failed task', async () => {
+      const store = new PostgresTaskStore(getTx())
+      await store.save(
+        buildTask({
+          id: 'stale-2',
+          state: 'working',
+          timestamp: '2026-01-01T00:00:00.000Z',
+        }),
+      )
+
+      const [failed] = await store.failStaleWorkingTasks(
+        new Date('2026-01-01T00:05:00.000Z'),
+      )
+      const { messageId } = failed?.status.message ?? {}
+
+      expect(failed?.status.message).toEqual({
+        kind: 'message',
+        role: 'agent',
+        messageId,
+        taskId: 'stale-2',
+        contextId: 'ctx-stale-2',
+        parts: [
+          {
+            kind: 'text',
+            text: 'エージェントの実行が失われたため失敗として確定しました',
+          },
+        ],
+        metadata: { error_kind: 'execution_lost' },
+      })
     })
   })
 
