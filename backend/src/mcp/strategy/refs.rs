@@ -2,9 +2,9 @@
 //!
 //! 一級参照型 (stock / indicator / sector / theme) はそれぞれ独立したテーブルに
 //! 分かれており umbrella エンティティを持たない (プロジェクト方針)。横断検索は
-//! この 4 テーブルを `UNION ALL` した raw SQL で行う。id / name いずれかへの部分一致
-//! (大文字小文字を区別しない) で検索し、結果は `add_interest` にそのまま渡せる
-//! `ref_kind` / `ref_id` の組で返す。
+//! この 4 テーブルを `UNION ALL` した raw SQL で行う。id / name / `ref_term` の別名
+//! いずれかへの部分一致 (大文字小文字・全角半角を区別しない) で検索し、結果は
+//! `add_interest` にそのまま渡せる `ref_kind` / `ref_id` の組で返す。
 
 use indoc::indoc;
 use rmcp::ErrorData as McpError;
@@ -14,12 +14,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::handlers::refs::sanitize_like;
+use crate::text_normalize::normalize;
 
 use super::{StrategyServer, clamp_limit, db_error, invalid_params};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchRefsParams {
-    /// id または name の部分一致 (大文字小文字を区別しない) で検索する自由文字列
+    /// id / name / 別名 (ref_term) の部分一致 (大文字小文字・全角半角を区別しない) で
+    /// 検索する自由文字列
     pub query: String,
     pub limit: Option<u32>,
 }
@@ -40,21 +42,53 @@ pub struct SearchRefsResult {
 }
 
 const SEARCH_REFS_SQL: &str = indoc! {"
-    SELECT 'stock' AS ref_kind, id AS ref_id, name, product_category
-        FROM stock WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'stock' AS ref_kind, s.id AS ref_id, s.name, s.product_category
+        FROM stock s
+        WHERE normalize(s.id, NFKC) ILIKE $1
+           OR normalize(s.name, NFKC) ILIKE $1
+           OR EXISTS (
+               SELECT 1 FROM ref_term t
+               WHERE t.ref_kind = 'stock' AND t.ref_id = s.id
+                 AND normalize(t.term, NFKC) ILIKE $1
+           )
     UNION ALL
-    SELECT 'indicator', id, name, NULL FROM indicator WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'indicator', i.id, i.name, NULL
+        FROM indicator i
+        WHERE normalize(i.id, NFKC) ILIKE $1
+           OR normalize(i.name, NFKC) ILIKE $1
+           OR EXISTS (
+               SELECT 1 FROM ref_term t
+               WHERE t.ref_kind = 'indicator' AND t.ref_id = i.id
+                 AND normalize(t.term, NFKC) ILIKE $1
+           )
     UNION ALL
-    SELECT 'sector', id, name, NULL FROM sector WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'sector', se.id, se.name, NULL
+        FROM sector se
+        WHERE normalize(se.id, NFKC) ILIKE $1
+           OR normalize(se.name, NFKC) ILIKE $1
+           OR EXISTS (
+               SELECT 1 FROM ref_term t
+               WHERE t.ref_kind = 'sector' AND t.ref_id = se.id
+                 AND normalize(t.term, NFKC) ILIKE $1
+           )
     UNION ALL
-    SELECT 'theme', id, name, NULL FROM theme WHERE id ILIKE $1 OR name ILIKE $1
+    SELECT 'theme', th.id, th.name, NULL
+        FROM theme th
+        WHERE normalize(th.id, NFKC) ILIKE $1
+           OR normalize(th.name, NFKC) ILIKE $1
+           OR EXISTS (
+               SELECT 1 FROM ref_term t
+               WHERE t.ref_kind = 'theme' AND t.ref_id = th.id
+                 AND normalize(t.term, NFKC) ILIKE $1
+           )
     ORDER BY name, ref_kind
     LIMIT $2
 "};
 
 impl StrategyServer {
-    /// 参照型 4 種 (stock / indicator / sector / theme) を横断して id / name の部分一致で
-    /// 検索する。戦略スコープを持たないマスタデータのため `session_strategy_id` は使わない。
+    /// 参照型 4 種 (stock / indicator / sector / theme) を横断して id / name / 別名
+    /// (ref_term) の部分一致で検索する。戦略スコープを持たないマスタデータのため
+    /// `session_strategy_id` は使わない。
     pub(crate) async fn search_refs_inner(
         &self,
         _session_strategy_id: Uuid,
@@ -64,7 +98,10 @@ impl StrategyServer {
         if query.is_empty() {
             return Err(invalid_params("query must not be empty"));
         }
-        let pattern = format!("%{}%", sanitize_like(query));
+        // 列側は SQL 内で normalize(NFKC) してから比較するため、入力側も先に
+        // normalize してから sanitize_like に通す。順序を逆にすると全角の `％` `＿` が
+        // NFKC で `%` `_` に変わり、ワイルドカードとして効いてしまう
+        let pattern = format!("%{}%", sanitize_like(&normalize(query)));
         let limit = clamp_limit(params.limit) as i64;
 
         let rows = self
@@ -95,11 +132,24 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::{indicator, sector, stock, theme};
+    use crate::entities::{indicator, ref_term, sector, stock, theme};
     use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
+
+    async fn seed_ref_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
+        ref_term::ActiveModel {
+            ref_kind: Set(ref_kind.into()),
+            ref_id: Set(ref_id.into()),
+            term: Set(term.into()),
+            origin: Set("human".into()),
+            created_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("seed ref_term");
+    }
 
     async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
         seed_stock_with_product_category(db, id, name, None).await;
@@ -388,5 +438,167 @@ mod tests {
             .await
             .expect_err("empty query");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_matches_full_width_query_against_half_width_name(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        seed_stock(&db, "STK1", "Alpha Motors").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "Ａｌｐｈａ".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(
+            result,
+            SearchRefsResult {
+                refs: vec![RefDto {
+                    ref_kind: "stock".into(),
+                    ref_id: "STK1".into(),
+                    name: "Alpha Motors".into(),
+                    product_category: None,
+                }],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_matches_full_width_query_against_half_width_id(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        seed_indicator(&db, "USDJPY", "US Dollar / Japanese Yen").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "ＵＳＤＪＰＹ".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(
+            result,
+            SearchRefsResult {
+                refs: vec![RefDto {
+                    ref_kind: "indicator".into(),
+                    ref_id: "USDJPY".into(),
+                    name: "US Dollar / Japanese Yen".into(),
+                    product_category: None,
+                }],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_does_not_treat_full_width_underscore_as_wildcard(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        seed_theme(&db, "u1", "AXB").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "Ａ＿Ｂ".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(result, SearchRefsResult { refs: vec![] });
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_matches_ref_term_alias(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        seed_stock(&db, "7203", "Alpha Motors").await;
+        seed_ref_term(&db, "stock", "7203", "Ａｌｐｈａ Ｍｏｔｏｒｓ Ｇｒｏｕｐ").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "motors group".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(
+            result,
+            SearchRefsResult {
+                refs: vec![RefDto {
+                    ref_kind: "stock".into(),
+                    ref_id: "7203".into(),
+                    name: "Alpha Motors".into(),
+                    product_category: None,
+                }],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_returns_one_row_when_both_name_and_alias_match(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        seed_stock(&db, "7203", "Alpha Motors").await;
+        seed_ref_term(&db, "stock", "7203", "Alpha Auto").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "Alpha".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(
+            result,
+            SearchRefsResult {
+                refs: vec![RefDto {
+                    ref_kind: "stock".into(),
+                    ref_id: "7203".into(),
+                    name: "Alpha Motors".into(),
+                    product_category: None,
+                }],
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn search_refs_ignores_dangling_alias_not_in_master(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        seed_ref_term(&db, "stock", "9999", "Ghost Co").await;
+        let server = build_server(db);
+
+        let result = server
+            .search_refs_inner(
+                Uuid::new_v4(),
+                SearchRefsParams {
+                    query: "Ghost".into(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("search_refs");
+
+        assert_eq!(result, SearchRefsResult { refs: vec![] });
     }
 }
