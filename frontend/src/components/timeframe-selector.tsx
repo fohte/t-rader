@@ -10,7 +10,7 @@ import {
 import { cn } from '#lib/utils'
 
 /** サポートするタイムフレームの定義 */
-export const TIMEFRAMES = [
+const TIMEFRAMES = [
   { value: '5m', label: '5m', enabled: false },
   { value: '15m', label: '15m', enabled: false },
   { value: '1h', label: '1h', enabled: false },
@@ -20,11 +20,6 @@ export const TIMEFRAMES = [
 ] as const
 
 export type Timeframe = (typeof TIMEFRAMES)[number]['value']
-
-/** 有効なタイムフレームのみを抽出 */
-export const ENABLED_TIMEFRAMES = TIMEFRAMES.filter((tf) => tf.enabled).map(
-  (tf) => tf.value,
-)
 
 interface TimeframeSelectorProps {
   value: Timeframe

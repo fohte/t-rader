@@ -9,7 +9,7 @@ import type {
   Layout,
 } from '#components/graph/types'
 
-export const NODE_WIDTH_BASE = 160
+const NODE_WIDTH_BASE = 160
 export const NODE_HEIGHT = 56
 
 const EDGE_STROKE_MIN = 1.5

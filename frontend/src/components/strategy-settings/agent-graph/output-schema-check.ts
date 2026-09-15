@@ -13,7 +13,7 @@ import { isRecord } from '#components/strategy-settings/agent-graph/document'
 // 実際に受理する構造を手で再現した検証。frontend と agent は別 pnpm workspace で
 // 直接 import できないため、output-schema.ts の構造規則が変わったらここも合わせて
 // 直す必要がある (機械的な整合チェックは無い)。
-export interface OutputSchemaIssue {
+interface OutputSchemaIssue {
   message: string
   line: number
   column: number

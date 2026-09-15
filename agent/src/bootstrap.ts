@@ -22,7 +22,7 @@ const observabilityLogger = {
   },
 }
 
-export const initFromEnv = (
+const initFromEnv = (
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): ObservabilityHandle | undefined => {
   // Vitest sets NODE_ENV=test; skip initializing real Sentry/OTel
