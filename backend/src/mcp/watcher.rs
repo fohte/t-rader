@@ -36,7 +36,8 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_CONCURRENT_STATUS_FETCHES: usize = 8;
 
 /// A2A TaskState を strategy_task の phase に写像する。
-/// 戦略タスクは 1 shot 実行 (再開なし) のため、input-required も failed 扱いとする。
+/// input-required は追加入力を渡す経路が無いため failed 扱いとする
+/// (failed からの再開は resume_task による手動 resume と execution_lost 時の自動 resume に限る)。
 fn phase_for_state(state: AgentTaskState) -> StrategyTaskPhase {
     match state {
         AgentTaskState::Submitted | AgentTaskState::Working => StrategyTaskPhase::Running,
@@ -308,7 +309,7 @@ pub fn spawn(
 mod tests {
     use std::sync::Arc;
 
-    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient};
+    use crate::agent_client::{AgentTaskError, EXECUTION_LOST_ERROR_KIND, FakeAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
     use crate::entities::{strategy, strategy_task_step};
     use crate::testing::create_test_db;
@@ -1022,7 +1023,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
-                error_kind: Some("execution_lost".to_string()),
+                error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
                 steps: None,
             },
         )
@@ -1086,7 +1087,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
-                error_kind: Some("execution_lost".to_string()),
+                error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
                 steps: None,
             },
         )
@@ -1096,9 +1097,7 @@ mod tests {
         let updated = run_once(&db, &agent_client).await;
         assert_eq!(updated, 1);
 
-        let row = fetch_task(&db, task_id).await;
-        assert_eq!(row.phase, StrategyTaskPhase::Failed);
-        assert!(fake.submitted.lock().await.is_empty());
+        assert_not_auto_resumed(&db, task_id, &fake).await;
     }
 
     #[sqlx::test(migrations = false)]
@@ -1130,9 +1129,7 @@ mod tests {
         let updated = run_once(&db, &agent_client).await;
         assert_eq!(updated, 1);
 
-        let row = fetch_task(&db, task_id).await;
-        assert_eq!(row.phase, StrategyTaskPhase::Failed);
-        assert!(fake.submitted.lock().await.is_empty());
+        assert_not_auto_resumed(&db, task_id, &fake).await;
     }
 
     #[sqlx::test(migrations = false)]
@@ -1154,7 +1151,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
-                error_kind: Some("execution_lost".to_string()),
+                error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
                 steps: None,
             },
         )
@@ -1164,7 +1161,17 @@ mod tests {
         let updated = run_once(&db, &agent_client).await;
         assert_eq!(updated, 1);
 
-        let row = fetch_task(&db, task_id).await;
+        assert_not_auto_resumed(&db, task_id, &fake).await;
+    }
+
+    /// 自動 resume が起きなかったこと (phase が Failed のまま、agent への再投入が
+    /// 発生していないこと) をまとめて検証する。
+    async fn assert_not_auto_resumed(
+        db: &DatabaseConnection,
+        task_id: Uuid,
+        fake: &FakeAgentTaskClient,
+    ) {
+        let row = fetch_task(db, task_id).await;
         assert_eq!(row.phase, StrategyTaskPhase::Failed);
         assert!(fake.submitted.lock().await.is_empty());
     }
