@@ -56,12 +56,20 @@ async fn try_grade(
     let Some(target_due_bar) =
         find_latest_bar_on_or_before(db, &p.target_stock_id, DAILY_TIMEFRAME, p.due_date).await?
     else {
+        tracing::debug!(
+            prediction_id = %p.prediction_id,
+            "target の due_date 以前のバーが 1 件も無いためスキップします",
+        );
         return Ok(None);
     };
     let Some(benchmark_due_bar) =
         find_latest_bar_on_or_before(db, &p.benchmark_stock_id, DAILY_TIMEFRAME, p.due_date)
             .await?
     else {
+        tracing::debug!(
+            prediction_id = %p.prediction_id,
+            "benchmark の due_date 以前のバーが 1 件も無いためスキップします",
+        );
         return Ok(None);
     };
 
@@ -70,26 +78,49 @@ async fn try_grade(
     if target_due_bar.timestamp.date_naive() != due_bday
         || benchmark_due_bar.timestamp.date_naive() != due_bday
     {
+        tracing::debug!(
+            prediction_id = %p.prediction_id,
+            "due_date の日足がまだ ingest されていないためスキップします",
+        );
         return Ok(None);
     }
 
+    // base_date は既に過去の日付であり、当時の終値が今後 ingest されることはないため、
+    // due_date と異なり「取得できたバーが最新か」の鮮度チェックは行わない。
+    // 非営業日の base_date に対する直近営業日へのフォールバックも意図した挙動。
     let Some(target_base_bar) =
         find_latest_bar_on_or_before(db, &p.target_stock_id, DAILY_TIMEFRAME, p.base_date).await?
     else {
+        tracing::debug!(
+            prediction_id = %p.prediction_id,
+            "target の base_date 以前のバーが 1 件も無いためスキップします",
+        );
         return Ok(None);
     };
     let Some(benchmark_base_bar) =
         find_latest_bar_on_or_before(db, &p.benchmark_stock_id, DAILY_TIMEFRAME, p.base_date)
             .await?
     else {
+        tracing::debug!(
+            prediction_id = %p.prediction_id,
+            "benchmark の base_date 以前のバーが 1 件も無いためスキップします",
+        );
         return Ok(None);
     };
 
     let Some(target_return) = compute_return(target_base_bar.close, target_due_bar.close) else {
+        tracing::debug!(
+            prediction_id = %p.prediction_id,
+            "target の base_date 終値が 0 のためリターンを計算できずスキップします",
+        );
         return Ok(None);
     };
     let Some(benchmark_return) = compute_return(benchmark_base_bar.close, benchmark_due_bar.close)
     else {
+        tracing::debug!(
+            prediction_id = %p.prediction_id,
+            "benchmark の base_date 終値が 0 のためリターンを計算できずスキップします",
+        );
         return Ok(None);
     };
 
@@ -141,7 +172,7 @@ pub async fn run_grading_cycle(db: &DatabaseConnection) -> Result<GradingStats, 
 
         match try_grade(db, &p).await {
             Ok(Some(outcome)) => {
-                prediction_grade::ActiveModel {
+                let insert_result = prediction_grade::ActiveModel {
                     prediction_id: Set(p.prediction_id),
                     target_base_close: Set(outcome.target_base_close),
                     target_due_close: Set(outcome.target_due_close),
@@ -153,8 +184,17 @@ pub async fn run_grading_cycle(db: &DatabaseConnection) -> Result<GradingStats, 
                     graded_at: NotSet,
                 }
                 .insert(db)
-                .await?;
-                stats.graded += 1;
+                .await;
+                match insert_result {
+                    Ok(_) => stats.graded += 1,
+                    Err(err) => {
+                        tracing::warn!(
+                            error = %err,
+                            prediction_id = %p.prediction_id,
+                            "failed to save prediction grade; will retry next cycle",
+                        );
+                    }
+                }
             }
             Ok(None) => {}
             Err(err) => {
@@ -179,10 +219,9 @@ pub fn spawn_poll(db: DatabaseConnection, interval: Duration) -> tokio::task::Jo
         loop {
             ticker.tick().await;
             match run_grading_cycle(&db).await {
-                Ok(stats) if stats.graded > 0 => {
-                    tracing::info!(graded = stats.graded, "prediction grading cycle completed");
+                Ok(stats) => {
+                    tracing::debug!(graded = stats.graded, "prediction grading cycle completed");
                 }
-                Ok(_) => {}
                 Err(err) => tracing::warn!(error = %err, "prediction grading cycle failed"),
             }
         }

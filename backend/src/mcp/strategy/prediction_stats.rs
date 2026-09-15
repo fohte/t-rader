@@ -5,7 +5,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::{prediction, prediction_grade};
-use crate::services::predictions::PROBABILITY_STEPS_F64;
+use crate::services::predictions::probability_steps;
 
 use super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
 use super::{StrategyServer, db_error, decimal_to_f64};
@@ -44,7 +44,8 @@ impl StrategyServer {
             Some(sum / graded_count as f64)
         };
 
-        let buckets = PROBABILITY_STEPS_F64
+        let buckets = probability_steps()
+            .map(decimal_to_f64)
             .into_iter()
             .map(|step| {
                 let in_bucket: Vec<bool> = graded
