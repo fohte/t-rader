@@ -10,6 +10,9 @@ permissions:
   contents: read
   packages: write
 
+env:
+  COMPONENTS_FILE: .github/workflows/docker-publish-components.json
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -26,10 +29,11 @@ jobs:
       # 変更として扱う」ルールを生成し、exclude/extra だけを明示的な例外として合成する。
       # コンポーネントの実体 (どのディレクトリを持つか) は build job の context/file 解決とこの
       # ファイル 1 箇所だけで定義する。
+      # backend.extra の agent/openapi.json は、backend/build.rs が progenitor で agent の
+      # 内部 API client を生成する際に読むため。
       - id: components
         run: |
-          components_file=.github/workflows/docker-publish-components.json
-          all=$(jq -c 'keys' "$components_file")
+          all=$(jq -c 'keys' "$COMPONENTS_FILE")
           echo "all=$all" >> "$GITHUB_OUTPUT"
 
           filters=$(jq -c '
@@ -40,7 +44,7 @@ jobs:
                 + (.value.extra // [])
               )
             }) | add
-          ' "$components_file")
+          ' "$COMPONENTS_FILE")
           {
             echo "filters<<FILTERS_EOF"
             echo "$filters"
@@ -90,7 +94,7 @@ jobs:
 
       - id: paths
         run: |
-          entry=$(jq -c --arg c "${{ matrix.component }}" '.[$c]' .github/workflows/docker-publish-components.json)
+          entry=$(jq -c --arg c "${{ matrix.component }}" '.[$c]' "$COMPONENTS_FILE")
           echo "context=$(jq -r '.context' <<< "$entry")" >> "$GITHUB_OUTPUT"
           echo "dockerfile=$(jq -r '.dir' <<< "$entry")/Dockerfile" >> "$GITHUB_OUTPUT"
 
