@@ -685,6 +685,27 @@ pub struct ListPredictionsResult {
     pub predictions: Vec<PredictionDto>,
 }
 
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct PredictionProbabilityBucketDto {
+    /// 記録時の確率刻み (0.55〜0.90)
+    pub probability: f64,
+    /// この確率刻みで採点済みの予測件数
+    pub count: u32,
+    /// この確率刻みでの的中率 (的中件数 / count)。count が 0 の場合は null
+    pub hit_rate: Option<f64>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq)]
+pub struct ReadPredictionStatsResult {
+    /// 採点済み予測の件数
+    pub graded_count: u32,
+    /// Brier score: 確率 p と的中 (1) / 非的中 (0) の二乗誤差の平均。低いほど較正が良い。
+    /// 採点済み予測が 1 件も無ければ null
+    pub brier_score: Option<f64>,
+    /// 確率刻みごとの集計。刻み昇順 (0.55 → 0.90)。件数 0 の刻みも含む
+    pub buckets: Vec<PredictionProbabilityBucketDto>,
+}
+
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadShareholdingStructureParams {
     /// 4桁の銘柄コード (例: "7203")

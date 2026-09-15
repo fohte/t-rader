@@ -195,6 +195,15 @@ async fn main() -> Result<(), AppError> {
     );
     tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
+    let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
+        db.clone(),
+        backend::services::prediction_grading::DEFAULT_INTERVAL,
+    );
+    tracing::info!(
+        interval_secs = backend::services::prediction_grading::DEFAULT_INTERVAL.as_secs(),
+        "prediction grading poll task started",
+    );
+
     match std::env::var("FRED_API_KEY") {
         Ok(api_key) if !api_key.is_empty() => {
             let fred_client = FredClient::new(api_key)?;
