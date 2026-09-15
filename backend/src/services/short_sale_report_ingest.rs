@@ -167,6 +167,7 @@ mod tests {
         );
         let seeded_row = short_sale_report::Entity::find_by_id((
             expected_from,
+            expected_from,
             "7203".to_string(),
             "テスト証券".to_string(),
             "テスト住所".to_string(),

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
@@ -8,8 +10,11 @@ use crate::models::ShortSaleReport;
 
 /// 空売り残高報告を一括 upsert する
 ///
-/// 複合 PK (disc_date, code, ss_name, ss_addr, dic_name, dic_addr, fund_name) で
+/// 複合 PK (disc_date, calc_date, code, ss_name, ss_addr, dic_name, dic_addr, fund_name) で
 /// 重複排除し、既存行は残高・比率等のカラムを更新する (訂正の反映)。
+///
+/// 同一 PK の行が引数に複数含まれると 1 回の INSERT 内で ON CONFLICT が同じ行を 2 度更新
+/// しようとして Postgres がエラーを返すため、事前に PK で dedup する (後勝ち)。
 pub async fn upsert_short_sale_reports(
     db: &DatabaseConnection,
     reports: Vec<ShortSaleReport>,
@@ -18,13 +23,30 @@ pub async fn upsert_short_sale_reports(
         return Ok(());
     }
 
+    let deduped: HashMap<_, _> = reports
+        .into_iter()
+        .map(|r| {
+            let key = (
+                r.disc_date,
+                r.calc_date,
+                r.code.clone(),
+                r.ss_name.clone(),
+                r.ss_addr.clone(),
+                r.dic_name.clone(),
+                r.dic_addr.clone(),
+                r.fund_name.clone(),
+            );
+            (key, r)
+        })
+        .collect();
     let active_models: Vec<short_sale_report::ActiveModel> =
-        reports.into_iter().map(Into::into).collect();
+        deduped.into_values().map(Into::into).collect();
 
     short_sale_report::Entity::insert_many(active_models)
         .on_conflict(
             OnConflict::columns([
                 short_sale_report::Column::DiscDate,
+                short_sale_report::Column::CalcDate,
                 short_sale_report::Column::Code,
                 short_sale_report::Column::SsName,
                 short_sale_report::Column::SsAddr,
@@ -33,7 +55,6 @@ pub async fn upsert_short_sale_reports(
                 short_sale_report::Column::FundName,
             ])
             .update_columns([
-                short_sale_report::Column::CalcDate,
                 short_sale_report::Column::ShortPositionRatio,
                 short_sale_report::Column::ShortPositionShares,
                 short_sale_report::Column::ShortPositionUnits,
@@ -129,6 +150,50 @@ mod tests {
             rows[0].short_position_ratio,
             Decimal::try_from(0.08).expect("decimal")
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn upsert_allows_same_disc_date_with_different_calc_date(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let disc_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
+
+        // 同一 disc_date に、計算日違いの報告が同時に公表されるケース
+        let mut report_a = make_report(disc_date, "7203", "報告者A", 0.05);
+        report_a.calc_date = NaiveDate::from_ymd_opt(2025, 1, 2).expect("date");
+        let mut report_b = make_report(disc_date, "7203", "報告者A", 0.06);
+        report_b.calc_date = NaiveDate::from_ymd_opt(2025, 1, 5).expect("date");
+
+        upsert_short_sale_reports(&db, vec![report_a, report_b])
+            .await
+            .expect("upsert failed");
+
+        let rows = short_sale_report::Entity::find()
+            .all(&db)
+            .await
+            .expect("find failed");
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn upsert_dedups_identical_rows_in_same_batch(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
+
+        // 完全に同じ内容の行が同一バッチに重複して含まれるケース
+        let reports = vec![
+            make_report(date, "7203", "報告者A", 0.05),
+            make_report(date, "7203", "報告者A", 0.05),
+        ];
+
+        upsert_short_sale_reports(&db, reports)
+            .await
+            .expect("upsert failed");
+
+        let rows = short_sale_report::Entity::find()
+            .all(&db)
+            .await
+            .expect("find failed");
+        assert_eq!(rows.len(), 1);
     }
 
     #[sqlx::test(migrations = false)]

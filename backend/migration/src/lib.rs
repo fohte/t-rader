@@ -53,6 +53,7 @@ mod m20260913_125042_add_prediction;
 mod m20260913_133130_add_margin_code_prefix_indexes;
 mod m20260913_142709_add_jquants_earnings_date;
 mod m20260915_120353_add_annotation_execution_tracking;
+mod m20260915_174024_add_calc_date_to_short_sale_report_pk;
 
 pub struct Migrator;
 
@@ -114,6 +115,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260913_133130_add_margin_code_prefix_indexes::Migration),
             Box::new(m20260913_142709_add_jquants_earnings_date::Migration),
             Box::new(m20260915_120353_add_annotation_execution_tracking::Migration),
+            Box::new(m20260915_174024_add_calc_date_to_short_sale_report_pk::Migration),
         ]
     }
 }
