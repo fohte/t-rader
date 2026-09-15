@@ -19,6 +19,8 @@ interface DeleteStrategyDialogProps {
   strategyName: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Storybook で確認欄に入力済みの状態を描画するためのフラグ */
+  defaultConfirmText?: string
 }
 
 export function DeleteStrategyDialog({
@@ -26,8 +28,9 @@ export function DeleteStrategyDialog({
   strategyName,
   open,
   onOpenChange,
+  defaultConfirmText,
 }: DeleteStrategyDialogProps) {
-  const [confirmText, setConfirmText] = useState('')
+  const [confirmText, setConfirmText] = useState(defaultConfirmText ?? '')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const deleteMutation = $api.useMutation('delete', '/api/strategies/{id}')

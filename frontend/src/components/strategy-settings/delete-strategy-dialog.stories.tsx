@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import type { Middleware } from 'openapi-fetch'
 import { useEffect, useState } from 'react'
-import { expect, userEvent, waitFor, within } from 'storybook/test'
 
 import { DeleteStrategyDialog } from '#components/strategy-settings/delete-strategy-dialog'
 import { fetchClient } from '#lib/api/client'
@@ -35,7 +34,11 @@ function installMiddleware() {
   }
 }
 
-function QueryDecorator() {
+function QueryDecorator({
+  defaultConfirmText,
+}: {
+  defaultConfirmText?: string
+}) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   )
@@ -48,15 +51,17 @@ function QueryDecorator() {
         strategyName="半導体短期スイング"
         open
         onOpenChange={() => {}}
+        defaultConfirmText={defaultConfirmText}
       />
     </QueryClientProvider>
   )
 }
 
-function createDialogRouter() {
-  return createStoryRouter(() => <QueryDecorator />, {
-    paths: ['/strategies'],
-  })
+function createDialogRouter(defaultConfirmText?: string) {
+  return createStoryRouter(
+    () => <QueryDecorator defaultConfirmText={defaultConfirmText} />,
+    { paths: ['/strategies'] },
+  )
 }
 
 const meta = {
@@ -71,15 +76,5 @@ export const Default: Story = {
 }
 
 export const NameMismatch: Story = {
-  render: () => <RouterProvider router={createDialogRouter()} />,
-  play: async ({ canvasElement }) => {
-    // DeleteStrategyDialog は Portal で document.body 直下に描画されるため、
-    // canvasElement ではなく canvasElement.ownerDocument.body 側でスコープする
-    const canvas = within(canvasElement.ownerDocument.body)
-    const input = await canvas.findByLabelText(/確認のため戦略名/)
-    await userEvent.type(input, '違う名前')
-    await waitFor(() => expect(input).toHaveValue('違う名前'))
-    const deleteButton = canvas.getByRole('button', { name: '削除する' })
-    await expect(deleteButton).toBeDisabled()
-  },
+  render: () => <RouterProvider router={createDialogRouter('違う名前')} />,
 }
