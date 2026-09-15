@@ -9,7 +9,7 @@ import type { Sql } from '#db'
 // bundler may place the compiled output at a different directory depth than
 // the source file. The migrations folder is deployed alongside the
 // process's working directory instead, so anchor to that.
-export const MIGRATIONS_FOLDER = path.join(process.cwd(), 'drizzle')
+const MIGRATIONS_FOLDER = path.join(process.cwd(), 'drizzle')
 
 export const runMigrations = async (sql: Sql): Promise<void> => {
   const db = drizzle(sql)

@@ -4,16 +4,18 @@
   "workspaces": {
     ".": {
       "ignoreDependencies": ["@commitlint/cli"],
-      "ignore": ["commitlint-plugin-no-external-refs.cjs"],
-      "ignoreBinaries": ["playwright"]
+      "ignore": ["commitlint-plugin-no-external-refs.cjs"]
     },
     "frontend": {
-      "entry": ["src/lib/**"],
+      "entry": ["src/lib/**", "src/routes/**/*.tsx"],
       "ignoreDependencies": [
         "reg-suit",
         "reg-publish-s3-plugin",
         "reg-simple-keygen-plugin"
       ]
+    },
+    "agent": {
+      "entry": ["src/db/migrate.ts"]
     }
   }
 }

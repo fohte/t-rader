@@ -1,4 +1,4 @@
-export type ReviewStatus = string
+type ReviewStatus = string
 
 const STATUS_LABEL: Record<string, string> = {
   approved: '承認済み',

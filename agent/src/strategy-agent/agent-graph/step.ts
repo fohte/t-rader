@@ -5,7 +5,7 @@ import { z } from 'zod'
 // 解釈せず素通しする) なので、キー名は他の内部 API レスポンスと同じ snake_case にする。
 export const AGENT_GRAPH_STEPS_ARTIFACT_ID = 'agent-graph-steps'
 
-export type StrategyTaskStepStatus = 'running' | 'completed' | 'failed'
+type StrategyTaskStepStatus = 'running' | 'completed' | 'failed'
 
 export interface StrategyTaskStep {
   readonly phaseKey: string

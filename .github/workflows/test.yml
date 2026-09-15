@@ -549,19 +549,6 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_agent_test
         run: pnpm run test
-<<<<<<< before updating
-||||||| last update
-      
-        # Aggregation gate for the unit-test matrix. Matrix leg names are dynamic and
-        # cannot be pinned as a required status check, so this single fixed-name job is
-        # the branch protection gate instead. It fails only when a needed job failed;
-        # when every leg succeeds (or the matrix is skipped because nothing changed) it
-        # is skipped, and a skipped required check counts as success.
-=======
-      
-        # Fixed name for branch protection: matrix leg names are dynamic, and knip
-        # has no `needs`, so this gate (skip == success) stands in for both.
->>>>>>> after updating
 
       - name: Build agent bundle
         working-directory: agent

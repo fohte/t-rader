@@ -18,14 +18,12 @@
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.13.3",
     "concurrently": "10.0.5",
-    "esbuild": "0.28.2",
     "eslint": "10.10.0",
     "eslint-plugin-storybook": "10.6.0",
     "eslint-plugin-tailwindcss": "4.4.0",
     "knip": "6.34.0",
     "prettier": "3.9.6",
     "typescript": "6.0.3",
-    "vitest": "4.1.11",
-    "wrangler": "3.114.17"
+    "vitest": "4.1.11"
   }
 }
