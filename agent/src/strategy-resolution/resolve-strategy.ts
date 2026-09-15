@@ -47,7 +47,7 @@ const longestCommonSubstringLength = (a: string, b: string): number => {
 // normalized by the candidate name's length. Favors a name appearing as a
 // recognizable chunk of free text over one that merely shares a few
 // scattered characters with it.
-export const scoreStrategyNameMatch = (
+const scoreStrategyNameMatch = (
   candidateName: string,
   text: string,
 ): number => {

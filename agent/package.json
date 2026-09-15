@@ -4,7 +4,7 @@
   "type": "module",
   "imports": {
     "#db": "./src/db/index.ts",
-    "#lib/api/schema.gen": "./src/lib/api/schema.gen.js",
+    "#lib/api/schema.gen": "./src/lib/api/schema.gen.d.ts",
     "#*": "./src/*.ts"
   },
   "scripts": {

@@ -56,7 +56,7 @@ export type StepStartInput = Omit<
   StrategyTaskStep,
   'status' | 'finishedAt' | 'output' | 'error'
 >
-export type StepOutcome =
+type StepOutcome =
   | { readonly status: 'completed'; readonly output: unknown }
   | { readonly status: 'failed'; readonly error: string }
 

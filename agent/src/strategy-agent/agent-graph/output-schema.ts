@@ -3,7 +3,7 @@ import { isPlainObject } from '#strategy-agent/agent-graph/json'
 // JSON Schema のフィールド断片。`type` は enum を使う場合など省略される
 // こともあり、それ以外はユーザー定義の自由な語彙であるため、このモジュールは
 // 中身の意味を一切解釈せず構造だけを組み替える。
-export interface JsonSchemaObject {
+interface JsonSchemaObject {
   readonly type?: string
   readonly [key: string]: unknown
 }
