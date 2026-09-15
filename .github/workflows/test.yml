@@ -626,5 +626,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # #routeTree.gen は gitignore 対象で生成するまで存在せず、knip の
+      # unresolved-imports チェックがこれを解決できないため先に生成する
+      - name: Generate frontend routes
+        run: pnpm --filter frontend run generate:routes
+
       - name: Run knip
         run: pnpm exec knip
