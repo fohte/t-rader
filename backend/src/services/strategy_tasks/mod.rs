@@ -24,6 +24,9 @@ pub use resume::{ResumeTaskError, resume_task};
 /// t-rader-agent の watchdog (デフォルト 10 分) より長く設定し、working 固着時は
 /// watchdog による failed 遷移 (+ push 通知) が先に効くようにする。この deadline は
 /// watchdog が機能しない (server ごと長期停止する) 場合の最終防衛。
+///
+/// t-rader-agent への投入時にも `deadline_at` として渡され、agent 側で実行全体を
+/// 打ち切る (AbortSignal で中断する) ハードタイムアウトの基準にもなる。
 pub const DEADLINE_DURATION: chrono::Duration = chrono::Duration::minutes(15);
 
 /// `submit_task` に `purpose` が指定されなかった場合に使う purpose。
@@ -211,6 +214,7 @@ pub async fn submit_task(
             prompt,
             purpose,
             resume_steps: None,
+            deadline_at,
         })
         .await
     {

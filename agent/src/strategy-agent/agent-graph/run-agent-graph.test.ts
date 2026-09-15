@@ -181,6 +181,115 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it('fails immediately without running any phase when deadlineSignal is already aborted', async () => {
+    const { deps, calls } = buildDeps(() =>
+      Promise.reject(new Error('phase should not be invoked')),
+    )
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'stepA',
+          label: 'Step A',
+          model: 'model-a',
+          prompt: 'do A',
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      deadlineSignal: AbortSignal.abort(),
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message:
+        'フェーズ「Step A」(stepA) の実行に失敗しました: deadline を超過したため実行を中断しました',
+      errorKind: 'agent_error',
+    })
+    expect(calls).toEqual([])
+  })
+
+  it('stops issuing further for_each chunks once the deadline is exceeded mid-loop', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = buildDeps((call) => {
+      if (call.messageText.includes('do plan')) {
+        return Promise.resolve({
+          structuredResponse: { items: ['a', 'b', 'c'] },
+        })
+      }
+      controller.abort()
+      return Promise.resolve({ structuredResponse: {} })
+    })
+    const config: AgentGraphConfig = {
+      phases: [
+        {
+          key: 'plan',
+          label: 'Plan',
+          model: 'm',
+          prompt: 'do plan',
+          skills: [],
+          tools: [],
+          output: { items: { type: 'array', items: { type: 'string' } } },
+        },
+        {
+          key: 'work',
+          label: 'Work',
+          model: 'm',
+          prompt: 'do work',
+          forEach: 'plan.items',
+          maxParallel: 1,
+          skills: [],
+          tools: [],
+          output: {},
+        },
+      ],
+    }
+
+    const result = await runAgentGraph(deps, config, {
+      agentsMd: 'AGENTS',
+      skills: {},
+      createStepMcpClient: buildStepMcpClientFactory(),
+      originalPromptText: 'req',
+      deadlineSignal: controller.signal,
+    })
+
+    expect(result).toEqual({
+      status: 'failed',
+      message:
+        'フェーズ「Work」(work) の実行に失敗しました: deadline を超過したため実行を中断しました',
+      errorKind: 'agent_error',
+    })
+    expect(normalizeExecutionStepIds(calls)).toEqual([
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'do plan',
+          item: undefined,
+          priorResults: {},
+        }),
+        executionStepId: '<execution-step-id-1>',
+      },
+      {
+        systemPrompt: 'AGENTS',
+        messageText: buildPhaseMessageText({
+          originalPromptText: 'req',
+          phasePrompt: 'do work',
+          item: 'a',
+          priorResults: { plan: { items: ['a', 'b', 'c'] } },
+        }),
+        executionStepId: '<execution-step-id-2>',
+      },
+    ])
+  })
+
   it('passes the phase reasoning effort through to createChatModel, omitting it when unset', async () => {
     const createChatModelCalls: {
       model: string

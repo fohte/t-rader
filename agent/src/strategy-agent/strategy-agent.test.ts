@@ -19,6 +19,7 @@ import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middlewar
 import type {
   CompiledStrategyAgent,
   McpToolsClient,
+  RunStrategyAgentInput,
   StrategyAgentDeps,
 } from '#strategy-agent/strategy-agent'
 import {
@@ -62,6 +63,18 @@ const buildUserMessage = (text: string): Message => ({
   role: 'user',
   messageId: 'm1',
   parts: [{ kind: 'text', text }],
+})
+
+const buildRunInput = (
+  overrides: Partial<RunStrategyAgentInput> = {},
+): RunStrategyAgentInput => ({
+  strategyId: 'strategy-1',
+  purpose: undefined,
+  taskId: 'task-1',
+  userMessage: buildUserMessage('do the thing'),
+  resumeSteps: undefined,
+  deadlineSignal: undefined,
+  ...overrides,
 })
 
 // NoopTracer (テスト環境では実 exporter を設定しないため) が返す固定の invalid
@@ -108,12 +121,17 @@ interface Calls {
     tools: readonly DynamicStructuredTool[]
     systemPrompt: string
   }
+  capturedDeadlineSignal: AbortSignal | undefined
 }
 
 const buildDeps = (
   options: BuildDepsOptions,
 ): { deps: StrategyAgentDeps; calls: Calls } => {
-  const calls: Calls = { mcpClientClosed: false, mcpClients: [] }
+  const calls: Calls = {
+    mcpClientClosed: false,
+    mcpClients: [],
+    capturedDeadlineSignal: undefined,
+  }
   const chatModel = new FakeChatModel({})
 
   const deps: StrategyAgentDeps = {
@@ -145,16 +163,20 @@ const buildDeps = (
     },
     buildAgent: (buildOptions) => {
       calls.buildAgentOptions = buildOptions
+      calls.capturedDeadlineSignal = buildOptions.deadlineSignal
       return {
         invoke: (input) => options.agentInvoke(input),
       }
     },
-    buildPhaseAgent: () => ({
-      invoke: (input) =>
-        options.buildPhaseAgentInvoke !== undefined
-          ? options.buildPhaseAgentInvoke(input, calls)
-          : Promise.resolve({ structuredResponse: {} }),
-    }),
+    buildPhaseAgent: (buildOptions) => {
+      calls.capturedDeadlineSignal = buildOptions.deadlineSignal
+      return {
+        invoke: (input) =>
+          options.buildPhaseAgentInvoke !== undefined
+            ? options.buildPhaseAgentInvoke(input, calls)
+            : Promise.resolve({ structuredResponse: {} }),
+      }
+    },
   }
 
   return { deps, calls }
@@ -171,14 +193,7 @@ describe('runStrategyAgent', () => {
         }),
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     expect.soft(result).toEqual({ status: 'completed', message: 'done' })
     expect.soft(calls.fetchAgentConfigKey).toEqual({ purpose: 'default' })
@@ -203,14 +218,7 @@ describe('runStrategyAgent', () => {
         }),
     })
 
-    await runStrategyAgent(
-      deps,
-      'strategy-1',
-      'purpose-a',
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    await runStrategyAgent(deps, buildRunInput({ purpose: 'purpose-a' }))
 
     expect(calls.fetchAgentConfigKey).toEqual({
       purpose: 'purpose-a',
@@ -225,14 +233,7 @@ describe('runStrategyAgent', () => {
         }),
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'failed',
@@ -246,14 +247,7 @@ describe('runStrategyAgent', () => {
       agentInvoke: () => Promise.resolve({}),
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'failed',
@@ -272,14 +266,7 @@ describe('runStrategyAgent', () => {
         ),
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'failed',
@@ -294,14 +281,7 @@ describe('runStrategyAgent', () => {
       agentInvoke: () => Promise.reject(new Error('mcp tool blew up')),
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'failed',
@@ -320,11 +300,7 @@ describe('runStrategyAgent', () => {
 
     const result = await runStrategyAgent(
       { ...deps, fetchAgentConfig: () => errAsync(fetchError) },
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
+      buildRunInput(),
     )
 
     expect(result).toEqual({
@@ -343,14 +319,7 @@ describe('runStrategyAgent', () => {
         Promise.reject(new Error('buildAgent should not be invoked')),
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'completed',
@@ -369,12 +338,7 @@ describe('runStrategyAgent', () => {
 
     const result = await runStrategyAgent(
       deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-      (steps) => notifications.push(steps),
+      buildRunInput({ onStepsChanged: (steps) => notifications.push(steps) }),
     )
 
     expect(result).toEqual({
@@ -411,6 +375,44 @@ describe('runStrategyAgent', () => {
     ])
   })
 
+  it('forwards deadlineSignal through to runAgentGraph (and then buildPhaseAgent) when agent_graph is configured', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = buildDeps({
+      agentGraph:
+        'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+    })
+
+    const result = await runStrategyAgent(
+      deps,
+      buildRunInput({ deadlineSignal: controller.signal }),
+    )
+
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (P)',
+    })
+    expect(calls.capturedDeadlineSignal).toBe(controller.signal)
+  })
+
+  it('forwards deadlineSignal through to deps.buildAgent when agent_graph is not configured', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = buildDeps({
+      agentInvoke: () =>
+        Promise.resolve({
+          structuredResponse: { status: 'completed', message: 'done' },
+        }),
+    })
+
+    await runStrategyAgent(
+      deps,
+      buildRunInput({ deadlineSignal: controller.signal }),
+    )
+
+    expect(calls.capturedDeadlineSignal).toBe(controller.signal)
+  })
+
   it('skips a completed phase on resume when a valid resume step is provided', async () => {
     let buildPhaseAgentInvokeCalls = 0
     const { deps } = buildDeps({
@@ -438,14 +440,7 @@ describe('runStrategyAgent', () => {
       },
     ]
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      resumeSteps,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput({ resumeSteps }))
 
     expect(result).toEqual({
       status: 'completed',
@@ -469,14 +464,7 @@ describe('runStrategyAgent', () => {
     // phase_key など必須フィールドを欠いており strategyTaskStepJsonSchema を通らない。
     const resumeSteps: unknown[] = [{ status: 'completed' }]
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      resumeSteps,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput({ resumeSteps }))
 
     expect(result).toEqual({
       status: 'completed',
@@ -510,14 +498,7 @@ describe('runStrategyAgent', () => {
       },
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     // ステップ ID は crypto.randomUUID() 由来のため、出現順に番号を振って比較する。
     const label = createFirstOccurrenceLabeler('step')
@@ -569,14 +550,7 @@ describe('runStrategyAgent', () => {
         Promise.reject(new Error('should not be invoked')),
     })
 
-    const result = await runStrategyAgent(
-      deps,
-      'strategy-1',
-      undefined,
-      'task-1',
-      buildUserMessage('do the thing'),
-      undefined,
-    )
+    const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'failed',
@@ -929,6 +903,52 @@ describe('createStrategyAgentDeps', () => {
       agent.invoke({ messages: [new HumanMessage('hi')] }),
     ).rejects.toThrow('aborted')
     expect(capturedSignal?.aborted).toBe(true)
+  })
+
+  it('aborts the underlying HTTP request when deadlineSignal is aborted mid-stream', async () => {
+    const controller = new AbortController()
+    let capturedSignal: AbortSignal | undefined
+    const model = buildStubModel((_url, init) => {
+      capturedSignal = init?.signal ?? undefined
+      // 実リクエストが飛んだ後に deadline 超過を模して abort する。
+      setTimeout(() => {
+        controller.abort()
+      }, 10)
+      // ストリームが流れ続けて resolve/reject しない応答を模す。signal が
+      // 実際に fetch まで届いて abort されない限り、この Promise は解決しない。
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new Error('aborted'))
+        })
+      })
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [],
+      systemPrompt: 'you are a helpful bot',
+      deadlineSignal: controller.signal,
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      await expect(
+        agent.invoke({ messages: [new HumanMessage('hi')] }),
+      ).rejects.toThrow(
+        'deadlineMiddleware: aborted model call after strategy task deadline exceeded',
+      )
+      expect(capturedSignal?.aborted).toBe(true)
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          'deadlineMiddleware: aborted model call after strategy task deadline exceeded',
+        ],
+      ])
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('aborts the model call once distinct tool call indices exceed MAX_TOOL_CALLS_PER_MODEL_CALL, even mid-stream', async () => {

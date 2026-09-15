@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
 import {
+  extractDeadlineAt,
   extractPurpose,
   extractResumeSteps,
   extractStrategyId,
@@ -113,6 +114,32 @@ describe('extractResumeSteps', () => {
   it('returns undefined when resume_steps is not an array', () => {
     expect(
       extractResumeSteps(buildUserMessage({ resume_steps: 'not-an-array' })),
+    ).toBeUndefined()
+  })
+})
+
+describe('extractDeadlineAt', () => {
+  it('reads deadline_at from message metadata as a Date', () => {
+    expect(
+      extractDeadlineAt(
+        buildUserMessage({ deadline_at: '2026-01-01T00:15:00.000Z' }),
+      ),
+    ).toEqual(new Date('2026-01-01T00:15:00.000Z'))
+  })
+
+  it('returns undefined when metadata is absent', () => {
+    expect(extractDeadlineAt(buildUserMessage())).toBeUndefined()
+  })
+
+  it('returns undefined when deadline_at is not a string', () => {
+    expect(
+      extractDeadlineAt(buildUserMessage({ deadline_at: 123 })),
+    ).toBeUndefined()
+  })
+
+  it('returns undefined when deadline_at is not a valid date string', () => {
+    expect(
+      extractDeadlineAt(buildUserMessage({ deadline_at: 'not-a-date' })),
     ).toBeUndefined()
   })
 })
@@ -230,8 +257,8 @@ describe('TraderAgentExecutor', () => {
     async ({ metadata, expected }) => {
       const calls: (string | undefined)[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (_strategyId, purpose) => {
-          calls.push(purpose)
+        runStrategyAgent: (input) => {
+          calls.push(input.purpose)
           return Promise.resolve(defaultStrategyAgentResult)
         },
       })
@@ -252,14 +279,8 @@ describe('TraderAgentExecutor', () => {
   it('forwards resume_steps to runStrategyAgent alongside an explicit strategy_id', async () => {
     const calls: (unknown[] | undefined)[] = []
     const executor = buildExecutor({
-      runStrategyAgent: (
-        _strategyId,
-        _purpose,
-        _taskId,
-        _userMessage,
-        resumeSteps,
-      ) => {
-        calls.push(resumeSteps)
+      runStrategyAgent: (input) => {
+        calls.push(input.resumeSteps)
         return Promise.resolve(defaultStrategyAgentResult)
       },
     })
@@ -275,17 +296,51 @@ describe('TraderAgentExecutor', () => {
     expect(calls).toEqual([[{ execution_step_id: 'step-1', status: 'failed' }]])
   })
 
+  it('forwards an AbortSignal to runStrategyAgent when deadline_at is present in message metadata', async () => {
+    const calls: (AbortSignal | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (input) => {
+        calls.push(input.deadlineSignal)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    // 15 分後 (本番の deadline と同程度先) を指定する。setTimeout の 32bit 上限
+    // を超える極端な未来日時にすると Node が警告を出すため避ける。
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+      deadline_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    })
+    const requestContext = new RequestContext(userMessage, 'task-20', 'ctx-20')
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual([expect.any(AbortSignal)])
+  })
+
+  it('forwards undefined to runStrategyAgent when deadline_at is absent from message metadata', async () => {
+    const calls: (AbortSignal | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (input) => {
+        calls.push(input.deadlineSignal)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const eventBus = new FakeEventBus()
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-21', 'ctx-21')
+
+    await executor.execute(requestContext, eventBus)
+
+    expect(calls).toEqual([undefined])
+  })
+
   it('publishes an artifact-update event when runStrategyAgent reports step progress', async () => {
     const executor = buildExecutor({
-      runStrategyAgent: (
-        _strategyId,
-        _purpose,
-        _taskId,
-        _userMessage,
-        _resumeSteps,
-        onStepsChanged,
-      ) => {
-        onStepsChanged?.([
+      runStrategyAgent: (input) => {
+        input.onStepsChanged?.([
           {
             phaseKey: 'plan',
             executionStepId: 'exec-1',
@@ -359,15 +414,8 @@ describe('TraderAgentExecutor', () => {
       steps: readonly StrategyTaskStep[],
     ): Promise<TaskStatusUpdateEvent[]> => {
       const executor = buildExecutor({
-        runStrategyAgent: (
-          _strategyId,
-          _purpose,
-          _taskId,
-          _userMessage,
-          _resumeSteps,
-          onStepsChanged,
-        ) => {
-          onStepsChanged?.(steps)
+        runStrategyAgent: (input) => {
+          input.onStepsChanged?.(steps)
           return Promise.resolve(defaultStrategyAgentResult)
         },
       })
@@ -451,21 +499,14 @@ describe('TraderAgentExecutor', () => {
 
     it('reuses the same heartbeat messageId across step changes so history dedup keeps only the first entry', async () => {
       const executor = buildExecutor({
-        runStrategyAgent: (
-          _strategyId,
-          _purpose,
-          _taskId,
-          _userMessage,
-          _resumeSteps,
-          onStepsChanged,
-        ) => {
-          onStepsChanged?.([
+        runStrategyAgent: (input) => {
+          input.onStepsChanged?.([
             buildStep({
               status: 'running',
               startedAt: '2026-01-01T00:00:00.000Z',
             }),
           ])
-          onStepsChanged?.([
+          input.onStepsChanged?.([
             buildStep({
               status: 'completed',
               startedAt: '2026-01-01T00:00:00.000Z',
@@ -678,12 +719,12 @@ describe('TraderAgentExecutor', () => {
         text: string
       }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, purpose, taskId, userMessage) => {
+        runStrategyAgent: (input) => {
           calls.push({
-            strategyId,
-            purpose,
-            taskId,
-            text: userMessage.parts
+            strategyId: input.strategyId,
+            purpose: input.purpose,
+            taskId: input.taskId,
+            text: input.userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
               .join('\n'),
           })
@@ -860,12 +901,12 @@ describe('TraderAgentExecutor', () => {
         text: string
       }[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (strategyId, purpose, taskId, userMessage) => {
+        runStrategyAgent: (input) => {
           calls.push({
-            strategyId,
-            purpose,
-            taskId,
-            text: userMessage.parts
+            strategyId: input.strategyId,
+            purpose: input.purpose,
+            taskId: input.taskId,
+            text: input.userMessage.parts
               .map((p) => (p.kind === 'text' ? p.text : ''))
               .join('\n'),
           })
@@ -932,8 +973,8 @@ describe('TraderAgentExecutor', () => {
     it('forwards message metadata.purpose to runStrategyAgent when present, alongside a strategy resolved from free text', async () => {
       const calls: (string | undefined)[] = []
       const executor = buildExecutor({
-        runStrategyAgent: (_strategyId, purpose) => {
-          calls.push(purpose)
+        runStrategyAgent: (input) => {
+          calls.push(input.purpose)
           return Promise.resolve(defaultStrategyAgentResult)
         },
       })
