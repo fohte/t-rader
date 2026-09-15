@@ -12,7 +12,9 @@ use uuid::Uuid;
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{hypothesis, hypothesis_proposal, note, strategy, strategy_task, trigger};
+use crate::entities::{
+    hypothesis, hypothesis_proposal, note, stock, strategy, strategy_task, trigger,
+};
 use crate::kata_exec::SharedKataExecutor;
 use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
@@ -203,6 +205,22 @@ pub async fn insert_test_hook_trigger(
     .await
     .expect("insert test hook trigger");
     id
+}
+
+/// テストで stock を 1 件 seed する。
+pub async fn insert_test_stock(db: &DatabaseConnection, id: &str, name: &str) {
+    stock::ActiveModel {
+        id: Set(id.to_string()),
+        name: Set(name.to_string()),
+        market: Set(None),
+        sector_id: Set(None),
+        product_category: Set(None),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(db)
+    .await
+    .expect("insert test stock");
 }
 
 /// テストで hypothesis を 1 件 seed する。`strategy_id = None` で global 仮説を表現できる。

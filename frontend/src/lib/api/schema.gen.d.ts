@@ -788,6 +788,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/notes/{id}/predictions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートに紐づく予測一覧 (記録順)。 */
+    get: operations['list_note_predictions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes/{id}/reject': {
     parameters: {
       query?: never
@@ -1977,6 +1994,25 @@ export interface components {
        */
       realized_pnl: number
       symbol: string
+    }
+    Prediction: {
+      /** Format: date */
+      base_date: string
+      benchmark_stock_id: string
+      /** Format: date-time */
+      created_at: string
+      direction: string
+      /** Format: date */
+      due_date: string
+      /** Format: uuid */
+      note_id?: string | null
+      /** Format: uuid */
+      prediction_id: string
+      /** Format: double */
+      probability: number
+      /** Format: uuid */
+      strategy_id: string
+      target_stock_id: string
     }
     PreviewIndicatorRequest: {
       args: unknown
@@ -5797,6 +5833,52 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_note_predictions: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['Prediction'][]
+        }
       }
       400: {
         headers: {
