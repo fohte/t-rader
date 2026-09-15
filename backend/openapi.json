@@ -8870,6 +8870,19 @@
           "created_by_kind": {
             "type": "string"
           },
+          "execution_step_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "execution_task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "type": "string",
             "format": "uuid"

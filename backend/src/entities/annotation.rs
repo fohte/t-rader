@@ -26,6 +26,9 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
+    pub execution_step_id: Option<Uuid>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub execution_task_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

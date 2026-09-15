@@ -62,7 +62,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within a task execution: repeated create calls (omitting note_id) collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -70,7 +70,10 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<WriteNoteResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
-        let execution_id = execution_id_from_ctx(&ctx);
+        // a2a_task_id を含めず execution_step_id 部分のみをキーにする。resume で
+        // a2a_task_id (= x-execution-id の task_id 部分) が変わっても、同じステップが
+        // 書くノートが 1 件に収束するようにするため。
+        let execution_id = execution_step_id_from_ctx(&ctx).map(|id| id.to_string());
         self.write_note_inner(sid, execution_id, params)
             .await
             .map(Json)
@@ -109,7 +112,7 @@ impl StrategyServer {
     /// アノテーションを作成する
     #[tool(
         name = "create_annotation",
-        description = "Create a chart annotation owned by the strategy."
+        description = "Create a chart annotation owned by the strategy. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."
     )]
     async fn create_annotation(
         &self,
@@ -117,7 +120,11 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<CreateAnnotationResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
-        self.create_annotation_inner(sid, params).await.map(Json)
+        let execution_step_id = execution_step_id_from_ctx(&ctx);
+        let execution_task_id = execution_task_id_from_ctx(&ctx);
+        self.create_annotation_inner(sid, execution_step_id, execution_task_id, params)
+            .await
+            .map(Json)
     }
 
     /// 戦略のアノテーション一覧を返す

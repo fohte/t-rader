@@ -1539,6 +1539,9 @@ export interface components {
       created_at: string
       created_by_kind: string
       /** Format: uuid */
+      execution_step_id?: string | null
+      execution_task_id?: string | null
+      /** Format: uuid */
       id: string
       /** Format: uuid */
       linked_note_id?: string | null

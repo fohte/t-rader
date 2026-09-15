@@ -573,6 +573,8 @@ mod tests {
             created_by_kind: Set("llm".into()),
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
+            execution_step_id: Set(None),
+            execution_task_id: Set(None),
         }
         .insert(&db)
         .await
@@ -613,6 +615,8 @@ mod tests {
             created_by_kind: Set("llm".into()),
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
+            execution_step_id: Set(None),
+            execution_task_id: Set(None),
         }
         .insert(&db)
         .await

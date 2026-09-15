@@ -57,9 +57,11 @@ pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 /// `x-execution-id` ヘッダ名。agent は `{a2a_task_id}:{step_id}` 形式の値を MCP tool 呼び出し
-/// ごとに送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列)。backend は
-/// これを `note.execution_id` にそのまま保持するが FK/join は持たず、単なる相関用の
-/// 不透明な文字列として扱う。
+/// ごとに送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列、`a2a_task_id` は
+/// resume のたびに新しくなる実行 (試行) の id)。backend は FK/join は持たず、単なる相関用の
+/// 不透明な文字列として扱うが、`a2a_task_id` をそのままキーにすると resume のたびに別実行
+/// 扱いになってしまうため、`note.execution_id` には `step_id` 部分のみを保持し、
+/// `annotation.execution_step_id` / `annotation.execution_task_id` には両者を分けて保持する。
 const EXECUTION_ID_HEADER: &str = "x-execution-id";
 
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";
