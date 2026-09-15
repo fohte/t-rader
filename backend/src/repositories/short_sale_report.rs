@@ -201,11 +201,50 @@ mod tests {
             .all(&db)
             .await
             .expect("find failed");
-        assert_eq!(rows.len(), 1);
         assert_eq!(
-            rows[0].short_position_ratio,
-            Decimal::try_from(0.09).expect("decimal")
+            rows,
+            vec![short_sale_report::Model {
+                disc_date: date,
+                calc_date: date,
+                code: "7203".to_string(),
+                ss_name: "報告者A".to_string(),
+                ss_addr: "東京都".to_string(),
+                dic_name: "テスト委託者".to_string(),
+                dic_addr: "東京都".to_string(),
+                fund_name: String::new(),
+                short_position_ratio: Decimal::try_from(0.09).expect("decimal"),
+                short_position_shares: 1000,
+                short_position_units: 10,
+                prev_report_date: None,
+                prev_report_ratio: None,
+                notes: String::new(),
+            }]
         );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn upsert_keeps_rows_distinct_when_a_dedup_key_column_differs(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
+
+        // dedup 用のキーは OnConflict::columns と同じ列集合を別表現で持つため、
+        // 片方だけ更新漏れると片方が壊れる (重複エラー再発、またはデータ消失)。
+        // ここでは PK 列の 1 つである ss_addr だけを変えた行が dedup されず
+        // 2 行として残ることを確認し、両者が一致していることを回帰検知する
+        let mut report_a = make_report(date, "7203", "報告者A", 0.05);
+        report_a.ss_addr = "東京都".to_string();
+        let mut report_b = make_report(date, "7203", "報告者A", 0.05);
+        report_b.ss_addr = "大阪府".to_string();
+
+        upsert_short_sale_reports(&db, vec![report_a, report_b])
+            .await
+            .expect("upsert failed");
+
+        let rows = short_sale_report::Entity::find()
+            .all(&db)
+            .await
+            .expect("find failed");
+        assert_eq!(rows.len(), 2);
     }
 
     #[sqlx::test(migrations = false)]
