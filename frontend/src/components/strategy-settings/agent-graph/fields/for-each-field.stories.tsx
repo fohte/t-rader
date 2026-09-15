@@ -3,7 +3,6 @@ import { useState } from 'react'
 
 import { ForEachField } from '#components/strategy-settings/agent-graph/fields/for-each-field'
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
-import { openSelect } from '#storybook/open-select'
 
 const meta = {
   title: 'StrategySettings/AgentGraph/ForEachField',
@@ -44,10 +43,12 @@ function Interactive({
   phases,
   index,
   initial,
+  selectDefaultOpen,
 }: {
   phases: AgentGraphPhaseForm[]
   index: number
   initial: string | undefined
+  selectDefaultOpen?: boolean
 }) {
   const [value, setValue] = useState(initial)
   return (
@@ -57,6 +58,7 @@ function Interactive({
         index={index}
         value={value}
         onChange={setValue}
+        selectDefaultOpen={selectDefaultOpen}
       />
     </div>
   )
@@ -75,11 +77,13 @@ export const WithArrayOption: Story = {
     onChange: () => {},
   },
   render: () => (
-    <Interactive phases={[PLAN, INVESTIGATE]} index={1} initial={undefined} />
+    <Interactive
+      phases={[PLAN, INVESTIGATE]}
+      index={1}
+      initial={undefined}
+      selectDefaultOpen
+    />
   ),
-  play: async ({ canvasElement }) => {
-    await openSelect(canvasElement)
-  },
 }
 
 export const Selected: Story = {
