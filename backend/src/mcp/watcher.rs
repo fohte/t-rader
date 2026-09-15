@@ -9,23 +9,24 @@
 //! もちろん、内部 API が正常に応答 (working/completed 含む) しているケースも対象であり、
 //! 応答が生きている限り延命され続けることを防ぐ。
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::OnConflict;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    TransactionTrait,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use tokio::sync::{Notify, Semaphore};
-use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskError, AgentTaskState, AgentTaskStatus, SharedAgentTaskClient};
-use crate::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
-use crate::entities::{strategy_task, strategy_task_step};
+use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
+use crate::entities::strategy_task;
+
+mod auto_resume;
+mod steps;
+
+use steps::upsert_steps;
 
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
 
@@ -132,7 +133,15 @@ async fn reconcile_one(
     };
 
     match agent_client.get(&a2a_task_id).await {
-        Ok(status) => apply_status(db, row, status, now).await,
+        Ok(status) => {
+            let auto_resume_eligible = auto_resume::is_eligible(&row, &status, now);
+            let task_id = row.task_id;
+            let updated = apply_status(db, row, status, now).await;
+            if updated && auto_resume_eligible {
+                auto_resume::attempt(db, agent_client, task_id).await;
+            }
+            updated
+        }
         Err(err) => {
             // 一時的な到達不能 (NotFound を含む)。t-rader-agent 側の task 作成と backend
             // 側の a2a_task_id 記録は別段階のため、insert 直後の一過性の不整合を誤って
@@ -250,6 +259,7 @@ async fn apply_phase(
             created_at: NotSet,
             purpose: NotSet,
             as_of: NotSet,
+            auto_resumed_at: NotSet,
         };
         strategy_task::Entity::update(active).exec(&txn).await?;
     }
@@ -264,128 +274,6 @@ async fn apply_phase(
     txn.commit().await?;
 
     Ok(row_changed || steps_changed)
-}
-
-/// t-rader-agent から届いた実行ステップ配列を `strategy_task_step` へ upsert する。
-///
-/// `execution_step_id` を主キーとして、既存行と `status`/`output`/`finished_at`/`error` が
-/// 全て一致する場合は書き込みをスキップする (`phase_key`/`label`/`model`/`item`/`item_label`/
-/// `started_at`/`trace_id`/`span_id` はステップ発行時点で確定し不変のため比較・更新対象外)。
-async fn upsert_steps<C: ConnectionTrait>(
-    db: &C,
-    task_id: Uuid,
-    steps: &[serde_json::Value],
-) -> Result<bool, sea_orm::DbErr> {
-    let existing: HashMap<Uuid, strategy_task_step::Model> = strategy_task_step::Entity::find()
-        .filter(strategy_task_step::Column::TaskId.eq(task_id))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|row| (row.execution_step_id, row))
-        .collect();
-
-    let mut to_upsert = Vec::new();
-    for raw in steps {
-        let wire: StepWire = match serde_json::from_value(raw.clone()) {
-            Ok(wire) => wire,
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    task_id = %task_id,
-                    "failed to parse strategy task step; skipping",
-                );
-                continue;
-            }
-        };
-        let Some(status) = step_status_from_raw(&wire.status) else {
-            tracing::warn!(
-                status = wire.status,
-                task_id = %task_id,
-                "unknown strategy task step status; skipping",
-            );
-            continue;
-        };
-
-        if let Some(existing_row) = existing.get(&wire.execution_step_id)
-            && existing_row.status == status
-            && existing_row.output == wire.output
-            && existing_row.finished_at == wire.finished_at
-            && existing_row.error == wire.error
-        {
-            continue;
-        }
-
-        to_upsert.push(strategy_task_step::ActiveModel {
-            execution_step_id: Set(wire.execution_step_id),
-            task_id: Set(task_id),
-            phase_key: Set(wire.phase_key),
-            label: Set(wire.label),
-            model: Set(wire.model),
-            status: Set(status),
-            item: Set(wire.item),
-            item_label: Set(wire.item_label),
-            output: Set(wire.output),
-            started_at: Set(wire.started_at),
-            finished_at: Set(wire.finished_at),
-            trace_id: Set(wire.trace_id),
-            span_id: Set(wire.span_id),
-            error: Set(wire.error),
-            seq: NotSet,
-        });
-    }
-
-    if to_upsert.is_empty() {
-        return Ok(false);
-    }
-
-    strategy_task_step::Entity::insert_many(to_upsert)
-        .on_conflict(
-            OnConflict::column(strategy_task_step::Column::ExecutionStepId)
-                .update_columns([
-                    strategy_task_step::Column::Status,
-                    strategy_task_step::Column::Output,
-                    strategy_task_step::Column::FinishedAt,
-                    strategy_task_step::Column::Error,
-                ])
-                .to_owned(),
-        )
-        .exec(db)
-        .await?;
-
-    Ok(true)
-}
-
-/// t-rader-agent から届く実行ステップの wire JSON 形式。`status` は文字列のまま受け取り、
-/// `step_status_from_raw` で手動変換する。
-#[derive(Debug, serde::Deserialize)]
-struct StepWire {
-    execution_step_id: Uuid,
-    phase_key: String,
-    label: String,
-    model: String,
-    status: String,
-    #[serde(default)]
-    item: Option<serde_json::Value>,
-    #[serde(default)]
-    item_label: Option<String>,
-    #[serde(default)]
-    output: Option<serde_json::Value>,
-    started_at: DateTime<FixedOffset>,
-    #[serde(default)]
-    finished_at: Option<DateTime<FixedOffset>>,
-    trace_id: String,
-    span_id: String,
-    #[serde(default)]
-    error: Option<String>,
-}
-
-fn step_status_from_raw(raw: &str) -> Option<StrategyTaskStepStatus> {
-    match raw {
-        "running" => Some(StrategyTaskStepStatus::Running),
-        "completed" => Some(StrategyTaskStepStatus::Completed),
-        "failed" => Some(StrategyTaskStepStatus::Failed),
-        _ => None,
-    }
 }
 
 /// 定期 polling のバックグラウンドタスクを起動する。
@@ -421,7 +309,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient};
-    use crate::entities::strategy;
+    use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
+    use crate::entities::{strategy, strategy_task_step};
     use crate::testing::create_test_db;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     use sqlx::PgPool;
@@ -468,6 +357,7 @@ mod tests {
             deadline_at: Set(now + deadline_offset),
             purpose: NotSet,
             as_of: NotSet,
+            auto_resumed_at: NotSet,
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -1111,5 +1001,171 @@ mod tests {
         assert_eq!(row.phase, StrategyTaskPhase::Running);
         assert_eq!(row.result_text, None);
         assert_eq!(fetch_steps(&db, task_id).await, vec![]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn execution_lost_failure_triggers_auto_resume(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-lost"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-lost",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_kind: Some("execution_lost".to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        fake.set_next_task_id("agent-task-resumed").await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+
+        #[derive(Debug, PartialEq)]
+        struct AutoResumeOutcome {
+            phase: StrategyTaskPhase,
+            a2a_task_id: Option<String>,
+            auto_resumed_at_is_set: bool,
+        }
+
+        assert_eq!(
+            AutoResumeOutcome {
+                phase: row.phase,
+                a2a_task_id: row.a2a_task_id,
+                auto_resumed_at_is_set: row.auto_resumed_at.is_some(),
+            },
+            AutoResumeOutcome {
+                phase: StrategyTaskPhase::Running,
+                a2a_task_id: Some("agent-task-resumed".to_string()),
+                auto_resumed_at_is_set: true,
+            },
+        );
+        assert_eq!(fake.submitted.lock().await.len(), 1);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn execution_lost_failure_is_not_auto_resumed_twice(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-lost-again"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+        // 既に自動 resume 済みの行を模擬する。
+        strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            auto_resumed_at: Set(Some(Utc::now().fixed_offset())),
+            updated_at: Set(Utc::now().fixed_offset()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .unwrap();
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-lost-again",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_kind: Some("execution_lost".to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(row.phase, StrategyTaskPhase::Failed);
+        assert!(fake.submitted.lock().await.is_empty());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn non_execution_lost_failure_is_not_auto_resumed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-usage-limit-inflight"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-usage-limit-inflight",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_kind: Some("usage_limit".to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(row.phase, StrategyTaskPhase::Failed);
+        assert!(fake.submitted.lock().await.is_empty());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn execution_lost_failure_past_deadline_is_not_auto_resumed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-lost-late"),
+            StrategyTaskPhase::Running,
+            PAST,
+        )
+        .await;
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-lost-late",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_kind: Some("execution_lost".to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(row.phase, StrategyTaskPhase::Failed);
+        assert!(fake.submitted.lock().await.is_empty());
     }
 }

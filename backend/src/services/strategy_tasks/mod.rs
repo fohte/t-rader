@@ -17,7 +17,7 @@ use crate::models::StrategyTaskSummary;
 use crate::services::agent_config;
 
 mod resume;
-pub use resume::{ResumeTaskError, resume_task};
+pub use resume::{ResumeTaskError, auto_resume_task, resume_task};
 
 /// 内部 API 投入後、client 側で完了を待つ猶予期間。
 ///
@@ -201,6 +201,7 @@ pub async fn submit_task(
         deadline_at: Set(deadline_at),
         purpose: Set(purpose.clone()),
         as_of: Set(Some(now)),
+        auto_resumed_at: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
     };
