@@ -127,6 +127,8 @@ pub(super) async fn seed_foreign_annotation(db: &DatabaseConnection, owner: Uuid
         created_by_kind: Set(super::STRATEGY_AGENT_ACTOR.into()),
         created_at: NotSet,
         updated_at: NotSet,
+        execution_step_id: Set(None),
+        execution_task_id: Set(None),
     }
     .insert(db)
     .await

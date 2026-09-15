@@ -57,9 +57,15 @@ pub(super) const STRATEGY_AGENT_ACTOR: &str = "llm";
 
 const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 /// `x-execution-id` ヘッダ名。agent は `{a2a_task_id}:{step_id}` 形式の値を MCP tool 呼び出し
-/// ごとに送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列)。backend は
-/// これを `note.execution_id` にそのまま保持するが FK/join は持たず、単なる相関用の
-/// 不透明な文字列として扱う。
+/// ごとに送る (`step_id` は agent 内の実行ステップ 1 件を指す不透明な文字列、`a2a_task_id` は
+/// resume のたびに新しくなる実行 (試行) の id)。backend は FK/join は持たず、単なる相関用の
+/// 不透明な文字列として扱うが、`a2a_task_id` をそのままキーにすると resume のたびに別実行
+/// 扱いになってしまうため、`note.execution_id` には `step_id` 部分のみを保持し、
+/// `annotation.execution_step_id` / `annotation.execution_task_id` には両者を分けて保持する。
+/// 呼び出し元の `a2a_task_id` が現在アクティブな試行かどうかは検査しない。
+/// `strategy_task.deadline_at` 超過による Failed 確定 (`backend/src/mcp/watcher.rs`) は
+/// agent 側の実行を cancel しないため、resume 後も旧試行の agent プロセスが生存して
+/// 呼び出しを送ってくると、新しい試行が書いた内容を上書き/削除しうる。
 const EXECUTION_ID_HEADER: &str = "x-execution-id";
 
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";

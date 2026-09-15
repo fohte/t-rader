@@ -165,7 +165,8 @@ export const invokeAndRecordStep = (
   spanName: string,
   spanAttributes: Record<string, string | number>,
   // resume で再実行するステップの元 executionStepId。指定時はこれを使い回すことで
-  // MCP の x-execution-id ヘッダーが安定し、notes.rs 側でノートが重複しない。
+  // MCP の x-execution-id ヘッダーに含まれる step_id 部分が安定し、
+  // notes.rs 側 (execution_id で紐付け) でノートが重複しない。
   existingExecutionStepId?: string,
 ): Promise<Result<Record<string, unknown>, unknown>> =>
   withPhaseSpan(spanName, spanAttributes, (spanIds) => {

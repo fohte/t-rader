@@ -52,6 +52,7 @@ mod m20260913_122949_add_jquants_daily_bars_ingested_date;
 mod m20260913_125042_add_prediction;
 mod m20260913_133130_add_margin_code_prefix_indexes;
 mod m20260913_142709_add_jquants_earnings_date;
+mod m20260915_120353_add_annotation_execution_tracking;
 
 pub struct Migrator;
 
@@ -112,6 +113,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260913_125042_add_prediction::Migration),
             Box::new(m20260913_133130_add_margin_code_prefix_indexes::Migration),
             Box::new(m20260913_142709_add_jquants_earnings_date::Migration),
+            Box::new(m20260915_120353_add_annotation_execution_tracking::Migration),
         ]
     }
 }

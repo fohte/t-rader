@@ -5,10 +5,11 @@
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
+use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::entities::annotation;
+use crate::entities::{annotation, comment};
 
 use super::dto::{
     AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
@@ -53,6 +54,8 @@ impl StrategyServer {
     pub(crate) async fn create_annotation_inner(
         &self,
         session_strategy_id: Uuid,
+        execution_step_id: Option<Uuid>,
+        execution_task_id: Option<String>,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
         let target_symbol = params.target_symbol.trim().to_string();
@@ -89,11 +92,60 @@ impl StrategyServer {
             created_by_kind: Set(STRATEGY_AGENT_ACTOR.to_string()),
             created_at: NotSet,
             updated_at: NotSet,
+            execution_step_id: Set(execution_step_id),
+            execution_task_id: Set(execution_task_id.clone()),
         };
+
+        let txn = self.db.begin().await.map_err(db_error)?;
+        // resume で同じステップが新しい試行 (execution_task_id) から作り始めたとき、前の試行が
+        // 作った未レビュー (unread) のアノテーションを置き換える。承認/却下済みのものは残す。
+        // 1 ステップで複数件作るのは正当な動作のため、note のような UNIQUE ではなく削除で対応する。
+        if let (Some(step_id), Some(task_id)) = (execution_step_id, execution_task_id.as_deref()) {
+            let stale_ids: Vec<Uuid> = annotation::Entity::find()
+                .select_only()
+                .column(annotation::Column::Id)
+                .filter(annotation::Column::StrategyId.eq(session_strategy_id))
+                .filter(annotation::Column::ExecutionStepId.eq(step_id))
+                .filter(annotation::Column::Status.eq(DEFAULT_ANNOTATION_STATUS))
+                .filter(annotation::Column::ExecutionTaskId.ne(task_id))
+                .into_tuple()
+                .all(&txn)
+                .await
+                .map_err(db_error)?;
+            // comment.target_id は annotation への FK を持たない (所有権検査はアプリ層で行う設計、
+            // super::fetch_annotation_owned_by 参照)。delete でこの行ごと消すと、対応する comment
+            // 行が孤児化して read_comments/resolve_comment/reply_comment のいずれからも
+            // 到達不能になるため、既にコメントが付いた行は削除対象から除外する。
+            if !stale_ids.is_empty() {
+                let commented: HashSet<Uuid> = comment::Entity::find()
+                    .select_only()
+                    .column(comment::Column::TargetId)
+                    .filter(comment::Column::TargetKind.eq("annotation"))
+                    .filter(comment::Column::TargetId.is_in(stale_ids.iter().copied()))
+                    .into_tuple()
+                    .all(&txn)
+                    .await
+                    .map_err(db_error)?
+                    .into_iter()
+                    .collect();
+                let to_delete: Vec<Uuid> = stale_ids
+                    .into_iter()
+                    .filter(|id| !commented.contains(id))
+                    .collect();
+                if !to_delete.is_empty() {
+                    annotation::Entity::delete_many()
+                        .filter(annotation::Column::Id.is_in(to_delete))
+                        .exec(&txn)
+                        .await
+                        .map_err(db_error)?;
+                }
+            }
+        }
         let created = annotation::Entity::insert(model)
-            .exec_with_returning(&self.db)
+            .exec_with_returning(&txn)
             .await
             .map_err(db_error)?;
+        txn.commit().await.map_err(db_error)?;
         Ok(CreateAnnotationResult {
             annotation: annotation_to_dto(created)?,
         })
@@ -132,15 +184,20 @@ impl StrategyServer {
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, FixedOffset};
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
     use sqlx::PgPool;
+    use uuid::Uuid;
 
+    use crate::entities::annotation;
     use crate::testing::create_test_db;
 
     use super::super::dto::{
         AnnotationDto, CreateAnnotationParams, ReadAnnotationsParams, ReadAnnotationsResult,
     };
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_annotation, seed_foreign_note, ts_sentinel,
+        build_server, insert_strategy, normalize_annotation, seed_comment, seed_foreign_note,
+        ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
 
@@ -155,6 +212,8 @@ mod tests {
         let created = server
             .create_annotation_inner(
                 strategy_id,
+                None,
+                None,
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "custom-tag".into(),
@@ -214,6 +273,8 @@ mod tests {
         let err = server
             .create_annotation_inner(
                 strategy_id,
+                None,
+                None,
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "  ".into(),
@@ -239,6 +300,8 @@ mod tests {
         let err = server
             .create_annotation_inner(
                 strategy_a,
+                None,
+                None,
                 CreateAnnotationParams {
                     target_symbol: "7203".into(),
                     target_kind: "signal".into(),
@@ -251,5 +314,269 @@ mod tests {
             .await
             .expect_err("cross-strategy linked note expected to be rejected");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    /// resume で同じステップの新しい試行 (execution_task_id が変わる) が create_annotation を
+    /// 呼んだとき、前の試行が作った未レビュー (unread) のアノテーションは削除され、
+    /// 新しい試行のものだけが残る。
+    #[sqlx::test(migrations = false)]
+    async fn create_annotation_replaces_unread_annotations_from_previous_attempt_of_same_step(
+        pool: PgPool,
+    ) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let server = build_server(db);
+        let step_id = Uuid::new_v4();
+        let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
+
+        server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-1".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "first attempt".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from first attempt");
+
+        let second = server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-2".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "second attempt".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from second (resumed) attempt");
+
+        let list = server
+            .read_annotations_inner(
+                strategy_id,
+                ReadAnnotationsParams {
+                    target_symbol: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("list");
+        assert_eq!(
+            list.annotations
+                .into_iter()
+                .map(|a| a.annotation_id)
+                .collect::<Vec<_>>(),
+            vec![second.annotation.annotation_id],
+        );
+    }
+
+    /// 前の試行が作ったアノテーションでも、既にレビュー済み (unread 以外) のものは
+    /// 新しい試行が来ても削除されず残る。
+    #[sqlx::test(migrations = false)]
+    async fn create_annotation_keeps_reviewed_annotations_from_previous_attempt(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let server = build_server(db.clone());
+        let step_id = Uuid::new_v4();
+        let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
+
+        let reviewed = server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-1".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "already reviewed".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from first attempt");
+        annotation::ActiveModel {
+            id: Set(reviewed.annotation.annotation_id),
+            status: Set("approved".into()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("mark approved");
+
+        let second = server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-2".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "second attempt".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from second (resumed) attempt");
+
+        let list = server
+            .read_annotations_inner(
+                strategy_id,
+                ReadAnnotationsParams {
+                    target_symbol: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("list");
+        let mut ids: Vec<Uuid> = list
+            .annotations
+            .into_iter()
+            .map(|a| a.annotation_id)
+            .collect();
+        ids.sort();
+        let mut expected = vec![
+            reviewed.annotation.annotation_id,
+            second.annotation.annotation_id,
+        ];
+        expected.sort();
+        assert_eq!(ids, expected);
+    }
+
+    /// 前の試行が作った unread のアノテーションでも、既にコメントが付いている場合は
+    /// (comment.target_id が FK を持たないため) 削除すると孤児化してしまうので残る。
+    #[sqlx::test(migrations = false)]
+    async fn create_annotation_keeps_unread_annotations_with_comments_from_previous_attempt(
+        pool: PgPool,
+    ) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let server = build_server(db.clone());
+        let step_id = Uuid::new_v4();
+        let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
+
+        let commented = server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-1".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "commented but unread".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from first attempt");
+        seed_comment(
+            &db,
+            "annotation",
+            commented.annotation.annotation_id,
+            None,
+            "why?",
+        )
+        .await;
+
+        let second = server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-2".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "second attempt".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from second (resumed) attempt");
+
+        let list = server
+            .read_annotations_inner(
+                strategy_id,
+                ReadAnnotationsParams {
+                    target_symbol: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("list");
+        let mut ids: Vec<Uuid> = list
+            .annotations
+            .into_iter()
+            .map(|a| a.annotation_id)
+            .collect();
+        ids.sort();
+        let mut expected = vec![
+            commented.annotation.annotation_id,
+            second.annotation.annotation_id,
+        ];
+        expected.sort();
+        assert_eq!(ids, expected);
+    }
+
+    /// resume していない通常の実行 (同じ execution_task_id) で 1 ステップが複数件の
+    /// アノテーションを作る動作はこれまでどおり全件残る。
+    #[sqlx::test(migrations = false)]
+    async fn create_annotation_keeps_multiple_annotations_from_the_same_attempt(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let server = build_server(db);
+        let step_id = Uuid::new_v4();
+        let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
+
+        for text in ["first", "second"] {
+            server
+                .create_annotation_inner(
+                    strategy_id,
+                    Some(step_id),
+                    Some("attempt-1".into()),
+                    CreateAnnotationParams {
+                        target_symbol: "7203".into(),
+                        target_kind: "signal".into(),
+                        timestamp: ts,
+                        price: None,
+                        text: text.into(),
+                        linked_note_id: None,
+                    },
+                )
+                .await
+                .unwrap_or_else(|e| panic!("create {text} failed: {e}"));
+        }
+
+        let list = server
+            .read_annotations_inner(
+                strategy_id,
+                ReadAnnotationsParams {
+                    target_symbol: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("list");
+        let mut texts: Vec<String> = list.annotations.into_iter().map(|a| a.text).collect();
+        texts.sort();
+        assert_eq!(texts, vec!["first".to_string(), "second".to_string()]);
     }
 }

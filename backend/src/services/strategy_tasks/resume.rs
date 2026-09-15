@@ -146,8 +146,8 @@ pub async fn resume_task(
 
 /// `POST /internal/tasks` の `resume_steps` 配列 1 要素分の wire JSON 形状。
 /// `step_to_wire_json` の出力に `execution_step_id` を足したもの: agent が再実行時に
-/// 同じ id を使い回すことで MCP tool 呼び出しの `x-execution-id` を安定させ、ノート書き込み
-/// (execution_id で既存ノートを探して更新する) の重複を防ぐ契約のため。
+/// 同じ id を使い回すことで MCP tool 呼び出しの `x-execution-id` に含まれる step_id 部分が
+/// 安定し、ノート書き込み (execution_id で既存ノートを探して更新する) の重複を防ぐ契約のため。
 fn step_to_resume_wire_json(
     row: strategy_task_step::Model,
 ) -> Result<serde_json::Value, serde_json::Error> {

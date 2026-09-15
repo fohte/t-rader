@@ -139,6 +139,8 @@ pub async fn create_annotation(
         created_by_kind: Set(created_by),
         created_at: NotSet,
         updated_at: NotSet,
+        execution_step_id: Set(None),
+        execution_task_id: Set(None),
     };
     let created = annotation::Entity::insert(model)
         .exec_with_returning(&txn)
@@ -495,6 +497,8 @@ mod tests {
                 "status": "unread",
                 "linked_note_id": null,
                 "created_by_kind": "human",
+                "execution_step_id": null,
+                "execution_task_id": null,
             }),
         );
     }
@@ -540,6 +544,8 @@ mod tests {
                 "status": "rejected",
                 "linked_note_id": null,
                 "created_by_kind": "human",
+                "execution_step_id": null,
+                "execution_task_id": null,
             }),
         );
 
@@ -580,6 +586,8 @@ mod tests {
                 "status": "rejected",
                 "linked_note_id": null,
                 "created_by_kind": "human",
+                "execution_step_id": null,
+                "execution_task_id": null,
             }),
         );
 
