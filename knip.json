@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "treatConfigHintsAsErrors": true,
+  "workspaces": {
+    ".": {
+      "ignoreDependencies": ["@commitlint/cli"],
+      "ignore": ["commitlint-plugin-no-external-refs.cjs"]
+    },
+    "frontend": {
+      "entry": ["src/lib/**", "src/routes/**/*.tsx"],
+      "ignoreDependencies": [
+        "reg-suit",
+        "reg-publish-s3-plugin",
+        "reg-simple-keygen-plugin"
+      ]
+    },
+    "agent": {
+      "entry": ["src/db/migrate.ts"]
+    }
+  }
+}

@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach, describe } from 'vitest'
 
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
 
-export const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL']
+const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL']
 
 if (TEST_DATABASE_URL !== undefined) {
   const host = new URL(TEST_DATABASE_URL).hostname
@@ -44,14 +44,9 @@ afterAll(async () => {
   }
 })
 
-// Read-only Sql for assertions against the migrated schema. Do not use this
-// for tests that mutate state — they should take a tx from `setupTx` instead
-// so the work is rolled back.
-export const getTestSql = (): postgres.Sql => getPool()
-
 // The returned getter throws if called outside a test — `reserved` is only
 // set between this fixture's beforeEach and afterEach.
-export const setupTx = (): (() => postgres.Sql) => {
+const setupTx = (): (() => postgres.Sql) => {
   let reserved: postgres.ReservedSql | null = null
 
   beforeEach(async () => {

@@ -1,8 +1,6 @@
 export type {
   AgentGraphOutputSchema,
   AgentGraphPhaseSummary,
-  EnumEntry,
-  PhaseNode,
   TaskStep,
 } from '#components/strategy-shell/task-execution-tree/model'
 export {

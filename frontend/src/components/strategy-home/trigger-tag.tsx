@@ -1,4 +1,4 @@
-export type Trigger = string
+type Trigger = string
 
 const GLYPH: Record<string, string> = {
   cron: '⏱',
