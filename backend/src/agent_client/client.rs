@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset};
 use reqwest::StatusCode;
 use reqwest::header::{HeaderMap, HeaderValue};
 use uuid::Uuid;
@@ -69,6 +70,8 @@ pub struct SubmitAgentTask {
     /// 再開対象タスクの全 strategy_task_step 行 (seq 昇順)。中身は解釈せず素通しする。
     /// 新規タスクの投入では `None`。
     pub resume_steps: Option<Vec<serde_json::Value>>,
+    /// この投入の締切。agent 側で実行全体を打ち切るための signal に使われる。
+    pub deadline_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Clone)]
@@ -241,6 +244,7 @@ impl AgentTaskClient for HttpAgentTaskClient {
             prompt,
             purpose,
             resume_steps: req.resume_steps.unwrap_or_default(),
+            deadline_at: Some(req.deadline_at.with_timezone(&chrono::Utc)),
         };
 
         let response = self
@@ -431,6 +435,10 @@ mod tests {
         .expect("build client")
     }
 
+    fn test_deadline_at() -> DateTime<FixedOffset> {
+        chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z").unwrap()
+    }
+
     #[tokio::test]
     async fn submit_posts_body_and_returns_task_id() {
         let server = MockServer::start().await;
@@ -442,6 +450,7 @@ mod tests {
             .and(body_json(json!({
                 "strategy_id": strategy_id,
                 "prompt": "hello",
+                "deadline_at": "2020-01-01T00:00:00Z",
             })))
             .respond_with(ResponseTemplate::new(201).set_body_json(json!({
                 "task_id": "task-abc",
@@ -457,6 +466,7 @@ mod tests {
                 prompt: "hello".into(),
                 purpose: None,
                 resume_steps: None,
+                deadline_at: test_deadline_at(),
             })
             .await
             .expect("submit ok");
@@ -464,8 +474,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello" }))]
-    #[case::some(Some("explore".to_string()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "purpose": "explore" }))]
+    #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
+    #[case::some(Some("explore".to_string()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "purpose": "explore", "deadline_at": "2020-01-01T00:00:00Z" }))]
     #[tokio::test]
     async fn submit_body_includes_purpose_only_when_some(
         #[case] purpose: Option<String>,
@@ -491,19 +501,21 @@ mod tests {
                 prompt: "hello".into(),
                 purpose,
                 resume_steps: None,
+                deadline_at: test_deadline_at(),
             })
             .await
             .expect("submit ok");
     }
 
     #[rstest]
-    #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello" }))]
+    #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
     #[case::some(
         Some(vec![json!({ "execution_step_id": "step-1", "status": "completed" })]),
         json!({
             "strategy_id": "12345678-1234-5678-1234-567812345678",
             "prompt": "hello",
             "resume_steps": [{ "execution_step_id": "step-1", "status": "completed" }],
+            "deadline_at": "2020-01-01T00:00:00Z",
         })
     )]
     #[tokio::test]
@@ -531,6 +543,7 @@ mod tests {
                 prompt: "hello".into(),
                 purpose: None,
                 resume_steps,
+                deadline_at: test_deadline_at(),
             })
             .await
             .expect("submit ok");
@@ -553,6 +566,7 @@ mod tests {
                 prompt: "hello".into(),
                 purpose: None,
                 resume_steps: None,
+                deadline_at: test_deadline_at(),
             })
             .await
             .expect_err("expected error");

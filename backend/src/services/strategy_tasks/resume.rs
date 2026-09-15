@@ -78,12 +78,16 @@ pub async fn resume_task(
             )))
         })?;
 
+    let now = chrono::Utc::now().fixed_offset();
+    let deadline_at = now + DEADLINE_DURATION;
+
     let agent_ref = match agent_client
         .submit(SubmitAgentTask {
             strategy_id: row.strategy_id,
             prompt: row.prompt.clone(),
             purpose: row.purpose.clone(),
             resume_steps: (!resume_steps.is_empty()).then_some(resume_steps),
+            deadline_at,
         })
         .await
     {
@@ -114,14 +118,13 @@ pub async fn resume_task(
         }
     };
 
-    let now = chrono::Utc::now().fixed_offset();
     let running = strategy_task::ActiveModel {
         task_id: Set(task_id),
         a2a_task_id: Set(Some(agent_ref.task_id.clone())),
         error_summary: Set(None),
         result_text: Set(None),
-        deadline_at: Set(now + DEADLINE_DURATION),
-        updated_at: Set(now),
+        deadline_at: Set(deadline_at),
+        updated_at: Set(chrono::Utc::now().fixed_offset()),
         ..Default::default()
     };
     if let Err(err) = running.update(db).await {

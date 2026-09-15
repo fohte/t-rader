@@ -54,6 +54,10 @@
             "items": {
               "nullable": true
             }
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [

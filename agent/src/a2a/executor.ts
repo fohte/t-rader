@@ -20,7 +20,10 @@ import {
   AGENT_GRAPH_STEPS_ARTIFACT_ID,
   toStepJson,
 } from '#strategy-agent/agent-graph/step'
-import type { StrategyAgentResult } from '#strategy-agent/strategy-agent'
+import type {
+  RunStrategyAgentInput,
+  StrategyAgentResult,
+} from '#strategy-agent/strategy-agent'
 import type { FetchStrategyCandidates } from '#strategy-resolution/mgmt-mcp-client'
 import type {
   StrategyCandidate,
@@ -55,9 +58,16 @@ export const extractResumeSteps = (message: Message): unknown[] | undefined => {
   return Array.isArray(raw) ? raw : undefined
 }
 
+export const extractDeadlineAt = (message: Message): Date | undefined => {
+  const raw = message.metadata?.['deadline_at']
+  if (typeof raw !== 'string') return undefined
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed
+}
+
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
-const buildAgentMessage = (
+export const buildAgentMessage = (
   text: string,
   taskId: string,
   contextId: string,
@@ -157,12 +167,7 @@ const errorMessage = (error: unknown): string =>
 export interface TraderAgentExecutorDeps {
   taskStore: Pick<TaskStore, 'load'>
   runStrategyAgent: (
-    strategyId: string,
-    purpose: string | undefined,
-    taskId: string,
-    userMessage: Message,
-    resumeSteps: unknown[] | undefined,
-    onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void,
+    input: RunStrategyAgentInput,
   ) => Promise<StrategyAgentResult>
   // Looks up the current strategy list (via the backend's management MCP)
   // to resolve a strategy_id from free text when the caller doesn't supply
@@ -200,6 +205,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     const rawStrategyId = extractStrategyId(userMessage)
     const purpose = extractPurpose(userMessage)
     const resumeSteps = extractResumeSteps(userMessage)
+    const deadlineAt = extractDeadlineAt(userMessage)
 
     if (rawStrategyId !== undefined && !isValidStrategyId(rawStrategyId)) {
       const rejectedStatus = {
@@ -381,16 +387,29 @@ export class TraderAgentExecutor implements AgentExecutor {
       publishHeartbeat(latestSteps)
     }, HEARTBEAT_INTERVAL_MS)
 
+    const deadlineController =
+      deadlineAt !== undefined ? new AbortController() : undefined
+    const deadlineTimer =
+      deadlineAt !== undefined && deadlineController !== undefined
+        ? setTimeout(
+            () => {
+              deadlineController.abort()
+            },
+            Math.max(deadlineAt.getTime() - Date.now(), 0),
+          )
+        : undefined
+
     // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
-      const result = await this.deps.runStrategyAgent(
+      const result = await this.deps.runStrategyAgent({
         strategyId,
         purpose,
         taskId,
-        promptMessage,
+        userMessage: promptMessage,
         resumeSteps,
-        publishSteps,
-      )
+        deadlineSignal: deadlineController?.signal,
+        onStepsChanged: publishSteps,
+      })
       eventBus.publish({
         kind: 'status-update',
         taskId,
@@ -429,6 +448,7 @@ export class TraderAgentExecutor implements AgentExecutor {
       } satisfies TaskStatusUpdateEvent)
     } finally {
       clearInterval(heartbeatTimer)
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer)
       eventBus.finished()
     }
   }

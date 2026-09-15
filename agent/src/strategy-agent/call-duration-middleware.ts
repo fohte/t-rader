@@ -1,7 +1,4 @@
-import { captureWithFingerprint } from '@fohte/service-kit/observability'
-import { createMiddleware } from 'langchain'
-
-import { bindModelCallSignal } from '#strategy-agent/bind-model-call-signal'
+import { createAbortingModelCallMiddleware } from '#strategy-agent/aborting-model-call-middleware'
 
 const CALL_DURATION_TIMEOUT_FINGERPRINT = 'call-duration-middleware.timeout'
 
@@ -9,18 +6,10 @@ const CALL_DURATION_TIMEOUT_FINGERPRINT = 'call-duration-middleware.timeout'
 // 呼び出しごとに RunnableBinding 経由で AbortSignal を注入し、AgentNode 側の config
 // マージで signal が上書き消失しないようにする。
 export const createCallDurationMiddleware = (timeoutMs: number) =>
-  createMiddleware({
-    name: 'callDurationMiddleware',
-    wrapModelCall: (request, handler) => {
-      const signal = AbortSignal.timeout(timeoutMs)
-      const model = bindModelCallSignal(request.model, { signal })
-      return Promise.resolve(handler({ ...request, model })).finally(() => {
-        if (!signal.aborted) return
-        const error = new Error(
-          `callDurationMiddleware: aborted model call after exceeding ${String(timeoutMs)}ms`,
-        )
-        console.warn(error.message)
-        captureWithFingerprint(error, CALL_DURATION_TIMEOUT_FINGERPRINT)
-      })
-    },
-  })
+  createAbortingModelCallMiddleware(
+    'callDurationMiddleware',
+    () => AbortSignal.timeout(timeoutMs),
+    CALL_DURATION_TIMEOUT_FINGERPRINT,
+    () =>
+      `callDurationMiddleware: aborted model call after exceeding ${String(timeoutMs)}ms`,
+  )

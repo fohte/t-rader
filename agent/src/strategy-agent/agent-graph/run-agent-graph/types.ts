@@ -11,6 +11,7 @@ export interface BuildPhaseAgentOptions {
   readonly tools: readonly DynamicStructuredTool[]
   readonly systemPrompt: string
   readonly responseSchema: ObjectJsonSchema
+  readonly deadlineSignal?: AbortSignal
 }
 
 export interface CompiledPhaseAgent {
@@ -50,6 +51,9 @@ export interface RunAgentGraphContext {
   // status='completed' のものだけスキップ対象になり、それ以外 (failed/running)
   // は元の executionStepId を再利用して再実行する。
   readonly previousSteps?: readonly StrategyTaskStep[]
+  // 実行全体で共有する signal。abort 済みなら新規フェーズ/要素の実行を
+  // 開始しない (モデル呼び出し自体の中断は deadline-middleware が担う)。
+  readonly deadlineSignal?: AbortSignal
 }
 
 export type StepStartInput = Omit<

@@ -85,6 +85,7 @@ mod tests {
             code: "7203",
             ss_name: "テスト証券",
             short_position_ratio: ratio,
+            prev_report_date: "",
         }
     }
 
