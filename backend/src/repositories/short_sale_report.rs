@@ -23,6 +23,7 @@ pub async fn upsert_short_sale_reports(
         return Ok(());
     }
 
+    let original_len = reports.len();
     let deduped: HashMap<_, _> = reports
         .into_iter()
         .map(|r| {
@@ -39,6 +40,12 @@ pub async fn upsert_short_sale_reports(
             (key, r)
         })
         .collect();
+    if deduped.len() != original_len {
+        tracing::warn!(
+            dropped = original_len - deduped.len(),
+            "同一バッチ内で主キーが重複する空売り残高報告を検出、後勝ちで dedup しました"
+        );
+    }
     let active_models: Vec<short_sale_report::ActiveModel> =
         deduped.into_values().map(Into::into).collect();
 
@@ -175,14 +182,15 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn upsert_dedups_identical_rows_in_same_batch(pool: PgPool) {
+    async fn upsert_dedups_duplicate_pk_rows_in_same_batch_keeping_last(pool: PgPool) {
         let db = create_test_db(pool).await;
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
-        // 完全に同じ内容の行が同一バッチに重複して含まれるケース
+        // 同一バッチ内に同一主キーの行が重複して含まれるケース (内容が異なる場合を含む)。
+        // dedup は後勝ちなので、最後の値が残ることを検証する
         let reports = vec![
             make_report(date, "7203", "報告者A", 0.05),
-            make_report(date, "7203", "報告者A", 0.05),
+            make_report(date, "7203", "報告者A", 0.09),
         ];
 
         upsert_short_sale_reports(&db, reports)
@@ -194,6 +202,10 @@ mod tests {
             .await
             .expect("find failed");
         assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].short_position_ratio,
+            Decimal::try_from(0.09).expect("decimal")
+        );
     }
 
     #[sqlx::test(migrations = false)]
