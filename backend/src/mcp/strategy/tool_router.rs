@@ -22,12 +22,14 @@ use super::dto::{
     QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
     ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadHypothesisParams,
     ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReadShareholdingStructureParams,
-    ReadShareholdingStructureResult, ReadTradesParams, ReadTradesResult, RecordPredictionParams,
+    ReadNoteParams, ReadPortfolioResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
+    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
+    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, RecordPredictionParams,
     RecordPredictionResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
     ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
     WriteNoteParams, WriteNoteResult,
 };
+use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
@@ -327,6 +329,40 @@ impl StrategyServer {
             .map(Json)
     }
 
+    /// 銘柄の空売り残高報告を新しい順に返す
+    #[tool(
+        name = "read_short_sale_reports",
+        description = "Read a stock's short-sale position reports (J-Quants /markets/short-sale-report), newest disclosure date first (ties broken by reporter name). Only positions of 0.5% or more of shares outstanding are reportable, so an empty result means no reportable short position, not necessarily no short position at all. Each row is one reporter's report for one disclosure date; short_position_ratio and prev_report_ratio are fractions (e.g. 0.01 = 1%) so their difference is the change since that reporter's previous report (prev_report_ratio/prev_report_date are null on a reporter's first report). symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters). from/to filter by disclosure date (inclusive) and are both optional.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_short_sale_reports(
+        &self,
+        Parameters(params): Parameters<ReadShortSaleReportsParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadShortSaleReportsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_short_sale_reports_inner(sid, params)
+            .await
+            .map(Json)
+    }
+
+    /// 業種別の空売りの売買代金と空売り比率を日ごとに返す
+    #[tool(
+        name = "read_sector_short_ratio",
+        description = "Read a sector's daily short-selling turnover value and short ratio (J-Quants /markets/short-ratio), newest date first. sector is the same 33-sector name used by the sector table / search_refs / check_buyable_qty (e.g. \"輸送用機器\"); unrecognized names are rejected. Each day reports sell_excluding_short_value (non-short sell orders), short_with_restriction_value and short_without_restriction_value (short sell orders, split by whether the uptick price restriction applied), all in yen, plus the derived short_ratio (short turnover / total sell turnover, a fraction, e.g. 0.1 = 10%). All four fields are null on a day with no trading in that sector. from/to filter by date (inclusive) and are both optional.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_sector_short_ratio(
+        &self,
+        Parameters(params): Parameters<ReadSectorShortRatioParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadSectorShortRatioResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_sector_short_ratio_inner(sid, params)
+            .await
+            .map(Json)
+    }
+
     /// マクロ指標 (ドル円, VIX, 米10年債利回り, 日経225 等) の日次観測値を期間指定で返す
     #[tool(
         name = "read_macro_indicator",
@@ -430,6 +466,21 @@ impl StrategyServer {
     ) -> Result<Json<ReadFinSummaryResult>, McpError> {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.read_fin_summary_inner(sid, params).await.map(Json)
+    }
+
+    /// 銘柄の信用残 (信用取引週末残高/信用取引残高、日々公表信用取引残高) を返す
+    #[tool(
+        name = "read_margin",
+        description = "Read a stock's margin trading balances: weekly (later daily) margin interest balances (margin_interest) newest first, tagged with the 5-digit J-Quants code and iss_type (1=margin-eligible, 2=loan-eligible, 3=other), plus daily-published margin balances (margin_alert, only for stocks the exchange has designated for daily publication — absence from this list does not mean a zero balance) with pub_reason flags and tse_mrgn_reg_cls. When the same application date has multiple corrections, only the one with the latest publication date is returned. symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters); from/to filter by date (inclusive) and default to no bound.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_margin(
+        &self,
+        Parameters(params): Parameters<ReadMarginParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadMarginResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_margin_inner(sid, params).await.map(Json)
     }
 
     /// 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
@@ -573,10 +624,13 @@ mod tests {
                 ("read_fin_summary", Some(true)),
                 ("read_hypothesis", Some(true)),
                 ("read_macro_indicator", Some(true)),
+                ("read_margin", Some(true)),
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
+                ("read_sector_short_ratio", Some(true)),
                 ("read_shareholding_structure", Some(true)),
+                ("read_short_sale_reports", Some(true)),
                 ("read_trades", Some(true)),
                 ("record_prediction", None),
                 ("remove_ref_terms", None),

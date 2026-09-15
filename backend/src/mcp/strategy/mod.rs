@@ -16,6 +16,7 @@ pub(super) mod holdings;
 pub(super) mod hypotheses;
 pub(super) mod interests;
 pub(super) mod macro_indicator;
+pub(super) mod margin;
 pub(super) mod media;
 pub(super) mod news;
 pub(super) mod notes;
@@ -24,6 +25,8 @@ pub(super) mod predictions;
 pub(super) mod ref_terms;
 pub(super) mod refs;
 pub(super) mod risk_check;
+pub(super) mod short_ratio;
+pub(super) mod short_sale_report;
 mod tool_router;
 pub(super) mod trades;
 pub(super) mod web_search;
@@ -166,6 +169,26 @@ pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
 pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
     let value = limit.map(u64::from).unwrap_or(DEFAULT_LIST_LIMIT);
     value.clamp(1, MAX_LIST_LIMIT)
+}
+
+/// 4 桁の銘柄コードであることを検証する。J-Quants の 5 桁コードとの対応関係が
+/// 明記されていない tool 群 (`read_shareholding_structure` / `read_short_sale_reports`) が共有する。
+pub(super) fn validate_symbol(symbol: &str) -> Result<(), McpError> {
+    if symbol.len() == 4 && symbol.bytes().all(|b| b.is_ascii_digit()) {
+        Ok(())
+    } else {
+        Err(invalid_params(format!(
+            "symbol must be a 4-digit stock code, got {symbol:?}"
+        )))
+    }
+}
+
+/// `code LIKE 'symbol%'` は Postgres のデフォルト照合順序 (en_US.utf8) では既存の plain
+/// B-tree index を使えず毎回フルスキャンになるため、同じ絞り込みを range 条件で表現する。
+/// `code` は検証済みの 4 桁 `symbol` + 1 桁の 5 桁数字文字列なので、末尾に `'0'`〜`'9'` の
+/// 範囲を与えれば同じ index でカバーできる。
+pub(super) fn code_range(symbol: &str) -> (String, String) {
+    (format!("{symbol}0"), format!("{symbol}9"))
 }
 
 fn strategy_id_from_headers(headers: &axum::http::HeaderMap) -> Result<Uuid, McpError> {
