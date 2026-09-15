@@ -16,40 +16,45 @@ jobs:
     permissions:
       contents: read
     outputs:
-      components: ${{ github.event_name == 'workflow_dispatch' && '["backend","frontend","agent","python-exec"]' || steps.filter.outputs.changes }}
+      components: ${{ github.event_name == 'workflow_dispatch' && steps.components.outputs.all || steps.filter.outputs.changed_keys }}
     steps:
-      - if: github.event_name != 'workflow_dispatch'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
 
+      # docker-publish-components.json の dir から「自分のディレクトリ配下は無条件でそのコンポーネントの
+      # 変更として扱う」ルールを生成し、exclude/extra だけを明示的な例外として合成する。
+      # コンポーネントの実体 (どのディレクトリを持つか) は build job の context/file 解決とこの
+      # ファイル 1 箇所だけで定義する。
+      - id: components
+        run: |
+          components_file=.github/workflows/docker-publish-components.json
+          all=$(jq -c 'keys' "$components_file")
+          echo "all=$all" >> "$GITHUB_OUTPUT"
+
+          filters=$(jq -c '
+            to_entries | map({
+              (.key): (
+                [.value.dir + "/**"]
+                + ((.value.exclude // []) | map("!" + .))
+                + (.value.extra // [])
+              )
+            }) | add
+          ' "$components_file")
+          {
+            echo "filters<<FILTERS_EOF"
+            echo "$filters"
+            echo "FILTERS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - if: github.event_name != 'workflow_dispatch'
         id: filter
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
-          # push で base を同一ブランチ (github.ref) にすると、dorny/paths-filter は
-          # 直前コミットとの diff に切り替える (仕様上の特殊扱い)。
-          base: ${{ github.ref }}
-          # 否定パターン (!) による除外を有効化するために必要。
-          predicate-quantifier: some-with-excludes
-          filters: |
-            backend:
-              - 'backend/**'
-              - '!backend/docker/python-exec/**'
-              # backend/build.rs が progenitor で agent の内部 API client を生成する際に読む。
-              - 'agent/openapi.json'
-            frontend:
-              - 'frontend/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-            agent:
-              - 'agent/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'pnpm-workspace.yaml'
-            python-exec:
-              - 'backend/docker/python-exec/**'
+          # JSON はそのまま有効な YAML なので、components ステップが生成した JSON を直接渡せる。
+          files_yaml: ${{ steps.components.outputs.filters }}
+          # changed_keys を fromJson() でそのまま matrix に渡せる JSON 配列にする。
+          matrix: true
 
   build:
     needs: changes
@@ -83,6 +88,12 @@ jobs:
             type=sha
             type=raw,value=latest
 
+      - id: paths
+        run: |
+          entry=$(jq -c --arg c "${{ matrix.component }}" '.[$c]' .github/workflows/docker-publish-components.json)
+          echo "context=$(jq -r '.context' <<< "$entry")" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=$(jq -r '.dir' <<< "$entry")/Dockerfile" >> "$GITHUB_OUTPUT"
+
       # backend: RUN --mount=type=cache のキャッシュを GHA キャッシュに永続化する。
       # GHA 環境では BuildKit cache mount のデータが type=gha バックエンドに保存されないため、
       # buildkit-cache-dance を使って actions/cache 経由で永続化する。
@@ -109,8 +120,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: ${{ matrix.component == 'python-exec' && 'backend/docker/python-exec' || '.' }}
-          file: ${{ matrix.component == 'python-exec' && 'backend/docker/python-exec/Dockerfile' || format('{0}/Dockerfile', matrix.component) }}
+          context: ${{ steps.paths.outputs.context }}
+          file: ${{ steps.paths.outputs.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
