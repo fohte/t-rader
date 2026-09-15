@@ -6,9 +6,10 @@ use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
+use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::entities::annotation;
+use crate::entities::{annotation, comment};
 
 use super::dto::{
     AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
@@ -100,14 +101,45 @@ impl StrategyServer {
         // 作った未レビュー (unread) のアノテーションを置き換える。承認/却下済みのものは残す。
         // 1 ステップで複数件作るのは正当な動作のため、note のような UNIQUE ではなく削除で対応する。
         if let (Some(step_id), Some(task_id)) = (execution_step_id, execution_task_id.as_deref()) {
-            annotation::Entity::delete_many()
+            let stale_ids: Vec<Uuid> = annotation::Entity::find()
+                .select_only()
+                .column(annotation::Column::Id)
                 .filter(annotation::Column::StrategyId.eq(session_strategy_id))
                 .filter(annotation::Column::ExecutionStepId.eq(step_id))
                 .filter(annotation::Column::Status.eq(DEFAULT_ANNOTATION_STATUS))
                 .filter(annotation::Column::ExecutionTaskId.ne(task_id))
-                .exec(&txn)
+                .into_tuple()
+                .all(&txn)
                 .await
                 .map_err(db_error)?;
+            // comment.target_id は annotation への FK を持たない (所有権検査はアプリ層で行う設計、
+            // super::fetch_annotation_owned_by 参照)。delete でこの行ごと消すと、対応する comment
+            // 行が孤児化して read_comments/resolve_comment/reply_comment のいずれからも
+            // 到達不能になるため、既にコメントが付いた行は削除対象から除外する。
+            if !stale_ids.is_empty() {
+                let commented: HashSet<Uuid> = comment::Entity::find()
+                    .select_only()
+                    .column(comment::Column::TargetId)
+                    .filter(comment::Column::TargetKind.eq("annotation"))
+                    .filter(comment::Column::TargetId.is_in(stale_ids.iter().copied()))
+                    .into_tuple()
+                    .all(&txn)
+                    .await
+                    .map_err(db_error)?
+                    .into_iter()
+                    .collect();
+                let to_delete: Vec<Uuid> = stale_ids
+                    .into_iter()
+                    .filter(|id| !commented.contains(id))
+                    .collect();
+                if !to_delete.is_empty() {
+                    annotation::Entity::delete_many()
+                        .filter(annotation::Column::Id.is_in(to_delete))
+                        .exec(&txn)
+                        .await
+                        .map_err(db_error)?;
+                }
+            }
         }
         let created = annotation::Entity::insert(model)
             .exec_with_returning(&txn)
@@ -164,7 +196,8 @@ mod tests {
         AnnotationDto, CreateAnnotationParams, ReadAnnotationsParams, ReadAnnotationsResult,
     };
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_annotation, seed_foreign_note, ts_sentinel,
+        build_server, insert_strategy, normalize_annotation, seed_comment, seed_foreign_note,
+        ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
 
@@ -419,6 +452,84 @@ mod tests {
         ids.sort();
         let mut expected = vec![
             reviewed.annotation.annotation_id,
+            second.annotation.annotation_id,
+        ];
+        expected.sort();
+        assert_eq!(ids, expected);
+    }
+
+    /// 前の試行が作った unread のアノテーションでも、既にコメントが付いている場合は
+    /// (comment.target_id が FK を持たないため) 削除すると孤児化してしまうので残る。
+    #[sqlx::test(migrations = false)]
+    async fn create_annotation_keeps_unread_annotations_with_comments_from_previous_attempt(
+        pool: PgPool,
+    ) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "swing").await;
+        let server = build_server(db.clone());
+        let step_id = Uuid::new_v4();
+        let ts: DateTime<FixedOffset> = "2026-06-01T00:00:00Z".parse().expect("ts");
+
+        let commented = server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-1".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "commented but unread".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from first attempt");
+        seed_comment(
+            &db,
+            "annotation",
+            commented.annotation.annotation_id,
+            None,
+            "why?",
+        )
+        .await;
+
+        let second = server
+            .create_annotation_inner(
+                strategy_id,
+                Some(step_id),
+                Some("attempt-2".into()),
+                CreateAnnotationParams {
+                    target_symbol: "7203".into(),
+                    target_kind: "signal".into(),
+                    timestamp: ts,
+                    price: None,
+                    text: "second attempt".into(),
+                    linked_note_id: None,
+                },
+            )
+            .await
+            .expect("create from second (resumed) attempt");
+
+        let list = server
+            .read_annotations_inner(
+                strategy_id,
+                ReadAnnotationsParams {
+                    target_symbol: None,
+                    limit: None,
+                },
+            )
+            .await
+            .expect("list");
+        let mut ids: Vec<Uuid> = list
+            .annotations
+            .into_iter()
+            .map(|a| a.annotation_id)
+            .collect();
+        ids.sort();
+        let mut expected = vec![
+            commented.annotation.annotation_id,
             second.annotation.annotation_id,
         ];
         expected.sort();
