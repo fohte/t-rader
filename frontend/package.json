@@ -5,7 +5,6 @@
   "imports": {
     "#*.css": "./src/*.css",
     "#storybook/mock-resolve-ref": "./.storybook/mock-resolve-ref.ts",
-    "#storybook/open-select": "./.storybook/open-select.ts",
     "#storybook/story-router": "./.storybook/story-router.tsx",
     "#storybook/strategy-switcher-mock": "./.storybook/strategy-switcher-mock.tsx",
     "#*": "./src/*.js"
