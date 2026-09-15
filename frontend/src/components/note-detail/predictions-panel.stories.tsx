@@ -19,7 +19,7 @@ const basePrediction: Prediction = {
 }
 
 const meta = {
-  title: 'NoteDetail/PredictionsPanelView',
+  title: 'NoteDetail/PredictionsPanel',
   component: PredictionsPanelView,
   parameters: { layout: 'padded' },
   decorators: [
