@@ -1,10 +1,9 @@
-import { randomUUID } from 'node:crypto'
-
-import type { Message, Task, TaskState } from '@a2a-js/sdk'
+import type { Task, TaskState } from '@a2a-js/sdk'
 import type { TaskStore } from '@a2a-js/sdk/server'
 import { and, eq, inArray, lt, notInArray } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 
+import { buildAgentMessage } from '#a2a/executor'
 import type { Sql } from '#db'
 import { a2aPushConfigs, a2aTasks } from '#db/schema'
 
@@ -12,21 +11,8 @@ import { a2aPushConfigs, a2aTasks } from '#db/schema'
 // モデルのエラーや使用量上限など agent 自身が報告する失敗 ('usage_limit' /
 // 'agent_error' / 'strategy_resolution_error') とは区別できる専用の値にする。
 const EXECUTION_LOST_ERROR_KIND = 'execution_lost'
-
-const buildExecutionLostMessage = (task: Task): Message => ({
-  kind: 'message',
-  role: 'agent',
-  messageId: randomUUID(),
-  taskId: task.id,
-  contextId: task.contextId,
-  parts: [
-    {
-      kind: 'text',
-      text: 'エージェントの実行が失われたため失敗として確定しました',
-    },
-  ],
-  metadata: { error_kind: EXECUTION_LOST_ERROR_KIND },
-})
+const EXECUTION_LOST_MESSAGE_TEXT =
+  'エージェントの実行が失われたため失敗として確定しました'
 
 // Task rows in these states are done for good; `save()` never overwrites
 // them so a watchdog-driven failure can't be clobbered by a still-running
@@ -119,7 +105,12 @@ export class PostgresTaskStore implements TaskStore {
           // 既存の status.message (最後の heartbeat のもの、または無し) を
           // 引き継がず、実行喪失を示す専用の error_kind を持つメッセージに
           // 置き換える。heartbeat の message には error_kind が付かない。
-          message: buildExecutionLostMessage(candidate.task),
+          message: buildAgentMessage(
+            EXECUTION_LOST_MESSAGE_TEXT,
+            candidate.task.id,
+            candidate.task.contextId,
+            EXECUTION_LOST_ERROR_KIND,
+          ),
         },
       }
       const updated = await this.db

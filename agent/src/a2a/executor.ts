@@ -57,7 +57,7 @@ export const extractResumeSteps = (message: Message): unknown[] | undefined => {
 
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
-const buildAgentMessage = (
+export const buildAgentMessage = (
   text: string,
   taskId: string,
   contextId: string,
