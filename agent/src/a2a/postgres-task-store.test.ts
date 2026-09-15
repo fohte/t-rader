@@ -1,4 +1,4 @@
-import type { Task, TaskState } from '@a2a-js/sdk'
+import type { Message, Task, TaskState } from '@a2a-js/sdk'
 import { describe, expect, it } from 'vitest'
 
 import { PostgresPushNotificationStore } from '#a2a/postgres-push-notification-store'
@@ -10,11 +10,16 @@ const buildTask = (overrides: {
   contextId?: string
   state: TaskState
   timestamp: string
+  message?: Message
 }): Task => ({
   id: overrides.id,
   contextId: overrides.contextId ?? `ctx-${overrides.id}`,
   kind: 'task',
-  status: { state: overrides.state, timestamp: overrides.timestamp },
+  status: {
+    state: overrides.state,
+    timestamp: overrides.timestamp,
+    ...(overrides.message !== undefined ? { message: overrides.message } : {}),
+  },
 })
 
 describeIfDb('PostgresTaskStore', () => {
@@ -122,6 +127,7 @@ describeIfDb('PostgresTaskStore', () => {
         status: {
           state: 'failed',
           timestamp: expired[0]?.status.timestamp,
+          message: expired[0]?.status.message,
         },
       })
       expect.soft(await store.load('fresh')).toEqual(
@@ -138,6 +144,81 @@ describeIfDb('PostgresTaskStore', () => {
           timestamp: '2026-01-01T00:00:00.000Z',
         }),
       )
+    })
+
+    it('attaches a message carrying error_kind execution_lost to the failed task', async () => {
+      const store = new PostgresTaskStore(getTx())
+      await store.save(
+        buildTask({
+          id: 'stale-2',
+          state: 'working',
+          timestamp: '2026-01-01T00:00:00.000Z',
+        }),
+      )
+
+      const [failed] = await store.failStaleWorkingTasks(
+        new Date('2026-01-01T00:05:00.000Z'),
+      )
+      const { messageId } = failed?.status.message ?? {}
+
+      expect(failed?.status.message).toEqual({
+        kind: 'message',
+        role: 'agent',
+        messageId,
+        taskId: 'stale-2',
+        contextId: 'ctx-stale-2',
+        parts: [
+          {
+            kind: 'text',
+            text: 'エージェントの実行が失われたため失敗として確定しました',
+          },
+        ],
+        metadata: { error_kind: 'execution_lost' },
+      })
+    })
+
+    it('replaces a stale task existing heartbeat message rather than leaking it into the failure', async () => {
+      const store = new PostgresTaskStore(getTx())
+      const heartbeatMessage: Message = {
+        kind: 'message',
+        role: 'agent',
+        messageId: 'heartbeat-1',
+        taskId: 'stale-3',
+        contextId: 'ctx-stale-3',
+        parts: [{ kind: 'text', text: 'フェーズ「調査」が実行中' }],
+      }
+      await store.save(
+        buildTask({
+          id: 'stale-3',
+          state: 'working',
+          timestamp: '2026-01-01T00:00:00.000Z',
+          message: heartbeatMessage,
+        }),
+      )
+
+      const [failed] = await store.failStaleWorkingTasks(
+        new Date('2026-01-01T00:05:00.000Z'),
+      )
+      // messageId は randomUUID() の動的値。'heartbeat-1' (= 古い message)
+      // でないことを別途確認した上で、実際の値を正規化して以下の equality
+      // に埋め込む。
+      const messageId = failed?.status.message?.messageId
+      expect(messageId).not.toBe('heartbeat-1')
+
+      expect(failed?.status.message).toEqual({
+        kind: 'message',
+        role: 'agent',
+        messageId,
+        taskId: 'stale-3',
+        contextId: 'ctx-stale-3',
+        parts: [
+          {
+            kind: 'text',
+            text: 'エージェントの実行が失われたため失敗として確定しました',
+          },
+        ],
+        metadata: { error_kind: 'execution_lost' },
+      })
     })
   })
 
