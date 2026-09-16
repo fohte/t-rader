@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import { buildOutputJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 
+const STRUCTURED_OUTPUT_TOOL_DESCRIPTION =
+  "Tool for extracting structured output from the model's response."
+
 describe('buildOutputJsonSchema', () => {
   it('returns an empty object schema for an empty output config', () => {
     expect(buildOutputJsonSchema({})).toEqual({
       type: 'object',
       properties: {},
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
     })
   })
 
@@ -55,6 +59,7 @@ describe('buildOutputJsonSchema', () => {
           },
         },
       },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
     })
   })
 
@@ -72,6 +77,7 @@ describe('buildOutputJsonSchema', () => {
         summary: { type: 'string' },
       },
       required: ['verdict'],
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
     })
   })
 
@@ -91,6 +97,7 @@ describe('buildOutputJsonSchema', () => {
           description: 'checks を当てた結果',
         },
       },
+      description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
     })
   })
 })

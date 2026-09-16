@@ -58,9 +58,20 @@ const toItemsSchema = (items: unknown, required: unknown): JsonSchemaObject => {
     : toObjectSchema(items, required)
 }
 
+// langchain の toolStrategy は zod スキーマなら description 省略時に同じ
+// 文言を補うが (agent/node_modules/langchain/dist/agents/responses.js 内
+// ToolStrategy.fromSchema)、生の JSON Schema はその分岐に入らず空文字になる。
+// 一部の LLM プロバイダ (例: opencode-go/glm-5.3-flash) は空の
+// function.description を 400 で拒否するため、ここで明示的に補う。
+const STRUCTURED_OUTPUT_TOOL_DESCRIPTION =
+  "Tool for extracting structured output from the model's response."
+
 export const buildOutputJsonSchema = (
   output: Readonly<Record<string, unknown>>,
 ): ObjectJsonSchema => {
   const { required, ...fields } = output
-  return toObjectSchema(fields, required)
+  return {
+    ...toObjectSchema(fields, required),
+    description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+  }
 }
