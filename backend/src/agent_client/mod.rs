@@ -10,8 +10,8 @@ mod generated;
 pub use client::{
     AgentTaskClient, AgentTaskClientConfig, AgentTaskClientConfigError,
     AgentTaskClientConfigSource, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
-    DisabledAgentTaskClient, HttpAgentTaskClient, SharedAgentTaskClient, SubmitAgentTask,
-    TRADER_AGENT_API_DISABLED_SENTINEL,
+    DisabledAgentTaskClient, EXECUTION_LOST_ERROR_KIND, HttpAgentTaskClient, SharedAgentTaskClient,
+    SubmitAgentTask, TRADER_AGENT_API_DISABLED_SENTINEL,
 };
 
 #[cfg(test)]

@@ -32,6 +32,27 @@ pub async fn resume_task(
     agent_client: &SharedAgentTaskClient,
     task_id: Uuid,
 ) -> Result<SubmittedTask, ResumeTaskError> {
+    resume_task_impl(db, agent_client, task_id, false).await
+}
+
+/// execution_lost で failed になった戦略タスクを、watcher が自動で 1 回だけ resume する。
+///
+/// claim 時点で `auto_resumed_at` を刻むため、投入 (agent への submit) 自体が失敗しても
+/// 次回以降は対象から外れる — 呼び出し元 (watcher) は再試行しない。
+pub async fn auto_resume_task(
+    db: &DatabaseConnection,
+    agent_client: &SharedAgentTaskClient,
+    task_id: Uuid,
+) -> Result<SubmittedTask, ResumeTaskError> {
+    resume_task_impl(db, agent_client, task_id, true).await
+}
+
+async fn resume_task_impl(
+    db: &DatabaseConnection,
+    agent_client: &SharedAgentTaskClient,
+    task_id: Uuid,
+    mark_auto_resumed: bool,
+) -> Result<SubmittedTask, ResumeTaskError> {
     let row = strategy_task::Entity::find_by_id(task_id)
         .one(db)
         .await?
@@ -43,22 +64,24 @@ pub async fn resume_task(
     // 「Failed である」ことの確認と「Running に倒す」ことを 1 回の条件付き UPDATE
     // で原子化する。上の事前チェックだけでは、同じ task_id への並行呼び出しが
     // 両方とも Failed を読んでしまい二重に agent へ投入されうる。
-    let claimed = strategy_task::Entity::update_many()
+    let claim_now = chrono::Utc::now().fixed_offset();
+    let mut update = strategy_task::Entity::update_many()
         .col_expr(
             strategy_task::Column::Phase,
             Expr::value(StrategyTaskPhase::Running),
         )
-        .col_expr(
-            strategy_task::Column::UpdatedAt,
-            Expr::value(chrono::Utc::now().fixed_offset()),
-        )
-        .filter(
-            strategy_task::Column::TaskId
-                .eq(task_id)
-                .and(strategy_task::Column::Phase.eq(StrategyTaskPhase::Failed)),
-        )
-        .exec(db)
-        .await?;
+        .col_expr(strategy_task::Column::UpdatedAt, Expr::value(claim_now));
+    let mut filter = strategy_task::Column::TaskId
+        .eq(task_id)
+        .and(strategy_task::Column::Phase.eq(StrategyTaskPhase::Failed));
+    if mark_auto_resumed {
+        // auto_resumed_at を claim と同じ UPDATE で刻むことで、「1 タスクにつき自動
+        // resume は 1 回まで」を後続の再試行と原子的に排他できる (2 回目の呼び出しは
+        // ここで claim に失敗する)。
+        update = update.col_expr(strategy_task::Column::AutoResumedAt, Expr::value(claim_now));
+        filter = filter.and(strategy_task::Column::AutoResumedAt.is_null());
+    }
+    let claimed = update.filter(filter).exec(db).await?;
     if claimed.rows_affected == 0 {
         return Err(ResumeTaskError::NotFailed(task_id, "failed"));
     }
@@ -169,11 +192,12 @@ fn step_to_resume_wire_json(
 mod tests {
     use std::sync::Arc;
 
+    use sea_orm::ActiveValue::NotSet;
     use sqlx::PgPool;
 
     use super::super::TaskSource;
     use super::*;
-    use crate::agent_client::FakeAgentTaskClient;
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
     use crate::testing::{create_test_db, insert_test_strategy};
 
@@ -198,6 +222,7 @@ mod tests {
             deadline_at: Set(now),
             purpose: Set(purpose.map(str::to_string)),
             as_of: Set(Some(now)),
+            auto_resumed_at: NotSet,
             created_at: Set(now),
             updated_at: Set(now),
         }
@@ -396,5 +421,126 @@ mod tests {
             matches!(&err, ResumeTaskError::NotFailed(id, phase) if *id == task_id && *phase == "running")
         );
         assert_eq!(fake.submitted.lock().await.len(), 1);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn auto_resume_task_resubmits_and_marks_auto_resumed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id =
+            insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_next_task_id("agent-task-auto-resumed").await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let submitted = auto_resume_task(&db, &agent_client, task_id)
+            .await
+            .expect("auto resume ok");
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row still exists");
+
+        #[derive(Debug, PartialEq)]
+        struct AutoResumeOutcome {
+            submitted_a2a_task_id: String,
+            row_a2a_task_id: Option<String>,
+            row_phase: StrategyTaskPhase,
+            row_auto_resumed_at_is_set: bool,
+        }
+
+        assert_eq!(
+            AutoResumeOutcome {
+                submitted_a2a_task_id: submitted.a2a_task_id,
+                row_a2a_task_id: row.a2a_task_id,
+                row_phase: row.phase,
+                row_auto_resumed_at_is_set: row.auto_resumed_at.is_some(),
+            },
+            AutoResumeOutcome {
+                submitted_a2a_task_id: "agent-task-auto-resumed".to_string(),
+                row_a2a_task_id: Some("agent-task-auto-resumed".to_string()),
+                row_phase: StrategyTaskPhase::Running,
+                row_auto_resumed_at_is_set: true,
+            },
+        );
+        assert_eq!(fake.submitted.lock().await.len(), 1);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn auto_resume_task_rejects_a_second_call_once_already_auto_resumed(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id =
+            insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        auto_resume_task(&db, &agent_client, task_id)
+            .await
+            .expect("first auto resume claims the row");
+
+        // 手動 resume で失敗を再現する代わりに、直接 phase を Failed に戻す。
+        // auto_resumed_at は前回の claim で既に刻まれているため、この UPDATE では触らない。
+        strategy_task::ActiveModel {
+            task_id: Set(task_id),
+            phase: Set(StrategyTaskPhase::Failed),
+            updated_at: Set(chrono::Utc::now().fixed_offset()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("force phase back to failed");
+
+        let err = auto_resume_task(&db, &agent_client, task_id)
+            .await
+            .expect_err("second auto resume must not re-claim an already auto-resumed row");
+        assert!(
+            matches!(&err, ResumeTaskError::NotFailed(id, phase) if *id == task_id && *phase == "failed")
+        );
+        assert_eq!(fake.submitted.lock().await.len(), 1);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn auto_resume_task_marks_auto_resumed_at_even_when_submission_fails(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id =
+            insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_submit_error(AgentTaskError::NotConfigured).await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+
+        let err = auto_resume_task(&db, &agent_client, task_id)
+            .await
+            .expect_err("submission failure must surface as an error");
+        assert!(matches!(err, ResumeTaskError::AgentTask(_)));
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row still exists");
+        assert!(row.auto_resumed_at.is_some());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_task_does_not_touch_auto_resumed_at(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id =
+            insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
+        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+
+        resume_task(&db, &agent_client, task_id)
+            .await
+            .expect("manual resume ok");
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row still exists");
+        assert!(row.auto_resumed_at.is_none());
     }
 }

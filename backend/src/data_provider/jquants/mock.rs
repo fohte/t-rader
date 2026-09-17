@@ -511,6 +511,7 @@ pub(crate) struct MockShortSaleReport {
     pub code: &'static str,
     pub ss_name: &'static str,
     pub short_position_ratio: f64,
+    pub prev_report_date: &'static str,
 }
 
 pub(crate) struct MockShortSaleReportBuilder<'a> {
@@ -548,7 +549,7 @@ impl<'a> MockShortSaleReportBuilder<'a> {
                     "ShrtPosToSO": r.short_position_ratio,
                     "ShrtPosShares": 1000,
                     "ShrtPosUnits": 10,
-                    "PrevRptDate": "",
+                    "PrevRptDate": r.prev_report_date,
                     "PrevRptRatio": null,
                     "Notes": "",
                 })

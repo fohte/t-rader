@@ -7,8 +7,9 @@ use crate::entities::short_sale_report;
 /// 空売り残高報告 1 件 (`short_sale_report` テーブルに対応)
 ///
 /// 同一日・同一銘柄に報告者ごとの行が並ぶため、報告者を識別するコードが無い J-Quants の
-/// レスポンス上では `(disc_date, code, ss_name, ss_addr, dic_name, dic_addr, fund_name)` が
-/// 実質的に取れる最良の自然キーになる。
+/// レスポンス上では `(disc_date, calc_date, code, ss_name, ss_addr, dic_name, dic_addr,
+/// fund_name)` が実質的に取れる最良の自然キーになる。同一 disc_date に複数 calc_date の
+/// 報告が公表されることがあるため calc_date も主キーに含める。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShortSaleReport {
     /// 公表日

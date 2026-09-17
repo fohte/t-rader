@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub disc_date: Date,
+    #[sea_orm(primary_key, auto_increment = false)]
     pub calc_date: Date,
     #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
     pub code: String,

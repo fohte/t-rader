@@ -260,7 +260,7 @@ impl StrategyServer {
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using an LLM with web search enabled (defaults to a ChatGPT Plus-backed model; override the model via the WEB_SEARCH_MODEL env var, e.g. to switch to Gemini). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes not yet tracked by add_interest / RSS feeds. Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query using an LLM with web search enabled (defaults to a ChatGPT Plus-backed model; override the model via the WEB_SEARCH_MODEL env var, e.g. to switch to Gemini). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes not yet tracked by add_interest / RSS feeds, or to read the actual content of a read_news / search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -388,7 +388,7 @@ impl StrategyServer {
     /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
     #[tool(
         name = "read_news",
-        description = "Read news items linked to the strategy that haven't been returned by a previous call, oldest first. A per-strategy checkpoint automatically advances past whatever this call returns, so repeated calls only surface items linked since the last call — nothing is skipped even across long gaps between runs. Each row is one interest match; a news item matched by more than one interest (e.g. a stock and a theme) appears once per match, so the same url/title can repeat. If has_more is true, call again to continue from where this call left off."
+        description = "Read news items linked to the strategy that haven't been returned by a previous call, oldest first. A per-strategy checkpoint automatically advances past whatever this call returns, so repeated calls only surface items linked since the last call — nothing is skipped even across long gaps between runs. Each row is one interest match; a news item matched by more than one interest (e.g. a stock and a theme) appears once per match, so the same url/title can repeat. If has_more is true, call again to continue from where this call left off. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that."
     )]
     async fn read_news(
         &self,
@@ -405,7 +405,7 @@ impl StrategyServer {
     /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
     #[tool(
         name = "search_news",
-        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. Unlike read_news, this ignores news_strategy_link entirely, so results are not affected by whether the strategy has registered a matching interest term.",
+        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. Unlike read_news, this ignores news_strategy_link entirely, so results are not affected by whether the strategy has registered a matching interest term. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
         annotations(read_only_hint = true)
     )]
     async fn search_news(
