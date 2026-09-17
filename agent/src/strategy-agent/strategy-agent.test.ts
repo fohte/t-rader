@@ -1090,7 +1090,7 @@ describe('createStrategyAgentDeps', () => {
 
       expect(warnSpy.mock.calls).toEqual([
         [
-          `toolCallCapMiddleware: aborted model call after exceeding ${String(MAX_TOOL_CALLS_PER_MODEL_CALL)} tool call(s) in a single response`,
+          `toolCallCapMiddleware: aborted model call after exceeding ${String(MAX_TOOL_CALLS_PER_MODEL_CALL)} tool call(s) in a single response (search: ${String(MAX_TOOL_CALLS_PER_MODEL_CALL + 1)})`,
         ],
       ])
     } finally {

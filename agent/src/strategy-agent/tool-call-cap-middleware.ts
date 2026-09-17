@@ -18,7 +18,8 @@ const TOOL_CALL_CAP_EXCEEDED_FINGERPRINT = 'tool-call-cap-middleware.exceeded'
 class ToolCallCountingHandler extends BaseCallbackHandler {
   name = 'toolCallCapMiddleware.counter'
 
-  private readonly seenIndices = new Set<number>()
+  // name は通常その index の最初の断片にだけ入るため、来た時点で保持しておく。
+  private readonly toolNameByIndex = new Map<number, string>()
 
   constructor(
     private readonly maxToolCalls: number,
@@ -41,13 +42,34 @@ class ToolCallCountingHandler extends BaseCallbackHandler {
     if (!AIMessageChunk.isInstance(message)) return
 
     for (const toolCallChunk of message.tool_call_chunks ?? []) {
-      if (toolCallChunk.index !== undefined) {
-        this.seenIndices.add(toolCallChunk.index)
+      if (toolCallChunk.index === undefined) continue
+      if (toolCallChunk.name !== undefined) {
+        this.toolNameByIndex.set(toolCallChunk.index, toolCallChunk.name)
+      } else if (!this.toolNameByIndex.has(toolCallChunk.index)) {
+        this.toolNameByIndex.set(toolCallChunk.index, 'unknown')
       }
     }
-    if (this.seenIndices.size > this.maxToolCalls) this.abortController.abort()
+    if (this.toolNameByIndex.size > this.maxToolCalls) {
+      this.abortController.abort()
+    }
+  }
+
+  toolCallCountsByName(): Record<string, number> {
+    const counts: Record<string, number> = {}
+    for (const name of this.toolNameByIndex.values()) {
+      counts[name] = (counts[name] ?? 0) + 1
+    }
+    return counts
   }
 }
+
+const formatToolCallCounts = (counts: Record<string, number>): string =>
+  Object.entries(counts)
+    .sort(([aName, aCount], [bName, bCount]) =>
+      aCount !== bCount ? bCount - aCount : aName.localeCompare(bName),
+    )
+    .map(([name, count]) => `${name}: ${String(count)}`)
+    .join(', ')
 
 export const createToolCallCapMiddleware = (maxToolCalls: number) =>
   createMiddleware({
@@ -62,11 +84,14 @@ export const createToolCallCapMiddleware = (maxToolCalls: number) =>
 
       return Promise.resolve(handler({ ...request, model })).finally(() => {
         if (!abortController.signal.aborted) return
+        const toolCallCountsByName = counter.toolCallCountsByName()
         const error = new Error(
-          `toolCallCapMiddleware: aborted model call after exceeding ${String(maxToolCalls)} tool call(s) in a single response`,
+          `toolCallCapMiddleware: aborted model call after exceeding ${String(maxToolCalls)} tool call(s) in a single response (${formatToolCallCounts(toolCallCountsByName)})`,
         )
         console.warn(error.message)
-        captureWithFingerprint(error, TOOL_CALL_CAP_EXCEEDED_FINGERPRINT)
+        captureWithFingerprint(error, TOOL_CALL_CAP_EXCEEDED_FINGERPRINT, {
+          extras: { toolCallCountsByName },
+        })
       })
     },
   })
