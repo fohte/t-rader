@@ -884,7 +884,7 @@ describe('createStrategyAgentDeps', () => {
     }
   })
 
-  it('omits name from tool result messages sent to the model, since some upstreams (e.g. opencode-go/glm-5.3-flash) reject it', async () => {
+  it('omits name from tool result messages sent to the model, since some upstream providers reject it', async () => {
     let callCount = 0
     let toolResultMessage: unknown
     const model = buildStubModel((_url, init) => {
