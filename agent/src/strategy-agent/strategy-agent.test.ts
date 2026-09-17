@@ -930,6 +930,60 @@ describe('createStrategyAgentDeps', () => {
     })
   })
 
+  it('omits name from the assistant message replayed on the next model call, since some upstream providers reject it', async () => {
+    let callCount = 0
+    let priorAssistantMessage: unknown
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      const { messages, tools } = z
+        .object({
+          messages: z.array(z.record(z.string(), z.unknown())),
+          tools: toolCallRequestSchema.shape.tools,
+        })
+        .parse(JSON.parse(body))
+      if (callCount === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('call-1', { name: 'search', arguments: '{}' }),
+        )
+      }
+      priorAssistantMessage = messages.find(
+        (message) => message['role'] === 'assistant',
+      )
+      return Promise.resolve(
+        buildToolCallResponse('call-2', {
+          name: pickStructuredOutputToolName(tools),
+          arguments: JSON.stringify({ status: 'completed', message: 'done' }),
+        }),
+      )
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    expect(result.structuredResponse).toEqual({
+      status: 'completed',
+      message: 'done',
+    })
+    expect(priorAssistantMessage).toEqual({
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'search', arguments: '{}' },
+        },
+      ],
+    })
+  })
+
   it('aborts the underlying HTTP request once llmCallTimeoutMs elapses, even mid-stream', async () => {
     let capturedSignal: AbortSignal | undefined
     const model = buildStubModel((_url, init) => {

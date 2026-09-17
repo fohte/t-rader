@@ -36,7 +36,7 @@ import {
   MAX_MODEL_CALLS_PER_INVOKE,
 } from '#strategy-agent/final-turn-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
-import { stripToolMessageNameMiddleware } from '#strategy-agent/strip-tool-message-name-middleware'
+import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
 import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import {
   createToolCallCapMiddleware,
@@ -158,7 +158,7 @@ const buildCompiledAgent = (
       // finalTurnMiddleware より内側 (モデル呼び出しに最も近い位置) に置き、
       // 実際にモデルへ渡った tools と生の応答を見て契約違反を検知する。
       modelResponseGuardMiddleware,
-      stripToolMessageNameMiddleware,
+      stripMessageNameMiddleware,
       // 実際の HTTP リクエストに一番近い位置で signal / callback を差し込む。
       createToolCallCapMiddleware(MAX_TOOL_CALLS_PER_MODEL_CALL),
       createCallDurationMiddleware(llmCallTimeoutMs),
