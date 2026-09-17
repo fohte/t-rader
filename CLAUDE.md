@@ -17,6 +17,12 @@ fohte 個人用の日本株投資プラットフォーム。
 
 セマンティック分類はユーザー / LLM が DB 上のタグ / frontmatter で表現する。enum / テーブル / API レスポンス型に observation や signal 等のラベルを直接定義しないこと。
 
+### 使用中の LLM モデル名をリポジトリに書かない
+
+上記と同じ理由 (public リポジトリで個別戦略の中身を秘匿する方針) から、実際に使っている LLM モデル名もコード、テスト、fixture、ドキュメント、commit message、PR description に書かないこと。
+
+フェーズごとのモデル割り当ては DB の `agent_config.agent_graph` (YAML) で設定する。backend (`put_agent_graph`, `backend/src/handlers/agent_config.rs`) は値を保存するだけで解釈せず、agent (`createChatModel`, `agent/src/strategy-agent/strategy-agent.ts`) も文字列をそのまま渡すだけで、コードはモデル名を素通しする設計にすること。未設定時のフォールバック値としてもコードに実モデル名を直接書かないこと。テストや story で名前が必要な場合も実在しない架空のモデル名を使うこと。
+
 ### 一級参照型は 4 種、umbrella なし
 
 ノートや分析カードから参照される一級型はこの 4 種のみ。それぞれ独立した id 体系で別テーブルにする (umbrella エンティティを作らない):
