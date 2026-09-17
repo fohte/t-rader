@@ -79,6 +79,10 @@ pub struct AgentTaskRef {
     pub task_id: String,
 }
 
+/// t-rader-agent の watchdog が heartbeat 断絶を検知して failed タスクに付与する error_kind。
+/// `agent/src/a2a/postgres-task-store.ts` の `EXECUTION_LOST_ERROR_KIND` と対応する契約値。
+pub const EXECUTION_LOST_ERROR_KIND: &str = "execution_lost";
+
 #[derive(Debug, Clone)]
 pub struct AgentTaskStatus {
     pub state: AgentTaskState,

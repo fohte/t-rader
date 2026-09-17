@@ -34,6 +34,8 @@ pub struct Model {
     pub purpose: Option<String>,
     #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
     pub as_of: Option<DateTimeWithTimeZone>,
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub auto_resumed_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
