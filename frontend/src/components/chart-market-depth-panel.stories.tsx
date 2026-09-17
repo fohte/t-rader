@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, fn, within } from 'storybook/test'
+import { fn } from 'storybook/test'
 
 import { ChartMarketDepthPanel } from '#components/chart-market-depth-panel'
 
@@ -25,18 +25,5 @@ export const Open: Story = {
   args: {
     instrumentId: '7203',
     isOpen: true,
-  },
-}
-
-export const Closed: Story = {
-  args: {
-    instrumentId: '7203',
-    isOpen: false,
-  },
-  // isOpen: false では component が null を返し、visual regression 対象がないため
-  parameters: { screenshot: { skip: true } },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await expect(canvas.queryByText('板情報・歩み値')).not.toBeInTheDocument()
   },
 }

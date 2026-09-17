@@ -34,7 +34,7 @@ impl JQuantsClient {
             let calc_date = NaiveDate::parse_from_str(&r.calc_date, "%Y-%m-%d").map_err(|e| {
                 DataProviderError::Parse(format!("invalid calc_date '{}': {e}", r.calc_date))
             })?;
-            let prev_report_date = if r.prev_report_date.is_empty() {
+            let prev_report_date = if r.prev_report_date.is_empty() || r.prev_report_date == "-" {
                 None
             } else {
                 Some(
@@ -108,5 +108,56 @@ impl JQuantsClient {
         }
 
         Ok(ratios)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+
+    use super::*;
+    use crate::data_provider::jquants::mock::{JQuantsMockServer, MockShortSaleReport};
+
+    #[tokio::test]
+    async fn fetch_short_sale_reports_treats_hyphen_prev_report_date_as_none() {
+        let mock = JQuantsMockServer::start().await;
+        let client = mock.client().expect("client");
+
+        mock.short_sale_report()
+            .disc_date("2016-09-20")
+            .reports(vec![MockShortSaleReport {
+                code: "7203",
+                ss_name: "テスト証券",
+                short_position_ratio: 0.01,
+                prev_report_date: "-",
+            }])
+            .ok()
+            .await;
+
+        let disc_date = NaiveDate::from_ymd_opt(2016, 9, 20).expect("date");
+        let result = client
+            .fetch_short_sale_reports(disc_date)
+            .await
+            .expect("fetch ok");
+
+        assert_eq!(
+            result,
+            vec![ShortSaleReport {
+                disc_date,
+                calc_date: disc_date,
+                code: "7203".to_string(),
+                ss_name: "テスト証券".to_string(),
+                ss_addr: "テスト住所".to_string(),
+                dic_name: "テスト委託者".to_string(),
+                dic_addr: "テスト住所".to_string(),
+                fund_name: String::new(),
+                short_position_ratio: Decimal::try_from(0.01).expect("decimal"),
+                short_position_shares: 1000,
+                short_position_units: 10,
+                prev_report_date: None,
+                prev_report_ratio: None,
+                notes: String::new(),
+            }]
+        );
     }
 }

@@ -2,9 +2,17 @@ import { useQueries } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { $api } from '#lib/api/client'
+import type { components } from '#lib/api/schema.gen'
+
+type Prediction = components['schemas']['Prediction']
 
 interface PredictionsPanelProps {
   noteId: string
+}
+
+interface PredictionsPanelViewProps {
+  predictions: Prediction[]
+  stockNameById: Map<string, string>
 }
 
 const DIRECTION_LABEL: Record<string, string> = {
@@ -50,6 +58,18 @@ export function PredictionsPanel({ noteId }: PredictionsPanelProps) {
 
   if (predictions == null || predictions.length === 0) return null
 
+  return (
+    <PredictionsPanelView
+      predictions={predictions}
+      stockNameById={stockNameById}
+    />
+  )
+}
+
+export function PredictionsPanelView({
+  predictions,
+  stockNameById,
+}: PredictionsPanelViewProps) {
   const stockLabel = (id: string): string => {
     const name = stockNameById.get(id)
     return name != null ? `${id} (${name})` : id

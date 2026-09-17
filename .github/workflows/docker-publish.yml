@@ -10,25 +10,64 @@ permissions:
   contents: read
   packages: write
 
+env:
+  COMPONENTS_FILE: .github/workflows/docker-publish-components.json
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      components: ${{ github.event_name == 'workflow_dispatch' && steps.components.outputs.all || steps.filter.outputs.changed_keys }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      # docker-publish-components.json の dir から「自分のディレクトリ配下は無条件でそのコンポーネントの
+      # 変更として扱う」ルールを生成し、exclude/extra だけを明示的な例外として合成する。
+      # コンポーネントの実体 (どのディレクトリを持つか) は build job の context/file 解決とこの
+      # ファイル 1 箇所だけで定義する。
+      # backend.extra の agent/openapi.json は、backend/build.rs が progenitor で agent の
+      # 内部 API client を生成する際に読むため。
+      - id: components
+        run: |
+          all=$(jq -c 'keys' "$COMPONENTS_FILE")
+          echo "all=$all" >> "$GITHUB_OUTPUT"
+
+          filters=$(jq -c '
+            to_entries | map({
+              (.key): (
+                [.value.dir + "/**"]
+                + ((.value.exclude // []) | map("!" + .))
+                + (.value.extra // [])
+              )
+            }) | add
+          ' "$COMPONENTS_FILE")
+          {
+            echo "filters<<FILTERS_EOF"
+            echo "$filters"
+            echo "FILTERS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - if: github.event_name != 'workflow_dispatch'
+        id: filter
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        with:
+          # JSON はそのまま有効な YAML なので、components ステップが生成した JSON を直接渡せる。
+          files_yaml: ${{ steps.components.outputs.filters }}
+          # changed_keys を fromJson() でそのまま matrix に渡せる JSON 配列にする。
+          matrix: true
+
   build:
+    needs: changes
+    if: needs.changes.outputs.components != '[]'
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        include:
-          - component: backend
-            context: .
-            dockerfile: backend/Dockerfile
-          - component: frontend
-            context: .
-            dockerfile: frontend/Dockerfile
-          - component: agent
-            context: .
-            dockerfile: agent/Dockerfile
-          - component: python-exec
-            context: backend/docker/python-exec
-            dockerfile: backend/docker/python-exec/Dockerfile
+        component: ${{ fromJson(needs.changes.outputs.components) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,6 +91,12 @@ jobs:
           tags: |
             type=sha
             type=raw,value=latest
+
+      - id: paths
+        run: |
+          entry=$(jq -c --arg c "${{ matrix.component }}" '.[$c]' "$COMPONENTS_FILE")
+          echo "context=$(jq -r '.context' <<< "$entry")" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=$(jq -r '.dir' <<< "$entry")/Dockerfile" >> "$GITHUB_OUTPUT"
 
       # backend: RUN --mount=type=cache のキャッシュを GHA キャッシュに永続化する。
       # GHA 環境では BuildKit cache mount のデータが type=gha バックエンドに保存されないため、
@@ -79,8 +124,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          context: ${{ steps.paths.outputs.context }}
+          file: ${{ steps.paths.outputs.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

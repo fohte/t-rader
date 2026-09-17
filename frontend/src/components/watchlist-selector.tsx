@@ -33,6 +33,8 @@ type WatchlistSelectorViewProps = {
   isDeleting: boolean
   onCreateSubmit: (name: string) => void
   onDelete: () => void
+  /** Storybook でセレクトを開いた状態を描画するためのフラグ */
+  selectDefaultOpen?: boolean
 }
 
 export function WatchlistSelectorView({
@@ -43,6 +45,7 @@ export function WatchlistSelectorView({
   isDeleting,
   onCreateSubmit,
   onDelete,
+  selectDefaultOpen,
 }: WatchlistSelectorViewProps) {
   const [isCreateMode, setIsCreateMode] = useState(false)
   const [newName, setNewName] = useState('')
@@ -99,6 +102,7 @@ export function WatchlistSelectorView({
             onValueChange={(value) => {
               onSelect(value)
             }}
+            defaultOpen={selectDefaultOpen}
           >
             <SelectTrigger className="w-60">
               <SelectValue placeholder="ウォッチリストを選択" />

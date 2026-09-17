@@ -1,0 +1,22 @@
+{
+  "backend": {
+    "dir": "backend",
+    "context": ".",
+    "exclude": ["backend/docker/python-exec/**"],
+    "extra": ["agent/openapi.json"]
+  },
+  "frontend": {
+    "dir": "frontend",
+    "context": ".",
+    "extra": ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]
+  },
+  "agent": {
+    "dir": "agent",
+    "context": ".",
+    "extra": ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]
+  },
+  "python-exec": {
+    "dir": "backend/docker/python-exec",
+    "context": "backend/docker/python-exec"
+  }
+}

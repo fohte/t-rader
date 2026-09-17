@@ -85,6 +85,7 @@ mod tests {
             code: "7203",
             ss_name: "テスト証券",
             short_position_ratio: ratio,
+            prev_report_date: "",
         }
     }
 
@@ -165,6 +166,7 @@ mod tests {
             }
         );
         let seeded_row = short_sale_report::Entity::find_by_id((
+            expected_from,
             expected_from,
             "7203".to_string(),
             "テスト証券".to_string(),

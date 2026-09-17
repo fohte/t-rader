@@ -24,6 +24,9 @@ import { normalizeStepTimestamps } from '#test/normalize-step-timestamps'
 const NOOP_TRACE_ID = '00000000000000000000000000000000'
 const NOOP_SPAN_ID = '0000000000000000'
 
+const STRUCTURED_OUTPUT_TOOL_DESCRIPTION =
+  "Tool for extracting structured output from the model's response."
+
 class FakeChatModel extends BaseChatModel {
   override _llmType(): string {
     return 'fake'
@@ -380,7 +383,11 @@ describe('runAgentGraph', () => {
       model: chatModelReturnValue,
       tools: [toolA],
       systemPrompt: 'AGENTS\n\n# Skill: skill-a\n\nbody a',
-      responseSchema: { type: 'object', properties: {} },
+      responseSchema: {
+        type: 'object',
+        properties: {},
+        description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+      },
     })
   })
 
@@ -424,7 +431,11 @@ describe('runAgentGraph', () => {
       model: chatModelReturnValue,
       tools: [toolA, toolB],
       systemPrompt: 'AGENTS',
-      responseSchema: { type: 'object', properties: {} },
+      responseSchema: {
+        type: 'object',
+        properties: {},
+        description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+      },
     })
   })
 

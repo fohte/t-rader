@@ -58,9 +58,17 @@ const toItemsSchema = (items: unknown, required: unknown): JsonSchemaObject => {
     : toObjectSchema(items, required)
 }
 
+// toolStrategy は raw JSON Schema に description を自動補完しないため、
+// 空文字を拒否する LLM プロバイダ向けに明示的に補う。
+const STRUCTURED_OUTPUT_TOOL_DESCRIPTION =
+  "Tool for extracting structured output from the model's response."
+
 export const buildOutputJsonSchema = (
   output: Readonly<Record<string, unknown>>,
 ): ObjectJsonSchema => {
   const { required, ...fields } = output
-  return toObjectSchema(fields, required)
+  return {
+    ...toObjectSchema(fields, required),
+    description: STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+  }
 }

@@ -206,7 +206,7 @@ pub(crate) struct ShortSaleReportRecord {
     pub short_position_shares: f64,
     #[serde(rename = "ShrtPosUnits")]
     pub short_position_units: f64,
-    /// 該当なしは空文字列で返る (直近の報告がまだ無い等)
+    /// 該当なしは空文字列、まれに "-" でも返る (直近の報告がまだ無い等)
     #[serde(rename = "PrevRptDate")]
     pub prev_report_date: String,
     #[serde(

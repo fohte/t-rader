@@ -18,6 +18,8 @@ interface ForEachFieldProps {
   index: number
   value: string | undefined
   onChange: (next: string | undefined) => void
+  /** Storybook でセレクトを開いた状態を描画するためのフラグ */
+  selectDefaultOpen?: boolean
 }
 
 export function ForEachField({
@@ -25,6 +27,7 @@ export function ForEachField({
   index,
   value,
   onChange,
+  selectDefaultOpen,
 }: ForEachFieldProps) {
   const options = getForEachOptions(phases, index)
   const items = [{ value: ONCE_VALUE, label: '1 実行につき 1 回' }, ...options]
@@ -42,6 +45,7 @@ export function ForEachField({
           // 未設定 (undefined) として扱う
           onChange(next == null || next === ONCE_VALUE ? undefined : next)
         }}
+        defaultOpen={selectDefaultOpen}
       >
         <SelectTrigger
           aria-label="実行回数"
