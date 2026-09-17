@@ -727,6 +727,19 @@ describe('createStrategyAgentDeps', () => {
       { status: 200, headers: { 'content-type': 'application/json' } },
     )
 
+  // 宣言済み tool から structured-output 用の動的な tool 名 (`extract-N` 等) を
+  // 拾う。test 対象の agent は必ずこれを宣言するため、無ければテスト側のバグ。
+  const pickStructuredOutputToolName = (
+    tools: z.infer<typeof toolCallRequestSchema>['tools'],
+  ): string => {
+    const name = tools.find((tool) => tool.function.name !== 'search')?.function
+      .name
+    if (name === undefined) {
+      throw new Error('expected a structured-output tool to be declared')
+    }
+    return name
+  }
+
   it('drops regular tools once MAX_MODEL_CALLS_PER_INVOKE is reached, forcing the structured-output tool', async () => {
     const requestedToolCounts: number[] = []
     let callCount = 0
@@ -833,14 +846,9 @@ describe('createStrategyAgentDeps', () => {
           }),
         )
       }
-      // 2 回目: 宣言済みの `search` 以外の tool (=構造化出力 tool、動的な
-      // `extract-N` 名) を呼んで正常終了させる。
-      const structuredOutputToolName = tools.find(
-        (tool) => tool.function.name !== 'search',
-      )?.function.name
       return Promise.resolve(
         buildToolCallResponse('call-2', {
-          name: structuredOutputToolName,
+          name: pickStructuredOutputToolName(tools),
           arguments: JSON.stringify({
             status: 'completed',
             message: 'done',
@@ -874,6 +882,52 @@ describe('createStrategyAgentDeps', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  it('omits name from tool result messages sent to the model, since some upstream providers reject it', async () => {
+    let callCount = 0
+    let toolResultMessage: unknown
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      const { messages, tools } = z
+        .object({
+          messages: z.array(z.record(z.string(), z.unknown())),
+          tools: toolCallRequestSchema.shape.tools,
+        })
+        .parse(JSON.parse(body))
+      if (callCount === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('call-1', { name: 'search', arguments: '{}' }),
+        )
+      }
+      toolResultMessage = messages.find((message) => message['role'] === 'tool')
+      return Promise.resolve(
+        buildToolCallResponse('call-2', {
+          name: pickStructuredOutputToolName(tools),
+          arguments: JSON.stringify({ status: 'completed', message: 'done' }),
+        }),
+      )
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    expect(result.structuredResponse).toEqual({
+      status: 'completed',
+      message: 'done',
+    })
+    expect(toolResultMessage).toEqual({
+      role: 'tool',
+      content: 'unused in these tests',
+      tool_call_id: 'call-1',
+    })
   })
 
   it('aborts the underlying HTTP request once llmCallTimeoutMs elapses, even mid-stream', async () => {
@@ -1133,22 +1187,14 @@ describe('createStrategyAgentDeps', () => {
             )
           }
 
-          // 2 回目: 宣言済みの `search` 以外の tool (=構造化出力 tool、動的な
-          // `extract-N` 名) を呼んで正常終了させる。
           const { tools } = toolCallRequestSchema.parse(JSON.parse(body))
-          const structuredOutputToolName = tools.find(
-            (tool) => tool.function.name !== 'search',
-          )?.function.name
-          if (structuredOutputToolName === undefined) {
-            throw new Error('expected a structured-output tool to be declared')
-          }
           return Promise.resolve(
             new Response(
               buildToolCallStream([
                 {
                   index: 0,
                   id: 'call-final',
-                  name: structuredOutputToolName,
+                  name: pickStructuredOutputToolName(tools),
                   arguments: JSON.stringify({
                     status: 'completed',
                     message: 'done',
