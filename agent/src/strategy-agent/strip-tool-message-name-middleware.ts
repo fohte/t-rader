@@ -8,7 +8,6 @@ const stripName = (message: BaseMessage): BaseMessage => {
   if (!ToolMessage.isInstance(message) || message.name === undefined) {
     return message
   }
-  // artifact/metadata はモデルに送られないフィールドのため引き継がない。
   return new ToolMessage({
     content: message.content,
     tool_call_id: message.tool_call_id,
