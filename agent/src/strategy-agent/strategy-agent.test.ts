@@ -876,6 +876,57 @@ describe('createStrategyAgentDeps', () => {
     }
   })
 
+  it('omits name from tool result messages sent to the model, since some upstreams (e.g. opencode-go/glm-5.3-flash) reject it', async () => {
+    let callCount = 0
+    let toolResultMessage: unknown
+    const model = buildStubModel((_url, init) => {
+      callCount += 1
+      const body = init?.body
+      if (typeof body !== 'string') throw new Error('expected string body')
+      const { messages, tools } = z
+        .object({
+          messages: z.array(z.record(z.string(), z.unknown())),
+          tools: toolCallRequestSchema.shape.tools,
+        })
+        .parse(JSON.parse(body))
+      // 1 回目: search を呼ぶ。2 回目のリクエストに、その結果の ToolMessage が
+      // 乗る。
+      if (callCount === 1) {
+        return Promise.resolve(
+          buildToolCallResponse('call-1', { name: 'search', arguments: '{}' }),
+        )
+      }
+      toolResultMessage = messages.find((message) => message['role'] === 'tool')
+      const structuredOutputToolName = tools.find(
+        (tool) => tool.function.name !== 'search',
+      )?.function.name
+      return Promise.resolve(
+        buildToolCallResponse('call-2', {
+          name: structuredOutputToolName,
+          arguments: JSON.stringify({ status: 'completed', message: 'done' }),
+        }),
+      )
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search')],
+      systemPrompt: 'you are a helpful bot',
+    })
+    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+    expect(result.structuredResponse).toEqual({
+      status: 'completed',
+      message: 'done',
+    })
+    expect(toolResultMessage).toEqual({
+      role: 'tool',
+      content: 'unused in these tests',
+      tool_call_id: 'call-1',
+    })
+  })
+
   it('aborts the underlying HTTP request once llmCallTimeoutMs elapses, even mid-stream', async () => {
     let capturedSignal: AbortSignal | undefined
     const model = buildStubModel((_url, init) => {
