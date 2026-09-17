@@ -1098,6 +1098,103 @@ describe('createStrategyAgentDeps', () => {
     }
   })
 
+  it('breaks down the abort message by tool name when multiple tools are called', async () => {
+    const encoder = new TextEncoder()
+    const toolNames = ['search', 'notes'] as const
+    // OpenAI chat completions のストリーミング delta。1 chunk につき
+    // 新しい index の tool_call_chunk を 1 件ずつ、tool 名を交互に流す。
+    const toolCallDeltaChunk = (index: number): Uint8Array =>
+      encoder.encode(
+        `data: ${JSON.stringify({
+          id: 'call-1',
+          model: 'chatgpt/gpt-5',
+          choices: [
+            {
+              index: 0,
+              finish_reason: null,
+              delta: {
+                role: 'assistant',
+                tool_calls: [
+                  {
+                    index,
+                    id: `call-${String(index)}`,
+                    type: 'function',
+                    function: {
+                      name: toolNames[index % toolNames.length],
+                      arguments: '{}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        })}\n\n`,
+      )
+
+    const model = new ChatOpenAI({
+      apiKey: 'test-key',
+      model: 'chatgpt/gpt-5',
+      maxRetries: 0,
+      streaming: true,
+      configuration: {
+        baseURL: 'http://localhost',
+        fetch: (_url, init) => {
+          const signal = init?.signal
+          const stream = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              const onAbort = (): void => {
+                controller.error(new Error('tool call cap test: aborted'))
+              }
+              signal?.addEventListener('abort', onAbort)
+              const totalToolCalls = MAX_TOOL_CALLS_PER_MODEL_CALL * 4
+              for (let index = 0; index < totalToolCalls; index += 1) {
+                if (signal?.aborted === true) return
+                controller.enqueue(toolCallDeltaChunk(index))
+                // handleLLMNewToken の非同期キューを消化させるため、タイマー境界を挟む。
+                await new Promise((resolve) => setTimeout(resolve, 0))
+              }
+              signal?.removeEventListener('abort', onAbort)
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              controller.close()
+            },
+          })
+          return Promise.resolve(
+            new Response(stream, {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            }),
+          )
+        },
+      },
+    })
+    const deps = createStrategyAgentDeps(baseConfig)
+
+    const agent = deps.buildAgent({
+      model,
+      tools: [buildFakeTool('search'), buildFakeTool('notes')],
+      systemPrompt: 'you are a helpful bot',
+    })
+
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    try {
+      await expect(
+        agent.invoke({ messages: [new HumanMessage('hi')] }),
+      ).rejects.toThrow()
+
+      // index 0..50 (計 51 件) を search/notes 交互に割り当てるため
+      // search が 26 件、notes が 25 件になり、件数降順で並ぶ。
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          `toolCallCapMiddleware: aborted model call after exceeding ${String(MAX_TOOL_CALLS_PER_MODEL_CALL)} tool call(s) in a single response (search: 26, notes: 25)`,
+        ],
+      ])
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
   it('completes normally when a response has exactly MAX_TOOL_CALLS_PER_MODEL_CALL distinct tool call indices', async () => {
     const encoder = new TextEncoder()
     const buildToolCallStream = (
