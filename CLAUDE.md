@@ -21,7 +21,7 @@ fohte 個人用の日本株投資プラットフォーム。
 
 上記と同じ理由 (public リポジトリで個別戦略の中身を秘匿する方針) から、実際に使っている LLM モデル名もコード、テスト、fixture、ドキュメント、commit message、PR description に書かないこと。
 
-フェーズごとのモデル割り当ては DB の `agent_config.agent_graph` (YAML) で設定する。backend (`put_agent_graph`, `backend/src/handlers/agent_config.rs`) は値を保存するだけで解釈せず、agent (`createChatModel`, `agent/src/strategy-agent/strategy-agent.ts`) も文字列をそのまま渡すだけで、コードはモデル名を素通しする。テストや story で名前が必要な場合は実在しない架空のモデル名を使うこと。
+フェーズごとのモデル割り当ては DB の `agent_config.agent_graph` (YAML) で設定する。backend (`put_agent_graph`, `backend/src/handlers/agent_config.rs`) は値を保存するだけで解釈せず、agent (`createChatModel`, `agent/src/strategy-agent/strategy-agent.ts`) も文字列をそのまま渡すだけで、コードはモデル名を素通しする設計にすること。未設定時のフォールバック値としてもコードに実モデル名を直接書かないこと。テストや story で名前が必要な場合も実在しない架空のモデル名を使うこと。
 
 ### 一級参照型は 4 種、umbrella なし
 
