@@ -884,51 +884,78 @@ describe('createStrategyAgentDeps', () => {
     }
   })
 
-  it('omits name from tool result messages sent to the model, since some upstream providers reject it', async () => {
-    let callCount = 0
-    let toolResultMessage: unknown
-    const model = buildStubModel((_url, init) => {
-      callCount += 1
-      const body = init?.body
-      if (typeof body !== 'string') throw new Error('expected string body')
-      const { messages, tools } = z
-        .object({
-          messages: z.array(z.record(z.string(), z.unknown())),
-          tools: toolCallRequestSchema.shape.tools,
-        })
-        .parse(JSON.parse(body))
-      if (callCount === 1) {
-        return Promise.resolve(
-          buildToolCallResponse('call-1', { name: 'search', arguments: '{}' }),
-        )
-      }
-      toolResultMessage = messages.find((message) => message['role'] === 'tool')
-      return Promise.resolve(
-        buildToolCallResponse('call-2', {
-          name: pickStructuredOutputToolName(tools),
-          arguments: JSON.stringify({ status: 'completed', message: 'done' }),
-        }),
-      )
-    })
-    const deps = createStrategyAgentDeps(baseConfig)
-
-    const agent = deps.buildAgent({
-      model,
-      tools: [buildFakeTool('search')],
-      systemPrompt: 'you are a helpful bot',
-    })
-    const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
-
-    expect(result.structuredResponse).toEqual({
-      status: 'completed',
-      message: 'done',
-    })
-    expect(toolResultMessage).toEqual({
+  it.each([
+    {
+      name: 'tool result messages',
       role: 'tool',
-      content: 'unused in these tests',
-      tool_call_id: 'call-1',
-    })
-  })
+      expected: {
+        role: 'tool',
+        content: 'unused in these tests',
+        tool_call_id: 'call-1',
+      },
+    },
+    {
+      name: 'the assistant message replayed on the next model call',
+      role: 'assistant',
+      expected: {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'search', arguments: '{}' },
+          },
+        ],
+      },
+    },
+  ])(
+    'omits name from $name, since some upstream providers reject it',
+    async ({ role, expected }) => {
+      let callCount = 0
+      let capturedMessage: unknown
+      const model = buildStubModel((_url, init) => {
+        callCount += 1
+        const body = init?.body
+        if (typeof body !== 'string') throw new Error('expected string body')
+        const { messages, tools } = z
+          .object({
+            messages: z.array(z.record(z.string(), z.unknown())),
+            tools: toolCallRequestSchema.shape.tools,
+          })
+          .parse(JSON.parse(body))
+        if (callCount === 1) {
+          return Promise.resolve(
+            buildToolCallResponse('call-1', {
+              name: 'search',
+              arguments: '{}',
+            }),
+          )
+        }
+        capturedMessage = messages.find((message) => message['role'] === role)
+        return Promise.resolve(
+          buildToolCallResponse('call-2', {
+            name: pickStructuredOutputToolName(tools),
+            arguments: JSON.stringify({ status: 'completed', message: 'done' }),
+          }),
+        )
+      })
+      const deps = createStrategyAgentDeps(baseConfig)
+
+      const agent = deps.buildAgent({
+        model,
+        tools: [buildFakeTool('search')],
+        systemPrompt: 'you are a helpful bot',
+      })
+      const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
+
+      expect(result.structuredResponse).toEqual({
+        status: 'completed',
+        message: 'done',
+      })
+      expect(capturedMessage).toEqual(expected)
+    },
+  )
 
   it('aborts the underlying HTTP request once llmCallTimeoutMs elapses, even mid-stream', async () => {
     let capturedSignal: AbortSignal | undefined
