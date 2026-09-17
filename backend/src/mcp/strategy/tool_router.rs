@@ -22,12 +22,12 @@ use super::dto::{
     QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
     ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadHypothesisParams,
     ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
-    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
-    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, RecordPredictionParams,
-    RecordPredictionResult, ReplyCommentParams, ReplyCommentResult, ResolveCommentParams,
-    ResolveCommentResult, SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult,
-    WriteNoteParams, WriteNoteResult,
+    ReadNoteParams, ReadPortfolioResult, ReadPredictionStatsResult, ReadSectorShortRatioParams,
+    ReadSectorShortRatioResult, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
+    ReadShortSaleReportsParams, ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult,
+    RecordPredictionParams, RecordPredictionResult, ReplyCommentParams, ReplyCommentResult,
+    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
+    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
@@ -564,6 +564,20 @@ impl StrategyServer {
         let sid = strategy_id_from_ctx(&ctx)?;
         self.list_predictions_inner(sid, params).await.map(Json)
     }
+
+    /// 接続元戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する
+    #[tool(
+        name = "read_prediction_stats",
+        description = "Return calibration stats for the current strategy's graded predictions: the Brier score (mean squared error between each prediction's recorded probability and its 0/1 outcome; lower is better-calibrated) and per-probability-step count/hit_rate (hit_rate is null for steps with zero graded predictions). Predictions are graded automatically once their due_date's daily bar has been ingested; ungraded predictions are excluded entirely, so graded_count can be smaller than the total number of predictions recorded so far.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_prediction_stats(
+        &self,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadPredictionStatsResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_prediction_stats_inner(sid).await.map(Json)
+    }
 }
 
 impl StrategyServer {
@@ -635,6 +649,7 @@ mod tests {
                 ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
+                ("read_prediction_stats", Some(true)),
                 ("read_sector_short_ratio", Some(true)),
                 ("read_shareholding_structure", Some(true)),
                 ("read_short_sale_reports", Some(true)),

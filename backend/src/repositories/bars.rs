@@ -1,4 +1,4 @@
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, NaiveDate};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 
@@ -108,6 +108,32 @@ pub async fn find_latest_bar(
     let result = bars::Entity::find()
         .filter(bars::Column::InstrumentId.eq(instrument_id))
         .filter(bars::Column::Timeframe.eq(timeframe))
+        .order_by_desc(bars::Column::Timestamp)
+        .one(db)
+        .await?;
+    Ok(result)
+}
+
+/// 指定日以前で最新の日足バーを 1 件返す。無ければ `None`。
+/// 期限日・基準日が非営業日の場合に直近の営業日の終値へフォールバックする用途を想定する。
+pub async fn find_latest_bar_on_or_before(
+    db: &DatabaseConnection,
+    instrument_id: &str,
+    timeframe: &str,
+    on_or_before: NaiveDate,
+) -> Result<Option<bars::Model>, AppError> {
+    let upper = on_or_before
+        .and_hms_opt(0, 0, 0)
+        .map(|dt| dt.and_utc().fixed_offset());
+
+    let mut select = bars::Entity::find()
+        .filter(bars::Column::InstrumentId.eq(instrument_id))
+        .filter(bars::Column::Timeframe.eq(timeframe));
+    if let Some(upper) = upper {
+        select = select.filter(bars::Column::Timestamp.lte(upper));
+    }
+
+    let result = select
         .order_by_desc(bars::Column::Timestamp)
         .one(db)
         .await?;
@@ -346,6 +372,64 @@ mod tests {
         let result = find_latest_bar(&db, "7203", "1d")
             .await
             .expect("find failed");
+        assert_eq!(result, None);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn find_latest_bar_on_or_before_returns_latest_bar_at_or_before_date(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_test_instrument(&db, "7203").await;
+
+        let bars = vec![
+            make_test_bar(
+                "7203",
+                NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date"),
+                100,
+            ),
+            make_test_bar(
+                "7203",
+                NaiveDate::from_ymd_opt(2025, 1, 8).expect("invalid date"),
+                103,
+            ),
+        ];
+        upsert_bars(&db, bars).await.expect("upsert failed");
+
+        // 1/7 は非営業日想定 (バー無し)。1/8 以前で最新の 1/6 が返る
+        let result = find_latest_bar_on_or_before(
+            &db,
+            "7203",
+            "1d",
+            NaiveDate::from_ymd_opt(2025, 1, 7).expect("invalid date"),
+        )
+        .await
+        .expect("find failed");
+        assert_eq!(result.map(|b| b.close), Some(Decimal::new(100, 0)));
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn find_latest_bar_on_or_before_returns_none_when_no_bar_before_date(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_test_instrument(&db, "7203").await;
+
+        upsert_bars(
+            &db,
+            vec![make_test_bar(
+                "7203",
+                NaiveDate::from_ymd_opt(2025, 1, 8).expect("invalid date"),
+                103,
+            )],
+        )
+        .await
+        .expect("upsert failed");
+
+        let result = find_latest_bar_on_or_before(
+            &db,
+            "7203",
+            "1d",
+            NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date"),
+        )
+        .await
+        .expect("find failed");
         assert_eq!(result, None);
     }
 }

@@ -34,6 +34,8 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     Note,
+    #[sea_orm(has_one = "super::prediction_grade::Entity")]
+    PredictionGrade,
     #[sea_orm(
         belongs_to = "super::stock::Entity",
         from = "Column::BenchmarkStockId",
@@ -63,6 +65,12 @@ pub enum Relation {
 impl Related<super::note::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Note.def()
+    }
+}
+
+impl Related<super::prediction_grade::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PredictionGrade.def()
     }
 }
 
