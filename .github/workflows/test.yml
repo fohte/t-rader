@@ -375,8 +375,8 @@ jobs:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_api_fuzzing
           BACKEND_PORT: '3000'
           RUST_LOG: info
-          # 実際に使っているモデル名は秘匿するため、CI では架空のモデル名を与える
-          STRATEGY_AGENT_MODEL: claude-opus-4
+          # 未設定だと agent-config 取得が失敗するため、CI 用のダミー値を設定
+          STRATEGY_AGENT_MODEL: test-model
         run: |
           cargo run > /tmp/backend.log 2>&1 &
           # サーバーが起動するまで待機
@@ -488,9 +488,9 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
-          # 実際に使っているモデル名は秘匿するため、CI では架空のモデル名を与える
-          STRATEGY_AGENT_MODEL: claude-opus-4
-          WEB_SEARCH_MODEL: chatgpt/gpt-5
+          # 未設定だと該当機能の呼び出しが失敗するため、CI 用のダミー値を設定
+          STRATEGY_AGENT_MODEL: test-model
+          WEB_SEARCH_MODEL: test-web-search-model
           GEMINI_MEDIA_MODEL: gemini-9-flash
         run: cargo llvm-cov --lcov --output-path lcov.info
 
