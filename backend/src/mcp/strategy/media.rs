@@ -12,11 +12,18 @@ use crate::services::litellm_client::{ChatMessage, ContentPart, FilePart};
 use super::dto::{QueryMediaParams, QueryMediaResult};
 use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
 
-/// デフォルトは Vertex AI 経由で Google AI Pro 付帯クレジットでの動作を確認済みのモデル。
-/// `gemini-3.1-pro` はアクセス権が無く 404/429 になるため使わない。`GEMINI_MEDIA_MODEL`
-/// でモデル名を上書きできる (価格改定やモデル廃止時にコード変更なしで切り替えるため)。
-fn gemini_media_model() -> String {
-    std::env::var("GEMINI_MEDIA_MODEL").unwrap_or_else(|_| "gemini-3.6-flash".to_string())
+/// `GEMINI_MEDIA_MODEL` でモデル名を指定する。未設定または空文字の場合はエラーを返す。
+fn gemini_media_model() -> Result<String, McpError> {
+    gemini_media_model_with(|key| std::env::var(key).ok())
+}
+
+fn gemini_media_model_with<F>(get: F) -> Result<String, McpError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    get("GEMINI_MEDIA_MODEL")
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| internal_error("GEMINI_MEDIA_MODEL is not set"))
 }
 
 impl StrategyServer {
@@ -38,6 +45,7 @@ impl StrategyServer {
             .litellm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
+        let model = gemini_media_model()?;
 
         let messages = vec![ChatMessage {
             role: "user",
@@ -51,7 +59,6 @@ impl StrategyServer {
             ],
         }];
 
-        let model = gemini_media_model();
         tracing::info!(
             strategy_id = %session_strategy_id,
             model,
@@ -167,6 +174,37 @@ mod tests {
         assert_eq!(
             (err.code, err.message.as_ref()),
             (rmcp::model::ErrorCode::INVALID_PARAMS, expected_msg),
+        );
+    }
+
+    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key: &str| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    #[rstest]
+    #[case::unset(&[])]
+    #[case::empty(&[("GEMINI_MEDIA_MODEL", "")])]
+    fn gemini_media_model_with_errors_when_missing(#[case] env: &[(&str, &str)]) {
+        let err = gemini_media_model_with(env_get(env)).expect_err("expected missing env error");
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INTERNAL_ERROR,
+                "GEMINI_MEDIA_MODEL is not set",
+            ),
+        );
+    }
+
+    #[test]
+    fn gemini_media_model_with_resolves_overridden_env() {
+        assert_eq!(
+            gemini_media_model_with(env_get(&[("GEMINI_MEDIA_MODEL", "m-x")])).expect("configured"),
+            "m-x"
         );
     }
 }

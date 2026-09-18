@@ -88,7 +88,7 @@ const UUID_PATTERN =
 const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
   skills: { 'ja-stock': 'skill body' },
-  model: 'opencode-go/minimax-m3',
+  model: 'claude-opus-4',
   agentGraph: '',
 }
 
@@ -199,7 +199,7 @@ describe('runStrategyAgent', () => {
     expect.soft(calls.fetchAgentConfigKey).toEqual({ purpose: 'default' })
     expect.soft(calls.createMcpClientStrategyId).toBe('strategy-1')
     expect.soft(calls.createMcpClientTaskId).toBe('task-1')
-    expect.soft(calls.createChatModelArg).toBe('opencode-go/minimax-m3')
+    expect.soft(calls.createChatModelArg).toBe('claude-opus-4')
     expect
       .soft(calls.buildAgentOptions?.systemPrompt)
       .toBe('# AGENTS\n\n# Skill: ja-stock\n\nskill body')

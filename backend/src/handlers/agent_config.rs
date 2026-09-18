@@ -26,6 +26,7 @@ fn map_err(err: svc::AgentConfigError) -> AppError {
         svc::AgentConfigError::NotFound(_) | svc::AgentConfigError::SkillNotFound(_) => {
             AppError::NotFound(err.to_string())
         }
+        svc::AgentConfigError::MissingEnvVar(_) => AppError::Config(err.to_string()),
         svc::AgentConfigError::Database(e) => AppError::Database(e),
     }
 }
@@ -117,11 +118,9 @@ pub async fn get_agent_config_bundle(
         .await
         .map_err(map_err)?;
     let skills = svc::skills_as_btree(&row);
-    Ok(Json(svc::build_agent_config_response(
-        row.agents_md,
-        skills,
-        row.agent_graph,
-    )))
+    let response = svc::build_agent_config_response(row.agents_md, skills, row.agent_graph)
+        .map_err(map_err)?;
+    Ok(Json(response))
 }
 
 /// 目的別 agent 設定を削除
@@ -369,6 +368,7 @@ mod tests {
     use serde_json::{Value, json};
     use sqlx::PgPool;
 
+    use super::*;
     use crate::testing::create_test_server;
 
     fn normalize(mut value: Value) -> Value {
@@ -378,6 +378,17 @@ mod tests {
             }
         }
         value
+    }
+
+    #[test]
+    fn map_err_treats_missing_model_env_as_config_error() {
+        let err = map_err(svc::AgentConfigError::MissingEnvVar(
+            "STRATEGY_AGENT_MODEL".to_string(),
+        ));
+        assert_eq!(
+            err.to_string(),
+            "configuration error: environment variable 'STRATEGY_AGENT_MODEL' is not set"
+        );
     }
 
     #[sqlx::test(migrations = false)]
@@ -589,7 +600,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn get_agent_config_bundle_returns_agents_md_skills_and_model(pool: PgPool) {
-        use crate::services::agent_config::DEFAULT_AGENT_MODEL;
+        let model = std::env::var("STRATEGY_AGENT_MODEL")
+            .expect("STRATEGY_AGENT_MODEL must be set to run this test (see .github/workflows/test.yml, or set it in .env.local)");
 
         let server = create_test_server(pool).await;
         server
@@ -619,7 +631,7 @@ mod tests {
             json!({
                 "agents_md": agents_md,
                 "skills": { "scout": "scout body" },
-                "model": DEFAULT_AGENT_MODEL,
+                "model": model,
                 "agent_graph": "",
             }),
         );

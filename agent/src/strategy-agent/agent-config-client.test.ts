@@ -20,7 +20,7 @@ describe('createAgentConfigFetcher', () => {
           JSON.stringify({
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
-            model: 'opencode-go/minimax-m3',
+            model: 'claude-opus-4',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -36,7 +36,7 @@ describe('createAgentConfigFetcher', () => {
       ok({
         agentsMd: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
-        model: 'opencode-go/minimax-m3',
+        model: 'claude-opus-4',
         agentGraph: 'phases: []',
       }),
     )
@@ -54,7 +54,7 @@ describe('createAgentConfigFetcher', () => {
           JSON.stringify({
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
-            model: 'opencode-go/minimax-m3',
+            model: 'claude-opus-4',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -135,7 +135,7 @@ describe('createAgentConfigFetcher', () => {
       body: {
         agents_md: '# AGENTS',
         skills: ['ja-stock'],
-        model: 'opencode-go/minimax-m3',
+        model: 'claude-opus-4',
         agent_graph: '',
       },
     },
@@ -144,7 +144,7 @@ describe('createAgentConfigFetcher', () => {
       body: {
         agents_md: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
-        model: 'opencode-go/minimax-m3',
+        model: 'claude-opus-4',
       },
     },
   ])('returns an error when $name', async ({ body }) => {
