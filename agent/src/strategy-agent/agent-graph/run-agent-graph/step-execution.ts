@@ -78,11 +78,6 @@ const buildRejectionMessage = (
     ? 'agent did not return a structured response'
     : `agent's structured response did not resolve required for_each field(s) to a non-empty array: ${[...requiredArrayFields].join(', ')}`
 
-// 次の試行にだけ効く 1 回限りのフィードバックではなく、これまでの却下理由を
-// 積み上げたメッセージ列を渡す (再試行のたびに invokePhaseWithRetry がもう
-// 1 通追加していく)。モデルは同じ入力をもう一度渡されるだけだと前回と
-// 同じ理由で失敗しがちなので、却下理由と書き込み系 tool の再実行を避ける
-// よう明示する。
 const buildRetryFeedbackMessage = (
   reason: StructuredOutputRejectionReason,
   requiredArrayFields: ReadonlySet<string>,
@@ -136,9 +131,10 @@ const createPhaseAgent = (
 // structured response を欠く場合と、structured response はあるが
 // requiredArrayFields (後続フェーズの for_each が要求する非空配列) を
 // 満たさない場合のみで、これが再試行で解消しうる唯一の失敗モードのため。
-// 再試行のたびに却下理由を messages に積み増してから次の attempt に渡す
-// (モデルは agent.invoke() ごとに新規実行になり、前回 attempt で積まれた
-// AIMessage/ToolMessage を引き継がないため)。
+//
+// invoke() は attempt ごとに新規の LangGraph 実行になり、前の attempt の
+// AIMessage/ToolMessage を引き継がない。却下理由は次の attempt の messages に
+// 積み増すことでのみモデルへ伝わる。
 const invokePhaseWithRetry = async (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],

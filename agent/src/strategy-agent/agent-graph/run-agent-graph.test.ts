@@ -1,7 +1,7 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { ChatResult } from '@langchain/core/outputs'
 import { DynamicStructuredTool } from '@langchain/core/tools'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import type {
@@ -76,6 +76,36 @@ const normalizeExecutionStepIds = (
     expect(executionStepId).toMatch(UUID_PATTERN)
     return { ...call, executionStepId: label(executionStepId) }
   })
+}
+
+// executionStepId (UUID) は attempt ごとに変わらないが実行のたびにランダムなので、
+// warn メッセージ内の UUID を固定プレースホルダーに正規化してから比較する。
+const normalizeExecutionStepIdInText = (text: string): string =>
+  text.replace(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
+    '<execution-step-id>',
+  )
+
+// この describe 内の複数のテストが再試行経由で console.warn を出すため、
+// spy の設置/解除と正規化をまとめる。
+const runWithWarnSpy = async <T>(
+  run: () => Promise<T>,
+): Promise<{
+  readonly result: T
+  readonly warnMessages: readonly string[]
+}> => {
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  try {
+    const result = await run()
+    return {
+      result,
+      warnMessages: warnSpy.mock.calls.map(([message]) =>
+        normalizeExecutionStepIdInText(String(message)),
+      ),
+    }
+  } finally {
+    warnSpy.mockRestore()
+  }
 }
 
 // resume 系テストの previousSteps リテラルから、契約の焦点でない付随フィールドの
@@ -513,12 +543,14 @@ describe('runAgentGraph', () => {
       ],
     }
 
-    const result = await runAgentGraph(deps, config, {
-      agentsMd: 'AGENTS',
-      skills: {},
-      createStepMcpClient: buildStepMcpClientFactory(),
-      originalPromptText: 'req',
-    })
+    const { result, warnMessages } = await runWithWarnSpy(() =>
+      runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+      }),
+    )
 
     expect(result).toEqual({
       status: 'completed',
@@ -532,23 +564,46 @@ describe('runAgentGraph', () => {
       '<execution-step-id-1>',
       '<execution-step-id-1>',
     ])
+    expect(warnMessages).toEqual([
+      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_structured_output), retrying',
+      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_structured_output), retrying',
+    ])
+
+    const basePrompt = buildPhaseMessageText({
+      originalPromptText: 'req',
+      phasePrompt: 'do p',
+      item: undefined,
+      priorResults: {},
+    })
+    const feedback = [
+      '前回の試行は却下されました (理由: agent did not return a structured response)。',
+      '構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。',
+      'write_note・create_annotation・add_interest などの書き込み系 tool は前回の試行で既に実行済みの可能性があります。同じ内容を重複して実行しないでください。',
+    ].join('\n')
+    expect(calls.map((call) => call.messageText)).toEqual([
+      basePrompt,
+      [basePrompt, feedback].join('\n'),
+      [basePrompt, feedback, feedback].join('\n'),
+    ])
   })
 
   it.each([
     {
       name: 'missing structured output',
       firstAttemptResult: {},
+      reason: 'missing_structured_output',
       reasonText: 'agent did not return a structured response',
     },
     {
       name: 'empty required array field',
       firstAttemptResult: { structuredResponse: { ok: [] } },
+      reason: 'missing_required_array_fields',
       reasonText:
         "agent's structured response did not resolve required for_each field(s) to a non-empty array: ok",
     },
   ])(
     'feeds back the rejection reason and a write-tool warning on retry ($name)',
-    async ({ firstAttemptResult, reasonText }) => {
+    async ({ firstAttemptResult, reason, reasonText }) => {
       let planAttempts = 0
       const { deps, calls } = buildDeps((call) => {
         if (!call.messageText.includes('do plan')) {
@@ -585,12 +640,14 @@ describe('runAgentGraph', () => {
         ],
       }
 
-      await runAgentGraph(deps, config, {
-        agentsMd: 'AGENTS',
-        skills: {},
-        createStepMcpClient: buildStepMcpClientFactory(),
-        originalPromptText: 'req',
-      })
+      const { warnMessages } = await runWithWarnSpy(() =>
+        runAgentGraph(deps, config, {
+          agentsMd: 'AGENTS',
+          skills: {},
+          createStepMcpClient: buildStepMcpClientFactory(),
+          originalPromptText: 'req',
+        }),
+      )
 
       const basePrompt = buildPhaseMessageText({
         originalPromptText: 'req',
@@ -608,6 +665,9 @@ describe('runAgentGraph', () => {
           basePrompt,
           `前回の試行は却下されました (理由: ${reasonText})。\n構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。\nwrite_note・create_annotation・add_interest などの書き込み系 tool は前回の試行で既に実行済みの可能性があります。同じ内容を重複して実行しないでください。`,
         ].join('\n'),
+      ])
+      expect(warnMessages).toEqual([
+        `phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (${reason}), retrying`,
       ])
     },
   )
@@ -632,12 +692,14 @@ describe('runAgentGraph', () => {
       ],
     }
 
-    const result = await runAgentGraph(deps, config, {
-      agentsMd: 'AGENTS',
-      skills: {},
-      createStepMcpClient: buildStepMcpClientFactory(),
-      originalPromptText: 'req',
-    })
+    const { result, warnMessages } = await runWithWarnSpy(() =>
+      runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+      }),
+    )
 
     expect(result).toEqual({
       status: 'failed',
@@ -646,6 +708,10 @@ describe('runAgentGraph', () => {
       errorKind: 'agent_error',
     })
     expect(attempts).toBe(3)
+    expect(warnMessages).toEqual([
+      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_structured_output), retrying',
+      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_structured_output), retrying',
+    ])
   })
 
   it('propagates an invoke rejection immediately, without retrying', async () => {
@@ -768,12 +834,14 @@ describe('runAgentGraph', () => {
         ],
       }
 
-      const result = await runAgentGraph(deps, config, {
-        agentsMd: 'AGENTS',
-        skills: {},
-        createStepMcpClient: buildStepMcpClientFactory(),
-        originalPromptText: 'req',
-      })
+      const { result, warnMessages } = await runWithWarnSpy(() =>
+        runAgentGraph(deps, config, {
+          agentsMd: 'AGENTS',
+          skills: {},
+          createStepMcpClient: buildStepMcpClientFactory(),
+          originalPromptText: 'req',
+        }),
+      )
 
       expect(result).toEqual({
         status: 'failed',
@@ -781,6 +849,10 @@ describe('runAgentGraph', () => {
         errorKind: 'agent_error',
       })
       expect(attempts).toBe(3)
+      expect(warnMessages).toEqual([
+        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
+        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+      ])
     },
   )
 
@@ -858,18 +930,24 @@ describe('runAgentGraph', () => {
       ],
     }
 
-    const result = await runAgentGraph(deps, config, {
-      agentsMd: 'AGENTS',
-      skills: {},
-      createStepMcpClient: buildStepMcpClientFactory(),
-      originalPromptText: 'req',
-    })
+    const { result, warnMessages } = await runWithWarnSpy(() =>
+      runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+      }),
+    )
 
     expect(result).toEqual({
       status: 'completed',
       message: '2フェーズの実行が完了しました (Plan → Investigate)',
     })
     expect(planAttempts).toBe(3)
+    expect(warnMessages).toEqual([
+      'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
+      'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+    ])
   })
 
   it('notifies onStepsChanged with a running step, then a completed step, for a non-for_each phase', async () => {
