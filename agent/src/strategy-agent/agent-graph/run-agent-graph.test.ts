@@ -534,6 +534,84 @@ describe('runAgentGraph', () => {
     ])
   })
 
+  it.each([
+    {
+      name: 'missing structured output',
+      firstAttemptResult: {},
+      reasonText: 'agent did not return a structured response',
+    },
+    {
+      name: 'empty required array field',
+      firstAttemptResult: { structuredResponse: { ok: [] } },
+      reasonText:
+        "agent's structured response did not resolve required for_each field(s) to a non-empty array: ok",
+    },
+  ])(
+    'feeds back the rejection reason and a write-tool warning on retry ($name)',
+    async ({ firstAttemptResult, reasonText }) => {
+      let planAttempts = 0
+      const { deps, calls } = buildDeps((call) => {
+        if (!call.messageText.includes('do plan')) {
+          return Promise.resolve({ structuredResponse: {} })
+        }
+        planAttempts++
+        return Promise.resolve(
+          planAttempts === 1
+            ? firstAttemptResult
+            : { structuredResponse: { ok: ['done'] } },
+        )
+      })
+      const config: AgentGraphConfig = {
+        phases: [
+          {
+            key: 'plan',
+            label: 'Plan',
+            model: 'm',
+            prompt: 'do plan',
+            skills: [],
+            tools: [],
+            output: { ok: { type: 'array', items: { type: 'string' } } },
+          },
+          {
+            key: 'work',
+            label: 'Work',
+            model: 'm',
+            prompt: 'do work',
+            forEach: 'plan.ok',
+            skills: [],
+            tools: [],
+            output: {},
+          },
+        ],
+      }
+
+      await runAgentGraph(deps, config, {
+        agentsMd: 'AGENTS',
+        skills: {},
+        createStepMcpClient: buildStepMcpClientFactory(),
+        originalPromptText: 'req',
+      })
+
+      const basePrompt = buildPhaseMessageText({
+        originalPromptText: 'req',
+        phasePrompt: 'do plan',
+        item: undefined,
+        priorResults: {},
+      })
+      const planMessageTexts = calls
+        .filter((call) => call.messageText.startsWith(basePrompt))
+        .map((call) => call.messageText)
+
+      expect(planMessageTexts).toEqual([
+        basePrompt,
+        [
+          basePrompt,
+          `前回の試行は却下されました (理由: ${reasonText})。\n構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。\nwrite_note・create_annotation・add_interest などの書き込み系 tool は前回の試行で既に実行済みの可能性があります。同じ内容を重複して実行しないでください。`,
+        ].join('\n'),
+      ])
+    },
+  )
+
   it('fails the phase after exhausting all structured-output retries', async () => {
     let attempts = 0
     const { deps } = buildDeps(() => {

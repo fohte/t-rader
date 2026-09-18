@@ -22,6 +22,8 @@ const MAX_STRUCTURED_OUTPUT_ATTEMPTS = 3
 
 const STEP_MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
   'run-agent-graph.step-mcp-client-close-failed'
+const STRUCTURED_OUTPUT_RETRY_FINGERPRINT =
+  'run-agent-graph.structured-output-retry'
 
 export const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -65,6 +67,35 @@ const hasRequiredArrayFields = (
     (field) => Array.isArray(response[field]) && response[field].length > 0,
   )
 
+type StructuredOutputRejectionReason =
+  'missing_structured_output' | 'missing_required_array_fields'
+
+const buildRejectionMessage = (
+  reason: StructuredOutputRejectionReason,
+  requiredArrayFields: ReadonlySet<string>,
+): string =>
+  reason === 'missing_structured_output'
+    ? 'agent did not return a structured response'
+    : `agent's structured response did not resolve required for_each field(s) to a non-empty array: ${[...requiredArrayFields].join(', ')}`
+
+// 次の試行にだけ効く 1 回限りのフィードバックではなく、これまでの却下理由を
+// 積み上げたメッセージ列を渡す (再試行のたびに invokePhaseWithRetry がもう
+// 1 通追加していく)。モデルは同じ入力をもう一度渡されるだけだと前回と
+// 同じ理由で失敗しがちなので、却下理由と書き込み系 tool の再実行を避ける
+// よう明示する。
+const buildRetryFeedbackMessage = (
+  reason: StructuredOutputRejectionReason,
+  requiredArrayFields: ReadonlySet<string>,
+): HumanMessage =>
+  new HumanMessage(
+    [
+      `前回の試行は却下されました (理由: ${buildRejectionMessage(reason, requiredArrayFields)})。`,
+      '構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。',
+      'write_note・create_annotation・add_interest などの書き込み系 tool は前回の試行で' +
+        '既に実行済みの可能性があります。同じ内容を重複して実行しないでください。',
+    ].join('\n'),
+  )
+
 const createPhaseAgent = (
   deps: RunAgentGraphDeps,
   phase: AgentGraphPhase,
@@ -105,11 +136,15 @@ const createPhaseAgent = (
 // structured response を欠く場合と、structured response はあるが
 // requiredArrayFields (後続フェーズの for_each が要求する非空配列) を
 // 満たさない場合のみで、これが再試行で解消しうる唯一の失敗モードのため。
+// 再試行のたびに却下理由を messages に積み増してから次の attempt に渡す
+// (モデルは agent.invoke() ごとに新規実行になり、前回 attempt で積まれた
+// AIMessage/ToolMessage を引き継がないため)。
 const invokePhaseWithRetry = async (
   agent: CompiledPhaseAgent,
   messages: readonly HumanMessage[],
   executionStepId: string,
   requiredArrayFields: ReadonlySet<string>,
+  phaseKey: string,
   attemptsLeft: number = MAX_STRUCTURED_OUTPUT_ATTEMPTS,
 ): Promise<Result<Record<string, unknown>, unknown>> => {
   const invoked = await agent.invoke({ messages, executionStepId }).then(
@@ -130,20 +165,30 @@ const invokePhaseWithRetry = async (
   ) {
     return ok(structuredResponse)
   }
+  const reason: StructuredOutputRejectionReason =
+    structuredResponse === undefined
+      ? 'missing_structured_output'
+      : 'missing_required_array_fields'
   if (attemptsLeft <= 1) {
-    return err(
-      structuredResponse === undefined
-        ? new Error('agent did not return a structured response')
-        : new Error(
-            `agent's structured response did not resolve required for_each field(s) to a non-empty array: ${[...requiredArrayFields].join(', ')}`,
-          ),
-    )
+    return err(new Error(buildRejectionMessage(reason, requiredArrayFields)))
   }
+
+  const attemptNumber = MAX_STRUCTURED_OUTPUT_ATTEMPTS - attemptsLeft + 1
+  const retryError = new Error(
+    `phase "${phaseKey}" (executionStepId=${executionStepId}) structured output attempt ${String(attemptNumber)} rejected (${reason}), retrying`,
+  )
+  console.warn(retryError.message)
+  captureWithFingerprint(retryError, STRUCTURED_OUTPUT_RETRY_FINGERPRINT, {
+    level: 'warning',
+    extras: { phaseKey, executionStepId, attemptNumber, reason },
+  })
+
   return invokePhaseWithRetry(
     agent,
-    messages,
+    [...messages, buildRetryFeedbackMessage(reason, requiredArrayFields)],
     executionStepId,
     requiredArrayFields,
+    phaseKey,
     attemptsLeft - 1,
   )
 }
@@ -199,6 +244,7 @@ export const invokeAndRecordStep = (
                 messages,
                 executionStepId,
                 requiredArrayFields,
+                phase.key,
               ),
             )
             .finally(() =>
