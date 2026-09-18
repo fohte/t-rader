@@ -22,10 +22,18 @@ const TOOL_NAME: &str = "search_web";
 /// `search_web` 呼び出し回数上限。
 const SEARCH_WEB_MAX_CALLS_PER_TASK: u32 = 20;
 
-/// デフォルトは ChatGPT Plus 経由で web search が有効なモデル。`WEB_SEARCH_MODEL` で
-/// モデル名を上書きできる (Gemini 等の他プロバイダに切り替えるため)。
-fn web_search_model() -> String {
-    std::env::var("WEB_SEARCH_MODEL").unwrap_or_else(|_| "chatgpt/gpt-5.6-luna".to_string())
+/// `WEB_SEARCH_MODEL` でモデル名を指定する。未設定または空文字の場合はエラーを返す。
+fn web_search_model() -> Result<String, McpError> {
+    web_search_model_with(|key| std::env::var(key).ok())
+}
+
+fn web_search_model_with<F>(get: F) -> Result<String, McpError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    get("WEB_SEARCH_MODEL")
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| internal_error("WEB_SEARCH_MODEL is not set"))
 }
 
 /// `(task_execution_id, tool_name)` の呼び出し回数をアトミックにインクリメントし、
@@ -115,6 +123,7 @@ impl StrategyServer {
             .litellm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
+        let model = web_search_model()?;
 
         // task_execution_id はヘッダ欠落時 (手動呼び出し等) に None になる。その場合は
         // 呼び出し回数の追跡をスキップし、fail-open で検索を実行する。
@@ -128,7 +137,6 @@ impl StrategyServer {
             }
         }
 
-        let model = web_search_model();
         tracing::info!(
             strategy_id = %session_strategy_id,
             model,
@@ -164,6 +172,7 @@ impl StrategyServer {
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
+    use rstest::rstest;
     use sea_orm::{DatabaseBackend, MockDatabase};
     use serde_json::json;
     use sqlx::PgPool;
@@ -361,6 +370,37 @@ mod tests {
         assert_eq!(
             (a_search_1, a_search_2, a_other_tool_1, b_search_1),
             (1, 2, 1, 1),
+        );
+    }
+
+    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key: &str| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| (*v).to_string())
+        }
+    }
+
+    #[rstest]
+    #[case::unset(&[])]
+    #[case::empty(&[("WEB_SEARCH_MODEL", "")])]
+    fn web_search_model_with_errors_when_missing(#[case] env: &[(&str, &str)]) {
+        let err = web_search_model_with(env_get(env)).expect_err("expected missing env error");
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INTERNAL_ERROR,
+                "WEB_SEARCH_MODEL is not set",
+            ),
+        );
+    }
+
+    #[test]
+    fn web_search_model_with_resolves_overridden_env() {
+        assert_eq!(
+            web_search_model_with(env_get(&[("WEB_SEARCH_MODEL", "m-x")])).expect("configured"),
+            "m-x"
         );
     }
 }

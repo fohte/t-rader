@@ -510,7 +510,7 @@ mod tests {
         let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
         let text = client
             .chat_completion(
-                "gemini-3.6-flash",
+                "gemini-9-flash",
                 vec![ChatMessage {
                     role: "user",
                     content: vec![ContentPart::Text {
@@ -536,7 +536,7 @@ mod tests {
 
         let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
         let err = client
-            .chat_completion("gemini-3.6-flash", vec![])
+            .chat_completion("gemini-9-flash", vec![])
             .await
             .expect_err("expected error");
         assert!(matches!(
@@ -556,7 +556,7 @@ mod tests {
 
         let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
         let err = client
-            .chat_completion("gemini-3.6-flash", vec![])
+            .chat_completion("gemini-9-flash", vec![])
             .await
             .expect_err("expected error");
         assert!(matches!(err, LiteLlmError::Parse(_)));
@@ -651,7 +651,7 @@ mod tests {
 
         let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
         let outcome = client
-            .web_search("chatgpt/gpt-5.6-luna", "半導体関連の最新ニュース")
+            .web_search("test-web-search-model", "半導体関連の最新ニュース")
             .await
             .expect("web search ok");
         assert_eq!(
@@ -668,7 +668,7 @@ mod tests {
         assert_eq!(
             body,
             json!({
-                "model": "chatgpt/gpt-5.6-luna",
+                "model": "test-web-search-model",
                 "messages": [{"role": "user", "content": [{"type": "text", "text": "半導体関連の最新ニュース"}]}],
                 "stream": true,
                 "web_search_options": {},
