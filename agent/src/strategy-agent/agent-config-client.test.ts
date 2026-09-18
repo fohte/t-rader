@@ -20,7 +20,7 @@ describe('createAgentConfigFetcher', () => {
           JSON.stringify({
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
-            model: 'claude-opus-4',
+            model: 'test-model',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -36,7 +36,7 @@ describe('createAgentConfigFetcher', () => {
       ok({
         agentsMd: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
-        model: 'claude-opus-4',
+        model: 'test-model',
         agentGraph: 'phases: []',
       }),
     )
@@ -54,7 +54,7 @@ describe('createAgentConfigFetcher', () => {
           JSON.stringify({
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
-            model: 'claude-opus-4',
+            model: 'test-model',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -135,7 +135,7 @@ describe('createAgentConfigFetcher', () => {
       body: {
         agents_md: '# AGENTS',
         skills: ['ja-stock'],
-        model: 'claude-opus-4',
+        model: 'test-model',
         agent_graph: '',
       },
     },
@@ -144,7 +144,7 @@ describe('createAgentConfigFetcher', () => {
       body: {
         agents_md: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
-        model: 'claude-opus-4',
+        model: 'test-model',
       },
     },
   ])('returns an error when $name', async ({ body }) => {
