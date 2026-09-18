@@ -1,5 +1,140 @@
 # AGENTS.md
 
+## Product
+
+fohte 個人用の日本株投資プラットフォーム。
+
+中心概念は「戦略」(= 永続ワークスペース)。長期投資 / 中期投資 / 集中スイング等を並列に運用し、戦略ごとに LLM がアナリスト役として自律的にノートとアノテーションを産出する。ユーザーは事後レビュー側に立ち、各アーティファクトには status (approved / unread / rejected)、コメントスレッド、変更履歴が紐づく。
+
+リアルタイム性は重視せず、pull 型で「開いて読む」運用。通知サブシステムは永続的に持たない。
+
+### 産出物の型はコードレベルでは 2 種のみ
+
+個別戦略の中身 (どんなセマンティック分類でノートを書いているか等) を public リポジトリに含めない方針を取る。そのためセマンティック型 (observation / signal / thesis / hypothesis 等) をソースコードにハードコードしない。コードが持つ物理コンテナは次の 2 種のみ:
+
+- **Markdown ノート**: 自由テキスト
+- **Annotation**: text + 構造データ (対象パネル、位置、種別キー等)
+
+セマンティック分類はユーザー / LLM が DB 上のタグ / frontmatter で表現する。enum / テーブル / API レスポンス型に observation や signal 等のラベルを直接定義しないこと。
+
+### 使用中の LLM モデル名をリポジトリに書かない
+
+上記と同じ理由 (public リポジトリで個別戦略の中身を秘匿する方針) から、実際に使っている LLM モデル名もコード、テスト、fixture、ドキュメント、commit message、PR description に書かないこと。
+
+フェーズごとのモデル割り当ては DB の `agent_config.agent_graph` (YAML) で設定する。backend (`put_agent_graph`, `backend/src/handlers/agent_config.rs`) は値を保存するだけで解釈せず、agent (`createChatModel`, `agent/src/strategy-agent/strategy-agent.ts`) も文字列をそのまま渡すだけで、コードはモデル名を素通しする設計にすること。未設定時のフォールバック値としてもコードに実モデル名を直接書かないこと。テストや story で名前が必要な場合も実在しない架空のモデル名を使うこと。
+
+### 一級参照型は 4 種、umbrella なし
+
+ノートや分析カードから参照される一級型はこの 4 種のみ。それぞれ独立した id 体系で別テーブルにする (umbrella エンティティを作らない):
+
+| kind        | 例                     |
+| ----------- | ---------------------- |
+| `stock`     | 7203                   |
+| `indicator` | USDJPY, VIX            |
+| `sector`    | 半導体                 |
+| `theme`     | 円安, 米利上げサイクル |
+
+横断検索は UNION クエリで対応する。
+
+### Markdown 内リンクは prefix 必須
+
+ノート / コメント / アノテーションの markdown 本文で参照型を指す内部リンクは prefix 付きにすること。prefix なしの `[[7203]]` は許容しない。
+
+```text
+[[stock:7203]]
+[[indicator:USDJPY]]
+[[sector:semiconductor]]
+[[theme:weak-jpy]]
+```
+
+### 既存実装との関係
+
+ローソク足チャート (Lightweight Charts)、ウォッチリスト、データプロバイダー抽象化は既存資産。ウォッチリストは MVP では残置するが、戦略 (= ワークスペース) ベースに移行後に deprecate 予定。新規 UI は戦略起点で組む。
+
+設計の全体像と決定事項 (LLM ランタイム、MCP tool 設計、データソース段階導入、サンドボックス方針、取引履歴、リポジトリ戦略等) はリポ外で別途管理している。コード変更や PR でその文脈が必要な場合はユーザーに参照を求めること。
+
+## Bash commands
+
+```bash
+# DB 起動 (全 worktree 共有、1 回だけ起動すればよい)
+mise run db-up
+
+# バックエンド (ローカル)
+cd backend && cargo run
+cd backend && cargo test
+cd backend && cargo clippy -- -D warnings
+
+# マイグレーション追加
+cd backend/migration && cargo run -- generate <name>
+# 生成後、lib.rs の Migrator::migrations() にも登録すること
+
+# エンティティ再生成 (マイグレーション変更後に実行)
+DATABASE_URL=... bash backend/scripts/generate-entities.sh
+
+# フロントエンド
+cd frontend && pnpm dev             # Vite 開発サーバー
+cd frontend && pnpm test            # 型チェック + unit テスト
+cd frontend && pnpm storybook       # Storybook 開発サーバー (http://localhost:6006)
+cd frontend && pnpm storybook:build # Storybook 静的ビルド
+
+# エージェント (A2A server)
+cd agent && pnpm dev  # tsx watch でローカル直接起動
+cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
+```
+
+## Core files
+
+- `backend/migration/` - SeaORM マイグレーション crate (MigrationTrait で Rust ファイル、起動時に自動実行)
+- `backend/src/entities/` - SeaORM Entity 定義 (`sea-orm-cli generate entity` で自動生成、手動編集禁止)
+- `backend/scripts/generate-entities.sh` - エンティティ生成スクリプト (CLI オプション一元管理)
+- `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
+- `backend/src/error.rs` - AppError 型定義
+- `backend/src/agent_client/` - t-rader-agent 内部 API client (`AgentTaskClient` trait、戦略タスクの投入 / 状態照会)
+- `backend/src/services/strategy_tasks.rs` - 戦略タスク投入の共通 service (`submit_task`、5 経路から呼ばれる)
+- `backend/src/mcp/watcher.rs` - 戦略タスクの phase polling (pending/running 行の状態照会 + deadline 超過の失敗確定)
+- `backend/src/handlers/agent_tasks.rs` - t-rader-agent からのタスク決着 webhook 受信
+- `agent/src/main.ts` - A2A server のエントリポイント、Hono app の組み立て
+- `agent/src/a2a/executor.ts` - `TraderAgentExecutor` (`strategy_id` metadata があれば即実行、なければ `agent/src/strategy-resolution/` で名前解決した上で `agent/src/strategy-agent/` の `runStrategyAgent` に委譲)
+- `agent/src/strategy-agent/strategy-agent.ts` - agent-config 取得 + LangGraph agent 構成 + MCP tool 呼び出しの実行ロジック
+- `agent/src/strategy-resolution/resolve-strategy.ts` - 戦略候補一覧から自由文の対象戦略を決定的な文字列類似度で解決するロジック
+- `agent/src/internal-api/routes.ts` - backend 向け internal API (`POST /internal/tasks`, `GET /internal/tasks/{task_id}`)
+- `agent/drizzle/` - drizzle-orm マイグレーション (起動時に自動実行)
+- `frontend/.storybook/story-router.tsx` - TanStack Router に依存する component の story にルーターコンテキストを提供する `createStoryRouter` (`#storybook/story-router` としてエイリアス解決)
+
+## Migrations
+
+- マイグレーションファイルは手動で作成しない。必ず `cd backend/migration && cargo run -- generate <name>` でファイルを生成してから up/down を実装すること
+- ファイル名のタイムスタンプは CLI が自動付与する。`DeriveMigrationName` でファイル名からマイグレーション名を自動導出する
+- 生成後、`backend/migration/src/lib.rs` の `Migrator::migrations()` に登録すること
+- SeaQuery DSL でテーブル操作を記述するが、TimescaleDB 固有の SQL は `execute_unprepared` で raw SQL を使う
+- 初期スキーマなど論理的にまとまる変更は 1 ファイルにまとめる。不必要にファイルを分割しない
+
+## Entities
+
+- `backend/src/entities/` 配下のファイルは `sea-orm-cli generate entity` で自動生成される。**手動編集禁止**
+- スキーマ変更後は `bash backend/scripts/generate-entities.sh` を実行して再生成し、差分をコミットすること
+- CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
+- カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること
+
+## 環境変数
+
+- `.env` (git 管理) にローカル開発用のデフォルト値を定義している
+- `.env.local` (git 管理外) で個人の環境に合わせた上書きが可能
+- `.mise.toml` の `[env]` セクションで `DATABASE_URL` を `scripts/db-url` の実行結果から解決し、`.env` → `.env.local` の順に自動読み込みされる (mise が有効な環境では環境変数が自動で設定される)。`.env.local` が常に最後に勝つ
+
+## DB 接続
+
+- DB は `mise run db-up` で起動する (`docker compose -f docker-compose.infra.yml up -d --wait` のラッパー、全 worktree 共有)
+- db のホストポートはランダム割り当て (全 worktree 共有) のため、`DATABASE_URL` は mise 実行のたびに `scripts/db-url` で解決する (キャッシュしない)。手動でのポート確認は不要になる
+- `cargo run` 等でローカル直接起動する場合も、mise 経由で常に実ポートを反映した値が使われる
+- `scripts/db-url` は `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` の上書きを読まず、`docker-compose.infra.yml` のデフォルト値を固定で使う。これらを変更する場合は `DATABASE_URL` も `.env.local` で合わせて上書きすること
+- agent をローカル直接起動する場合は、agent 専用の論理 DB (`t_rader_agent_development`) を指す `DATABASE_URL` を `.env.local` で上書きすること (mise が解決する値は backend 用)
+
+## Warnings
+
+- SeaORM は実行時に SQL を構築するため、Docker ビルド時の DB 接続は不要 (旧 `SQLX_OFFLINE` は廃止済み)
+- clippy で `unwrap_used`, `expect_used`, `panic` が deny。本番コードでは `?` と `map_err` を使うこと
+
 ## Code organization rules
 
 ### Split files before they grow past ~500 lines of production code
@@ -51,6 +186,10 @@ For a state that would otherwise take interaction to reach — an open menu/popo
 ### Prefer Storybook over manual browser checks
 
 When you need to check how a component looks in a given state, write or update its story and verify it with `cd frontend && pnpm run storybook:screenshot -- --changed origin/main` (swap `origin/main` for this repo's default branch if it differs) instead of starting a dev server and driving a browser manually. Dropping the ref limits `--changed` to staged/unstaged files only, so it silently runs nothing once the change is committed. The `vrt` CI check already renders and diffs every story on every PR, so this scoped run is enough — running the full `storybook:screenshot` suite instead keeps a headless Chromium instance (a multi-process browser, not a single lightweight process) busy per worker for as long as it takes to get through every story, competing with any other concurrent session or worktree for the same machine's CPU and memory.
+
+## Story のルーターコンテキスト
+
+TanStack Router に依存する component (`useRouter()` 等を呼ぶもの) の story では、`#storybook/story-router` の `createStoryRouter` でルーターコンテキストを提供すること。
 
 ## Visual Regression Testing (VRT)
 
