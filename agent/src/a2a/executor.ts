@@ -58,12 +58,18 @@ export const extractResumeSteps = (message: Message): unknown[] | undefined => {
   return Array.isArray(raw) ? raw : undefined
 }
 
-export const extractDeadlineAt = (message: Message): Date | undefined => {
-  const raw = message.metadata?.['deadline_at']
+const extractDate = (message: Message, key: string): Date | undefined => {
+  const raw = message.metadata?.[key]
   if (typeof raw !== 'string') return undefined
   const parsed = new Date(raw)
   return Number.isNaN(parsed.getTime()) ? undefined : parsed
 }
+
+export const extractDeadlineAt = (message: Message): Date | undefined =>
+  extractDate(message, 'deadline_at')
+
+export const extractAsOf = (message: Message): Date | undefined =>
+  extractDate(message, 'as_of')
 
 const isValidStrategyId = (value: string): boolean => UUID_RE.test(value)
 
@@ -206,6 +212,7 @@ export class TraderAgentExecutor implements AgentExecutor {
     const purpose = extractPurpose(userMessage)
     const resumeSteps = extractResumeSteps(userMessage)
     const deadlineAt = extractDeadlineAt(userMessage)
+    const asOf = extractAsOf(userMessage)
 
     if (rawStrategyId !== undefined && !isValidStrategyId(rawStrategyId)) {
       const rejectedStatus = {
@@ -407,6 +414,7 @@ export class TraderAgentExecutor implements AgentExecutor {
         taskId,
         userMessage: promptMessage,
         resumeSteps,
+        asOf,
         deadlineSignal: deadlineController?.signal,
         onStepsChanged: publishSteps,
       })

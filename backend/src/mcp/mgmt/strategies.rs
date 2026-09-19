@@ -293,8 +293,16 @@ mod tests {
         let rows = strategy_task::Entity::find().all(&db).await.unwrap();
         let purposes: Vec<Option<String>> = rows.iter().map(|r| r.purpose.clone()).collect();
         assert_eq!(purposes, vec![Some("explore".to_string())]);
-        let as_ofs: Vec<bool> = rows.iter().map(|r| r.as_of.is_some()).collect();
-        assert_eq!(as_ofs, vec![true]);
+        let row_as_ofs: Vec<_> = rows.iter().map(|r| r.as_of).collect();
+        assert!(row_as_ofs.iter().all(Option::is_some));
+        let submitted_as_ofs: Vec<_> = fake
+            .submitted
+            .lock()
+            .await
+            .iter()
+            .map(|s| s.as_of)
+            .collect();
+        assert_eq!(submitted_as_ofs, row_as_ofs);
     }
 
     #[derive(Debug, PartialEq, Eq)]

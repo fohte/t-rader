@@ -132,6 +132,8 @@ async fn resume_task_impl(
             purpose: row.purpose.clone(),
             resume_steps: (!resume_steps.is_empty()).then_some(resume_steps),
             deadline_at,
+            // 「同じ実行の続き」なので基準時刻は投入時の値のまま渡す (`now` を使わない)。
+            as_of: row.as_of,
         })
         .await
     {
@@ -222,6 +224,11 @@ mod tests {
     use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
     use crate::testing::{create_test_db, insert_test_strategy};
 
+    /// resume 時の `now` と区別できるよう、投入時刻として十分に過去の固定値を使う。
+    fn original_as_of() -> chrono::DateTime<chrono::FixedOffset> {
+        chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").unwrap()
+    }
+
     async fn insert_task_with_phase(
         db: &DatabaseConnection,
         strategy_id: Uuid,
@@ -242,7 +249,7 @@ mod tests {
             result_text: Set(Some("stale result".to_string())),
             deadline_at: Set(now),
             purpose: Set(purpose.map(str::to_string)),
-            as_of: Set(Some(now)),
+            as_of: Set(Some(original_as_of())),
             auto_resumed_at: NotSet,
             created_at: Set(now),
             updated_at: Set(now),
@@ -396,15 +403,14 @@ mod tests {
                 .await
                 .expect("resume ok");
 
-            let submitted_resume_steps = fake
-                .submitted
-                .lock()
-                .await
-                .first()
-                .expect("submit called once")
-                .resume_steps
-                .clone()
-                .expect("resume_steps present");
+            let (submitted_resume_steps, submitted_as_of) = {
+                let submitted = fake.submitted.lock().await;
+                let req = submitted.first().expect("submit called once");
+                (
+                    req.resume_steps.clone().expect("resume_steps present"),
+                    req.as_of,
+                )
+            };
             let row = strategy_task::Entity::find_by_id(task_id)
                 .one(&db)
                 .await
@@ -415,20 +421,24 @@ mod tests {
             struct ResumeOutcome {
                 submitted_a2a_task_id: String,
                 resume_steps: Vec<serde_json::Value>,
+                submitted_as_of: Option<chrono::DateTime<chrono::FixedOffset>>,
                 row_a2a_task_id: Option<String>,
                 row_phase: StrategyTaskPhase,
                 row_error_summary: Option<String>,
                 row_result_text: Option<String>,
+                row_as_of: Option<chrono::DateTime<chrono::FixedOffset>>,
             }
 
             assert_eq!(
                 ResumeOutcome {
                     submitted_a2a_task_id: submitted.a2a_task_id,
                     resume_steps: submitted_resume_steps,
+                    submitted_as_of,
                     row_a2a_task_id: row.a2a_task_id,
                     row_phase: row.phase,
                     row_error_summary: row.error_summary,
                     row_result_text: row.result_text,
+                    row_as_of: row.as_of,
                 },
                 ResumeOutcome {
                     submitted_a2a_task_id: a2a_task_id.clone(),
@@ -454,10 +464,12 @@ mod tests {
                             "span_id": "span-1",
                         }),
                     ],
+                    submitted_as_of: Some(original_as_of()),
                     row_a2a_task_id: Some(a2a_task_id.clone()),
                     row_phase: StrategyTaskPhase::Running,
                     row_error_summary: None,
                     row_result_text: None,
+                    row_as_of: Some(original_as_of()),
                 },
                 "start phase: {start_label}",
             );

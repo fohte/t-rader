@@ -29,6 +29,7 @@ import {
   fromStepJson,
   strategyTaskStepJsonSchema,
 } from '#strategy-agent/agent-graph/step'
+import { withAsOf } from '#strategy-agent/as-of'
 import { createCallDurationMiddleware } from '#strategy-agent/call-duration-middleware'
 import { createDeadlineMiddleware } from '#strategy-agent/deadline-middleware'
 import {
@@ -316,6 +317,7 @@ export interface RunStrategyAgentInput {
   readonly taskId: string
   readonly userMessage: Message
   readonly resumeSteps: unknown[] | undefined
+  readonly asOf: Date | undefined
   readonly deadlineSignal: AbortSignal | undefined
   readonly onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void
 }
@@ -330,9 +332,11 @@ export const runStrategyAgent = async (
     taskId,
     userMessage,
     resumeSteps,
+    asOf,
     deadlineSignal,
     onStepsChanged,
   } = input
+  const promptText = withAsOf(extractMessageText(userMessage), asOf)
   const previousSteps = parseResumeSteps(resumeSteps, strategyId)
   const mcpClient = deps.createMcpClient(strategyId, taskId)
 
@@ -396,7 +400,7 @@ export const runStrategyAgent = async (
                     strategyId,
                     `${taskId}:${executionStepId}`,
                   ),
-                originalPromptText: extractMessageText(userMessage),
+                originalPromptText: promptText,
                 ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
                 ...(previousSteps !== undefined ? { previousSteps } : {}),
                 ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
@@ -429,9 +433,7 @@ export const runStrategyAgent = async (
                     ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
                   })
                   .invoke({
-                    messages: [
-                      new HumanMessage(extractMessageText(userMessage)),
-                    ],
+                    messages: [new HumanMessage(promptText)],
                   }),
                 (error) => error,
               ),

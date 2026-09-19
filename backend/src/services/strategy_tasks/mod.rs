@@ -4,7 +4,7 @@
 //! hook trigger の 4 経路から呼ばれる。strategy_task 行 (Pending) の先行 INSERT →
 //! t-rader-agent 内部 API への投入 → 失敗時の Failed への更新までを 1 関数に集約する。
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, SubsecRound};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
@@ -95,10 +95,10 @@ pub struct TaskStatusView {
     /// 投入時に指定された purpose。`submit_task` は常に `Some` を書き込むため、`None` は
     /// このカラムが追加される前に作成された行に限られる。
     pub purpose: Option<String>,
-    /// 実行の論理的な基準時刻。監査目的の記録であり、各フェーズが実際に参照した
-    /// データの取得時刻がこの時刻に揃うことは保証しない (データ取得層は基準時刻を
-    /// 受け取らず、呼び出された瞬間の外部データをそのまま返す)。`None` はこの
-    /// カラムが追加される前に作成された行に限られる。
+    /// 実行の論理的な基準時刻。監査用に記録し、agent がプロンプトにも含めて LLM に伝える。
+    /// 各フェーズが実際に参照したデータの取得時刻がこの時刻に揃うことは保証しない
+    /// (データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データをそのまま返す)。
+    /// `None` はこのカラムが追加される前に作成された行に限られる。
     pub as_of: Option<DateTime<FixedOffset>>,
 }
 
@@ -188,6 +188,8 @@ pub async fn submit_task(
     let task_id = Uuid::new_v4();
     let now = chrono::Utc::now().fixed_offset();
     let deadline_at = now + DEADLINE_DURATION;
+    // timestamptz は µs 精度。DB に保存される値と agent に渡す値を一致させておく。
+    let as_of = now.trunc_subsecs(6);
 
     let pending = strategy_task::ActiveModel {
         task_id: Set(task_id),
@@ -200,7 +202,7 @@ pub async fn submit_task(
         result_text: Set(None),
         deadline_at: Set(deadline_at),
         purpose: Set(purpose.clone()),
-        as_of: Set(Some(now)),
+        as_of: Set(Some(as_of)),
         auto_resumed_at: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
@@ -216,6 +218,7 @@ pub async fn submit_task(
             purpose,
             resume_steps: None,
             deadline_at,
+            as_of: Some(as_of),
         })
         .await
     {

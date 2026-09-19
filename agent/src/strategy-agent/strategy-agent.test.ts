@@ -73,6 +73,7 @@ const buildRunInput = (
   taskId: 'task-1',
   userMessage: buildUserMessage('do the thing'),
   resumeSteps: undefined,
+  asOf: undefined,
   deadlineSignal: undefined,
   ...overrides,
 })
@@ -183,6 +184,65 @@ const buildDeps = (
 }
 
 describe('runStrategyAgent', () => {
+  it('passes the as_of time to the agent as part of the human message', async () => {
+    let invokedMessages: unknown
+    const { deps } = buildDeps({
+      agentInvoke: (input) => {
+        invokedMessages = input.messages
+        return Promise.resolve({
+          structuredResponse: { status: 'completed', message: 'done' },
+        })
+      },
+    })
+
+    await runStrategyAgent(
+      deps,
+      buildRunInput({ asOf: new Date('2026-01-02T03:04:05Z') }),
+    )
+
+    expect(invokedMessages).toEqual([
+      new HumanMessage(
+        [
+          '基準時刻 (as_of): 2026-01-02T03:04:05.000Z',
+          'これは実行の論理的な基準時刻であり、参照するデータがすべてこの時刻のものであることは保証されない。',
+          'do the thing',
+        ].join('\n\n'),
+      ),
+    ])
+  })
+
+  it('passes the as_of time to the phase agent when agent_graph is configured', async () => {
+    let invokedMessages: unknown
+    const { deps } = buildDeps({
+      agentGraph:
+        'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
+      agentInvoke: () =>
+        Promise.reject(new Error('buildAgent should not be invoked')),
+      buildPhaseAgentInvoke: (input) => {
+        invokedMessages = input.messages
+        return Promise.resolve({ structuredResponse: {} })
+      },
+    })
+
+    await runStrategyAgent(
+      deps,
+      buildRunInput({ asOf: new Date('2026-01-02T03:04:05Z') }),
+    )
+
+    expect(invokedMessages).toEqual([
+      new HumanMessage(
+        [
+          [
+            '基準時刻 (as_of): 2026-01-02T03:04:05.000Z',
+            'これは実行の論理的な基準時刻であり、参照するデータがすべてこの時刻のものであることは保証されない。',
+            'do the thing',
+          ].join('\n\n'),
+          'do p',
+        ].join('\n\n---\n\n'),
+      ),
+    ])
+  })
+
   it('fetches the agent config, builds the agent with it, and maps a completed structured response', async () => {
     const mcpTools = [buildFakeTool('query_data'), buildFakeTool('write_note')]
     const { deps, calls } = buildDeps({

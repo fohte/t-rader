@@ -116,6 +116,36 @@ describe('POST /internal/tasks', () => {
     })
   })
 
+  it('includes as_of and deadline_at in the message metadata without mixing them up', async () => {
+    let capturedParams: MessageSendParams | undefined
+    const app = buildApp(
+      buildStubHandler({
+        sendMessage: (params) => {
+          capturedParams = params
+          return Promise.resolve(buildTask({ id: 'task-1' }))
+        },
+      }),
+    )
+
+    const res = await app.request('/internal/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        strategy_id: '11111111-1111-1111-1111-111111111111',
+        prompt: 'do the thing',
+        deadline_at: '2026-01-01T00:15:00.000Z',
+        as_of: '2026-01-01T00:00:00.000Z',
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(capturedParams?.message.metadata).toEqual({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+      deadline_at: '2026-01-01T00:15:00.000Z',
+      as_of: '2026-01-01T00:00:00.000Z',
+    })
+  })
+
   it('returns 503 without sending a message once shutdown starts, and 201 before it', async () => {
     let sendMessageCalled = false
     let shuttingDown = false
