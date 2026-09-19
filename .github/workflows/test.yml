@@ -477,7 +477,7 @@ jobs:
           version: 2026.9.4
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@50414676f9f5d50a65992c6dd2ed02641263226c # v2.82.10
+        uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
         with:
           tool: cargo-llvm-cov
 
