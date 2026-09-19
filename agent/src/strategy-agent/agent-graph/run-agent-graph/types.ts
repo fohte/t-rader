@@ -48,8 +48,10 @@ export interface RunAgentGraphContext {
   // 受け取った配列全体を steps の最新状態として扱う (差分ではない)。
   readonly onStepsChanged?: (steps: readonly StrategyTaskStep[]) => void
   // resume 対象タスクの全ステップ (backend の全 strategy_task_step 行)。
-  // status='completed' のものだけスキップ対象になり、それ以外 (failed/running)
-  // は元の executionStepId を再利用して再実行する。
+  // 未完了 (failed/running) のステップを含む最初のフェーズより手前は completed の
+  // ステップをスキップし、そのフェーズでは未完了の要素だけを、それより後ろの
+  // フェーズは completed も含めて再実行する。再実行するステップは元の
+  // executionStepId を再利用する。
   readonly previousSteps?: readonly StrategyTaskStep[]
   // 実行全体で共有する signal。abort 済みなら新規フェーズ/要素の実行を
   // 開始しない (モデル呼び出し自体の中断は deadline-middleware が担う)。

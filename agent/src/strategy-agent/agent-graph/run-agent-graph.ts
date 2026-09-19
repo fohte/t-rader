@@ -137,6 +137,7 @@ const runForEachItems = async (
   recorder: StepRecorder,
   requiredArrayFields: ReadonlySet<string>,
   previousStepsForPhase: readonly StrategyTaskStep[],
+  reuseCompleted: boolean,
 ): Promise<Result<unknown[], unknown>> => {
   // 固定サイズのチャンク分割による並列数制御。セマフォより単純だが、フェーズあたりの
   // レイテンシ差が大きい場合は待ち時間が偏る。偏りが問題になれば worker pool 方式に置き換える。
@@ -155,7 +156,7 @@ const runForEachItems = async (
         const index = start + offset
         const itemLabel = extractItemLabel(item, phase.labelField)
         const matched = previousStepMatcher.take(item)
-        if (matched?.status === 'completed') {
+        if (reuseCompleted && matched?.status === 'completed') {
           recorder.recordExisting(matched)
           return Promise.resolve(ok(matched.output))
         }
@@ -218,6 +219,7 @@ const runPhase = async (
   priorResults: Readonly<Record<string, unknown>>,
   recorder: StepRecorder,
   requiredArrayFieldsByPhase: ReadonlyMap<string, ReadonlySet<string>>,
+  reuseCompleted: boolean,
 ): Promise<Result<unknown, unknown>> => {
   if (isDeadlineExceeded(context)) {
     return err(new Error(DEADLINE_EXCEEDED_MESSAGE))
@@ -228,7 +230,7 @@ const runPhase = async (
 
   if (phase.forEach === undefined) {
     const previous = findPreviousStepForPhase(context.previousSteps, phase.key)
-    if (previous?.status === 'completed') {
+    if (reuseCompleted && previous?.status === 'completed') {
       recorder.recordExisting(previous)
       return ok(previous.output)
     }
@@ -269,6 +271,7 @@ const runPhase = async (
     recorder,
     requiredArrayFields,
     previousStepsForPhase,
+    reuseCompleted,
   )
 }
 
@@ -281,7 +284,18 @@ export const runAgentGraph = async (
   const recorder = createStepRecorder(context.onStepsChanged)
   const requiredArrayFieldsByPhase = collectRequiredArrayFields(config.phases)
 
-  for (const phase of config.phases) {
+  // for_each は 1 件でも成功すればフェーズ成功として返すため、部分失敗したタスクは
+  // 失敗した要素を抱えたまま後続フェーズまで完了している。やり直して復活した要素の出力を
+  // 後続フェーズに反映するには、最初の未完了ステップを含むフェーズより後ろは
+  // completed でも再実行する必要がある。
+  const firstIncompleteIndex = config.phases.findIndex(
+    (phase) =>
+      context.previousSteps?.some(
+        (s) => s.phaseKey === phase.key && s.status !== 'completed',
+      ) === true,
+  )
+
+  for (const [index, phase] of config.phases.entries()) {
     const phaseResult = await runPhase(
       deps,
       phase,
@@ -289,6 +303,7 @@ export const runAgentGraph = async (
       results,
       recorder,
       requiredArrayFieldsByPhase,
+      firstIncompleteIndex === -1 || index <= firstIncompleteIndex,
     )
     if (phaseResult.isErr()) {
       return buildFailureResult(phase, phaseResult.error)
