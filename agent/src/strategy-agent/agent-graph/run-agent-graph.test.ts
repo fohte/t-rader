@@ -2036,10 +2036,15 @@ describe('runAgentGraph', () => {
         plan: { hypotheses: [{ title: 'H1' }, { title: 'H2' }] },
         investigate: [{ note: 'H1-OLD' }, { note: 'H2-NEW' }],
       }
-      // 復活した H2 の review は前回の step が無いので新規採番される (実行ごとに
-      // 変わる値のため、実測値が UUID であることを確認した上で期待値に使う)。
+      // 復活した H2 の review は前回の step が無いので新規採番される。実行ごとに
+      // 変わる値のため、実測値が UUID で、既存のどの step の id とも衝突しない
+      // (= 別ステップとして write_note の upsert キーが分かれる) ことを確認した上で
+      // 期待値に使う。
       const freshReviewId = calls[2]?.executionStepId
       expect(freshReviewId).toMatch(UUID_PATTERN)
+      expect([PLAN_ID, H1_ID, H2_ID, DOWNSTREAM_ID]).not.toContain(
+        freshReviewId,
+      )
       expect(calls).toEqual([
         {
           systemPrompt: 'AGENTS',
