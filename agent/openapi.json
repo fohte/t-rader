@@ -58,6 +58,10 @@
           "deadline_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { TraderAgentExecutorDeps } from '#a2a/executor'
 import {
+  extractAsOf,
   extractDeadlineAt,
   extractPurpose,
   extractResumeSteps,
@@ -141,6 +142,21 @@ describe('extractDeadlineAt', () => {
     expect(
       extractDeadlineAt(buildUserMessage({ deadline_at: 'not-a-date' })),
     ).toBeUndefined()
+  })
+})
+
+describe('extractAsOf', () => {
+  it.each([
+    [
+      'a valid date string',
+      { as_of: '2026-01-01T00:00:00.000Z' },
+      new Date('2026-01-01T00:00:00.000Z'),
+    ],
+    ['absent metadata', undefined, undefined],
+    ['a non-string value', { as_of: 123 }, undefined],
+    ['an invalid date string', { as_of: 'not-a-date' }, undefined],
+  ])('reads %s', (_name, metadata, expected) => {
+    expect(extractAsOf(buildUserMessage(metadata))).toEqual(expected)
   })
 })
 
@@ -316,6 +332,25 @@ describe('TraderAgentExecutor', () => {
     await executor.execute(requestContext, eventBus)
 
     expect(calls).toEqual([expect.any(AbortSignal)])
+  })
+
+  it('forwards as_of from message metadata to runStrategyAgent', async () => {
+    const calls: (Date | undefined)[] = []
+    const executor = buildExecutor({
+      runStrategyAgent: (input) => {
+        calls.push(input.asOf)
+        return Promise.resolve(defaultStrategyAgentResult)
+      },
+    })
+    const userMessage = buildUserMessage({
+      strategy_id: '11111111-1111-1111-1111-111111111111',
+      as_of: '2026-01-01T00:00:00.000Z',
+    })
+    const requestContext = new RequestContext(userMessage, 'task-22', 'ctx-22')
+
+    await executor.execute(requestContext, new FakeEventBus())
+
+    expect(calls).toEqual([new Date('2026-01-01T00:00:00.000Z')])
   })
 
   it('forwards undefined to runStrategyAgent when deadline_at is absent from message metadata', async () => {

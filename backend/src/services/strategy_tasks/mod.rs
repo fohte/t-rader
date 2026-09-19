@@ -4,7 +4,7 @@
 //! hook trigger の 4 経路から呼ばれる。strategy_task 行 (Pending) の先行 INSERT →
 //! t-rader-agent 内部 API への投入 → 失敗時の Failed への更新までを 1 関数に集約する。
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, SubsecRound};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
@@ -188,6 +188,8 @@ pub async fn submit_task(
     let task_id = Uuid::new_v4();
     let now = chrono::Utc::now().fixed_offset();
     let deadline_at = now + DEADLINE_DURATION;
+    // timestamptz は µs 精度。DB に保存される値と agent に渡す値を一致させておく。
+    let as_of = now.trunc_subsecs(6);
 
     let pending = strategy_task::ActiveModel {
         task_id: Set(task_id),
@@ -200,7 +202,7 @@ pub async fn submit_task(
         result_text: Set(None),
         deadline_at: Set(deadline_at),
         purpose: Set(purpose.clone()),
-        as_of: Set(Some(now)),
+        as_of: Set(Some(as_of)),
         auto_resumed_at: NotSet,
         created_at: NotSet,
         updated_at: NotSet,
@@ -216,6 +218,7 @@ pub async fn submit_task(
             purpose,
             resume_steps: None,
             deadline_at,
+            as_of: Some(as_of),
         })
         .await
     {

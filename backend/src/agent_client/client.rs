@@ -72,6 +72,9 @@ pub struct SubmitAgentTask {
     pub resume_steps: Option<Vec<serde_json::Value>>,
     /// この投入の締切。agent 側で実行全体を打ち切るための signal に使われる。
     pub deadline_at: DateTime<FixedOffset>,
+    /// 実行の論理的な基準時刻 (`strategy_task.as_of`)。agent がプロンプトに含めて LLM に伝える。
+    /// resume でも初回投入時の値を渡す。`None` は `as_of` カラム追加前に作成された行の resume に限られる。
+    pub as_of: Option<DateTime<FixedOffset>>,
 }
 
 #[derive(Debug, Clone)]
@@ -249,6 +252,7 @@ impl AgentTaskClient for HttpAgentTaskClient {
             purpose,
             resume_steps: req.resume_steps.unwrap_or_default(),
             deadline_at: Some(req.deadline_at.with_timezone(&chrono::Utc)),
+            as_of: req.as_of.map(|t| t.with_timezone(&chrono::Utc)),
         };
 
         let response = self
@@ -471,6 +475,7 @@ mod tests {
                 purpose: None,
                 resume_steps: None,
                 deadline_at: test_deadline_at(),
+                as_of: None,
             })
             .await
             .expect("submit ok");
@@ -506,6 +511,42 @@ mod tests {
                 purpose,
                 resume_steps: None,
                 deadline_at: test_deadline_at(),
+                as_of: None,
+            })
+            .await
+            .expect("submit ok");
+    }
+
+    #[rstest]
+    #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
+    #[case::some(Some(test_deadline_at()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z", "as_of": "2020-01-01T00:00:00Z" }))]
+    #[tokio::test]
+    async fn submit_body_includes_as_of_only_when_some(
+        #[case] as_of: Option<DateTime<FixedOffset>>,
+        #[case] expected_body: serde_json::Value,
+    ) {
+        let server = MockServer::start().await;
+        let strategy_id = uuid::Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
+
+        Mock::given(method("POST"))
+            .and(path("/internal/tasks"))
+            .and(body_json(expected_body))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "task_id": "task-abc",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = http_client(&server);
+        client
+            .submit(SubmitAgentTask {
+                strategy_id,
+                prompt: "hello".into(),
+                purpose: None,
+                resume_steps: None,
+                deadline_at: test_deadline_at(),
+                as_of,
             })
             .await
             .expect("submit ok");
@@ -548,6 +589,7 @@ mod tests {
                 purpose: None,
                 resume_steps,
                 deadline_at: test_deadline_at(),
+                as_of: None,
             })
             .await
             .expect("submit ok");
@@ -571,6 +613,7 @@ mod tests {
                 purpose: None,
                 resume_steps: None,
                 deadline_at: test_deadline_at(),
+                as_of: None,
             })
             .await
             .expect_err("expected error");

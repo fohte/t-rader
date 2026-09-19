@@ -34,6 +34,8 @@ const submitTaskBodySchema = z
     resume_steps: z.array(z.unknown()).optional(),
     // 省略時は deadline による実行の打ち切りを行わない。
     deadline_at: z.string().datetime().optional(),
+    // 実行の論理的な基準時刻 (strategy_task.as_of)。resume でも初回投入時の値が届く。
+    as_of: z.string().datetime().optional(),
   })
   .openapi('SubmitTaskBody')
 
@@ -86,6 +88,7 @@ const buildUserMessage = (
   purpose: string | undefined,
   resumeSteps: unknown[] | undefined,
   deadlineAt: string | undefined,
+  asOf: string | undefined,
 ): Message => ({
   kind: 'message',
   role: 'user',
@@ -96,6 +99,7 @@ const buildUserMessage = (
     ...(purpose !== undefined ? { purpose } : {}),
     ...(resumeSteps !== undefined ? { resume_steps: resumeSteps } : {}),
     ...(deadlineAt !== undefined ? { deadline_at: deadlineAt } : {}),
+    ...(asOf !== undefined ? { as_of: asOf } : {}),
   },
 })
 
@@ -211,7 +215,7 @@ export const mountInternalApiRoutes = (
       if (isShuttingDown?.() === true) {
         return c.json({ error: 'agent is shutting down' }, 503)
       }
-      const { strategy_id, prompt, purpose, resume_steps, deadline_at } =
+      const { strategy_id, prompt, purpose, resume_steps, deadline_at, as_of } =
         c.req.valid('json')
       const message = buildUserMessage(
         strategy_id,
@@ -219,6 +223,7 @@ export const mountInternalApiRoutes = (
         purpose,
         resume_steps,
         deadline_at,
+        as_of,
       )
       const params: MessageSendParams = {
         message,
