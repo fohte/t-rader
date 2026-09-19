@@ -142,10 +142,10 @@ impl MgmtServer {
         self.submit_strategy_task_inner(params).await.map(Json)
     }
 
-    /// 失敗した戦略タスクを、成功済みステップを再実行せずに同じ行のまま再開する
+    /// 失敗した (for_each の部分失敗を含む) 戦略タスクを、同じ行のまま再開する
     #[tool(
         name = "resume_strategy_task",
-        description = "Resume a previously failed strategy task in place. Steps that already completed are skipped (their saved output is reused for downstream phases); only the steps that failed (or were left running) are re-run, reusing their original execution_step_id so side effects like notes aren't duplicated. Fails if the task is not currently in the 'failed' phase."
+        description = "Resume a previously failed strategy task in place. Applies to tasks in the 'failed' phase, and to tasks in the 'completed' phase that still have failed steps (a for_each phase where only some items failed). Phases before the first one containing a non-completed step are skipped (their saved output is reused); within that phase only the failed (or left running) items are re-run, and every later phase is re-run so recovered items reach it. Re-run steps reuse their original execution_step_id, so writes keyed by it (notes, annotations) are updated in place; other writes (e.g. predictions, hypothesis change proposals) made by a re-run phase are duplicated. Fails if the task is neither in the 'failed' phase nor a 'completed' task with failed steps."
     )]
     async fn resume_strategy_task(
         &self,

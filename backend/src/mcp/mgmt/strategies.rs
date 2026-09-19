@@ -160,8 +160,8 @@ fn map_resume_error(err: ResumeTaskError) -> McpError {
         ResumeTaskError::NotFound(id) => {
             McpError::resource_not_found(format!("strategy task {id} not found"), None)
         }
-        ResumeTaskError::NotFailed(id, phase) => invalid_params(format!(
-            "strategy task {id} is not failed (current phase: {phase})"
+        ResumeTaskError::NotResumable(id, phase) => invalid_params(format!(
+            "strategy task {id} is not resumable (current phase: {phase})"
         )),
         ResumeTaskError::Database(db_err) => db_error(db_err),
         ResumeTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),

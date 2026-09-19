@@ -1796,6 +1796,291 @@ describe('runAgentGraph', () => {
       ])
     })
   })
+
+  // for_each は 1 件でも成功すればフェーズ成功として返すため、部分失敗したタスクは
+  // 失敗した要素を抱えたまま後続フェーズまで completed で終わっている。
+  describe('resume after a partial for_each failure', () => {
+    const PLAN_ID = '11111111-1111-1111-1111-111111111111'
+    const H1_ID = '22222222-2222-2222-2222-222222222222'
+    const H2_ID = '33333333-3333-3333-3333-333333333333'
+    const DOWNSTREAM_ID = '44444444-4444-4444-4444-444444444444'
+
+    const buildPhases = (): AgentGraphConfig['phases'] => [
+      {
+        key: 'plan',
+        label: 'Plan',
+        model: 'm',
+        prompt: 'do plan',
+        skills: [],
+        tools: [],
+        output: { hypotheses: { type: 'array' } },
+      },
+      {
+        key: 'investigate',
+        label: 'Investigate',
+        model: 'm',
+        prompt: 'do investigate',
+        forEach: 'plan.hypotheses',
+        labelField: 'title',
+        skills: [],
+        tools: [],
+        output: {},
+      },
+    ]
+
+    const planStep = buildPreviousStep({
+      phaseKey: 'plan',
+      label: 'Plan',
+      executionStepId: PLAN_ID,
+      status: 'completed',
+      output: { hypotheses: [{ title: 'H1' }, { title: 'H2' }] },
+    })
+    const h1Step = buildPreviousStep({
+      executionStepId: H1_ID,
+      status: 'completed',
+      item: { title: 'H1' },
+      itemLabel: 'H1',
+      output: { note: 'H1-OLD' },
+    })
+    const h2FailedStep = buildPreviousStep({
+      executionStepId: H2_ID,
+      status: 'failed',
+      item: { title: 'H2' },
+      itemLabel: 'H2',
+      error: 'boom',
+    })
+
+    it('re-runs only the failed item, then re-runs the downstream phase with its original executionStepId', async () => {
+      const { deps, calls } = buildDeps((call) =>
+        Promise.resolve({
+          structuredResponse: call.messageText.includes('do investigate')
+            ? { note: 'H2-NEW' }
+            : { summary: 'SUMMARY-NEW' },
+        }),
+      )
+      const notifications: (readonly StrategyTaskStep[])[] = []
+
+      const result = await runAgentGraph(
+        deps,
+        {
+          phases: [
+            ...buildPhases(),
+            {
+              key: 'summarize',
+              label: 'Summarize',
+              model: 'm',
+              prompt: 'do summarize',
+              skills: [],
+              tools: [],
+              output: {},
+            },
+          ],
+        },
+        {
+          agentsMd: 'AGENTS',
+          skills: {},
+          createStepMcpClient: buildStepMcpClientFactory(),
+          originalPromptText: 'req',
+          onStepsChanged: (steps) => notifications.push(steps),
+          previousSteps: [
+            planStep,
+            h1Step,
+            h2FailedStep,
+            buildPreviousStep({
+              phaseKey: 'summarize',
+              label: 'Summarize',
+              executionStepId: DOWNSTREAM_ID,
+              status: 'completed',
+              output: { summary: 'SUMMARY-OLD' },
+            }),
+          ],
+        },
+      )
+
+      expect(result).toEqual({
+        status: 'completed',
+        message:
+          '3フェーズの実行が完了しました (Plan → Investigate → Summarize)',
+      })
+      // plan と H1 は完了済みなので呼ばれず、H2 のやり直し結果 (H2-NEW) が
+      // 完了済みだった summarize にも渡る。
+      expect(calls).toEqual([
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do investigate',
+            item: { title: 'H2' },
+            priorResults: {
+              plan: { hypotheses: [{ title: 'H1' }, { title: 'H2' }] },
+            },
+          }),
+          executionStepId: H2_ID,
+        },
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do summarize',
+            item: undefined,
+            priorResults: {
+              plan: { hypotheses: [{ title: 'H1' }, { title: 'H2' }] },
+              investigate: [{ note: 'H1-OLD' }, { note: 'H2-NEW' }],
+            },
+          }),
+          executionStepId: DOWNSTREAM_ID,
+        },
+      ])
+      const last = notifications.at(-1)
+      const timestamps = {
+        startedAt: '<started-at>',
+        finishedAt: '<finished-at>',
+      }
+      expect(
+        last === undefined ? undefined : normalizeStepTimestamps(last),
+      ).toEqual([
+        // スキップした plan / H1 は前回のステップがそのまま残る。
+        {
+          ...planStep,
+          ...timestamps,
+          executionStepId: '<execution-step-id-1>',
+        },
+        {
+          ...h1Step,
+          ...timestamps,
+          executionStepId: '<execution-step-id-2>',
+        },
+        // やり直した H2 と summarize は新しい出力で completed になる。
+        {
+          phaseKey: 'investigate',
+          executionStepId: '<execution-step-id-3>',
+          label: 'Investigate',
+          model: 'm',
+          status: 'completed',
+          item: { title: 'H2' },
+          itemLabel: 'H2',
+          output: { note: 'H2-NEW' },
+          ...timestamps,
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+        {
+          phaseKey: 'summarize',
+          executionStepId: '<execution-step-id-4>',
+          label: 'Summarize',
+          model: 'm',
+          status: 'completed',
+          output: { summary: 'SUMMARY-NEW' },
+          ...timestamps,
+          traceId: NOOP_TRACE_ID,
+          spanId: NOOP_SPAN_ID,
+        },
+      ])
+    })
+
+    it('re-runs a downstream for_each phase for every item, reusing existing executionStepIds and giving the recovered item a fresh one', async () => {
+      const { deps, calls } = buildDeps((call) =>
+        Promise.resolve({
+          structuredResponse: call.messageText.includes('do investigate')
+            ? { note: 'H2-NEW' }
+            : { verdict: 'REVIEW-NEW' },
+        }),
+      )
+
+      const result = await runAgentGraph(
+        deps,
+        {
+          phases: [
+            ...buildPhases(),
+            {
+              key: 'review',
+              label: 'Review',
+              model: 'm',
+              prompt: 'do review',
+              forEach: 'plan.hypotheses',
+              labelField: 'title',
+              skills: [],
+              tools: [],
+              output: {},
+            },
+          ],
+        },
+        {
+          agentsMd: 'AGENTS',
+          skills: {},
+          createStepMcpClient: buildStepMcpClientFactory(),
+          originalPromptText: 'req',
+          previousSteps: [
+            planStep,
+            h1Step,
+            h2FailedStep,
+            // review は H1 の分だけ完了していた (H2 は investigate が失敗したため未着手)。
+            buildPreviousStep({
+              phaseKey: 'review',
+              label: 'Review',
+              executionStepId: DOWNSTREAM_ID,
+              status: 'completed',
+              item: { title: 'H1' },
+              itemLabel: 'H1',
+              output: { verdict: 'REVIEW-OLD' },
+            }),
+          ],
+        },
+      )
+
+      expect(result).toEqual({
+        status: 'completed',
+        message: '3フェーズの実行が完了しました (Plan → Investigate → Review)',
+      })
+      const priorResults = {
+        plan: { hypotheses: [{ title: 'H1' }, { title: 'H2' }] },
+        investigate: [{ note: 'H1-OLD' }, { note: 'H2-NEW' }],
+      }
+      // 復活した H2 の review は前回の step が無いので新規採番される。実行ごとに
+      // 変わる値のため、実測値が UUID で、既存のどの step の id とも衝突しない
+      // (= 別ステップとして write_note の upsert キーが分かれる) ことを確認した上で
+      // 期待値に使う。
+      const freshReviewId = calls[2]?.executionStepId
+      expect(freshReviewId).toMatch(UUID_PATTERN)
+      expect([PLAN_ID, H1_ID, H2_ID, DOWNSTREAM_ID]).not.toContain(
+        freshReviewId,
+      )
+      expect(calls).toEqual([
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do investigate',
+            item: { title: 'H2' },
+            priorResults: {
+              plan: { hypotheses: [{ title: 'H1' }, { title: 'H2' }] },
+            },
+          }),
+          executionStepId: H2_ID,
+        },
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do review',
+            item: { title: 'H1' },
+            priorResults,
+          }),
+          executionStepId: DOWNSTREAM_ID,
+        },
+        {
+          systemPrompt: 'AGENTS',
+          messageText: buildPhaseMessageText({
+            originalPromptText: 'req',
+            phasePrompt: 'do review',
+            item: { title: 'H2' },
+            priorResults,
+          }),
+          executionStepId: freshReviewId,
+        },
+      ])
+    })
+  })
 })
 
 describe('buildPhaseMessageText', () => {
