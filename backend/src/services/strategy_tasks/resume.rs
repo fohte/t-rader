@@ -25,11 +25,11 @@ pub enum ResumeTaskError {
 }
 
 /// failed な戦略タスク、または for_each の部分失敗で failed なステップを抱えたまま
-/// completed になった戦略タスクを、成功済みステップを再実行せずに同じ行のまま再開する。
+/// completed になった戦略タスクを同じ行のまま再開する。
 ///
 /// 新しい strategy_task 行は作らない (a2a_task_id だけ差し替え、phase を Running に戻す)。
 /// 全 strategy_task_step 行 (completed/failed/running 問わず) を `resume_steps` として
-/// agent に渡し、どのステップをスキップするか (status=completed のみ) は agent 側の判断に
+/// agent に渡し、どのステップを再利用し、どのステップを再実行するかは agent 側の判断に
 /// 委ねる — backend は中身を解釈しない。
 pub async fn resume_task(
     db: &DatabaseConnection,
@@ -336,101 +336,6 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn resume_task_resumes_a_completed_task_that_has_a_failed_step(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
-        let task_id = insert_task_with_phase(
-            &db,
-            strategy_id,
-            StrategyTaskPhase::Completed,
-            "prompt text",
-            None,
-        )
-        .await;
-        let completed_step_id = Uuid::new_v4();
-        let failed_step_id = Uuid::new_v4();
-        insert_task_step(
-            &db,
-            task_id,
-            completed_step_id,
-            "investigate",
-            StrategyTaskStepStatus::Completed,
-            1,
-        )
-        .await;
-        insert_task_step(
-            &db,
-            task_id,
-            failed_step_id,
-            "investigate",
-            StrategyTaskStepStatus::Failed,
-            2,
-        )
-        .await;
-        let fake = Arc::new(FakeAgentTaskClient::new());
-        fake.set_next_task_id("agent-task-resumed").await;
-        let agent_client: SharedAgentTaskClient = fake.clone();
-        let started_at = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
-            .unwrap()
-            .to_rfc3339();
-
-        resume_task(&db, &agent_client, task_id)
-            .await
-            .expect("completed task with a failed step is resumable");
-
-        let submitted = fake.submitted.lock().await;
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .expect("row still exists");
-
-        #[derive(Debug, PartialEq)]
-        struct ResumeOutcome {
-            submitted_count: usize,
-            resume_steps: Option<Vec<serde_json::Value>>,
-            row_phase: StrategyTaskPhase,
-            row_a2a_task_id: Option<String>,
-        }
-
-        assert_eq!(
-            ResumeOutcome {
-                submitted_count: submitted.len(),
-                resume_steps: submitted.first().and_then(|s| s.resume_steps.clone()),
-                row_phase: row.phase,
-                row_a2a_task_id: row.a2a_task_id,
-            },
-            ResumeOutcome {
-                submitted_count: 1,
-                resume_steps: Some(vec![
-                    serde_json::json!({
-                        "execution_step_id": completed_step_id,
-                        "phase_key": "investigate",
-                        "label": "investigate",
-                        "model": "m",
-                        "status": "completed",
-                        "started_at": started_at,
-                        "trace_id": "trace-1",
-                        "span_id": "span-1",
-                    }),
-                    serde_json::json!({
-                        "execution_step_id": failed_step_id,
-                        "phase_key": "investigate",
-                        "label": "investigate",
-                        "model": "m",
-                        "status": "failed",
-                        "started_at": started_at,
-                        "trace_id": "trace-1",
-                        "span_id": "span-1",
-                    }),
-                ]),
-                row_phase: StrategyTaskPhase::Running,
-                row_a2a_task_id: Some("agent-task-resumed".to_string()),
-            },
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
     async fn resume_task_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
@@ -442,113 +347,121 @@ mod tests {
         assert!(matches!(err, ResumeTaskError::NotFound(id) if id == task_id));
     }
 
+    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
+    // Completed は for_each の部分失敗で failed なステップを抱えたまま終わったタスク。
     #[sqlx::test(migrations = false)]
     async fn resume_task_resubmits_all_steps_and_updates_the_row_in_place(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
-        let task_id = insert_task_with_phase(
-            &db,
-            strategy_id,
-            StrategyTaskPhase::Failed,
-            "prompt text",
-            Some("explore"),
-        )
-        .await;
-        let completed_step_id = Uuid::new_v4();
-        let failed_step_id = Uuid::new_v4();
-        insert_task_step(
-            &db,
-            task_id,
-            completed_step_id,
-            "plan",
-            StrategyTaskStepStatus::Completed,
-            1,
-        )
-        .await;
-        insert_task_step(
-            &db,
-            task_id,
-            failed_step_id,
-            "investigate",
-            StrategyTaskStepStatus::Failed,
-            2,
-        )
-        .await;
-        let fake = Arc::new(FakeAgentTaskClient::new());
-        fake.set_next_task_id("agent-task-resumed").await;
-        let agent_client: SharedAgentTaskClient = fake.clone();
-        let started_at = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
-            .unwrap()
-            .to_rfc3339();
+        for start_phase in [StrategyTaskPhase::Failed, StrategyTaskPhase::Completed] {
+            let start_label = phase_str(&start_phase);
+            let task_id = insert_task_with_phase(
+                &db,
+                strategy_id,
+                start_phase,
+                "prompt text",
+                Some("explore"),
+            )
+            .await;
+            let completed_step_id = Uuid::new_v4();
+            let failed_step_id = Uuid::new_v4();
+            insert_task_step(
+                &db,
+                task_id,
+                completed_step_id,
+                "plan",
+                StrategyTaskStepStatus::Completed,
+                1,
+            )
+            .await;
+            insert_task_step(
+                &db,
+                task_id,
+                failed_step_id,
+                "investigate",
+                StrategyTaskStepStatus::Failed,
+                2,
+            )
+            .await;
+            let fake = Arc::new(FakeAgentTaskClient::new());
+            // a2a_task_id は UNIQUE のため周回ごとに変える。
+            let a2a_task_id = format!("agent-task-resumed-{start_label}");
+            fake.set_next_task_id(&a2a_task_id).await;
+            let agent_client: SharedAgentTaskClient = fake.clone();
+            let started_at = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+                .unwrap()
+                .to_rfc3339();
 
-        let submitted = resume_task(&db, &agent_client, task_id)
-            .await
-            .expect("resume ok");
+            let submitted = resume_task(&db, &agent_client, task_id)
+                .await
+                .expect("resume ok");
 
-        let submitted_resume_steps = fake
-            .submitted
-            .lock()
-            .await
-            .first()
-            .expect("submit called once")
-            .resume_steps
-            .clone()
-            .expect("resume_steps present");
-        let row = strategy_task::Entity::find_by_id(task_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .expect("row still exists");
+            let submitted_resume_steps = fake
+                .submitted
+                .lock()
+                .await
+                .first()
+                .expect("submit called once")
+                .resume_steps
+                .clone()
+                .expect("resume_steps present");
+            let row = strategy_task::Entity::find_by_id(task_id)
+                .one(&db)
+                .await
+                .unwrap()
+                .expect("row still exists");
 
-        #[derive(Debug, PartialEq)]
-        struct ResumeOutcome {
-            submitted_a2a_task_id: String,
-            resume_steps: Vec<serde_json::Value>,
-            row_a2a_task_id: Option<String>,
-            row_phase: StrategyTaskPhase,
-            row_error_summary: Option<String>,
-            row_result_text: Option<String>,
+            #[derive(Debug, PartialEq)]
+            struct ResumeOutcome {
+                submitted_a2a_task_id: String,
+                resume_steps: Vec<serde_json::Value>,
+                row_a2a_task_id: Option<String>,
+                row_phase: StrategyTaskPhase,
+                row_error_summary: Option<String>,
+                row_result_text: Option<String>,
+            }
+
+            assert_eq!(
+                ResumeOutcome {
+                    submitted_a2a_task_id: submitted.a2a_task_id,
+                    resume_steps: submitted_resume_steps,
+                    row_a2a_task_id: row.a2a_task_id,
+                    row_phase: row.phase,
+                    row_error_summary: row.error_summary,
+                    row_result_text: row.result_text,
+                },
+                ResumeOutcome {
+                    submitted_a2a_task_id: a2a_task_id.clone(),
+                    resume_steps: vec![
+                        serde_json::json!({
+                            "execution_step_id": completed_step_id,
+                            "phase_key": "plan",
+                            "label": "plan",
+                            "model": "m",
+                            "status": "completed",
+                            "started_at": started_at,
+                            "trace_id": "trace-1",
+                            "span_id": "span-1",
+                        }),
+                        serde_json::json!({
+                            "execution_step_id": failed_step_id,
+                            "phase_key": "investigate",
+                            "label": "investigate",
+                            "model": "m",
+                            "status": "failed",
+                            "started_at": started_at,
+                            "trace_id": "trace-1",
+                            "span_id": "span-1",
+                        }),
+                    ],
+                    row_a2a_task_id: Some(a2a_task_id.clone()),
+                    row_phase: StrategyTaskPhase::Running,
+                    row_error_summary: None,
+                    row_result_text: None,
+                },
+                "start phase: {start_label}",
+            );
         }
-
-        assert_eq!(
-            ResumeOutcome {
-                submitted_a2a_task_id: submitted.a2a_task_id,
-                resume_steps: submitted_resume_steps,
-                row_a2a_task_id: row.a2a_task_id,
-                row_phase: row.phase,
-                row_error_summary: row.error_summary,
-                row_result_text: row.result_text,
-            },
-            ResumeOutcome {
-                submitted_a2a_task_id: "agent-task-resumed".to_string(),
-                resume_steps: vec![
-                    serde_json::json!({
-                        "execution_step_id": completed_step_id,
-                        "phase_key": "plan",
-                        "label": "plan",
-                        "model": "m",
-                        "status": "completed",
-                        "started_at": started_at,
-                        "trace_id": "trace-1",
-                        "span_id": "span-1",
-                    }),
-                    serde_json::json!({
-                        "execution_step_id": failed_step_id,
-                        "phase_key": "investigate",
-                        "label": "investigate",
-                        "model": "m",
-                        "status": "failed",
-                        "started_at": started_at,
-                        "trace_id": "trace-1",
-                        "span_id": "span-1",
-                    }),
-                ],
-                row_a2a_task_id: Some("agent-task-resumed".to_string()),
-                row_phase: StrategyTaskPhase::Running,
-                row_error_summary: None,
-                row_result_text: None,
-            },
-        );
     }
 
     #[sqlx::test(migrations = false)]
