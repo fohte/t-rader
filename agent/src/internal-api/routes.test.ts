@@ -285,7 +285,7 @@ describe('GET /internal/tasks/:taskId', () => {
     })
   })
 
-  it('includes error_kind for a failed task carrying usage_limit metadata', async () => {
+  it('includes error_message and error_kind for a failed task carrying usage_limit metadata', async () => {
     const app = buildApp(
       buildStubHandler({
         getTask: () =>
@@ -311,8 +311,34 @@ describe('GET /internal/tasks/:taskId', () => {
     expect(await res.json()).toEqual({
       task_id: 'task-4',
       state: 'failed',
+      error_message: 'quota exceeded',
       error_kind: 'usage_limit',
     })
+  })
+
+  it('does not expose the heartbeat message of a working task as error_message', async () => {
+    const app = buildApp(
+      buildStubHandler({
+        getTask: () =>
+          Promise.resolve(
+            buildTask({
+              id: 'task-4b',
+              status: {
+                state: 'working',
+                timestamp: '2026-01-01T00:00:00.000Z',
+                message: {
+                  kind: 'message',
+                  role: 'agent',
+                  messageId: 'm1',
+                  parts: [{ kind: 'text', text: 'フェーズ「調査」を実行中' }],
+                },
+              },
+            }),
+          ),
+      }),
+    )
+    const res = await app.request('/internal/tasks/task-4b')
+    expect(await res.json()).toEqual({ task_id: 'task-4b', state: 'working' })
   })
 
   it('includes steps for a task carrying an agent-graph-steps artifact', async () => {

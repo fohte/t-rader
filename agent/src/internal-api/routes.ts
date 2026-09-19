@@ -57,6 +57,9 @@ const taskResponseSchema = z
     task_id: z.string(),
     state: z.string(),
     result_text: z.string().optional(),
+    // 失敗系の state で agent が組み立てた失敗理由の本文 (フェーズ名を含む)。
+    // error_kind は分類名、こちらは人間が読む本文。
+    error_message: z.string().optional(),
     error_kind: z.string().optional(),
     steps: z.array(z.unknown()).optional(),
   })
@@ -103,11 +106,25 @@ const buildUserMessage = (
   },
 })
 
-const resultTextOf = (task: Task): string | undefined => {
-  if (task.status.state !== 'completed') return undefined
+// backend の phase_for_state が Failed に写像する state。working の heartbeat
+// message など、失敗ではない message の text を error_message に出さないため絞る。
+const FAILURE_STATES: ReadonlySet<string> = new Set([
+  'failed',
+  'rejected',
+  'canceled',
+  'input-required',
+])
+
+const statusTextOf = (task: Task): string | undefined => {
   const part = task.status.message?.parts.find((p) => p.kind === 'text')
   return part?.kind === 'text' ? part.text : undefined
 }
+
+const resultTextOf = (task: Task): string | undefined =>
+  task.status.state === 'completed' ? statusTextOf(task) : undefined
+
+const errorMessageOf = (task: Task): string | undefined =>
+  FAILURE_STATES.has(task.status.state) ? statusTextOf(task) : undefined
 
 const errorKindOf = (task: Task): string | undefined => {
   const raw = task.status.message?.metadata?.['error_kind']
@@ -128,12 +145,14 @@ const stepsOf = (task: Task): unknown[] | undefined => {
 
 const toTaskResponse = (task: Task): z.infer<typeof taskResponseSchema> => {
   const resultText = resultTextOf(task)
+  const errorMessage = errorMessageOf(task)
   const errorKind = errorKindOf(task)
   const steps = stepsOf(task)
   return {
     task_id: task.id,
     state: task.status.state,
     ...(resultText !== undefined ? { result_text: resultText } : {}),
+    ...(errorMessage !== undefined ? { error_message: errorMessage } : {}),
     ...(errorKind !== undefined ? { error_kind: errorKind } : {}),
     ...(steps !== undefined ? { steps } : {}),
   }

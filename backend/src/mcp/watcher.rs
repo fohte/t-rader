@@ -53,10 +53,13 @@ fn error_summary_for(status: &AgentTaskStatus, phase: &StrategyTaskPhase) -> Opt
     if *phase != StrategyTaskPhase::Failed {
         return None;
     }
+    // 本文 (フェーズ名を含む失敗理由) を優先し、無い場合のみ分類名にフォールバックする。
     Some(
         status
-            .error_kind
+            .error_message
             .clone()
+            .filter(|m| !m.is_empty())
+            .or_else(|| status.error_kind.clone())
             .unwrap_or_else(|| "agent task failed".to_string()),
     )
 }
@@ -179,8 +182,8 @@ async fn apply_status(
     now: DateTime<FixedOffset>,
 ) -> bool {
     let (new_phase, new_error) = if now > row.deadline_at {
-        let message = match &status.error_kind {
-            Some(kind) => format!("agent task exceeded deadline (agent reported: {kind})"),
+        let message = match status.error_message.as_ref().or(status.error_kind.as_ref()) {
+            Some(reported) => format!("agent task exceeded deadline (agent reported: {reported})"),
             None => "agent task exceeded deadline".to_string(),
         };
         (StrategyTaskPhase::Failed, Some(message))
@@ -423,6 +426,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Completed,
                 result_text: Some("all good".to_string()),
+                error_message: None,
                 error_kind: None,
                 steps: None,
             },
@@ -433,6 +437,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
+                error_message: None,
                 error_kind: Some("usage_limit".to_string()),
                 steps: None,
             },
@@ -443,6 +448,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Working,
                 result_text: None,
+                error_message: None,
                 error_kind: None,
                 steps: None,
             },
@@ -503,6 +509,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::InputRequired,
                 result_text: None,
+                error_message: None,
                 error_kind: None,
                 steps: None,
             },
@@ -523,6 +530,52 @@ mod tests {
         );
     }
 
+    #[sqlx::test(migrations = false)]
+    async fn failed_error_summary_is_agent_error_message_over_error_kind(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-reason"),
+            StrategyTaskPhase::Running,
+            FAR_FUTURE,
+        )
+        .await;
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-reason",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_message: Some(
+                    "フェーズ「調査」(investigate) の実行に失敗しました: upstream returned 400"
+                        .to_string(),
+                ),
+                error_kind: Some("agent_error".to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake;
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(
+            (row.phase, row.error_summary),
+            (
+                StrategyTaskPhase::Failed,
+                Some(
+                    "フェーズ「調査」(investigate) の実行に失敗しました: upstream returned 400"
+                        .to_string()
+                ),
+            ),
+        );
+    }
+
     // deadline 超過時は agent の応答内容 (completed/working 問わず) より deadline を優先して
     // failed に確定する。rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため
     // for ループで列挙する。
@@ -538,6 +591,7 @@ mod tests {
                 AgentTaskStatus {
                     state: AgentTaskState::Completed,
                     result_text: Some("all good".to_string()),
+                    error_message: None,
                     error_kind: None,
                     steps: None,
                 },
@@ -549,6 +603,7 @@ mod tests {
                 AgentTaskStatus {
                     state: AgentTaskState::Working,
                     result_text: None,
+                    error_message: None,
                     error_kind: None,
                     steps: None,
                 },
@@ -602,6 +657,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
+                error_message: None,
                 error_kind: Some("usage_limit".to_string()),
                 steps: None,
             },
@@ -618,6 +674,49 @@ mod tests {
             (
                 StrategyTaskPhase::Failed,
                 Some("agent task exceeded deadline (agent reported: usage_limit)".to_string()),
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn deadline_exceeded_includes_agent_reported_error_message(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db).await;
+        let task_id = insert_task(
+            &db,
+            strategy_id,
+            Some("t-late-reason"),
+            StrategyTaskPhase::Running,
+            PAST,
+        )
+        .await;
+
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-late-reason",
+            AgentTaskStatus {
+                state: AgentTaskState::Failed,
+                result_text: None,
+                error_message: Some("upstream returned 400".to_string()),
+                error_kind: Some("agent_error".to_string()),
+                steps: None,
+            },
+        )
+        .await;
+        let agent_client: SharedAgentTaskClient = fake;
+
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(updated, 1);
+
+        let row = fetch_task(&db, task_id).await;
+        assert_eq!(
+            (row.phase, row.error_summary),
+            (
+                StrategyTaskPhase::Failed,
+                Some(
+                    "agent task exceeded deadline (agent reported: upstream returned 400)"
+                        .to_string()
+                ),
             ),
         );
     }
@@ -653,6 +752,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Working,
                 result_text: None,
+                error_message: None,
                 error_kind: None,
                 steps: Some(serde_json::json!([step])),
             },
@@ -1023,6 +1123,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
+                error_message: None,
                 error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
                 steps: None,
             },
@@ -1087,6 +1188,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
+                error_message: None,
                 error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
                 steps: None,
             },
@@ -1119,6 +1221,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
+                error_message: None,
                 error_kind: Some("usage_limit".to_string()),
                 steps: None,
             },
@@ -1151,6 +1254,7 @@ mod tests {
             AgentTaskStatus {
                 state: AgentTaskState::Failed,
                 result_text: None,
+                error_message: None,
                 error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
                 steps: None,
             },

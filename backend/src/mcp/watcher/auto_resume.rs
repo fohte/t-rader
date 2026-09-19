@@ -80,6 +80,7 @@ mod tests {
         AgentTaskStatus {
             state: AgentTaskState::Failed,
             result_text: None,
+            error_message: None,
             error_kind: Some(EXECUTION_LOST_ERROR_KIND.to_string()),
             steps: None,
         }

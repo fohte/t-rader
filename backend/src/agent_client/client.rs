@@ -90,6 +90,9 @@ pub const EXECUTION_LOST_ERROR_KIND: &str = "execution_lost";
 pub struct AgentTaskStatus {
     pub state: AgentTaskState,
     pub result_text: Option<String>,
+    /// 失敗系 state で agent が組み立てた失敗理由の本文 (フェーズ名を含む)。
+    /// `error_kind` は分類名、こちらは人間が読む本文。
+    pub error_message: Option<String>,
     pub error_kind: Option<String>,
     /// フェーズ/分岐ごとの実行状況。中身は解釈せず素通しする。空または応答に無ければ `None`。
     pub steps: Option<serde_json::Value>,
@@ -282,6 +285,7 @@ impl AgentTaskClient for HttpAgentTaskClient {
         Ok(AgentTaskStatus {
             state,
             result_text: body.result_text,
+            error_message: body.error_message,
             error_kind: body.error_kind,
             steps: (!body.steps.is_empty()).then_some(serde_json::Value::Array(body.steps)),
         })
@@ -647,6 +651,32 @@ mod tests {
         assert_eq!(status.result_text.as_deref(), Some("done"));
         assert_eq!(status.error_kind, None);
         assert_eq!(status.steps, None);
+    }
+
+    #[tokio::test]
+    async fn get_returns_failed_status_with_error_message_and_kind() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/internal/tasks/task-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "task_id": "task-1",
+                "state": "failed",
+                "error_message": "フェーズ「調査」(investigate) の実行に失敗しました: boom",
+                "error_kind": "agent_error",
+            })))
+            .mount(&server)
+            .await;
+
+        let client = http_client(&server);
+        let status = client.get("task-1").await.expect("ok");
+        assert_eq!(
+            (status.state, status.error_message, status.error_kind),
+            (
+                AgentTaskState::Failed,
+                Some("フェーズ「調査」(investigate) の実行に失敗しました: boom".to_string()),
+                Some("agent_error".to_string()),
+            ),
+        );
     }
 
     #[tokio::test]
