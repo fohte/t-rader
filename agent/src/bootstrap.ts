@@ -10,17 +10,7 @@ import {
   type ObservabilityHandle,
 } from '@fohte/service-kit/observability'
 
-import { createJsonStdoutLogger } from '#logger'
-
-const jsonLogger = createJsonStdoutLogger()
-const observabilityLogger = {
-  info: (payload: Record<string, unknown>, msg: string) => {
-    jsonLogger.log(msg, payload)
-  },
-  warn: (payload: Record<string, unknown>, msg: string) => {
-    jsonLogger.log(msg, payload)
-  },
-}
+import { logger } from '#logger'
 
 const initFromEnv = (
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -28,7 +18,7 @@ const initFromEnv = (
   // Vitest sets NODE_ENV=test; skip initializing real Sentry/OTel
   // connections so test runs don't hang on open handles or ship telemetry.
   if (env['NODE_ENV'] === 'test') return undefined
-  return initObservabilityIfConfigured(env, { logger: observabilityLogger })
+  return initObservabilityIfConfigured(env, { logger })
 }
 
 export const observability = initFromEnv()

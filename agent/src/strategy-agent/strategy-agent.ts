@@ -16,6 +16,7 @@ import { errAsync, ResultAsync } from 'neverthrow'
 import { z } from 'zod'
 
 import { extractMessageText } from '#a2a/message-text'
+import { logger } from '#logger'
 import type { FetchAgentConfig } from '#strategy-agent/agent-config-client'
 import { createAgentConfigFetcher } from '#strategy-agent/agent-config-client'
 import { parseAgentGraph } from '#strategy-agent/agent-graph/parse'
@@ -298,9 +299,9 @@ const parseResumeSteps = (
     const error = new Error(
       `${String(failures.length)} of ${String(results.length)} resume step(s) failed schema validation`,
     )
-    console.error(
-      'failed to parse resume steps:',
-      failures.map((f) => f.error),
+    logger.error(
+      { issues: failures.flatMap((f) => f.error.issues) },
+      'failed to parse resume steps',
     )
     captureWithFingerprint(error, RESUME_STEPS_PARSE_FAILED_FINGERPRINT, {
       extras: { strategyId, failedCount: failures.length },
@@ -342,14 +343,14 @@ export const runStrategyAgent = async (
 
   const closeMcpClient = (): Promise<void> =>
     mcpClient.close().catch((closeError: unknown) => {
-      console.error('failed to close MCP client:', closeError)
+      logger.error({ err: closeError }, 'failed to close MCP client')
       captureWithFingerprint(closeError, MCP_CLIENT_CLOSE_FAILED_FINGERPRINT, {
         extras: { strategyId },
       })
     })
 
   const toErrorResult = (error: unknown): StrategyAgentResult => {
-    console.error('strategy agent execution failed:', error)
+    logger.error({ err: error }, 'strategy agent execution failed')
     captureWithFingerprint(error, EXECUTION_FAILED_FINGERPRINT, {
       extras: { strategyId },
     })
@@ -406,9 +407,9 @@ export const runStrategyAgent = async (
                 ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
               }).then((result) => {
                 if (result.status === 'failed') {
-                  console.error(
-                    'strategy agent execution failed:',
-                    result.message,
+                  logger.error(
+                    { error: result.message },
+                    'strategy agent execution failed',
                   )
                   captureWithFingerprint(
                     new Error(result.message),

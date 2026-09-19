@@ -4,6 +4,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
+import { logger } from '#logger'
 import type {
   BuildPhaseAgentOptions,
   CompiledPhaseAgent,
@@ -86,7 +87,7 @@ const normalizeExecutionStepIdInText = (text: string): string =>
     '<execution-step-id>',
   )
 
-// この describe 内の複数のテストが再試行経由で console.warn を出すため、
+// この describe 内の複数のテストが再試行経由で logger.warn を出すため、
 // spy の設置/解除と正規化をまとめる。
 const runWithWarnSpy = async <T>(
   run: () => Promise<T>,
@@ -94,13 +95,13 @@ const runWithWarnSpy = async <T>(
   readonly result: T
   readonly warnMessages: readonly string[]
 }> => {
-  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
   try {
     const result = await run()
     return {
       result,
-      warnMessages: warnSpy.mock.calls.map(([message]) =>
-        normalizeExecutionStepIdInText(String(message)),
+      warnMessages: warnSpy.mock.calls.map(([, message]) =>
+        normalizeExecutionStepIdInText(message),
       ),
     }
   } finally {

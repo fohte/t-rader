@@ -7,6 +7,7 @@ import { BaseCallbackHandler } from '@langchain/core/callbacks/base'
 import { AIMessageChunk } from '@langchain/core/messages'
 import { createMiddleware } from 'langchain'
 
+import { logger } from '#logger'
 import { bindModelCallSignal } from '#strategy-agent/bind-model-call-signal'
 
 export const MAX_TOOL_CALLS_PER_MODEL_CALL = 50
@@ -88,7 +89,7 @@ export const createToolCallCapMiddleware = (maxToolCalls: number) =>
         const error = new Error(
           `toolCallCapMiddleware: aborted model call after exceeding ${String(maxToolCalls)} tool call(s) in a single response (${formatToolCallCounts(toolCallCountsByName)})`,
         )
-        console.warn(error.message)
+        logger.warn({ toolCallCountsByName }, error.message)
         captureWithFingerprint(error, TOOL_CALL_CAP_EXCEEDED_FINGERPRINT, {
           extras: { toolCallCountsByName },
         })

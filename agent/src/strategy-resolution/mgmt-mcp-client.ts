@@ -2,6 +2,7 @@ import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { err, errAsync, ok, Result, ResultAsync } from 'neverthrow'
 
+import { logger } from '#logger'
 import type { StrategyCandidate } from '#strategy-resolution/resolve-strategy'
 
 export class StrategyCandidatesParseError extends Error {
@@ -133,7 +134,7 @@ export const createStrategyCandidatesFetcher = (
     const client = clientResult.value
     const closeClient = (): Promise<void> =>
       client.close().catch((closeError: unknown) => {
-        console.error('failed to close mgmt MCP client:', closeError)
+        logger.error({ err: closeError }, 'failed to close mgmt MCP client')
         captureWithFingerprint(closeError, MGMT_MCP_CLIENT_CLOSE_FINGERPRINT)
       })
 

@@ -5,6 +5,8 @@ import {
 } from '@opentelemetry/semantic-conventions/incubating'
 import type { Result } from 'neverthrow'
 
+import { withLogBindings } from '#logger'
+
 const TRACER_NAME = 't-rader-agent-graph'
 
 // @fohte/service-kit の genai-tracing-middleware と同じ方式: ここで開始し
@@ -36,8 +38,9 @@ export const withPhaseSpan = async <T, E>(
 
   // eslint-disable-next-line no-restricted-syntax -- span.end() を finally で必ず呼ぶため try/finally が必要
   try {
+    // フェーズ内で出る全ログ行にも同じ属性を付け、ログ 1 行からフェーズを特定できるようにする。
     const result = await context.with(spanContext, () =>
-      fn({ traceId, spanId }),
+      withLogBindings(attributes, () => fn({ traceId, spanId })),
     )
     if (result.isErr()) {
       const error = result.error
