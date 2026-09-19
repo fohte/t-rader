@@ -185,6 +185,7 @@ async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconci
         AgentTaskStatus {
             state: AgentTaskState::Completed,
             result_text: Some("7203 は堅調".to_string()),
+            error_message: None,
             error_kind: None,
             steps: None,
         },

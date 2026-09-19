@@ -81,6 +81,9 @@
           "result_text": {
             "type": "string"
           },
+          "error_message": {
+            "type": "string"
+          },
           "error_kind": {
             "type": "string"
           },
