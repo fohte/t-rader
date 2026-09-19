@@ -99,7 +99,6 @@ pub(super) fn check_exec_upper_bound(
 pub(super) fn kata_exec_to_mcp_err(err: crate::kata_exec::KataExecError) -> McpError {
     use crate::kata_exec::KataExecError;
     match err {
-        KataExecError::NotConfigured => internal_error("kata executor is not configured"),
         KataExecError::Timeout(d) => invalid_params(format!("execution timed out after {:?}", d)),
         KataExecError::OutputTooLarge { limit } => {
             invalid_params(format!("output exceeded {limit} bytes"))
@@ -155,6 +154,13 @@ impl StrategyServer {
     pub fn with_litellm_client(mut self, litellm_client: Option<LiteLlmClient>) -> Self {
         self.litellm_client = litellm_client;
         self
+    }
+
+    /// `KATA_EXEC_API_URL` が未設定だと executor は `None` のまま起動する。
+    pub(super) fn kata_executor(&self) -> Result<&SharedKataExecutor, McpError> {
+        self.kata_executor
+            .as_ref()
+            .ok_or_else(|| internal_error("kata executor is not configured"))
     }
 }
 

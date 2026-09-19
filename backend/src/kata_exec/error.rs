@@ -2,9 +2,6 @@ use std::time::Duration;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum KataExecError {
-    #[error("kata executor is not configured")]
-    NotConfigured,
-
     #[error("execution timed out after {0:?}")]
     Timeout(Duration),
 

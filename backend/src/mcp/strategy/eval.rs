@@ -14,7 +14,7 @@ use crate::kata_exec::{ExecRequest, KataExecError};
 use super::dto::{EvalPythonParams, EvalPythonResult};
 use super::{
     EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_STDIN_BYTES, EXEC_MAX_TIMEOUT_SECS, StrategyServer,
-    check_exec_upper_bound, internal_error, invalid_params, kata_exec_to_mcp_err,
+    check_exec_upper_bound, invalid_params, kata_exec_to_mcp_err,
 };
 
 /// MCP 層で許容する Python コード本体のサイズ上限 (バイト)。
@@ -48,10 +48,7 @@ impl StrategyServer {
             EXEC_MAX_OUTPUT_BYTES,
         )?;
 
-        let executor = self
-            .kata_executor
-            .as_ref()
-            .ok_or_else(|| internal_error("kata executor is not configured"))?;
+        let executor = self.kata_executor()?;
 
         let request = ExecRequest {
             code: params.code,
