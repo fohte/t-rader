@@ -447,6 +447,11 @@ mod tests {
         chrono::DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z").unwrap()
     }
 
+    /// `test_deadline_at` と取り違えを検出できるよう、別の値にする。
+    fn test_as_of() -> DateTime<FixedOffset> {
+        chrono::DateTime::parse_from_rfc3339("2019-06-01T12:34:56Z").unwrap()
+    }
+
     #[tokio::test]
     async fn submit_posts_body_and_returns_task_id() {
         let server = MockServer::start().await;
@@ -519,7 +524,7 @@ mod tests {
 
     #[rstest]
     #[case::none(None, json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z" }))]
-    #[case::some(Some(test_deadline_at()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z", "as_of": "2020-01-01T00:00:00Z" }))]
+    #[case::some(Some(test_as_of()), json!({ "strategy_id": "12345678-1234-5678-1234-567812345678", "prompt": "hello", "deadline_at": "2020-01-01T00:00:00Z", "as_of": "2019-06-01T12:34:56Z" }))]
     #[tokio::test]
     async fn submit_body_includes_as_of_only_when_some(
         #[case] as_of: Option<DateTime<FixedOffset>>,
