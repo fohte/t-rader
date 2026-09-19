@@ -44,13 +44,3 @@ pub trait KataExecutor: Send + Sync {
 }
 
 pub type SharedKataExecutor = Arc<dyn KataExecutor + Send + Sync>;
-
-/// 「無効化された」executor。すべての操作が `NotConfigured` を返す。
-pub struct DisabledKataExecutor;
-
-#[async_trait]
-impl KataExecutor for DisabledKataExecutor {
-    async fn run(&self, _request: ExecRequest) -> Result<ExecResult, KataExecError> {
-        Err(KataExecError::NotConfigured)
-    }
-}

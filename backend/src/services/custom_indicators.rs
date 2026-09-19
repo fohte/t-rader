@@ -159,9 +159,6 @@ fn parse_and_validate_output(
 
 fn kata_to_app_err(err: KataExecError) -> AppError {
     match err {
-        KataExecError::NotConfigured => {
-            AppError::ServiceUnavailable("kata executor is not configured".into())
-        }
         KataExecError::Timeout(d) => {
             AppError::Validation(format!("execution timed out after {d:?}"))
         }

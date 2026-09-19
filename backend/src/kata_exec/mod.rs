@@ -55,7 +55,7 @@ mod fake;
 pub use config::{KataExecutorConfig, PodResourceLimits};
 pub use error::KataExecError;
 pub use executor::HttpKataExecutor;
-pub use types::{DisabledKataExecutor, ExecRequest, ExecResult, KataExecutor, SharedKataExecutor};
+pub use types::{ExecRequest, ExecResult, KataExecutor, SharedKataExecutor};
 
 #[cfg(test)]
 pub use fake::FakeKataExecutor;

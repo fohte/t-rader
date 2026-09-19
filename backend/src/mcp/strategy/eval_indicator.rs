@@ -65,10 +65,7 @@ impl StrategyServer {
             )),
         })?;
 
-        let executor = self
-            .kata_executor
-            .as_ref()
-            .ok_or_else(|| internal_error("kata executor is not configured"))?;
+        let executor = self.kata_executor()?;
 
         let stdin = serde_json::to_string(&serde_json::json!({ "args": params.args }))
             .map_err(|e| internal_error(format!("failed to serialize args: {e}")))?;
@@ -587,6 +584,35 @@ mod tests {
             ),
         );
         assert!(executor.requests.lock().await.is_empty());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn eval_indicator_errors_when_executor_not_configured(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let sid = insert_strategy(&db, "s").await;
+        insert_indicator(
+            &db,
+            SCOPE_GLOBAL,
+            None,
+            "rsi",
+            "print('{}')",
+            json!({"type": "object"}),
+            json!({"type": "object"}),
+        )
+        .await;
+        let server = StrategyServer::new(db, None);
+
+        let err = server
+            .eval_indicator_inner(sid, params("rsi", json!({})))
+            .await
+            .expect_err("not configured");
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (
+                rmcp::model::ErrorCode::INTERNAL_ERROR,
+                "kata executor is not configured",
+            ),
+        );
     }
 
     /// `sqlx::test` は `#[rstest]` と共存できないため `MockDatabase` + `tokio::test`。
