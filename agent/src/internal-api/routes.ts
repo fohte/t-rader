@@ -5,6 +5,7 @@ import type {
   MessageSendParams,
   PushNotificationConfig,
   Task,
+  TaskState,
 } from '@a2a-js/sdk'
 import type { A2ARequestHandler } from '@a2a-js/sdk/server'
 import { A2AError } from '@a2a-js/sdk/server'
@@ -108,7 +109,7 @@ const buildUserMessage = (
 
 // backend の phase_for_state が Failed に写像する state。working の heartbeat
 // message など、失敗ではない message の text を error_message に出さないため絞る。
-const FAILURE_STATES: ReadonlySet<string> = new Set([
+const FAILURE_STATES: ReadonlySet<TaskState> = new Set<TaskState>([
   'failed',
   'rejected',
   'canceled',
