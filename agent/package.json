@@ -31,7 +31,7 @@
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/semantic-conventions": "1.41.1",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.34",
+    "hono": "4.13.5",
     "langchain": "1.5.11",
     "neverthrow": "8.2.0",
     "pino": "10.3.1",
