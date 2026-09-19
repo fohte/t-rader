@@ -8,6 +8,7 @@ import { errAsync, okAsync } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
+import { logger } from '#logger'
 import type {
   AgentConfig,
   AgentConfigKey,
@@ -872,15 +873,14 @@ describe('createStrategyAgentDeps', () => {
       systemPrompt: 'you are a helpful bot',
     })
 
-    const warnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     try {
       const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
 
       expect(result).toEqual({})
       expect(warnSpy.mock.calls).toEqual([
         [
+          {},
           'modelResponseGuardMiddleware: model call ended without a structured-output tool call',
         ],
       ])
@@ -924,9 +924,7 @@ describe('createStrategyAgentDeps', () => {
       systemPrompt: 'you are a helpful bot',
     })
 
-    const warnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     try {
       const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
 
@@ -936,6 +934,7 @@ describe('createStrategyAgentDeps', () => {
       })
       expect(warnSpy.mock.calls).toEqual([
         [
+          { undeclaredNames: ['ghost_tool'] },
           'modelResponseGuardMiddleware: model called undeclared tool(s): ghost_tool',
         ],
       ])
@@ -1072,9 +1071,7 @@ describe('createStrategyAgentDeps', () => {
       deadlineSignal: controller.signal,
     })
 
-    const warnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     try {
       await expect(
         agent.invoke({ messages: [new HumanMessage('hi')] }),
@@ -1084,6 +1081,7 @@ describe('createStrategyAgentDeps', () => {
       expect(capturedSignal?.aborted).toBe(true)
       expect(warnSpy.mock.calls).toEqual([
         [
+          {},
           'deadlineMiddleware: aborted model call after strategy task deadline exceeded',
         ],
       ])
@@ -1167,9 +1165,7 @@ describe('createStrategyAgentDeps', () => {
       systemPrompt: 'you are a helpful bot',
     })
 
-    const warnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     try {
       await expect(
         agent.invoke({ messages: [new HumanMessage('hi')] }),
@@ -1177,6 +1173,9 @@ describe('createStrategyAgentDeps', () => {
 
       expect(warnSpy.mock.calls).toEqual([
         [
+          {
+            toolCallCountsByName: { search: MAX_TOOL_CALLS_PER_MODEL_CALL + 1 },
+          },
           `toolCallCapMiddleware: aborted model call after exceeding ${String(MAX_TOOL_CALLS_PER_MODEL_CALL)} tool call(s) in a single response (search: ${String(MAX_TOOL_CALLS_PER_MODEL_CALL + 1)})`,
         ],
       ])
@@ -1262,9 +1261,7 @@ describe('createStrategyAgentDeps', () => {
       systemPrompt: 'you are a helpful bot',
     })
 
-    const warnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     try {
       await expect(
         agent.invoke({ messages: [new HumanMessage('hi')] }),
@@ -1274,6 +1271,7 @@ describe('createStrategyAgentDeps', () => {
       // search が 26 件、notes が 25 件になり、件数降順で並ぶ。
       expect(warnSpy.mock.calls).toEqual([
         [
+          { toolCallCountsByName: { search: 26, notes: 25 } },
           `toolCallCapMiddleware: aborted model call after exceeding ${String(MAX_TOOL_CALLS_PER_MODEL_CALL)} tool call(s) in a single response (search: 26, notes: 25)`,
         ],
       ])
@@ -1402,9 +1400,7 @@ describe('createStrategyAgentDeps', () => {
       systemPrompt: 'you are a helpful bot',
     })
 
-    const warnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
     try {
       const result = await agent.invoke({ messages: [new HumanMessage('hi')] })
 

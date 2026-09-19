@@ -1,13 +1,14 @@
 import '#bootstrap'
 
 import { EnvError } from '#env'
+import { logger } from '#logger'
 import { main } from '#main'
 
 main().catch((err: unknown) => {
   if (err instanceof EnvError) {
-    for (const issue of err.issues) console.error(issue)
+    logger.error({ issues: err.issues }, 'invalid environment')
   } else {
-    console.error(err)
+    logger.error({ err }, 'failed to start')
   }
   process.exit(1)
 })

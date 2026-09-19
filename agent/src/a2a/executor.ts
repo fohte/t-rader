@@ -15,6 +15,7 @@ import type {
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 
 import { extractMessageText } from '#a2a/message-text'
+import { withLogBindings } from '#logger'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import {
   AGENT_GRAPH_STEPS_ARTIFACT_ID,
@@ -408,16 +409,21 @@ export class TraderAgentExecutor implements AgentExecutor {
 
     // eslint-disable-next-line no-restricted-syntax -- 上記の通り、予期しない reject も捕捉して eventBus.finished() を呼び切る必要がある
     try {
-      const result = await this.deps.runStrategyAgent({
-        strategyId,
-        purpose,
-        taskId,
-        userMessage: promptMessage,
-        resumeSteps,
-        asOf,
-        deadlineSignal: deadlineController?.signal,
-        onStepsChanged: publishSteps,
-      })
+      // 実行中に出る全ログ行から、どの task の実行か引けるようにする。
+      const result = await withLogBindings(
+        { task_id: taskId, strategy_id: strategyId },
+        () =>
+          this.deps.runStrategyAgent({
+            strategyId,
+            purpose,
+            taskId,
+            userMessage: promptMessage,
+            resumeSteps,
+            asOf,
+            deadlineSignal: deadlineController?.signal,
+            onStepsChanged: publishSteps,
+          }),
+      )
       eventBus.publish({
         kind: 'status-update',
         taskId,

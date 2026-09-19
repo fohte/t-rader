@@ -4,6 +4,7 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 import type { Result } from 'neverthrow'
 import { err, ok } from 'neverthrow'
 
+import { logger } from '#logger'
 import { buildOutputJsonSchema } from '#strategy-agent/agent-graph/output-schema'
 import type {
   CompiledPhaseAgent,
@@ -173,7 +174,7 @@ const invokePhaseWithRetry = async (
   const retryError = new Error(
     `phase "${phaseKey}" (executionStepId=${executionStepId}) structured output attempt ${String(attemptNumber)} rejected (${reason}), retrying`,
   )
-  console.warn(retryError.message)
+  logger.warn({ executionStepId, attemptNumber, reason }, retryError.message)
   captureWithFingerprint(retryError, STRUCTURED_OUTPUT_RETRY_FINGERPRINT, {
     level: 'warning',
     extras: { phaseKey, executionStepId, attemptNumber, reason },

@@ -2,6 +2,8 @@ import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import { AIMessage } from '@langchain/core/messages'
 import { createMiddleware, ToolStrategy } from 'langchain'
 
+import { logger } from '#logger'
+
 const MISSING_STRUCTURED_OUTPUT_FINGERPRINT =
   'model-response-guard-middleware.missing-structured-output'
 const UNDECLARED_TOOL_CALL_FINGERPRINT =
@@ -34,7 +36,7 @@ export const modelResponseGuardMiddleware = createMiddleware({
       const error = new Error(
         'modelResponseGuardMiddleware: model call ended without a structured-output tool call',
       )
-      console.warn(error.message)
+      logger.warn({}, error.message)
       captureWithFingerprint(error, MISSING_STRUCTURED_OUTPUT_FINGERPRINT)
       return response
     }
@@ -66,7 +68,7 @@ export const modelResponseGuardMiddleware = createMiddleware({
       const error = new Error(
         `modelResponseGuardMiddleware: model called undeclared tool(s): ${undeclaredNames.join(', ')}`,
       )
-      console.warn(error.message)
+      logger.warn({ undeclaredNames }, error.message)
       captureWithFingerprint(error, UNDECLARED_TOOL_CALL_FINGERPRINT, {
         extras: { undeclaredNames },
       })

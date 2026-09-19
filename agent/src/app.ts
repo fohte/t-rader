@@ -11,6 +11,7 @@ import type { Sql } from '#db'
 import { pingDb } from '#db'
 import { bearerAuth } from '#internal-api/auth'
 import { mountInternalApiRoutes } from '#internal-api/routes'
+import { logger } from '#logger'
 
 const REQUEST_FAILED_FINGERPRINT = 'app.request-failed'
 
@@ -42,7 +43,10 @@ export const createApp = (deps: AppDeps): OpenAPIHono<BlankEnv> => {
     if (err instanceof HTTPException && err.status < 500) {
       return c.json({ error: err.message }, err.status)
     }
-    console.error('request failed:', err)
+    logger.error(
+      { err, path: c.req.path, method: c.req.method },
+      'request failed',
+    )
     // {{ default }} を含めず固定値のみだと Sentry 側の型/stacktrace ベースの
     // 分類が無効化され、別種のエラーが同一 issue に混ざる
     // (issue が混ざると新規エラーの通知が飛ばない)。

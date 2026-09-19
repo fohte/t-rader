@@ -15,6 +15,7 @@ import { observability } from '#bootstrap'
 import { createSql, pingDb } from '#db'
 import { runMigrations } from '#db/migrations'
 import { loadEnv } from '#env'
+import { logger } from '#logger'
 import {
   createStrategyAgentDeps,
   runStrategyAgent,
@@ -86,18 +87,20 @@ export const main = async (): Promise<void> => {
   const server = serve(
     { fetch: app.fetch, port: env.TRADER_AGENT_PORT, hostname: '0.0.0.0' },
     (info) => {
-      console.log(
-        `t-rader-agent listening on ${info.address}:${String(info.port)}`,
+      logger.info(
+        { address: info.address, port: info.port },
+        't-rader-agent listening',
       )
     },
   )
 
   const shutdown = (signal: NodeJS.Signals): void => {
-    console.log(`received ${signal}, shutting down`)
+    logger.info({ signal }, 'shutting down')
     isShuttingDown = true
 
     const forceExit = setTimeout(() => {
-      console.error(
+      logger.error(
+        {},
         'graceful shutdown timed out, forcing exit (in-flight task(s) may be abandoned)',
       )
       captureWithFingerprint(
@@ -126,7 +129,7 @@ export const main = async (): Promise<void> => {
         .then((results) => {
           for (const result of results) {
             if (result.status === 'rejected') {
-              console.error('shutdown error:', result.reason)
+              logger.error({ err: result.reason }, 'shutdown error')
             }
           }
         })

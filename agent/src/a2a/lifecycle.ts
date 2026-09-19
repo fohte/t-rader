@@ -1,6 +1,8 @@
 import type { Task } from '@a2a-js/sdk'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 
+import { logger } from '#logger'
+
 // Narrow interface (rather than the concrete PostgresTaskStore) so the sweep
 // logic here can be tested against a plain fake store.
 export interface TaskLifecycleStore {
@@ -76,12 +78,12 @@ export const startTaskLifecycleJobs = (
         options.onExpire,
         now,
       ).catch((err: unknown) => {
-        console.error('a2a watchdog sweep failed:', err)
+        logger.error({ err }, 'a2a watchdog sweep failed')
         captureWithFingerprint(err, WATCHDOG_SWEEP_FAILED_FINGERPRINT)
       }),
       runRetentionSweep(store, options.retentionDays, now).catch(
         (err: unknown) => {
-          console.error('a2a retention sweep failed:', err)
+          logger.error({ err }, 'a2a retention sweep failed')
           captureWithFingerprint(err, RETENTION_SWEEP_FAILED_FINGERPRINT)
         },
       ),

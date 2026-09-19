@@ -9,6 +9,8 @@ import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 
+import { logger } from '#logger'
+
 const STREAM_FAILED_FINGERPRINT = 'a2a.hono.stream-failed'
 
 export interface A2aHonoBridgeOptions {
@@ -89,7 +91,7 @@ export const mountA2aRoutes = (
           }
         },
         async (err, stream) => {
-          console.error('a2a JSON-RPC stream failed:', err)
+          logger.error({ err }, 'a2a JSON-RPC stream failed')
           captureWithFingerprint(err, STREAM_FAILED_FINGERPRINT)
           await stream
             .writeSSE({
