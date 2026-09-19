@@ -93,15 +93,23 @@ const runWithWarnSpy = async <T>(
   run: () => Promise<T>,
 ): Promise<{
   readonly result: T
-  readonly warnMessages: readonly string[]
+  readonly warnCalls: readonly (readonly [Record<string, unknown>, string])[]
 }> => {
   const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
   try {
     const result = await run()
     return {
       result,
-      warnMessages: warnSpy.mock.calls.map(([, message]) =>
-        normalizeExecutionStepIdInText(message),
+      warnCalls: warnSpy.mock.calls.map(
+        ([{ executionStepId, ...fields }, message]) => [
+          {
+            ...fields,
+            executionStepId: normalizeExecutionStepIdInText(
+              String(executionStepId),
+            ),
+          },
+          normalizeExecutionStepIdInText(message),
+        ],
       ),
     }
   } finally {
@@ -544,7 +552,7 @@ describe('runAgentGraph', () => {
       ],
     }
 
-    const { result, warnMessages } = await runWithWarnSpy(() =>
+    const { result, warnCalls } = await runWithWarnSpy(() =>
       runAgentGraph(deps, config, {
         agentsMd: 'AGENTS',
         skills: {},
@@ -565,9 +573,23 @@ describe('runAgentGraph', () => {
       '<execution-step-id-1>',
       '<execution-step-id-1>',
     ])
-    expect(warnMessages).toEqual([
-      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_structured_output), retrying',
-      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_structured_output), retrying',
+    expect(warnCalls).toEqual([
+      [
+        {
+          executionStepId: '<execution-step-id>',
+          attemptNumber: 1,
+          reason: 'missing_structured_output',
+        },
+        'phase "p" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_structured_output), retrying',
+      ],
+      [
+        {
+          executionStepId: '<execution-step-id>',
+          attemptNumber: 2,
+          reason: 'missing_structured_output',
+        },
+        'phase "p" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_structured_output), retrying',
+      ],
     ])
 
     const basePrompt = buildPhaseMessageText({
@@ -641,7 +663,7 @@ describe('runAgentGraph', () => {
         ],
       }
 
-      const { warnMessages } = await runWithWarnSpy(() =>
+      const { warnCalls } = await runWithWarnSpy(() =>
         runAgentGraph(deps, config, {
           agentsMd: 'AGENTS',
           skills: {},
@@ -667,8 +689,11 @@ describe('runAgentGraph', () => {
           `前回の試行は却下されました (理由: ${reasonText})。\n構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。\nwrite_note・create_annotation・add_interest などの書き込み系 tool は前回の試行で既に実行済みの可能性があります。同じ内容を重複して実行しないでください。`,
         ].join('\n'),
       ])
-      expect(warnMessages).toEqual([
-        `phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (${reason}), retrying`,
+      expect(warnCalls).toEqual([
+        [
+          { executionStepId: '<execution-step-id>', attemptNumber: 1, reason },
+          `phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (${reason}), retrying`,
+        ],
       ])
     },
   )
@@ -693,7 +718,7 @@ describe('runAgentGraph', () => {
       ],
     }
 
-    const { result, warnMessages } = await runWithWarnSpy(() =>
+    const { result, warnCalls } = await runWithWarnSpy(() =>
       runAgentGraph(deps, config, {
         agentsMd: 'AGENTS',
         skills: {},
@@ -709,9 +734,23 @@ describe('runAgentGraph', () => {
       errorKind: 'agent_error',
     })
     expect(attempts).toBe(3)
-    expect(warnMessages).toEqual([
-      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_structured_output), retrying',
-      'phase "p" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_structured_output), retrying',
+    expect(warnCalls).toEqual([
+      [
+        {
+          executionStepId: '<execution-step-id>',
+          attemptNumber: 1,
+          reason: 'missing_structured_output',
+        },
+        'phase "p" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_structured_output), retrying',
+      ],
+      [
+        {
+          executionStepId: '<execution-step-id>',
+          attemptNumber: 2,
+          reason: 'missing_structured_output',
+        },
+        'phase "p" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_structured_output), retrying',
+      ],
     ])
   })
 
@@ -835,7 +874,7 @@ describe('runAgentGraph', () => {
         ],
       }
 
-      const { result, warnMessages } = await runWithWarnSpy(() =>
+      const { result, warnCalls } = await runWithWarnSpy(() =>
         runAgentGraph(deps, config, {
           agentsMd: 'AGENTS',
           skills: {},
@@ -850,9 +889,23 @@ describe('runAgentGraph', () => {
         errorKind: 'agent_error',
       })
       expect(attempts).toBe(3)
-      expect(warnMessages).toEqual([
-        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
-        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+      expect(warnCalls).toEqual([
+        [
+          {
+            executionStepId: '<execution-step-id>',
+            attemptNumber: 1,
+            reason: 'missing_required_array_fields',
+          },
+          'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
+        ],
+        [
+          {
+            executionStepId: '<execution-step-id>',
+            attemptNumber: 2,
+            reason: 'missing_required_array_fields',
+          },
+          'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+        ],
       ])
     },
   )
@@ -931,7 +984,7 @@ describe('runAgentGraph', () => {
       ],
     }
 
-    const { result, warnMessages } = await runWithWarnSpy(() =>
+    const { result, warnCalls } = await runWithWarnSpy(() =>
       runAgentGraph(deps, config, {
         agentsMd: 'AGENTS',
         skills: {},
@@ -945,9 +998,23 @@ describe('runAgentGraph', () => {
       message: '2フェーズの実行が完了しました (Plan → Investigate)',
     })
     expect(planAttempts).toBe(3)
-    expect(warnMessages).toEqual([
-      'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
-      'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+    expect(warnCalls).toEqual([
+      [
+        {
+          executionStepId: '<execution-step-id>',
+          attemptNumber: 1,
+          reason: 'missing_required_array_fields',
+        },
+        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 1 rejected (missing_required_array_fields), retrying',
+      ],
+      [
+        {
+          executionStepId: '<execution-step-id>',
+          attemptNumber: 2,
+          reason: 'missing_required_array_fields',
+        },
+        'phase "plan" (executionStepId=<execution-step-id>) structured output attempt 2 rejected (missing_required_array_fields), retrying',
+      ],
     ])
   })
 
