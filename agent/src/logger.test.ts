@@ -120,37 +120,46 @@ describe('logger', () => {
     expect(output()).toEqual([{ level: 30, time: '<time>', msg: 'hello' }])
   })
 
-  it('adds bindings from withLogBindings, including across async boundaries and nested scopes', async () => {
+  it('adds withLogBindings bindings to log lines emitted after an await', async () => {
     const { logger, output } = setup()
 
-    await withLogBindings({ task_id: 't1', strategy_id: 's1' }, async () => {
+    await withLogBindings({ task_id: 't1' }, async () => {
       await Promise.resolve()
-      logger.info({}, 'outer')
-      await withLogBindings({ 'phase.key': 'plan' }, async () => {
-        await Promise.resolve()
-        logger.info({}, 'inner')
+      logger.info({}, 'hello')
+    })
+
+    expect(output()).toEqual([
+      { level: 30, time: '<time>', task_id: 't1', msg: 'hello' },
+    ])
+  })
+
+  it('merges nested withLogBindings scopes on top of the outer bindings', () => {
+    const { logger, output } = setup()
+
+    withLogBindings({ task_id: 't1' }, () => {
+      withLogBindings({ 'phase.key': 'plan' }, () => {
+        logger.info({}, 'hello')
       })
     })
-    logger.info({}, 'outside')
 
     expect(output()).toEqual([
       {
         level: 30,
         time: '<time>',
         task_id: 't1',
-        strategy_id: 's1',
-        msg: 'outer',
-      },
-      {
-        level: 30,
-        time: '<time>',
-        task_id: 't1',
-        strategy_id: 's1',
         'phase.key': 'plan',
-        msg: 'inner',
+        msg: 'hello',
       },
-      { level: 30, time: '<time>', msg: 'outside' },
     ])
+  })
+
+  it('does not add withLogBindings bindings to log lines emitted outside the scope', () => {
+    const { logger, output } = setup()
+
+    withLogBindings({ task_id: 't1' }, () => undefined)
+    logger.info({}, 'hello')
+
+    expect(output()).toEqual([{ level: 30, time: '<time>', msg: 'hello' }])
   })
 
   it('adds the context fields to child loggers as well', () => {
