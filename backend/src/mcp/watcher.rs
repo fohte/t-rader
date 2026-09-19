@@ -53,15 +53,21 @@ fn error_summary_for(status: &AgentTaskStatus, phase: &StrategyTaskPhase) -> Opt
     if *phase != StrategyTaskPhase::Failed {
         return None;
     }
-    // 本文 (フェーズ名を含む失敗理由) を優先し、無い場合のみ分類名にフォールバックする。
     Some(
-        status
-            .error_message
-            .clone()
-            .filter(|m| !m.is_empty())
-            .or_else(|| status.error_kind.clone())
-            .unwrap_or_else(|| "agent task failed".to_string()),
+        agent_reported_reason(status)
+            .unwrap_or("agent task failed")
+            .to_string(),
     )
+}
+
+/// agent が報告した失敗理由。本文 (フェーズ名を含む) を優先し、無い (空を含む) 場合のみ
+/// 分類名にフォールバックする。agent は `new Error('')` 等で空の本文を返しうる。
+fn agent_reported_reason(status: &AgentTaskStatus) -> Option<&str> {
+    status
+        .error_message
+        .as_deref()
+        .filter(|m| !m.is_empty())
+        .or(status.error_kind.as_deref())
 }
 
 /// 1 回分の polling を実行する。失敗した個別 task はログに残し、他の task の処理を継続する。
@@ -182,7 +188,7 @@ async fn apply_status(
     now: DateTime<FixedOffset>,
 ) -> bool {
     let (new_phase, new_error) = if now > row.deadline_at {
-        let message = match status.error_message.as_ref().or(status.error_kind.as_ref()) {
+        let message = match agent_reported_reason(&status) {
             Some(reported) => format!("agent task exceeded deadline (agent reported: {reported})"),
             None => "agent task exceeded deadline".to_string(),
         };
@@ -316,6 +322,7 @@ mod tests {
     use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
     use crate::entities::{strategy, strategy_task_step};
     use crate::testing::create_test_db;
+    use rstest::rstest;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     use sqlx::PgPool;
     use uuid::Uuid;
@@ -386,6 +393,28 @@ mod tests {
             .all(db)
             .await
             .unwrap()
+    }
+
+    #[rstest]
+    #[case::message_over_kind(Some("boom"), Some("agent_error"), Some("boom"))]
+    #[case::empty_message_falls_back_to_kind(Some(""), Some("agent_error"), Some("agent_error"))]
+    #[case::kind_only(None, Some("usage_limit"), Some("usage_limit"))]
+    #[case::message_only(Some("boom"), None, Some("boom"))]
+    #[case::empty_message_without_kind(Some(""), None, None)]
+    #[case::neither(None, None, None)]
+    fn agent_reported_reason_prefers_non_empty_message(
+        #[case] error_message: Option<&str>,
+        #[case] error_kind: Option<&str>,
+        #[case] expected: Option<&str>,
+    ) {
+        let status = AgentTaskStatus {
+            state: AgentTaskState::Failed,
+            result_text: None,
+            error_message: error_message.map(str::to_string),
+            error_kind: error_kind.map(str::to_string),
+            steps: None,
+        };
+        assert_eq!(agent_reported_reason(&status), expected);
     }
 
     const FAR_FUTURE: chrono::Duration = chrono::Duration::minutes(15);
@@ -638,87 +667,64 @@ mod tests {
         }
     }
 
+    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
     #[sqlx::test(migrations = false)]
-    async fn deadline_exceeded_includes_agent_reported_error_kind(pool: PgPool) {
+    async fn deadline_exceeded_includes_agent_reported_reason(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
-        let task_id = insert_task(
-            &db,
-            strategy_id,
-            Some("t-usage-limit"),
-            StrategyTaskPhase::Running,
-            PAST,
-        )
-        .await;
 
-        let fake = Arc::new(FakeAgentTaskClient::new());
-        fake.set_status(
-            "t-usage-limit",
-            AgentTaskStatus {
-                state: AgentTaskState::Failed,
-                result_text: None,
-                error_message: None,
-                error_kind: Some("usage_limit".to_string()),
-                steps: None,
-            },
-        )
-        .await;
-        let agent_client: SharedAgentTaskClient = fake;
-
-        let updated = run_once(&db, &agent_client).await;
-        assert_eq!(updated, 1);
-
-        let row = fetch_task(&db, task_id).await;
-        assert_eq!(
-            (row.phase, row.error_summary),
+        for (label, a2a_task_id, error_message, error_kind, expected_error_summary) in [
             (
-                StrategyTaskPhase::Failed,
-                Some("agent task exceeded deadline (agent reported: usage_limit)".to_string()),
+                "kind_only",
+                "t-usage-limit",
+                None,
+                Some("usage_limit"),
+                "agent task exceeded deadline (agent reported: usage_limit)",
             ),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn deadline_exceeded_includes_agent_reported_error_message(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy(&db).await;
-        let task_id = insert_task(
-            &db,
-            strategy_id,
-            Some("t-late-reason"),
-            StrategyTaskPhase::Running,
-            PAST,
-        )
-        .await;
-
-        let fake = Arc::new(FakeAgentTaskClient::new());
-        fake.set_status(
-            "t-late-reason",
-            AgentTaskStatus {
-                state: AgentTaskState::Failed,
-                result_text: None,
-                error_message: Some("upstream returned 400".to_string()),
-                error_kind: Some("agent_error".to_string()),
-                steps: None,
-            },
-        )
-        .await;
-        let agent_client: SharedAgentTaskClient = fake;
-
-        let updated = run_once(&db, &agent_client).await;
-        assert_eq!(updated, 1);
-
-        let row = fetch_task(&db, task_id).await;
-        assert_eq!(
-            (row.phase, row.error_summary),
             (
-                StrategyTaskPhase::Failed,
-                Some(
-                    "agent task exceeded deadline (agent reported: upstream returned 400)"
-                        .to_string()
+                "message_over_kind",
+                "t-late-reason",
+                Some("upstream returned 400"),
+                Some("agent_error"),
+                "agent task exceeded deadline (agent reported: upstream returned 400)",
+            ),
+        ] {
+            let task_id = insert_task(
+                &db,
+                strategy_id,
+                Some(a2a_task_id),
+                StrategyTaskPhase::Running,
+                PAST,
+            )
+            .await;
+
+            let fake = Arc::new(FakeAgentTaskClient::new());
+            fake.set_status(
+                a2a_task_id,
+                AgentTaskStatus {
+                    state: AgentTaskState::Failed,
+                    result_text: None,
+                    error_message: error_message.map(str::to_string),
+                    error_kind: error_kind.map(str::to_string),
+                    steps: None,
+                },
+            )
+            .await;
+            let agent_client: SharedAgentTaskClient = fake;
+
+            let updated = run_once(&db, &agent_client).await;
+            assert_eq!(updated, 1, "case {label}");
+
+            let row = fetch_task(&db, task_id).await;
+            assert_eq!(
+                (row.phase, row.error_summary),
+                (
+                    StrategyTaskPhase::Failed,
+                    Some(expected_error_summary.to_string()),
                 ),
-            ),
-        );
+                "case {label}",
+            );
+        }
     }
 
     #[sqlx::test(migrations = false)]
