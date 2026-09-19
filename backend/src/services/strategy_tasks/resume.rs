@@ -1,27 +1,31 @@
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
-use sea_orm::sea_query::{Expr, ExprTrait};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::sea_query::Expr;
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    QueryTrait,
+};
 use uuid::Uuid;
 
 use super::{DEADLINE_DURATION, SubmittedTask, phase_str, step_to_wire_json};
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
+use crate::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
 use crate::entities::{strategy_task, strategy_task_step};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ResumeTaskError {
     #[error("strategy task {0} not found")]
     NotFound(Uuid),
-    #[error("strategy task {0} is not failed (current phase: {1})")]
-    NotFailed(Uuid, &'static str),
+    #[error("strategy task {0} is not resumable (current phase: {1})")]
+    NotResumable(Uuid, &'static str),
     #[error(transparent)]
     Database(#[from] sea_orm::DbErr),
     #[error(transparent)]
     AgentTask(#[from] AgentTaskError),
 }
 
-/// failed な戦略タスクを、成功済みステップを再実行せずに同じ行のまま再開する。
+/// failed な戦略タスク、または for_each の部分失敗で failed なステップを抱えたまま
+/// completed になった戦略タスクを、成功済みステップを再実行せずに同じ行のまま再開する。
 ///
 /// 新しい strategy_task 行は作らない (a2a_task_id だけ差し替え、phase を Running に戻す)。
 /// 全 strategy_task_step 行 (completed/failed/running 問わず) を `resume_steps` として
@@ -57,13 +61,27 @@ async fn resume_task_impl(
         .one(db)
         .await?
         .ok_or(ResumeTaskError::NotFound(task_id))?;
-    if row.phase != StrategyTaskPhase::Failed {
-        return Err(ResumeTaskError::NotFailed(task_id, phase_str(&row.phase)));
-    }
 
-    // 「Failed である」ことの確認と「Running に倒す」ことを 1 回の条件付き UPDATE
-    // で原子化する。上の事前チェックだけでは、同じ task_id への並行呼び出しが
-    // 両方とも Failed を読んでしまい二重に agent へ投入されうる。
+    // 「再開できる状態である」ことの確認と「Running に倒す」ことを 1 回の条件付き
+    // UPDATE で原子化する。事前に phase を読むだけでは、同じ task_id への並行呼び出しが
+    // 両方とも再開可能と判断して二重に agent へ投入されうる。
+    //
+    // Completed は failed ステップを持つ場合だけ再開できる (for_each は 1 件でも成功すれば
+    // フェーズ成功として返すため、部分失敗したタスクは Failed でなく Completed で終わる)。
+    // Running/Pending は失敗した要素を含んでいても実行中なので対象外。
+    let failed_step_task_ids = strategy_task_step::Entity::find()
+        .select_only()
+        .column(strategy_task_step::Column::TaskId)
+        .filter(strategy_task_step::Column::TaskId.eq(task_id))
+        .filter(strategy_task_step::Column::Status.eq(StrategyTaskStepStatus::Failed))
+        .into_query();
+    let resumable = Condition::any()
+        .add(strategy_task::Column::Phase.eq(StrategyTaskPhase::Failed))
+        .add(
+            Condition::all()
+                .add(strategy_task::Column::Phase.eq(StrategyTaskPhase::Completed))
+                .add(strategy_task::Column::TaskId.in_subquery(failed_step_task_ids)),
+        );
     let claim_now = chrono::Utc::now().fixed_offset();
     let mut update = strategy_task::Entity::update_many()
         .col_expr(
@@ -71,19 +89,22 @@ async fn resume_task_impl(
             Expr::value(StrategyTaskPhase::Running),
         )
         .col_expr(strategy_task::Column::UpdatedAt, Expr::value(claim_now));
-    let mut filter = strategy_task::Column::TaskId
-        .eq(task_id)
-        .and(strategy_task::Column::Phase.eq(StrategyTaskPhase::Failed));
+    let mut filter = Condition::all()
+        .add(strategy_task::Column::TaskId.eq(task_id))
+        .add(resumable);
     if mark_auto_resumed {
         // auto_resumed_at を claim と同じ UPDATE で刻むことで、「1 タスクにつき自動
         // resume は 1 回まで」を後続の再試行と原子的に排他できる (2 回目の呼び出しは
         // ここで claim に失敗する)。
         update = update.col_expr(strategy_task::Column::AutoResumedAt, Expr::value(claim_now));
-        filter = filter.and(strategy_task::Column::AutoResumedAt.is_null());
+        filter = filter.add(strategy_task::Column::AutoResumedAt.is_null());
     }
     let claimed = update.filter(filter).exec(db).await?;
     if claimed.rows_affected == 0 {
-        return Err(ResumeTaskError::NotFailed(task_id, "failed"));
+        return Err(ResumeTaskError::NotResumable(
+            task_id,
+            phase_str(&row.phase),
+        ));
     }
 
     let step_rows = strategy_task_step::Entity::find()
@@ -262,22 +283,151 @@ mod tests {
         .expect("insert test strategy_task_step");
     }
 
+    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
     #[sqlx::test(migrations = false)]
-    async fn resume_task_rejects_when_not_failed(pool: PgPool) {
+    async fn resume_task_rejects_a_task_that_is_neither_failed_nor_completed_with_a_failed_step(
+        pool: PgPool,
+    ) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
-        let task_id =
-            insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Running, "p", None).await;
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
 
-        let err = resume_task(&db, &agent_client, task_id)
-            .await
-            .expect_err("running task must not be resumable");
-        assert!(
-            matches!(&err, ResumeTaskError::NotFailed(id, phase) if *id == task_id && *phase == "running")
-        );
+        let cases = [
+            ("running_without_steps", StrategyTaskPhase::Running, None),
+            // 実行中の for_each は失敗済みの要素を持ちうるが、まだ決着していないので対象外。
+            (
+                "running_with_failed_step",
+                StrategyTaskPhase::Running,
+                Some(StrategyTaskStepStatus::Failed),
+            ),
+            (
+                "pending_with_failed_step",
+                StrategyTaskPhase::Pending,
+                Some(StrategyTaskStepStatus::Failed),
+            ),
+            (
+                "completed_without_steps",
+                StrategyTaskPhase::Completed,
+                None,
+            ),
+            (
+                "completed_with_only_completed_steps",
+                StrategyTaskPhase::Completed,
+                Some(StrategyTaskStepStatus::Completed),
+            ),
+        ];
+        for (name, phase, step_status) in cases {
+            let expected_phase = phase_str(&phase);
+            let task_id = insert_task_with_phase(&db, strategy_id, phase, "p", None).await;
+            if let Some(status) = step_status {
+                insert_task_step(&db, task_id, Uuid::new_v4(), "investigate", status, 1).await;
+            }
+
+            let err = resume_task(&db, &agent_client, task_id)
+                .await
+                .expect_err(name);
+            assert!(
+                matches!(&err, ResumeTaskError::NotResumable(id, phase) if *id == task_id && *phase == expected_phase),
+                "{name}: {err:?}",
+            );
+        }
         assert!(fake.submitted.lock().await.is_empty());
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn resume_task_resumes_a_completed_task_that_has_a_failed_step(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let task_id = insert_task_with_phase(
+            &db,
+            strategy_id,
+            StrategyTaskPhase::Completed,
+            "prompt text",
+            None,
+        )
+        .await;
+        let completed_step_id = Uuid::new_v4();
+        let failed_step_id = Uuid::new_v4();
+        insert_task_step(
+            &db,
+            task_id,
+            completed_step_id,
+            "investigate",
+            StrategyTaskStepStatus::Completed,
+            1,
+        )
+        .await;
+        insert_task_step(
+            &db,
+            task_id,
+            failed_step_id,
+            "investigate",
+            StrategyTaskStepStatus::Failed,
+            2,
+        )
+        .await;
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_next_task_id("agent-task-resumed").await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let started_at = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .unwrap()
+            .to_rfc3339();
+
+        resume_task(&db, &agent_client, task_id)
+            .await
+            .expect("completed task with a failed step is resumable");
+
+        let submitted = fake.submitted.lock().await;
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row still exists");
+
+        #[derive(Debug, PartialEq)]
+        struct ResumeOutcome {
+            submitted_count: usize,
+            resume_steps: Option<Vec<serde_json::Value>>,
+            row_phase: StrategyTaskPhase,
+            row_a2a_task_id: Option<String>,
+        }
+
+        assert_eq!(
+            ResumeOutcome {
+                submitted_count: submitted.len(),
+                resume_steps: submitted.first().and_then(|s| s.resume_steps.clone()),
+                row_phase: row.phase,
+                row_a2a_task_id: row.a2a_task_id,
+            },
+            ResumeOutcome {
+                submitted_count: 1,
+                resume_steps: Some(vec![
+                    serde_json::json!({
+                        "execution_step_id": completed_step_id,
+                        "phase_key": "investigate",
+                        "label": "investigate",
+                        "model": "m",
+                        "status": "completed",
+                        "started_at": started_at,
+                        "trace_id": "trace-1",
+                        "span_id": "span-1",
+                    }),
+                    serde_json::json!({
+                        "execution_step_id": failed_step_id,
+                        "phase_key": "investigate",
+                        "label": "investigate",
+                        "model": "m",
+                        "status": "failed",
+                        "started_at": started_at,
+                        "trace_id": "trace-1",
+                        "span_id": "span-1",
+                    }),
+                ]),
+                row_phase: StrategyTaskPhase::Running,
+                row_a2a_task_id: Some("agent-task-resumed".to_string()),
+            },
+        );
     }
 
     #[sqlx::test(migrations = false)]
@@ -418,7 +568,7 @@ mod tests {
             .await
             .expect_err("second resume must not re-claim an already-running row");
         assert!(
-            matches!(&err, ResumeTaskError::NotFailed(id, phase) if *id == task_id && *phase == "running")
+            matches!(&err, ResumeTaskError::NotResumable(id, phase) if *id == task_id && *phase == "running")
         );
         assert_eq!(fake.submitted.lock().await.len(), 1);
     }
@@ -496,7 +646,7 @@ mod tests {
             .await
             .expect_err("second auto resume must not re-claim an already auto-resumed row");
         assert!(
-            matches!(&err, ResumeTaskError::NotFailed(id, phase) if *id == task_id && *phase == "failed")
+            matches!(&err, ResumeTaskError::NotResumable(id, phase) if *id == task_id && *phase == "failed")
         );
         assert_eq!(fake.submitted.lock().await.len(), 1);
     }
