@@ -12,7 +12,7 @@ impl MigrationTrait for Migration {
             .execute_unprepared(
                 "COMMENT ON COLUMN strategy_task.as_of IS \
                  '実行の論理的な基準時刻。投入時に決まり、resume でも変わらない。\
-                 監査目的の記録であり、実行中に参照したデータがすべてこの時刻のものであることは保証しない \
+                 監査用に記録し、agent がプロンプトにも含めて LLM に伝える。実行中に参照したデータがすべてこの時刻のものであることは保証しない \
                  (データ取得層は基準時刻を受け取らず、呼び出された瞬間の外部データを返す)。'",
             )
             .await?;
