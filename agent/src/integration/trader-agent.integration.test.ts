@@ -149,7 +149,11 @@ describeIfDb('t-rader-agent internal API integration', () => {
     const finalState = await pollUntilTerminal(app, taskId)
     await settlePushNotification()
 
-    expect(finalState).toEqual({ task_id: taskId, state: 'rejected' })
+    expect(finalState).toEqual({
+      task_id: taskId,
+      state: 'rejected',
+      error_message: 'strategy_id is missing or not a valid UUID',
+    })
   })
 
   it('rejects a task submitted with no strategy_id at all', async () => {
