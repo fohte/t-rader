@@ -12,6 +12,13 @@ interface HypothesisStatusPanelProps {
   status: string
 }
 
+interface HypothesisStatusPanelViewProps {
+  status: string
+  onStatusChange: (nextStatus: string) => void
+  isUpdating: boolean
+  hasUpdateError: boolean
+}
+
 export function HypothesisStatusPanel({
   hypothesisId,
   strategyId,
@@ -34,6 +41,22 @@ export function HypothesisStatusPanel({
   }
 
   return (
+    <HypothesisStatusPanelView
+      status={status}
+      onStatusChange={handleChange}
+      isUpdating={updateMutation.isPending}
+      hasUpdateError={updateMutation.isError}
+    />
+  )
+}
+
+export function HypothesisStatusPanelView({
+  status,
+  onStatusChange,
+  isUpdating,
+  hasUpdateError,
+}: HypothesisStatusPanelViewProps) {
+  return (
     <section className="border border-border bg-card">
       <header className="flex items-center justify-between border-b border-border px-3.5 py-2">
         <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
@@ -45,9 +68,9 @@ export function HypothesisStatusPanel({
         <select
           aria-label="status"
           value={status}
-          disabled={updateMutation.isPending}
+          disabled={isUpdating}
           onChange={(e) => {
-            handleChange(e.target.value)
+            onStatusChange(e.target.value)
           }}
           className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
         >
@@ -57,7 +80,7 @@ export function HypothesisStatusPanel({
             </option>
           ))}
         </select>
-        {updateMutation.isError && (
+        {hasUpdateError && (
           <p className="mt-2 font-mono text-2xs text-primary">
             status の更新に失敗しました
           </p>
