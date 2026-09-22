@@ -366,6 +366,174 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn read_fin_summary_computes_progress_rates_only_for_quarterly_statements(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db.clone());
+
+        seed(
+            &db,
+            "ABCD0",
+            "1",
+            json!({
+                "DiscDate": "2001-05-01",
+                "Code": "ABCD0",
+                "DiscNo": "1",
+                "DocType": "1QFinancialStatements_Consolidated_JP",
+                "CurPerType": "1Q",
+                "Sales": "50",
+                "FSales": "100",
+                "OP": "20",
+                "FOP": "40",
+                "OdP": "15",
+                "FOdP": "30",
+                "NP": "5",
+                "FNP": "10",
+            }),
+        )
+        .await;
+        seed(
+            &db,
+            "ABCD0",
+            "2",
+            json!({
+                "DiscDate": "2001-05-02",
+                "Code": "ABCD0",
+                "DiscNo": "2",
+                "DocType": "2QFinancialStatements_Consolidated_JP",
+                "CurPerType": "2Q",
+                "Sales": "50",
+                "FSales": "",
+                "OP": "20",
+                "FOP": "0",
+                "OdP": "15",
+                "FOdP": "-30",
+                "NP": "5",
+                "FNP": "10",
+            }),
+        )
+        .await;
+        seed(
+            &db,
+            "ABCD0",
+            "3",
+            json!({
+                "DiscDate": "2001-05-03",
+                "Code": "ABCD0",
+                "DiscNo": "3",
+                "DocType": "FYFinancialStatements_Consolidated_JP",
+                "CurPerType": "FY",
+                "Sales": "50",
+                "FSales": "100",
+                "OP": "20",
+                "FOP": "40",
+                "OdP": "15",
+                "FOdP": "30",
+                "NP": "5",
+                "FNP": "10",
+            }),
+        )
+        .await;
+        seed(
+            &db,
+            "ABCD0",
+            "4",
+            json!({
+                "DiscDate": "2001-05-04",
+                "Code": "ABCD0",
+                "DiscNo": "4",
+                "DocType": "EarnForecastRevision",
+                "CurPerType": "2Q",
+                "Sales": "50",
+                "FSales": "100",
+                "OP": "20",
+                "FOP": "40",
+                "OdP": "15",
+                "FOdP": "30",
+                "NP": "5",
+                "FNP": "10",
+            }),
+        )
+        .await;
+
+        let result = server
+            .read_fin_summary_inner(
+                Uuid::new_v4(),
+                ReadFinSummaryParams {
+                    symbol: "ABCD".to_string(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("read_fin_summary");
+
+        assert_eq!(
+            result,
+            ReadFinSummaryResult {
+                items: vec![
+                    FinSummaryDto {
+                        doc_type: Some("EarnForecastRevision".to_string()),
+                        current_period_type: Some("2Q".to_string()),
+                        sales: Some(50.0),
+                        operating_profit: Some(20.0),
+                        ordinary_profit: Some(15.0),
+                        net_profit: Some(5.0),
+                        forecast_sales: Some(100.0),
+                        forecast_operating_profit: Some(40.0),
+                        forecast_ordinary_profit: Some(30.0),
+                        forecast_net_profit: Some(10.0),
+                        ..blank_dto(ymd(2001, 5, 4))
+                    },
+                    FinSummaryDto {
+                        doc_type: Some("FYFinancialStatements_Consolidated_JP".to_string()),
+                        current_period_type: Some("FY".to_string()),
+                        sales: Some(50.0),
+                        operating_profit: Some(20.0),
+                        ordinary_profit: Some(15.0),
+                        net_profit: Some(5.0),
+                        forecast_sales: Some(100.0),
+                        forecast_operating_profit: Some(40.0),
+                        forecast_ordinary_profit: Some(30.0),
+                        forecast_net_profit: Some(10.0),
+                        ..blank_dto(ymd(2001, 5, 3))
+                    },
+                    FinSummaryDto {
+                        doc_type: Some("2QFinancialStatements_Consolidated_JP".to_string()),
+                        current_period_type: Some("2Q".to_string()),
+                        sales: Some(50.0),
+                        operating_profit: Some(20.0),
+                        ordinary_profit: Some(15.0),
+                        net_profit: Some(5.0),
+                        operating_profit_progress_rate: None,
+                        ordinary_profit_progress_rate: None,
+                        net_profit_progress_rate: Some(0.5),
+                        forecast_operating_profit: Some(0.0),
+                        forecast_ordinary_profit: Some(-30.0),
+                        forecast_net_profit: Some(10.0),
+                        ..blank_dto(ymd(2001, 5, 2))
+                    },
+                    FinSummaryDto {
+                        doc_type: Some("1QFinancialStatements_Consolidated_JP".to_string()),
+                        current_period_type: Some("1Q".to_string()),
+                        sales: Some(50.0),
+                        operating_profit: Some(20.0),
+                        ordinary_profit: Some(15.0),
+                        net_profit: Some(5.0),
+                        sales_progress_rate: Some(0.5),
+                        operating_profit_progress_rate: Some(0.5),
+                        ordinary_profit_progress_rate: Some(0.5),
+                        net_profit_progress_rate: Some(0.5),
+                        forecast_sales: Some(100.0),
+                        forecast_operating_profit: Some(40.0),
+                        forecast_ordinary_profit: Some(30.0),
+                        forecast_net_profit: Some(10.0),
+                        ..blank_dto(ymd(2001, 5, 1))
+                    },
+                ],
+            }
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn read_fin_summary_matches_5_digit_code_by_leading_4_chars(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
