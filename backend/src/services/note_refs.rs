@@ -21,9 +21,41 @@ pub async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     body_md: &str,
     graphs_json: &serde_json::Value,
 ) -> Result<(), AppError> {
+    sync_note_refs_with_policy(db, note_id, body_md, graphs_json, BodyTokenPolicy::Validate).await
+}
+
+pub(crate) async fn sync_note_refs_after_graphs_only_update<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    note_id: uuid::Uuid,
+    body_md: &str,
+    graphs_json: &serde_json::Value,
+) -> Result<(), AppError> {
+    sync_note_refs_with_policy(
+        db,
+        note_id,
+        body_md,
+        graphs_json,
+        BodyTokenPolicy::AllowLegacyBodyTokens,
+    )
+    .await
+}
+
+async fn sync_note_refs_with_policy<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    note_id: uuid::Uuid,
+    body_md: &str,
+    graphs_json: &serde_json::Value,
+    body_token_policy: BodyTokenPolicy,
+) -> Result<(), AppError> {
     let graphs = deserialize_graphs(graphs_json)?;
-    let mut refs = collect_note_refs(body_md, &graphs)
-        .map_err(|errors| AppError::Validation(format_note_token_errors(&errors)))?;
+    let refs_result = match body_token_policy {
+        BodyTokenPolicy::Validate => collect_note_refs(body_md, &graphs),
+        BodyTokenPolicy::AllowLegacyBodyTokens => {
+            collect_note_refs_with_policy(body_md, &graphs, body_token_policy)
+        }
+    };
+    let mut refs =
+        refs_result.map_err(|errors| AppError::Validation(format_note_token_errors(&errors)))?;
     refs.sort();
     refs.dedup();
 
@@ -87,6 +119,12 @@ enum TokenKind {
     Invalid(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BodyTokenPolicy {
+    Validate,
+    AllowLegacyBodyTokens,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct NoteToken<'a> {
     inner: &'a str,
@@ -122,6 +160,151 @@ fn extract_tokens(body: &str) -> Vec<NoteToken<'_>> {
     }
 
     tokens
+}
+
+/// frontend の Markdown AST は code block と inline code を token 置換の対象にしない。
+fn markdown_code_ranges(body: &str) -> Vec<Range<usize>> {
+    let mut ranges = markdown_code_block_ranges(body);
+    ranges.extend(inline_code_ranges(body, &ranges));
+    ranges
+}
+
+fn markdown_code_block_ranges(body: &str) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut fence: Option<(usize, u8, usize)> = None;
+    let mut offset = 0;
+
+    for line in body.split_inclusive('\n') {
+        let content = line_content(line);
+        if let Some((start, marker, minimum_length)) = fence {
+            if is_closing_fence(content, marker, minimum_length) {
+                ranges.push(start..offset + line.len());
+                fence = None;
+            }
+        } else if let Some((marker, length)) = opening_fence(content) {
+            fence = Some((offset, marker, length));
+        } else if indentation_columns(content) >= 4 && !content.trim().is_empty() {
+            ranges.push(offset..offset + line.len());
+        }
+        offset += line.len();
+    }
+
+    if let Some((start, _, _)) = fence {
+        ranges.push(start..body.len());
+    }
+    ranges
+}
+
+fn line_content(line: &str) -> &str {
+    let without_newline = line.strip_suffix('\n').unwrap_or(line);
+    without_newline
+        .strip_suffix('\r')
+        .unwrap_or(without_newline)
+}
+
+fn opening_fence(line: &str) -> Option<(u8, usize)> {
+    let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indentation > 3 {
+        return None;
+    }
+    let content = &line[indentation..];
+    let marker = *content.as_bytes().first()?;
+    if marker != b'`' && marker != b'~' {
+        return None;
+    }
+    let length = content.bytes().take_while(|byte| *byte == marker).count();
+    if length < 3 || (marker == b'`' && content[length..].contains('`')) {
+        return None;
+    }
+    Some((marker, length))
+}
+
+fn is_closing_fence(line: &str, marker: u8, minimum_length: usize) -> bool {
+    let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indentation > 3 {
+        return false;
+    }
+    let content = &line[indentation..];
+    let length = content.bytes().take_while(|byte| *byte == marker).count();
+    length >= minimum_length && content[length..].trim().is_empty()
+}
+
+fn indentation_columns(line: &str) -> usize {
+    line.chars()
+        .take_while(|character| *character == ' ' || *character == '\t')
+        .fold(0, |columns, character| {
+            if character == '\t' {
+                (columns / 4 + 1) * 4
+            } else {
+                columns + 1
+            }
+        })
+}
+
+fn inline_code_ranges(body: &str, code_blocks: &[Range<usize>]) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(open_offset) = body[search_from..].find('`') {
+        let start = search_from + open_offset;
+        if let Some(block) = range_containing(code_blocks, start) {
+            search_from = block.end;
+            continue;
+        }
+
+        let delimiter_length = backtick_run_length(body, start);
+        let delimiter_end = start + delimiter_length;
+        let mut close_search_from = delimiter_end;
+        let mut close = None;
+
+        while let Some(close_offset) = body[close_search_from..].find('`') {
+            let close_start = close_search_from + close_offset;
+            if has_blank_line(body, start, close_start)
+                || code_blocks
+                    .iter()
+                    .any(|block| block.start > start && block.start < close_start)
+            {
+                break;
+            }
+            if range_containing(code_blocks, close_start).is_some() {
+                break;
+            }
+            let close_length = backtick_run_length(body, close_start);
+            if close_length == delimiter_length {
+                close = Some(close_start + close_length);
+                break;
+            }
+            close_search_from = close_start + close_length;
+        }
+
+        if let Some(end) = close {
+            ranges.push(start..end);
+            search_from = end;
+        } else {
+            search_from = delimiter_end;
+        }
+    }
+
+    ranges
+}
+
+fn has_blank_line(body: &str, start: usize, end: usize) -> bool {
+    body[start..end]
+        .split_inclusive('\n')
+        .any(|line| line_content(line).trim().is_empty())
+}
+
+fn backtick_run_length(body: &str, start: usize) -> usize {
+    body.as_bytes()[start..]
+        .iter()
+        .take_while(|byte| **byte == b'`')
+        .count()
+}
+
+fn range_containing(ranges: &[Range<usize>], position: usize) -> Option<&Range<usize>> {
+    ranges
+        .iter()
+        .find(|range| position >= range.start && position < range.end)
 }
 
 fn classify_token(inner: &str) -> TokenKind {
@@ -176,11 +359,26 @@ fn collect_note_refs(
     body: &str,
     graphs: &[GraphDef],
 ) -> Result<Vec<(String, String)>, Vec<NoteTokenValidationError>> {
+    collect_note_refs_with_policy(body, graphs, BodyTokenPolicy::Validate)
+}
+
+fn collect_note_refs_with_policy(
+    body: &str,
+    graphs: &[GraphDef],
+    body_token_policy: BodyTokenPolicy,
+) -> Result<Vec<(String, String)>, Vec<NoteTokenValidationError>> {
     let mut refs = Vec::new();
     let mut errors = Vec::new();
     let graph_blocks = blank_line_blocks(body);
+    let code_ranges = markdown_code_ranges(body);
 
     for token in extract_tokens(body) {
+        if code_ranges
+            .iter()
+            .any(|range| token.start >= range.start && token.end <= range.end)
+        {
+            continue;
+        }
         let token_text = &body[token.start..token.end];
         match classify_token(token.inner) {
             TokenKind::Ref(kind, id) => refs.push((kind, id)),
@@ -201,10 +399,12 @@ fn collect_note_refs(
                 }
             }
             TokenKind::Invalid(reason) => {
-                errors.push(NoteTokenValidationError::BodyToken {
-                    token: token_text.to_string(),
-                    reason,
-                });
+                if body_token_policy == BodyTokenPolicy::Validate {
+                    errors.push(NoteTokenValidationError::BodyToken {
+                        token: token_text.to_string(),
+                        reason,
+                    });
+                }
             }
         }
     }
@@ -215,23 +415,26 @@ fn collect_note_refs(
                 continue;
             };
             let location = format!("graphs[{graph_index}].nodes[{node_index}].ref");
-            match classify_token(value) {
-                TokenKind::Ref(kind, id) => refs.push((kind, id)),
+            let reason = match classify_token(value) {
+                TokenKind::Ref(kind, id) => {
+                    refs.push((kind, id));
+                    continue;
+                }
                 TokenKind::Annotation | TokenKind::Graph(_) => {
-                    errors.push(NoteTokenValidationError::GraphRef {
-                        location,
-                        token: format!("[[{value}]]"),
-                        reason: "図ノードでは stock / indicator / sector / theme の参照だけを使用できます".to_string(),
-                    });
+                    "図ノードでは stock / indicator / sector / theme の参照だけを使用できます"
+                        .to_string()
                 }
                 TokenKind::Invalid(reason) => {
-                    errors.push(NoteTokenValidationError::GraphRef {
-                        location,
-                        token: format!("[[{value}]]"),
-                        reason: format!("{reason}; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます"),
-                    });
+                    format!(
+                        "{reason}; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます"
+                    )
                 }
-            }
+            };
+            errors.push(NoteTokenValidationError::GraphRef {
+                location,
+                token: format!("[[{value}]]"),
+                reason,
+            });
         }
     }
 
@@ -371,6 +574,37 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case::inline_code("inline `[[foo:bar]]` code")]
+    #[case::multiline_inline_code("`[[foo:bar]]\n[[stock:demo-code]]`")]
+    #[case::backtick_fence(indoc::indoc! {"
+        ```text
+        [[foo:bar]]
+        ```
+    "})]
+    #[case::tilde_fence(indoc::indoc! {"
+        ~~~text
+        [[graph:g1]]
+        ~~~
+    "})]
+    #[case::indented_code("    [[foo:bar]]")]
+    fn test_collect_note_refs_ignores_markdown_code(#[case] body: &str) {
+        assert_eq!(collect_note_refs(body, &[]), Ok(vec![]));
+    }
+
+    #[test]
+    fn test_collect_note_refs_does_not_extend_inline_code_across_blank_lines() {
+        let body = indoc::indoc! {"
+            `unclosed
+
+            [[foo:bar]]
+        "};
+        assert_eq!(
+            collect_note_refs(body, &[]).map_err(|_| "invalid"),
+            Err("invalid")
+        );
+    }
+
     #[test]
     fn test_collect_note_refs_reports_every_invalid_token_and_allowed_form() {
         let body = indoc::indoc! {"
@@ -410,7 +644,6 @@ mod tests {
 
     #[rstest]
     #[case::mixed_paragraph("text [[graph:g1]]", 1)]
-    #[case::indented_code("    [[graph:g1]]", 1)]
     #[case::same_block_multiple("[[graph:g1]]\n[[graph:g1]]", 2)]
     fn test_collect_note_refs_rejects_non_standalone_graph_tokens(
         #[case] body: &str,

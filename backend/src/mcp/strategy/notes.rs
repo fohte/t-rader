@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::entities::note;
 use crate::services::graph::{GraphDef, validate_graphs};
-use crate::services::note_refs::sync_note_refs;
+use crate::services::note_refs::{sync_note_refs, sync_note_refs_after_graphs_only_update};
 
 use super::dto::{
     ListNotesParams, ListNotesResult, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
@@ -242,9 +242,18 @@ impl StrategyServer {
         let txn = self.db.begin().await.map_err(db_error)?;
         let updated = active.update(&txn).await.map_err(db_error)?;
         if refs_dirty {
-            sync_note_refs(&txn, note_id, &updated.body_md, &updated.graphs_json)
+            let result = if new_body_md.is_some() {
+                sync_note_refs(&txn, note_id, &updated.body_md, &updated.graphs_json).await
+            } else {
+                sync_note_refs_after_graphs_only_update(
+                    &txn,
+                    note_id,
+                    &updated.body_md,
+                    &updated.graphs_json,
+                )
                 .await
-                .map_err(app_error_to_mcp)?;
+            };
+            result.map_err(app_error_to_mcp)?;
         }
         if let Some(body_md) = new_body_md {
             crate::services::comment_anchor::reanchor_note_comments(&txn, note_id, &body_md)
@@ -361,7 +370,7 @@ mod tests {
 
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 
     use crate::entities::{comment, note, note_ref};
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
@@ -1229,6 +1238,80 @@ mod tests {
                 "case {label}",
             );
         }
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_graphs_only_update_keeps_legacy_body_tokens(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("token validation".into()),
+                    body_md: Some("original".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![sample_graph("g1")]),
+                },
+            )
+            .await
+            .expect("create note");
+
+        let mut active = note::Entity::find_by_id(created.note_id)
+            .one(&db)
+            .await
+            .expect("load note")
+            .expect("note exists")
+            .into_active_model();
+        active.body_md = Set("[[legacy:token]] [[stock:demo-code]]".into());
+        active.update(&db).await.expect("seed legacy body");
+
+        let updated = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: None,
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![sample_graph("g2")]),
+                },
+            )
+            .await
+            .expect("graphs-only update");
+        let note = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: created.note_id,
+                },
+            )
+            .await
+            .expect("read note");
+
+        assert_eq!(
+            (
+                updated.created,
+                note.body_md,
+                note.graphs
+                    .iter()
+                    .map(|graph| graph.id.clone())
+                    .collect::<Vec<_>>(),
+                note_refs_of(&db, created.note_id).await,
+            ),
+            (
+                false,
+                Some("[[legacy:token]] [[stock:demo-code]]".to_string()),
+                vec!["g2".to_string()],
+                vec![("stock".to_string(), "demo-code".to_string())],
+            ),
+        );
     }
 
     /// 図のみを更新した場合も、他フィールド更新と同様に status が unread へ戻る。
