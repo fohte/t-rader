@@ -5,6 +5,7 @@ import { CommentsPanel } from '#components/note-detail/comments-panel'
 import { HistoryPanel } from '#components/note-detail/history-panel'
 import { NoteDocument } from '#components/note-detail/note-document'
 import { NoteHeader } from '#components/note-detail/note-header'
+import { NoteHypothesesPanel } from '#components/note-detail/note-hypotheses-panel'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import { ReviewPanel } from '#components/note-detail/review-panel'
 import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
@@ -84,6 +85,10 @@ function NoteDetailPage() {
         <aside className="space-y-4">
           <ReviewPanel noteId={note.id} status={note.status} />
           <PredictionsPanel noteId={note.id} />
+          <NoteHypothesesPanel
+            noteId={note.id}
+            strategyId={note.strategy_id ?? null}
+          />
           <CommentsPanel
             noteId={note.id}
             pendingQuote={pendingQuote}
