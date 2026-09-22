@@ -20,6 +20,8 @@ pub use super::jquants_daily_bars_ingested_date::Entity as JquantsDailyBarsInges
 pub use super::jquants_earnings_date::Entity as JquantsEarningsDate;
 pub use super::jquants_fin_summary::Entity as JquantsFinSummary;
 pub use super::jquants_plan_setting::Entity as JquantsPlanSetting;
+pub use super::jquants_valuation::Entity as JquantsValuation;
+pub use super::jquants_valuation_ingested_date::Entity as JquantsValuationIngestedDate;
 pub use super::margin_alert::Entity as MarginAlert;
 pub use super::margin_interest::Entity as MarginInterest;
 pub use super::mcp_tool_call_count::Entity as McpToolCallCount;

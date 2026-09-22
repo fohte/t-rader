@@ -25,9 +25,10 @@ use super::dto::{
     ReadNoteParams, ReadPortfolioResult, ReadPredictionStatsResult, ReadSectorShortRatioParams,
     ReadSectorShortRatioResult, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
     ReadShortSaleReportsParams, ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult,
-    RecordPredictionParams, RecordPredictionResult, ReplyCommentParams, ReplyCommentResult,
-    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
-    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ReadValuationParams, ReadValuationResult, RecordPredictionParams, RecordPredictionResult,
+    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
+    SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
@@ -475,6 +476,21 @@ impl StrategyServer {
         self.read_fin_summary_inner(sid, params).await.map(Json)
     }
 
+    /// 銘柄の日次バリュエーション指標を新しい順に返す
+    #[tool(
+        name = "read_valuation",
+        description = "Read daily J-Quants valuation indicators for a stock, newest first. symbol is the 4-digit code and matches the leading 4 characters of the 5-digit J-Quants code; from/to are inclusive. roe and fwd_roe are decimal ratios, not percentages. mkt_cap is in millions of yen. Indicators J-Quants cannot calculate are null.",
+        annotations(read_only_hint = true)
+    )]
+    async fn read_valuation(
+        &self,
+        Parameters(params): Parameters<ReadValuationParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ReadValuationResult>, McpError> {
+        let sid = strategy_id_from_ctx(&ctx)?;
+        self.read_valuation_inner(sid, params).await.map(Json)
+    }
+
     /// 銘柄の信用残 (信用取引週末残高/信用取引残高、日々公表信用取引残高) を返す
     #[tool(
         name = "read_margin",
@@ -654,6 +670,7 @@ mod tests {
                 ("read_shareholding_structure", Some(true)),
                 ("read_short_sale_reports", Some(true)),
                 ("read_trades", Some(true)),
+                ("read_valuation", Some(true)),
                 ("record_prediction", None),
                 ("remove_ref_terms", None),
                 ("reply_comment", None),

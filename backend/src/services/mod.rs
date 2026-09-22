@@ -37,3 +37,4 @@ pub mod trades;
 pub mod trigger_crud;
 pub mod trigger_worker;
 pub mod triggers;
+pub mod valuation_ingest;

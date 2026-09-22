@@ -30,6 +30,7 @@ pub(super) mod short_ratio;
 pub(super) mod short_sale_report;
 mod tool_router;
 pub(super) mod trades;
+pub(super) mod valuation;
 pub(super) mod web_search;
 
 #[cfg(test)]

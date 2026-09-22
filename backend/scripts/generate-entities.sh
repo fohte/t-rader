@@ -53,6 +53,8 @@ for file in "$ENTITIES_DIR"/*.rs; do
     instruments) name=Instrument ;;
     jquants_plan_setting) name=JQuantsPlanSetting ;;
     jquants_fin_summary) name=JQuantsFinSummary ;;
+    jquants_valuation) name=JQuantsValuation ;;
+    jquants_valuation_ingested_date) name=JQuantsValuationIngestedDate ;;
     jquants_earnings_date) name=JQuantsEarningsDate ;;
     jquants_daily_bars_ingested_date) name=JQuantsDailyBarsIngestedDate ;;
     *) name="$(pascal_case "$base")" ;;

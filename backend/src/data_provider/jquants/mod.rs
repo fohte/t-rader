@@ -19,11 +19,11 @@ use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-pub(crate) use response::EarningsDateRecord;
 use response::{
     DailyBarsResponse, EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse,
-    ErrorResponse, FinSummaryResponse, Paginated,
+    ErrorResponse, FinSummaryResponse, Paginated, ValuationResponse,
 };
+pub(crate) use response::{EarningsDateRecord, ValuationRecord};
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
 const MAX_RETRIES: u32 = 3;
@@ -412,6 +412,21 @@ impl JQuantsClient {
         }
 
         Ok(all_bars)
+    }
+
+    /// `/equities/valuation` を `date` 指定で取得する。全上場銘柄の指標が返る。
+    pub(crate) async fn fetch_valuation_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<ValuationRecord>, DataProviderError> {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let params = [("date", date_str.as_str())];
+        self.fetch_all_pages::<ValuationResponse>(
+            "/equities/valuation",
+            &params,
+            self.current_rate_limit(),
+        )
+        .await
     }
 
     /// `/fins/summary` を `date` (開示日) 指定で取得する。全上場銘柄のその日の開示分が
