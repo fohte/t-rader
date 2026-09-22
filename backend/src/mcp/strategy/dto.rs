@@ -542,6 +542,14 @@ pub struct FinSummaryDto {
     pub ordinary_profit: Option<f64>,
     /// 当期純利益 (実績)
     pub net_profit: Option<f64>,
+    /// 売上高の進捗率 (四半期累計実績 ÷ 同じ開示行の当期通期会社予想。0.5 は 50%)
+    pub sales_progress_rate: Option<f64>,
+    /// 営業利益の進捗率 (四半期累計実績 ÷ 同じ開示行の当期通期会社予想。0.5 は 50%)
+    pub operating_profit_progress_rate: Option<f64>,
+    /// 経常利益の進捗率 (四半期累計実績 ÷ 同じ開示行の当期通期会社予想。0.5 は 50%)
+    pub ordinary_profit_progress_rate: Option<f64>,
+    /// 当期純利益の進捗率 (四半期累計実績 ÷ 同じ開示行の当期通期会社予想。0.5 は 50%)
+    pub net_profit_progress_rate: Option<f64>,
     /// 1 株当たり当期純利益 (実績)
     pub eps: Option<f64>,
     /// 1 株当たり純資産 (実績)
