@@ -376,6 +376,21 @@ mod tests {
     };
     use super::super::{DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR};
 
+    const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
+    const INVALID_BODY_TOKEN_ERROR: &str = concat!(
+        "ノートのトークンに問題があります:\n",
+        "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
+        "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+    );
+    const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
+        "ノートのトークンに問題があります:\n",
+        "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
+        "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
+        "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます\n",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+    );
+
     fn test_node(id: &str) -> GraphNode {
         GraphNode {
             id: id.to_string(),
@@ -1034,6 +1049,102 @@ mod tests {
             .await
             .expect("list");
         assert_eq!(result.notes, vec![]);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_rejects_invalid_body_tokens_without_creating_note(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+        let mut graph = sample_graph("g1");
+        graph.nodes[0].r#ref = Some("foo:bar".into());
+
+        let err = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("token validation".into()),
+                    body_md: Some(INVALID_NOTE_BODY.into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: Some(vec![graph]),
+                },
+            )
+            .await
+            .expect_err("invalid body tokens should be rejected");
+        let notes = server
+            .list_notes_inner(strategy_id, ListNotesParams::default())
+            .await
+            .expect("list notes");
+
+        assert_eq!(
+            (err.code, err.message.to_string(), notes.notes.len()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                INVALID_NOTE_TOKEN_ERROR.to_string(),
+                0,
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn write_note_rejects_invalid_body_tokens_and_keeps_existing_note_unchanged(
+        pool: PgPool,
+    ) {
+        let db = create_test_db(pool).await;
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db);
+        let created = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("token validation".into()),
+                    body_md: Some("original".into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("create note");
+
+        let err = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: Some(created.note_id),
+                    title: None,
+                    body_md: Some(INVALID_NOTE_BODY.into()),
+                    type_tag: None,
+                    frontmatter_json: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect_err("invalid body tokens should be rejected");
+        let note = server
+            .read_note_inner(
+                strategy_id,
+                ReadNoteParams {
+                    note_id: created.note_id,
+                },
+            )
+            .await
+            .expect("read note");
+
+        assert_eq!(
+            (err.code, err.message.to_string(), note.body_md),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                INVALID_BODY_TOKEN_ERROR.to_string(),
+                Some("original".to_string()),
+            ),
+        );
     }
 
     // body_md と graphs は独立に部分更新できる: 片方だけ送るともう片方は無傷。

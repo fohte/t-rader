@@ -336,6 +336,7 @@ pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
     use crate::error::AppError;
     match err {
         AppError::Database(e) => db_error(e),
+        AppError::Validation(msg) => invalid_params(msg),
         other => internal_error(format!("{other}")),
     }
 }

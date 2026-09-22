@@ -2,6 +2,8 @@
 //!
 //! REST の `/api/notes` handler と MCP `write_note` tool の両方から呼ばれる。
 
+use std::ops::Range;
+
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -12,15 +14,16 @@ use crate::services::graph::GraphDef;
 const ALLOWED_REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
 
 /// note_ref を本文 + 図から都度 rebuild する: 旧 ref は DELETE で消え、
-/// 本文または graphs[].ref に残るものだけ INSERT 復元する
+/// 本文または graphs[].ref に残るものだけ INSERT 復元する。
 pub async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: uuid::Uuid,
     body_md: &str,
     graphs_json: &serde_json::Value,
 ) -> Result<(), AppError> {
-    let mut refs = extract_refs(body_md);
-    refs.extend(extract_graph_refs(graphs_json)?);
+    let graphs = deserialize_graphs(graphs_json)?;
+    let mut refs = collect_note_refs(body_md, &graphs)
+        .map_err(|errors| AppError::Validation(format_note_token_errors(&errors)))?;
     refs.sort();
     refs.dedup();
 
@@ -57,121 +60,409 @@ pub async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     Ok(())
 }
 
-/// `"kind:id"` 形式の参照トークンを、`ALLOWED_REF_KINDS` に含まれ id が非空の場合のみ許可する
-fn parse_ref_token(token: &str) -> Option<(String, String)> {
-    let (kind, id) = token.split_once(':')?;
-    let kind = kind.trim();
-    let id = id.trim();
-    (ALLOWED_REF_KINDS.contains(&kind) && !id.is_empty())
-        .then(|| (kind.to_string(), id.to_string()))
+fn deserialize_graphs(graphs_json: &serde_json::Value) -> Result<Vec<GraphDef>, AppError> {
+    serde_json::from_value(graphs_json.clone())
+        .map_err(|e| AppError::Validation(format!("invalid graphs_json: {e}")))
 }
 
-fn extract_refs(body: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    let mut rest = body;
-    while let Some(start) = rest.find("[[") {
-        rest = &rest[start + 2..];
-        let Some(end) = rest.find("]]") else { break };
-        let inner = &rest[..end];
-        if let Some(pair) = parse_ref_token(inner) {
-            out.push(pair);
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+enum NoteTokenValidationError {
+    #[error("本文のトークン {token:?}: {reason}")]
+    BodyToken { token: String, reason: String },
+    #[error("本文のトークン {token:?}: {reason}")]
+    GraphToken { token: String, reason: String },
+    #[error("{location} の値 {token:?}: {reason}")]
+    GraphRef {
+        location: String,
+        token: String,
+        reason: String,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum TokenKind {
+    Ref(String, String),
+    Annotation,
+    Graph(String),
+    Invalid(String),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NoteToken<'a> {
+    inner: &'a str,
+    start: usize,
+    end: usize,
+}
+
+/// frontend の `/\[\[([^\]]+)\]\]/g` と同じく、内側に `]` を含まない範囲を切り出す。
+fn extract_tokens(body: &str) -> Vec<NoteToken<'_>> {
+    let mut tokens = Vec::new();
+    let mut search_from = 0;
+
+    while let Some(open_offset) = body[search_from..].find("[[") {
+        let start = search_from + open_offset;
+        let inner_start = start + 2;
+        let Some(close_offset) = body[inner_start..].find(']') else {
+            break;
+        };
+        let close = inner_start + close_offset;
+        let has_closing_pair = body.as_bytes().get(close + 1) == Some(&b']');
+
+        if close > inner_start && has_closing_pair {
+            tokens.push(NoteToken {
+                inner: &body[inner_start..close],
+                start,
+                end: close + 2,
+            });
+            search_from = close + 2;
+        } else {
+            // 正規表現は失敗した開始位置の次から再検索し、内側の `[[` も見つける。
+            search_from = start + 1;
         }
-        rest = &rest[end + 2..];
     }
-    out
+
+    tokens
 }
 
-/// `nodes[].ref` を集める点は `extract_refs` と同じだが、デシリアライズ失敗は握りつぶさず `AppError` として伝播する
-fn extract_graph_refs(graphs_json: &serde_json::Value) -> Result<Vec<(String, String)>, AppError> {
-    let graphs: Vec<GraphDef> = serde_json::from_value(graphs_json.clone())
-        .map_err(|e| AppError::Validation(format!("invalid graphs_json: {e}")))?;
-    Ok(graphs
+fn classify_token(inner: &str) -> TokenKind {
+    let Some((kind, id)) = inner.split_once(':') else {
+        return TokenKind::Invalid("kind:id の形式で prefix を指定してください".to_string());
+    };
+
+    if ALLOWED_REF_KINDS.contains(&kind) {
+        let id = id.trim();
+        if id.is_empty() {
+            return TokenKind::Invalid("参照 ID を空にできません".to_string());
+        }
+        return TokenKind::Ref(kind.to_string(), id.to_string());
+    }
+
+    if kind == "anno" {
+        if is_valid_token_id(id, false) {
+            return TokenKind::Annotation;
+        }
+        return TokenKind::Invalid(
+            "annotation ID は英数字で始まり、英数字・`_`・`-` のみ使用できます".to_string(),
+        );
+    }
+
+    if kind == "graph" {
+        if is_valid_token_id(id, true) {
+            return TokenKind::Graph(id.to_string());
+        }
+        return TokenKind::Invalid(
+            "graph ID は英字で始まり、英数字・`_`・`-` のみ使用できます".to_string(),
+        );
+    }
+
+    TokenKind::Invalid(format!("未知の prefix `{kind}` です"))
+}
+
+/// frontend の anno / graph token matcher と同じ ID 文字を受け付ける。
+fn is_valid_token_id(id: &str, alphabetic_start: bool) -> bool {
+    let mut chars = id.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    let valid_first = if alphabetic_start {
+        first.is_ascii_alphabetic()
+    } else {
+        first.is_ascii_alphanumeric()
+    };
+    valid_first && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn collect_note_refs(
+    body: &str,
+    graphs: &[GraphDef],
+) -> Result<Vec<(String, String)>, Vec<NoteTokenValidationError>> {
+    let mut refs = Vec::new();
+    let mut errors = Vec::new();
+    let graph_blocks = blank_line_blocks(body);
+
+    for token in extract_tokens(body) {
+        let token_text = &body[token.start..token.end];
+        match classify_token(token.inner) {
+            TokenKind::Ref(kind, id) => refs.push((kind, id)),
+            TokenKind::Annotation => {}
+            TokenKind::Graph(id) => {
+                let mut reasons = Vec::new();
+                if !is_standalone_graph_token(body, token, &graph_blocks) {
+                    reasons.push("図トークンは空行区切りブロック内で単独にしてください");
+                }
+                if !graphs.iter().any(|graph| graph.id == id) {
+                    reasons.push("対応する graphs[].id がありません");
+                }
+                if !reasons.is_empty() {
+                    errors.push(NoteTokenValidationError::GraphToken {
+                        token: token_text.to_string(),
+                        reason: reasons.join("; "),
+                    });
+                }
+            }
+            TokenKind::Invalid(reason) => {
+                errors.push(NoteTokenValidationError::BodyToken {
+                    token: token_text.to_string(),
+                    reason,
+                });
+            }
+        }
+    }
+
+    for (graph_index, graph) in graphs.iter().enumerate() {
+        for (node_index, node) in graph.nodes.iter().enumerate() {
+            let Some(value) = node.r#ref.as_deref() else {
+                continue;
+            };
+            let location = format!("graphs[{graph_index}].nodes[{node_index}].ref");
+            match classify_token(value) {
+                TokenKind::Ref(kind, id) => refs.push((kind, id)),
+                TokenKind::Annotation | TokenKind::Graph(_) => {
+                    errors.push(NoteTokenValidationError::GraphRef {
+                        location,
+                        token: format!("[[{value}]]"),
+                        reason: "図ノードでは stock / indicator / sector / theme の参照だけを使用できます".to_string(),
+                    });
+                }
+                TokenKind::Invalid(reason) => {
+                    errors.push(NoteTokenValidationError::GraphRef {
+                        location,
+                        token: format!("[[{value}]]"),
+                        reason: format!("{reason}; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます"),
+                    });
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(refs)
+    } else {
+        Err(errors)
+    }
+}
+
+fn blank_line_blocks(body: &str) -> Vec<Range<usize>> {
+    let mut blocks = Vec::new();
+    let mut block_start = 0;
+    let mut offset = 0;
+
+    for line in body.split_inclusive('\n') {
+        let without_newline = line.strip_suffix('\n').unwrap_or(line);
+        let content = without_newline
+            .strip_suffix('\r')
+            .unwrap_or(without_newline);
+        if content.trim().is_empty() {
+            if block_start < offset {
+                blocks.push(block_start..offset);
+            }
+            block_start = offset + line.len();
+        }
+        offset += line.len();
+    }
+    if block_start < body.len() {
+        blocks.push(block_start..body.len());
+    }
+
+    blocks
+}
+
+fn is_standalone_graph_token(body: &str, token: NoteToken<'_>, blocks: &[Range<usize>]) -> bool {
+    let Some(block) = blocks
         .iter()
-        .flat_map(|g| g.nodes.iter())
-        .filter_map(|n| n.r#ref.as_deref())
-        .filter_map(parse_ref_token)
-        .collect())
+        .find(|block| token.start >= block.start && token.end <= block.end)
+    else {
+        return false;
+    };
+    let block_text = &body[block.clone()];
+    if block_text.trim() != &body[token.start..token.end] {
+        return false;
+    }
+
+    let line_start = body[..token.start]
+        .rfind('\n')
+        .map_or(block.start, |index| index + 1);
+    let indentation = &body[line_start..token.start];
+    let indentation_columns = indentation
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .fold(0, |columns, c| {
+            if c == '\t' {
+                (columns / 4 + 1) * 4
+            } else {
+                columns + 1
+            }
+        });
+    indentation_columns < 4
+}
+
+fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
+    let details = errors
+        .iter()
+        .map(|error| format!("- {error}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    indoc::formatdoc! {"
+        ノートのトークンに問題があります:
+        {details}
+        許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。
+    "}
+    .trim_end()
+    .to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use serde_json::{Value, json};
-    use sqlx::PgPool;
 
     use super::*;
-    use crate::testing::{create_test_db, insert_test_note, insert_test_strategy};
+    use crate::services::graph::{GraphNode, Layout};
 
-    #[rstest]
-    #[case::single("hello [[stock:7203]]", vec![("stock", "7203")])]
-    #[case::multiple("a [[indicator:USDJPY]] b [[theme:weak-jpy]]", vec![("indicator", "USDJPY"), ("theme", "weak-jpy")])]
-    #[case::unknown_kind_ignored("[[foo:bar]] [[stock:9984]]", vec![("stock", "9984")])]
-    #[case::no_prefix_ignored("[[7203]]", vec![])]
-    #[case::empty("", vec![])]
-    fn test_extract_refs(#[case] body: &str, #[case] expected: Vec<(&str, &str)>) {
-        let got = extract_refs(body);
-        let got: Vec<(&str, &str)> = got.iter().map(|(k, i)| (k.as_str(), i.as_str())).collect();
-        assert_eq!(got, expected);
-    }
-
-    fn graph_json_with_node_ref(node_ref: Value) -> Value {
-        json!([{
-            "id": "g1",
-            "layout": "flow",
-            "title": null,
-            "nodes": [{
-                "id": "n1",
-                "label": "ASML",
-                "ref": node_ref,
-                "value": null,
-                "cite": null,
-                "parent": null,
-                "x": null,
-                "y": null,
+    fn graph(id: &str, node_ref: Option<&str>) -> GraphDef {
+        GraphDef {
+            id: id.to_string(),
+            layout: Layout::Flow,
+            title: None,
+            nodes: vec![GraphNode {
+                id: "node-1".to_string(),
+                label: "node".to_string(),
+                r#ref: node_ref.map(str::to_string),
+                value: None,
+                cite: None,
+                parent: None,
+                x: None,
+                y: None,
             }],
-            "edges": [],
-        }])
+            edges: Vec::new(),
+        }
     }
 
     #[rstest]
-    #[case::with_ref(graph_json_with_node_ref(json!("stock:ASML")), vec![("stock", "ASML")])]
-    #[case::no_ref(graph_json_with_node_ref(Value::Null), vec![])]
-    #[case::unknown_kind_ignored(graph_json_with_node_ref(json!("foo:bar")), vec![])]
-    #[case::empty(json!([]), vec![])]
-    fn test_extract_graph_refs(#[case] graphs_json: Value, #[case] expected: Vec<(&str, &str)>) {
-        let got = extract_graph_refs(&graphs_json).unwrap();
-        let got: Vec<(&str, &str)> = got.iter().map(|(k, i)| (k.as_str(), i.as_str())).collect();
+    #[case::array_literal("[[1, 2], [3, 4]]", vec![])]
+    #[case::malformed_before_valid("[[bad] then [[stock:demo-code]]", vec!["[[stock:demo-code]]"])]
+    #[case::adjacent("[[stock:demo-code]][[theme:demo-theme]]", vec!["[[stock:demo-code]]", "[[theme:demo-theme]]"])]
+    #[case::unclosed("[[unfinished", vec![])]
+    #[case::empty_inner("[[]]", vec![])]
+    #[case::emptyish_inner("[[ ]]", vec!["[[ ]]"])]
+    #[case::newline_inside("[[stock:\ndemo-code]]", vec!["[[stock:\ndemo-code]]"])]
+    fn test_extract_tokens_matches_frontend_shape(#[case] body: &str, #[case] expected: Vec<&str>) {
+        let got = extract_tokens(body)
+            .iter()
+            .map(|token| &body[token.start..token.end])
+            .collect::<Vec<_>>();
         assert_eq!(got, expected);
     }
 
-    #[rstest]
-    fn test_extract_graph_refs_rejects_malformed_graphs_json() {
-        let got = extract_graph_refs(&json!([{"id": "g1"}])).unwrap_err();
+    #[test]
+    fn test_collect_note_refs_accepts_reference_annotation_graph_and_array_literal() {
+        let body = concat!(
+            "[[stock:demo-code]] [[indicator:demo-index]] [[sector:demo-sector]] [[theme:demo-theme]] ",
+            "[[anno:a-1]]\n\n [[graph:g1]] \n\n[[1, 2], [3, 4]]",
+        );
+        assert_eq!(
+            collect_note_refs(body, &[graph("g1", Some("stock:demo-code"))]),
+            Ok(vec![
+                ("stock".to_string(), "demo-code".to_string()),
+                ("indicator".to_string(), "demo-index".to_string()),
+                ("sector".to_string(), "demo-sector".to_string()),
+                ("theme".to_string(), "demo-theme".to_string()),
+                ("stock".to_string(), "demo-code".to_string()),
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_collect_note_refs_reports_every_invalid_token_and_allowed_form() {
+        let body = indoc::indoc! {"
+            [[foo:bar]] [[bare-demo]] [[stock:]] [[anno:]] [[graph:1bad]]
+
+            [[graph:missing]]
+
+            mixed [[graph:g1]]
+        "};
+        let errors = collect_note_refs(body, &[graph("g1", Some("foo:bar"))])
+            .expect_err("invalid note tokens should be rejected");
+        assert_eq!(
+            format_note_token_errors(&errors),
+            concat!(
+                "ノートのトークンに問題があります:\n",
+                "- 本文のトークン \"[[foo:bar]]\": 未知の prefix `foo` です\n",
+                "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
+                "- 本文のトークン \"[[stock:]]\": 参照 ID を空にできません\n",
+                "- 本文のトークン \"[[anno:]]\": annotation ID は英数字で始まり、英数字・`_`・`-` のみ使用できます\n",
+                "- 本文のトークン \"[[graph:1bad]]\": graph ID は英字で始まり、英数字・`_`・`-` のみ使用できます\n",
+                "- 本文のトークン \"[[graph:missing]]\": 対応する graphs[].id がありません\n",
+                "- 本文のトークン \"[[graph:g1]]\": 図トークンは空行区切りブロック内で単独にしてください\n",
+                "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます\n",
+                "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+            ),
+        );
+    }
+
+    #[test]
+    fn test_deserialize_graphs_rejects_malformed_graphs_json() {
+        let got = deserialize_graphs(&serde_json::json!([{"id": "g1"}])).unwrap_err();
         assert_eq!(
             got.to_string(),
             "validation error: invalid graphs_json: missing field `layout`",
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn sync_note_refs_indexes_refs_from_both_body_and_graphs_without_duplication(
-        pool: PgPool,
+    #[rstest]
+    #[case::mixed_paragraph("text [[graph:g1]]", 1)]
+    #[case::indented_code("    [[graph:g1]]", 1)]
+    #[case::same_block_multiple("[[graph:g1]]\n[[graph:g1]]", 2)]
+    fn test_collect_note_refs_rejects_non_standalone_graph_tokens(
+        #[case] body: &str,
+        #[case] error_count: usize,
     ) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_test_strategy(&db, "s").await;
-        let note_id = insert_test_note(&db, strategy_id, "t", "orig").await;
+        assert_eq!(
+            collect_note_refs(body, &[graph("g1", None)]),
+            Err(vec![
+                NoteTokenValidationError::GraphToken {
+                    token: "[[graph:g1]]".to_string(),
+                    reason: "図トークンは空行区切りブロック内で単独にしてください".to_string(),
+                };
+                error_count
+            ]),
+        );
+    }
 
-        let graphs_json = json!([{
+    #[rstest]
+    #[case::with_ref(
+        graph("g1", Some("stock:demo-code")),
+        Ok(vec![("stock".to_string(), "demo-code".to_string())])
+    )]
+    #[case::no_ref(graph("g1", None), Ok(vec![]))]
+    #[case::invalid_kind(graph("g1", Some("foo:bar")), Err("invalid"))]
+    #[case::annotation_not_allowed(graph("g1", Some("anno:a1")), Err("invalid"))]
+    fn test_collect_note_refs_validates_graph_node_refs(
+        #[case] graph: GraphDef,
+        #[case] expected: Result<Vec<(String, String)>, &str>,
+    ) {
+        let got = collect_note_refs("", &[graph]);
+        assert_eq!(got.map_err(|_| "invalid"), expected);
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn sync_note_refs_indexes_refs_from_body_and_graphs_without_duplication(
+        pool: sqlx::PgPool,
+    ) {
+        let db = crate::testing::create_test_db(pool).await;
+        let strategy_id = crate::testing::insert_test_strategy(&db, "s").await;
+        let note_id = crate::testing::insert_test_note(&db, strategy_id, "t", "orig").await;
+
+        let graphs_json = serde_json::json!([{
             "id": "g1",
             "layout": "flow",
             "title": null,
             "nodes": [
                 {
-                    "id": "n1", "label": "ASML", "ref": "stock:ASML",
+                    "id": "n1", "label": "node", "ref": "stock:demo-code",
                     "value": null, "cite": null, "parent": null, "x": null, "y": null,
                 },
                 {
-                    "id": "n2", "label": "TSMC", "ref": "stock:7203",
+                    "id": "n2", "label": "node", "ref": "stock:demo-code",
                     "value": null, "cite": null, "parent": null, "x": null, "y": null,
                 },
             ],
@@ -181,7 +472,7 @@ mod tests {
         sync_note_refs(
             &db,
             note_id,
-            "body mentions [[stock:7203]] and [[theme:weak-jpy]]",
+            "body mentions [[stock:demo-code]] and [[theme:demo-theme]]",
             &graphs_json,
         )
         .await
@@ -199,9 +490,8 @@ mod tests {
                 .map(|r| (r.ref_kind, r.ref_id))
                 .collect::<Vec<_>>(),
             vec![
-                ("stock".to_string(), "7203".to_string()),
-                ("stock".to_string(), "ASML".to_string()),
-                ("theme".to_string(), "weak-jpy".to_string()),
+                ("stock".to_string(), "demo-code".to_string()),
+                ("theme".to_string(), "demo-theme".to_string()),
             ],
         );
     }

@@ -447,6 +447,14 @@ mod tests {
         insert_test_strategy,
     };
 
+    const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
+    const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
+        "ノートのトークンに問題があります:\n",
+        "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
+        "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+    );
+
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
     struct TaskShape {
@@ -550,6 +558,54 @@ mod tests {
                 "created_by_kind": "human",
                 "execution_id": null,
             }),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn create_note_rejects_invalid_tokens_without_saving(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "token validation",
+                "body_md": INVALID_NOTE_BODY,
+            }))
+            .await;
+        let response = res.json::<Value>();
+        let saved_notes = note::Entity::find().all(&db).await.unwrap();
+
+        assert_eq!(
+            (res.status_code(), response, saved_notes.len()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": INVALID_NOTE_TOKEN_ERROR}),
+                0,
+            ),
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn update_note_rejects_invalid_tokens_and_keeps_original_body(pool: PgPool) {
+        let (db, server) = create_test_server_with_db(pool).await;
+        let strategy_id = insert_test_strategy(&db, "strategy").await;
+        let note_id = create_test_note_with_body(&server, strategy_id, "title", "original").await;
+
+        let res = server
+            .patch(&format!("/api/notes/{note_id}"))
+            .json(&json!({"body_md": INVALID_NOTE_BODY}))
+            .await;
+        let response = res.json::<Value>();
+        let saved = note::Entity::find_by_id(note_id).one(&db).await.unwrap();
+        let saved_body = saved.map(|note| note.body_md);
+
+        assert_eq!(
+            (res.status_code(), response, saved_body),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": INVALID_NOTE_TOKEN_ERROR}),
+                Some("original".to_string()),
+            ),
         );
     }
 
