@@ -179,8 +179,10 @@ pub async fn run_ingest_cycle(
             }
             Ok(items) => match upsert_valuations(db, items).await {
                 Ok(row_count) => {
-                    mark_ingested(db, date).await?;
                     stats.rows_upserted += row_count;
+                    if let Err(error) = mark_ingested(db, date).await {
+                        tracing::warn!(%date, %error, "valuation の取り込み日記録に失敗、この日を再試行します");
+                    }
                 }
                 Err(error) => {
                     tracing::warn!(%date, %error, "valuation の格納に失敗、この日をスキップします");
