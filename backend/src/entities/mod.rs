@@ -22,6 +22,8 @@ pub mod jquants_daily_bars_ingested_date;
 pub mod jquants_earnings_date;
 pub mod jquants_fin_summary;
 pub mod jquants_plan_setting;
+pub mod jquants_valuation;
+pub mod jquants_valuation_ingested_date;
 pub mod margin_alert;
 pub mod margin_interest;
 pub mod mcp_tool_call_count;

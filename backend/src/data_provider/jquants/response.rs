@@ -1,6 +1,10 @@
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
+mod valuation;
+
+pub(crate) use valuation::{ValuationRecord, ValuationResponse};
+
 /// `data` + `pagination_key` を持つ一覧系レスポンスが実装するトレイト。
 /// `fetch_all_pages` が `into_parts` でアイテム列と次ページキーを取り出す。
 pub(crate) trait Paginated {

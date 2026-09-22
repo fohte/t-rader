@@ -320,6 +320,16 @@ async fn main() -> Result<(), AppError> {
             interval_secs = backend::services::daily_bars_ingest::DEFAULT_INTERVAL.as_secs(),
             "daily bars ingest poll task started",
         );
+
+        let _valuation_ingest_poll = backend::services::valuation_ingest::spawn_poll(
+            db.clone(),
+            provider.clone(),
+            backend::services::valuation_ingest::DEFAULT_INTERVAL,
+        );
+        tracing::info!(
+            interval_secs = backend::services::valuation_ingest::DEFAULT_INTERVAL.as_secs(),
+            "valuation ingest poll task started",
+        );
     }
 
     let llm_gateway_client = LlmGatewayClient::from_env();

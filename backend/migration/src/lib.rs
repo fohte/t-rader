@@ -57,6 +57,7 @@ mod m20260915_165800_add_strategy_task_auto_resumed_at;
 mod m20260915_170728_add_prediction_grade;
 mod m20260915_174024_add_calc_date_to_short_sale_report_pk;
 mod m20260919_052834_add_strategy_task_as_of_comment;
+mod m20260922_122232_add_jquants_valuation;
 
 pub struct Migrator;
 
@@ -122,6 +123,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260915_170728_add_prediction_grade::Migration),
             Box::new(m20260915_174024_add_calc_date_to_short_sale_report_pk::Migration),
             Box::new(m20260919_052834_add_strategy_task_as_of_comment::Migration),
+            Box::new(m20260922_122232_add_jquants_valuation::Migration),
         ]
     }
 }
