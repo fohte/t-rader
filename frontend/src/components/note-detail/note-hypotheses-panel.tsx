@@ -36,6 +36,7 @@ interface NoteHypothesesPanelViewProps {
   query: string
   strategyAvailable: boolean
   hasMutationError: boolean
+  hasAttachError: boolean
   onDialogOpenChange: (open: boolean) => void
   onQueryChange: (query: string) => void
   onAttach: (hypothesisId: string) => void
@@ -135,6 +136,7 @@ export function NoteHypothesesPanel({
       query={query}
       strategyAvailable={strategyId != null}
       hasMutationError={attachMutation.isError || removeMutation.isError}
+      hasAttachError={attachMutation.isError}
       onDialogOpenChange={(open) => {
         setIsDialogOpen(open)
         if (!open) setQuery('')
@@ -159,6 +161,7 @@ export function NoteHypothesesPanelView({
   query,
   strategyAvailable,
   hasMutationError,
+  hasAttachError,
   onDialogOpenChange,
   onQueryChange,
   onAttach,
@@ -209,17 +212,21 @@ export function NoteHypothesesPanelView({
             >
               <div className="flex items-start justify-between gap-2">
                 <LinkToHypothesis hypothesis={hypothesis} />
+                {/* mutation の variables と再取得を 1 件の解除に対応させる。 */}
                 <Button
                   type="button"
                   variant="ghost"
                   size="xs"
                   disabled={removingHypothesisId != null}
+                  aria-busy={removingHypothesisId === hypothesis.hypothesis_id}
                   onClick={() => {
                     onRemove(hypothesis.hypothesis_id)
                   }}
                   aria-label={`「${hypothesis.hypothesis_title}」の紐付けを解除`}
                 >
-                  解除
+                  {removingHypothesisId === hypothesis.hypothesis_id
+                    ? '解除中…'
+                    : '解除'}
                 </Button>
               </div>
               <div className="flex items-center gap-2 font-mono text-2xs">
@@ -289,7 +296,7 @@ export function NoteHypothesesPanelView({
               ))
             )}
           </div>
-          {hasMutationError && (
+          {hasAttachError && (
             <p className="font-mono text-2xs text-primary">
               仮説を紐付けられませんでした
             </p>

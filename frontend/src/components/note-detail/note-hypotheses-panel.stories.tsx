@@ -71,6 +71,7 @@ const meta = {
     query: '',
     strategyAvailable: true,
     hasMutationError: false,
+    hasAttachError: false,
     onDialogOpenChange: () => {},
     onQueryChange: () => {},
     onAttach: () => {},
@@ -107,10 +108,18 @@ export const AttachDialog: Story = {
   },
 }
 
-export const FilteredAttachDialog: Story = {
+export const SearchMatchesCandidate: Story = {
   args: {
     candidates: [candidate],
     isDialogOpen: true,
     query: '稼働',
+  },
+}
+
+export const NoMatchingCandidates: Story = {
+  args: {
+    candidates: [],
+    isDialogOpen: true,
+    query: '該当なし',
   },
 }
