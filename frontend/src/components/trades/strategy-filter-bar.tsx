@@ -14,6 +14,7 @@ export function StrategyFilterBar({
   strategies,
   value,
   onChange,
+  unlinkedCount,
   onlyUnlinked,
   onOnlyUnlinkedChange,
 }: {
@@ -21,6 +22,7 @@ export function StrategyFilterBar({
   strategies: Strategy[]
   value: StrategyFilter
   onChange: (v: StrategyFilter) => void
+  unlinkedCount: number
   onlyUnlinked: boolean
   onOnlyUnlinkedChange: (value: boolean) => void
 }) {
@@ -61,15 +63,7 @@ export function StrategyFilterBar({
         }`}
       >
         <span>未紐付けのみ</span>
-        <span className="text-2xs text-muted-foreground">
-          {
-            trades.filter(
-              (trade) =>
-                (value === 'all' || trade.strategy_id === value) &&
-                trade.note_count === 0,
-            ).length
-          }
-        </span>
+        <span className="text-2xs text-muted-foreground">{unlinkedCount}</span>
       </button>
     </div>
   )

@@ -100,7 +100,6 @@ const meta = {
   args: {
     onEdit: () => undefined,
     onDelete: () => undefined,
-    onManageNotes: () => undefined,
   },
 } satisfies Meta<typeof TradesTable>
 
@@ -108,7 +107,13 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const WithStrategyColumn: Story = {
-  args: { trades, strategies, stocks, showStrategy: true },
+  args: {
+    trades,
+    strategies,
+    stocks,
+    showStrategy: true,
+    onManageNotes: () => undefined,
+  },
 }
 
 export const SingleStrategy: Story = {
@@ -117,9 +122,24 @@ export const SingleStrategy: Story = {
     strategies,
     stocks,
     showStrategy: false,
+    onManageNotes: () => undefined,
   },
 }
 
 export const Empty: Story = {
   args: { trades: [], strategies, stocks, showStrategy: true },
+}
+
+export const StaticNoteCount: Story = {
+  args: { trades, strategies, stocks, showStrategy: true },
+}
+
+export const EmptyUnlinked: Story = {
+  args: {
+    trades: [],
+    strategies,
+    stocks,
+    showStrategy: true,
+    emptyMessage: '未紐付けの取引はありません。',
+  },
 }

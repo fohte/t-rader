@@ -58,6 +58,7 @@ const meta = {
     strategies,
     value: 'all',
     onChange: () => {},
+    unlinkedCount: 2,
     onlyUnlinked: false,
     onOnlyUnlinkedChange: () => {},
   },
@@ -71,7 +72,7 @@ export const All: Story = {
 }
 
 export const SwingActive: Story = {
-  args: { value: SWING_ID },
+  args: { value: SWING_ID, unlinkedCount: 1 },
 }
 
 export const UnlinkedOnly: Story = {

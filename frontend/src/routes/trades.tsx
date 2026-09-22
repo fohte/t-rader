@@ -17,7 +17,7 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 
-type Trade = components['schemas']['Trade']
+type Trade = components['schemas']['TradeListItem']
 
 export const Route = createFileRoute('/trades')({
   component: TradesPage,
@@ -51,15 +51,18 @@ function TradesPage() {
   })
 
   const tradeList = trades ?? []
-  const shown = useMemo(
+  const strategyTrades = useMemo(
     () =>
-      tradeList.filter(
-        (trade) =>
-          (filter === 'all' || trade.strategy_id === filter) &&
-          (!onlyUnlinked || trade.note_count === 0),
-      ),
-    [tradeList, filter, onlyUnlinked],
+      filter === 'all'
+        ? tradeList
+        : tradeList.filter((trade) => trade.strategy_id === filter),
+    [tradeList, filter],
   )
+  const unlinkedTrades = useMemo(
+    () => strategyTrades.filter((trade) => trade.note_count === 0),
+    [strategyTrades],
+  )
+  const shown = onlyUnlinked ? unlinkedTrades : strategyTrades
 
   const feesTotal = useMemo(
     () => tradeList.reduce((sum, t) => sum + t.fee, 0),
@@ -143,6 +146,7 @@ function TradesPage() {
         strategies={strategies}
         value={filter}
         onChange={setFilter}
+        unlinkedCount={unlinkedTrades.length}
         onlyUnlinked={onlyUnlinked}
         onOnlyUnlinkedChange={setOnlyUnlinked}
       />
