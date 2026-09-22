@@ -12,6 +12,18 @@ interface HypothesisEditorProps {
   saveError?: string | null
 }
 
+interface HypothesisEditorViewProps {
+  title: string
+  body: string
+  onTitleChange: (title: string) => void
+  onBodyChange: (body: string) => void
+  onSave: () => void
+  isDirty: boolean
+  isSaving: boolean
+  validationError: string | null
+  saveError: string | null
+}
+
 export function HypothesisEditor({
   initialTitle,
   initialBody,
@@ -55,6 +67,32 @@ export function HypothesisEditor({
   }
 
   return (
+    <HypothesisEditorView
+      title={title}
+      body={body}
+      onTitleChange={setTitle}
+      onBodyChange={setBody}
+      onSave={handleSave}
+      isDirty={dirty}
+      isSaving={isSaving}
+      validationError={validationError}
+      saveError={saveError}
+    />
+  )
+}
+
+export function HypothesisEditorView({
+  title,
+  body,
+  onTitleChange,
+  onBodyChange,
+  onSave,
+  isDirty,
+  isSaving,
+  validationError,
+  saveError,
+}: HypothesisEditorViewProps) {
+  return (
     <div className="space-y-3">
       <div className="space-y-1.5">
         <label
@@ -67,7 +105,7 @@ export function HypothesisEditor({
           id="hypothesis-title-input"
           value={title}
           onChange={(e) => {
-            setTitle(e.target.value)
+            onTitleChange(e.target.value)
           }}
         />
       </div>
@@ -83,7 +121,7 @@ export function HypothesisEditor({
             id="hypothesis-body-source"
             value={body}
             onChange={(e) => {
-              setBody(e.target.value)
+              onBodyChange(e.target.value)
             }}
             rows={10}
             className="w-full resize-y border border-border bg-bg-secondary p-3 font-mono text-xs leading-relaxed text-foreground outline-none focus:border-muted-foreground"
@@ -103,11 +141,7 @@ export function HypothesisEditor({
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!dirty || isSaving}
-        >
+        <Button type="button" onClick={onSave} disabled={!isDirty || isSaving}>
           {isSaving ? '保存中…' : '保存'}
         </Button>
         {(validationError != null || saveError != null) && (
