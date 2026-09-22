@@ -64,18 +64,47 @@ impl StrategyServer {
 }
 
 fn fin_summary_dto_from_row(disc_date: NaiveDate, raw: &serde_json::Value) -> FinSummaryDto {
+    let doc_type = str_field(raw, "DocType");
+    let current_period_type = str_field(raw, "CurPerType");
+    let sales = f64_field(raw, "Sales");
+    let operating_profit = f64_field(raw, "OP");
+    let ordinary_profit = f64_field(raw, "OdP");
+    let net_profit = f64_field(raw, "NP");
+    let forecast_sales = f64_field(raw, "FSales");
+    let forecast_operating_profit = f64_field(raw, "FOP");
+    let forecast_ordinary_profit = f64_field(raw, "FOdP");
+    let forecast_net_profit = f64_field(raw, "FNP");
+    let is_quarterly_financial_statement =
+        is_quarterly_financial_statement(doc_type.as_deref(), current_period_type.as_deref());
+
     FinSummaryDto {
         disc_date,
-        doc_type: str_field(raw, "DocType"),
-        current_period_type: str_field(raw, "CurPerType"),
+        doc_type,
+        current_period_type,
         current_period_start: date_field(raw, "CurPerSt"),
         current_period_end: date_field(raw, "CurPerEn"),
         current_fiscal_year_start: date_field(raw, "CurFYSt"),
         current_fiscal_year_end: date_field(raw, "CurFYEn"),
-        sales: f64_field(raw, "Sales"),
-        operating_profit: f64_field(raw, "OP"),
-        ordinary_profit: f64_field(raw, "OdP"),
-        net_profit: f64_field(raw, "NP"),
+        sales,
+        operating_profit,
+        ordinary_profit,
+        net_profit,
+        sales_progress_rate: progress_rate(is_quarterly_financial_statement, sales, forecast_sales),
+        operating_profit_progress_rate: progress_rate(
+            is_quarterly_financial_statement,
+            operating_profit,
+            forecast_operating_profit,
+        ),
+        ordinary_profit_progress_rate: progress_rate(
+            is_quarterly_financial_statement,
+            ordinary_profit,
+            forecast_ordinary_profit,
+        ),
+        net_profit_progress_rate: progress_rate(
+            is_quarterly_financial_statement,
+            net_profit,
+            forecast_net_profit,
+        ),
         eps: f64_field(raw, "EPS"),
         bps: f64_field(raw, "BPS"),
         total_assets: f64_field(raw, "TA"),
@@ -89,10 +118,10 @@ fn fin_summary_dto_from_row(disc_date: NaiveDate, raw: &serde_json::Value) -> Fi
         dividend_annual: f64_field(raw, "DivAnn"),
         dividend_annual_forecast: f64_field(raw, "FDivAnn"),
         dividend_annual_forecast_next: f64_field(raw, "NxFDivAnn"),
-        forecast_sales: f64_field(raw, "FSales"),
-        forecast_operating_profit: f64_field(raw, "FOP"),
-        forecast_ordinary_profit: f64_field(raw, "FOdP"),
-        forecast_net_profit: f64_field(raw, "FNP"),
+        forecast_sales,
+        forecast_operating_profit,
+        forecast_ordinary_profit,
+        forecast_net_profit,
         forecast_eps: f64_field(raw, "FEPS"),
         next_forecast_sales: f64_field(raw, "NxFSales"),
         next_forecast_operating_profit: f64_field(raw, "NxFOP"),
@@ -102,6 +131,33 @@ fn fin_summary_dto_from_row(disc_date: NaiveDate, raw: &serde_json::Value) -> Fi
         next_forecast_net_profit: f64_field(raw, "NxFNp"),
         next_forecast_eps: f64_field(raw, "NxFEPS"),
     }
+}
+
+fn is_quarterly_financial_statement(doc_type: Option<&str>, period_type: Option<&str>) -> bool {
+    let prefix = match period_type {
+        Some("1Q") => "1QFinancialStatements_",
+        Some("2Q") => "2QFinancialStatements_",
+        Some("3Q") => "3QFinancialStatements_",
+        _ => return false,
+    };
+
+    doc_type.is_some_and(|doc_type| doc_type.starts_with(prefix))
+}
+
+fn progress_rate(
+    is_quarterly_financial_statement: bool,
+    actual: Option<f64>,
+    forecast: Option<f64>,
+) -> Option<f64> {
+    if !is_quarterly_financial_statement {
+        return None;
+    }
+
+    let actual = actual.filter(|value| value.is_finite())?;
+    let forecast = forecast.filter(|value| value.is_finite() && *value > 0.0)?;
+    let rate = actual / forecast;
+
+    rate.is_finite().then_some(rate)
 }
 
 /// raw の文字列項目を取り出す。キー欠落・非文字列・空文字はすべて「記載なし」として null。
@@ -152,6 +208,10 @@ mod tests {
             operating_profit: None,
             ordinary_profit: None,
             net_profit: None,
+            sales_progress_rate: None,
+            operating_profit_progress_rate: None,
+            ordinary_profit_progress_rate: None,
+            net_profit_progress_rate: None,
             eps: None,
             bps: None,
             total_assets: None,
@@ -273,6 +333,10 @@ mod tests {
                     operating_profit: Some(200000.0),
                     ordinary_profit: None,
                     net_profit: Some(150000.0),
+                    sales_progress_rate: None,
+                    operating_profit_progress_rate: None,
+                    ordinary_profit_progress_rate: None,
+                    net_profit_progress_rate: None,
                     eps: Some(120.5),
                     bps: Some(1500.0),
                     total_assets: Some(5000000.0),
