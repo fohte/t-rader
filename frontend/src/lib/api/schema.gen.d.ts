@@ -2304,6 +2304,10 @@ export interface components {
       /** Format: date-time */
       updated_at: string
     }
+    TradeListItem: components['schemas']['Trade'] & {
+      /** Format: int64 */
+      note_count: number
+    }
     TradeNote: {
       /** Format: date-time */
       created_at: string
@@ -7956,7 +7960,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['Trade'][]
+          'application/json': components['schemas']['TradeListItem'][]
         }
       }
       /** @description リクエストパラメータが不正 */

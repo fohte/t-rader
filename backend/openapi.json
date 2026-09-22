@@ -7432,7 +7432,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/Trade"
+                    "$ref": "#/components/schemas/TradeListItem"
                   }
                 }
               }
@@ -11201,6 +11201,25 @@
             "format": "date-time"
           }
         }
+      },
+      "TradeListItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Trade"
+          },
+          {
+            "type": "object",
+            "required": [
+              "note_count"
+            ],
+            "properties": {
+              "note_count": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          }
+        ]
       },
       "TradeNote": {
         "type": "object",

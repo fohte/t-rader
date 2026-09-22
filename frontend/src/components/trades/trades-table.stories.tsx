@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { TradesTable } from '#components/trades/trades-table'
 import type { components } from '#lib/api/schema.gen'
 
-type Trade = components['schemas']['Trade']
+type Trade = components['schemas']['TradeListItem']
 type Strategy = components['schemas']['Strategy']
 type Stock = components['schemas']['Stock']
 
@@ -22,22 +22,22 @@ function strategyStub(id: string, name: string, sortOrder: number): Strategy {
 }
 
 const strategies: Strategy[] = [
-  strategyStub(SWING_ID, '半導体短期スイング', 0),
-  strategyStub(VALUE_ID, '高配当バリュー長期', 1),
+  strategyStub(SWING_ID, '検証用戦略 A', 0),
+  strategyStub(VALUE_ID, '検証用戦略 B', 1),
 ]
 
 const stocks: Stock[] = [
   {
-    id: '3436',
-    name: 'SUMCO',
+    id: 'FICT1',
+    name: '架空銘柄 A',
     market: null,
     sector_id: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
   {
-    id: '7203',
-    name: 'トヨタ自動車',
+    id: 'FICT2',
+    name: '架空銘柄 B',
     market: null,
     sector_id: null,
     created_at: '2026-01-01T00:00:00Z',
@@ -49,7 +49,7 @@ const trades: Trade[] = [
   {
     id: 't1',
     strategy_id: SWING_ID,
-    symbol: '3436',
+    symbol: 'FICT1',
     side: 'buy',
     qty: 200,
     price: 1480,
@@ -57,13 +57,14 @@ const trades: Trade[] = [
     date: '2026-05-12',
     source: 'manual',
     note: null,
+    note_count: 0,
     created_at: '2026-05-12T03:00:00Z',
     updated_at: '2026-05-12T03:00:00Z',
   },
   {
     id: 't2',
     strategy_id: SWING_ID,
-    symbol: '3436',
+    symbol: 'FICT1',
     side: 'sell',
     qty: 100,
     price: 1610,
@@ -71,13 +72,14 @@ const trades: Trade[] = [
     date: '2026-05-28',
     source: 'manual',
     note: null,
+    note_count: 1,
     created_at: '2026-05-28T03:00:00Z',
     updated_at: '2026-05-28T03:00:00Z',
   },
   {
     id: 't3',
     strategy_id: VALUE_ID,
-    symbol: '7203',
+    symbol: 'FICT2',
     side: 'buy',
     qty: 100,
     price: 2810,
@@ -85,6 +87,7 @@ const trades: Trade[] = [
     date: '2026-04-10',
     source: 'csv',
     note: null,
+    note_count: 0,
     created_at: '2026-04-10T03:00:00Z',
     updated_at: '2026-04-10T03:00:00Z',
   },
@@ -104,7 +107,13 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const WithStrategyColumn: Story = {
-  args: { trades, strategies, stocks, showStrategy: true },
+  args: {
+    trades,
+    strategies,
+    stocks,
+    showStrategy: true,
+    onManageNotes: () => undefined,
+  },
 }
 
 export const SingleStrategy: Story = {
@@ -113,9 +122,24 @@ export const SingleStrategy: Story = {
     strategies,
     stocks,
     showStrategy: false,
+    onManageNotes: () => undefined,
   },
 }
 
 export const Empty: Story = {
   args: { trades: [], strategies, stocks, showStrategy: true },
+}
+
+export const StaticNoteCount: Story = {
+  args: { trades, strategies, stocks, showStrategy: true },
+}
+
+export const EmptyUnlinked: Story = {
+  args: {
+    trades: [],
+    strategies,
+    stocks,
+    showStrategy: true,
+    emptyMessage: '未紐付けの取引はありません。',
+  },
 }

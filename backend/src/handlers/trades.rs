@@ -4,16 +4,18 @@ use axum::http::StatusCode;
 use rust_decimal::Decimal;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::QuerySelect;
 use sea_orm::{
     ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use utoipa::IntoParams;
+use std::collections::HashMap;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::trade;
+use crate::entities::{trade, trade_note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateTradeRequest, PerformanceSummary, UpdateTradeRequest};
@@ -31,6 +33,13 @@ pub struct ListTradesQuery {
     pub symbol: Option<String>,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TradeListItem {
+    #[serde(flatten)]
+    pub trade: trade::Model,
+    pub note_count: i64,
+}
+
 /// 取引履歴一覧
 #[utoipa::path(
     get,
@@ -38,7 +47,7 @@ pub struct ListTradesQuery {
     tag = "trades",
     params(ListTradesQuery),
     responses(
-        (status = 200, body = Vec<trade::Model>),
+        (status = 200, body = Vec<TradeListItem>),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -46,7 +55,7 @@ pub struct ListTradesQuery {
 pub async fn list_trades(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<ListTradesQuery>,
-) -> Result<Json<Vec<trade::Model>>, AppError> {
+) -> Result<Json<Vec<TradeListItem>>, AppError> {
     let mut q = trade::Entity::find()
         .order_by_asc(trade::Column::Date)
         .order_by_asc(trade::Column::CreatedAt);
@@ -56,7 +65,33 @@ pub async fn list_trades(
     if let Some(sym) = p.symbol.as_deref().filter(|s| !s.is_empty()) {
         q = q.filter(trade::Column::Symbol.eq(sym));
     }
-    Ok(Json(q.all(&state.db).await?))
+    let trades = q.all(&state.db).await?;
+    if trades.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+
+    let trade_ids = trades.iter().map(|trade| trade.id).collect::<Vec<_>>();
+    let note_counts: HashMap<Uuid, i64> = trade_note::Entity::find()
+        .select_only()
+        .column(trade_note::Column::TradeId)
+        .column_as(trade_note::Column::TradeId.count(), "note_count")
+        .filter(trade_note::Column::TradeId.is_in(trade_ids))
+        .group_by(trade_note::Column::TradeId)
+        .into_tuple()
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .collect();
+
+    Ok(Json(
+        trades
+            .into_iter()
+            .map(|trade| TradeListItem {
+                note_count: note_counts.get(&trade.id).copied().unwrap_or_default(),
+                trade,
+            })
+            .collect(),
+    ))
 }
 
 /// 取引取得
