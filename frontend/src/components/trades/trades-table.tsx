@@ -1,11 +1,11 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { Link2, Pencil, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { formatYen, SOURCE_LABEL } from '#components/trades/format'
 import { Button } from '#components/ui/button'
 import type { components } from '#lib/api/schema.gen'
 
-type Trade = components['schemas']['Trade']
+type Trade = components['schemas']['TradeListItem']
 type Strategy = components['schemas']['Strategy']
 type Stock = components['schemas']['Stock']
 
@@ -16,6 +16,8 @@ export function TradesTable({
   showStrategy,
   onEdit,
   onDelete,
+  onManageNotes,
+  emptyMessage = '取引がありません。「+ 取引を追加」から手入力できます。',
 }: {
   trades: Trade[]
   strategies: Strategy[]
@@ -23,6 +25,8 @@ export function TradesTable({
   showStrategy: boolean
   onEdit: (t: Trade) => void
   onDelete: (t: Trade) => void
+  onManageNotes?: (t: Trade) => void
+  emptyMessage?: string
 }) {
   const stockById = useMemo(
     () => new Map(stocks.map((s) => [s.id, s.name])),
@@ -40,14 +44,14 @@ export function TradesTable({
   if (trades.length === 0) {
     return (
       <div className="border border-border bg-card px-4 py-8 text-center font-mono text-xs text-muted-foreground">
-        取引がありません。「+ 取引を追加」から手入力できます。
+        {emptyMessage}
       </div>
     )
   }
 
   return (
     <div className="overflow-x-auto border border-border bg-card">
-      <table className="w-full min-w-205 font-mono text-xs">
+      <table className="w-full min-w-220 font-mono text-xs">
         <thead>
           <tr className="border-b border-border text-2xs uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-2 text-left font-normal">日付</th>
@@ -59,6 +63,7 @@ export function TradesTable({
             {showStrategy && (
               <th className="px-3 py-2 text-left font-normal">戦略</th>
             )}
+            <th className="px-3 py-2 text-center font-normal">ノート</th>
             <th className="px-3 py-2 text-center font-normal">入力</th>
             <th className="px-3 py-2 text-right font-normal">操作</th>
           </tr>
@@ -104,6 +109,23 @@ export function TradesTable({
                     {strategyName}
                   </td>
                 )}
+                <td className="px-3 py-2 text-center">
+                  {onManageNotes == null ? (
+                    <span>{t.note_count} 件</span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant={t.note_count === 0 ? 'outline' : 'ghost'}
+                      aria-label={`判断ノート ${String(t.note_count)} 件を管理`}
+                      onClick={() => {
+                        onManageNotes(t)
+                      }}
+                    >
+                      <Link2 />
+                      <span>{t.note_count} 件</span>
+                    </Button>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-center text-2xs text-muted-foreground">
                   {SOURCE_LABEL[t.source] ?? t.source}
                 </td>

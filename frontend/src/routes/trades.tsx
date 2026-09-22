@@ -8,6 +8,7 @@ import {
   StrategyFilterBar,
 } from '#components/trades/strategy-filter-bar'
 import { TradeFormDialog } from '#components/trades/trade-form-dialog'
+import { TradeNotesDialog } from '#components/trades/trade-notes-dialog'
 import { TradeStats } from '#components/trades/trade-stats'
 import { TradesTable } from '#components/trades/trades-table'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
@@ -25,9 +26,11 @@ export const Route = createFileRoute('/trades')({
 function TradesPage() {
   const invalidateTrades = useInvalidateTrades()
   const [filter, setFilter] = useState<StrategyFilter>('all')
+  const [onlyUnlinked, setOnlyUnlinked] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<Trade | null>(null)
+  const [notesTrade, setNotesTrade] = useState<Trade | null>(null)
 
   const { data: trades, isPending: tradesPending } = $api.useQuery(
     'get',
@@ -50,10 +53,12 @@ function TradesPage() {
   const tradeList = trades ?? []
   const shown = useMemo(
     () =>
-      filter === 'all'
-        ? tradeList
-        : tradeList.filter((t) => t.strategy_id === filter),
-    [tradeList, filter],
+      tradeList.filter(
+        (trade) =>
+          (filter === 'all' || trade.strategy_id === filter) &&
+          (!onlyUnlinked || trade.note_count === 0),
+      ),
+    [tradeList, filter, onlyUnlinked],
   )
 
   const feesTotal = useMemo(
@@ -138,6 +143,8 @@ function TradesPage() {
         strategies={strategies}
         value={filter}
         onChange={setFilter}
+        onlyUnlinked={onlyUnlinked}
+        onOnlyUnlinkedChange={setOnlyUnlinked}
       />
 
       {deleteError != null && (
@@ -154,6 +161,10 @@ function TradesPage() {
           showStrategy={filter === 'all'}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onManageNotes={setNotesTrade}
+          emptyMessage={
+            onlyUnlinked ? '未紐付けの取引はありません。' : undefined
+          }
         />
       )}
 
@@ -173,6 +184,14 @@ function TradesPage() {
         strategies={strategies}
         stocks={stocks}
         defaultStrategyId={filter !== 'all' ? filter : undefined}
+      />
+
+      <TradeNotesDialog
+        open={notesTrade != null}
+        onOpenChange={(open) => {
+          if (!open) setNotesTrade(null)
+        }}
+        trade={notesTrade}
       />
     </div>
   )
