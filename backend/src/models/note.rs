@@ -1,6 +1,10 @@
+use sea_orm::entity::prelude::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+use crate::entities::{note, note_version};
+use crate::services::graph::GraphDef;
 
 /// ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
@@ -20,6 +24,49 @@ impl std::fmt::Display for NoteTrigger {
             Self::OnDemand => "on-demand",
             Self::Manual => "manual",
         })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = Note)]
+pub struct NoteResponse {
+    pub id: Uuid,
+    pub strategy_id: Option<Uuid>,
+    pub title: String,
+    pub body_md: String,
+    pub frontmatter_json: Json,
+    pub type_tag: Option<String>,
+    pub status: String,
+    pub trigger: Option<String>,
+    pub trigger_label: Option<String>,
+    pub created_by_kind: String,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub updated_at: chrono::DateTime<chrono::FixedOffset>,
+    #[schema(value_type = Vec<GraphDef>)]
+    pub graphs_json: serde_json::Value,
+    pub execution_id: Option<String>,
+}
+
+impl NoteResponse {
+    pub fn from_current_version(note: note::Model, version: note_version::Model) -> Self {
+        Self {
+            id: note.id,
+            strategy_id: note.strategy_id,
+            title: version.title,
+            body_md: version.body_md,
+            frontmatter_json: version.frontmatter_json,
+            type_tag: note.type_tag,
+            status: version.status,
+            trigger: note.trigger,
+            trigger_label: note.trigger_label,
+            created_by_kind: version.created_by_kind,
+            created_at: note.created_at,
+            updated_at: note.updated_at,
+            graphs_json: version.graphs_json,
+            execution_id: note.execution_id,
+        }
     }
 }
 

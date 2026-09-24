@@ -50,7 +50,7 @@ pub use jquants_plan::{
     PutJQuantsPlanSettingRequest, parse_plan_setting, serialize_plan_setting,
 };
 pub use margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
-pub use note::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
+pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use note_hypothesis::CreateNoteHypothesisRequest;
 pub use refs::RefResolution;
 pub use risk_policy::{

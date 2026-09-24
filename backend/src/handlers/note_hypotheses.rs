@@ -143,31 +143,13 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::{hypothesis, note};
-    use crate::testing::{create_test_server_with_db, insert_test_strategy};
+    use crate::entities::hypothesis;
+    use crate::testing::{
+        create_test_server_with_db, insert_test_note_in_scope, insert_test_strategy,
+    };
 
     async fn seed_note(db: &DatabaseConnection, strategy_id: Option<Uuid>) -> Uuid {
-        let id = Uuid::new_v4();
-        note::ActiveModel {
-            id: Set(id),
-            strategy_id: Set(strategy_id),
-            title: Set("t".into()),
-            body_md: Set("b".into()),
-            frontmatter_json: Set(json!({})),
-            type_tag: Set(None),
-            status: Set("unread".into()),
-            trigger: Set(None),
-            trigger_label: Set(None),
-            created_by_kind: Set("human".into()),
-            created_at: NotSet,
-            updated_at: NotSet,
-            graphs_json: Set(json!([])),
-            execution_id: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("insert note");
-        id
+        insert_test_note_in_scope(db, strategy_id, "t", "b").await
     }
 
     async fn seed_hypothesis(

@@ -8,6 +8,7 @@ use sea_orm::{
 };
 
 use crate::entities::comment;
+use crate::services::note_versions::find_current_version;
 
 /// `body_md` 中から `anchor_text` を検索し、見つかれば 1-indexed の `(start_line, end_line)` を返す。
 /// 複数箇所に一致する場合は位置を一意に決められないため `None` を返す。
@@ -35,11 +36,9 @@ pub async fn resolve_new_anchor<C: ConnectionTrait>(
     if target_kind != "note" {
         return Ok((None, None, false));
     }
-    let target_note = crate::entities::note::Entity::find_by_id(target_id)
-        .one(db)
-        .await?;
-    Ok(match target_note {
-        Some(target_note) => match locate_anchor(&target_note.body_md, anchor_text) {
+    let target_version = find_current_version(db, target_id).await?;
+    Ok(match target_version {
+        Some(target_version) => match locate_anchor(&target_version.body_md, anchor_text) {
             Some((start, end)) => (Some(start), Some(end), false),
             None => (None, None, true),
         },

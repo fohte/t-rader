@@ -70,6 +70,7 @@ const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 /// 呼び出しを送ってくると、新しい試行が書いた内容を上書き/削除しうる。
 const EXECUTION_ID_HEADER: &str = "x-execution-id";
 
+#[cfg(test)]
 pub(super) const DEFAULT_NOTE_STATUS: &str = "unread";
 pub(super) const DEFAULT_ANNOTATION_STATUS: &str = "unread";
 
