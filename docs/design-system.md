@@ -1,16 +1,17 @@
 # Design system
 
 t-rader フロントエンドのデザインシステムのトークン契約。
-ニアモノクロダーク + 赤アクセント 1 色 + monospace UI chrome という構成は、同じ作者が管理する [tq](https://github.com/fohte/tq) と土台を共有しており、トークン名と値もできる限り tq に揃えている。
-tq と構造を揃えておくことで、両リポジトリ間の差分を把握して吸収するコストを下げる狙いがある。
+共通トークンは [`@fohte/ui`](https://www.npmjs.com/package/@fohte/ui) の CSS を使い、各アプリで値が分岐しないようにする。
+t-rader 固有のトークンと utility は `frontend/src/index.css` に定義する。
 
-このドキュメントの値の出典は `frontend/src/index.css` の `:root` / `@theme inline` ブロック。
-ドキュメントと実装が食い違った場合は実装が正で、同じ PR でこのドキュメントを直す。
+共通トークンの値の出典は `@fohte/ui/tokens.css`、t-rader 固有の値の出典は `frontend/src/index.css` の `:root` / `@theme inline` ブロック。
+ドキュメントと実装が食い違った場合はそれぞれの出典を正とし、同じ PR でこのドキュメントを直す。
 
 ## Design tokens
 
-すべてのトークンは `:root` 直下にのみ定義する。
-light 用パレットは存在しない (`frontend/index.html` が `class="dark"` 固定でテーマ切り替えもないため)。
+`@fohte/ui` は共通パレットを `:root` (light) と `.dark` (dark) に定義する。
+t-rader 固有の CSS 変数は `:root` に定義する。
+`frontend/index.html` は `<html>` に `dark` class を指定し、Storybook も dark class を付けるため、画面では共通パレットの `.dark` が適用される。
 
 ### Surfaces
 
@@ -21,7 +22,7 @@ light 用パレットは存在しない (`frontend/index.html` が `class="dark"
 | `--popover`            | `#141414` | `bg-popover`        | ポップオーバー/メニュー面 (`--card` と同値) |
 | `--secondary`          | `#141414` | `bg-secondary`      | secondary fill                              |
 | `--muted`              | `#141414` | `bg-muted`          | muted fill (hover 背景など)                 |
-| `--accent`             | `#141414` | `bg-accent`         | accent fill (メニュー item hover など)      |
+| `--accent`             | `#1f1f1f` | `bg-accent`         | accent fill (メニュー item hover など)      |
 | `--surface-strong`     | `#1f1f1f` | `bg-surface-strong` | 強調した面 (active tab、primary button 等)  |
 | `--color-bg-secondary` | `#0f0f0f` | `bg-bg-secondary`   | t-rader 固有。background と card の中間段   |
 | `--color-bg-tertiary`  | `#1a1a1a` | `bg-bg-tertiary`    | t-rader 固有。card よりさらに上げた面       |
@@ -72,7 +73,7 @@ light 用パレットは存在しない (`frontend/index.html` が `class="dark"
 
 ### 株価の方向 (t-rader 固有)
 
-tq に対応物はない。
+`@fohte/ui` に対応するトークンはない。
 日本の慣習に合わせて上げを赤、下げを青にしている。
 
 | Token              | 値        | Tailwind utility        | 用途               |
@@ -84,7 +85,7 @@ tq に対応物はない。
 
 ### レビューとタスク実行のステータス (t-rader 固有)
 
-tq に対応物はない。
+`@fohte/ui` に対応するトークンはない。
 
 | Token                   | 値        | Tailwind utility         | 用途                                           |
 | ----------------------- | --------- | ------------------------ | ---------------------------------------------- |
@@ -95,18 +96,19 @@ tq に対応物はない。
 
 ### Radius
 
-`--radius` は `0.625rem` (tq は `0rem`)。
-tq と揃えるかどうかは全画面の見た目に関わる別種の変更になるため、このトークン整理 PR のスコープ外としている。
+`--radius` は `0rem`。
+radius scale (`sm` から `4xl`) は `@fohte/ui` が `--radius` に対する乗算 (`0.6`、`0.8`、`1`、`1.4`、`1.8`、`2.2`、`2.6`) で定義する。
 
 ## Fonts
 
 | Role        | CSS 変数           | フォントスタック                                                                                    | Tailwind utility                | 用途                                   |
 | ----------- | ------------------ | --------------------------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------- |
-| Sans        | `--font-sans`      | Inter, Helvetica Neue, Arial, Hiragino Kaku Gothic ProN, Noto Sans JP, sans-serif                   | `font-sans` (html に適用、既定) | 本文                                   |
-| Mono (UI)   | `--font-mono-ui`   | JetBrains Mono Variable, IBM Plex Mono, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace | `font-mono` / `font-mono-ui`    | UI chrome (ラベル、数値、コード的表示) |
+| Sans        | `--font-sans`      | Helvetica Neue, Arial, Hiragino Kaku Gothic ProN, Hiragino Sans, Meiryo, sans-serif                 | `font-sans` (html に適用、既定) | 本文                                   |
+| Mono        | `--font-mono`      | JetBrains Mono Variable, IBM Plex Mono, monospace                                                   | `font-mono`                     | 共通の monospace                       |
+| Mono (UI)   | `--font-mono-ui`   | JetBrains Mono Variable, IBM Plex Mono, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace | `font-mono-ui`                  | UI chrome (ラベル、数値、コード的表示) |
 | Mono (body) | `--font-mono-body` | `--font-mono-ui` と同じ                                                                             | `font-mono-body`                | mono な本文                            |
 
-`--font-mono` (Tailwind 既定の utility) は `--font-mono-ui` のエイリアスになっている。
+`--font-sans` と `--font-mono` は `@fohte/ui` が定義し、`--font-mono-ui` と `--font-mono-body` は t-rader 固有のトークンとして定義する。
 
 `JetBrains Mono Variable` / `IBM Plex Mono` は `@fontsource-variable/jetbrains-mono` / `@fontsource/ibm-plex-mono` (400/500/600) を `frontend/src/index.css` の `@import` で読み込んでいる。
 フォールバックにのみ頼らないこと。
@@ -115,10 +117,10 @@ tq と揃えるかどうかは全画面の見た目に関わる別種の変更�
 
 Tailwind 標準の `text-*` スケールに加え、それより小さい段が 2 つある。
 
-| Token        | 値                                                 | Tailwind utility | 用途                                                      |
-| ------------ | -------------------------------------------------- | ---------------- | --------------------------------------------------------- |
-| `--text-2xs` | `0.6875rem` (11px)、line-height `0.9375rem` (15px) | `text-2xs`       | 最小段の mono UI chrome (ラベル等)                        |
-| `--text-3xs` | `0.5625rem` (9px)、line-height なし (継承)         | `text-3xs`       | 隣接ラベルとの階層差を保つための最小段 (例: stale バッジ) |
+| Token        | 値                                               | Tailwind utility | 用途                                                      |
+| ------------ | ------------------------------------------------ | ---------------- | --------------------------------------------------------- |
+| `--text-2xs` | `0.625rem` (10px)、line-height `0.875rem` (14px) | `text-2xs`       | 最小段の mono UI chrome (ラベル等)                        |
+| `--text-3xs` | `0.5625rem` (9px)、line-height なし (継承)       | `text-3xs`       | 隣接ラベルとの階層差を保つための最小段 (例: stale バッジ) |
 
 新しい `--text-*` の段を追加する前に、既存の `text-2xs`/`text-3xs` で表現できないか確認すること。
 
@@ -187,8 +189,7 @@ box-shadow も同様に named token 化する場合があり、shadcn Sidebar �
 
 ## Non-goals
 
-このドキュメントはトークン契約であって、既存画面の一括 restyle ではない。
-以下は意図的にスコープ外としている。
+このドキュメントはトークン契約を定める。
+以下は対象外とする。
 
-- tq の primitives (`Panel` / `Chip` / `TabStrip` 等) の移植
-- `--radius` を tq (`0rem`) に揃えること
+- `@fohte/ui` の primitives (`Panel` / `Chip` / `TabStrip` 等) の移植
