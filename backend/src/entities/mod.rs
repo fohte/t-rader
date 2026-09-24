@@ -31,6 +31,7 @@ pub mod news_item;
 pub mod news_strategy_link;
 pub mod note;
 pub mod note_hypothesis;
+pub mod note_kind;
 pub mod note_ref;
 pub mod prediction;
 pub mod prediction_grade;
