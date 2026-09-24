@@ -342,7 +342,8 @@ mod tests {
         let seed_pub_date = to - chrono::Duration::days(1 + LOOKBACK_DAYS);
         seed_earnings_date(&db, "00000", "FY", seed_pub_date).await;
 
-        let prev_business_day = to - chrono::Duration::days(1);
+        let prev_business_day =
+            crate::date_utils::latest_business_day(to - chrono::Duration::days(1));
         // `to` の日は mock を用意しない (マッチせず 404 → fetch エラー) が、サイクル全体は失敗させない
         mock.earnings_date()
             .date(&prev_business_day.format("%Y-%m-%d").to_string())
