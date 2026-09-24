@@ -12,6 +12,7 @@ t-rader 固有のトークンと utility は `frontend/src/index.css` に定義�
 `@fohte/ui` は共通パレットを `:root` (light) と `.dark` (dark) に定義する。
 t-rader 固有の CSS 変数は `:root` に定義する。
 `frontend/index.html` は `<html>` に `dark` class を指定し、Storybook も dark class を付けるため、画面では共通パレットの `.dark` が適用される。
+以下の共通カラー表には `.dark` の値を記載する。light の値は `@fohte/ui/tokens.css` を参照する。
 
 ### Surfaces
 
@@ -34,20 +35,23 @@ t-rader 固有の CSS 変数は `:root` に定義する。
 | `--foreground`              | `#fafafa` | `text-foreground`              | 主要テキスト                                           |
 | `--muted-foreground-strong` | `#a1a1aa` | `text-muted-foreground-strong` | foreground と muted-foreground の中間の secondary text |
 | `--muted-foreground`        | `#71717a` | `text-muted-foreground`        | 標準の secondary/muted text                            |
+| `--muted-foreground-faint`  | `#52525b` | `text-muted-foreground-faint`  | 控えめな補助テキスト                                   |
+| `--muted-foreground-ghost`  | `#3f3f46` | `text-muted-foreground-ghost`  | 最も控えめな補助テキスト                               |
 | `--card-foreground`         | `#fafafa` | `text-card-foreground`         | `--card` 面上のテキスト                                |
 | `--popover-foreground`      | `#fafafa` | `text-popover-foreground`      | `--popover` 面上のテキスト                             |
 | `--secondary-foreground`    | `#fafafa` | `text-secondary-foreground`    | `--secondary` 面上のテキスト                           |
 | `--accent-foreground`       | `#fafafa` | `text-accent-foreground`       | `--accent` 面上のテキスト                              |
 
-グレー階調は明るい順に `--foreground`、`--muted-foreground-strong`、`--muted-foreground` と並ぶ。
+グレー階調は明るい順に `--foreground`、`--muted-foreground-strong`、`--muted-foreground`、`--muted-foreground-faint`、`--muted-foreground-ghost` と並ぶ。
 新しいグレー値を作らず、既存のいずれかの階調を使うこと。
 
 ### Borders
 
-| Token      | 値        | Tailwind utility | 用途                                         |
-| ---------- | --------- | ---------------- | -------------------------------------------- |
-| `--border` | `#2a2a2a` | `border-border`  | 標準の 1px border (デフォルト)               |
-| `--input`  | `#2a2a2a` | `border-input`   | フォーム input の border (`--border` と同値) |
+| Token             | 値        | Tailwind utility       | 用途                                         |
+| ----------------- | --------- | ---------------------- | -------------------------------------------- |
+| `--border`        | `#2a2a2a` | `border-border`        | 標準の 1px border (デフォルト)               |
+| `--input`         | `#2a2a2a` | `border-input`         | フォーム input の border (`--border` と同値) |
+| `--border-strong` | `#71717a` | `border-border-strong` | 強調した border                              |
 
 ### Accent (唯一の色)
 
@@ -96,19 +100,20 @@ t-rader 固有の CSS 変数は `:root` に定義する。
 
 ### Radius
 
-`--radius` は `0rem`。
-radius scale (`sm` から `4xl`) は `@fohte/ui` が `--radius` に対する乗算 (`0.6`、`0.8`、`1`、`1.4`、`1.8`、`2.2`、`2.6`) で定義する。
+`--radius` は `0rem`。`rounded-sm` から `rounded-4xl` の utility は `@fohte/ui` が定義する。
 
 ## Fonts
 
-| Role        | CSS 変数           | フォントスタック                                                                                    | Tailwind utility                | 用途                                   |
-| ----------- | ------------------ | --------------------------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------- |
-| Sans        | `--font-sans`      | Helvetica Neue, Arial, Hiragino Kaku Gothic ProN, Hiragino Sans, Meiryo, sans-serif                 | `font-sans` (html に適用、既定) | 本文                                   |
-| Mono        | `--font-mono`      | JetBrains Mono Variable, IBM Plex Mono, monospace                                                   | `font-mono`                     | 共通の monospace                       |
-| Mono (UI)   | `--font-mono-ui`   | JetBrains Mono Variable, IBM Plex Mono, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace | `font-mono-ui`                  | UI chrome (ラベル、数値、コード的表示) |
-| Mono (body) | `--font-mono-body` | `--font-mono-ui` と同じ                                                                             | `font-mono-body`                | mono な本文                            |
+| Role        | CSS 変数           | フォントスタック                                                                    | Tailwind utility                | 用途                                   |
+| ----------- | ------------------ | ----------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------- |
+| Sans        | `--font-sans`      | Helvetica Neue, Arial, Hiragino Kaku Gothic ProN, Hiragino Sans, Meiryo, sans-serif | `font-sans` (html に適用、既定) | 本文                                   |
+| Mono        | `--font-mono`      | JetBrains Mono Variable, IBM Plex Mono, monospace                                   | `font-mono`                     | 標準の monospace                       |
+| Mono (code) | `--font-code`      | IBM Plex Mono, monospace                                                            | `font-code`                     | コード表示                             |
+| Mono (UI)   | `--font-mono-ui`   | `var(--font-mono)`                                                                  | `font-mono-ui`                  | UI chrome (ラベル、数値、コード的表示) |
+| Mono (body) | `--font-mono-body` | `var(--font-mono-ui)`                                                               | `font-mono-body`                | mono な本文                            |
 
-`--font-sans` と `--font-mono` は `@fohte/ui` が定義し、`--font-mono-ui` と `--font-mono-body` は t-rader 固有のトークンとして定義する。
+`--font-sans`、`--font-mono`、`--font-code` は `@fohte/ui` が定義する。t-rader 固有の `--font-mono-ui` と `--font-mono-body` は `--font-mono` を参照する。
+新しい UI では通常 `font-mono` を使い、用途を明示したい箇所では `font-mono-ui` を使う。
 
 `JetBrains Mono Variable` / `IBM Plex Mono` は `@fontsource-variable/jetbrains-mono` / `@fontsource/ibm-plex-mono` (400/500/600) を `frontend/src/index.css` の `@import` で読み込んでいる。
 フォールバックにのみ頼らないこと。
@@ -116,6 +121,7 @@ radius scale (`sm` から `4xl`) は `@fohte/ui` が `--radius` に対する乗�
 ## Typography scale
 
 Tailwind 標準の `text-*` スケールに加え、それより小さい段が 2 つある。
+`--text-2xs` は `@fohte/ui` が定義し、`--text-3xs` は t-rader 固有のトークンとして定義する。
 
 | Token        | 値                                               | Tailwind utility | 用途                                                      |
 | ------------ | ------------------------------------------------ | ---------------- | --------------------------------------------------------- |
@@ -192,4 +198,4 @@ box-shadow も同様に named token 化する場合があり、shadcn Sidebar �
 このドキュメントはトークン契約を定める。
 以下は対象外とする。
 
-- `@fohte/ui` の primitives (`Panel` / `Chip` / `TabStrip` 等) の移植
+- tq の primitives (`Panel` / `Chip` / `TabStrip` 等) の移植

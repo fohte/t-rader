@@ -14,9 +14,7 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
-  --font-mono-ui:
-    'JetBrains Mono Variable', 'IBM Plex Mono', 'SFMono-Regular', Consolas,
-    'Liberation Mono', Menlo, monospace;
+  --font-mono-ui: var(--font-mono);
   --font-mono-body: var(--font-mono-ui);
 
   /* t-rader 固有: shadcn の3段では表現しない背景の中間段 */
