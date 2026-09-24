@@ -3862,6 +3862,264 @@
         }
       }
     },
+    "/api/note-kinds": {
+      "get": {
+        "tags": [
+          "note_kinds"
+        ],
+        "summary": "ノート種別一覧",
+        "operationId": "list_note_kinds",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteKind"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "note_kinds"
+        ],
+        "summary": "ノート種別を作成",
+        "operationId": "create_note_kind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNoteKindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteKind"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "key が既存と衝突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/note-kinds/{key}": {
+      "delete": {
+        "tags": [
+          "note_kinds"
+        ],
+        "summary": "ノートが使用中の種別は削除しない",
+        "operationId": "delete_note_kind",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "ノート種別 key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "既存のノートがこの種別を使用中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "note_kinds"
+        ],
+        "summary": "ノート種別を部分更新する (key は変更不可)",
+        "operationId": "update_note_kind",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "ノート種別 key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNoteKindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteKind"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes": {
       "get": {
         "tags": [
@@ -9394,6 +9652,38 @@
         },
         "additionalProperties": false
       },
+      "CreateNoteKindRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "display_name",
+          "requires_approval"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "requires_approval": {
+            "type": "boolean"
+          },
+          "sort_order": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "CreateNoteRequest": {
         "type": "object",
         "required": [
@@ -10229,6 +10519,36 @@
           "note_id": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "NoteKind": {
+        "type": "object",
+        "required": [
+          "key",
+          "display_name",
+          "requires_approval",
+          "sort_order"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "requires_approval": {
+            "type": "boolean"
+          },
+          "sort_order": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -11492,6 +11812,36 @@
         },
         "additionalProperties": false
       },
+      "UpdateNoteKindRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requires_approval": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "sort_order": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "UpdateNoteRequest": {
         "type": "object",
         "properties": {
@@ -11779,6 +12129,10 @@
     {
       "name": "notes",
       "description": "ノート"
+    },
+    {
+      "name": "note_kinds",
+      "description": "ノート種別"
     },
     {
       "name": "annotations",

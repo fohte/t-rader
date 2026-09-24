@@ -696,6 +696,42 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/note-kinds': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノート種別一覧 */
+    get: operations['list_note_kinds']
+    put?: never
+    /** ノート種別を作成 */
+    post: operations['create_note_kind']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/note-kinds/{key}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** ノートが使用中の種別は削除しない */
+    delete: operations['delete_note_kind']
+    options?: never
+    head?: never
+    /** ノート種別を部分更新する (key は変更不可) */
+    patch: operations['update_note_kind']
+    trace?: never
+  }
   '/api/notes': {
     parameters: {
       query?: never
@@ -1704,6 +1740,14 @@ export interface components {
       /** Format: uuid */
       hypothesis_id: string
     }
+    CreateNoteKindRequest: {
+      description?: string | null
+      display_name: string
+      key: string
+      requires_approval: boolean
+      /** Format: int32 */
+      sort_order?: number | null
+    }
     CreateNoteRequest: {
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
@@ -1958,6 +2002,14 @@ export interface components {
       hypothesis_title: string
       /** Format: uuid */
       note_id: string
+    }
+    NoteKind: {
+      description?: string | null
+      display_name: string
+      key: string
+      requires_approval: boolean
+      /** Format: int32 */
+      sort_order: number
     }
     /**
      * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
@@ -2375,6 +2427,13 @@ export interface components {
       origin?: string | null
       role?: string | null
       status?: string | null
+    }
+    UpdateNoteKindRequest: {
+      description?: string | null
+      display_name?: string | null
+      requires_approval?: boolean | null
+      /** Format: int32 */
+      sort_order?: number | null
     }
     UpdateNoteRequest: {
       body_md?: string | null
@@ -5352,6 +5411,212 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  list_note_kinds: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteKind'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  create_note_kind: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateNoteKindRequest']
+      }
+    }
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteKind']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description key が既存と衝突 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  delete_note_kind: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート種別 key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description 既存のノートがこの種別を使用中 */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  update_note_kind: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート種別 key */
+        key: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateNoteKindRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteKind']
+        }
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
       422: {
         headers: {
           [name: string]: unknown

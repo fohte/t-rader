@@ -38,8 +38,8 @@ use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
     custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
-    jquants_plan_setting, news, note_hypotheses, note_predictions, notes, refs, risk_policy,
-    rss_feeds, strategies, tasks, trade_notes, trades, triggers, watchlists,
+    jquants_plan_setting, news, note_hypotheses, note_kinds, note_predictions, notes, refs,
+    risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -99,6 +99,7 @@ impl AppState {
         (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
         (name = "refs", description = "一級参照型 (stock / indicator / sector / theme)"),
         (name = "notes", description = "ノート"),
+        (name = "note_kinds", description = "ノート種別"),
         (name = "annotations", description = "アノテーション"),
         (name = "comments", description = "コメントスレッド"),
         (name = "history", description = "変更履歴"),
@@ -366,6 +367,15 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(
             rss_feeds::update_rss_feed,
             rss_feeds::delete_rss_feed
+        ))
+        // note kinds
+        .routes(routes!(
+            note_kinds::list_note_kinds,
+            note_kinds::create_note_kind
+        ))
+        .routes(routes!(
+            note_kinds::update_note_kind,
+            note_kinds::delete_note_kind
         ))
         // agent options (agent 設定フォームの選択肢)
         .routes(routes!(agent_options::get_agent_models))

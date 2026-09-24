@@ -34,10 +34,16 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 | `create_rss_feed`          | `source`, `display_name`, `url`, `enabled?`                                                                       | 作成した RSS フィード定義                                                                                    |
 | `update_rss_feed`          | `id`, `display_name?`, `url?`, `enabled?`                                                                         | 更新後の RSS フィード定義                                                                                    |
 | `delete_rss_feed`          | `id`                                                                                                              | `id`。既存の `news_item` 行は残す                                                                            |
+| `list_note_kinds`          | (なし)                                                                                                            | ノート種別一覧 (`key`, `display_name`, `requires_approval`, `description`, `sort_order`)                     |
+| `create_note_kind`         | `key`, `display_name`, `requires_approval?`, `description?`, `sort_order?`                                        | 作成したノート種別 (`requires_approval` は省略時 false)                                                      |
+| `update_note_kind`         | `key`, `display_name?`, `requires_approval?`, `description?`, `sort_order?`                                       | 更新後のノート種別。`key` は変更不可                                                                         |
+| `delete_note_kind`         | `key`                                                                                                             | `key`。既存ノートで使用中の場合は削除しない                                                                  |
 
 `submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。クライアント実装は `backend/src/agent_client/` が SSOT。投入から決着までの共通ロジックは `backend/src/services/strategy_tasks.rs`、決着 polling は `backend/src/mcp/watcher.rs` を参照。
 
 `create_strategy` / `update_strategy_config` / `delete_strategy` による DB 書き込みは REST (`backend/src/handlers/strategies/mod.rs`) と共通の `backend/src/services/strategy_config.rs` を経由し、`change_history` には actor `llm` / label `mgmt-mcp` で記録される。
+
+`create_note_kind` / `update_note_kind` / `delete_note_kind` は REST (`/api/note-kinds`) と共通の `backend/src/services/note_kinds.rs` を経由し、`change_history` にも actor `llm` / label `mgmt-mcp` で記録される。
 
 `create_strategy_trigger` / `update_strategy_trigger` / `delete_strategy_trigger` は REST (`POST /api/strategies/{id}/triggers`, `PUT /api/triggers/{trigger_id}`, `DELETE /api/triggers/{trigger_id}`) と共通の `backend/src/services/trigger_crud.rs` を経由する。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
 
