@@ -40,8 +40,8 @@ export function HypothesisDetailPage({
       },
       {
         onSuccess: invalidate,
-        onError: () => {
-          setSaveError('保存に失敗しました')
+        onError: (err) => {
+          setSaveError(err.error || '保存に失敗しました')
         },
       },
     )

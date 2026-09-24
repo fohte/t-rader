@@ -44,5 +44,12 @@ export const ValidationError: Story = {
 }
 
 export const SaveError: Story = {
-  args: { ...args, isDirty: true, saveError: '保存に失敗しました' },
+  args: {
+    ...args,
+    isDirty: true,
+    saveError: [
+      '仮説本文のトークンに問題があります:',
+      '- 本文のトークン "[[unknown:sample]]": 未知の prefix `unknown` です',
+    ].join('\n'),
+  },
 }

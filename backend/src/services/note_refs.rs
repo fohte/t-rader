@@ -11,7 +11,8 @@ use crate::services::graph::GraphDef;
 
 mod body_tokens;
 use self::body_tokens::{
-    BodyTokenPolicy, collect_note_refs, collect_note_refs_with_policy, format_note_token_errors,
+    BodyTokenPolicy, collect_note_refs, collect_note_refs_with_policy,
+    format_hypothesis_body_token_errors, format_note_token_errors,
 };
 
 /// note_ref を本文 + 図から都度 rebuild する: 旧 ref は DELETE で消え、
@@ -96,6 +97,12 @@ async fn sync_note_refs_with_policy<C: sea_orm::ConnectionTrait>(
 fn deserialize_graphs(graphs_json: &serde_json::Value) -> Result<Vec<GraphDef>, AppError> {
     serde_json::from_value(graphs_json.clone())
         .map_err(|e| AppError::Validation(format!("invalid graphs_json: {e}")))
+}
+
+pub(crate) fn validate_body_tokens(body: &str) -> Result<(), AppError> {
+    collect_note_refs(body, &[])
+        .map(|_| ())
+        .map_err(|errors| AppError::Validation(format_hypothesis_body_token_errors(&errors)))
 }
 
 #[cfg(test)]

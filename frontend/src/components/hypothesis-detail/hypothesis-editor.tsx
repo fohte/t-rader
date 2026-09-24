@@ -147,7 +147,7 @@ export function HypothesisEditorView({
         {(validationError != null || saveError != null) && (
           <span
             data-testid="hypothesis-editor-error"
-            className="font-mono text-xs text-primary"
+            className="whitespace-pre-line font-mono text-xs text-primary"
           >
             {validationError ?? saveError}
           </span>

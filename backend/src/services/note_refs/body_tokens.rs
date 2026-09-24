@@ -422,6 +422,21 @@ pub(super) fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> S
     .trim_end()
     .to_string()
 }
+
+pub(super) fn format_hypothesis_body_token_errors(errors: &[NoteTokenValidationError]) -> String {
+    let details = errors
+        .iter()
+        .map(|error| format!("- {error}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    indoc::formatdoc! {"
+        仮説本文のトークンに問題があります:
+        {details}
+        許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。仮説本文では `[[graph:<id>]]` を使用できません。
+    "}
+    .trim_end()
+    .to_string()
+}
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
