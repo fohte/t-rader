@@ -1,6 +1,8 @@
 //! ノート本文・図から `[[kind:id]]` 参照を抽出し `note_ref` に同期する。
 //!
 //! REST の `/api/notes` handler と MCP `write_note` tool の両方から呼ばれる。
+//! 仮説本文は `validate_hypothesis_body_tokens` で token だけを検証する。
+//! 仮説は図を持たないため、`[[graph:<id>]]` は常に拒否する。
 
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -99,7 +101,8 @@ fn deserialize_graphs(graphs_json: &serde_json::Value) -> Result<Vec<GraphDef>, 
         .map_err(|e| AppError::Validation(format!("invalid graphs_json: {e}")))
 }
 
-pub(crate) fn validate_body_tokens(body: &str) -> Result<(), AppError> {
+/// 仮説本文の token を検証する。仮説は図を持たないため、graph token は拒否する。
+pub(crate) fn validate_hypothesis_body_tokens(body: &str) -> Result<(), AppError> {
     collect_note_refs(body, &[])
         .map(|_| ())
         .map_err(|errors| AppError::Validation(format_hypothesis_body_token_errors(&errors)))

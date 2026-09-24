@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::entities::{hypothesis, hypothesis_proposal};
 use crate::services::hypotheses::ensure_status;
-use crate::services::note_refs::validate_body_tokens;
+use crate::services::note_refs::validate_hypothesis_body_tokens;
 
 use super::dto::{
     HypothesisDto, ListHypothesesParams, ListHypothesesResult, ProposeHypothesisChangeParams,
@@ -129,7 +129,7 @@ impl StrategyServer {
             return Err(invalid_params("proposed_body must not be empty"));
         }
         if let Some(body) = &params.proposed_body {
-            validate_body_tokens(body).map_err(validation_to_mcp)?;
+            validate_hypothesis_body_tokens(body).map_err(validation_to_mcp)?;
         }
         if let Some(status) = &params.proposed_status {
             ensure_status(status).map_err(validation_to_mcp)?;

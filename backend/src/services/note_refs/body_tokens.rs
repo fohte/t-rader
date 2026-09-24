@@ -409,11 +409,7 @@ fn is_standalone_graph_token(body: &str, token: NoteToken<'_>, blocks: &[Range<u
 }
 
 pub(super) fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
-    let details = errors
-        .iter()
-        .map(|error| format!("- {error}"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let details = format_token_error_details(errors);
     indoc::formatdoc! {"
         ノートのトークンに問題があります:
         {details}
@@ -424,11 +420,7 @@ pub(super) fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> S
 }
 
 pub(super) fn format_hypothesis_body_token_errors(errors: &[NoteTokenValidationError]) -> String {
-    let details = errors
-        .iter()
-        .map(|error| format!("- {error}"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let details = format_token_error_details(errors);
     indoc::formatdoc! {"
         仮説本文のトークンに問題があります:
         {details}
@@ -437,6 +429,15 @@ pub(super) fn format_hypothesis_body_token_errors(errors: &[NoteTokenValidationE
     .trim_end()
     .to_string()
 }
+
+fn format_token_error_details(errors: &[NoteTokenValidationError]) -> String {
+    errors
+        .iter()
+        .map(|error| format!("- {error}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;

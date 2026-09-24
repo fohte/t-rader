@@ -15,12 +15,14 @@ import { $api } from '#lib/api/client'
 
 interface CreateHypothesisDialogProps {
   initialStrategyId?: string
+  initialError?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 export function CreateHypothesisDialog({
   initialStrategyId,
+  initialError,
   open,
   onOpenChange,
 }: CreateHypothesisDialogProps) {
@@ -28,7 +30,9 @@ export function CreateHypothesisDialog({
   const [strategyId, setStrategyId] = useState(initialStrategyId ?? '')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
-  const [formError, setFormError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(
+    initialError ?? null,
+  )
   const queryClient = useQueryClient()
   const createMutation = $api.useMutation(
     'post',
@@ -72,8 +76,8 @@ export function CreateHypothesisDialog({
           reset()
           onOpenChange(false)
         },
-        onError: () => {
-          setFormError('仮説の作成に失敗しました')
+        onError: (err) => {
+          setFormError(err.error || '仮説の作成に失敗しました')
         },
       },
     )
@@ -156,7 +160,7 @@ export function CreateHypothesisDialog({
           {formError != null && (
             <p
               data-testid="create-hypothesis-error"
-              className="text-xs text-primary"
+              className="whitespace-pre-line text-xs text-primary"
             >
               {formError}
             </p>

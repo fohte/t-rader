@@ -32,3 +32,14 @@ export const Open: Story = {
     onOpenChange: () => {},
   },
 }
+
+export const ServerError: Story = {
+  args: {
+    open: true,
+    initialError: [
+      '仮説本文のトークンに問題があります:',
+      '- 本文のトークン "[[unknown:sample]]": 未知の prefix `unknown` です',
+    ].join('\n'),
+    onOpenChange: () => {},
+  },
+}

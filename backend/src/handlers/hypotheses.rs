@@ -17,7 +17,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateHypothesisRequest, UpdateHypothesisRequest};
 use crate::services::hypotheses::{DEFAULT_STATUS, ensure_status, find_hypothesis_or_404};
-use crate::services::note_refs::validate_body_tokens;
+use crate::services::note_refs::validate_hypothesis_body_tokens;
 use crate::services::strategies::ensure_strategy_exists;
 
 fn validate_text(field: &str, value: &str) -> Result<String, AppError> {
@@ -178,7 +178,7 @@ async fn insert_hypothesis(
 ) -> Result<hypothesis::Model, AppError> {
     let title = validate_text("title", &p.title)?;
     let body = validate_text("body", &p.body)?;
-    validate_body_tokens(&body)?;
+    validate_hypothesis_body_tokens(&body)?;
     let status = p.status.unwrap_or_else(|| DEFAULT_STATUS.to_string());
     ensure_status(&status)?;
 
@@ -316,6 +316,7 @@ async fn apply_hypothesis_update(
     p: UpdateHypothesisRequest,
 ) -> Result<hypothesis::Model, AppError> {
     let strategy_id = current.strategy_id;
+    let current_body = current.body.clone();
     let mut active = current.into_active_model();
     let mut touched = false;
     if let Some(title) = p.title {
@@ -325,7 +326,9 @@ async fn apply_hypothesis_update(
     }
     if let Some(body) = p.body {
         let body = validate_text("body", &body)?;
-        validate_body_tokens(&body)?;
+        if body.as_str() != current_body.trim() {
+            validate_hypothesis_body_tokens(&body)?;
+        }
         active.body = Set(body);
         touched = true;
     }
