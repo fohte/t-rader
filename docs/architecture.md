@@ -1,6 +1,6 @@
 # backend のアーキテクチャ
 
-backend の Rust crate は `backend/crates/` に配置する。`backend/migration/` は独立した migration crate として扱う。
+backend の Rust crate は次の構成とする。`backend/migration/` は独立した migration crate として扱う。
 
 ## crate 構成
 
@@ -31,28 +31,28 @@ backend/crates/
 
 | crate                | 責務                                                                                     |
 | -------------------- | ---------------------------------------------------------------------------------------- |
-| `core/domain`        | 値、エンティティ、ドメインルールを定義する。外部 crate に依存しない。                    |
+| `core/domain`        | 値、エンティティ、ドメインルールを定義する。Rust 標準 library のみを使う。               |
 | `core/application`   | ユースケースと port を定義する。port は application が必要とする機能を表す。             |
 | `entrypoints/*`      | HTTP、MCP、webhook、定期実行などの入力を受け取り、application のユースケースを呼び出す。 |
 | `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                             |
 | `app`                | 各 crate を組み立てる composition root とする。                                          |
 | `backend/migration/` | SeaORM migration を管理する。                                                            |
 
-`app` は `rmcp` の session 管理、allowed hosts、access log など、複数の entrypoint に共通する MCP の配線も担う。
+`app` は `rmcp` の session 管理、allowed hosts、access log など、複数の entrypoint に共通する MCP の配線も担う。複数 crate を組み合わせる結合テストも `app` に置く。
 
 ## crate 間の依存
 
 crate 間の依存は `Cargo.toml` で次の関係に限定する。
 
-| crate              | 依存先                                           |
-| ------------------ | ------------------------------------------------ |
-| `core/domain`      | なし                                             |
-| `core/application` | `core/domain`                                    |
-| `entrypoints/*`    | `core/application`, `core/domain`                |
-| `gateways/*`       | `core/application`, `core/domain`                |
-| `app`              | `backend/crates/` 内のすべての application crate |
+| crate              | 依存先                                                       |
+| ------------------ | ------------------------------------------------------------ |
+| `core/domain`      | なし                                                         |
+| `core/application` | `core/domain`                                                |
+| `entrypoints/*`    | `core/application`, `core/domain`                            |
+| `gateways/*`       | `core/application`, `core/domain`                            |
+| `app`              | `backend/crates/` 内のすべての crate と `backend/migration/` |
 
-`entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` は `reqwest` や `sea-orm` などの外部 crate にも依存しない。
+`entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` の依存 crate は設けない。
 
 ## entrypoint と gateway の名前
 
