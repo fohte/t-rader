@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::agent_client::AgentTaskError;
 use crate::entities::{annotation, note, strategy};
-use crate::services::note_versions::note_ids_with_current_status;
+use crate::services::note_versions::{INITIAL_NOTE_STATUS, current_note_ids_with_status};
 use crate::services::strategy_tasks::{
     self, ResumeTaskError, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
 };
@@ -20,8 +20,7 @@ use super::dto::{
 };
 use super::{MgmtServer, db_error, internal_error, invalid_params};
 
-/// 指定エンティティの `status='unread'` 件数を strategy_id ごとに集約して返す。
-/// `list_strategies` が note / annotation 双方に対し 1 クエリで未読件数を取るために使う。
+/// annotation の `status='unread'` 件数を strategy_id ごとに集約して返す。
 async fn unread_counts_by_strategy<E, C>(
     db: &DatabaseConnection,
     strategy_id_col: C,
@@ -52,14 +51,11 @@ where
 async fn unread_note_counts_by_strategy(
     db: &DatabaseConnection,
 ) -> Result<HashMap<Uuid, u64>, McpError> {
-    let note_ids = note_ids_with_current_status(db, "unread")
-        .await
-        .map_err(db_error)?;
     let rows: Vec<(Uuid, i64)> = note::Entity::find()
         .select_only()
         .column(note::Column::StrategyId)
         .column_as(note::Column::Id.count(), "unread_count")
-        .filter(note::Column::Id.is_in(note_ids))
+        .filter(note::Column::Id.in_subquery(current_note_ids_with_status(INITIAL_NOTE_STATUS)))
         .filter(note::Column::StrategyId.is_not_null())
         .group_by(note::Column::StrategyId)
         .into_tuple()

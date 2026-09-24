@@ -50,7 +50,11 @@ pub struct NoteResponse {
 }
 
 impl NoteResponse {
-    pub fn from_current_version(note: note::Model, version: note_version::Model) -> Self {
+    pub fn from_current_version(
+        note: note::Model,
+        version: note_version::Model,
+        created_by_kind: String,
+    ) -> Self {
         Self {
             id: note.id,
             strategy_id: note.strategy_id,
@@ -61,7 +65,7 @@ impl NoteResponse {
             status: version.status,
             trigger: note.trigger,
             trigger_label: note.trigger_label,
-            created_by_kind: version.created_by_kind,
+            created_by_kind,
             created_at: note.created_at,
             updated_at: note.updated_at,
             graphs_json: version.graphs_json,

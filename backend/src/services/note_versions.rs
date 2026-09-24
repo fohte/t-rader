@@ -3,8 +3,10 @@
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect,
+    QueryTrait,
 };
 use serde_json::json;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::entities::{note, note_version};
@@ -22,7 +24,10 @@ pub struct AppendVersion {
     pub execution_id: Option<String>,
     pub change_reason: Option<String>,
     pub change_diff: Option<serde_json::Value>,
+    pub actor: Actor,
 }
+
+pub const INITIAL_NOTE_STATUS: &str = "unread";
 
 /// 新しい版を追加し、その版を現行にする。
 ///
@@ -33,16 +38,15 @@ pub async fn append_version(
     content: AppendVersion,
 ) -> Result<note_version::Model, AppError> {
     let previous = find_current_version(txn, note_id).await?;
-    let existing_version_numbers = note_version::Entity::find()
+    let max_version_no = note_version::Entity::find()
         .select_only()
-        .column(note_version::Column::VersionNo)
+        .column_as(note_version::Column::VersionNo.max(), "max_version_no")
         .filter(note_version::Column::NoteId.eq(note_id))
-        .into_tuple::<i32>()
-        .all(txn)
+        .into_tuple::<Option<i32>>()
+        .one(txn)
         .await?;
-    let version_no = existing_version_numbers
-        .into_iter()
-        .max()
+    let version_no = max_version_no
+        .flatten()
         .unwrap_or_default()
         .checked_add(1)
         .ok_or_else(|| AppError::Validation("note version number overflow".into()))?;
@@ -65,7 +69,7 @@ pub async fn append_version(
         body_md: Set(content.body_md),
         frontmatter_json: Set(content.frontmatter_json),
         graphs_json: Set(content.graphs_json),
-        status: Set("unread".into()),
+        status: Set(INITIAL_NOTE_STATUS.into()),
         is_current: Set(true),
         change_reason: Set(content.change_reason.clone()),
         created_by_kind: Set(content.created_by_kind.clone()),
@@ -107,17 +111,6 @@ pub async fn append_version(
         comment_anchor::reanchor_note_comments(txn, note_id, &version.body_md).await?;
     }
 
-    let actor = match content.created_by_kind.as_str() {
-        "human" => Actor::Human,
-        "llm" => Actor::Llm {
-            label: "strategy-mcp",
-        },
-        other => {
-            return Err(AppError::Validation(format!(
-                "invalid created_by_kind: {other}"
-            )));
-        }
-    };
     let mut diff = json!({
         "from_version_id": previous.as_ref().map(|version| version.id),
         "to_version_id": version.id,
@@ -132,7 +125,7 @@ pub async fn append_version(
     }
     change_history::record_as(
         txn,
-        actor,
+        content.actor,
         TargetKind::Note,
         note_id,
         if previous.is_some() {
@@ -162,28 +155,44 @@ pub async fn find_current_version<C: sea_orm::ConnectionTrait>(
 pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_ids: &[Uuid],
-) -> Result<Vec<note_version::Model>, sea_orm::DbErr> {
+) -> Result<HashMap<Uuid, note_version::Model>, sea_orm::DbErr> {
     if note_ids.is_empty() {
-        return Ok(Vec::new());
+        return Ok(HashMap::new());
     }
 
-    note_version::Entity::find()
+    Ok(note_version::Entity::find()
         .filter(note_version::Column::NoteId.is_in(note_ids.iter().copied()))
         .filter(note_version::Column::IsCurrent.eq(true))
         .all(db)
-        .await
+        .await?
+        .into_iter()
+        .map(|version| (version.note_id, version))
+        .collect())
 }
 
-pub async fn note_ids_with_current_status<C: sea_orm::ConnectionTrait>(
+pub async fn find_initial_created_by_kind<C: sea_orm::ConnectionTrait>(
     db: &C,
-    status: &str,
-) -> Result<Vec<Uuid>, sea_orm::DbErr> {
+    note_ids: &[Uuid],
+) -> Result<HashMap<Uuid, String>, sea_orm::DbErr> {
+    if note_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    Ok(note_version::Entity::find()
+        .filter(note_version::Column::NoteId.is_in(note_ids.iter().copied()))
+        .filter(note_version::Column::VersionNo.eq(1))
+        .all(db)
+        .await?
+        .into_iter()
+        .map(|version| (version.note_id, version.created_by_kind))
+        .collect())
+}
+
+pub fn current_note_ids_with_status(status: &str) -> sea_orm::sea_query::SelectStatement {
     note_version::Entity::find()
         .select_only()
         .column(note_version::Column::NoteId)
         .filter(note_version::Column::IsCurrent.eq(true))
         .filter(note_version::Column::Status.eq(status))
-        .into_tuple::<Uuid>()
-        .all(db)
-        .await
+        .into_query()
 }

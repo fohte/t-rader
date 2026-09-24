@@ -173,6 +173,7 @@ async fn insert_test_note_with_options(
             execution_id,
             change_reason: None,
             change_diff: None,
+            actor: crate::services::change_history::Actor::Human,
         },
     )
     .await

@@ -8,11 +8,11 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{note, note_version, trade, trade_note};
+use crate::entities::{note, trade, trade_note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateTradeNoteRequest, NoteResponse};
-use crate::services::note_versions::find_current_versions;
+use crate::services::note_versions::{find_current_versions, find_initial_created_by_kind};
 
 async fn find_trade_or_404(
     db: &sea_orm::DatabaseConnection,
@@ -54,18 +54,21 @@ pub async fn list_trade_notes(
         .filter(note::Column::Id.is_in(note_ids.iter().copied()))
         .all(&state.db)
         .await?;
-    let versions = find_current_versions(&state.db, &note_ids).await?;
-    let versions_by_id: HashMap<Uuid, note_version::Model> = versions
-        .into_iter()
-        .map(|version| (version.note_id, version))
-        .collect();
+    let versions_by_id = find_current_versions(&state.db, &note_ids).await?;
+    let creators = find_initial_created_by_kind(&state.db, &note_ids).await?;
     let mut notes_by_id: HashMap<Uuid, NoteResponse> = notes
         .into_iter()
         .map(|note| {
             let version = versions_by_id.get(&note.id).cloned().ok_or_else(|| {
                 AppError::NotFound(format!("current version for note {} not found", note.id))
             })?;
-            Ok((note.id, NoteResponse::from_current_version(note, version)))
+            let created_by_kind = creators.get(&note.id).cloned().ok_or_else(|| {
+                AppError::NotFound(format!("initial version for note {} not found", note.id))
+            })?;
+            Ok((
+                note.id,
+                NoteResponse::from_current_version(note, version, created_by_kind),
+            ))
         })
         .collect::<Result<_, AppError>>()?;
 

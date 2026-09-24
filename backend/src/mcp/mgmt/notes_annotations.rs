@@ -4,7 +4,7 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use crate::entities::{annotation, note};
-use crate::services::note_versions::find_current_versions;
+use crate::services::note_versions::{find_current_versions, find_initial_created_by_kind};
 
 use super::MgmtServer;
 use super::dto::{
@@ -28,10 +28,13 @@ impl MgmtServer {
         let versions =
             find_current_versions(&self.db, &rows.iter().map(|row| row.id).collect::<Vec<_>>())
                 .await
-                .map_err(db_error)?
-                .into_iter()
-                .map(|version| (version.note_id, version))
-                .collect::<std::collections::HashMap<_, _>>();
+                .map_err(db_error)?;
+        let creators = find_initial_created_by_kind(
+            &self.db,
+            &rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+        )
+        .await
+        .map_err(db_error)?;
         let notes = rows
             .into_iter()
             .map(|row| {
@@ -41,11 +44,17 @@ impl MgmtServer {
                         row.id
                     )))
                 })?;
+                let created_by_kind = creators.get(&row.id).cloned().ok_or_else(|| {
+                    db_error(sea_orm::DbErr::Custom(format!(
+                        "note {} has no initial version",
+                        row.id
+                    )))
+                })?;
                 Ok(NoteMeta {
                     note_id: row.id,
                     title: version.title.clone(),
                     status: version.status.clone(),
-                    created_by_kind: version.created_by_kind.clone(),
+                    created_by_kind,
                     updated_at: row.updated_at,
                 })
             })

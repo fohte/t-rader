@@ -13,9 +13,11 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::entities::{note, note_version};
+use crate::services::change_history::Actor;
 use crate::services::graph::{GraphDef, validate_graphs};
 use crate::services::note_versions::{
-    self, AppendVersion, find_current_version, find_current_versions, note_ids_with_current_status,
+    self, AppendVersion, current_note_ids_with_status, find_current_version, find_current_versions,
+    find_initial_created_by_kind,
 };
 
 use super::dto::{
@@ -86,6 +88,9 @@ fn build_new_note_model(
             execution_id,
             change_reason: None,
             change_diff: None,
+            actor: Actor::Llm {
+                label: STRATEGY_AGENT_ACTOR,
+            },
         },
     ))
 }
@@ -99,6 +104,7 @@ const ALLOWED_NOTE_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
 fn note_to_dto(
     m: note::Model,
     version: note_version::Model,
+    created_by_kind: String,
     include_body: bool,
 ) -> Result<NoteDto, McpError> {
     let strategy_id = m.strategy_id.ok_or_else(|| {
@@ -125,7 +131,7 @@ fn note_to_dto(
         frontmatter_json,
         type_tag: m.type_tag,
         status: version.status,
-        created_by_kind: version.created_by_kind,
+        created_by_kind,
         created_at: m.created_at,
         updated_at: m.updated_at,
         graphs,
@@ -224,6 +230,7 @@ impl StrategyServer {
             .ok_or_else(|| internal_error(format!("note {note_id} has no current version")))?;
         let mut active = current.clone().into_active_model();
         let mut touched = false;
+        let mut version_changed = false;
         let mut title = current_version.title.clone();
         let mut body_md = current_version.body_md.clone();
         let mut frontmatter_json = current_version.frontmatter_json.clone();
@@ -235,10 +242,12 @@ impl StrategyServer {
             }
             title = updated_title;
             touched = true;
+            version_changed = true;
         }
         if let Some(body) = params.body_md {
             body_md = body;
             touched = true;
+            version_changed = true;
         }
         if let Some(tag) = params.type_tag {
             active.type_tag = Set(tag);
@@ -247,35 +256,46 @@ impl StrategyServer {
         if let Some(fm) = params.frontmatter_json {
             frontmatter_json = fm.into();
             touched = true;
+            version_changed = true;
         }
         if let Some(graphs) = params.graphs {
             graphs_json = graphs_to_json(graphs)?;
             touched = true;
+            version_changed = true;
         }
         if !touched {
             return Err(invalid_params(
                 "at least one of title / body_md / type_tag / frontmatter_json / graphs must be provided",
             ));
         }
-        active.updated_at = Set(chrono::Utc::now().fixed_offset());
+        active.updated_at = if version_changed {
+            NotSet
+        } else {
+            Set(chrono::Utc::now().fixed_offset())
+        };
         let txn = self.db.begin().await.map_err(db_error)?;
         active.update(&txn).await.map_err(db_error)?;
-        note_versions::append_version(
-            &txn,
-            note_id,
-            AppendVersion {
-                title,
-                body_md,
-                frontmatter_json,
-                graphs_json,
-                created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
-                execution_id,
-                change_reason: None,
-                change_diff: None,
-            },
-        )
-        .await
-        .map_err(app_error_to_mcp)?;
+        if version_changed {
+            note_versions::append_version(
+                &txn,
+                note_id,
+                AppendVersion {
+                    title,
+                    body_md,
+                    frontmatter_json,
+                    graphs_json,
+                    created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
+                    execution_id,
+                    change_reason: None,
+                    change_diff: None,
+                    actor: Actor::Llm {
+                        label: STRATEGY_AGENT_ACTOR,
+                    },
+                },
+            )
+            .await
+            .map_err(app_error_to_mcp)?;
+        }
         txn.commit().await.map_err(db_error)?;
         Ok(WriteNoteResult {
             note_id,
@@ -346,7 +366,14 @@ impl StrategyServer {
             .ok_or_else(|| {
                 internal_error(format!("note {} has no current version", params.note_id))
             })?;
-        note_to_dto(row, version, true)
+        let created_by_kind = find_initial_created_by_kind(&self.db, &[params.note_id])
+            .await
+            .map_err(db_error)?
+            .remove(&params.note_id)
+            .ok_or_else(|| {
+                internal_error(format!("note {} has no initial version", params.note_id))
+            })?;
+        note_to_dto(row, version, created_by_kind, true)
     }
 
     pub(crate) async fn list_notes_inner(
@@ -366,10 +393,8 @@ impl StrategyServer {
         let mut query =
             note::Entity::find().filter(note::Column::StrategyId.eq(session_strategy_id));
         if let Some(status) = params.status {
-            let note_ids = note_ids_with_current_status(&self.db, &status)
-                .await
-                .map_err(db_error)?;
-            query = query.filter(note::Column::Id.is_in(note_ids));
+            query =
+                query.filter(note::Column::Id.in_subquery(current_note_ids_with_status(&status)));
         }
         if let Some(updated_after) = params.updated_after {
             query = query.filter(note::Column::UpdatedAt.gte(updated_after));
@@ -383,17 +408,23 @@ impl StrategyServer {
         let versions =
             find_current_versions(&self.db, &rows.iter().map(|row| row.id).collect::<Vec<_>>())
                 .await
-                .map_err(db_error)?
-                .into_iter()
-                .map(|version| (version.note_id, version))
-                .collect::<std::collections::HashMap<_, _>>();
+                .map_err(db_error)?;
+        let creators = find_initial_created_by_kind(
+            &self.db,
+            &rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+        )
+        .await
+        .map_err(db_error)?;
         let notes = rows
             .into_iter()
             .map(|row| {
                 let version = versions.get(&row.id).cloned().ok_or_else(|| {
                     internal_error(format!("note {} has no current version", row.id))
                 })?;
-                note_to_dto(row, version, include_body)
+                let created_by_kind = creators.get(&row.id).cloned().ok_or_else(|| {
+                    internal_error(format!("note {} has no initial version", row.id))
+                })?;
+                note_to_dto(row, version, created_by_kind, include_body)
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ListNotesResult { notes })
@@ -414,6 +445,7 @@ mod tests {
     use crate::services::note_versions::find_current_version;
     use crate::testing::create_test_db;
 
+    use super::super::STRATEGY_AGENT_ACTOR;
     use super::super::dto::{
         ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
     };
@@ -421,7 +453,6 @@ mod tests {
         build_server, insert_strategy, normalize_comment_model, normalize_note, seed_foreign_note,
         seed_note_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
-    use super::super::{DEFAULT_NOTE_STATUS, STRATEGY_AGENT_ACTOR};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
@@ -527,7 +558,7 @@ mod tests {
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: Some("observation".into()),
-                status: DEFAULT_NOTE_STATUS.into(),
+                status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
@@ -701,7 +732,7 @@ mod tests {
                     body_md: Some("v2".into()),
                     frontmatter_json: serde_json::Map::new(),
                     type_tag: None,
-                    status: DEFAULT_NOTE_STATUS.into(),
+                    status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
                     updated_at: ts_sentinel(),
@@ -1059,7 +1090,7 @@ mod tests {
                 body_md: Some("[[graph:g1]]".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
-                status: DEFAULT_NOTE_STATUS.into(),
+                status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
@@ -1267,7 +1298,7 @@ mod tests {
                     body_md: Some(expected_body),
                     frontmatter_json: serde_json::Map::new(),
                     type_tag: None,
-                    status: DEFAULT_NOTE_STATUS.into(),
+                    status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
                     updated_at: ts_sentinel(),
@@ -1405,7 +1436,7 @@ mod tests {
             )
             .await
             .expect("read");
-        assert_eq!(read.status, DEFAULT_NOTE_STATUS);
+        assert_eq!(read.status, "unread");
     }
 
     #[sqlx::test(migrations = false)]
@@ -1466,7 +1497,7 @@ mod tests {
                 body_md: Some("orig".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
-                status: DEFAULT_NOTE_STATUS.into(),
+                status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
@@ -1688,7 +1719,7 @@ mod tests {
                 body_md: Some("v2".into()),
                 frontmatter_json: serde_json::Map::new(),
                 type_tag: None,
-                status: DEFAULT_NOTE_STATUS.into(),
+                status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),

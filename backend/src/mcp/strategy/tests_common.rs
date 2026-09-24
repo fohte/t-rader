@@ -120,6 +120,9 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
             execution_id: None,
             change_reason: None,
             change_diff: None,
+            actor: crate::services::change_history::Actor::Llm {
+                label: super::STRATEGY_AGENT_ACTOR,
+            },
         },
     )
     .await

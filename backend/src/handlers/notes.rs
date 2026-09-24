@@ -8,7 +8,6 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::HashMap;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
@@ -18,9 +17,10 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
-use crate::services::change_history::{self, Op, TargetKind};
+use crate::services::change_history::{self, Actor, Op, TargetKind};
 use crate::services::note_versions::{
-    self, AppendVersion, find_current_versions, note_ids_with_current_status,
+    self, AppendVersion, current_note_ids_with_status, find_current_versions,
+    find_initial_created_by_kind,
 };
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
@@ -56,10 +56,16 @@ pub(crate) async fn find_note_or_404(
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
 }
 
+struct CurrentNote {
+    note: note::Model,
+    version: note_version::Model,
+    created_by_kind: String,
+}
+
 async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
     db: &C,
     id: Uuid,
-) -> Result<(note::Model, note_version::Model), AppError> {
+) -> Result<CurrentNote, AppError> {
     let note = note::Entity::find_by_id(id)
         .one(db)
         .await?
@@ -67,11 +73,19 @@ async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
     let version = note_versions::find_current_version(db, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("current version for note {id} not found")))?;
-    Ok((note, version))
+    let created_by_kind = find_initial_created_by_kind(db, &[id])
+        .await?
+        .remove(&id)
+        .ok_or_else(|| AppError::NotFound(format!("initial version for note {id} not found")))?;
+    Ok(CurrentNote {
+        note,
+        version,
+        created_by_kind,
+    })
 }
 
-fn current_note_response((note, version): (note::Model, note_version::Model)) -> NoteResponse {
-    NoteResponse::from_current_version(note, version)
+fn current_note_response(current: CurrentNote) -> NoteResponse {
+    NoteResponse::from_current_version(current.note, current.version, current.created_by_kind)
 }
 
 /// ノート一覧
@@ -95,8 +109,7 @@ pub async fn list_notes(
         q = q.filter(note::Column::StrategyId.eq(sid));
     }
     if let Some(status) = params.status.as_deref().filter(|s| !s.is_empty()) {
-        let note_ids = note_ids_with_current_status(&state.db, status).await?;
-        q = q.filter(note::Column::Id.is_in(note_ids));
+        q = q.filter(note::Column::Id.in_subquery(current_note_ids_with_status(status)));
     }
     if let Some(tag) = params.type_tag.as_deref().filter(|s| !s.is_empty()) {
         q = q.filter(note::Column::TypeTag.eq(tag));
@@ -106,17 +119,26 @@ pub async fn list_notes(
         &state.db,
         &items.iter().map(|item| item.id).collect::<Vec<_>>(),
     )
-    .await?
-    .into_iter()
-    .map(|version| (version.note_id, version))
-    .collect::<HashMap<_, _>>();
+    .await?;
+    let creators = find_initial_created_by_kind(
+        &state.db,
+        &items.iter().map(|item| item.id).collect::<Vec<_>>(),
+    )
+    .await?;
     let responses = items
         .into_iter()
         .map(|item| {
             let version = versions.get(&item.id).cloned().ok_or_else(|| {
                 AppError::NotFound(format!("current version for note {} not found", item.id))
             })?;
-            Ok(NoteResponse::from_current_version(item, version))
+            let created_by_kind = creators.get(&item.id).cloned().ok_or_else(|| {
+                AppError::NotFound(format!("initial version for note {} not found", item.id))
+            })?;
+            Ok(NoteResponse::from_current_version(
+                item,
+                version,
+                created_by_kind,
+            ))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
     Ok(Json(responses))
@@ -169,7 +191,11 @@ pub async fn create_note(
     if let Some(fm) = payload.frontmatter_json.as_ref() {
         ensure_frontmatter_object(fm)?;
     }
-    let status = payload.status.as_deref().unwrap_or("unread").to_string();
+    let status = payload
+        .status
+        .as_deref()
+        .unwrap_or(note_versions::INITIAL_NOTE_STATUS)
+        .to_string();
     if !ALLOWED_STATUSES.contains(&status.as_str()) {
         return Err(AppError::Validation(format!("invalid status: {status}")));
     }
@@ -213,17 +239,18 @@ pub async fn create_note(
             body_md: payload.body_md,
             frontmatter_json: payload.frontmatter_json.unwrap_or_else(|| json!({})),
             graphs_json: json!([]),
-            created_by_kind: created_by,
+            created_by_kind: created_by.clone(),
             execution_id: None,
             change_reason: None,
             change_diff: Some(json!({
                 "title": history_title,
                 "strategy_id": payload.strategy_id,
             })),
+            actor: Actor::Human,
         },
     )
     .await?;
-    if status != "unread" {
+    if status != note_versions::INITIAL_NOTE_STATUS {
         let reviewed_at = chrono::Utc::now().fixed_offset();
         version = note_version::ActiveModel {
             id: Set(version.id),
@@ -242,7 +269,9 @@ pub async fn create_note(
     txn.commit().await?;
     Ok((
         StatusCode::CREATED,
-        Json(NoteResponse::from_current_version(created, version)),
+        Json(NoteResponse::from_current_version(
+            created, version, created_by,
+        )),
     ))
 }
 
@@ -267,7 +296,9 @@ pub async fn update_note(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateNoteRequest>,
 ) -> Result<Json<NoteResponse>, AppError> {
-    let (current_note, current_version) = find_current_note_or_404(&state.db, id).await?;
+    let current = find_current_note_or_404(&state.db, id).await?;
+    let current_note = current.note.clone();
+    let current_version = current.version.clone();
     let mut active = current_note.clone().into_active_model();
     let mut diff = serde_json::Map::new();
     let mut new_title = current_version.title.clone();
@@ -328,7 +359,11 @@ pub async fn update_note(
     }
 
     let txn = state.db.begin().await?;
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
+    active.updated_at = if version_changed {
+        NotSet
+    } else {
+        Set(chrono::Utc::now().fixed_offset())
+    };
     active.update(&txn).await?;
     if version_changed {
         note_versions::append_version(
@@ -343,6 +378,7 @@ pub async fn update_note(
                 execution_id: None,
                 change_reason: None,
                 change_diff: Some(serde_json::Value::Object(diff)),
+                actor: Actor::Human,
             },
         )
         .await?;
@@ -357,13 +393,10 @@ pub async fn update_note(
         )
         .await?;
     }
-    let (updated_note, updated_version) = find_current_note_or_404(&txn, id).await?;
+    let updated_current = find_current_note_or_404(&txn, id).await?;
     txn.commit().await?;
 
-    Ok(Json(NoteResponse::from_current_version(
-        updated_note,
-        updated_version,
-    )))
+    Ok(Json(current_note_response(updated_current)))
 }
 
 /// ノート削除
@@ -395,10 +428,15 @@ pub async fn delete_note(
 
 async fn change_note_status_from(
     state: &AppState,
-    (current_note, current_version): (note::Model, note_version::Model),
+    current: CurrentNote,
     new_status: &str,
     label: Option<String>,
 ) -> Result<NoteResponse, AppError> {
+    let CurrentNote {
+        note: current_note,
+        version: current_version,
+        created_by_kind,
+    } = current;
     let id = current_note.id;
     let updated_at = chrono::Utc::now().fixed_offset();
     let txn = state.db.begin().await?;
@@ -435,6 +473,7 @@ async fn change_note_status_from(
     Ok(NoteResponse::from_current_version(
         updated_note,
         updated_version,
+        created_by_kind,
     ))
 }
 
@@ -499,14 +538,14 @@ pub async fn reject_note(
     let current = find_current_note_or_404(&state.db, id).await?;
     // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
     // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
-    if current.1.status == "rejected" {
+    if current.version.status == "rejected" {
         return Ok(Json(current_note_response(current)));
     }
 
-    if let Some(strategy_id) = current.0.strategy_id {
+    if let Some(strategy_id) = current.note.strategy_id {
         let prompt = format!(
             "ノート「{}」(id: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
-            current.1.title, current.0.id
+            current.version.title, current.note.id
         );
         strategy_tasks::submit_task(
             &state.db,
