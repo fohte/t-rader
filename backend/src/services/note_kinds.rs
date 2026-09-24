@@ -3,7 +3,7 @@
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, QueryOrder, RuntimeErr, SqlErr, TransactionTrait,
+    IntoActiveModel, QueryFilter, QueryOrder, SqlErr, TransactionTrait,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -63,15 +63,6 @@ fn history_target_id(key: &str) -> Uuid {
 
 fn map_insert_error(error: DbErr, key: &str) -> AppError {
     if matches!(error.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) {
-        return AppError::Conflict(format!("note kind {key} already exists"));
-    }
-    if let DbErr::Exec(RuntimeErr::SqlxError(sqlx_error))
-    | DbErr::Query(RuntimeErr::SqlxError(sqlx_error)) = &error
-        && sqlx_error
-            .as_database_error()
-            .and_then(|database_error| database_error.code())
-            .is_some_and(|code| code.as_ref() == "23505")
-    {
         return AppError::Conflict(format!("note kind {key} already exists"));
     }
     AppError::Database(error)
@@ -180,7 +171,7 @@ pub async fn update(
         history_target_id(&key),
         Op::Update,
         serde_json::Value::Object(diff),
-        None,
+        Some(format!("updated note kind {key}")),
     )
     .await?;
     txn.commit().await?;

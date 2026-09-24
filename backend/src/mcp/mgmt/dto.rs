@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, FixedOffset};
 use schemars::JsonSchema;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::entities::{rss_feed, trigger};
@@ -193,6 +193,7 @@ pub struct ListNoteKindsResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateNoteKindParams {
     pub key: String,
     pub display_name: String,
@@ -205,27 +206,24 @@ pub struct CreateNoteKindParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateNoteKindParams {
     pub key: String,
     #[serde(default)]
     pub display_name: Option<String>,
     #[serde(default)]
     pub requires_approval: Option<bool>,
-    #[serde(default, deserialize_with = "deserialize_nullable_option")]
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
     pub description: Option<Option<String>>,
     #[serde(default)]
     pub sort_order: Option<i32>,
 }
 
-fn deserialize_nullable_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer).map(Some)
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DeleteNoteKindParams {
     pub key: String,
 }

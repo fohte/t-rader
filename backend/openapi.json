@@ -9682,7 +9682,8 @@
             ],
             "format": "int32"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateNoteRequest": {
         "type": "object",
@@ -11840,7 +11841,8 @@
             ],
             "format": "int32"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "UpdateNoteRequest": {
         "type": "object",

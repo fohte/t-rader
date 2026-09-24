@@ -13,6 +13,7 @@ pub mod mcp;
 pub mod middleware;
 pub mod models;
 pub mod repositories;
+pub(crate) mod serde_helpers;
 pub mod services;
 #[cfg(test)]
 pub mod testing;

@@ -3,7 +3,7 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::AppState;
@@ -14,6 +14,7 @@ use crate::services::change_history::Actor;
 use crate::services::note_kinds as svc;
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateNoteKindRequest {
     pub key: String,
     pub display_name: String,
@@ -25,23 +26,19 @@ pub struct CreateNoteKindRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateNoteKindRequest {
     #[serde(default)]
     pub display_name: Option<String>,
     #[serde(default)]
     pub requires_approval: Option<bool>,
-    #[serde(default, deserialize_with = "deserialize_nullable_option")]
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
     pub description: Option<Option<String>>,
     #[serde(default)]
     pub sort_order: Option<i32>,
-}
-
-fn deserialize_nullable_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 /// ノート種別一覧
