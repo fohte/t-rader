@@ -6,14 +6,10 @@ import { $api } from '#lib/api/client'
 
 interface CreateNoteDialogProps {
   strategyId?: string
-  defaultOpen?: boolean
 }
 
-export function CreateNoteDialog({
-  strategyId,
-  defaultOpen = false,
-}: CreateNoteDialogProps) {
-  const [open, setOpen] = useState(defaultOpen)
+export function CreateNoteDialog({ strategyId }: CreateNoteDialogProps) {
+  const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [kind, setKind] = useState('')

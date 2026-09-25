@@ -94,7 +94,8 @@ pub struct CreateNoteRequest {
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,
     pub kind: Option<String>,
-    /// 作成者が人間の場合は承認済み。それ以外では省略時に "unread"
+    /// 人間の作成では省略時に "approved"。指定する場合も "approved" のみ許可する。
+    /// エージェントの作成では省略時に "unread"。承認必須種別では "unread" のみ許可する。
     pub status: Option<String>,
     pub trigger: Option<NoteTrigger>,
     pub trigger_label: Option<String>,

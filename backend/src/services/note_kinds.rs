@@ -198,24 +198,20 @@ pub async fn update(
             let Some(pending) = latest_pending else {
                 continue;
             };
-            let (promoted, previous_current_id) = note_versions::set_current_version(
-                &txn,
-                note_id,
-                pending,
-                Some("approved"),
-                Some(reviewed_at),
-            )
-            .await?;
+            let (approved, previous_current_id) =
+                note_versions::approve_pending_version(&txn, note_id, pending, reviewed_at).await?;
             change_history::record_as(
                 &txn,
                 actor,
                 TargetKind::Note,
                 note_id,
-                Op::Update,
+                Op::StatusChange,
                 json!({
-                    "from_version_id": previous_current_id,
-                    "to_version_id": promoted.id,
-                    "version_no": promoted.version_no,
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": approved.id,
+                    "previous_current_version_id": previous_current_id,
+                    "label": null,
                 }),
                 None,
             )

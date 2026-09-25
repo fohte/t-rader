@@ -217,6 +217,7 @@ pub async fn create_note(
         .as_deref()
         .unwrap_or(note_versions::INITIAL_NOTE_STATUS)
         .to_string();
+    let explicit_status = payload.status.is_some();
     if !ALLOWED_STATUSES.contains(&status.as_str()) {
         return Err(AppError::Validation(format!("invalid status: {status}")));
     }
@@ -229,6 +230,11 @@ pub async fn create_note(
         return Err(AppError::Validation(format!(
             "invalid created_by_kind: {created_by}"
         )));
+    }
+    if explicit_status && created_by == "human" && status != "approved" {
+        return Err(AppError::Validation(
+            "human-created notes must start as approved".into(),
+        ));
     }
 
     let id = Uuid::new_v4();
@@ -274,6 +280,15 @@ pub async fn create_note(
         },
     )
     .await?;
+    if explicit_status
+        && created_by != "human"
+        && !version.is_current
+        && status != note_versions::INITIAL_NOTE_STATUS
+    {
+        return Err(AppError::Validation(
+            "approval-required note versions must start as unread".into(),
+        ));
+    }
     if created_by != "human" && version.is_current && status != note_versions::INITIAL_NOTE_STATUS {
         let reviewed_at = chrono::Utc::now().fixed_offset();
         version = note_version::ActiveModel {

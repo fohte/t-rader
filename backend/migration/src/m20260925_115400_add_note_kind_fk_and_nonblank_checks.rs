@@ -24,6 +24,15 @@ impl MigrationTrait for Migration {
             .await?;
         manager
             .get_connection()
+            .execute_unprepared(
+                "INSERT INTO note_kind (key, display_name, requires_approval, description, sort_order) \
+                 SELECT DISTINCT type_tag, type_tag, FALSE, NULL, 0 FROM note \
+                 WHERE type_tag IS NOT NULL AND type_tag ~ '[^[:space:]]' \
+                 ON CONFLICT (key) DO NOTHING",
+            )
+            .await?;
+        manager
+            .get_connection()
             .execute_unprepared("ALTER TABLE note RENAME COLUMN type_tag TO kind")
             .await?;
         manager

@@ -14,8 +14,8 @@ use crate::services::graph::{GraphDef, validate_graphs};
 use crate::services::note_kinds;
 use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
-    self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_version,
-    find_current_versions, find_initial_created_by_kind, find_version_of_note,
+    self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_versions,
+    find_initial_created_by_kind, find_version_of_note,
 };
 
 use super::dto::{
@@ -247,13 +247,10 @@ impl StrategyServer {
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
         let current = fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
-        let current_version = find_current_version(&self.db, note_id)
+        let current_version = note_versions::find_latest_version(&self.db, note_id)
             .await
             .map_err(db_error)?
-            .or(note_versions::find_latest_version(&self.db, note_id)
-                .await
-                .map_err(db_error)?)
-            .ok_or_else(|| internal_error(format!("note {note_id} has no current version")))?;
+            .ok_or_else(|| internal_error(format!("note {note_id} has no version")))?;
         let mut touched = false;
         let mut version_changed = false;
         let mut title = current_version.title.clone();
@@ -296,6 +293,17 @@ impl StrategyServer {
                 "at least one of title / body_md / frontmatter_json / graphs must be provided",
             ));
         }
+        if version_changed
+            && title == current_version.title
+            && body_md == current_version.body_md
+            && frontmatter_json == current_version.frontmatter_json
+            && graphs_json == current_version.graphs_json
+        {
+            return Ok(WriteNoteResult {
+                note_id,
+                created: false,
+            });
+        }
         let txn = self.db.begin().await.map_err(db_error)?;
         if version_changed {
             note_versions::append_version(
@@ -331,11 +339,6 @@ impl StrategyServer {
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
-        if let Some(Some(kind)) = params.kind.as_ref() {
-            note_kinds::ensure_reference(&self.db, kind)
-                .await
-                .map_err(app_error_to_mcp)?;
-        }
         let (id, model, content) = build_new_note_model(session_strategy_id, execution_id, params)?;
         let txn = self.db.begin().await.map_err(db_error)?;
         note::Entity::insert(model)
@@ -356,11 +359,6 @@ impl StrategyServer {
         execution_id: String,
         params: WriteNoteParams,
     ) -> Result<Option<WriteNoteResult>, McpError> {
-        if let Some(Some(kind)) = params.kind.as_ref() {
-            note_kinds::ensure_reference(&self.db, kind)
-                .await
-                .map_err(app_error_to_mcp)?;
-        }
         let (id, model, content) =
             build_new_note_model(session_strategy_id, Some(execution_id), params)?;
         let txn = self.db.begin().await.map_err(db_error)?;
@@ -392,16 +390,21 @@ impl StrategyServer {
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
-        let version = find_version_of_note(&self.db, params.note_id, params.version_id)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| match params.version_id {
-                Some(version_id) => invalid_params(format!(
-                    "version_id {version_id} does not belong to note {}",
-                    params.note_id
-                )),
-                None => internal_error(format!("note {} has no current version", params.note_id)),
-            })?;
+        let version = match params.version_id {
+            Some(version_id) => find_version_of_note(&self.db, params.note_id, Some(version_id))
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| {
+                    invalid_params(format!(
+                        "version_id {version_id} does not belong to note {}",
+                        params.note_id
+                    ))
+                })?,
+            None => note_versions::find_current_or_latest_version(&self.db, params.note_id)
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| internal_error(format!("note {} has no version", params.note_id)))?,
+        };
         let created_by_kind = find_initial_created_by_kind(&self.db, &[params.note_id])
             .await
             .map_err(db_error)?

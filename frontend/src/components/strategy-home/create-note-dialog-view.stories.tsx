@@ -65,3 +65,16 @@ export const WithoutKinds: Story = {
 export const KindsLoadError: Story = {
   args: { ...args, noteKinds: [], noteKindsError: true },
 }
+
+export const FormError: Story = {
+  args: { ...args, formError: '入力に問題があります' },
+}
+
+export const Submitting: Story = {
+  args: {
+    ...args,
+    title: 'サンプルノート',
+    body: '本文',
+    isSubmitting: true,
+  },
+}

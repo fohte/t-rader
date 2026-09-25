@@ -1673,7 +1673,10 @@ export interface components {
         [key: string]: unknown
       } | null
       kind?: string | null
-      /** @description 作成者が人間の場合は承認済み。それ以外では省略時に "unread" */
+      /**
+       * @description 人間の作成では省略時に "approved"。指定する場合も "approved" のみ許可する。
+       *     エージェントの作成では省略時に "unread"。承認必須種別では "unread" のみ許可する。
+       */
       status?: string | null
       /**
        * Format: uuid

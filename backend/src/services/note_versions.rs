@@ -237,6 +237,46 @@ pub async fn set_current_version(
     Ok((updated_version, previous_current_id))
 }
 
+pub async fn approve_pending_version(
+    txn: &DatabaseTransaction,
+    note_id: Uuid,
+    version: note_version::Model,
+    reviewed_at: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<(note_version::Model, Option<Uuid>), AppError> {
+    let current = find_current_version(txn, note_id).await?;
+    if current
+        .as_ref()
+        .is_some_and(|current| current.version_no > version.version_no)
+    {
+        let current_id = current.map(|current| current.id);
+        let updated = note_version::ActiveModel {
+            id: Set(version.id),
+            status: Set(APPROVED_NOTE_STATUS.into()),
+            reviewed_at: Set(Some(reviewed_at)),
+            ..Default::default()
+        }
+        .update(txn)
+        .await?;
+        note::ActiveModel {
+            id: Set(note_id),
+            updated_at: Set(reviewed_at),
+            ..Default::default()
+        }
+        .update(txn)
+        .await?;
+        return Ok((updated, current_id));
+    }
+
+    set_current_version(
+        txn,
+        note_id,
+        version,
+        Some(APPROVED_NOTE_STATUS),
+        Some(reviewed_at),
+    )
+    .await
+}
+
 pub async fn find_current_version<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: Uuid,
@@ -257,6 +297,16 @@ pub async fn find_latest_version<C: sea_orm::ConnectionTrait>(
         .order_by_desc(note_version::Column::VersionNo)
         .one(db)
         .await
+}
+
+pub async fn find_current_or_latest_version<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    note_id: Uuid,
+) -> Result<Option<note_version::Model>, sea_orm::DbErr> {
+    match find_current_version(db, note_id).await? {
+        Some(version) => Ok(Some(version)),
+        None => find_latest_version(db, note_id).await,
+    }
 }
 
 pub async fn find_version_of_note<C: sea_orm::ConnectionTrait>(

@@ -4,7 +4,9 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use crate::entities::{annotation, note};
-use crate::services::note_versions::{find_current_versions, find_initial_created_by_kind};
+use crate::services::note_versions::{
+    current_note_ids, find_current_versions, find_initial_created_by_kind,
+};
 
 use super::MgmtServer;
 use super::dto::{
@@ -20,6 +22,7 @@ impl MgmtServer {
         let limit = clamp_limit(params.limit);
         let rows = note::Entity::find()
             .filter(note::Column::StrategyId.eq(params.strategy_id))
+            .filter(note::Column::Id.in_subquery(current_note_ids()))
             .order_by_desc(note::Column::UpdatedAt)
             .limit(limit)
             .all(&self.db)
