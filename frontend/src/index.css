@@ -14,9 +14,6 @@
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
 
-  --font-mono-ui: var(--font-mono);
-  --font-mono-body: var(--font-mono-ui);
-
   /* t-rader 固有: shadcn の3段では表現しない背景の中間段 */
   --color-bg-secondary: #0f0f0f;
   --color-bg-tertiary: #1a1a1a;
@@ -73,9 +70,6 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --font-mono-ui: var(--font-mono-ui);
-  --font-mono-body: var(--font-mono-body);
-
   /* @fohte/ui の text-2xs よりさらに小さい、隣接ラベルとの階層差を保つ段 */
   --text-3xs: 0.5625rem;
 

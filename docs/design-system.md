@@ -91,16 +91,13 @@ t-rader 固有の CSS 変数は `:root` に定義する。
 
 ## Fonts
 
-| Role        | CSS 変数           | フォントスタック                                                                    | Tailwind utility                | 用途                                   |
-| ----------- | ------------------ | ----------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------- |
-| Sans        | `--font-sans`      | Helvetica Neue, Arial, Hiragino Kaku Gothic ProN, Hiragino Sans, Meiryo, sans-serif | `font-sans` (html に適用、既定) | 本文                                   |
-| Mono        | `--font-mono`      | JetBrains Mono Variable, IBM Plex Mono, monospace                                   | `font-mono`                     | 標準の monospace                       |
-| Mono (code) | `--font-code`      | IBM Plex Mono, monospace                                                            | `font-code`                     | コード表示                             |
-| Mono (UI)   | `--font-mono-ui`   | `var(--font-mono)`                                                                  | `font-mono-ui`                  | UI chrome (ラベル、数値、コード的表示) |
-| Mono (body) | `--font-mono-body` | `var(--font-mono-ui)`                                                               | `font-mono-body`                | mono な本文                            |
+| Role        | CSS 変数      | フォントスタック                                                                    | Tailwind utility                | 用途             |
+| ----------- | ------------- | ----------------------------------------------------------------------------------- | ------------------------------- | ---------------- |
+| Sans        | `--font-sans` | Helvetica Neue, Arial, Hiragino Kaku Gothic ProN, Hiragino Sans, Meiryo, sans-serif | `font-sans` (html に適用、既定) | 本文             |
+| Mono        | `--font-mono` | JetBrains Mono Variable, IBM Plex Mono, monospace                                   | `font-mono`                     | 標準の monospace |
+| Mono (code) | `--font-code` | IBM Plex Mono, monospace                                                            | `font-code`                     | コード表示       |
 
-`--font-sans`、`--font-mono`、`--font-code` は `@fohte/ui` が定義する。t-rader 固有の `--font-mono-ui` と `--font-mono-body` は `--font-mono` を参照する。
-新しい UI では通常 `font-mono` を使い、用途を明示したい箇所では `font-mono-ui` を使う。
+`--font-sans`、`--font-mono`、`--font-code` は `@fohte/ui` が定義する。
 
 `JetBrains Mono Variable` / `IBM Plex Mono` は `@fontsource-variable/jetbrains-mono` / `@fontsource/ibm-plex-mono` (400/500/600) を `frontend/src/index.css` の `@import` で読み込んでいる。
 フォールバックにのみ頼らないこと。
