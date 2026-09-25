@@ -288,8 +288,8 @@ importers:
         specifier: 3.1.1
         version: 3.1.1
       '@fohte/ui':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.1.1
+        version: 0.1.1(@base-ui/react@1.3.0(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(lucide-react@0.577.0(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@fontsource-variable/jetbrains-mono':
         specifier: 5.2.8
         version: 5.2.8
@@ -1645,8 +1645,13 @@ packages:
       '@vitest/browser-playwright':
         optional: true
 
-  '@fohte/ui@0.1.0':
-    resolution: {integrity: sha512-J2PtgJ9XwH1ECyHpFjE00T67JeY7dGTZOnmZYDp5Ni2eszlR7nb7A8D6BVJL6sldSlCX02awPBnGH8NBp14Ifg==}
+  '@fohte/ui@0.1.1':
+    resolution: {integrity: sha512-/rKj3sZL4So3cLN9TMxFWiQYgNsS02RuUX/Uy8EuBXLSlv2Wazzbw1HlszcYBVZ2ZW/sMXM1MvhgVgKSMPFvpA==}
+    peerDependencies:
+      '@base-ui/react': ^1.3.0
+      lucide-react: '>=0.577.0'
+      react: ^19.0.0
+      react-dom: ^19.0.0
 
   '@fontsource-variable/jetbrains-mono@5.2.8':
     resolution: {integrity: sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q==}
@@ -7237,6 +7242,9 @@ packages:
     peerDependencies:
       tailwindcss: ^3.3.0 || ^4.0.0 || ^4.0.0-beta
 
+  tailwind-merge@3.5.0:
+    resolution: {integrity: sha512-I8K9wewnVDkL1NTGoqWmVEIlUcB9gFriAEkXkfCjX5ib8ezGxtR3xD7iZIxrfArjEsH7F1CHD4RFUtxefdqV/A==}
+
   tailwind-merge@3.6.0:
     resolution: {integrity: sha512-uxL7qAVQriqRQPAyK3pj66VqskWqoZ37PW94jwOTwNfq/z9oyu1V+eqrZqtR2+fCiXdYOZe/Modt8GtvqNzu+w==}
 
@@ -8930,7 +8938,15 @@ snapshots:
       '@storycap-testrun/browser': 3.0.0(@vitest/browser-playwright@4.1.11)
       '@vitest/browser-playwright': 4.1.11(msw@2.15.0(@types/node@24.13.4)(typescript@6.0.3))(playwright@1.63.0)(vite@8.3.0(@types/node@24.13.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))(vitest@4.1.11)
 
-  '@fohte/ui@0.1.0': {}
+  '@fohte/ui@0.1.1(@base-ui/react@1.3.0(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(lucide-react@0.577.0(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      '@base-ui/react': 1.3.0(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      class-variance-authority: 0.7.1
+      clsx: 2.1.1
+      lucide-react: 0.577.0(react@19.2.8)
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
+      tailwind-merge: 3.5.0
 
   '@fontsource-variable/jetbrains-mono@5.2.8': {}
 
@@ -14839,6 +14855,8 @@ snapshots:
       jiti: 2.7.0
       local-pkg: 1.2.1
       tailwindcss: 4.3.3
+
+  tailwind-merge@3.5.0: {}
 
   tailwind-merge@3.6.0: {}
 
