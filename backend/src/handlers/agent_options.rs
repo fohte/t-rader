@@ -82,6 +82,8 @@ mod tests {
                         {
                             "model_group": "sample-model",
                             "providers": ["test-provider"],
+                            "max_input_tokens": 12345.0,
+                            "max_output_tokens": 6789.0,
                             "supports_reasoning": true,
                         },
                     ],
@@ -100,8 +102,8 @@ mod tests {
                     {
                         "id": "sample-model",
                         "providers": ["test-provider"],
-                        "max_input_tokens": null,
-                        "max_output_tokens": null,
+                        "max_input_tokens": 12345.0,
+                        "max_output_tokens": 6789.0,
                         "supports_reasoning": true,
                     },
                 ],

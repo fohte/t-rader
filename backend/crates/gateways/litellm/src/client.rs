@@ -1,7 +1,7 @@
 //! LiteLLM Proxy を叩く薄いクライアント
 //!
-//! - `/model_group/info`: backend が agent 設定フォームにモデル選択肢を供給するための素通しプロキシ
-//! - `/v1/chat/completions`: MCP tool (`query_media` 等) がモデルを呼ぶための経路
+//! - `/model_group/info`: LiteLLM Proxy のモデルグループ情報を取得する
+//! - `/v1/chat/completions`: chat completion と web search を呼び出す
 //!
 //! LiteLLM の API キーを frontend に晒さないためだけの中継で、キャッシュはしない。
 
@@ -123,8 +123,7 @@ struct ChatCompletionResponseMessage {
     content: Option<String>,
 }
 
-/// LiteLLM Proxy client。`LLM_BASE_URL` 未設定の環境では `from_env` が `None` を返すので、呼び出し元は
-/// そのまま「モデル一覧なし」として扱えばよい。
+/// LiteLLM Proxy client。`LLM_BASE_URL` 未設定時は `from_env` が `None` を返す。
 #[derive(Clone)]
 pub struct LiteLlmClient {
     http: reqwest::Client,
@@ -142,9 +141,7 @@ impl LiteLlmClient {
         F: Fn(&str) -> Option<String>,
     {
         let Some(base_url) = get("LLM_BASE_URL").filter(|s| !s.is_empty()) else {
-            tracing::warn!(
-                "LLM_BASE_URL が未設定のため、litellm client を無効化します (GET /api/agent-models は空配列を返す)"
-            );
+            tracing::warn!("LLM_BASE_URL が未設定のため、litellm client を無効化します");
             return None;
         };
         let api_key = get("LLM_API_KEY").filter(|s| !s.is_empty());
@@ -262,13 +259,12 @@ impl LlmClient for LiteLlmClient {
         query: &str,
     ) -> Result<WebSearchOutcome, LlmClientError> {
         let url = format!("{}/v1/chat/completions", self.base_url);
-        let messages = vec![ChatMessage {
+        let messages = vec![WireChatMessage {
             role: "user",
-            content: vec![ContentPart::Text {
+            content: vec![WireContentPart::Text {
                 text: query.to_string(),
             }],
         }];
-        let messages = messages.into_iter().map(Into::into).collect::<Vec<_>>();
         let response = self
             .http
             .post(url)
@@ -526,6 +522,64 @@ mod tests {
             .await
             .expect("chat completion ok");
         assert_eq!(text, "video summary");
+    }
+
+    #[tokio::test]
+    async fn chat_completion_serializes_file_content_part() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{"message": {"content": "sample response"}}],
+            })))
+            .mount(&server)
+            .await;
+
+        let client = LiteLlmClient::new(&server.uri(), None).expect("build client");
+        let _response = client
+            .chat_completion(
+                "sample-chat-model",
+                vec![ChatMessage {
+                    role: "user",
+                    content: vec![
+                        ContentPart::Text {
+                            text: "summarize this sample".into(),
+                        },
+                        ContentPart::File {
+                            file: FilePart {
+                                file_id: "https://media.example.invalid/video".into(),
+                            },
+                        },
+                    ],
+                }],
+            )
+            .await
+            .expect("chat completion ok");
+        let request = server
+            .received_requests()
+            .await
+            .expect("request should be recorded")
+            .into_iter()
+            .next()
+            .expect("chat completion request should be recorded");
+
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&request.body)
+                .expect("request body should be valid JSON"),
+            json!({
+                "model": "sample-chat-model",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "summarize this sample"},
+                        {
+                            "type": "file",
+                            "file": {"file_id": "https://media.example.invalid/video"},
+                        },
+                    ],
+                }],
+            }),
+        );
     }
 
     #[tokio::test]
