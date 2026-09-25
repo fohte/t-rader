@@ -92,8 +92,9 @@ async fn main() -> Result<(), AppError> {
                 .ok()
                 .filter(|s| !s.is_empty());
             let client = Arc::new(
-                IbkrClient::new(base_url, session_token, exchange)
-                    .map_err(|e| AppError::DailyBarSource(e.into()))?,
+                IbkrClient::new(base_url, session_token, exchange).map_err(|e| {
+                    AppError::Config(format!("failed to initialize IBKR client: {e}"))
+                })?,
             );
             tracing::info!("IBKR 日足データ取得元を初期化しました");
             let source: SharedDailyBarSource = client;
