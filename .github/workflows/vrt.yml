@@ -63,11 +63,10 @@ jobs:
 
       - run: pnpm install --filter "frontend..." --frozen-lockfile
 
-      # project must match the `name` passed to createStorybookProject() in
-      # vitest.screenshot.config.ts, and stay unique across every vrt_pkgs
-      # entry -- vrt-capture's upload-artifact step names the artifact
-      # `vrt-screenshots-<project>-<shard>`, and a workflow run can't upload
-      # two artifacts with the same name.
+      # `project` must match createStorybookProject()'s `name` in
+      # vitest.screenshot.config.ts, and be unique per vrt_pkgs entry.
+      # vrt-capture includes it in each artifact name, so duplicate project
+      # names would prevent a workflow run from uploading both artifacts.
       - uses: fohte/storybook-vrt-workflows/vrt-capture@691148d6e8e53b86c8f93b5b54cadbd8308b06d3 # v0.1.6
         with:
           project: storybook-screenshot-frontend
@@ -84,10 +83,10 @@ jobs:
       contents: read
       pull-requests: write
       statuses: write
-    # Overlapping runs for the same ref would otherwise race to publish to
-    # the same R2 key at once -- most importantly two main pushes racing to
-    # update the single `baseline/actual/` key, where each run's diff was
-    # computed against a baseline the other run is concurrently mutating.
+    # Serializes overlapping runs for the same ref to avoid racing on the
+    # shared R2 baseline/actual key.
+    # Without serialization, concurrent main pushes could update
+    # `baseline/actual/` while the other run computes its diff against it.
     concurrency:
       group: vrt-report-frontend-${{ (github.ref == 'refs/heads/main') && 'push' || 'pr' }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
       cancel-in-progress: false
@@ -116,12 +115,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Only one `<project_name>-vrt` R2 bucket is provisioned per repo, and
-      # vrt-report's storage keys (baseline/, branch/<branch>/) carry no
-      # per-project segment -- if more than one vrt_pkgs entry exists, their
-      # reports overwrite each other in this bucket. Keep vrt: true on a
-      # single subpackage until fohte/storybook-vrt-workflows adds a key
-      # prefix input.
+      # The R2 storage keys aren't scoped per project, so only one
+      # vrt_pkgs entry may exist per repo.
+      # One `<project_name>-vrt` bucket serves the repo, and vrt-report's
+      # `baseline/` and `branch/<branch>/` keys omit the project name. Keep
+      # one `vrt: true` package until workflow storage keys include a project
+      # prefix.
       - uses: fohte/storybook-vrt-workflows/vrt-report@691148d6e8e53b86c8f93b5b54cadbd8308b06d3 # v0.1.6
         with:
           package-dir: frontend
