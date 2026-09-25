@@ -25,7 +25,7 @@ pub(crate) fn latest_fetchable_date(
 
 /// 指定銘柄の日足データをバックフィルする。
 ///
-/// 契約範囲が検出済みならその範囲を、未検出ならプローブ範囲を取得する。
+/// 契約範囲が検出済みならその範囲を、未検出ならフォールバック範囲を取得する。
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
     db: &DatabaseConnection,
@@ -185,7 +185,7 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
-        // probe レンジ (20 年) 内に収まる適当な日付を使う
+        // フォールバック範囲内に収まる日付を使う
         let to = Utc::now().date_naive() - Duration::days(2);
         let bars = vec![
             make_bar("7203", to - Duration::days(2), 100),
@@ -229,7 +229,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn backfill_probes_far_history_when_range_is_undetected(pool: PgPool) {
+    async fn backfill_uses_fallback_history_when_range_is_undetected(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 

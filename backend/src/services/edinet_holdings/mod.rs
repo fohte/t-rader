@@ -14,7 +14,6 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use tokio::task::JoinHandle;
 
-use crate::data_provider::DailyBarSource;
 use crate::data_provider::jquants::JQuantsClient;
 
 /// ポーリング実行間隔。リアルタイム性を求めない pull 型運用のプロダクト方針に基づき 1 日間隔とする。

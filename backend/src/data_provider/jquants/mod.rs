@@ -137,6 +137,8 @@ impl JQuantsClient {
         })
     }
 
+    /// 検出した契約範囲をプラン設定として永続化する DB を設定する。
+    /// 未設定の場合も範囲の検出と取得は行うが、プラン設定は保存しない。
     pub fn with_db(mut self, db: DatabaseConnection) -> Self {
         self.db = Some(db);
         self

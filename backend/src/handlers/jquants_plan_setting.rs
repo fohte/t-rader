@@ -4,7 +4,6 @@ use axum::Json;
 use axum::extract::State;
 
 use crate::AppState;
-use crate::data_provider::DailyBarSource;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
@@ -86,7 +85,6 @@ mod tests {
 
     use sqlx::PgPool;
 
-    use crate::data_provider::DailyBarSource;
     use crate::data_provider::jquants::JQuantsClient;
     use crate::models::JQuantsPlan;
     use crate::testing::{create_test_server, create_test_server_with_jquants_client};

@@ -196,7 +196,7 @@ pub async fn run_ingest_cycle(
     Ok(stats)
 }
 
-/// poll task を起動する。`provider` は J-Quants のときのみ呼び出す。
+/// J-Quants client が設定された場合に poll task を起動する。
 pub fn spawn_poll(
     db: DatabaseConnection,
     client: Arc<JQuantsClient>,

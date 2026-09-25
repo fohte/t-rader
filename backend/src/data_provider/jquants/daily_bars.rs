@@ -71,8 +71,8 @@ impl JQuantsClient {
     }
 
     /// 契約範囲外エラー (400) 発生時は契約範囲を検出し、その範囲でこの呼び出し内で
-    /// 1 回だけ再試行する (検出済み範囲外の日付を再度指定すれば何度でも発動しうる)。
-    pub(super) async fn fetch_daily_bars(
+    /// 1 回だけ再試行する。DB が設定されていれば、取得結果にかかわらず検出範囲をプランとして保存する。
+    pub(super) async fn fetch_daily_bars_with_range_detection(
         &self,
         instrument_id: &str,
         range: &DateRange,
@@ -81,29 +81,27 @@ impl JQuantsClient {
             Err(DataProviderError::Api {
                 status: 400,
                 message,
-            }) => {
-                let Some((from, to)) = parse_subscription_range(&message) else {
-                    return Err(DataProviderError::Api {
-                        status: 400,
-                        message,
-                    });
-                };
-                tracing::info!(
-                    instrument_id,
-                    %from,
-                    %to,
-                    "契約範囲を検出しました。検出した範囲で再取得します"
-                );
-                self.set_detected_range((from, to));
-                self.fetch_daily_bars_once(instrument_id, &DateRange { from, to })
-                    .await
-            }
+            }) => match parse_subscription_range(&message) {
+                Some((from, to)) => {
+                    tracing::info!(
+                        instrument_id,
+                        %from,
+                        %to,
+                        "契約範囲を検出しました。検出した範囲で再取得します"
+                    );
+                    self.set_detected_range((from, to));
+                    self.fetch_daily_bars_once(instrument_id, &DateRange { from, to })
+                        .await
+                }
+                None => Err(DataProviderError::Api {
+                    status: 400,
+                    message,
+                }),
+            },
             other => other,
         };
 
-        if let Some(db) = &self.db
-            && let Err(error) = self.persist_inferred_range_if_needed(db).await
-        {
+        if let Err(error) = self.persist_inferred_range_if_needed().await {
             tracing::warn!(error = %error, "契約プランの推定結果の永続化に失敗しました");
         }
 
@@ -111,7 +109,7 @@ impl JQuantsClient {
     }
 
     /// 手動設定 (設定ページ) が優先。未設定なら 400 エラーからの自動検出結果を使う。
-    pub(super) fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+    pub fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
         match self.manual_plan() {
             Some(plan) => Some(plan.range(Utc::now().date_naive())),
             None => self.detected_range(),
@@ -121,10 +119,10 @@ impl JQuantsClient {
     /// 手動設定 (推定して確定した後の値も含む) が既にあるなら何もしない。これが「初回だけ」
     /// であることを保証する。まだ何も検出されていない、または DB 側で既に設定済み
     /// (他プロセス/リクエストが先に推定・永続化した等) の場合も何もしない。
-    pub(super) async fn persist_inferred_range_if_needed(
-        &self,
-        db: &sea_orm::DatabaseConnection,
-    ) -> Result<(), DataProviderError> {
+    pub(super) async fn persist_inferred_range_if_needed(&self) -> Result<(), DataProviderError> {
+        let Some(db) = &self.db else {
+            return Ok(());
+        };
         if self.manual_plan().is_some() {
             return Ok(());
         }
@@ -165,7 +163,7 @@ impl DailyBarSource for JQuantsClient {
         instrument_id: &str,
         range: &DateRange,
     ) -> Result<Vec<Bar>, DailyBarSourceError> {
-        JQuantsClient::fetch_daily_bars(self, instrument_id, range)
+        JQuantsClient::fetch_daily_bars_with_range_detection(self, instrument_id, range)
             .await
             .map_err(Into::into)
     }

@@ -53,7 +53,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_with_range_detection("8697", &default_range())
+            .await?;
 
         assert_eq!(bars.len(), 1);
         // レスポンスの Code (5 桁 "86970") ではなく引数の instrument_id (4 桁 "8697") が使われること
@@ -97,7 +99,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_with_range_detection("8697", &default_range())
+            .await?;
 
         assert_eq!(bars.len(), 1);
         assert_eq!(bars[0].close, dec(105.0));
@@ -111,7 +115,9 @@ mod fetch_daily_bars {
         mock.daily_bars().code("8697").bars(vec![]).ok().await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_with_range_detection("8697", &default_range())
+            .await?;
 
         assert!(bars.is_empty());
         Ok(())
@@ -132,7 +138,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_with_range_detection("8697", &default_range())
+            .await?;
 
         assert_eq!(bars.len(), 3);
         for pair in bars.windows(2) {
@@ -164,7 +172,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_with_range_detection("8697", &default_range())
+            .await?;
 
         assert_eq!(bars.len(), 2);
         assert_eq!(bars[0].close, dec(100.0));
@@ -706,6 +716,13 @@ mod rate_limiter {
 mod subscription_range_detection {
     use super::*;
 
+    use chrono::Duration;
+    use sqlx::PgPool;
+
+    use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
+    use crate::services::jquants_plan_setting;
+    use crate::testing::create_test_db;
+
     #[rstest]
     #[tokio::test]
     async fn test_detects_range_from_400_and_retries_successfully() -> Result<(), DataProviderError>
@@ -716,13 +733,13 @@ mod subscription_range_detection {
         // こちらが優先される (wiremock は同一 priority ならマウント順を優先する)
         Mock::given(method("GET"))
             .and(path("/equities/bars/daily"))
-            .and(query_param("code", "8697"))
+            .and(query_param("code", "0000"))
             .and(query_param("from", "20200401"))
             .and(query_param("to", "20220401"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "data": [{
                     "Date": "2025-01-06",
-                    "Code": "86970",
+                    "Code": "00000",
                     "AdjO": 100.0,
                     "AdjH": 110.0,
                     "AdjL": 95.0,
@@ -740,7 +757,9 @@ mod subscription_range_detection {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_with_range_detection("0000", &default_range())
+            .await?;
 
         assert_eq!(bars.len(), 1);
         assert_eq!(bars[0].close, dec(105.0));
@@ -765,7 +784,9 @@ mod subscription_range_detection {
             .await;
 
         let client = mock.client()?;
-        let result = client.fetch_daily_bars("8697", &default_range()).await;
+        let result = client
+            .fetch_daily_bars_with_range_detection("8697", &default_range())
+            .await;
 
         assert!(matches!(
             result,
@@ -773,6 +794,57 @@ mod subscription_range_detection {
         ));
         assert_eq!(client.known_fetchable_range(), None);
         Ok(())
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn persists_inferred_plan_after_fetching_detected_range(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let mock = JQuantsMockServer::start().await;
+        let from = date(2010, 1, 1);
+        let to = from + Duration::days(3650);
+
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("code", "0000"))
+            .and(query_param("from", from.format("%Y%m%d").to_string()))
+            .and(query_param("to", to.format("%Y%m%d").to_string()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{
+                    "Date": "2010-01-02",
+                    "Code": "00000",
+                    "AdjO": 100.0,
+                    "AdjH": 110.0,
+                    "AdjL": 95.0,
+                    "AdjC": 105.0,
+                    "AdjVo": 1000.0,
+                }],
+                "pagination_key": null,
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        mock.error()
+            .subscription_range(
+                "/equities/bars/daily",
+                &from.format("%Y-%m-%d").to_string(),
+                &to.format("%Y-%m-%d").to_string(),
+            )
+            .await;
+
+        let client = mock.client().expect("client").with_db(db.clone());
+        let bars = client
+            .fetch_daily_bars_with_range_detection("0000", &default_range())
+            .await
+            .expect("fetch daily bars");
+        let saved = jquants_plan_setting::find_current(&db)
+            .await
+            .expect("query")
+            .expect("row exists");
+        let data = parse_plan_setting::<JQuantsPlanSettingData>(saved.plan_setting).expect("parse");
+        assert_eq!(
+            (bars.len(), client.manual_plan(), data.plan),
+            (1, Some(JQuantsPlan::Standard), Some(JQuantsPlan::Standard)),
+        );
     }
 }
 
@@ -866,12 +938,12 @@ mod persist_inferred_range_if_needed {
     #[sqlx::test(migrations = false)]
     async fn does_nothing_when_manual_plan_already_set(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = test_client();
+        let client = test_client().with_db(db.clone());
         client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
         client.set_manual_plan(Some(JQuantsPlan::Premium));
 
         client
-            .persist_inferred_range_if_needed(&db)
+            .persist_inferred_range_if_needed()
             .await
             .expect("persist");
 
@@ -885,10 +957,10 @@ mod persist_inferred_range_if_needed {
     #[sqlx::test(migrations = false)]
     async fn does_nothing_when_no_range_detected(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = test_client();
+        let client = test_client().with_db(db.clone());
 
         client
-            .persist_inferred_range_if_needed(&db)
+            .persist_inferred_range_if_needed()
             .await
             .expect("persist");
 
@@ -902,14 +974,14 @@ mod persist_inferred_range_if_needed {
     #[sqlx::test(migrations = false)]
     async fn infers_and_persists_plan_from_detected_range_once(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = test_client();
+        let client = test_client().with_db(db.clone());
         // Standard の提供期間 (3650 日) ちょうどの範囲を検出させる
         let from = date(2010, 1, 1);
         let to = from + Duration::days(3650);
         client.set_detected_range((from, to));
 
         client
-            .persist_inferred_range_if_needed(&db)
+            .persist_inferred_range_if_needed()
             .await
             .expect("persist");
 
@@ -926,12 +998,12 @@ mod persist_inferred_range_if_needed {
     #[sqlx::test(migrations = false)]
     async fn does_not_overwrite_when_already_persisted_in_db(pool: PgPool) {
         let db = create_test_db(pool).await;
-        let client = test_client();
+        let client = test_client().with_db(db.clone());
         let from = date(2010, 1, 1);
         let to = from + Duration::days(3650);
         client.set_detected_range((from, to));
         client
-            .persist_inferred_range_if_needed(&db)
+            .persist_inferred_range_if_needed()
             .await
             .expect("first persist");
 
@@ -943,7 +1015,7 @@ mod persist_inferred_range_if_needed {
         client.set_detected_range((other_from, other_to));
 
         client
-            .persist_inferred_range_if_needed(&db)
+            .persist_inferred_range_if_needed()
             .await
             .expect("second persist");
 

@@ -245,7 +245,7 @@ fn period_and_start_time(range: &DateRange) -> (String, String) {
 }
 
 impl IbkrClient {
-    async fn fetch_daily_bars(
+    async fn fetch_daily_bars_internal(
         &self,
         instrument_id: &str,
         range: &DateRange,
@@ -349,7 +349,7 @@ impl DailyBarSource for IbkrClient {
         instrument_id: &str,
         range: &DateRange,
     ) -> Result<Vec<Bar>, DailyBarSourceError> {
-        IbkrClient::fetch_daily_bars(self, instrument_id, range)
+        IbkrClient::fetch_daily_bars_internal(self, instrument_id, range)
             .await
             .map_err(Into::into)
     }

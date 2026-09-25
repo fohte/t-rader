@@ -134,7 +134,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
 
         let expected = vec![
             Bar {
@@ -206,7 +208,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
 
         let expected = vec![Bar {
             instrument_id: "7203".to_string(),
@@ -235,7 +239,9 @@ mod fetch_daily_bars {
         mock.history().conid(12345).bars(vec![]).ok().await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
         assert_eq!(bars, vec![]);
         Ok(())
     }

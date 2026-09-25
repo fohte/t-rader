@@ -53,3 +53,46 @@ impl From<DataProviderError> for DailyBarSourceError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::{DailyBarSourceError, DataProviderError};
+
+    #[rstest]
+    #[case::not_found(
+        DataProviderError::NotFound("sample instrument".to_string()),
+        DailyBarSourceError::NotFound("sample instrument".to_string()),
+    )]
+    #[case::rate_limited(
+        DataProviderError::RateLimited { retries: 3 },
+        DailyBarSourceError::RateLimited("rate limited after 3 retries".to_string()),
+    )]
+    #[case::rate_limit_window_full(
+        DataProviderError::RateLimitWindowFull { max_requests: 5 },
+        DailyBarSourceError::RateLimited("rate limit window full (max 5 requests)".to_string()),
+    )]
+    #[case::api(
+        DataProviderError::Api { status: 503, message: "source unavailable".to_string() },
+        DailyBarSourceError::Failed("api error (status 503): source unavailable".to_string()),
+    )]
+    #[case::network(
+        DataProviderError::Network("connection failed".to_string()),
+        DailyBarSourceError::Failed("network error: connection failed".to_string()),
+    )]
+    #[case::parse(
+        DataProviderError::Parse("malformed response".to_string()),
+        DailyBarSourceError::Failed("failed to parse response: malformed response".to_string()),
+    )]
+    #[case::database(
+        DataProviderError::Database("write failed".to_string()),
+        DailyBarSourceError::Failed("database error: write failed".to_string()),
+    )]
+    fn converts_provider_errors(
+        #[case] error: DataProviderError,
+        #[case] expected: DailyBarSourceError,
+    ) {
+        assert_eq!(DailyBarSourceError::from(error), expected);
+    }
+}
