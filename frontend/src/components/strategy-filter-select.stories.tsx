@@ -32,9 +32,11 @@ const strategy2 = {
 const strategies = [strategy1, strategy2]
 
 export const AllStrategies: Story = {
+  name: 'shows every strategy as an available filter option.',
   args: { value: undefined, strategies },
 }
 
 export const StrategySelected: Story = {
+  name: 'shows the filter with one strategy selected.',
   args: { value: strategy1.id, strategies },
 }

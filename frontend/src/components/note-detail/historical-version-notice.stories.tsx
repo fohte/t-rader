@@ -31,4 +31,6 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Historical: Story = {}
+export const Historical: Story = {
+  name: 'shows a notice that the displayed note version is historical.',
+}

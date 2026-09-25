@@ -108,6 +108,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows a strategy with a name and description.',
   render: () => (
     <RouterProvider
       router={createGeneralTabRouter({
@@ -120,6 +121,7 @@ export const Default: Story = {
 }
 
 export const NoDescription: Story = {
+  name: 'shows a strategy without a description.',
   render: () => (
     <RouterProvider
       router={createGeneralTabRouter({

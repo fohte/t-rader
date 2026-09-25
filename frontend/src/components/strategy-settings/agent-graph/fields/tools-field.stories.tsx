@@ -32,11 +32,13 @@ function Interactive({ initial }: { initial: string[] | undefined }) {
 }
 
 export const AllToolsAllowed: Story = {
+  name: 'allows every available tool.',
   args: { value: undefined, onChange: () => {}, options: TOOLS },
   render: () => <Interactive initial={undefined} />,
 }
 
 export const Restricted: Story = {
+  name: 'allows only a selected subset of tools.',
   args: {
     value: ['list_notes', 'query_data'],
     onChange: () => {},
@@ -46,12 +48,14 @@ export const Restricted: Story = {
 }
 
 export const RestrictedToNone: Story = {
+  name: 'allows no tools.',
   args: { value: [], onChange: () => {}, options: TOOLS },
   render: () => <Interactive initial={[]} />,
 }
 
 // options に無い値 (未登録・削除済みなど) も消えずに表示される
 export const ValueNotInOptions: Story = {
+  name: 'preserves a selected tool that is missing from the available options.',
   args: { value: ['legacy_tool'], onChange: () => {}, options: TOOLS },
   render: () => <Interactive initial={['legacy_tool']} />,
 }

@@ -41,6 +41,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows the statement import dialog with strategy choices.',
   args: {
     open: true,
     onOpenChange: () => {},

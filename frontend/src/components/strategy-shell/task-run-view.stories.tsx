@@ -47,6 +47,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Running: Story = {
+  name: 'shows an active task with its analysis progress.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
@@ -72,6 +73,7 @@ export const Running: Story = {
 }
 
 export const Completed: Story = {
+  name: 'shows a completed task with its generated notes.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
@@ -103,6 +105,7 @@ export const Completed: Story = {
 }
 
 export const Failed: Story = {
+  name: 'shows an error summary for a task that failed during analysis.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
@@ -129,6 +132,7 @@ export const Failed: Story = {
 }
 
 export const NoSteps: Story = {
+  name: 'shows a pending task before its execution steps are available.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
@@ -143,6 +147,7 @@ export const NoSteps: Story = {
 }
 
 export const Loading: Story = {
+  name: 'shows a loading placeholder before task details are available.',
   render: () => (
     <RouterProvider
       router={createTaskRunViewRouter({
