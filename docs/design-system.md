@@ -192,10 +192,3 @@ box-shadow も同様に named token 化する場合があり、shadcn Sidebar �
 | `--grid-cols-task-run`          | `minmax(0, 1fr) 360px` | 戦略タスク実行ビューの本文 + サイドパネルの 2 カラムレイアウト               |
 | `--grid-cols-step-detail`       | `64px 1fr`             | タスク実行ステップ詳細のラベル列 + 値列                                      |
 | `--grid-cols-history-entry`     | `auto auto 1fr`        | ノート変更履歴の 1 行 (時刻 + 種別 + 概要) の 3 カラムレイアウト             |
-
-## Non-goals
-
-このドキュメントはトークン契約を定める。
-以下は対象外とする。
-
-- tq の primitives (`Panel` / `Chip` / `TabStrip` 等) の移植
