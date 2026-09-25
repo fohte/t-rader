@@ -39,7 +39,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 | `update_note_kind`         | `key`, `display_name?`, `requires_approval?`, `description?`, `sort_order?`                                       | 更新後のノート種別。`key` は変更不可。`description` は省略で維持し、`null` で消去                            |
 | `delete_note_kind`         | `key`                                                                                                             | `key`。既存ノートで使用中の場合は削除しない                                                                  |
 
-`submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。クライアント実装は `backend/src/agent_client/` が SSOT。投入から決着までの共通ロジックは `backend/src/services/strategy_tasks.rs`、決着 polling は `backend/src/mcp/watcher.rs` を参照。
+`submit_strategy_task` は t-rader-agent の内部 API (`POST /internal/tasks`) 経由でタスクを投入する。port は `backend/crates/core/application/`、クライアント実装は `backend/crates/gateways/t-rader-agent/` を参照。投入から決着までの共通ロジックは `backend/src/services/strategy_tasks.rs`、決着 polling は `backend/src/mcp/watcher.rs` を参照。
 
 `create_strategy` / `update_strategy_config` / `delete_strategy` による DB 書き込みは REST (`backend/src/handlers/strategies/mod.rs`) と共通の `backend/src/services/strategy_config.rs` を経由し、`change_history` には actor `llm` / label `mgmt-mcp` で記録される。
 

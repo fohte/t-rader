@@ -1,11 +1,24 @@
 [workspace]
-members = [".", "migration", "crates/core/domain"]
-default-members = [".", "crates/core/domain"]
+members = [
+    ".",
+    "migration",
+    "crates/core/domain",
+    "crates/core/application",
+    "crates/gateways/t-rader-agent",
+]
+default-members = [
+    ".",
+    "crates/core/domain",
+    "crates/core/application",
+    "crates/gateways/t-rader-agent",
+]
 
 [workspace.dependencies]
 async-trait = "=0.1.92"
 axum = "=0.8.9"
 core-domain = { path = "crates/core/domain" }
+core-application = { path = "crates/core/application" }
+gateway-t-rader-agent = { path = "crates/gateways/t-rader-agent" }
 cron = "=0.17.0"
 axum-test = "=18.7.0"
 base64 = "=0.22.1"
@@ -51,6 +64,8 @@ base64 = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive"] }
 core-domain = { workspace = true }
+core-application = { workspace = true }
+gateway-t-rader-agent = { workspace = true }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
@@ -58,7 +73,6 @@ jpholiday = "=0.2.0"
 jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }
-progenitor-client = { workspace = true }
 quick-xml = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls"] }
 rmcp = { workspace = true, features = [
@@ -96,14 +110,9 @@ utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true, features = ["axum"] }
 uuid = { workspace = true, features = ["serde", "v4", "v5"] }
 
-[build-dependencies]
-prettyplease = { workspace = true }
-progenitor = { workspace = true }
-serde_json = { workspace = true }
-syn = "=2.0.119"
-
 [dev-dependencies]
 axum-test = { workspace = true }
+core-application = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
 sqlx = { workspace = true, features = [
