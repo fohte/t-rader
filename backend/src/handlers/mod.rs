@@ -11,7 +11,6 @@ pub mod hooks;
 pub mod hypotheses;
 pub mod hypothesis_proposals;
 pub mod imports;
-pub mod interests;
 pub mod jquants_plan_setting;
 pub mod note_hypotheses;
 pub mod note_kinds;

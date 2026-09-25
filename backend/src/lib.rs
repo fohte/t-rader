@@ -39,7 +39,7 @@ use crate::data_provider::jquants::JQuantsClient;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
+    custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports,
     jquants_plan_setting, note_hypotheses, note_kinds, note_predictions, note_versions, notes,
     refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers,
 };
@@ -192,22 +192,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::get_strategy,
             strategies::update_strategy,
             strategies::delete_strategy
-        ))
-        .routes(routes!(
-            strategies::list_strategy_interests,
-            interests::create_strategy_interest
-        ))
-        .routes(routes!(
-            interests::update_strategy_interest,
-            interests::delete_strategy_interest
-        ))
-        .routes(routes!(
-            interests::list_global_interests,
-            interests::create_global_interest
-        ))
-        .routes(routes!(
-            interests::update_global_interest,
-            interests::delete_global_interest
         ))
         // hypotheses
         .routes(routes!(

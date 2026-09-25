@@ -345,7 +345,7 @@ impl StrategyServer {
             Ok(_) => commit_new_note(txn, id, content).await.map(Some),
             // ON CONFLICT DO NOTHING で skip されたとき、SeaORM 2.0 では
             // `exec_with_returning` は `RecordNotFound` を返す (RETURNING 行が空のため)。
-            // 念のため `RecordNotInserted` も同じパスで扱う (interests.rs の add_interest_inner と同様)。
+            // `RecordNotInserted` も `RecordNotFound` と同じく INSERT が skip された結果として扱う。
             Err(sea_orm::DbErr::RecordNotInserted | sea_orm::DbErr::RecordNotFound(_)) => {
                 txn.rollback().await.map_err(db_error)?;
                 Ok(None)

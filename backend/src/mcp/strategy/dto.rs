@@ -278,41 +278,6 @@ pub struct ReadAnnotationsResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct AddInterestParams {
-    /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
-    pub ref_kind: String,
-    pub ref_id: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct AddInterestResult {
-    pub strategy_id: Uuid,
-    pub ref_kind: String,
-    pub ref_id: String,
-    pub role: String,
-    pub origin: String,
-    /// 既存と一致したため idempotent に成功した場合は false
-    pub created: bool,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListWatchTargetsParams {
-    pub limit: Option<u32>,
-}
-
-/// 人間が「追う」と決めた監視対象銘柄。保有状況によるフィルタは行わない
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct WatchTargetDto {
-    pub ref_id: String,
-    pub created_at: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct ListWatchTargetsResult {
-    pub watch_targets: Vec<WatchTargetDto>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCommentsParams {
     /// "note_version" | "annotation"
     pub target_kind: String,

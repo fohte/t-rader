@@ -82,7 +82,7 @@ fn extract_meta(doc: &Value) -> Option<DocumentMeta> {
     };
 
     // J-Quants API が返す Code は 5 桁のまま保存する (stock/instruments 等の既存 4 桁との
-    // 突き合わせは、この列を読み出す側の実装が持つべき関心事のため、ここでは行わない)
+    // 突き合わせは、この列を読み出す側の責務のため、ここでは行わない)
     let code = doc.get("Code").and_then(Value::as_str).map(str::to_string);
 
     Some(DocumentMeta {

@@ -11,7 +11,7 @@ use crate::entities::note_ref;
 use crate::error::AppError;
 use crate::services::graph::GraphDef;
 
-const ALLOWED_REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
+pub(crate) const ALLOWED_REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
 
 /// note_ref を本文 + 図から都度 rebuild する: 旧 ref は DELETE で消え、
 /// 本文または graphs[].ref に残るものだけ INSERT 復元する。
