@@ -1,0 +1,2 @@
+[profile.default]
+slow-timeout = { period = "59s", terminate-after = 1 }

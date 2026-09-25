@@ -20,28 +20,11 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::bars::Entity")]
     Bars,
-    #[sea_orm(has_many = "super::watchlist_items::Entity")]
-    WatchlistItems,
 }
 
 impl Related<super::bars::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Bars.def()
-    }
-}
-
-impl Related<super::watchlist_items::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::WatchlistItems.def()
-    }
-}
-
-impl Related<super::watchlists::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::watchlist_items::Relation::Watchlists.def()
-    }
-    fn via() -> Option<RelationDef> {
-        Some(super::watchlist_items::Relation::Instruments.def().rev())
     }
 }
 

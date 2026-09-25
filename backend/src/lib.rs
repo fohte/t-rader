@@ -40,7 +40,7 @@ use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
     custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
     jquants_plan_setting, news, note_hypotheses, note_kinds, note_links, note_predictions, notes,
-    refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers, watchlists,
+    refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -94,8 +94,6 @@ impl AppState {
     tags(
         (name = "health", description = "ヘルスチェック"),
         (name = "bars", description = "バーデータ (OHLCV)"),
-        (name = "watchlists", description = "ウォッチリスト管理"),
-        (name = "watchlist_items", description = "ウォッチリスト内の銘柄管理"),
         (name = "strategies", description = "戦略 (ワークスペース)"),
         (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
         (name = "refs", description = "一級参照型 (stock / indicator / sector / theme)"),
@@ -179,12 +177,6 @@ struct HealthResponse {
 fn build_openapi_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(health_check))
-        .routes(routes!(watchlists::create_watchlist))
-        .routes(routes!(watchlists::list_watchlists))
-        .routes(routes!(watchlists::delete_watchlist))
-        .routes(routes!(watchlists::add_watchlist_item))
-        .routes(routes!(watchlists::list_watchlist_items))
-        .routes(routes!(watchlists::delete_watchlist_item))
         .routes(routes!(bars::list_bars))
         // strategies
         .routes(routes!(

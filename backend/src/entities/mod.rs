@@ -54,5 +54,3 @@ pub mod theme;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;
-pub mod watchlist_items;
-pub mod watchlists;
