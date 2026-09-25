@@ -28,7 +28,7 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 ///
 /// マイグレーション済み template の複製を返す。HTTP サーバー不要な repository テスト向け。
 pub async fn create_test_db(pool: PgPool) -> DatabaseConnection {
-    let pool = template_db::create_test_pool(pool).await;
+    let pool = template_db::create_test_pool_from_template(pool).await;
     SqlxPostgresConnector::from_sqlx_postgres_pool(pool)
 }
 

@@ -136,14 +136,9 @@ mod tests {
         }
     }
 
-    async fn setup(pool: PgPool) -> (axum_test::TestServer, DatabaseConnection) {
-        let (db, server) = create_test_server_with_db(pool).await;
-        (server, db)
-    }
-
     #[sqlx::test(migrations = false)]
     async fn list_bars_returns_200_with_data(pool: PgPool) {
-        let (server, db) = setup(pool).await;
+        let (db, server) = create_test_server_with_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![make_test_bar(
@@ -196,7 +191,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn list_bars_with_date_range_filters_correctly(pool: PgPool) {
-        let (server, db) = setup(pool).await;
+        let (db, server) = create_test_server_with_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
