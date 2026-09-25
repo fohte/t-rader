@@ -473,13 +473,13 @@ dependencies = [
  "gateway-fred",
  "gateway-kata-exec",
  "gateway-litellm",
+ "gateway-rss",
  "gateway-t-rader-agent",
  "indoc",
  "jpholiday",
  "jsonschema",
  "migration",
  "percent-encoding",
- "quick-xml",
  "reqwest",
  "rmcp",
  "rstest",
@@ -1560,6 +1560,22 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "gateway-rss"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "indoc",
+ "quick-xml",
+ "reqwest",
+ "rstest",
  "tokio",
  "tracing",
  "wiremock",

@@ -11,13 +11,12 @@ use backend::create_router;
 use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
-use backend::data_provider::news::NewsAggregator;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
-use core_application::IndicatorObservationSource;
+use core_application::{IndicatorObservationSource, SharedNewsAggregator};
 use gateway_fred::FredClient;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
@@ -189,8 +188,10 @@ async fn main() -> Result<(), AppError> {
     // 公開 RSS から 1h 間隔でニュースを集約する poll task を起動する。
     // フィード一覧は `rss_feed` テーブルから tick ごとに読み直す (UI / MCP からの追加・無効化を
     // 再起動なしで反映するため)。0 件運用も許容する。
-    let news_aggregator: Arc<dyn NewsAggregator> =
-        Arc::new(RssNewsAggregator::from_db(db.clone())?);
+    let news_aggregator: SharedNewsAggregator =
+        Arc::new(RssNewsAggregator::new().map_err(|err| {
+            AppError::Config(format!("failed to initialize RSS news aggregator: {err}"))
+        })?);
     let _news_poll = backend::services::news::spawn_poll(
         db.clone(),
         news_aggregator,

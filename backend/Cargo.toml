@@ -7,6 +7,7 @@ members = [
     "crates/gateways/fred",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
+    "crates/gateways/rss",
     "crates/gateways/t-rader-agent",
 ]
 default-members = [
@@ -16,6 +17,7 @@ default-members = [
     "crates/gateways/fred",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
+    "crates/gateways/rss",
     "crates/gateways/t-rader-agent",
 ]
 
@@ -27,6 +29,7 @@ core-application = { path = "crates/core/application" }
 gateway-fred = { path = "crates/gateways/fred" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }
 gateway-litellm = { path = "crates/gateways/litellm" }
+gateway-rss = { path = "crates/gateways/rss" }
 gateway-t-rader-agent = { path = "crates/gateways/t-rader-agent" }
 cron = "=0.17.0"
 axum-test = "=18.7.0"
@@ -75,8 +78,9 @@ core-domain = { workspace = true }
 core-application = { workspace = true }
 gateway-fred = { workspace = true }
 gateway-litellm = { workspace = true }
-gateway-t-rader-agent = { workspace = true }
 gateway-kata-exec = { workspace = true }
+gateway-rss = { workspace = true }
+gateway-t-rader-agent = { workspace = true }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
@@ -84,7 +88,6 @@ jpholiday = "=0.2.0"
 jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }
-quick-xml = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls"] }
 rmcp = { workspace = true, features = [
     "server",
