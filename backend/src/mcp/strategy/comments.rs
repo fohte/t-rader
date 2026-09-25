@@ -1,6 +1,6 @@
 //! コメント取得の inner method 実装。
 //!
-//! 戦略境界の検査は、対象 (note / annotation) の所有権検査
+//! 戦略境界の検査は、対象 (note_version / annotation) の所有権検査
 //! ([`super::fetch_note_owned_by`] / [`super::fetch_annotation_owned_by`]) が担う。
 
 use rmcp::ErrorData as McpError;
@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::comment;
+use crate::entities::{comment, note_version};
 
 use super::dto::{
     CommentDto, ReadCommentsParams, ReadCommentsResult, ReplyCommentParams, ReplyCommentResult,
@@ -21,7 +21,7 @@ use super::{
     internal_error, invalid_params,
 };
 
-const ALLOWED_COMMENT_TARGET_KIND: [&str; 2] = ["note", "annotation"];
+const ALLOWED_COMMENT_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
 
 fn comment_to_dto(m: comment::Model) -> CommentDto {
     CommentDto {
@@ -35,9 +35,9 @@ fn comment_to_dto(m: comment::Model) -> CommentDto {
         resolved: m.resolved,
         created_at: m.created_at,
         anchor_text: m.anchor_text,
+        anchor_side: m.anchor_side,
         start_line: m.start_line,
         end_line: m.end_line,
-        drifted: m.drifted,
     }
 }
 
@@ -49,8 +49,13 @@ async fn ensure_comment_target_owned_by(
     expected: Uuid,
 ) -> Result<(), McpError> {
     match target_kind {
-        "note" => {
-            fetch_note_owned_by(db, target_id, expected).await?;
+        "note_version" => {
+            let version = note_version::Entity::find_by_id(target_id)
+                .one(db)
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| McpError::resource_not_found("note version not found", None))?;
+            fetch_note_owned_by(db, version.note_id, expected).await?;
         }
         "annotation" => {
             fetch_annotation_owned_by(db, target_id, expected).await?;
@@ -70,19 +75,19 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
-        match params.target_kind.as_str() {
-            "note" => {
-                fetch_note_owned_by(&self.db, params.target_id, session_strategy_id).await?;
-            }
-            "annotation" => {
-                fetch_annotation_owned_by(&self.db, params.target_id, session_strategy_id).await?;
-            }
-            other => {
-                return Err(invalid_params(format!(
-                    "invalid target_kind: {other} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})"
-                )));
-            }
+        if !ALLOWED_COMMENT_TARGET_KIND.contains(&params.target_kind.as_str()) {
+            return Err(invalid_params(format!(
+                "invalid target_kind: {} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})",
+                params.target_kind
+            )));
         }
+        ensure_comment_target_owned_by(
+            &self.db,
+            &params.target_kind,
+            params.target_id,
+            session_strategy_id,
+        )
+        .await?;
 
         let mut query = comment::Entity::find()
             .filter(comment::Column::TargetKind.eq(params.target_kind))
@@ -164,9 +169,9 @@ impl StrategyServer {
             resolved: Set(false),
             created_at: NotSet,
             anchor_text: Set(None),
+            anchor_side: Set(None),
             start_line: Set(None),
             end_line: Set(None),
-            drifted: Set(false),
         };
         let created = comment::Entity::insert(model)
             .exec_with_returning(&self.db)
@@ -188,8 +193,8 @@ mod tests {
         CommentDto, ReadCommentsParams, ReplyCommentParams, ResolveCommentParams,
     };
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_comment, seed_comment, seed_foreign_annotation,
-        seed_foreign_note, ts_sentinel,
+        build_server, current_note_version_id, insert_strategy, normalize_comment, seed_comment,
+        seed_foreign_annotation, seed_foreign_note, ts_sentinel,
     };
 
     #[sqlx::test(migrations = false)]
@@ -199,17 +204,33 @@ mod tests {
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
         let other_note_id = seed_foreign_note(&db, strategy_id, "other note").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let other_version_id = current_note_version_id(&db, other_note_id).await;
 
-        let root = seed_comment(&db, "note", note_id, None, "root comment").await;
-        let reply = seed_comment(&db, "note", note_id, Some(root), "reply comment").await;
-        seed_comment(&db, "note", other_note_id, None, "unrelated comment").await;
+        let root = seed_comment(&db, "note_version", note_version_id, None, "root comment").await;
+        let reply = seed_comment(
+            &db,
+            "note_version",
+            note_version_id,
+            Some(root),
+            "reply comment",
+        )
+        .await;
+        seed_comment(
+            &db,
+            "note_version",
+            other_version_id,
+            None,
+            "unrelated comment",
+        )
+        .await;
 
         let result = server
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "note".into(),
-                    target_id: note_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
                     resolved: None,
                 },
             )
@@ -225,8 +246,8 @@ mod tests {
             vec![
                 CommentDto {
                     comment_id: root,
-                    target_kind: "note".into(),
-                    target_id: note_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
                     parent_id: None,
                     body: "root comment".into(),
                     author_kind: "human".into(),
@@ -234,14 +255,14 @@ mod tests {
                     resolved: false,
                     created_at: ts_sentinel(),
                     anchor_text: None,
+                    anchor_side: None,
                     start_line: None,
                     end_line: None,
-                    drifted: false,
                 },
                 CommentDto {
                     comment_id: reply,
-                    target_kind: "note".into(),
-                    target_id: note_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
                     parent_id: Some(root),
                     body: "reply comment".into(),
                     author_kind: "human".into(),
@@ -249,9 +270,9 @@ mod tests {
                     resolved: false,
                     created_at: ts_sentinel(),
                     anchor_text: None,
+                    anchor_side: None,
                     start_line: None,
                     end_line: None,
-                    drifted: false,
                 },
             ],
         );
@@ -294,9 +315,9 @@ mod tests {
                 resolved: false,
                 created_at: ts_sentinel(),
                 anchor_text: None,
+                anchor_side: None,
                 start_line: None,
                 end_line: None,
-                drifted: false,
             }],
         );
     }
@@ -328,13 +349,14 @@ mod tests {
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
 
         let err = server
             .read_comments_inner(
                 strategy_a,
                 ReadCommentsParams {
-                    target_kind: "note".into(),
-                    target_id: note_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
                     resolved: None,
                 },
             )
@@ -371,8 +393,9 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
-        let open = seed_comment(&db, "note", note_id, None, "still open").await;
-        let done = seed_comment(&db, "note", note_id, None, "already fixed").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let open = seed_comment(&db, "note_version", note_version_id, None, "still open").await;
+        let done = seed_comment(&db, "note_version", note_version_id, None, "already fixed").await;
         server
             .resolve_comment_inner(
                 strategy_id,
@@ -388,8 +411,8 @@ mod tests {
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "note".into(),
-                    target_id: note_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
                     resolved: Some(false),
                 },
             )
@@ -403,8 +426,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![CommentDto {
                 comment_id: open,
-                target_kind: "note".into(),
-                target_id: note_id,
+                target_kind: "note_version".into(),
+                target_id: note_version_id,
                 parent_id: None,
                 body: "still open".into(),
                 author_kind: "human".into(),
@@ -412,9 +435,9 @@ mod tests {
                 resolved: false,
                 created_at: ts_sentinel(),
                 anchor_text: None,
+                anchor_side: None,
                 start_line: None,
                 end_line: None,
-                drifted: false,
             }],
         );
 
@@ -422,8 +445,8 @@ mod tests {
             .read_comments_inner(
                 strategy_id,
                 ReadCommentsParams {
-                    target_kind: "note".into(),
-                    target_id: note_id,
+                    target_kind: "note_version".into(),
+                    target_id: note_version_id,
                     resolved: Some(true),
                 },
             )
@@ -437,8 +460,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![CommentDto {
                 comment_id: done,
-                target_kind: "note".into(),
-                target_id: note_id,
+                target_kind: "note_version".into(),
+                target_id: note_version_id,
                 parent_id: None,
                 body: "already fixed".into(),
                 author_kind: "human".into(),
@@ -446,9 +469,9 @@ mod tests {
                 resolved: true,
                 created_at: ts_sentinel(),
                 anchor_text: None,
+                anchor_side: None,
                 start_line: None,
                 end_line: None,
-                drifted: false,
             }],
         );
     }
@@ -459,7 +482,8 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
-        let comment_id = seed_comment(&db, "note", note_id, None, "fix this").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let comment_id = seed_comment(&db, "note_version", note_version_id, None, "fix this").await;
 
         let result = server
             .resolve_comment_inner(
@@ -475,8 +499,8 @@ mod tests {
             normalize_comment(result.comment),
             CommentDto {
                 comment_id,
-                target_kind: "note".into(),
-                target_id: note_id,
+                target_kind: "note_version".into(),
+                target_id: note_version_id,
                 parent_id: None,
                 body: "fix this".into(),
                 author_kind: "human".into(),
@@ -484,9 +508,9 @@ mod tests {
                 resolved: true,
                 created_at: ts_sentinel(),
                 anchor_text: None,
+                anchor_side: None,
                 start_line: None,
                 end_line: None,
-                drifted: false,
             },
         );
 
@@ -504,8 +528,8 @@ mod tests {
             normalize_comment(result.comment),
             CommentDto {
                 comment_id,
-                target_kind: "note".into(),
-                target_id: note_id,
+                target_kind: "note_version".into(),
+                target_id: note_version_id,
                 parent_id: None,
                 body: "fix this".into(),
                 author_kind: "human".into(),
@@ -513,9 +537,9 @@ mod tests {
                 resolved: false,
                 created_at: ts_sentinel(),
                 anchor_text: None,
+                anchor_side: None,
                 start_line: None,
                 end_line: None,
-                drifted: false,
             },
         );
     }
@@ -546,7 +570,8 @@ mod tests {
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
-        let comment_id = seed_comment(&db, "note", note_id, None, "fix this").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let comment_id = seed_comment(&db, "note_version", note_version_id, None, "fix this").await;
 
         let err = server
             .resolve_comment_inner(
@@ -567,7 +592,9 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
-        let parent_id = seed_comment(&db, "note", note_id, None, "please fix").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let parent_id =
+            seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
 
         let result = server
             .reply_comment_inner(
@@ -586,8 +613,8 @@ mod tests {
             dto,
             CommentDto {
                 comment_id,
-                target_kind: "note".into(),
-                target_id: note_id,
+                target_kind: "note_version".into(),
+                target_id: note_version_id,
                 parent_id: Some(parent_id),
                 body: "fixed in the latest revision".into(),
                 author_kind: super::super::STRATEGY_AGENT_ACTOR.into(),
@@ -595,9 +622,9 @@ mod tests {
                 resolved: false,
                 created_at: ts_sentinel(),
                 anchor_text: None,
+                anchor_side: None,
                 start_line: None,
                 end_line: None,
-                drifted: false,
             },
         );
     }
@@ -608,7 +635,9 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
-        let parent_id = seed_comment(&db, "note", note_id, None, "please fix").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let parent_id =
+            seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
 
         let err = server
             .reply_comment_inner(
@@ -649,7 +678,9 @@ mod tests {
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
-        let parent_id = seed_comment(&db, "note", note_id, None, "please fix").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let parent_id =
+            seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
 
         let err = server
             .reply_comment_inner(
@@ -670,8 +701,10 @@ mod tests {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
-        let root_id = seed_comment(&db, "note", note_id, None, "please fix").await;
-        let reply_id = seed_comment(&db, "note", note_id, Some(root_id), "fixed").await;
+        let note_version_id = current_note_version_id(&db, note_id).await;
+        let root_id = seed_comment(&db, "note_version", note_version_id, None, "please fix").await;
+        let reply_id =
+            seed_comment(&db, "note_version", note_version_id, Some(root_id), "fixed").await;
 
         let err = server
             .reply_comment_inner(

@@ -329,7 +329,7 @@ pub struct ListWatchTargetsResult {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCommentsParams {
-    /// "note" | "annotation"
+    /// "note_version" | "annotation"
     pub target_kind: String,
     pub target_id: Uuid,
     /// true/false で絞り込み。省略時は全件
@@ -350,11 +350,11 @@ pub struct CommentDto {
     pub created_at: DateTime<FixedOffset>,
     /// コメント時点で選択された本文の該当箇所全文。
     pub anchor_text: Option<String>,
-    /// note 本文中の現在位置 (1-indexed)。追跡できない場合は null。
+    /// 行コメントが対応する本文側。`note_version` の場合のみ設定される。
+    pub anchor_side: Option<String>,
+    /// 対応する本文中の行位置 (1-indexed)。
     pub start_line: Option<i32>,
     pub end_line: Option<i32>,
-    /// 位置が当てにならなくなったかどうか (note 本文の書き換えで見失った等)。
-    pub drifted: bool,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]

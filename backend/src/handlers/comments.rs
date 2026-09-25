@@ -19,7 +19,7 @@ use crate::models::{CreateCommentRequest, UpdateCommentRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::comment_anchor;
 
-const ALLOWED_TARGET_KIND: [&str; 2] = ["note", "annotation"];
+const ALLOWED_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
 const ALLOWED_AUTHOR_KIND: [&str; 2] = ["human", "llm"];
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -109,24 +109,23 @@ pub async fn create_comment(
         }
     }
 
-    let anchor_text = p
-        .anchor_text
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
-    let (anchor_text, start_line, end_line, drifted) = match anchor_text {
-        None => (None, None, None, false),
-        Some(anchor_text) => {
-            let anchor_text = anchor_text.to_string();
-            let (start_line, end_line, drifted) = comment_anchor::resolve_new_anchor(
-                &state.db,
-                &p.target_kind,
-                p.target_id,
-                &anchor_text,
-            )
-            .await?;
-            (Some(anchor_text), start_line, end_line, drifted)
-        }
+    let (start_line, end_line) = comment_anchor::validate_version_anchor(
+        &state.db,
+        &p.target_kind,
+        p.target_id,
+        p.anchor_side.as_ref().map(|side| side.as_str()),
+        p.start_line,
+        p.end_line,
+    )
+    .await?;
+    let anchor_text = if p.target_kind == "note_version" {
+        p.anchor_text
+    } else {
+        p.anchor_text
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(ToOwned::to_owned)
     };
 
     let id = Uuid::new_v4();
@@ -141,9 +140,9 @@ pub async fn create_comment(
         resolved: NotSet,
         created_at: NotSet,
         anchor_text: Set(anchor_text),
+        anchor_side: Set(p.anchor_side.map(|side| side.as_str().to_string())),
         start_line: Set(start_line),
         end_line: Set(end_line),
-        drifted: Set(drifted),
     };
     let txn = state.db.begin().await?;
     let created = comment::Entity::insert(model)
@@ -256,11 +255,14 @@ mod tests {
     }
 
     async fn create_note_comment(server: &axum_test::TestServer) -> Value {
+        let strategy_id = crate::testing::create_strategy(server, "s").await;
+        let note_id = create_note(server, &strategy_id, "body").await;
+        let version_id = first_note_version_id(server, &note_id).await;
         server
             .post("/api/comments")
             .json(&json!({
-                "target_kind": "note",
-                "target_id": uuid::Uuid::new_v4(),
+                "target_kind": "note_version",
+                "target_id": version_id,
                 "body": "fix this",
             }))
             .await
@@ -282,7 +284,7 @@ mod tests {
             normalize(res.json()),
             json!({
                 "id": "<id>",
-                "target_kind": "note",
+                "target_kind": "note_version",
                 "target_id": "<target_id>",
                 "parent_id": null,
                 "body": "fix this",
@@ -291,9 +293,9 @@ mod tests {
                 "resolved": true,
                 "created_at": "<created_at>",
                 "anchor_text": null,
+                "anchor_side": null,
                 "start_line": null,
                 "end_line": null,
-                "drifted": false,
             }),
         );
 
@@ -306,7 +308,7 @@ mod tests {
             normalize(res.json()),
             json!({
                 "id": "<id>",
-                "target_kind": "note",
+                "target_kind": "note_version",
                 "target_id": "<target_id>",
                 "parent_id": null,
                 "body": "fix this",
@@ -315,9 +317,9 @@ mod tests {
                 "resolved": false,
                 "created_at": "<created_at>",
                 "anchor_text": null,
+                "anchor_side": null,
                 "start_line": null,
                 "end_line": null,
-                "drifted": false,
             }),
         );
     }
@@ -352,6 +354,15 @@ mod tests {
             .to_string()
     }
 
+    async fn first_note_version_id(server: &axum_test::TestServer, note_id: &str) -> String {
+        let versions = server.get(&format!("/api/notes/{note_id}/versions")).await;
+        versions.assert_status_ok();
+        versions.json::<Value>()[0]["id"]
+            .as_str()
+            .expect("version id")
+            .to_string()
+    }
+
     async fn create_annotation(server: &axum_test::TestServer, strategy_id: &str) -> String {
         let created = server
             .post("/api/annotations")
@@ -371,7 +382,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn create_comment_with_anchor_text_computes_start_and_end_line(pool: PgPool) {
+    async fn create_comment_with_line_anchor_stores_explicit_lines(pool: PgPool) {
         let server = create_test_server(pool).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
         let note_id = create_note(
@@ -383,14 +394,18 @@ mod tests {
                 line three"},
         )
         .await;
+        let version_id = first_note_version_id(&server, &note_id).await;
 
         let res = server
             .post("/api/comments")
             .json(&json!({
-                "target_kind": "note",
-                "target_id": note_id,
+                "target_kind": "note_version",
+                "target_id": version_id,
                 "body": "fix this line",
                 "anchor_text": "line two",
+                "anchor_side": "new",
+                "start_line": 2,
+                "end_line": 2,
             }))
             .await;
         res.assert_status(StatusCode::CREATED);
@@ -398,7 +413,7 @@ mod tests {
             normalize(res.json()),
             json!({
                 "id": "<id>",
-                "target_kind": "note",
+                "target_kind": "note_version",
                 "target_id": "<target_id>",
                 "parent_id": null,
                 "body": "fix this line",
@@ -407,15 +422,15 @@ mod tests {
                 "resolved": false,
                 "created_at": "<created_at>",
                 "anchor_text": "line two",
+                "anchor_side": "new",
                 "start_line": 2,
                 "end_line": 2,
-                "drifted": false,
             }),
         );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn create_comment_with_missing_anchor_text_marks_drifted(pool: PgPool) {
+    async fn create_comment_keeps_quote_with_explicit_line_anchor(pool: PgPool) {
         let server = create_test_server(pool).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
         let note_id = create_note(
@@ -427,14 +442,18 @@ mod tests {
                 line three"},
         )
         .await;
+        let version_id = first_note_version_id(&server, &note_id).await;
 
         let res = server
             .post("/api/comments")
             .json(&json!({
-                "target_kind": "note",
-                "target_id": note_id,
+                "target_kind": "note_version",
+                "target_id": version_id,
                 "body": "fix this line",
                 "anchor_text": "line that no longer exists",
+                "anchor_side": "new",
+                "start_line": 3,
+                "end_line": 3,
             }))
             .await;
         res.assert_status(StatusCode::CREATED);
@@ -442,7 +461,7 @@ mod tests {
             normalize(res.json()),
             json!({
                 "id": "<id>",
-                "target_kind": "note",
+                "target_kind": "note_version",
                 "target_id": "<target_id>",
                 "parent_id": null,
                 "body": "fix this line",
@@ -451,9 +470,9 @@ mod tests {
                 "resolved": false,
                 "created_at": "<created_at>",
                 "anchor_text": "line that no longer exists",
-                "start_line": null,
-                "end_line": null,
-                "drifted": true,
+                "anchor_side": "new",
+                "start_line": 3,
+                "end_line": 3,
             }),
         );
     }
@@ -489,9 +508,9 @@ mod tests {
                 "resolved": false,
                 "created_at": "<created_at>",
                 "anchor_text": "some selected text",
+                "anchor_side": null,
                 "start_line": null,
                 "end_line": null,
-                "drifted": false,
             }),
         );
     }

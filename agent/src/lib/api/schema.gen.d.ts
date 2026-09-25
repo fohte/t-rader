@@ -732,6 +732,23 @@ export interface paths {
     patch: operations['update_note_kind']
     trace?: never
   }
+  '/api/note-versions/pending': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** 承認待ちバージョンを作成日時順に返す。 */
+    get: operations['list_pending_note_versions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes': {
     parameters: {
       query?: never
@@ -767,23 +784,6 @@ export interface paths {
     head?: never
     /** ノート更新 */
     patch: operations['update_note']
-    trace?: never
-  }
-  '/api/notes/{id}/approve': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** ノートを approved に遷移 */
-    post: operations['approve_note']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
     trace?: never
   }
   '/api/notes/{id}/hypotheses': {
@@ -858,7 +858,41 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/api/notes/{id}/reject': {
+  '/api/notes/{id}/versions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートの全バージョンを古い順に返す。 */
+    get: operations['list_note_versions']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}/versions/{n}': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートの指定バージョンを返す。 */
+    get: operations['get_note_version']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}/versions/{n}/approve': {
     parameters: {
       query?: never
       header?: never
@@ -867,8 +901,42 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** ノートを rejected に遷移 */
-    post: operations['reject_note']
+    /** 承認待ちバージョンを承認し、現行バージョンにする。 */
+    post: operations['approve_note_version']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}/versions/{n}/make-current': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** 承認済みの過去バージョンを現行にする。 */
+    post: operations['make_note_version_current']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}/versions/{n}/reject': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** 承認待ちバージョンを却下する。 */
+    post: operations['reject_note_version']
     delete?: never
     options?: never
     head?: never
@@ -1575,13 +1643,13 @@ export interface components {
       label?: string | null
     }
     Comment: {
+      anchor_side?: string | null
       anchor_text?: string | null
       author_kind: string
       author_label: string
       body: string
       /** Format: date-time */
       created_at: string
-      drifted: boolean
       /** Format: int32 */
       end_line?: number | null
       /** Format: uuid */
@@ -1595,6 +1663,8 @@ export interface components {
       target_id: string
       target_kind: string
     }
+    /** @enum {string} */
+    CommentAnchorSide: 'old' | 'new'
     /** @description `GET /api/config` の戻り値。frontend に渡す軽量なランタイム設定値。 */
     ConfigResponse: {
       /**
@@ -1629,20 +1699,28 @@ export interface components {
       timestamp: string
     }
     CreateCommentRequest: {
-      /**
-       * @description コメント時点で選択された本文の該当箇所全文。target_kind が "note" の場合のみ
-       *     note 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。
-       */
+      anchor_side?: null | components['schemas']['CommentAnchorSide']
+      /** @description 行コメントに添える引用文。空行では空文字になる場合がある。 */
       anchor_text?: string | null
       /** @description "human" | "llm"。デフォルトは "human" */
       author_kind?: string | null
       author_label?: string | null
       body: string
+      /**
+       * Format: int32
+       * @description note_version 本文上の 1-indexed の終了行。
+       */
+      end_line?: number | null
       /** Format: uuid */
       parent_id?: string | null
+      /**
+       * Format: int32
+       * @description note_version 本文上の 1-indexed の開始行。
+       */
+      start_line?: number | null
       /** Format: uuid */
       target_id: string
-      /** @description "note" | "annotation" */
+      /** @description "note_version" | "annotation" */
       target_kind: string
     }
     CreateCustomIndicatorRequest: {
@@ -1982,6 +2060,27 @@ export interface components {
      * @enum {string}
      */
     NoteTrigger: 'hook' | 'cron' | 'on-demand' | 'manual'
+    NoteVersion: {
+      body_md: string
+      change_reason?: string | null
+      /** Format: date-time */
+      created_at: string
+      created_by_kind: string
+      execution_id?: string | null
+      frontmatter_json: components['schemas']['Value']
+      graphs_json: components['schemas']['GraphDef'][]
+      /** Format: uuid */
+      id: string
+      is_current: boolean
+      /** Format: uuid */
+      note_id: string
+      /** Format: date-time */
+      reviewed_at?: string | null
+      status: string
+      title: string
+      /** Format: int32 */
+      version_no: number
+    }
     /** @description 戦略単位もしくはポートフォリオ全体の損益サマリ */
     PerformanceSummary: {
       positions: components['schemas']['PositionSummary'][]
@@ -5589,6 +5688,33 @@ export interface operations {
       }
     }
   }
+  list_pending_note_versions: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteVersion'][]
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
   list_notes: {
     parameters: {
       query?: {
@@ -5795,75 +5921,6 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['UpdateNoteRequest']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Note']
-        }
-      }
-      /** @description リクエストパラメータが不正 */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description リクエストボディのパースに失敗 */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  approve_note: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description ノート ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ChangeStatusRequest']
       }
     }
     responses: {
@@ -6184,13 +6241,111 @@ export interface operations {
       }
     }
   }
-  reject_note: {
+  list_note_versions: {
     parameters: {
       query?: never
       header?: never
       path: {
         /** @description ノート ID */
         id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteVersion'][]
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_note_version: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+        /** @description バージョン番号 */
+        n: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteVersion']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  approve_note_version: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+        /** @description バージョン番号 */
+        n: number
       }
       cookie?: never
     }
@@ -6205,7 +6360,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          'application/json': components['schemas']['Note']
+          'application/json': components['schemas']['NoteVersion']
         }
       }
       /** @description リクエストパラメータが不正 */
@@ -6218,6 +6373,152 @@ export interface operations {
         }
       }
       404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description バージョンが承認待ちではない */
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description Content-Type ヘッダが application/json ではない */
+      415: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description リクエストボディのパースに失敗 */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  make_note_version_current: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+        /** @description バージョン番号 */
+        n: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteVersion']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      409: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  reject_note_version: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+        /** @description バージョン番号 */
+        n: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ChangeStatusRequest']
+      }
+    }
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteVersion']
+        }
+      }
+      /** @description リクエストパラメータが不正、または却下理由が必要 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      /** @description バージョンが承認待ちではない */
+      409: {
         headers: {
           [name: string]: unknown
         }

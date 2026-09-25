@@ -29,8 +29,6 @@ jobs:
       # 変更として扱う」ルールを生成し、exclude/extra だけを明示的な例外として合成する。
       # コンポーネントの実体 (どのディレクトリを持つか) は build job の context/file 解決とこの
       # ファイル 1 箇所だけで定義する。
-      # backend.extra の agent/openapi.json は、backend/build.rs が progenitor で agent の
-      # 内部 API client を生成する際に読むため。
       - id: components
         run: |
           all=$(jq -c 'keys' "$COMPONENTS_FILE")

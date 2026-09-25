@@ -4120,6 +4120,40 @@
         }
       }
     },
+    "/api/note-versions/pending": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認待ちバージョンを作成日時順に返す。",
+        "operationId": "list_pending_note_versions",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteVersion"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes": {
       "get": {
         "tags": [
@@ -4409,99 +4443,6 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateNoteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Note"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "リクエストパラメータが不正",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "リクエストボディのパースに失敗",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/notes/{id}/approve": {
-      "post": {
-        "tags": [
-          "notes"
-        ],
-        "summary": "ノートを approved に遷移",
-        "operationId": "approve_note",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "ノート ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangeStatusRequest"
               }
             }
           },
@@ -4943,13 +4884,13 @@
         }
       }
     },
-    "/api/notes/{id}/reject": {
-      "post": {
+    "/api/notes/{id}/versions": {
+      "get": {
         "tags": [
           "notes"
         ],
-        "summary": "ノートを rejected に遷移",
-        "operationId": "reject_note",
+        "summary": "ノートの全バージョンを古い順に返す。",
+        "operationId": "list_note_versions",
         "parameters": [
           {
             "name": "id",
@@ -4959,6 +4900,155 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteVersion"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートの指定バージョンを返す。",
+        "operationId": "get_note_version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}/approve": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認待ちバージョンを承認し、現行バージョンにする。",
+        "operationId": "approve_note_version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
             }
           }
         ],
@@ -4978,7 +5068,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Note"
+                  "$ref": "#/components/schemas/NoteVersion"
                 }
               }
             }
@@ -4995,6 +5085,212 @@
           },
           "404": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "バージョンが承認待ちではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}/make-current": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認済みの過去バージョンを現行にする。",
+        "operationId": "make_note_version_current",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}/reject": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認待ちバージョンを却下する。",
+        "operationId": "reject_note_version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正、または却下理由が必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "バージョンが承認待ちではない",
             "content": {
               "application/json": {
                 "schema": {
@@ -8990,10 +9286,15 @@
           "author_kind",
           "author_label",
           "created_at",
-          "resolved",
-          "drifted"
+          "resolved"
         ],
         "properties": {
+          "anchor_side": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "anchor_text": {
             "type": [
               "string",
@@ -9012,9 +9313,6 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
-          },
-          "drifted": {
-            "type": "boolean"
           },
           "end_line": {
             "type": [
@@ -9052,6 +9350,13 @@
             "type": "string"
           }
         }
+      },
+      "CommentAnchorSide": {
+        "type": "string",
+        "enum": [
+          "old",
+          "new"
+        ]
       },
       "ConfigResponse": {
         "type": "object",
@@ -9149,12 +9454,23 @@
           "body"
         ],
         "properties": {
+          "anchor_side": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommentAnchorSide",
+                "description": "note_version のどちら側の本文に対する行コメントか。"
+              }
+            ]
+          },
           "anchor_text": {
             "type": [
               "string",
               "null"
             ],
-            "description": "コメント時点で選択された本文の該当箇所全文。target_kind が \"note\" の場合のみ\nnote 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。"
+            "description": "行コメントに添える引用文。空行では空文字になる場合がある。"
           },
           "author_kind": {
             "type": [
@@ -9173,6 +9489,15 @@
             "type": "string",
             "minLength": 1
           },
+          "end_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "note_version 本文上の 1-indexed の終了行。",
+            "minimum": 1
+          },
           "parent_id": {
             "type": [
               "string",
@@ -9180,13 +9505,22 @@
             ],
             "format": "uuid"
           },
+          "start_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "note_version 本文上の 1-indexed の開始行。",
+            "minimum": 1
+          },
           "target_id": {
             "type": "string",
             "format": "uuid"
           },
           "target_kind": {
             "type": "string",
-            "description": "\"note\" | \"annotation\""
+            "description": "\"note_version\" | \"annotation\""
           }
         },
         "additionalProperties": false
@@ -10287,6 +10621,83 @@
           "on-demand",
           "manual"
         ]
+      },
+      "NoteVersion": {
+        "type": "object",
+        "required": [
+          "id",
+          "note_id",
+          "version_no",
+          "title",
+          "body_md",
+          "frontmatter_json",
+          "graphs_json",
+          "status",
+          "is_current",
+          "created_by_kind",
+          "created_at"
+        ],
+        "properties": {
+          "body_md": {
+            "type": "string"
+          },
+          "change_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by_kind": {
+            "type": "string"
+          },
+          "execution_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frontmatter_json": {
+            "$ref": "#/components/schemas/Value"
+          },
+          "graphs_json": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphDef"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_current": {
+            "type": "boolean"
+          },
+          "note_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version_no": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
       },
       "PerformanceSummary": {
         "type": "object",

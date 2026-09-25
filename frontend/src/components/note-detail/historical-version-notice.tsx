@@ -17,7 +17,7 @@ export function HistoricalVersionNotice({
       <Link
         to="/notes/$noteId"
         params={{ noteId }}
-        search={{ version_id: undefined }}
+        search={{ version: undefined, version_id: undefined }}
         className="mt-2 inline-block text-primary hover:underline"
       >
         現行バージョンを開く

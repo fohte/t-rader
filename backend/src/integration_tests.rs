@@ -82,9 +82,16 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
     note_res.assert_status(axum::http::StatusCode::CREATED);
     let note_body: Value = note_res.json();
     let note_id = Uuid::parse_str(note_body["id"].as_str().unwrap()).unwrap();
+    let version = crate::services::note_versions::find_current_version(&db, note_id)
+        .await
+        .unwrap()
+        .unwrap();
     let res = server
-        .post(&format!("/api/notes/{note_id}/reject"))
-        .json(&json!({}))
+        .post(&format!(
+            "/api/notes/{note_id}/versions/{}/reject",
+            version.version_no
+        ))
+        .json(&json!({"label": "確認事項"}))
         .await;
     res.assert_status_ok();
 
@@ -124,8 +131,8 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
             (
                 "review".to_string(),
                 format!(
-                    "ノート「note」(id: {note_id}) がレビューで却下されました。\
-付いているコメントを確認し、指摘を反映してください。"
+                    "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。付いているコメントを確認し、指摘を反映してください。",
+                    version.version_no, version.id,
                 ),
                 StrategyTaskPhase::Running
             ),
@@ -149,8 +156,8 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
             "from hook".to_string(),
             "from mgmt".to_string(),
             format!(
-                "ノート「note」(id: {note_id}) がレビューで却下されました。\
-付いているコメントを確認し、指摘を反映してください。"
+                "ノート「note」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。付いているコメントを確認し、指摘を反映してください。",
+                version.version_no, version.id,
             ),
         ],
     );
