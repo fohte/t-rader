@@ -5,7 +5,6 @@ use core_domain::valuation::Valuation;
 use super::JQuantsClient;
 use super::response::ValuationRecord;
 use crate::data_provider::{DataProviderError, DateRange, ValuationSource, ValuationSourceError};
-use crate::models::jquants_plan::JQuantsPlan;
 
 #[async_trait]
 impl ValuationSource for JQuantsClient {
@@ -23,18 +22,7 @@ impl ValuationSource for JQuantsClient {
 
     /// Valuation は Standard 以上でのみ提供される。
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        match self.manual_plan() {
-            Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
-                self.manual_plan_date_range(today)
-            }
-            plan => {
-                tracing::debug!(
-                    ?plan,
-                    "valuation は Standard 以上の契約プランが必要なため取得できません"
-                );
-                None
-            }
-        }
+        self.standard_plan_date_range(today, "valuation")
     }
 }
 
@@ -66,6 +54,7 @@ mod tests {
 
     use super::*;
     use crate::data_provider::jquants::mock::JQuantsMockServer;
+    use crate::models::jquants_plan::JQuantsPlan;
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")

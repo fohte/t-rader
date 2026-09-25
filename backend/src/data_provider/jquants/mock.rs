@@ -316,6 +316,31 @@ pub(crate) struct MockEarningsDateBuilder<'a> {
     items: Vec<serde_json::Value>,
 }
 
+impl<'a> MockEarningsDateBuilder<'a> {
+    pub fn date(mut self, date: &'a str) -> Self {
+        self.date = date;
+        self
+    }
+
+    pub fn items(mut self, items: Vec<serde_json::Value>) -> Self {
+        self.items = items;
+        self
+    }
+
+    pub async fn ok(self) {
+        Mock::given(method("GET"))
+            .and(path("/fins/earnings-date"))
+            .and(query_param("date", self.date))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": self.items,
+                "pagination_key": Option::<&str>::None,
+            })))
+            .mount(self.server)
+            .await;
+    }
+}
+
 pub(crate) struct MockValuationBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
@@ -336,31 +361,6 @@ impl<'a> MockValuationBuilder<'a> {
     pub async fn ok(self) {
         Mock::given(method("GET"))
             .and(path("/equities/valuation"))
-            .and(query_param("date", self.date))
-            .and(header("x-api-key", "test-api-key"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "data": self.items,
-                "pagination_key": Option::<&str>::None,
-            })))
-            .mount(self.server)
-            .await;
-    }
-}
-
-impl<'a> MockEarningsDateBuilder<'a> {
-    pub fn date(mut self, date: &'a str) -> Self {
-        self.date = date;
-        self
-    }
-
-    pub fn items(mut self, items: Vec<serde_json::Value>) -> Self {
-        self.items = items;
-        self
-    }
-
-    pub async fn ok(self) {
-        Mock::given(method("GET"))
-            .and(path("/fins/earnings-date"))
             .and(query_param("date", self.date))
             .and(header("x-api-key", "test-api-key"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({

@@ -167,6 +167,27 @@ impl JQuantsClient {
         Some(DateRange { from, to })
     }
 
+    /// Standard 以上で利用できるデータの取得範囲を返す。
+    pub(crate) fn standard_plan_date_range(
+        &self,
+        today: NaiveDate,
+        data_name: &str,
+    ) -> Option<DateRange> {
+        match self.manual_plan() {
+            Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
+                self.manual_plan_date_range(today)
+            }
+            plan => {
+                tracing::debug!(
+                    ?plan,
+                    data_name,
+                    "Standard 以上の契約プランが必要なため取得できません"
+                );
+                None
+            }
+        }
+    }
+
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
     ///
     /// 契約プランが設定されていれば、その公称値に `RATE_LIMIT_SAFETY_FACTOR` による

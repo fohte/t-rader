@@ -209,15 +209,62 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use std::sync::Mutex;
 
+    use async_trait::async_trait;
     use chrono::NaiveDate;
-    use sea_orm::{DatabaseBackend, MockDatabase};
+    use core_application::{DateRange, ValuationSource, ValuationSourceError};
+    use core_domain::valuation::Valuation;
+    use rust_decimal::Decimal;
+    use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};
+    use sqlx::PgPool;
 
     use super::*;
     use crate::data_provider::jquants::mock::JQuantsMockServer;
+    use crate::testing::create_test_db;
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
+    }
+
+    struct TestValuationSource {
+        range: Option<DateRange>,
+        items: Vec<Valuation>,
+        requested_dates: Mutex<Vec<NaiveDate>>,
+    }
+
+    #[async_trait]
+    impl ValuationSource for TestValuationSource {
+        async fn fetch_valuations_by_date(
+            &self,
+            date: NaiveDate,
+        ) -> Result<Vec<Valuation>, ValuationSourceError> {
+            self.requested_dates
+                .lock()
+                .expect("requests lock")
+                .push(date);
+            Ok(self.items.clone())
+        }
+
+        fn fetchable_range(&self, _today: NaiveDate) -> Option<DateRange> {
+            self.range.clone()
+        }
+    }
+
+    fn sample_valuation(date: NaiveDate) -> Valuation {
+        Valuation {
+            code: "ZZZZ0".to_string(),
+            date,
+            eps: Some(Decimal::new(125, 1)),
+            fwd_eps: None,
+            bps: None,
+            roe: None,
+            fwd_roe: None,
+            per: None,
+            fwd_per: None,
+            pbr: None,
+            mkt_cap: None,
+        }
     }
 
     #[tokio::test]
@@ -244,15 +291,8 @@ mod tests {
 
     #[test]
     fn selects_recent_refetch_window_and_missing_dates() {
-        let mut business_days = Vec::new();
-        let mut candidate = date(2099, 1, 1);
-        while business_days.len() < 10 {
-            if latest_business_day(candidate) == candidate {
-                business_days.push(candidate);
-            }
-            candidate += ChronoDuration::days(1);
-        }
-        let ingested = HashSet::from([business_days[1], business_days[2]]);
+        let business_days = recent_business_days(date(2099, 1, 5), 10);
+        let ingested = HashSet::from([business_days[1], business_days[2], business_days[8]]);
 
         assert_eq!(
             target_dates(&business_days, &ingested),
@@ -266,6 +306,91 @@ mod tests {
                 business_days[8],
                 business_days[9],
             ],
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn ingests_valuations_and_marks_non_empty_dates(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let to = latest_business_day(Utc::now().date_naive());
+        let expected_valuation = sample_valuation(to);
+        let source = TestValuationSource {
+            range: Some(DateRange { from: to, to }),
+            items: vec![expected_valuation.clone()],
+            requested_dates: Mutex::new(Vec::new()),
+        };
+
+        let stats = run_ingest_cycle(&db, &source).await.expect("cycle ok");
+        let rows = valuation::Entity::find()
+            .all(&db)
+            .await
+            .expect("query valuations");
+        let ingested = find_ingested_dates(&db, to).await.expect("query dates");
+        let requested_dates = source
+            .requested_dates
+            .lock()
+            .expect("requests lock")
+            .clone();
+
+        assert_eq!(
+            (stats, rows, ingested, requested_dates),
+            (
+                IngestStats {
+                    days_attempted: 1,
+                    rows_upserted: 1,
+                },
+                vec![valuation::Model {
+                    code: expected_valuation.code,
+                    date: expected_valuation.date,
+                    eps: expected_valuation.eps,
+                    fwd_eps: expected_valuation.fwd_eps,
+                    bps: expected_valuation.bps,
+                    roe: expected_valuation.roe,
+                    fwd_roe: expected_valuation.fwd_roe,
+                    per: expected_valuation.per,
+                    fwd_per: expected_valuation.fwd_per,
+                    pbr: expected_valuation.pbr,
+                    mkt_cap: expected_valuation.mkt_cap,
+                }],
+                HashSet::from([to]),
+                vec![to],
+            )
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn does_not_mark_empty_valuation_dates_as_ingested(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let to = latest_business_day(Utc::now().date_naive());
+        let source = TestValuationSource {
+            range: Some(DateRange { from: to, to }),
+            items: Vec::new(),
+            requested_dates: Mutex::new(Vec::new()),
+        };
+
+        let stats = run_ingest_cycle(&db, &source).await.expect("cycle ok");
+        let rows = valuation::Entity::find()
+            .all(&db)
+            .await
+            .expect("query valuations");
+        let ingested = find_ingested_dates(&db, to).await.expect("query dates");
+        let requested_dates = source
+            .requested_dates
+            .lock()
+            .expect("requests lock")
+            .clone();
+
+        assert_eq!(
+            (stats, rows, ingested, requested_dates),
+            (
+                IngestStats {
+                    days_attempted: 1,
+                    rows_upserted: 0,
+                },
+                Vec::<valuation::Model>::new(),
+                HashSet::new(),
+                vec![to],
+            )
         );
     }
 }
