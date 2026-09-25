@@ -59,7 +59,7 @@ expected-statuses = ["2xx", "4xx", 503]
 # 寄せ、agent のテスト・backend の client テスト・CI のスタブの 3 箇所が同じファイルを
 # 参照するようにすれば、この allowlist を撤去できる。
 [[operations]]
-include-path-regex = "^/api/(notes|annotations)/[^/]+/reject$"
+include-path-regex = "^/api/(notes/[^/]+/versions/[^/]+|annotations/[^/]+)/reject$"
 [operations.checks.not_a_server_error]
 expected-statuses = ["2xx", "4xx", 503]
 

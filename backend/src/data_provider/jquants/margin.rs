@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::NaiveDate;
 
 use super::JQuantsClient;
@@ -5,8 +6,30 @@ use super::response::{
     MarginAlertApi, MarginAlertResponse, MarginInterestApi, MarginInterestResponse,
     flexible_decimal, flexible_i64,
 };
-use crate::data_provider::DataProviderError;
+use crate::data_provider::{DataProviderError, DateRange, MarginSource, MarginSourceError};
 use crate::models::margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
+
+#[async_trait]
+impl MarginSource for JQuantsClient {
+    async fn fetch_margin_interest(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<MarginInterestRecord>, MarginSourceError> {
+        Ok(JQuantsClient::fetch_margin_interest(self, date).await?)
+    }
+
+    async fn fetch_margin_alert(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<MarginAlertRecord>, MarginSourceError> {
+        Ok(JQuantsClient::fetch_margin_alert(self, date).await?)
+    }
+
+    /// 契約プランが手動設定されている間だけ取得できる (未設定時のレート制限は 5 req/min のため)。
+    fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
+        self.manual_plan_date_range(today)
+    }
+}
 
 impl JQuantsClient {
     /// `/markets/margin-interest` から指定日の全銘柄分を取得する (日付のみ指定、code は使わない)

@@ -1,15 +1,17 @@
+use async_trait::async_trait;
+use core_domain::equity_master::EquityMasterEntry;
+
 use super::JQuantsClient;
 use super::response::EquitiesMasterResponse;
-use crate::data_provider::DataProviderError;
+use crate::data_provider::{DataProviderError, EquityMasterSource, EquityMasterSourceError};
 
-/// `fetch_all_equities_master` が返す 1 銘柄分のマスタ情報。`id` は 4 桁規約に正規化済み。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EquityMasterEntry {
-    pub id: String,
-    pub name: String,
-    pub market: Option<String>,
-    pub sector_name: Option<String>,
-    pub product_category: Option<String>,
+#[async_trait]
+impl EquityMasterSource for JQuantsClient {
+    async fn fetch_all_equities_master(
+        &self,
+    ) -> Result<Vec<EquityMasterEntry>, EquityMasterSourceError> {
+        Ok(JQuantsClient::fetch_all_equities_master(self).await?)
+    }
 }
 
 impl JQuantsClient {

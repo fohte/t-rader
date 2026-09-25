@@ -16,6 +16,9 @@ type Note = components['schemas']['Note']
 function makeNote(overrides: Partial<Note> = {}): Note {
   return {
     id: overrides.id ?? crypto.randomUUID(),
+    version_id: overrides.version_id ?? crypto.randomUUID(),
+    version_no: overrides.version_no ?? 1,
+    is_current: overrides.is_current ?? true,
     strategy_id: overrides.strategy_id ?? null,
     title: overrides.title ?? 'title',
     body_md: overrides.body_md ?? 'body',

@@ -5,10 +5,12 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, ResponseTemplate};
 
-use crate::data_provider::ibkr::mock::{IbkrMockServer, MockHistoryBar};
-use crate::data_provider::{DataProvider, DataProviderError, DataProviderKind, DateRange};
-use crate::models::bar::{Bar, Timeframe};
-use crate::models::instrument::Market;
+use core_application::DateRange;
+use core_domain::bar::{Bar, Timeframe};
+use core_domain::instrument::Market;
+
+use crate::IbkrError;
+use crate::mock::{IbkrMockServer, MockHistoryBar};
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap_or_default()
@@ -43,7 +45,7 @@ mod fetch_instrument {
 
     #[rstest]
     #[tokio::test]
-    async fn test_resolves_via_tsej_contract() -> Result<(), DataProviderError> {
+    async fn test_resolves_via_tsej_contract() -> Result<(), IbkrError> {
         let mock = IbkrMockServer::start().await;
         mock.stocks()
             .symbol("7203")
@@ -57,7 +59,7 @@ mod fetch_instrument {
 
         assert_eq!(
             instrument,
-            crate::models::instrument::Instrument {
+            core_domain::instrument::Instrument {
                 id: "7203".to_string(),
                 name: "TOYOTA MOTOR CORP".to_string(),
                 market: Market::Tse,
@@ -76,7 +78,7 @@ mod fetch_instrument {
 
         let client = mock.client().unwrap();
         let result = client.fetch_instrument("9999").await;
-        assert!(matches!(result, Err(DataProviderError::NotFound(_))));
+        assert!(matches!(result, Err(IbkrError::NotFound(_))));
     }
 
     #[rstest]
@@ -92,7 +94,7 @@ mod fetch_instrument {
 
         let client = mock.client().unwrap();
         let result = client.fetch_instrument("7203").await;
-        assert!(matches!(result, Err(DataProviderError::NotFound(_))));
+        assert!(matches!(result, Err(IbkrError::NotFound(_))));
     }
 }
 
@@ -103,7 +105,7 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[tokio::test]
-    async fn test_parses_bars_in_range() -> Result<(), DataProviderError> {
+    async fn test_parses_bars_in_range() -> Result<(), IbkrError> {
         let mock = IbkrMockServer::start().await;
         mock.stocks()
             .symbol("7203")
@@ -134,7 +136,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
 
         let expected = vec![
             Bar {
@@ -166,7 +170,7 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[tokio::test]
-    async fn test_filters_bars_outside_range() -> Result<(), DataProviderError> {
+    async fn test_filters_bars_outside_range() -> Result<(), IbkrError> {
         let mock = IbkrMockServer::start().await;
         mock.stocks()
             .symbol("7203")
@@ -206,7 +210,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
 
         let expected = vec![Bar {
             instrument_id: "7203".to_string(),
@@ -225,7 +231,7 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[tokio::test]
-    async fn test_returns_empty_when_history_empty() -> Result<(), DataProviderError> {
+    async fn test_returns_empty_when_history_empty() -> Result<(), IbkrError> {
         let mock = IbkrMockServer::start().await;
         mock.stocks()
             .symbol("7203")
@@ -235,7 +241,9 @@ mod fetch_daily_bars {
         mock.history().conid(12345).bars(vec![]).ok().await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
         assert_eq!(bars, vec![]);
         Ok(())
     }
@@ -248,7 +256,7 @@ mod error_handling {
 
     #[rstest]
     #[tokio::test]
-    async fn test_retries_on_5xx_then_succeeds() -> Result<(), DataProviderError> {
+    async fn test_retries_on_5xx_then_succeeds() -> Result<(), IbkrError> {
         let mock = IbkrMockServer::start().await;
 
         // 最初の 2 回は 500、その後成功するパターン
@@ -283,43 +291,7 @@ mod error_handling {
 
         let client = mock.client().unwrap();
         let result = client.fetch_instrument("7203").await;
-        assert!(matches!(
-            result,
-            Err(DataProviderError::Api { status: 401, .. })
-        ));
-    }
-}
-
-// === DataProviderKind ===
-
-mod data_provider_kind {
-    use super::*;
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_delegates_fetch_instrument_to_ibkr() -> Result<(), DataProviderError> {
-        let mock = IbkrMockServer::start().await;
-        mock.stocks()
-            .symbol("7203")
-            .name(Some("TOYOTA MOTOR CORP"))
-            .contracts(vec![("TSEJ", 12345)])
-            .ok()
-            .await;
-
-        let client = mock.client()?;
-        let kind = DataProviderKind::Ibkr(client);
-        let instrument = kind.fetch_instrument("7203").await?;
-        assert_eq!(
-            instrument,
-            crate::models::instrument::Instrument {
-                id: "7203".to_string(),
-                name: "TOYOTA MOTOR CORP".to_string(),
-                market: Market::Tse,
-                sector: None,
-                product_category: None,
-            }
-        );
-        Ok(())
+        assert!(matches!(result, Err(IbkrError::Api { status: 401, .. })));
     }
 }
 
@@ -330,7 +302,7 @@ mod data_provider_kind {
 async fn ibkr_live_smoke() {
     let base = std::env::var("IBKR_BASE_URL").expect("IBKR_BASE_URL");
     let token = std::env::var("IBKR_SESSION_TOKEN").ok();
-    let client = crate::data_provider::ibkr::IbkrClient::new(Some(base), token, None).unwrap();
+    let client = crate::IbkrClient::new(Some(base), token, None).unwrap();
     let instrument = client.fetch_instrument("7203").await.unwrap();
     assert_eq!(instrument.id, "7203");
 }

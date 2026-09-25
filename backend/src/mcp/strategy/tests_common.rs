@@ -38,6 +38,7 @@ pub(super) fn ts_sentinel() -> DateTime<FixedOffset> {
 }
 
 pub(super) fn normalize_note(mut n: NoteDto) -> NoteDto {
+    n.version_id = Uuid::nil();
     n.created_at = ts_sentinel();
     n.updated_at = ts_sentinel();
     n

@@ -8,8 +8,7 @@ use backend::agent_client::{
 };
 use backend::cli::Cli;
 use backend::create_router;
-use backend::data_provider::DataProviderKind;
-use backend::data_provider::ibkr::IbkrClient;
+use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
@@ -18,6 +17,7 @@ use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, Share
 use clap::Parser;
 use core_application::{IndicatorObservationSource, SharedNewsAggregator};
 use gateway_fred::FredClient;
+use gateway_ibkr::IbkrClient;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
 
@@ -76,10 +76,10 @@ async fn main() -> Result<(), AppError> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "jquants".to_string());
 
-    let data_provider = match provider_kind.as_str() {
+    let (daily_bar_source, jquants_client) = match provider_kind.as_str() {
         "none" => {
-            tracing::info!("DATA_PROVIDER=none: DataProvider を無効化して起動します");
-            None
+            tracing::info!("DATA_PROVIDER=none: 日足データの取得元を無効化して起動します");
+            (None, None)
         }
         "ibkr" => {
             let base_url = std::env::var("IBKR_BASE_URL")
@@ -91,13 +91,18 @@ async fn main() -> Result<(), AppError> {
             let exchange = std::env::var("IBKR_EXCHANGE")
                 .ok()
                 .filter(|s| !s.is_empty());
-            let client = IbkrClient::new(base_url, session_token, exchange)?;
-            tracing::info!("IBKR DataProvider を初期化しました");
-            Some(Arc::new(DataProviderKind::Ibkr(client)))
+            let client = Arc::new(
+                IbkrClient::new(base_url, session_token, exchange).map_err(|e| {
+                    AppError::Config(format!("failed to initialize IBKR client: {e}"))
+                })?,
+            );
+            tracing::info!("IBKR 日足データ取得元を初期化しました");
+            let source: SharedDailyBarSource = client;
+            (Some(source), None)
         }
         "jquants" => match std::env::var("JQUANTS_API_KEY") {
             Ok(api_key) if !api_key.is_empty() => {
-                let client = JQuantsClient::new(api_key)?;
+                let client = Arc::new(JQuantsClient::new(api_key)?.with_db(db.clone()));
                 let manual_plan =
                     backend::services::jquants_plan_setting::find_current(&db)
                         .await?
@@ -109,12 +114,13 @@ async fn main() -> Result<(), AppError> {
                         .transpose()?
                         .and_then(|data| data.plan);
                 client.set_manual_plan(manual_plan);
-                tracing::info!("J-Quants DataProvider を初期化しました");
-                Some(Arc::new(DataProviderKind::JQuants(client)))
+                tracing::info!("J-Quants 日足データ取得元を初期化しました");
+                let source: SharedDailyBarSource = client.clone();
+                (Some(source), Some(client))
             }
             _ => {
-                tracing::warn!("JQUANTS_API_KEY が未設定のため、DataProvider なしで起動します");
-                None
+                tracing::warn!("JQUANTS_API_KEY が未設定のため、日足データ取得元なしで起動します");
+                (None, None)
             }
         },
         other => {
@@ -241,13 +247,10 @@ async fn main() -> Result<(), AppError> {
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
-    // IBKR provider には業種・財務情報に対応するデータが無いため対象外。
-    if let Some(provider) = &data_provider
-        && matches!(provider.as_ref(), DataProviderKind::JQuants(_))
-    {
+    if let Some(client) = &jquants_client {
         let _stock_master_sync_poll = backend::services::stock_master_sync::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::stock_master_sync::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -258,7 +261,7 @@ async fn main() -> Result<(), AppError> {
         let _short_sale_report_ingest_poll =
             backend::services::short_sale_report_ingest::spawn_poll(
                 db.clone(),
-                provider.clone(),
+                client.clone(),
                 backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
             );
         tracing::info!(
@@ -268,7 +271,7 @@ async fn main() -> Result<(), AppError> {
 
         let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -278,7 +281,7 @@ async fn main() -> Result<(), AppError> {
 
         let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::margin_ingest::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -288,7 +291,7 @@ async fn main() -> Result<(), AppError> {
 
         let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::fin_summary_ingest::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -298,7 +301,7 @@ async fn main() -> Result<(), AppError> {
 
         let _earnings_date_ingest_poll = backend::services::earnings_date_ingest::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::earnings_date_ingest::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -308,7 +311,7 @@ async fn main() -> Result<(), AppError> {
 
         let _edinet_holdings_poll = backend::services::edinet_holdings::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::edinet_holdings::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -318,7 +321,7 @@ async fn main() -> Result<(), AppError> {
 
         let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -328,7 +331,7 @@ async fn main() -> Result<(), AppError> {
 
         let _valuation_ingest_poll = backend::services::valuation_ingest::spawn_poll(
             db.clone(),
-            provider.clone(),
+            client.clone(),
             backend::services::valuation_ingest::DEFAULT_INTERVAL,
         );
         tracing::info!(
@@ -342,7 +345,8 @@ async fn main() -> Result<(), AppError> {
 
     let state = AppState {
         db,
-        data_provider,
+        daily_bar_source,
+        jquants_client,
         agent_task_client,
         agent_task_notify,
         agent_webhook_token: Arc::from(agent_webhook_token),

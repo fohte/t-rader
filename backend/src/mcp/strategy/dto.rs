@@ -175,6 +175,8 @@ pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
     pub note_id: Option<Uuid>,
     pub title: Option<String>,
+    /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+    /// `@current` を付けると以降の現行バージョンに追従する。
     pub body_md: Option<String>,
     /// `null` を明示すると既存タグを NULL に更新する。フィールド省略時は変更しない。
     #[serde(
@@ -200,12 +202,26 @@ pub struct WriteNoteResult {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadNoteParams {
     pub note_id: Uuid,
+    /// 省略時は現行バージョンを読む。
+    pub version_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct NoteLinkDto {
+    /// 参照先ノート ID。
+    pub to_note_id: Uuid,
+    /// 固定したバージョン ID。null の場合は参照先ノートの現行バージョンに追従する。
+    pub to_version_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
     pub strategy_id: Uuid,
+    /// 本文が属するバージョン ID。`read_comments` の `target_id` に使う。
+    pub version_id: Uuid,
+    /// ノート内のバージョン番号。
+    pub version_no: i32,
     pub title: String,
     /// `list_notes` で `include_body: false` を指定したときのみ省略される (null)。
     /// `read_note` の結果では常に値を含む
@@ -217,6 +233,9 @@ pub struct NoteDto {
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
     pub graphs: Vec<GraphDef>,
+    /// `read_note` の結果でのみ含まれる、このバージョンから出るリンク。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<NoteLinkDto>>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -275,41 +294,6 @@ pub struct ReadAnnotationsParams {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadAnnotationsResult {
     pub annotations: Vec<AnnotationDto>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct AddInterestParams {
-    /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
-    pub ref_kind: String,
-    pub ref_id: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct AddInterestResult {
-    pub strategy_id: Uuid,
-    pub ref_kind: String,
-    pub ref_id: String,
-    pub role: String,
-    pub origin: String,
-    /// 既存と一致したため idempotent に成功した場合は false
-    pub created: bool,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListWatchTargetsParams {
-    pub limit: Option<u32>,
-}
-
-/// 人間が「追う」と決めた監視対象銘柄。保有状況によるフィルタは行わない
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct WatchTargetDto {
-    pub ref_id: String,
-    pub created_at: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct ListWatchTargetsResult {
-    pub watch_targets: Vec<WatchTargetDto>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

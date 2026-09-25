@@ -35,8 +35,6 @@ pub enum Relation {
     Note,
     #[sea_orm(has_many = "super::prediction::Entity")]
     Prediction,
-    #[sea_orm(has_many = "super::strategy_interest::Entity")]
-    StrategyInterest,
     #[sea_orm(has_many = "super::strategy_investable_amount::Entity")]
     StrategyInvestableAmount,
     #[sea_orm(has_many = "super::strategy_task::Entity")]
@@ -80,12 +78,6 @@ impl Related<super::note::Entity> for Entity {
 impl Related<super::prediction::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Prediction.def()
-    }
-}
-
-impl Related<super::strategy_interest::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::StrategyInterest.def()
     }
 }
 

@@ -151,14 +151,37 @@ pub async fn approve_note_version(
     ensure_pending_version(&version)?;
 
     let now = chrono::Utc::now().fixed_offset();
-    let (updated, previous_current_id) = note_versions::set_current_version(
-        &txn,
-        note_id,
-        version.clone(),
-        Some("approved"),
-        Some(now),
-    )
-    .await?;
+    let current = note_versions::find_current_version(&txn, note_id).await?;
+    let (updated, previous_current_id) = if current
+        .as_ref()
+        .is_some_and(|current| current.version_no > version.version_no)
+    {
+        let updated = note_version::ActiveModel {
+            id: Set(version.id),
+            status: Set("approved".into()),
+            reviewed_at: Set(Some(now)),
+            ..Default::default()
+        }
+        .update(&txn)
+        .await?;
+        note::ActiveModel {
+            id: Set(note_id),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .update(&txn)
+        .await?;
+        (updated, current.map(|current| current.id))
+    } else {
+        note_versions::set_current_version(
+            &txn,
+            note_id,
+            version.clone(),
+            Some("approved"),
+            Some(now),
+        )
+        .await?
+    };
     change_history::record(
         &txn,
         TargetKind::Note,

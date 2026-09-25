@@ -638,42 +638,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/api/interests': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** どの戦略にも属さない関心 (口座全体として追う日経平均・業種・テーマなど) の一覧を取得する */
-    get: operations['list_global_interests']
-    put?: never
-    /** どの戦略にも属さない関心を追加する */
-    post: operations['create_global_interest']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/interests/{ref_kind}/{ref_id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** どの戦略にも属さない関心を削除する */
-    delete: operations['delete_global_interest']
-    options?: never
-    head?: never
-    /** どの戦略にも属さない関心を更新する (role / origin のみ) */
-    patch: operations['update_global_interest']
-    trace?: never
-  }
   '/api/jquants/plan-setting': {
     parameters: {
       query?: never
@@ -819,6 +783,23 @@ export interface paths {
     post?: never
     /** ノートと仮説の紐付けを解除する */
     delete: operations['delete_note_hypothesis']
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/notes/{id}/links': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートのバージョンから出るリンクと、現行バージョンからの被リンクを返す。 */
+    get: operations['get_note_links']
+    put?: never
+    post?: never
+    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -1247,42 +1228,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/api/strategies/{id}/interests': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** 戦略の関心 (シード + LLM 派生) 一覧 */
-    get: operations['list_strategy_interests']
-    put?: never
-    /** 戦略の関心を追加する */
-    post: operations['create_strategy_interest']
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/strategies/{id}/interests/{ref_kind}/{ref_id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /** 関心を削除する */
-    delete: operations['delete_strategy_interest']
-    options?: never
-    head?: never
-    /** 既存の関心を更新する (role / origin のみ) */
-    patch: operations['update_strategy_interest']
-    trace?: never
-  }
   '/api/strategies/{id}/investable-amount': {
     parameters: {
       query?: never
@@ -1434,10 +1379,10 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** 取引に紐づく判断ノート一覧 (リンク作成順) */
+    /** 取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す) */
     get: operations['list_trade_notes']
     put?: never
-    /** 取引に判断ノートを紐付ける */
+    /** 取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する) */
     post: operations['create_trade_note']
     delete?: never
     options?: never
@@ -1704,19 +1649,6 @@ export interface components {
       status?: string | null
       title: string
     }
-    /**
-     * @description 戦略の関心 (interest) を新規追加するリクエスト。
-     *
-     *     `ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。
-     *     `role` は省略時 `seed`、`origin` は省略時 `human`、`status` は省略時 `active`。
-     */
-    CreateInterestRequest: {
-      origin?: string | null
-      ref_id: string
-      ref_kind: string
-      role?: string | null
-      status?: string | null
-    }
     CreateNoteHypothesisRequest: {
       /** Format: uuid */
       hypothesis_id: string
@@ -1730,6 +1662,10 @@ export interface components {
       sort_order?: number | null
     }
     CreateNoteRequest: {
+      /**
+       * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+       *     `@current` を付けると以降の現行バージョンに追従する。
+       */
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
       created_by_kind?: string | null
@@ -1954,6 +1890,7 @@ export interface components {
       graphs_json: components['schemas']['GraphDef'][]
       /** Format: uuid */
       id: string
+      is_current: boolean
       status: string
       /** Format: uuid */
       strategy_id?: string | null
@@ -1963,6 +1900,10 @@ export interface components {
       type_tag?: string | null
       /** Format: date-time */
       updated_at: string
+      /** Format: uuid */
+      version_id: string
+      /** Format: int32 */
+      version_no: number
     }
     NoteHypothesis: {
       /** Format: date-time */
@@ -1982,6 +1923,26 @@ export interface components {
       requires_approval: boolean
       /** Format: int32 */
       sort_order: number
+    }
+    NoteLinkItem: {
+      /**
+       * Format: uuid
+       * @description 出リンクでは参照先、被リンクでは参照元のノート ID。
+       */
+      note_id: string
+      title?: string | null
+      /**
+       * Format: uuid
+       * @description 出リンクでは固定先のバージョン ID、被リンクでは現行の参照元バージョン ID。
+       *     `null` は参照先の現行バージョンへの追従を表す。
+       */
+      version_id?: string | null
+      /** Format: int32 */
+      version_no?: number | null
+    }
+    NoteLinksResponse: {
+      incoming: components['schemas']['NoteLinkItem'][]
+      outgoing: components['schemas']['NoteLinkItem'][]
     }
     /**
      * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
@@ -2232,19 +2193,6 @@ export interface components {
       /** Format: uuid */
       task_id: string
     }
-    StrategyInterest: {
-      /** Format: date-time */
-      created_at: string
-      /** Format: uuid */
-      id: string
-      origin: string
-      ref_id: string
-      ref_kind: string
-      role: string
-      status: string
-      /** Format: uuid */
-      strategy_id?: string | null
-    }
     /** @description `GET /api/strategies/:id/tasks/:task_id` の戻り値。 */
     StrategyTaskStatusResponse: {
       a2a_task_id?: string | null
@@ -2346,6 +2294,8 @@ export interface components {
       /** Format: uuid */
       note_id: string
       /** Format: uuid */
+      note_version_id: string
+      /** Format: uuid */
       trade_id: string
     }
     Trigger: {
@@ -2402,12 +2352,6 @@ export interface components {
       status?: string | null
       title?: string | null
     }
-    /** @description 既存の関心の role / origin / status を更新するリクエスト。 */
-    UpdateInterestRequest: {
-      origin?: string | null
-      role?: string | null
-      status?: string | null
-    }
     UpdateNoteKindRequest: {
       description?: string | null
       display_name?: string | null
@@ -2416,6 +2360,10 @@ export interface components {
       sort_order?: number | null
     }
     UpdateNoteRequest: {
+      /**
+       * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+       *     `@current` を付けると以降の現行バージョンに追従する。
+       */
       body_md?: string | null
       frontmatter_json?: {
         [key: string]: unknown
@@ -5100,214 +5048,6 @@ export interface operations {
       }
     }
   }
-  list_global_interests: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyInterest'][]
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  create_global_interest: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateInterestRequest']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyInterest']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description リクエストボディのパースに失敗 */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  delete_global_interest: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 参照型 */
-        ref_kind: string
-        /** @description 参照 ID */
-        ref_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  update_global_interest: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 参照型 (stock / indicator / sector / theme) */
-        ref_kind: string
-        /** @description 参照 ID */
-        ref_id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateInterestRequest']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyInterest']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description リクエストボディのパースに失敗 */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
   get_jquants_plan_setting: {
     parameters: {
       query?: never
@@ -5724,7 +5464,10 @@ export interface operations {
   }
   get_note: {
     parameters: {
-      query?: never
+      query?: {
+        /** @description 省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。 */
+        version_id?: string
+      }
       header?: never
       path: {
         /** @description ノート ID */
@@ -6025,6 +5768,55 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_note_links: {
+    parameters: {
+      query?: {
+        /** @description 省略時はノートの現行バージョンから出るリンクを返す。 */
+        version_id?: string
+      }
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteLinksResponse']
+        }
       }
       400: {
         headers: {
@@ -7694,241 +7486,6 @@ export interface operations {
         }
       }
       404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  list_strategy_interests: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyInterest'][]
-        }
-      }
-      /** @description リクエストパラメータが不正 */
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  create_strategy_interest: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateInterestRequest']
-      }
-    }
-    responses: {
-      201: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyInterest']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      409: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description リクエストボディのパースに失敗 */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  delete_strategy_interest: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-        /** @description 参照型 */
-        ref_kind: string
-        /** @description 参照 ID */
-        ref_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      204: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  update_strategy_interest: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description 戦略 ID */
-        id: string
-        /** @description 参照型 (stock / indicator / sector / theme) */
-        ref_kind: string
-        /** @description 参照 ID */
-        ref_id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateInterestRequest']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['StrategyInterest']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description リクエストボディのパースに失敗 */
-      422: {
         headers: {
           [name: string]: unknown
         }

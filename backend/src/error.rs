@@ -4,7 +4,9 @@ use sea_orm::{DbErr, RuntimeErr, SqlErr};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::data_provider::DataProviderError;
+use crate::data_provider::{
+    DailyBarSourceError, DataProviderError, EquityMasterSourceError, MarketDailyBarSourceError,
+};
 
 // SeaORM の `SqlErr` で拾えない PostgreSQL SQLSTATE を補完する。
 // NOT NULL 違反 (23502) は handler 側の入力検証漏れまたは型不整合を示すサーバーバグなので
@@ -70,6 +72,15 @@ pub enum AppError {
     #[error("data provider error: {0}")]
     DataProvider(#[from] DataProviderError),
 
+    #[error("daily bar source error: {0}")]
+    DailyBarSource(#[from] DailyBarSourceError),
+
+    #[error("{0}")]
+    EquityMasterSource(#[from] EquityMasterSourceError),
+
+    #[error("{0}")]
+    MarketDailyBarSource(#[from] MarketDailyBarSourceError),
+
     #[error("service unavailable: {0}")]
     ServiceUnavailable(String),
 
@@ -133,6 +144,25 @@ impl IntoResponse for AppError {
                     )
                 }
             },
+            AppError::DailyBarSource(DailyBarSourceError::NotFound(msg)) => {
+                (StatusCode::NOT_FOUND, msg.clone())
+            }
+            AppError::DailyBarSource(DailyBarSourceError::RateLimited(_)) => {
+                tracing::error!("{self}");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "service temporarily unavailable".to_string(),
+                )
+            }
+            AppError::DailyBarSource(DailyBarSourceError::Failed(_))
+            | AppError::EquityMasterSource(_)
+            | AppError::MarketDailyBarSource(_) => {
+                tracing::error!("{self}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
+            }
         };
 
         let body = ErrorResponse { error: message };
@@ -143,10 +173,49 @@ impl IntoResponse for AppError {
 
 #[cfg(test)]
 mod tests {
+    use axum::body::to_bytes;
     use rstest::rstest;
     use serde_json::json;
 
     use super::*;
+
+    #[rstest]
+    #[case::not_found(
+        DailyBarSourceError::NotFound("sample instrument not found".to_string()),
+        StatusCode::NOT_FOUND,
+        "sample instrument not found",
+    )]
+    #[case::rate_limited(
+        DailyBarSourceError::RateLimited("source rate limit reached".to_string()),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "service temporarily unavailable",
+    )]
+    #[case::failed(
+        DailyBarSourceError::Failed("source request failed".to_string()),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal server error",
+    )]
+    #[tokio::test]
+    async fn daily_bar_source_error_maps_to_http_response(
+        #[case] error: DailyBarSourceError,
+        #[case] expected_status: StatusCode,
+        #[case] expected_message: &str,
+    ) {
+        let response = AppError::from(error).into_response();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let body = serde_json::from_slice::<serde_json::Value>(&body).expect("parse response body");
+
+        assert_eq!(
+            (status, body),
+            (
+                expected_status,
+                serde_json::json!({ "error": expected_message }),
+            ),
+        );
+    }
 
     #[rstest]
     fn test_service_unavailable_returns_503() {

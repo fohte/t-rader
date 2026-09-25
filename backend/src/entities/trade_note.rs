@@ -15,6 +15,7 @@ pub struct Model {
     pub note_id: Uuid,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
+    pub note_version_id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -28,6 +29,14 @@ pub enum Relation {
     )]
     Note,
     #[sea_orm(
+        belongs_to = "super::note_version::Entity",
+        from = "Column::NoteVersionId",
+        to = "super::note_version::Column::Id",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    NoteVersion,
+    #[sea_orm(
         belongs_to = "super::trade::Entity",
         from = "Column::TradeId",
         to = "super::trade::Column::Id",
@@ -40,6 +49,12 @@ pub enum Relation {
 impl Related<super::note::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Note.def()
+    }
+}
+
+impl Related<super::note_version::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::NoteVersion.def()
     }
 }
 
