@@ -7,7 +7,8 @@ pub use core_application::{
     DailyBarSource, DailyBarSourceError, DateRange, EquityMasterSource, EquityMasterSourceError,
     MarginSource, MarginSourceError, MarketDailyBarSource, MarketDailyBarSourceError,
     SharedDailyBarSource, SharedEquityMasterSource, SharedMarginSource, SharedMarketDailyBarSource,
-    SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError,
+    SharedShareholdingStructureSource, SharedShortSellingSource, ShareholdingStructureSource,
+    ShareholdingStructureSourceError, ShortSellingSource, ShortSellingSourceError,
 };
 
 /// データプロバイダーで発生しうるエラー
@@ -76,6 +77,12 @@ impl From<DataProviderError> for ShortSellingSourceError {
 }
 
 impl From<DataProviderError> for MarketDailyBarSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+impl From<DataProviderError> for ShareholdingStructureSourceError {
     fn from(error: DataProviderError) -> Self {
         Self::Failed(error.to_string())
     }

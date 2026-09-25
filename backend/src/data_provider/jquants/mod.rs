@@ -1,4 +1,5 @@
 mod daily_bars;
+mod edinet_holdings;
 mod equities_master;
 mod margin;
 #[cfg(test)]
