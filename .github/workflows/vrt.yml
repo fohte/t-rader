@@ -65,8 +65,7 @@ jobs:
 
       # `project` must match createStorybookProject()'s `name` in
       # vitest.screenshot.config.ts, and be unique per vrt_pkgs entry.
-      # vrt-capture includes it in each artifact name, so duplicate project
-      # names would prevent a workflow run from uploading both artifacts.
+      # vrt-capture includes it in artifact names, so duplicates collide.
       - uses: fohte/storybook-vrt-workflows/vrt-capture@691148d6e8e53b86c8f93b5b54cadbd8308b06d3 # v0.1.6
         with:
           project: storybook-screenshot-frontend
@@ -85,8 +84,7 @@ jobs:
       statuses: write
     # Serializes overlapping runs for the same ref to avoid racing on the
     # shared R2 baseline/actual key.
-    # Without serialization, concurrent main pushes could update
-    # `baseline/actual/` while the other run computes its diff against it.
+    # Concurrent main pushes could race on `baseline/actual/` during diffing.
     concurrency:
       group: vrt-report-frontend-${{ (github.ref == 'refs/heads/main') && 'push' || 'pr' }}-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
       cancel-in-progress: false
@@ -117,10 +115,7 @@ jobs:
 
       # The R2 storage keys aren't scoped per project, so only one
       # vrt_pkgs entry may exist per repo.
-      # One `<project_name>-vrt` bucket serves the repo, and vrt-report's
-      # `baseline/` and `branch/<branch>/` keys omit the project name. Keep
-      # one `vrt: true` package until workflow storage keys include a project
-      # prefix.
+      # Multiple packages would overwrite shared `baseline/` and `branch/` keys.
       - uses: fohte/storybook-vrt-workflows/vrt-report@691148d6e8e53b86c8f93b5b54cadbd8308b06d3 # v0.1.6
         with:
           package-dir: frontend
