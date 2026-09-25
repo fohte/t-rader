@@ -523,7 +523,12 @@ jobs:
             --command="ALTER SYSTEM SET fsync = off" \
             --command="ALTER SYSTEM SET synchronous_commit = off" \
             --command="ALTER SYSTEM SET full_page_writes = off" \
-            --command="SELECT pg_reload_conf()" \
+            --command="SELECT pg_reload_conf()"
+          sleep 1
+          docker exec "$DB_CONTAINER_ID" psql \
+            --username=t_rader \
+            --dbname=t_rader_test \
+            --set=ON_ERROR_STOP=1 \
             --command="SHOW log_min_duration_statement" \
             --command="SHOW fsync" \
             --command="SHOW synchronous_commit" \
