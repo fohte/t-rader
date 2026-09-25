@@ -1,10 +1,33 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_alert;
 use crate::error::AppError;
 use crate::models::margin::MarginAlertRecord;
+
+impl From<MarginAlertRecord> for margin_alert::ActiveModel {
+    fn from(r: MarginAlertRecord) -> Self {
+        margin_alert::ActiveModel {
+            pub_date: Set(r.pub_date),
+            code: Set(r.code),
+            app_date: Set(r.app_date),
+            pub_reason: Set(serde_json::to_value(r.pub_reason).unwrap_or_default()),
+            shrt_out: Set(r.shrt_out),
+            long_out: Set(r.long_out),
+            shrt_out_chg: Set(r.shrt_out_chg),
+            long_out_chg: Set(r.long_out_chg),
+            shrt_out_ratio: Set(r.shrt_out_ratio),
+            long_out_ratio: Set(r.long_out_ratio),
+            sl_ratio: Set(r.sl_ratio),
+            shrt_neg_out: Set(r.shrt_neg_out),
+            shrt_std_out: Set(r.shrt_std_out),
+            long_neg_out: Set(r.long_neg_out),
+            long_std_out: Set(r.long_std_out),
+            tse_mrgn_reg_cls: Set(r.tse_mrgn_reg_cls),
+        }
+    }
+}
 
 /// 日々公表信用取引残高を一括 upsert する。
 ///

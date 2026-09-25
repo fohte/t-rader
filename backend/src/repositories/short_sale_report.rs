@@ -2,11 +2,32 @@ use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_sale_report;
 use crate::error::AppError;
 use crate::models::ShortSaleReport;
+
+impl From<ShortSaleReport> for short_sale_report::ActiveModel {
+    fn from(report: ShortSaleReport) -> Self {
+        short_sale_report::ActiveModel {
+            disc_date: Set(report.disc_date),
+            calc_date: Set(report.calc_date),
+            code: Set(report.code),
+            ss_name: Set(report.ss_name),
+            ss_addr: Set(report.ss_addr),
+            dic_name: Set(report.dic_name),
+            dic_addr: Set(report.dic_addr),
+            fund_name: Set(report.fund_name),
+            short_position_ratio: Set(report.short_position_ratio),
+            short_position_shares: Set(report.short_position_shares),
+            short_position_units: Set(report.short_position_units),
+            prev_report_date: Set(report.prev_report_date),
+            prev_report_ratio: Set(report.prev_report_ratio),
+            notes: Set(report.notes),
+        }
+    }
+}
 
 /// 空売り残高報告を一括 upsert する
 ///
