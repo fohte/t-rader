@@ -128,6 +128,8 @@ fn note_to_dto(
     Ok(NoteDto {
         note_id: m.id,
         strategy_id,
+        version_id: version.id,
+        version_no: version.version_no,
         title: version.title,
         body_md: include_body.then_some(version.body_md),
         frontmatter_json,
@@ -574,6 +576,8 @@ mod tests {
             NoteDto {
                 note_id: written.note_id,
                 strategy_id,
+                version_id: Uuid::nil(),
+                version_no: 1,
                 title: "first note".into(),
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
@@ -750,6 +754,8 @@ mod tests {
                 NoteDto {
                     note_id: created.note_id,
                     strategy_id,
+                    version_id: Uuid::nil(),
+                    version_no: 2,
                     title: "original".into(),
                     body_md: Some("v2".into()),
                     frontmatter_json: serde_json::Map::new(),
@@ -1117,6 +1123,8 @@ mod tests {
             NoteDto {
                 note_id: written.note_id,
                 strategy_id,
+                version_id: Uuid::nil(),
+                version_no: 1,
                 title: "note with graph".into(),
                 body_md: Some("[[graph:g1]]".into()),
                 frontmatter_json: serde_json::Map::new(),
@@ -1328,6 +1336,8 @@ mod tests {
                 NoteDto {
                     note_id: created.note_id,
                     strategy_id,
+                    version_id: Uuid::nil(),
+                    version_no: 2,
                     title: "t".into(),
                     body_md: Some(expected_body),
                     frontmatter_json: serde_json::Map::new(),
@@ -1531,6 +1541,8 @@ mod tests {
             NoteDto {
                 note_id: created.note_id,
                 strategy_id,
+                version_id: Uuid::nil(),
+                version_no: 1,
                 title: "t".into(),
                 body_md: Some("orig".into()),
                 frontmatter_json: serde_json::Map::new(),
@@ -1757,6 +1769,8 @@ mod tests {
             NoteDto {
                 note_id: first.note_id,
                 strategy_id,
+                version_id: Uuid::nil(),
+                version_no: 2,
                 title: "second".into(),
                 body_md: Some("v2".into()),
                 frontmatter_json: serde_json::Map::new(),

@@ -218,6 +218,10 @@ pub struct NoteLinkDto {
 pub struct NoteDto {
     pub note_id: Uuid,
     pub strategy_id: Uuid,
+    /// 本文が属するバージョン ID。`read_comments` の `target_id` に使う。
+    pub version_id: Uuid,
+    /// ノート内のバージョン番号。
+    pub version_no: i32,
     pub title: String,
     /// `list_notes` で `include_body: false` を指定したときのみ省略される (null)。
     /// `read_note` の結果では常に値を含む

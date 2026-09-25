@@ -655,13 +655,13 @@ mod tests {
         res.assert_status_ok();
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
-        obj.remove("id");
-        obj.insert("version_id".into(), json!("<dyn>"));
+        obj.insert("id".into(), json!("<dyn>"));
         obj.remove("created_at");
         obj.remove("reviewed_at");
         assert_eq!(
             body,
             json!({
+                "id": "<dyn>",
                 "note_id": note_id,
                 "version_no": version.version_no,
                 "title": "市況ノート",
