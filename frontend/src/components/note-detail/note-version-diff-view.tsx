@@ -239,7 +239,7 @@ function DiffRow({ row, mode, comments, ...props }: DiffRowProps) {
 }
 
 interface DiffCellProps extends Omit<DiffRowProps, 'row' | 'mode'> {
-  side: DiffAnchorSide
+  side: DiffCommentAnchor['side']
   lineNumber: number | null
   text: string | null
   kind: NoteVersionDiffRow['kind']
@@ -290,7 +290,7 @@ function DiffCell({
     ? commentsForThreads(comments, oldTopLevel)
     : []
   const anchor: DiffCommentAnchor = { side, lineNumber, text }
-  const anchorKey = `${String(side)}:${String(lineNumber)}`
+  const anchorKey = `${side}:${String(lineNumber)}`
 
   return (
     <div className={`border-l-2 ${changeColor}`}>
