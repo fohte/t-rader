@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use chrono::NaiveDate;
 use core_application::{
-    IndicatorObservation, IndicatorObservationSource, IndicatorObservationSourceError,
-    SharedIndicatorObservationSource,
+    IndicatorObservationSource, IndicatorObservationSourceError, SharedIndicatorObservationSource,
 };
+use core_domain::IndicatorObservation;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
 use tokio::task::JoinHandle;

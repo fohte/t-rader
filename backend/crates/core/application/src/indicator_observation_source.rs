@@ -2,13 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use rust_decimal::Decimal;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IndicatorObservation {
-    pub date: NaiveDate,
-    pub value: Decimal,
-}
+use core_domain::IndicatorObservation;
 
 #[derive(Debug, thiserror::Error)]
 pub enum IndicatorObservationSourceError {
@@ -27,6 +21,8 @@ pub enum IndicatorObservationSourceError {
 
 #[async_trait]
 pub trait IndicatorObservationSource: Send + Sync {
+    /// 観測値を指定日以降で取得する。`None` の場合は source のデフォルト開始日を使う。
+    /// source が欠損値を返す場合、その値は結果に含めない。
     async fn fetch_observations(
         &self,
         series_id: &str,

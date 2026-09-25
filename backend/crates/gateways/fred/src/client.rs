@@ -6,9 +6,8 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_application::{
-    IndicatorObservation, IndicatorObservationSource, IndicatorObservationSourceError,
-};
+use core_application::{IndicatorObservationSource, IndicatorObservationSourceError};
+use core_domain::IndicatorObservation;
 use reqwest::Url;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -75,11 +74,11 @@ impl FredClient {
         }
         Ok(url)
     }
+}
 
-    /// 指定した系列の観測値を `observation_start` 以降取得する。`observation_start` が
-    /// `None` の場合は FRED 側のデフォルト (系列の提供開始日) から取得する。
-    /// 欠損値 (`"."`) は結果から除く。
-    async fn fetch_observations_impl(
+#[async_trait]
+impl IndicatorObservationSource for FredClient {
+    async fn fetch_observations(
         &self,
         series_id: &str,
         observation_start: Option<NaiveDate>,
@@ -106,18 +105,6 @@ impl FredClient {
             .await
             .map_err(|e| IndicatorObservationSourceError::Network(e.without_url().to_string()))?;
         parse_observations(&body)
-    }
-}
-
-#[async_trait]
-impl IndicatorObservationSource for FredClient {
-    async fn fetch_observations(
-        &self,
-        series_id: &str,
-        observation_start: Option<NaiveDate>,
-    ) -> Result<Vec<IndicatorObservation>, IndicatorObservationSourceError> {
-        self.fetch_observations_impl(series_id, observation_start)
-            .await
     }
 }
 
