@@ -450,8 +450,9 @@ mod tests {
         ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
     };
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_comment_model, normalize_note, seed_foreign_note,
-        seed_note_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
+        build_server, current_note_version_id, insert_strategy, normalize_comment_model,
+        normalize_note, seed_foreign_note, seed_note_version_comment_with_anchor, set_note_status,
+        set_note_updated_at, ts_sentinel,
     };
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
@@ -1507,7 +1508,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn write_note_updating_body_md_reanchors_comment_when_found(pool: PgPool) {
+    async fn write_note_updating_body_md_keeps_comment_on_original_version(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
@@ -1533,7 +1534,8 @@ mod tests {
             )
             .await
             .expect("create");
-        let comment_id = seed_note_comment_with_anchor(&db, created.note_id, "line two").await;
+        let version_id = current_note_version_id(&db, created.note_id).await;
+        let comment_id = seed_note_version_comment_with_anchor(&db, version_id, "line two").await;
 
         server
             .write_note_inner(
@@ -1567,8 +1569,8 @@ mod tests {
             normalize_comment_model(updated_comment),
             comment::Model {
                 id: comment_id,
-                target_kind: "note".into(),
-                target_id: created.note_id,
+                target_kind: "note_version".into(),
+                target_id: version_id,
                 parent_id: None,
                 body: "please fix".into(),
                 author_kind: "human".into(),
@@ -1576,15 +1578,15 @@ mod tests {
                 created_at: ts_sentinel(),
                 resolved: false,
                 anchor_text: Some("line two".into()),
-                start_line: Some(3),
-                end_line: Some(3),
-                drifted: false,
+                anchor_side: Some("new".into()),
+                start_line: Some(2),
+                end_line: Some(2),
             },
         );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn write_note_updating_body_md_marks_drifted_when_anchor_missing(pool: PgPool) {
+    async fn write_note_updating_body_md_keeps_comment_position_on_original_version(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
@@ -1610,7 +1612,8 @@ mod tests {
             )
             .await
             .expect("create");
-        let comment_id = seed_note_comment_with_anchor(&db, created.note_id, "line two").await;
+        let version_id = current_note_version_id(&db, created.note_id).await;
+        let comment_id = seed_note_version_comment_with_anchor(&db, version_id, "line two").await;
 
         server
             .write_note_inner(
@@ -1637,8 +1640,8 @@ mod tests {
             normalize_comment_model(updated_comment),
             comment::Model {
                 id: comment_id,
-                target_kind: "note".into(),
-                target_id: created.note_id,
+                target_kind: "note_version".into(),
+                target_id: version_id,
                 parent_id: None,
                 body: "please fix".into(),
                 author_kind: "human".into(),
@@ -1646,9 +1649,9 @@ mod tests {
                 created_at: ts_sentinel(),
                 resolved: false,
                 anchor_text: Some("line two".into()),
-                start_line: None,
-                end_line: None,
-                drifted: true,
+                anchor_side: Some("new".into()),
+                start_line: Some(2),
+                end_line: Some(2),
             },
         );
     }

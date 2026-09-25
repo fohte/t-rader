@@ -1,56 +1,81 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useCallback, useRef, useState } from 'react'
 
-import { CommentsPanel } from '#components/note-detail/comments-panel'
 import { HistoryPanel } from '#components/note-detail/history-panel'
-import { NoteDocument } from '#components/note-detail/note-document'
-import { NoteHeader } from '#components/note-detail/note-header'
 import { NoteHypothesesPanel } from '#components/note-detail/note-hypotheses-panel'
+import { NoteVersionChatAction } from '#components/note-detail/note-version-chat-action'
+import { NoteVersionDiffPanel } from '#components/note-detail/note-version-diff-panel'
+import { NoteVersionFallback } from '#components/note-detail/note-version-fallback'
+import { NoteVersionHeader } from '#components/note-detail/note-version-header'
+import { NoteVersionList } from '#components/note-detail/note-version-list'
+import { NoteVersionReviewPanel } from '#components/note-detail/note-version-review-panel'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
-import { ReviewPanel } from '#components/note-detail/review-panel'
 import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
-import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/notes/$noteId')({
+  validateSearch: (search: Record<string, unknown>): { version?: number } => {
+    const version = search.version
+    if (
+      typeof version === 'number' &&
+      Number.isInteger(version) &&
+      version > 0
+    ) {
+      return { version }
+    }
+    if (typeof version === 'string' && /^\d+$/.test(version)) {
+      const parsed = Number(version)
+      return parsed > 0 ? { version: parsed } : {}
+    }
+    return {}
+  },
   component: NoteDetailPage,
 })
 
 function NoteDetailPage() {
   const { noteId } = Route.useParams()
-  const { data: note, isPending } = $api.useQuery('get', '/api/notes/{id}', {
+  const { version: requestedVersionNo } = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const { data: note } = $api.useQuery('get', '/api/notes/{id}', {
     params: { path: { id: noteId } },
   })
-  const [pendingQuote, setPendingQuote] = useState<string | null>(null)
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const onConsumeQuote = useCallback(() => {
-    setPendingQuote(null)
-  }, [])
-  const onQuoteSelection = useCallback((text: string) => {
-    setPendingQuote(text)
-  }, [])
+  const {
+    data: versions,
+    isPending: areVersionsPending,
+    isError: hasVersionsError,
+  } = $api.useQuery('get', '/api/notes/{id}/versions', {
+    params: { path: { id: noteId } },
+  })
 
-  if (isPending) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-10 w-2/3" />
-        <Skeleton className="h-120 w-full" />
-      </div>
-    )
+  if (areVersionsPending) {
+    return <NoteVersionFallback state="loading" />
   }
 
-  if (note == null) {
-    return (
-      <div className="font-mono text-sm text-muted-foreground">
-        ノートが見つかりませんでした。
-      </div>
-    )
+  if (hasVersionsError) {
+    return <NoteVersionFallback state="error" />
   }
+
+  const orderedVersions = [...versions].sort(
+    (left, right) => left.version_no - right.version_no,
+  )
+  const selectedVersion =
+    orderedVersions.find(
+      (version) => version.version_no === requestedVersionNo,
+    ) ??
+    orderedVersions.find((version) => version.is_current) ??
+    orderedVersions.at(-1)
+
+  if (selectedVersion == null) {
+    return <NoteVersionFallback state="missing" />
+  }
+
+  const previousVersion =
+    orderedVersions
+      .filter((version) => version.version_no < selectedVersion.version_no)
+      .at(-1) ?? null
 
   return (
     <div className="space-y-4 font-sans text-foreground">
-      {note.strategy_id != null && (
+      {note?.strategy_id != null && (
         <Link
           to="/strategies/$id/performance"
           params={{ id: note.strategy_id }}
@@ -60,41 +85,38 @@ function NoteDetailPage() {
         </Link>
       )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-(--grid-cols-note-detail)">
-        <article className="border border-border bg-card px-5 py-5">
-          <NoteHeader note={note} strategyId={note.strategy_id ?? null} />
-          <NoteDocument
-            source={note.body_md}
-            graphs={note.graphs_json}
-            onQuoteSelection={onQuoteSelection}
-            bodyRef={bodyRef}
+        <article className="space-y-4 border border-border bg-card px-5 py-5">
+          <NoteVersionHeader version={selectedVersion} />
+          <NoteVersionDiffPanel
+            key={selectedVersion.id}
+            version={selectedVersion}
+            previousVersion={previousVersion}
           />
-          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4 font-mono text-2xs text-muted-foreground">
-            <span>このノートについて</span>
-            <button
-              type="button"
-              onClick={() => {
-                openFloatingChat(`「${note.title}」について補足して`)
-              }}
-              className="inline-flex items-center gap-1 border border-border px-2 py-0.5 text-muted-foreground-strong hover:border-primary hover:text-primary"
-            >
-              <span className="font-bold text-primary">&gt;_</span>
-              アナリストに聞く
-            </button>
-          </div>
+          <NoteVersionChatAction
+            title={selectedVersion.title}
+            onAsk={(title) => {
+              openFloatingChat(`「${title}」について補足して`)
+            }}
+          />
         </article>
         <aside className="space-y-4">
-          <ReviewPanel noteId={note.id} status={note.status} />
-          <PredictionsPanel noteId={note.id} />
+          <NoteVersionList
+            versions={orderedVersions}
+            selectedVersionNo={selectedVersion.version_no}
+            onSelectVersion={(versionNo) => {
+              void navigate({ search: { version: versionNo } })
+            }}
+          />
+          <NoteVersionReviewPanel
+            key={selectedVersion.id}
+            version={selectedVersion}
+          />
+          <PredictionsPanel noteId={noteId} />
           <NoteHypothesesPanel
-            noteId={note.id}
-            strategyId={note.strategy_id ?? null}
+            noteId={noteId}
+            strategyId={note?.strategy_id ?? null}
           />
-          <CommentsPanel
-            noteId={note.id}
-            pendingQuote={pendingQuote}
-            onConsumeQuote={onConsumeQuote}
-          />
-          <HistoryPanel noteId={note.id} />
+          <HistoryPanel noteId={noteId} />
         </aside>
       </div>
     </div>

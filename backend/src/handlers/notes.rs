@@ -23,10 +23,6 @@ use crate::services::note_versions::{
 };
 use crate::services::strategies::ensure_strategy_exists;
 
-pub(crate) mod status;
-pub(crate) use status::{__path_approve_note, __path_reject_note};
-pub use status::{approve_note, reject_note};
-
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
 
@@ -622,29 +618,36 @@ mod tests {
         res.assert_status(StatusCode::CREATED);
         let note_id =
             Uuid::parse_str(res.json::<Value>()["id"].as_str().expect("id")).expect("uuid");
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
         let res = server
-            .post(&format!("/api/notes/{note_id}/reject"))
-            .json(&json!({}))
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
             .await;
         res.assert_status_ok();
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
         obj.remove("id");
         obj.remove("created_at");
-        obj.remove("updated_at");
+        obj.remove("reviewed_at");
         assert_eq!(
             body,
             json!({
-                "strategy_id": null,
+                "note_id": note_id,
+                "version_no": version.version_no,
                 "title": "市況ノート",
                 "body_md": "body",
                 "frontmatter_json": {},
                 "graphs_json": [],
-                "type_tag": null,
                 "status": "rejected",
-                "trigger": null,
-                "trigger_label": null,
+                "is_current": true,
+                "change_reason": null,
                 "created_by_kind": "human",
                 "execution_id": null,
             }),
@@ -664,29 +667,36 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "タイトル").await;
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
         let res = server
-            .post(&format!("/api/notes/{note_id}/reject"))
-            .json(&json!({}))
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
             .await;
         res.assert_status_ok();
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
+        obj.remove("id");
         obj.remove("created_at");
-        obj.remove("updated_at");
+        obj.remove("reviewed_at");
         assert_eq!(
             body,
             json!({
-                "id": note_id,
-                "strategy_id": strategy_id,
+                "note_id": note_id,
+                "version_no": version.version_no,
                 "title": "タイトル",
                 "body_md": "body",
                 "frontmatter_json": {},
                 "graphs_json": [],
-                "type_tag": null,
                 "status": "rejected",
-                "trigger": null,
-                "trigger_label": null,
+                "is_current": true,
+                "change_reason": null,
                 "created_by_kind": "human",
                 "execution_id": null,
             }),
@@ -703,8 +713,8 @@ mod tests {
                 strategy_id,
                 source: "review".to_string(),
                 prompt: format!(
-                    "ノート「タイトル」(id: {note_id}) がレビューで却下されました。\
-付いているコメントを確認し、指摘を反映してください。"
+                    "ノート「タイトル」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。付いているコメントを確認し、指摘を反映してください。",
+                    version.version_no, version.id,
                 ),
                 phase: StrategyTaskPhase::Running,
             }],
@@ -721,14 +731,27 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "t").await;
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
-        for _ in 0..2 {
-            let res = server
-                .post(&format!("/api/notes/{note_id}/reject"))
-                .json(&json!({}))
-                .await;
-            res.assert_status_ok();
-        }
+        let first = server
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
+            .await;
+        first.assert_status_ok();
+        let second = server
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
+            .await;
+        second.assert_status(StatusCode::CONFLICT);
 
         let tasks = strategy_task::Entity::find()
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
@@ -749,10 +772,17 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "t").await;
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
         let res = server
-            .post(&format!("/api/notes/{note_id}/reject"))
-            .json(&json!({}))
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
             .await;
         res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
 
@@ -764,7 +794,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn update_note_reanchors_comment_when_body_md_changes(pool: PgPool) {
+    async fn update_note_keeps_comment_anchored_to_original_version(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         let note_id = create_test_note_with_body(
@@ -777,14 +807,22 @@ mod tests {
                 line three"},
         )
         .await;
+        let version_id = note_versions::find_current_version(&db, note_id)
+            .await
+            .expect("find current version")
+            .expect("current version exists")
+            .id;
 
         let created_comment = server
             .post("/api/comments")
             .json(&json!({
-                "target_kind": "note",
-                "target_id": note_id,
+                "target_kind": "note_version",
+                "target_id": version_id,
                 "body": "fix this",
                 "anchor_text": "line two",
+                "anchor_side": "new",
+                "start_line": 2,
+                "end_line": 2,
             }))
             .await;
         created_comment.assert_status(StatusCode::CREATED);
@@ -814,8 +852,8 @@ mod tests {
             updated_comment,
             comment::Model {
                 id: comment_id,
-                target_kind: "note".into(),
-                target_id: note_id,
+                target_kind: "note_version".into(),
+                target_id: version_id,
                 parent_id: None,
                 body: "fix this".into(),
                 author_kind: "human".into(),
@@ -823,9 +861,9 @@ mod tests {
                 created_at: chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
                 resolved: false,
                 anchor_text: Some("line two".into()),
-                start_line: Some(3),
-                end_line: Some(3),
-                drifted: false,
+                anchor_side: Some("new".into()),
+                start_line: Some(2),
+                end_line: Some(2),
             },
         );
     }
