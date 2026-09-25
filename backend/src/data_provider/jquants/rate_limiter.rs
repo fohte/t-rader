@@ -2,13 +2,15 @@ use std::collections::VecDeque;
 
 use tokio::sync::Mutex;
 
+use crate::data_provider::DataProviderError;
+
 /// レートリミットのウィンドウ幅 (60 秒)
 pub(super) const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// スライディングウィンドウ方式のレートリミッター
 ///
-/// 直近 60 秒間のリクエスト送信時刻を記録し、上限に達している場合は
-/// 最も古いリクエストがウィンドウから外れるまで待機する。429 を受けた場合は
+/// 直近 60 秒間のリクエスト送信時刻を記録する。通常は枠が空くまで待機し、
+/// テスト用の fail-fast 設定では枠超過をエラーにする。429 を受けた場合は
 /// `note_rate_limited` により全呼び出しの送信を一定時間止める (cooldown)。
 pub(super) struct RateLimiter {
     /// 直近のリクエスト送信時刻 (古い順)
@@ -17,14 +19,27 @@ pub(super) struct RateLimiter {
     cooldown_until: Mutex<Option<tokio::time::Instant>>,
     /// 429 を受けてから送信を止める時間
     cooldown: std::time::Duration,
+    /// window 枠が空くまで待つか、枠超過をエラーとして返すか
+    fail_fast_on_window_limit: bool,
 }
 
 impl RateLimiter {
     pub(super) fn new(cooldown: std::time::Duration) -> Self {
+        Self::with_window_limit_behavior(cooldown, false)
+    }
+
+    /// テスト用: window 枠が満杯になった時点で待機せずエラーを返す。
+    #[cfg(test)]
+    pub(super) fn new_fail_fast(cooldown: std::time::Duration) -> Self {
+        Self::with_window_limit_behavior(cooldown, true)
+    }
+
+    fn with_window_limit_behavior(cooldown: std::time::Duration, fail_fast: bool) -> Self {
         Self {
             timestamps: Mutex::new(VecDeque::new()),
             cooldown_until: Mutex::new(None),
             cooldown,
+            fail_fast_on_window_limit: fail_fast,
         }
     }
 
@@ -35,11 +50,11 @@ impl RateLimiter {
 
     /// リクエスト送信の許可を取得する
     ///
-    /// cooldown 中であればまずそれが明けるまで待つ。明けていれば、ウィンドウ内の
-    /// リクエスト数が `max_requests` に達している場合、最も古いリクエストがウィンドウ
-    /// から外れるまで待機する。`max_requests` は契約プランに応じて呼び出しごとに変わり
-    /// うる (`JQuantsClient::current_rate_limit`)。
-    pub(super) async fn acquire(&self, max_requests: usize) {
+    /// cooldown 中はまず明けるまで待つ。ウィンドウ内のリクエスト数が `max_requests` に
+    /// 達した場合は、通常は最も古いリクエストが外れるまで待ち、fail-fast 設定ではエラーを返す。
+    /// `max_requests` は契約プランに応じて呼び出しごとに変わりうる
+    /// (`JQuantsClient::current_rate_limit`)。
+    pub(super) async fn acquire(&self, max_requests: usize) -> Result<(), DataProviderError> {
         loop {
             if let Some(until) = *self.cooldown_until.lock().await {
                 let now = tokio::time::Instant::now();
@@ -69,7 +84,11 @@ impl RateLimiter {
             if timestamps.len() < max_requests {
                 // 枠がある: タイムスタンプを記録して通過
                 timestamps.push_back(now);
-                return;
+                return Ok(());
+            }
+
+            if self.fail_fast_on_window_limit {
+                return Err(DataProviderError::RateLimitWindowFull { max_requests });
             }
 
             // 枠がない: 最も古いリクエストがウィンドウから外れるまで待つ

@@ -458,6 +458,7 @@ mod fetch_instrument {
 
 mod error_handling {
     use super::*;
+    use crate::data_provider::jquants::RATE_LIMIT_MAX_REQUESTS;
 
     #[rstest]
     #[tokio::test]
@@ -524,6 +525,36 @@ mod error_handling {
         assert!(matches!(result, Err(DataProviderError::RateLimited { .. })));
         Ok(())
     }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_test_client_returns_error_when_window_limit_is_exceeded() {
+        let mock = JQuantsMockServer::start().await;
+        mock.instrument().code("00001").ok().await;
+
+        let client = mock.client().expect("client");
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            client
+                .fetch_instrument("00001")
+                .await
+                .expect("request within the limit should succeed");
+        }
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            client.fetch_instrument("00001"),
+        )
+        .await
+        .map(|result| result.map(|_| ()))
+        .map_err(|_| ());
+
+        assert_eq!(
+            result,
+            Ok(Err(DataProviderError::RateLimitWindowFull {
+                max_requests: RATE_LIMIT_MAX_REQUESTS,
+            })),
+        );
+    }
 }
 
 // === fetch_fin_summary_by_date ===
@@ -587,6 +618,7 @@ mod fetch_fin_summary_by_date {
 mod rate_limiter {
     use super::super::rate_limiter::{RATE_LIMIT_WINDOW, RateLimiter};
     use super::super::{RATE_LIMIT_COOLDOWN, RATE_LIMIT_MAX_REQUESTS};
+    use crate::data_provider::DataProviderError;
     use rstest::rstest;
 
     #[rstest]
@@ -598,7 +630,10 @@ mod rate_limiter {
 
         // 上限以内のリクエストは即座に通過する
         for _ in 0..limit {
-            limiter.acquire(limit).await;
+            limiter
+                .acquire(limit)
+                .await
+                .expect("request should be allowed");
         }
     }
 
@@ -609,7 +644,10 @@ mod rate_limiter {
 
         // 上限まで消費
         for _ in 0..RATE_LIMIT_MAX_REQUESTS {
-            limiter.acquire(RATE_LIMIT_MAX_REQUESTS).await;
+            limiter
+                .acquire(RATE_LIMIT_MAX_REQUESTS)
+                .await
+                .expect("request within the limit should be allowed");
         }
 
         // 次の acquire は待機するはず
@@ -623,7 +661,7 @@ mod rate_limiter {
         let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
-        assert!(result.is_ok(), "ウィンドウ経過後に acquire が通過するべき");
+        assert_eq!(result.expect("window should expire"), Ok(()),);
     }
 
     #[rstest]
@@ -646,7 +684,27 @@ mod rate_limiter {
         let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
-        assert!(result.is_ok(), "cooldown 経過後に acquire が通過するべき");
+        assert_eq!(result.expect("cooldown should expire"), Ok(()),);
+    }
+
+    #[rstest]
+    #[tokio::test(start_paused = true)]
+    async fn test_fails_immediately_when_limit_exceeded_with_fail_fast_behavior() {
+        let limiter = RateLimiter::new_fail_fast(RATE_LIMIT_COOLDOWN);
+
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            limiter
+                .acquire(RATE_LIMIT_MAX_REQUESTS)
+                .await
+                .expect("request within the limit should be allowed");
+        }
+
+        assert_eq!(
+            limiter.acquire(RATE_LIMIT_MAX_REQUESTS).await,
+            Err(DataProviderError::RateLimitWindowFull {
+                max_requests: RATE_LIMIT_MAX_REQUESTS,
+            }),
+        );
     }
 }
 

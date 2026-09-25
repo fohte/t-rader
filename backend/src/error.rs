@@ -117,7 +117,8 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             AppError::DataProvider(e) => match e {
                 DataProviderError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
-                DataProviderError::RateLimited { .. } => {
+                DataProviderError::RateLimited { .. }
+                | DataProviderError::RateLimitWindowFull { .. } => {
                     tracing::error!("{self}");
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
