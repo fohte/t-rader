@@ -59,7 +59,7 @@ function StrategySettingsPage() {
           戦略設定 — {strategy.name}
         </h1>
         <p className="text-sm text-muted-foreground-strong">
-          基本情報・triggerを編集します。
+          基本情報・trigger を編集します。
         </p>
       </header>
 
