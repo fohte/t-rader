@@ -46,17 +46,17 @@ backend/crates/
 
 ## crate 間の依存
 
-crate 間の依存は `Cargo.toml` で次の関係に限定する。
+`backend/crates/` 内の crate 間の直接依存は `Cargo.toml` で次の関係に限定する。
 
-| crate              | 依存先                                                          |
-| ------------------ | --------------------------------------------------------------- |
-| `core/domain`      | `chrono`, `rust_decimal`, `uuid`, `thiserror`, `serde` (derive) |
-| `core/application` | `core/domain`                                                   |
-| `entrypoints/*`    | `core/application`, `core/domain`                               |
-| `gateways/*`       | `core/application`, `core/domain`                               |
-| `app`              | `backend/crates/` 内のすべての crate と `backend/migration/`    |
+| crate              | 依存先                                                       |
+| ------------------ | ------------------------------------------------------------ |
+| `core/domain`      | なし                                                         |
+| `core/application` | `core/domain`                                                |
+| `entrypoints/*`    | `core/application`, `core/domain`                            |
+| `gateways/*`       | `core/application`, `core/domain`                            |
+| `app`              | `backend/crates/` 内のすべての crate と `backend/migration/` |
 
-`entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` は値型 crate のみに依存し、I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) には依存させない。
+`entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror` と `serde` の derive に限る。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
 
 ## entrypoint と gateway の名前
 
