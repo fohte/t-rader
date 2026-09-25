@@ -1,6 +1,6 @@
 //! 管理 MCP server の tool 実装
 //!
-//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 17 種:
+//! 管理 MCP を叩く上流のコントロールプレーンから呼び出される。tool は以下の 21 種:
 //!
 //! - `list_strategies`
 //! - `submit_strategy_task`
@@ -19,6 +19,10 @@
 //! - `create_rss_feed`
 //! - `update_rss_feed`
 //! - `delete_rss_feed`
+//! - `list_note_kinds`
+//! - `create_note_kind`
+//! - `update_note_kind`
+//! - `delete_note_kind`
 //!
 //! 実装はドメインごとに分割している:
 //!
@@ -34,6 +38,8 @@
 //!   (`create_strategy_trigger_inner` / `update_strategy_trigger_inner` / `delete_strategy_trigger_inner`)
 //! - `rss_feeds`: RSS フィード CRUD
 //!   (`list_rss_feeds_inner` / `create_rss_feed_inner` / `update_rss_feed_inner` / `delete_rss_feed_inner`)
+//! - `note_kinds`: ノート種別 CRUD
+//!   (`list_note_kinds_inner` / `create_note_kind_inner` / `update_note_kind_inner` / `delete_note_kind_inner`)
 //! - `notes_annotations`: 直近ノート・アノテーション一覧
 //!   (`list_recent_notes_inner` / `list_recent_annotations_inner`)
 //!
@@ -41,6 +47,7 @@
 //! 共通のエラー変換ヘルパを担う。
 
 pub(super) mod dto;
+mod note_kinds;
 mod notes_annotations;
 mod rss_feeds;
 mod strategies;
@@ -62,15 +69,17 @@ use crate::error::AppError;
 // `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
 pub use dto::SubmitStrategyTaskParams;
 use dto::{
-    CreateRssFeedParams, CreateStrategyParams, CreateStrategyResult, CreateStrategyTriggerParams,
-    CreateStrategyTriggerResult, DeleteRssFeedParams, DeleteRssFeedResult, DeleteStrategyParams,
+    CreateNoteKindParams, CreateRssFeedParams, CreateStrategyParams, CreateStrategyResult,
+    CreateStrategyTriggerParams, CreateStrategyTriggerResult, DeleteNoteKindParams,
+    DeleteNoteKindResult, DeleteRssFeedParams, DeleteRssFeedResult, DeleteStrategyParams,
     DeleteStrategyResult, DeleteStrategyTriggerParams, DeleteStrategyTriggerResult,
     GetStrategyConfigParams, GetStrategyConfigResult, GetStrategyTaskStatusParams,
-    GetStrategyTaskStatusResult, ListRecentAnnotationsResult, ListRecentNotesResult,
-    ListRecentParams, ListRssFeedsParams, ListRssFeedsResult, ListStrategiesResult,
-    ResumeStrategyTaskParams, ResumeStrategyTaskResult, RssFeedSummary, SubmitStrategyTaskResult,
-    UpdateRssFeedParams, UpdateStrategyConfigParams, UpdateStrategyConfigResult,
-    UpdateStrategyTriggerParams, UpdateStrategyTriggerResult,
+    GetStrategyTaskStatusResult, ListNoteKindsResult, ListRecentAnnotationsResult,
+    ListRecentNotesResult, ListRecentParams, ListRssFeedsParams, ListRssFeedsResult,
+    ListStrategiesResult, NoteKindSummary, ResumeStrategyTaskParams, ResumeStrategyTaskResult,
+    RssFeedSummary, SubmitStrategyTaskResult, UpdateNoteKindParams, UpdateRssFeedParams,
+    UpdateStrategyConfigParams, UpdateStrategyConfigResult, UpdateStrategyTriggerParams,
+    UpdateStrategyTriggerResult,
 };
 
 const DEFAULT_LIST_LIMIT: u64 = 20;
@@ -278,6 +287,52 @@ impl MgmtServer {
         self.list_rss_feeds_inner(params).await.map(Json)
     }
 
+    /// ノート種別一覧
+    #[tool(
+        name = "list_note_kinds",
+        description = "List note kinds with display names, approval requirements, descriptions, and sort order.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_note_kinds(&self) -> Result<Json<ListNoteKindsResult>, McpError> {
+        self.list_note_kinds_inner().await.map(Json)
+    }
+
+    /// ノート種別を作成する
+    #[tool(
+        name = "create_note_kind",
+        description = "Create a note kind with an immutable key and display_name. requires_approval defaults to false; description and sort_order are optional."
+    )]
+    async fn create_note_kind(
+        &self,
+        Parameters(params): Parameters<CreateNoteKindParams>,
+    ) -> Result<Json<NoteKindSummary>, McpError> {
+        self.create_note_kind_inner(params).await.map(Json)
+    }
+
+    /// ノート種別を部分更新する (key は変更不可)
+    #[tool(
+        name = "update_note_kind",
+        description = "Update only the supplied fields of an existing note kind. The key is immutable; description may be set to null to clear it."
+    )]
+    async fn update_note_kind(
+        &self,
+        Parameters(params): Parameters<UpdateNoteKindParams>,
+    ) -> Result<Json<NoteKindSummary>, McpError> {
+        self.update_note_kind_inner(params).await.map(Json)
+    }
+
+    /// ノートが使用中の種別は削除しない
+    #[tool(
+        name = "delete_note_kind",
+        description = "Delete a note kind by key. Deletion fails while any existing note uses the key."
+    )]
+    async fn delete_note_kind(
+        &self,
+        Parameters(params): Parameters<DeleteNoteKindParams>,
+    ) -> Result<Json<DeleteNoteKindResult>, McpError> {
+        self.delete_note_kind_inner(params).await.map(Json)
+    }
+
     /// RSS フィードを追加する
     #[tool(
         name = "create_rss_feed",
@@ -382,6 +437,8 @@ mod tests {
                 ("create_strategy", None),
                 ("create_strategy_trigger", None),
                 ("delete_rss_feed", None),
+                ("create_note_kind", None),
+                ("delete_note_kind", None),
                 ("delete_strategy", None),
                 ("delete_strategy_trigger", None),
                 ("get_strategy_config", Some(true)),
@@ -389,10 +446,12 @@ mod tests {
                 ("list_recent_annotations", Some(true)),
                 ("list_recent_notes", Some(true)),
                 ("list_rss_feeds", Some(true)),
+                ("list_note_kinds", Some(true)),
                 ("list_strategies", Some(true)),
                 ("resume_strategy_task", None),
                 ("submit_strategy_task", None),
                 ("update_rss_feed", None),
+                ("update_note_kind", None),
                 ("update_strategy_config", None),
                 ("update_strategy_trigger", None),
             ]

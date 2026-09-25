@@ -177,7 +177,10 @@ pub struct WriteNoteParams {
     pub title: Option<String>,
     pub body_md: Option<String>,
     /// `null` を明示すると既存タグを NULL に更新する。フィールド省略時は変更しない。
-    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
     pub type_tag: Option<Option<String>>,
     pub frontmatter_json: Option<serde_json::Map<String, serde_json::Value>>,
     /// ノートに埋め込む図の定義。指定すると既存の図を配列ごと置き換える
@@ -186,17 +189,6 @@ pub struct WriteNoteParams {
     /// 図トークンは空行で区切られたブロック内に単独で置くこと。
     /// `value` (ノード/エッジのサイズ) を指定する場合は出典を示す `cite` も必須。
     pub graphs: Option<Vec<GraphDef>>,
-}
-
-/// `Option<Option<T>>` を「フィールド未指定 (None)」と「null 指定 (Some(None))」に区別して受け取る
-pub(super) fn deserialize_optional_field<'de, T, D>(
-    deserializer: D,
-) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
