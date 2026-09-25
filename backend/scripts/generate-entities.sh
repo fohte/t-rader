@@ -24,18 +24,6 @@ insert_before() {
   printf '%s' "$result" > "$file"
 }
 
-replace_line() {
-  local file="$1" old="$2" new="$3"
-  local line result=""
-  while IFS= read -r line || [ -n "$line" ]; do
-    if [ "$line" = "$old" ]; then
-      line="$new"
-    fi
-    result+="$line"$'\n'
-  done < "$file"
-  printf '%s' "$result" > "$file"
-}
-
 pascal_case() {
   local base="$1" part first name=""
   for part in ${base//_/ }; do
@@ -77,12 +65,6 @@ done
 # note_version.graphs_json の実体は Vec<GraphDef> の JSON なので、entity の生 Json 型を上書きする
 insert_before "$ENTITIES_DIR/note_version.rs" "    pub graphs_json: Json," \
   "    #[schema(value_type = Vec<crate::services::graph::GraphDef>)]"
-
-# SeaORM CLI は部分ユニークインデックスを通常の一意制約として扱うため、複数版を表す関係を補正する
-replace_line "$ENTITIES_DIR/note_version.rs" "    #[sea_orm(unique)]" ""
-replace_line "$ENTITIES_DIR/note.rs" \
-  '    #[sea_orm(has_one = "super::note_version::Entity")]' \
-  '    #[sea_orm(has_many = "super::note_version::Entity")]'
 
 # trigger.event_match の実体は object または null の JSON なので、entity の生 Json 型を上書きする
 insert_before "$ENTITIES_DIR/trigger.rs" "    pub event_match: Option<Json>," \
