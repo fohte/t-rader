@@ -8,9 +8,9 @@ use backend::agent_client::{
 };
 use backend::cli::Cli;
 use backend::create_router;
-use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::rss::RssNewsAggregator;
+use backend::data_provider::{SharedDailyBarSource, SharedEarningsScheduleSource};
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
@@ -299,9 +299,10 @@ async fn main() -> Result<(), AppError> {
             "fin summary ingest poll task started",
         );
 
+        let earnings_schedule_source: SharedEarningsScheduleSource = client.clone();
         let _earnings_date_ingest_poll = backend::services::earnings_date_ingest::spawn_poll(
             db.clone(),
-            client.clone(),
+            earnings_schedule_source,
             backend::services::earnings_date_ingest::DEFAULT_INTERVAL,
         );
         tracing::info!(
