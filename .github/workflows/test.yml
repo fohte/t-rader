@@ -511,6 +511,12 @@ jobs:
       - name: Install llvm-tools-preview
         run: rustup component add llvm-tools-preview
 
+      - name: Prepare migrated database for transaction PoC
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
+        run: cargo run -p migration -- up
+
       - name: Configure PostgreSQL for timing experiment
         env:
           DB_CONTAINER_ID: ${{ job.services.db.id }}
@@ -549,6 +555,24 @@ jobs:
           WEB_SEARCH_MODEL: test-web-search-model
           GEMINI_MEDIA_MODEL: gemini-9-flash
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
+
+      - name: Measure database-per-test baseline
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test?application_name=h8-baseline
+        run: >-
+          cargo llvm-cov nextest --no-report --stress-count 5
+          --filterset 'test(=repositories::short_ratio::tests::upsert_inserts_new_records)'
+          --test-threads 1 --color never
+
+      - name: Measure transaction rollback PoC
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
+        run: >-
+          cargo llvm-cov nextest --no-report --stress-count 5
+          --filterset 'test(=repositories::short_ratio::tests::transaction_rollback_inserts_new_records)'
+          --test-threads 1 --color never
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
@@ -598,6 +622,10 @@ jobs:
               r"\bconnection authorized:.*\bdatabase=(?P<database>\"[^\"]+\"|\S+)",
               re.IGNORECASE,
           )
+          connection_application_name_pattern = re.compile(
+              r"\bapplication_name=(?P<application_name>\"[^\"]+\"|\S+)",
+              re.IGNORECASE,
+          )
           session_time_pattern = re.compile(
               r"\bdisconnection: session time:\s*"
               r"(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>[0-9.]+)",
@@ -609,6 +637,7 @@ jobs:
           connection_counts = defaultdict(int)
           connection_received_at = {}
           connection_auth_durations_ms = []
+          connection_auth_durations_by_application = defaultdict(list)
           session_times_ms = []
 
           with open("backend-db.log", encoding="utf-8") as log:
@@ -639,9 +668,14 @@ jobs:
                           connection_counts[database_category] += 1
 
                           if received_at is not None:
-                              connection_auth_durations_ms.append(
-                                  (timestamp - received_at).total_seconds() * 1000
-                              )
+                              duration_ms = (timestamp - received_at).total_seconds() * 1000
+                              connection_auth_durations_ms.append(duration_ms)
+                              application_name = connection_application_name_pattern.search(line)
+                              if application_name is not None:
+                                  name = application_name.group("application_name").strip('"')
+                                  connection_auth_durations_by_application[name].append(
+                                      duration_ms
+                                  )
 
                   session_time = session_time_pattern.search(line)
                   if (
@@ -721,6 +755,28 @@ jobs:
               "PostgreSQL connection received-to-authorized time",
               connection_auth_durations_ms,
           )
+          for application_name in sorted(connection_auth_durations_by_application):
+              if application_name.startswith("h8-"):
+                  print_duration_summary(
+                      f"PostgreSQL received-to-authorized time ({application_name})",
+                      connection_auth_durations_by_application[application_name],
+                  )
+          baseline_auth = connection_auth_durations_by_application["h8-baseline"]
+          if baseline_auth:
+              print(
+                  "H8 database-per-test baseline average authentication time per test "
+                  f"(5 stress iterations): {sum(baseline_auth) / 5:.3f} ms"
+              )
+          poc_primary_auth = connection_auth_durations_by_application["h8-poc-primary"]
+          poc_verifier_auth = connection_auth_durations_by_application["h8-poc-verify"]
+          if poc_primary_auth and len(poc_primary_auth) == len(poc_verifier_auth):
+              test_count = len(poc_primary_auth)
+              total_auth_ms = sum(poc_primary_auth) + sum(poc_verifier_auth)
+              print(
+                  "H8 rollback PoC authentication time per test "
+                  f"(primary and verification connections): {total_auth_ms / test_count:.3f} ms "
+                  f"({test_count} tests, {test_count * 2} connections)"
+              )
           PY
 
       - name: Upload PostgreSQL server log

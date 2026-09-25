@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
+use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_ratio;
 use crate::error::AppError;
@@ -22,10 +22,10 @@ impl From<ShortRatio> for short_ratio::ActiveModel {
 ///
 /// 複合 PK (date, sector33_code) で重複排除し、既存行は売買代金カラムを更新する
 /// (訂正の反映)。
-pub async fn upsert_short_ratios(
-    db: &DatabaseConnection,
-    ratios: Vec<ShortRatio>,
-) -> Result<(), AppError> {
+pub async fn upsert_short_ratios<C>(db: &C, ratios: Vec<ShortRatio>) -> Result<(), AppError>
+where
+    C: ConnectionTrait,
+{
     if ratios.is_empty() {
         return Ok(());
     }
@@ -49,7 +49,10 @@ pub async fn upsert_short_ratios(
 }
 
 /// DB 上の最新の対象日を返す。1 件も無ければ `None`。
-pub async fn find_latest_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+pub async fn find_latest_date<C>(db: &C) -> Result<Option<NaiveDate>, AppError>
+where
+    C: ConnectionTrait,
+{
     let result = short_ratio::Entity::find()
         .order_by_desc(short_ratio::Column::Date)
         .one(db)
@@ -60,6 +63,7 @@ pub async fn find_latest_date(db: &DatabaseConnection) -> Result<Option<NaiveDat
 #[cfg(test)]
 mod tests {
     use rust_decimal::Decimal;
+    use sea_orm::{ConnectOptions, Database, DatabaseConnection, TransactionTrait};
     use sqlx::PgPool;
 
     use super::*;
@@ -74,6 +78,15 @@ mod tests {
             short_with_restriction_value: Some(Decimal::new(value, 0)),
             short_without_restriction_value: Some(Decimal::new(value, 0)),
         }
+    }
+
+    async fn connect_with_application_name(application_name: &str) -> DatabaseConnection {
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL");
+        let mut options = ConnectOptions::new(database_url);
+        options.set_application_name(application_name);
+        Database::connect(options)
+            .await
+            .expect("database connection")
     }
 
     #[sqlx::test(migrations = false)]
@@ -91,6 +104,35 @@ mod tests {
             .await
             .expect("find failed");
         assert_eq!(rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn transaction_rollback_inserts_new_records() {
+        let db = connect_with_application_name("h8-poc-primary").await;
+        let txn = db.begin().await.expect("begin outer transaction");
+        let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
+
+        let ratios = vec![make_ratio(date, "H801", 100), make_ratio(date, "H802", 200)];
+        upsert_short_ratios(&txn, ratios)
+            .await
+            .expect("upsert failed");
+
+        let rows = short_ratio::Entity::find()
+            .all(&txn)
+            .await
+            .expect("find failed");
+        assert_eq!(rows.len(), 2);
+
+        txn.rollback().await.expect("rollback outer transaction");
+        db.close().await.expect("close primary connection");
+
+        let verifier = connect_with_application_name("h8-poc-verify").await;
+        let remaining_rows = short_ratio::Entity::find()
+            .all(&verifier)
+            .await
+            .expect("verify rollback");
+        assert_eq!(remaining_rows, Vec::new());
+        verifier.close().await.expect("close verifier connection");
     }
 
     #[sqlx::test(migrations = false)]

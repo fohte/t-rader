@@ -3,7 +3,7 @@
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, QueryOrder, SqlErr, TransactionTrait,
+    IntoActiveModel, QueryFilter, QueryOrder, SqlErr, TransactionSession, TransactionTrait,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -76,11 +76,14 @@ pub async fn list(db: &DatabaseConnection) -> Result<Vec<note_kind::Model>, AppE
         .await?)
 }
 
-pub async fn create(
-    db: &DatabaseConnection,
+pub async fn create<C>(
+    db: &C,
     actor: Actor,
     input: CreateNoteKind,
-) -> Result<note_kind::Model, AppError> {
+) -> Result<note_kind::Model, AppError>
+where
+    C: ConnectionTrait + TransactionTrait,
+{
     let key = validate_key(&input.key)?;
     let display_name = validate_display_name(&input.display_name)?;
     let txn = db.begin().await?;
@@ -213,4 +216,80 @@ pub async fn delete(db: &DatabaseConnection, actor: Actor, key: &str) -> Result<
     .await?;
     txn.commit().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter};
+
+    use super::*;
+    use crate::entities::change_history;
+
+    async fn connect_with_application_name(application_name: &str) -> DatabaseConnection {
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL");
+        let mut options = ConnectOptions::new(database_url);
+        options.set_application_name(application_name);
+        Database::connect(options)
+            .await
+            .expect("database connection")
+    }
+
+    #[tokio::test]
+    async fn nested_create_commit_is_rolled_back_by_outer_transaction() {
+        let db = connect_with_application_name("h8-nested-primary").await;
+        let outer = db.begin().await.expect("begin outer transaction");
+        let key = "h8-transaction-probe";
+        let expected = note_kind::Model {
+            key: key.to_string(),
+            display_name: "Transaction probe".to_string(),
+            requires_approval: true,
+            description: Some("Nested commit rollback probe".to_string()),
+            sort_order: 41,
+        };
+
+        let created = create(
+            &outer,
+            Actor::Human,
+            CreateNoteKind {
+                key: key.to_string(),
+                display_name: "Transaction probe".to_string(),
+                requires_approval: true,
+                description: Some("Nested commit rollback probe".to_string()),
+                sort_order: Some(41),
+            },
+        )
+        .await
+        .expect("create note kind");
+        let visible = note_kind::Entity::find_by_id(key.to_string())
+            .one(&outer)
+            .await
+            .expect("find note kind in outer transaction");
+        let history = change_history::Entity::find()
+            .filter(change_history::Column::TargetKind.eq("note_kind"))
+            .filter(change_history::Column::TargetId.eq(history_target_id(key)))
+            .all(&outer)
+            .await
+            .expect("find change history in outer transaction");
+        assert_eq!(
+            (created, visible, history.len()),
+            (expected.clone(), Some(expected), 1)
+        );
+
+        outer.rollback().await.expect("rollback outer transaction");
+        db.close().await.expect("close primary connection");
+
+        let verifier = connect_with_application_name("h8-nested-verify").await;
+        let remaining_note_kind = note_kind::Entity::find_by_id(key.to_string())
+            .one(&verifier)
+            .await
+            .expect("verify note kind rollback");
+        let remaining_history = change_history::Entity::find()
+            .filter(change_history::Column::TargetKind.eq("note_kind"))
+            .filter(change_history::Column::TargetId.eq(history_target_id(key)))
+            .all(&verifier)
+            .await
+            .expect("verify change history rollback");
+        assert_eq!((remaining_note_kind, remaining_history), (None, Vec::new()));
+        verifier.close().await.expect("close verifier connection");
+    }
 }
