@@ -9,7 +9,6 @@ pub mod hypothesis;
 pub mod hypothesis_proposal;
 pub mod import;
 pub mod instrument;
-pub mod interest;
 pub mod jquants_plan;
 pub mod margin;
 pub mod note;
@@ -43,7 +42,6 @@ pub use import::{
     SbiPreviewRow,
 };
 pub use instrument::Instrument;
-pub use interest::{CreateInterestRequest, UpdateInterestRequest};
 pub use jquants_plan::{
     JQuantsFetchableRange, JQuantsPlan, JQuantsPlanSettingData, JQuantsPlanSettingResponse,
     PutJQuantsPlanSettingRequest, parse_plan_setting, serialize_plan_setting,

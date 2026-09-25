@@ -18,10 +18,8 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::ref_term;
-use crate::services::interests::ensure_ref_kind;
-
 use super::{StrategyServer, db_error, invalid_params};
+use crate::entities::ref_term;
 
 /// 戦略 Agent が追加する別名の固定 origin。
 const AGENT_TERM_ORIGIN: &str = "llm";
@@ -53,17 +51,12 @@ pub struct RemoveRefTermsResult {
     pub removed: Vec<String>,
 }
 
-fn validation_to_mcp(err: crate::error::AppError) -> McpError {
-    match err {
-        crate::error::AppError::Validation(msg) => invalid_params(msg),
-        other => invalid_params(format!("validation failed: {other}")),
-    }
-}
-
 /// ref_kind / ref_id を trim + 値域チェックする。add/remove 両 tool で共通。
 fn normalize_ref(ref_kind: &str, ref_id: &str) -> Result<(String, String), McpError> {
     let ref_kind = ref_kind.trim();
-    ensure_ref_kind(ref_kind).map_err(validation_to_mcp)?;
+    if !matches!(ref_kind, "stock" | "indicator" | "sector" | "theme") {
+        return Err(invalid_params(format!("invalid ref_kind: {ref_kind}")));
+    }
     let ref_id = ref_id.trim();
     if ref_id.is_empty() {
         return Err(invalid_params("ref_id must not be empty"));

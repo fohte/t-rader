@@ -273,7 +273,7 @@ fn build_item(
     // ここで手動でデコードする。title 側も CDATA で来うる (Reuters JP 等) ので両方適用する。
     let title = decode_html_entities(title);
     // description は HTML を含むことがある (Yahoo / Bloomberg / Reuters の RSS は <p>...</p>
-    // を CDATA で入れてくる)。表示にも interest substring match にも生 HTML を残したくないので
+    // を CDATA で入れてくる)。表示に生 HTML を残したくないので
     // タグを削ってから truncate する。
     let cleaned = decode_html_entities(&strip_html_tags(description));
     let trimmed = cleaned.trim();

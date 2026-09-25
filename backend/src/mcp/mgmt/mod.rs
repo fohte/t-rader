@@ -216,7 +216,7 @@ impl MgmtServer {
     /// 戦略を削除する (confirm_name の完全一致必須、関連リソースは cascade 削除)
     #[tool(
         name = "delete_strategy",
-        description = "Delete a strategy and cascade-delete everything under it (notes, annotations, trades, hypotheses, triggers, custom indicators, strategy tasks, interests). confirm_name must exactly match the strategy's current name or nothing is deleted, to guard against a wrong strategy_id."
+        description = "Delete a strategy and cascade-delete everything under it (notes, annotations, trades, hypotheses, triggers, custom indicators, strategy tasks). confirm_name must exactly match the strategy's current name or nothing is deleted, to guard against a wrong strategy_id."
     )]
     async fn delete_strategy(
         &self,

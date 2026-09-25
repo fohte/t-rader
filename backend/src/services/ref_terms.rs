@@ -12,23 +12,6 @@ use crate::error::AppError;
 use crate::models::RefResolution;
 use crate::text_normalize::normalize;
 
-async fn exists_in_master(
-    db: &DatabaseConnection,
-    ref_kind: &str,
-    ref_id: &str,
-) -> Result<bool, AppError> {
-    Ok(match ref_kind {
-        "stock" => stock::Entity::find_by_id(ref_id).one(db).await?.is_some(),
-        "indicator" => indicator::Entity::find_by_id(ref_id)
-            .one(db)
-            .await?
-            .is_some(),
-        "sector" => sector::Entity::find_by_id(ref_id).one(db).await?.is_some(),
-        "theme" => theme::Entity::find_by_id(ref_id).one(db).await?.is_some(),
-        _ => false,
-    })
-}
-
 /// 指定 ref_kind に属する term の集合をまとめて別名解決する。ref_kind ごとに
 /// 1 クエリで全別名をロードし、Rust 側で正規化 (NFKC -> lowercase) して比較する。
 /// 戻り値は入力の term (正規化前) -> 一致した ref_id 一覧。
@@ -74,29 +57,6 @@ pub async fn resolve_by_term(
     let terms = vec![term.to_string()];
     let mut result = resolve_many_by_term(db, ref_kind, &terms).await?;
     Ok(result.remove(term).unwrap_or_default())
-}
-
-/// id の完全一致を優先し、当たらなければ別名で解決する。別名が 1 件だけ当たれば
-/// 正規の ref_id を返す。id にも当たらず、別名が 0 件 or 2 件以上のときは None。
-/// ref_term は master 存在チェックなしで登録できるため、別名の解決先が master に
-/// 存在しない場合も None を返す。
-pub async fn resolve_ref_id(
-    db: &DatabaseConnection,
-    ref_kind: &str,
-    ref_id: &str,
-) -> Result<Option<String>, AppError> {
-    if exists_in_master(db, ref_kind, ref_id).await? {
-        return Ok(Some(ref_id.to_string()));
-    }
-    let candidates = resolve_by_term(db, ref_kind, ref_id).await?;
-    let [only] = candidates.as_slice() else {
-        return Ok(None);
-    };
-    if exists_in_master(db, ref_kind, only).await? {
-        Ok(Some(only.clone()))
-    } else {
-        Ok(None)
-    }
 }
 
 /// ref_kind ごとに master テーブルから id -> name を引く
@@ -235,7 +195,7 @@ mod tests {
     use crate::models::RefResolution;
     use crate::testing::create_test_db;
 
-    use super::{resolve_by_term, resolve_ref_id, resolve_refs};
+    use super::{resolve_by_term, resolve_refs};
 
     async fn seed_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
         ref_term::ActiveModel {
@@ -330,72 +290,6 @@ mod tests {
             .expect("resolve_by_term");
 
         assert_eq!(ref_ids, vec!["7203".to_string()]);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn resolve_ref_id_prefers_exact_master_id_over_alias(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        seed_stock(&db, "7203", "トヨタ自動車").await;
-        // 7203 という語を別の銘柄の別名として登録していても、id の完全一致が優先される
-        seed_term(&db, "stock", "9984", "7203").await;
-
-        let resolved = resolve_ref_id(&db, "stock", "7203")
-            .await
-            .expect("resolve_ref_id");
-
-        assert_eq!(resolved, Some("7203".to_string()));
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn resolve_ref_id_resolves_unique_alias_when_id_not_in_master(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        seed_stock(&db, "7203", "トヨタ自動車").await;
-        seed_term(&db, "stock", "7203", "Ｔｏｙｏｔａ").await;
-
-        let resolved = resolve_ref_id(&db, "stock", "toyota")
-            .await
-            .expect("resolve_ref_id");
-
-        assert_eq!(resolved, Some("7203".to_string()));
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn resolve_ref_id_returns_none_when_alias_is_ambiguous(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        seed_stock(&db, "7203", "トヨタ自動車").await;
-        seed_stock(&db, "9984", "ソフトバンクグループ").await;
-        seed_term(&db, "stock", "7203", "トヨタ").await;
-        seed_term(&db, "stock", "9984", "トヨタ").await;
-
-        let resolved = resolve_ref_id(&db, "stock", "トヨタ")
-            .await
-            .expect("resolve_ref_id");
-
-        assert_eq!(resolved, None);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn resolve_ref_id_returns_none_when_alias_target_is_not_in_master(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        // master に存在しない ref_id (9999) を指す dangling な別名
-        seed_term(&db, "stock", "9999", "トヨタ").await;
-
-        let resolved = resolve_ref_id(&db, "stock", "トヨタ")
-            .await
-            .expect("resolve_ref_id");
-
-        assert_eq!(resolved, None);
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn resolve_ref_id_returns_none_when_neither_id_nor_alias_match(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
-        let resolved = resolve_ref_id(&db, "stock", "存在しない")
-            .await
-            .expect("resolve_ref_id");
-
-        assert_eq!(resolved, None);
     }
 
     #[sqlx::test(migrations = false)]

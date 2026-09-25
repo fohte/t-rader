@@ -87,7 +87,7 @@ const buildRetryFeedbackMessage = (
     [
       `前回の試行は却下されました (理由: ${buildRejectionMessage(reason, requiredArrayFields)})。`,
       '構造化出力 tool を呼び出して、必須フィールドを満たす内容を提出し直してください。',
-      'write_note・create_annotation・add_interest などの書き込み系 tool は前回の試行で' +
+      'write_note・create_annotation などの書き込み系 tool は前回の試行で' +
         '既に実行済みの可能性があります。同じ内容を重複して実行しないでください。',
     ].join('\n'),
   )

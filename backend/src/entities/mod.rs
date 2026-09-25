@@ -43,7 +43,6 @@ pub mod short_ratio;
 pub mod short_sale_report;
 pub mod stock;
 pub mod strategy;
-pub mod strategy_interest;
 pub mod strategy_investable_amount;
 pub mod strategy_task;
 pub mod strategy_task_step;
