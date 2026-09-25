@@ -511,6 +511,17 @@ jobs:
       - name: Install llvm-tools-preview
         run: rustup component add llvm-tools-preview
 
+      - name: Enable PostgreSQL statement timing
+        env:
+          DB_CONTAINER_ID: ${{ job.services.db.id }}
+        run: |
+          docker exec "$DB_CONTAINER_ID" psql \
+            --username=t_rader \
+            --dbname=t_rader_test \
+            --set=ON_ERROR_STOP=1 \
+            --command="ALTER SYSTEM SET log_min_duration_statement = 0" \
+            --command="SELECT pg_reload_conf()"
+
       - name: Run tests with coverage
         working-directory: backend
         env:
@@ -520,6 +531,82 @@ jobs:
           WEB_SEARCH_MODEL: test-web-search-model
           GEMINI_MEDIA_MODEL: gemini-9-flash
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
+
+      - name: Collect and summarize PostgreSQL statement timings
+        if: always()
+        env:
+          DB_CONTAINER_ID: ${{ job.services.db.id }}
+        run: |
+          docker logs "$DB_CONTAINER_ID" > backend-db.log 2>&1 || true
+          python3 - <<'PY'
+          import re
+          from collections import defaultdict
+
+          categories = (
+              "CREATE DATABASE without TEMPLATE",
+              "CREATE DATABASE with TEMPLATE",
+              "DROP DATABASE",
+              "pg_advisory_*",
+              "other statements",
+          )
+          timing_pattern = re.compile(r"\bduration:\s*([0-9.]+)\s*ms\b", re.IGNORECASE)
+          # Parse / Bind も別々に記録されるため、Execute と単純 query の statement だけを数える。
+          statement_pattern = re.compile(
+              r"\b(?:statement|execute(?:\s+[^:]+)?):\s*(.*)$", re.IGNORECASE
+          )
+          totals = defaultdict(float)
+          counts = defaultdict(int)
+          maximums = defaultdict(float)
+
+          with open("backend-db.log", encoding="utf-8") as log:
+              for line in log:
+                  timing = timing_pattern.search(line)
+                  statement = statement_pattern.search(line)
+                  if timing is None or statement is None:
+                      continue
+
+                  query = statement.group(1).strip()
+                  if re.match(r"ALTER SYSTEM SET log_min_duration_statement\b", query, re.IGNORECASE):
+                      continue
+                  if re.match(r"SELECT\s+pg_reload_conf\s*\(", query, re.IGNORECASE):
+                      continue
+
+                  if re.match(r"CREATE\s+DATABASE\b", query, re.IGNORECASE):
+                      category = (
+                          "CREATE DATABASE with TEMPLATE"
+                          if re.search(r"\bTEMPLATE\b", query, re.IGNORECASE)
+                          else "CREATE DATABASE without TEMPLATE"
+                      )
+                  elif re.match(r"DROP\s+DATABASE\b", query, re.IGNORECASE):
+                      category = "DROP DATABASE"
+                  elif re.search(r"\bpg_advisory_[a-z_]+\s*\(", query, re.IGNORECASE):
+                      category = "pg_advisory_*"
+                  else:
+                      category = "other statements"
+
+                  duration_ms = float(timing.group(1))
+                  totals[category] += duration_ms
+                  counts[category] += 1
+                  maximums[category] = max(maximums[category], duration_ms)
+
+          print("PostgreSQL statement timing summary (milliseconds)")
+          print("category | count | total | average | max")
+          for category in categories:
+              count = counts[category]
+              average = totals[category] / count if count else 0
+              print(
+                  f"{category} | {count} | {totals[category]:.3f} | "
+                  f"{average:.3f} | {maximums[category]:.3f}"
+              )
+          PY
+
+      - name: Upload PostgreSQL server log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-db-statement-log
+          path: backend-db.log
+          if-no-files-found: warn
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
