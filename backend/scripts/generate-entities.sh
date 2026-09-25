@@ -59,9 +59,7 @@ apply_overrides() {
 for file in "$ENTITIES_DIR"/*.rs; do
   base="$(basename "$file" .rs)"
   case "$base" in
-    watchlists) name=Watchlist ;;
     bars) name=Bar ;;
-    watchlist_items) name=WatchlistItem ;;
     instruments) name=Instrument ;;
     jquants_plan_setting) name=JQuantsPlanSetting ;;
     jquants_fin_summary) name=JQuantsFinSummary ;;

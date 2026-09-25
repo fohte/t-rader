@@ -96,7 +96,7 @@ fn select_common_priced_at(
 }
 
 /// 価格取得の前提として `instruments` 行を保証する (`bars` の FK 制約のため)。
-/// 既存の watchlist 由来の行があればそのまま使い、無ければ symbol を name として仮登録する。
+/// 銘柄情報が未登録なら symbol を name として仮登録する。
 async fn ensure_instrument_exists(
     db: &DatabaseConnection,
     symbol: &str,
