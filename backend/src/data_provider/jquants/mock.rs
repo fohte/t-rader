@@ -60,6 +60,14 @@ impl JQuantsMockServer {
         }
     }
 
+    pub fn valuation(&self) -> MockValuationBuilder<'_> {
+        MockValuationBuilder {
+            server: &self.server,
+            date: "2099-01-05",
+            items: Vec::new(),
+        }
+    }
+
     pub fn instrument(&self) -> MockInstrumentBuilder<'_> {
         MockInstrumentBuilder {
             server: &self.server,
@@ -306,6 +314,37 @@ pub(crate) struct MockEarningsDateBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     items: Vec<serde_json::Value>,
+}
+
+pub(crate) struct MockValuationBuilder<'a> {
+    server: &'a MockServer,
+    date: &'a str,
+    items: Vec<serde_json::Value>,
+}
+
+impl<'a> MockValuationBuilder<'a> {
+    pub fn date(mut self, date: &'a str) -> Self {
+        self.date = date;
+        self
+    }
+
+    pub fn items(mut self, items: Vec<serde_json::Value>) -> Self {
+        self.items = items;
+        self
+    }
+
+    pub async fn ok(self) {
+        Mock::given(method("GET"))
+            .and(path("/equities/valuation"))
+            .and(query_param("date", self.date))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": self.items,
+                "pagination_key": Option::<&str>::None,
+            })))
+            .mount(self.server)
+            .await;
+    }
 }
 
 impl<'a> MockEarningsDateBuilder<'a> {

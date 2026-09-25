@@ -8,6 +8,7 @@ mod response;
 mod short_selling;
 #[cfg(test)]
 mod tests;
+mod valuation;
 
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
@@ -20,7 +21,7 @@ use crate::data_provider::{DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-pub(crate) use response::{EarningsDateRecord, ValuationRecord};
+pub(crate) use response::EarningsDateRecord;
 use response::{
     EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
     FinSummaryResponse, Paginated, ValuationResponse,
@@ -374,7 +375,7 @@ impl JQuantsClient {
     pub(crate) async fn fetch_valuation_by_date(
         &self,
         date: NaiveDate,
-    ) -> Result<Vec<ValuationRecord>, DataProviderError> {
+    ) -> Result<Vec<response::ValuationRecord>, DataProviderError> {
         let date_str = date.format("%Y-%m-%d").to_string();
         let params = [("date", date_str.as_str())];
         self.fetch_all_pages::<ValuationResponse>(

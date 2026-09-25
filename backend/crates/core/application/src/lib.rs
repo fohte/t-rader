@@ -8,6 +8,7 @@ mod margin_source;
 mod market_daily_bar_source;
 mod news_aggregator;
 mod short_selling_source;
+mod valuation_source;
 
 pub use agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
@@ -38,6 +39,7 @@ pub use market_daily_bar_source::{
 pub use short_selling_source::{
     SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError,
 };
+pub use valuation_source::{SharedValuationSource, ValuationSource, ValuationSourceError};
 
 #[cfg(feature = "test-support")]
 pub use agent_task_client::FakeAgentTaskClient;

@@ -20,7 +20,7 @@ const READ_VALUATION_SQL: &str = indoc::indoc! {"
         fwd_per::double precision AS fwd_per,
         pbr::double precision AS pbr,
         mkt_cap::double precision AS mkt_cap
-    FROM jquants_valuation
+    FROM valuation
     WHERE LEFT(code, 4) = $1
       AND date >= $2
       AND date <= $3

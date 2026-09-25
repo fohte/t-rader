@@ -1,20 +1,18 @@
-//! J-Quants の日次バリュエーション指標を全銘柄分取り込む定期タスク。
+//! 日次バリュエーション指標を全銘柄分取り込む定期タスク。
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
+use core_application::{SharedValuationSource, ValuationSource};
+use core_domain::valuation::Valuation;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use tokio::task::JoinHandle;
 
-use crate::data_provider::DataProviderError;
-use crate::data_provider::jquants::JQuantsClient;
 use crate::date_utils::latest_business_day;
-use crate::entities::{jquants_valuation, jquants_valuation_ingested_date};
+use crate::entities::{valuation, valuation_ingested_date};
 use crate::error::AppError;
-use crate::models::jquants_plan::JQuantsPlan;
 
 /// poll task のデフォルト実行間隔。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60 * 60);
@@ -64,8 +62,8 @@ async fn find_ingested_dates(
     db: &DatabaseConnection,
     from: NaiveDate,
 ) -> Result<HashSet<NaiveDate>, AppError> {
-    let rows = jquants_valuation_ingested_date::Entity::find()
-        .filter(jquants_valuation_ingested_date::Column::Date.gte(from))
+    let rows = valuation_ingested_date::Entity::find()
+        .filter(valuation_ingested_date::Column::Date.gte(from))
         .all(db)
         .await?;
     Ok(rows.into_iter().map(|row| row.date).collect())
@@ -73,11 +71,11 @@ async fn find_ingested_dates(
 
 /// 取り込み済み営業日を記録する。
 async fn mark_ingested(db: &DatabaseConnection, date: NaiveDate) -> Result<(), AppError> {
-    jquants_valuation_ingested_date::Entity::insert(jquants_valuation_ingested_date::ActiveModel {
+    valuation_ingested_date::Entity::insert(valuation_ingested_date::ActiveModel {
         date: Set(date),
     })
     .on_conflict(
-        OnConflict::column(jquants_valuation_ingested_date::Column::Date)
+        OnConflict::column(valuation_ingested_date::Column::Date)
             .do_nothing()
             .to_owned(),
     )
@@ -89,7 +87,7 @@ async fn mark_ingested(db: &DatabaseConnection, date: NaiveDate) -> Result<(), A
 /// 1 日分の指標を型付きカラムへ upsert する。
 async fn upsert_valuations(
     db: &DatabaseConnection,
-    items: Vec<crate::data_provider::jquants::ValuationRecord>,
+    items: Vec<Valuation>,
 ) -> Result<usize, AppError> {
     if items.is_empty() {
         return Ok(0);
@@ -97,14 +95,9 @@ async fn upsert_valuations(
 
     let mut models = Vec::with_capacity(items.len());
     for item in items {
-        let date = NaiveDate::parse_from_str(&item.date, "%Y-%m-%d").map_err(|error| {
-            AppError::DataProvider(DataProviderError::Parse(format!(
-                "invalid valuation date: {error}"
-            )))
-        })?;
-        models.push(jquants_valuation::ActiveModel {
+        models.push(valuation::ActiveModel {
             code: Set(item.code),
-            date: Set(date),
+            date: Set(item.date),
             eps: Set(item.eps),
             fwd_eps: Set(item.fwd_eps),
             bps: Set(item.bps),
@@ -118,24 +111,21 @@ async fn upsert_valuations(
     }
     let row_count = models.len();
 
-    jquants_valuation::Entity::insert_many(models)
+    valuation::Entity::insert_many(models)
         .on_conflict(
-            OnConflict::columns([
-                jquants_valuation::Column::Code,
-                jquants_valuation::Column::Date,
-            ])
-            .update_columns([
-                jquants_valuation::Column::Eps,
-                jquants_valuation::Column::FwdEps,
-                jquants_valuation::Column::Bps,
-                jquants_valuation::Column::Roe,
-                jquants_valuation::Column::FwdRoe,
-                jquants_valuation::Column::Per,
-                jquants_valuation::Column::FwdPer,
-                jquants_valuation::Column::Pbr,
-                jquants_valuation::Column::MktCap,
-            ])
-            .to_owned(),
+            OnConflict::columns([valuation::Column::Code, valuation::Column::Date])
+                .update_columns([
+                    valuation::Column::Eps,
+                    valuation::Column::FwdEps,
+                    valuation::Column::Bps,
+                    valuation::Column::Roe,
+                    valuation::Column::FwdRoe,
+                    valuation::Column::Per,
+                    valuation::Column::FwdPer,
+                    valuation::Column::Pbr,
+                    valuation::Column::MktCap,
+                ])
+                .to_owned(),
         )
         .exec_without_returning(db)
         .await?;
@@ -143,24 +133,21 @@ async fn upsert_valuations(
     Ok(row_count)
 }
 
-/// valuation を取り込む 1 サイクル。Standard / Premium 以外では何も取得しない。
+/// 1 サイクル実行。データソースが取得可能範囲を返さない場合はスキップする。
 pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
+    source: &dyn ValuationSource,
 ) -> Result<IngestStats, AppError> {
-    let Some(plan @ (JQuantsPlan::Standard | JQuantsPlan::Premium)) = client.manual_plan() else {
-        tracing::debug!(
-            "J-Quants Standard 未満または契約プラン未設定のため valuation をスキップします"
-        );
+    let today = Utc::now().date_naive();
+    let Some(range) = source.fetchable_range(today) else {
+        tracing::debug!("valuation を取得できないため取り込みをスキップします");
         return Ok(IngestStats::default());
     };
 
-    let today = Utc::now().date_naive();
-    let (plan_from, plan_to) = plan.range(today);
-    let to = latest_business_day(plan_to.min(today));
+    let to = latest_business_day(range.to.min(today));
     let business_days = recent_business_days(to, TARGET_BUSINESS_DAYS)
         .into_iter()
-        .filter(|date| *date >= plan_from)
+        .filter(|date| *date >= range.from)
         .collect::<Vec<_>>();
     let Some(&earliest) = business_days.first() else {
         return Ok(IngestStats::default());
@@ -172,7 +159,7 @@ pub async fn run_ingest_cycle(
 
     for date in targets {
         stats.days_attempted += 1;
-        match client.fetch_valuation_by_date(date).await {
+        match source.fetch_valuations_by_date(date).await {
             Ok(items) if items.is_empty() => {
                 tracing::debug!(%date, "この日の valuation はまだ公開されていません");
             }
@@ -196,10 +183,10 @@ pub async fn run_ingest_cycle(
     Ok(stats)
 }
 
-/// J-Quants client が設定された場合に poll task を起動する。
+/// データソースが設定された場合に poll task を起動する。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    client: Arc<JQuantsClient>,
+    source: SharedValuationSource,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -207,7 +194,7 @@ pub fn spawn_poll(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_ingest_cycle(&db, &client).await {
+            match run_ingest_cycle(&db, source.as_ref()).await {
                 Ok(stats) => tracing::debug!(
                     days_attempted = stats.days_attempted,
                     rows_upserted = stats.rows_upserted,
@@ -217,4 +204,68 @@ pub fn spawn_poll(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use chrono::NaiveDate;
+    use sea_orm::{DatabaseBackend, MockDatabase};
+
+    use super::*;
+    use crate::data_provider::jquants::mock::JQuantsMockServer;
+
+    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
+    }
+
+    #[tokio::test]
+    async fn skips_when_source_has_no_fetchable_range() {
+        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
+        let mock = JQuantsMockServer::start().await;
+        let client = mock.client().expect("client");
+
+        let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
+        let requests = mock
+            .server_ref()
+            .received_requests()
+            .await
+            .expect("recorded requests")
+            .into_iter()
+            .map(|request| request.url.path().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (stats, requests),
+            (IngestStats::default(), Vec::<String>::new())
+        );
+    }
+
+    #[test]
+    fn selects_recent_refetch_window_and_missing_dates() {
+        let mut business_days = Vec::new();
+        let mut candidate = date(2099, 1, 1);
+        while business_days.len() < 10 {
+            if latest_business_day(candidate) == candidate {
+                business_days.push(candidate);
+            }
+            candidate += ChronoDuration::days(1);
+        }
+        let ingested = HashSet::from([business_days[1], business_days[2]]);
+
+        assert_eq!(
+            target_dates(&business_days, &ingested),
+            vec![
+                business_days[0],
+                business_days[3],
+                business_days[4],
+                business_days[5],
+                business_days[6],
+                business_days[7],
+                business_days[8],
+                business_days[9],
+            ],
+        );
+    }
 }
