@@ -167,6 +167,14 @@ impl JQuantsClient {
         Some(DateRange { from, to })
     }
 
+    pub(crate) fn known_fetchable_date_range(&self, today: NaiveDate) -> Option<DateRange> {
+        if let Some(range) = self.manual_plan_date_range(today) {
+            return Some(range);
+        }
+        let (from, to) = self.detected_range_on(today)?;
+        Some(DateRange { from, to })
+    }
+
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
     ///
     /// 契約プランが設定されていれば、その公称値に `RATE_LIMIT_SAFETY_FACTOR` による
@@ -180,11 +188,15 @@ impl JQuantsClient {
     }
 
     fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        self.detected_range_on(Utc::now().date_naive())
+    }
+
+    fn detected_range_on(&self, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
         let guard = self
             .detected_range
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        effective_range(guard.as_ref(), Utc::now().date_naive())
+        effective_range(guard.as_ref(), today)
     }
 
     /// crate 内テスト (`services::edinet_holdings` 等) から 400 検出フローを経由せず

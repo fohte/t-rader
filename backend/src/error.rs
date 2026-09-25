@@ -4,7 +4,6 @@ use sea_orm::{DbErr, RuntimeErr, SqlErr};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::data_provider::ShareholdingStructureSourceError;
 use crate::data_provider::{
     DailyBarSourceError, DataProviderError, EquityMasterSourceError, MarketDailyBarSourceError,
 };
@@ -82,9 +81,6 @@ pub enum AppError {
     #[error("{0}")]
     MarketDailyBarSource(#[from] MarketDailyBarSourceError),
 
-    #[error("{0}")]
-    ShareholdingStructureSource(#[from] ShareholdingStructureSourceError),
-
     #[error("service unavailable: {0}")]
     ServiceUnavailable(String),
 
@@ -160,8 +156,7 @@ impl IntoResponse for AppError {
             }
             AppError::DailyBarSource(DailyBarSourceError::Failed(_))
             | AppError::EquityMasterSource(_)
-            | AppError::MarketDailyBarSource(_)
-            | AppError::ShareholdingStructureSource(_) => {
+            | AppError::MarketDailyBarSource(_) => {
                 tracing::error!("{self}");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,

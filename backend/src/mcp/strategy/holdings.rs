@@ -72,7 +72,7 @@ fn cross_shareholding_dto(entry: DomainCrossShareholding) -> CrossShareholdingDt
     }
 }
 
-/// symbol の code range に一致する最新行 (提出日降順、書類 ID で tie-break) を 1 件取得する。
+/// symbol の code range に一致する本文のある最新行 (提出日降順、書類 ID で tie-break) を 1 件取得する。
 /// major_shareholders / cross_shareholdings は「直近の書類のみ返す」という同じクエリ形を
 /// entity 違いで繰り返すため、ここに切り出す。
 async fn latest_matching_document<E>(
@@ -80,6 +80,7 @@ async fn latest_matching_document<E>(
     code_column: E::Column,
     sub_date_column: E::Column,
     doc_id_column: E::Column,
+    details_column: E::Column,
     symbol: &str,
 ) -> Result<Option<E::Model>, sea_orm::DbErr>
 where
@@ -88,6 +89,7 @@ where
     let (lower, upper) = code_range(symbol);
     E::find()
         .filter(code_column.between(lower, upper))
+        .filter(details_column.ne(serde_json::Value::Null))
         .order_by_desc(sub_date_column)
         .order_by_desc(doc_id_column)
         .one(db)
@@ -154,6 +156,7 @@ impl StrategyServer {
                 major_shareholder_documents::Column::StockCode,
                 major_shareholder_documents::Column::SubmittedOn,
                 major_shareholder_documents::Column::DocumentId,
+                major_shareholder_documents::Column::Details,
                 &params.symbol,
             )
             .await
@@ -189,6 +192,7 @@ impl StrategyServer {
                 cross_shareholding_documents::Column::StockCode,
                 cross_shareholding_documents::Column::SubmittedOn,
                 cross_shareholding_documents::Column::DocumentId,
+                cross_shareholding_documents::Column::Details,
                 &params.symbol,
             )
             .await
@@ -635,6 +639,52 @@ mod tests {
                             shares_ratio: Some(0.09),
                         },
                     ],
+                }),
+                cross_shareholdings: None,
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn major_shareholders_skips_documents_without_decoded_content(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_major_shareholders(
+            &db,
+            "EXAMPLE-VALID",
+            "99990",
+            ymd(2025, 6, 30),
+            json!({
+                "period_end": "2025-03-31",
+                "report_type": "annual",
+                "holders": [{"rank": 1, "name": "Example Holder", "shares_held": 5000000, "shares_ratio": 0.15}],
+            }),
+        )
+        .await;
+        insert_major_shareholders(
+            &db,
+            "EXAMPLE-UNPARSEABLE",
+            "99990",
+            ymd(2026, 6, 30),
+            Value::Null,
+        )
+        .await;
+
+        assert_eq!(
+            read(&db, "9999").await,
+            ReadShareholdingStructureResult {
+                symbol: "9999".to_string(),
+                large_volume_reports: vec![],
+                major_shareholders: Some(super::super::dto::MajorShareholdersReportDto {
+                    doc_id: "EXAMPLE-VALID".to_string(),
+                    submitted_on: ymd(2025, 6, 30),
+                    period_end: Some(ymd(2025, 3, 31)),
+                    document_type: MajorShareholdersDocumentType::AnnualReport,
+                    holders: vec![super::super::dto::MajorShareholderDto {
+                        rank: Some(1),
+                        holder_name: "Example Holder".to_string(),
+                        shares_held: Some(5000000),
+                        shares_ratio: Some(0.15),
+                    }],
                 }),
                 cross_shareholdings: None,
             },

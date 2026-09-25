@@ -1,3 +1,8 @@
+//! `*_documents.details` に保存する保有構造データ。
+//!
+//! JSONB の既存行を読めるよう、新しい項目は `Option` または `#[serde(default)]` にする。
+//! 必須項目を増やす場合は、既存行を更新する migration も追加する。
+
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +17,7 @@ pub struct ShareholdingDocumentMetadata {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LargeVolumeShareholdingDocument {
     pub metadata: ShareholdingDocumentMetadata,
-    pub content: LargeVolumeShareholdingContent,
+    pub content: Option<LargeVolumeShareholdingContent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,7 +52,7 @@ pub struct LargeVolumeHolder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MajorShareholderDocument {
     pub metadata: ShareholdingDocumentMetadata,
-    pub content: MajorShareholderContent,
+    pub content: Option<MajorShareholderContent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,7 +82,7 @@ pub struct MajorShareholder {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CrossShareholdingDocument {
     pub metadata: ShareholdingDocumentMetadata,
-    pub content: CrossShareholdingContent,
+    pub content: Option<CrossShareholdingContent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
