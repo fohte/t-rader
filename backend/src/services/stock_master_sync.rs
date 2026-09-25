@@ -208,6 +208,8 @@ mod tests {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
+        let initial_timestamp = chrono::DateTime::parse_from_rfc3339("2000-01-01T00:00:00Z")
+            .expect("valid test timestamp");
 
         stock::ActiveModel {
             id: Set("7203".to_string()),
@@ -215,8 +217,8 @@ mod tests {
             market: Set(None),
             sector_id: Set(None),
             product_category: Set(None),
-            created_at: NotSet,
-            updated_at: NotSet,
+            created_at: Set(initial_timestamp),
+            updated_at: Set(initial_timestamp),
         }
         .insert(&db)
         .await
