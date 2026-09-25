@@ -558,7 +558,7 @@ jobs:
           flags: backend
           fail_ci_if_error: false
 
-      - name: Collect and summarize PostgreSQL statement timings
+      - name: Collect and summarize PostgreSQL statement and connection timings
         if: always()
         env:
           DB_CONTAINER_ID: ${{ job.services.db.id }}
@@ -591,7 +591,9 @@ jobs:
               r"\s+\S+\s+\[(?P<pid>\d+)\]"
           )
           connection_received_pattern = re.compile(r"\bconnection received:", re.IGNORECASE)
-          setup_connection_pattern = re.compile(r"\bci-db-timing-setup\b")
+          ignored_connection_pattern = re.compile(
+              r"\b(?:ci-db-timing-setup|pg_isready)\b"
+          )
           connection_authorized_pattern = re.compile(
               r"\bconnection authorized:.*\bdatabase=(?P<database>\"[^\"]+\"|\S+)",
               re.IGNORECASE,
@@ -625,8 +627,8 @@ jobs:
 
                   connection_authorized = connection_authorized_pattern.search(line)
                   if connection_authorized is not None:
-                      received_at = connection_received_at.pop(pid, None) if pid else None
-                      if not setup_connection_pattern.search(line):
+                      received_at = connection_received_at.pop(pid, None)
+                      if not ignored_connection_pattern.search(line):
                           database_name = connection_authorized.group("database").strip('"')
                           if database_name.startswith("_sqlx_test_"):
                               database_category = "sqlx test database"
@@ -636,13 +638,16 @@ jobs:
                               database_category = "other databases"
                           connection_counts[database_category] += 1
 
-                          if timestamp is not None and received_at is not None:
+                          if received_at is not None:
                               connection_auth_durations_ms.append(
                                   (timestamp - received_at).total_seconds() * 1000
                               )
 
                   session_time = session_time_pattern.search(line)
-                  if session_time is not None and not setup_connection_pattern.search(line):
+                  if (
+                      session_time is not None
+                      and not ignored_connection_pattern.search(line)
+                  ):
                       session_seconds = (
                           int(session_time.group("hours")) * 3600
                           + int(session_time.group("minutes")) * 60
@@ -701,29 +706,28 @@ jobs:
           for category in connection_categories:
               print(f"{category} | {connection_counts[category]}")
 
-          session_count = len(session_times_ms)
-          session_total_ms = sum(session_times_ms)
-          session_average_ms = session_total_ms / session_count if session_count else 0
-          print("PostgreSQL disconnection session time (milliseconds)")
-          print("count | total | average")
-          print(
-              f"{session_count} | {session_total_ms:.3f} | "
-              f"{session_average_ms:.3f}"
-          )
+          def print_duration_summary(title, values_ms):
+              count = len(values_ms)
+              total = sum(values_ms)
+              average = total / count if count else 0
+              print(f"{title} (milliseconds)")
+              print("count | total | average")
+              print(f"{count} | {total:.3f} | {average:.3f}")
 
-          auth_count = len(connection_auth_durations_ms)
-          auth_total_ms = sum(connection_auth_durations_ms)
-          auth_average_ms = auth_total_ms / auth_count if auth_count else 0
-          print("PostgreSQL connection received-to-authorized time (milliseconds)")
-          print("count | total | average")
-          print(f"{auth_count} | {auth_total_ms:.3f} | {auth_average_ms:.3f}")
+          print_duration_summary(
+              "PostgreSQL disconnection session time", session_times_ms
+          )
+          print_duration_summary(
+              "PostgreSQL connection received-to-authorized time",
+              connection_auth_durations_ms,
+          )
           PY
 
       - name: Upload PostgreSQL server log
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: backend-db-statement-log
+          name: backend-db-log
           path: backend-db.log
           if-no-files-found: warn
 
