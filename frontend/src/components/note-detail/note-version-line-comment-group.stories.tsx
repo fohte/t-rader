@@ -69,17 +69,22 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Thread: Story = {}
+export const Thread: Story = {
+  name: 'shows a comment thread anchored to a changed line.',
+}
 
 export const NewCommentFormOpen: Story = {
+  name: 'shows a new comment form for a changed line.',
   args: { activeCommentKey: 'new:4' },
 }
 
 export const ReplyFormOpen: Story = {
+  name: 'shows a reply form for an existing comment.',
   args: { replyingCommentId: comment.id },
 }
 
 export const ThreadWithoutAnchor: Story = {
+  name: 'shows a comment thread without a line anchor.',
   args: {
     comments: thread.map((item) => ({
       ...item,

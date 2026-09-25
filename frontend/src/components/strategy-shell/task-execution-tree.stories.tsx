@@ -34,6 +34,7 @@ type Story = StoryObj<typeof meta>
 
 // merge フェーズには step を渡さないので、常に「未着手」ノードとして描画される
 export const Running: Story = {
+  name: 'shows an active task with completed and running analysis steps.',
   render: () => (
     <Frame>
       <TaskExecutionTree
@@ -60,6 +61,7 @@ export const Running: Story = {
 }
 
 export const Completed: Story = {
+  name: 'shows a finished run with verdicts, notes, and a summary.',
   render: () => (
     <Frame>
       <TaskExecutionTree
@@ -106,6 +108,7 @@ export const Completed: Story = {
 }
 
 export const WithFailure: Story = {
+  name: 'shows a failed analysis step alongside completed steps.',
   render: () => (
     <Frame>
       <TaskExecutionTree
@@ -135,6 +138,7 @@ export const WithFailure: Story = {
 }
 
 export const NoAgentGraph: Story = {
+  name: 'shows no execution steps when no agent graph is configured.',
   render: () => (
     <Frame>
       <p className="font-mono text-2xs text-muted-foreground">

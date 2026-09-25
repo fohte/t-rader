@@ -118,23 +118,31 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const OneColumn: Story = {}
+export const OneColumn: Story = {
+  name: 'shows note version changes in a single column.',
+}
 
-export const TwoColumns: Story = { args: { mode: 'two-column' } }
+export const TwoColumns: Story = {
+  name: 'compares note versions in two columns.',
+  args: { mode: 'two-column' },
+}
 
 export const ThreadAndReply: Story = {
+  name: 'shows a line anchored comment thread and its reply beside the diff.',
   args: {
     comments: replies,
   },
 }
 
 export const UnanchoredThread: Story = {
+  name: 'shows a comment thread without an attached diff line.',
   args: {
     comments: unanchoredThread,
   },
 }
 
 export const ReplyFormOpen: Story = {
+  name: 'shows the reply form for a comment beside the diff.',
   args: {
     comments: replies,
     replyingCommentId: comment.id,
@@ -142,15 +150,20 @@ export const ReplyFormOpen: Story = {
 }
 
 export const NewLineCommentFormOpen: Story = {
+  name: 'shows a form for commenting on a changed line.',
   args: {
     activeCommentKey: 'new:4',
   },
 }
 
 export const EmptyBodyWithLineAnchor: Story = {
+  name: 'shows a diff for an empty note body with a line anchor.',
   args: {
     rows: buildNoteVersionDiff(null, ''),
   },
 }
 
-export const Empty: Story = { args: { rows: [] } }
+export const Empty: Story = {
+  name: 'shows the diff viewer when there are no changed lines.',
+  args: { rows: [] },
+}

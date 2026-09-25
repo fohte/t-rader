@@ -12,6 +12,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows the portfolio split across stock holdings and cash.',
   args: {
     segments: [
       { key: 'p1', label: 'SUMCO', value: 296000, kind: 'position' },
@@ -23,11 +24,13 @@ export const Default: Story = {
 }
 
 export const AllCash: Story = {
+  name: 'shows a portfolio allocated entirely to cash.',
   args: {
     segments: [{ key: 'cash', label: '現金', value: 1000000, kind: 'cash' }],
   },
 }
 
 export const Empty: Story = {
+  name: 'shows the allocation bar without any segments.',
   args: { segments: [] },
 }

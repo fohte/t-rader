@@ -34,6 +34,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'lists current positions with cost basis and realized gains or losses.',
   args: {
     stocks,
     positions: [
@@ -56,5 +57,6 @@ export const Default: Story = {
 }
 
 export const Empty: Story = {
+  name: 'shows the positions table when the portfolio has no holdings.',
   args: { stocks, positions: [] },
 }

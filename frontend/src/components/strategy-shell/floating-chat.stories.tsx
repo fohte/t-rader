@@ -55,6 +55,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Closed: Story = {
+  name: 'keeps the floating chat panel closed.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(
@@ -65,6 +66,7 @@ export const Closed: Story = {
 }
 
 export const Idle: Story = {
+  name: 'shows the open chat panel before a prompt is entered.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(makeProps({ kind: 'idle' }))}
@@ -73,6 +75,7 @@ export const Idle: Story = {
 }
 
 export const Polling: Story = {
+  name: 'shows a submitted prompt while its task is still running.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(
@@ -86,6 +89,7 @@ export const Polling: Story = {
 }
 
 export const PollingWithRunLink: Story = {
+  name: 'shows a running task with a link to its execution details.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(
@@ -99,6 +103,7 @@ export const PollingWithRunLink: Story = {
 }
 
 export const Completed: Story = {
+  name: 'shows a completed task with a generated note available.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(
@@ -120,6 +125,7 @@ export const Completed: Story = {
 }
 
 export const Failed: Story = {
+  name: 'shows an error summary after a task fails.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(
@@ -130,6 +136,7 @@ export const Failed: Story = {
 }
 
 export const Error: Story = {
+  name: 'shows an error when the strategy agent is unavailable.',
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(

@@ -63,6 +63,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows a candlestick chart with a full price history.',
   args: {
     bars: generateSampleBars(120),
     className: 'h-full w-full',
@@ -70,6 +71,7 @@ export const Default: Story = {
 }
 
 export const FewBars: Story = {
+  name: 'shows a candlestick chart with a short price history.',
   args: {
     bars: generateSampleBars(10),
     className: 'h-full w-full',
@@ -77,6 +79,7 @@ export const FewBars: Story = {
 }
 
 export const Empty: Story = {
+  name: 'shows the empty chart when there are no price bars.',
   args: {
     bars: [],
     className: 'h-full w-full',
