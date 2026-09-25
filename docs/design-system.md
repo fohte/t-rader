@@ -62,19 +62,6 @@ t-rader 固有の CSS 変数は `:root` に定義する。
 | `--destructive`        | `#ef4444` | `text-destructive` / `border-destructive`        | `--primary` と同じ赤 (accent と danger を同じ 1 色で表現する)             |
 | `--ring`               | `#ef4444` | `ring-ring`                                      | focus ring 色                                                             |
 
-### Sidebar
-
-| Token                          | 値        | Tailwind utility                              |
-| ------------------------------ | --------- | --------------------------------------------- |
-| `--sidebar`                    | `#0a0a0a` | `bg-sidebar`                                  |
-| `--sidebar-foreground`         | `#fafafa` | `text-sidebar-foreground`                     |
-| `--sidebar-primary`            | `#ef4444` | `bg-sidebar-primary` / `text-sidebar-primary` |
-| `--sidebar-primary-foreground` | `#fafafa` | `text-sidebar-primary-foreground`             |
-| `--sidebar-accent`             | `#141414` | `bg-sidebar-accent`                           |
-| `--sidebar-accent-foreground`  | `#fafafa` | `text-sidebar-accent-foreground`              |
-| `--sidebar-border`             | `#2a2a2a` | `border-sidebar-border`                       |
-| `--sidebar-ring`               | `#ef4444` | `ring-sidebar-ring`                           |
-
 ### 株価の方向 (t-rader 固有)
 
 `@fohte/ui` に対応するトークンはない。
@@ -158,12 +145,11 @@ Tailwind v4 は `z-index` に `@theme` namespace を持たず、`z-0`/`z-10`/...
 ただし隣接して重なり得る要素どうしが同じ段になり重なり順が不定になる場合は、意図した重なり順を保てる段を選ぶこと (例: `z-[25]` は `z-20`/`z-30` の中間だが、`z-30` に丸めると同じ場に浮く StrategySwitcher のドロップダウン (既存の `z-30`) と同値になるため、`z-20` に丸める)。
 
 既定スケールを超えるレイヤーが本当に必要な場合 (例: shadcn/Radix overlay 系が使う `z-50` より常に上に表示する必要がある floating panel) は、`frontend/src/index.css` に `@utility` で個別の named utility を追加すること (例: `@utility z-floating-chat { z-index: 60; }`)。
-transition-property のように `@theme` namespace を持たないプロパティも同様に bracket 構文 (`transition-[width]` 等) が `no-arbitrary-value` の対象になるため、必要な組み合わせを `@utility` で個別の named utility として定義する (例: `transition-width`/`transition-position-width`/`transition-size`/`transition-margin-opacity`)。
+transition-property のように `@theme` namespace を持たないプロパティも同様に bracket 構文 (`transition-[width]` 等) が `no-arbitrary-value` の対象になるため、必要な組み合わせを `@utility` で個別の named utility として定義する (例: input/select の focus 遷移に使う `transition-colors-shadow`)。
 
 丸めると意味が壊れる固有の寸法 (グラフ埋め込みの高さなど) は、`index.css` の `:root` に named token を追加し、`@theme inline` で対応する Tailwind namespace (`--height-*` 等) にマッピングする (例: `--note-graph-height` → `h-note-graph`)。
 44px を超えて丸め対象外になった値のうち、viewport 単位を含むなど `--spacing` の倍数で表現できないものは、同様に `:root` に素の名前 (例: `--floating-chat-max-w`) で token を定義したうえで、`@theme inline` 側に `--spacing-<name>` として re-export し、この節の表に追記すること。
-一方、`@theme inline` への re-export が不要で、後述の Layout 節と同じ `(<custom-property>)` 構文 (例: `max-w-(--dialog-inset)`) で直接参照するだけで済む値もある。shadcn Dialog の viewport 端マージン (`--dialog-inset`) や Sidebar の派生幅 (`--sidebar-width-icon-inset`/`--sidebar-width-icon-inset-bordered`/`--sidebar-width-negative`) がこれに該当し、`:root` に計算値の named token として定義してあるのみで、re-export や表への追記はしていない。
-box-shadow も同様に named token 化する場合があり、shadcn Sidebar の outline variant 用に `@theme inline` で `--shadow-sidebar-border`/`--shadow-sidebar-accent` を定義してある。
+一方、`@theme inline` への re-export が不要で、後述の Layout 節と同じ `(<custom-property>)` 構文 (例: `max-w-(--dialog-inset)`) で直接参照するだけで済む値もある。shadcn Dialog の viewport 端マージン (`--dialog-inset`) がこれに該当し、`:root` に計算値の named token として定義してあるのみで、re-export や表への追記はしていない。
 
 | Token                   | 値                      | Tailwind utility        | 用途                                                                   |
 | ----------------------- | ----------------------- | ----------------------- | ---------------------------------------------------------------------- |

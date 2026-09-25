@@ -13,23 +13,13 @@ pub struct Model {
     pub id: Uuid,
     #[sea_orm(unique_key = "idx_note_strategy_id_execution_id")]
     pub strategy_id: Option<Uuid>,
-    pub title: String,
-    #[sea_orm(column_type = "Text")]
-    pub body_md: String,
-    #[sea_orm(column_type = "JsonBinary")]
-    pub frontmatter_json: Json,
     pub type_tag: Option<String>,
-    pub status: String,
     pub trigger: Option<String>,
     pub trigger_label: Option<String>,
-    pub created_by_kind: String,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
-    #[sea_orm(column_type = "JsonBinary")]
-    #[schema(value_type = Vec<crate::services::graph::GraphDef>)]
-    pub graphs_json: Json,
     #[sea_orm(
         column_type = "Text",
         nullable,
@@ -46,6 +36,8 @@ pub enum Relation {
     NoteHypothesis,
     #[sea_orm(has_many = "super::note_ref::Entity")]
     NoteRef,
+    #[sea_orm(has_many = "super::note_version::Entity")]
+    NoteVersion,
     #[sea_orm(has_many = "super::prediction::Entity")]
     Prediction,
     #[sea_orm(
@@ -75,6 +67,12 @@ impl Related<super::note_hypothesis::Entity> for Entity {
 impl Related<super::note_ref::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::NoteRef.def()
+    }
+}
+
+impl Related<super::note_version::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::NoteVersion.def()
     }
 }
 

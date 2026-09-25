@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::agent_client::AgentTaskError;
 use crate::entities::{annotation, note, strategy};
+use crate::services::note_versions::{INITIAL_NOTE_STATUS, current_note_ids_with_status};
 use crate::services::strategy_tasks::{
     self, ResumeTaskError, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
 };
@@ -19,8 +20,7 @@ use super::dto::{
 };
 use super::{MgmtServer, db_error, internal_error, invalid_params};
 
-/// 指定エンティティの `status='unread'` 件数を strategy_id ごとに集約して返す。
-/// `list_strategies` が note / annotation 双方に対し 1 クエリで未読件数を取るために使う。
+/// annotation の `status='unread'` 件数を strategy_id ごとに集約して返す。
 async fn unread_counts_by_strategy<E, C>(
     db: &DatabaseConnection,
     strategy_id_col: C,
@@ -48,6 +48,26 @@ where
         .collect())
 }
 
+async fn unread_note_counts_by_strategy(
+    db: &DatabaseConnection,
+) -> Result<HashMap<Uuid, u64>, McpError> {
+    let rows: Vec<(Uuid, i64)> = note::Entity::find()
+        .select_only()
+        .column(note::Column::StrategyId)
+        .column_as(note::Column::Id.count(), "unread_count")
+        .filter(note::Column::Id.in_subquery(current_note_ids_with_status(INITIAL_NOTE_STATUS)))
+        .filter(note::Column::StrategyId.is_not_null())
+        .group_by(note::Column::StrategyId)
+        .into_tuple()
+        .all(db)
+        .await
+        .map_err(db_error)?;
+    Ok(rows
+        .into_iter()
+        .map(|(strategy_id, count)| (strategy_id, count.max(0) as u64))
+        .collect())
+}
+
 impl MgmtServer {
     pub(super) async fn list_strategies_inner(&self) -> Result<ListStrategiesResult, McpError> {
         let rows = strategy::Entity::find()
@@ -57,13 +77,7 @@ impl MgmtServer {
             .await
             .map_err(db_error)?;
 
-        let note_counts = unread_counts_by_strategy::<note::Entity, note::Column>(
-            &self.db,
-            note::Column::StrategyId,
-            note::Column::Status,
-            note::Column::Id,
-        )
-        .await?;
+        let note_counts = unread_note_counts_by_strategy(&self.db).await?;
         let annotation_counts =
             unread_counts_by_strategy::<annotation::Entity, annotation::Column>(
                 &self.db,
@@ -547,25 +561,8 @@ mod tests {
 
         // unread ノート 2 件、approved ノート 1 件 → unread だけカウント
         for (title, status) in [("a", "unread"), ("b", "unread"), ("c", "approved")] {
-            note::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                strategy_id: Set(Some(strategy_id)),
-                title: Set(title.to_string()),
-                body_md: Set("body".to_string()),
-                frontmatter_json: Set(serde_json::json!({})),
-                type_tag: Set(None),
-                status: Set(status.to_string()),
-                trigger: Set(None),
-                trigger_label: Set(None),
-                created_by_kind: Set("human".to_string()),
-                created_at: sea_orm::ActiveValue::NotSet,
-                updated_at: sea_orm::ActiveValue::NotSet,
-                graphs_json: Set(serde_json::json!([])),
-                execution_id: Set(None),
-            }
-            .insert(&db)
-            .await
-            .unwrap();
+            crate::testing::insert_test_note_with_status(&db, strategy_id, title, "body", status)
+                .await;
         }
         // unread アノテーション 1 件
         annotation::ActiveModel {
@@ -591,25 +588,7 @@ mod tests {
         // 戦略に属さない unread note / annotation は、どの戦略の未読件数にも
         // 計上されず、集計クエリ自体も失敗しない (strategy_id が NULL の行が
         // group by 対象から除外されることの回帰)。
-        note::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            strategy_id: Set(None),
-            title: Set("市況ノート".to_string()),
-            body_md: Set("body".to_string()),
-            frontmatter_json: Set(serde_json::json!({})),
-            type_tag: Set(None),
-            status: Set("unread".to_string()),
-            trigger: Set(None),
-            trigger_label: Set(None),
-            created_by_kind: Set("human".to_string()),
-            created_at: sea_orm::ActiveValue::NotSet,
-            updated_at: sea_orm::ActiveValue::NotSet,
-            graphs_json: Set(serde_json::json!([])),
-            execution_id: Set(None),
-        }
-        .insert(&db)
-        .await
-        .unwrap();
+        crate::testing::insert_test_note_in_scope(&db, None, "市況ノート", "body").await;
         annotation::ActiveModel {
             id: Set(Uuid::new_v4()),
             strategy_id: Set(None),

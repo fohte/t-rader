@@ -1,4 +1,4 @@
-//! ノートに埋め込むグラフィカル表現 (`note.graphs_json`) のスキーマと検証。
+//! ノートバージョンに埋め込むグラフィカル表現 (`note_version.graphs_json`) のスキーマと検証。
 //!
 //! `#[serde(deny_unknown_fields)]` により、フィールド名の typo は
 //! `missing field` ではなく `unknown field ..., expected one of ...` として

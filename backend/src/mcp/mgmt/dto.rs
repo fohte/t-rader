@@ -167,6 +167,73 @@ pub struct DeleteRssFeedResult {
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
+pub struct NoteKindSummary {
+    pub key: String,
+    pub display_name: String,
+    pub requires_approval: bool,
+    pub description: Option<String>,
+    pub sort_order: i32,
+}
+
+impl From<crate::entities::note_kind::Model> for NoteKindSummary {
+    fn from(model: crate::entities::note_kind::Model) -> Self {
+        Self {
+            key: model.key,
+            display_name: model.display_name,
+            requires_approval: model.requires_approval,
+            description: model.description,
+            sort_order: model.sort_order,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ListNoteKindsResult {
+    pub note_kinds: Vec<NoteKindSummary>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateNoteKindParams {
+    pub key: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub requires_approval: Option<bool>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateNoteKindParams {
+    pub key: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub requires_approval: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    pub description: Option<Option<String>>,
+    #[serde(default)]
+    pub sort_order: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeleteNoteKindParams {
+    pub key: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct DeleteNoteKindResult {
+    pub key: String,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
 pub struct TriggerSummary {
     pub trigger_id: Uuid,
     pub kind: String,

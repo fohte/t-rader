@@ -15,6 +15,7 @@ pub mod interests;
 pub mod jquants_plan_setting;
 pub mod news;
 pub mod note_hypotheses;
+pub mod note_kinds;
 pub mod note_predictions;
 pub mod notes;
 pub mod refs;

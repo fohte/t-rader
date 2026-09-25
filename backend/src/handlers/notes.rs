@@ -12,16 +12,20 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::note;
+use crate::entities::{note, note_version};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
-use crate::handlers::strategies::map_submit_error;
-use crate::models::{ChangeStatusRequest, CreateNoteRequest, UpdateNoteRequest};
-use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::comment_anchor;
-use crate::services::note_refs::sync_note_refs;
+use crate::models::{CreateNoteRequest, NoteResponse, UpdateNoteRequest};
+use crate::services::change_history::{self, Actor, Op, TargetKind};
+use crate::services::note_versions::{
+    self, AppendVersion, current_note_ids_with_status, find_current_versions,
+    find_initial_created_by_kind,
+};
 use crate::services::strategies::ensure_strategy_exists;
-use crate::services::strategy_tasks::{self, TaskSource};
+
+pub(crate) mod status;
+pub(crate) use status::{__path_approve_note, __path_reject_note};
+pub use status::{approve_note, reject_note};
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
@@ -54,6 +58,38 @@ pub(crate) async fn find_note_or_404(
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
 }
 
+struct CurrentNote {
+    note: note::Model,
+    version: note_version::Model,
+    created_by_kind: String,
+}
+
+async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    id: Uuid,
+) -> Result<CurrentNote, AppError> {
+    let note = note::Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
+    let version = note_versions::find_current_version(db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("current version for note {id} not found")))?;
+    let created_by_kind = find_initial_created_by_kind(db, &[id])
+        .await?
+        .remove(&id)
+        .ok_or_else(|| AppError::NotFound(format!("initial version for note {id} not found")))?;
+    Ok(CurrentNote {
+        note,
+        version,
+        created_by_kind,
+    })
+}
+
+fn current_note_response(current: CurrentNote) -> NoteResponse {
+    NoteResponse::from_current_version(current.note, current.version, current.created_by_kind)
+}
+
 /// ノート一覧
 #[utoipa::path(
     get,
@@ -61,7 +97,7 @@ pub(crate) async fn find_note_or_404(
     tag = "notes",
     params(ListNotesQuery),
     responses(
-        (status = 200, body = Vec<note::Model>),
+        (status = 200, body = Vec<NoteResponse>),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -69,19 +105,45 @@ pub(crate) async fn find_note_or_404(
 pub async fn list_notes(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<ListNotesQuery>,
-) -> Result<Json<Vec<note::Model>>, AppError> {
+) -> Result<Json<Vec<NoteResponse>>, AppError> {
     let mut q = note::Entity::find().order_by_desc(note::Column::UpdatedAt);
     if let Some(sid) = params.strategy_id {
         q = q.filter(note::Column::StrategyId.eq(sid));
     }
     if let Some(status) = params.status.as_deref().filter(|s| !s.is_empty()) {
-        q = q.filter(note::Column::Status.eq(status));
+        q = q.filter(note::Column::Id.in_subquery(current_note_ids_with_status(status)));
     }
     if let Some(tag) = params.type_tag.as_deref().filter(|s| !s.is_empty()) {
         q = q.filter(note::Column::TypeTag.eq(tag));
     }
     let items = q.all(&state.db).await?;
-    Ok(Json(items))
+    let versions = find_current_versions(
+        &state.db,
+        &items.iter().map(|item| item.id).collect::<Vec<_>>(),
+    )
+    .await?;
+    let creators = find_initial_created_by_kind(
+        &state.db,
+        &items.iter().map(|item| item.id).collect::<Vec<_>>(),
+    )
+    .await?;
+    let responses = items
+        .into_iter()
+        .map(|item| {
+            let version = versions.get(&item.id).cloned().ok_or_else(|| {
+                AppError::NotFound(format!("current version for note {} not found", item.id))
+            })?;
+            let created_by_kind = creators.get(&item.id).cloned().ok_or_else(|| {
+                AppError::NotFound(format!("initial version for note {} not found", item.id))
+            })?;
+            Ok(NoteResponse::from_current_version(
+                item,
+                version,
+                created_by_kind,
+            ))
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
+    Ok(Json(responses))
 }
 
 /// ノート取得
@@ -91,7 +153,7 @@ pub async fn list_notes(
     tag = "notes",
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
-        (status = 200, body = note::Model),
+        (status = 200, body = NoteResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -100,8 +162,10 @@ pub async fn list_notes(
 pub async fn get_note(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
-) -> Result<Json<note::Model>, AppError> {
-    Ok(Json(find_note_or_404(&state.db, id).await?))
+) -> Result<Json<NoteResponse>, AppError> {
+    Ok(Json(current_note_response(
+        find_current_note_or_404(&state.db, id).await?,
+    )))
 }
 
 /// ノート作成
@@ -111,7 +175,7 @@ pub async fn get_note(
     tag = "notes",
     request_body = CreateNoteRequest,
     responses(
-        (status = 201, body = note::Model),
+        (status = 201, body = NoteResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -121,7 +185,7 @@ pub async fn get_note(
 pub async fn create_note(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateNoteRequest>,
-) -> Result<(StatusCode, Json<note::Model>), AppError> {
+) -> Result<(StatusCode, Json<NoteResponse>), AppError> {
     let title = payload.title.trim().to_string();
     if title.is_empty() {
         return Err(AppError::Validation("title must not be empty".into()));
@@ -129,7 +193,11 @@ pub async fn create_note(
     if let Some(fm) = payload.frontmatter_json.as_ref() {
         ensure_frontmatter_object(fm)?;
     }
-    let status = payload.status.as_deref().unwrap_or("unread").to_string();
+    let status = payload
+        .status
+        .as_deref()
+        .unwrap_or(note_versions::INITIAL_NOTE_STATUS)
+        .to_string();
     if !ALLOWED_STATUSES.contains(&status.as_str()) {
         return Err(AppError::Validation(format!("invalid status: {status}")));
     }
@@ -145,6 +213,7 @@ pub async fn create_note(
     }
 
     let id = Uuid::new_v4();
+    let history_title = title.clone();
     let txn = state.db.begin().await?;
     if let Some(strategy_id) = payload.strategy_id {
         ensure_strategy_exists(&txn, strategy_id).await?;
@@ -153,40 +222,59 @@ pub async fn create_note(
     let model = note::ActiveModel {
         id: Set(id),
         strategy_id: Set(payload.strategy_id),
-        title: Set(title.clone()),
-        body_md: Set(payload.body_md.clone()),
-        frontmatter_json: Set(payload
-            .frontmatter_json
-            .clone()
-            .unwrap_or_else(|| json!({}))),
         type_tag: Set(payload.type_tag.clone()),
-        status: Set(status),
         trigger: Set(payload.trigger.map(|t| t.to_string())),
         trigger_label: Set(payload.trigger_label.clone()),
-        created_by_kind: Set(created_by),
         created_at: NotSet,
         updated_at: NotSet,
-        graphs_json: Set(json!([])),
         execution_id: Set(None),
     };
-    let created = note::Entity::insert(model)
+    note::Entity::insert(model)
         .exec_with_returning(&txn)
         .await?;
 
-    sync_note_refs(&txn, id, &payload.body_md, &created.graphs_json).await?;
-
-    change_history::record(
+    let mut version = note_versions::append_version(
         &txn,
-        TargetKind::Note,
         id,
-        Op::Create,
-        json!({ "title": title, "strategy_id": payload.strategy_id }),
-        None,
+        AppendVersion {
+            title,
+            body_md: payload.body_md,
+            frontmatter_json: payload.frontmatter_json.unwrap_or_else(|| json!({})),
+            graphs_json: json!([]),
+            created_by_kind: created_by.clone(),
+            execution_id: None,
+            change_reason: None,
+            change_diff: Some(json!({
+                "title": history_title,
+                "strategy_id": payload.strategy_id,
+            })),
+            actor: Actor::Human,
+        },
     )
     .await?;
+    if status != note_versions::INITIAL_NOTE_STATUS {
+        let reviewed_at = chrono::Utc::now().fixed_offset();
+        version = note_version::ActiveModel {
+            id: Set(version.id),
+            status: Set(status),
+            reviewed_at: Set(Some(reviewed_at)),
+            ..Default::default()
+        }
+        .update(&txn)
+        .await?;
+    }
+    let created = note::Entity::find_by_id(id)
+        .one(&txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
 
     txn.commit().await?;
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((
+        StatusCode::CREATED,
+        Json(NoteResponse::from_current_version(
+            created, version, created_by,
+        )),
+    ))
 }
 
 /// ノート更新
@@ -197,7 +285,7 @@ pub async fn create_note(
     params(("id" = Uuid, Path, description = "ノート ID")),
     request_body = UpdateNoteRequest,
     responses(
-        (status = 200, body = note::Model),
+        (status = 200, body = NoteResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -209,43 +297,50 @@ pub async fn update_note(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateNoteRequest>,
-) -> Result<Json<note::Model>, AppError> {
-    let current = find_note_or_404(&state.db, id).await?;
-    let mut active = current.clone().into_active_model();
+) -> Result<Json<NoteResponse>, AppError> {
+    let current = find_current_note_or_404(&state.db, id).await?;
+    let current_note = current.note.clone();
+    let current_version = current.version.clone();
+    let mut active = current_note.clone().into_active_model();
     let mut diff = serde_json::Map::new();
-    let mut body_changed: Option<String> = None;
+    let mut new_title = current_version.title.clone();
+    let mut body_md = current_version.body_md.clone();
+    let mut frontmatter_json = current_version.frontmatter_json.clone();
+    let mut version_changed = false;
 
     if let Some(title) = payload.title {
-        let title = title.trim().to_string();
-        if title.is_empty() {
+        let updated_title = title.trim().to_string();
+        if updated_title.is_empty() {
             return Err(AppError::Validation("title must not be empty".into()));
         }
         diff.insert(
             "title".into(),
-            json!({ "from": current.title, "to": title }),
+            json!({ "from": current_version.title, "to": updated_title }),
         );
-        active.title = Set(title);
+        version_changed = true;
+        new_title = updated_title;
     }
     if let Some(body) = payload.body_md {
         diff.insert(
             "body_md".into(),
-            json!({ "len_from": current.body_md.len(), "len_to": body.len() }),
+            json!({ "len_from": current_version.body_md.len(), "len_to": body.len() }),
         );
-        active.body_md = Set(body.clone());
-        body_changed = Some(body);
+        body_md = body;
+        version_changed = true;
     }
     if let Some(fm) = payload.frontmatter_json {
         ensure_frontmatter_object(&fm)?;
         diff.insert(
             "frontmatter_json".into(),
-            json!({ "from": current.frontmatter_json, "to": fm }),
+            json!({ "from": current_version.frontmatter_json, "to": fm }),
         );
-        active.frontmatter_json = Set(fm);
+        frontmatter_json = fm;
+        version_changed = true;
     }
     if let Some(tt) = payload.type_tag {
         diff.insert(
             "type_tag".into(),
-            json!({ "from": current.type_tag, "to": tt }),
+            json!({ "from": current_note.type_tag, "to": tt }),
         );
         active.type_tag = Set(Some(tt));
     }
@@ -253,26 +348,43 @@ pub async fn update_note(
         let tr = tr.to_string();
         diff.insert(
             "trigger".into(),
-            json!({ "from": current.trigger, "to": tr }),
+            json!({ "from": current_note.trigger, "to": tr }),
         );
         active.trigger = Set(Some(tr));
     }
     if let Some(tl) = payload.trigger_label {
         diff.insert(
             "trigger_label".into(),
-            json!({ "from": current.trigger_label, "to": tl }),
+            json!({ "from": current_note.trigger_label, "to": tl }),
         );
         active.trigger_label = Set(Some(tl));
     }
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
 
     let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    if let Some(body) = body_changed.as_deref() {
-        sync_note_refs(&txn, id, body, &updated.graphs_json).await?;
-        comment_anchor::reanchor_note_comments(&txn, id, body).await?;
-    }
-    if !diff.is_empty() {
+    active.updated_at = if version_changed {
+        NotSet
+    } else {
+        Set(chrono::Utc::now().fixed_offset())
+    };
+    active.update(&txn).await?;
+    if version_changed {
+        note_versions::append_version(
+            &txn,
+            id,
+            AppendVersion {
+                title: new_title,
+                body_md,
+                frontmatter_json,
+                graphs_json: current_version.graphs_json,
+                created_by_kind: "human".into(),
+                execution_id: None,
+                change_reason: None,
+                change_diff: Some(serde_json::Value::Object(diff)),
+                actor: Actor::Human,
+            },
+        )
+        .await?;
+    } else if !diff.is_empty() {
         change_history::record(
             &txn,
             TargetKind::Note,
@@ -283,9 +395,10 @@ pub async fn update_note(
         )
         .await?;
     }
+    let updated_current = find_current_note_or_404(&txn, id).await?;
     txn.commit().await?;
 
-    Ok(Json(updated))
+    Ok(Json(current_note_response(updated_current)))
 }
 
 /// ノート削除
@@ -313,118 +426,6 @@ pub async fn delete_note(
     change_history::record(&txn, TargetKind::Note, id, Op::Delete, json!({}), None).await?;
     txn.commit().await?;
     Ok(StatusCode::NO_CONTENT)
-}
-
-async fn change_note_status_from(
-    state: &AppState,
-    current: note::Model,
-    new_status: &str,
-    label: Option<String>,
-) -> Result<note::Model, AppError> {
-    let id = current.id;
-    let mut active = current.clone().into_active_model();
-    active.status = Set(new_status.to_string());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Note,
-        id,
-        Op::StatusChange,
-        json!({ "from": current.status, "to": new_status, "label": label }),
-        label,
-    )
-    .await?;
-    txn.commit().await?;
-    Ok(updated)
-}
-
-async fn change_note_status(
-    state: &AppState,
-    id: Uuid,
-    new_status: &str,
-    label: Option<String>,
-) -> Result<note::Model, AppError> {
-    let current = find_note_or_404(&state.db, id).await?;
-    change_note_status_from(state, current, new_status, label).await
-}
-
-/// ノートを approved に遷移
-#[utoipa::path(
-    post,
-    path = "/api/notes/{id}/approve",
-    tag = "notes",
-    params(("id" = Uuid, Path, description = "ノート ID")),
-    request_body = ChangeStatusRequest,
-    responses(
-        (status = 200, body = note::Model),
-        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
-        (status = 404, body = ErrorResponse),
-        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
-        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
-        (status = 500, body = ErrorResponse),
-    )
-)]
-pub async fn approve_note(
-    State(state): State<AppState>,
-    JsonPath(id): JsonPath<Uuid>,
-    JsonBody(payload): JsonBody<ChangeStatusRequest>,
-) -> Result<Json<note::Model>, AppError> {
-    Ok(Json(
-        change_note_status(&state, id, "approved", payload.label).await?,
-    ))
-}
-
-/// ノートを rejected に遷移
-#[utoipa::path(
-    post,
-    path = "/api/notes/{id}/reject",
-    tag = "notes",
-    params(("id" = Uuid, Path, description = "ノート ID")),
-    request_body = ChangeStatusRequest,
-    responses(
-        (status = 200, body = note::Model),
-        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
-        (status = 404, body = ErrorResponse),
-        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
-        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
-        (status = 500, body = ErrorResponse),
-        (status = 503, description = "agent task client が未設定、または agent_config が見つからない", body = ErrorResponse),
-    )
-)]
-pub async fn reject_note(
-    State(state): State<AppState>,
-    JsonPath(id): JsonPath<Uuid>,
-    JsonBody(payload): JsonBody<ChangeStatusRequest>,
-) -> Result<Json<note::Model>, AppError> {
-    let current = find_note_or_404(&state.db, id).await?;
-    // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
-    // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
-    if current.status == "rejected" {
-        return Ok(Json(current));
-    }
-
-    if let Some(strategy_id) = current.strategy_id {
-        let prompt = format!(
-            "ノート「{}」(id: {}) がレビューで却下されました。付いているコメントを確認し、指摘を反映してください。",
-            current.title, current.id
-        );
-        strategy_tasks::submit_task(
-            &state.db,
-            &state.agent_task_client,
-            strategy_id,
-            &prompt,
-            TaskSource::Review,
-            None,
-        )
-        .await
-        .map_err(map_submit_error)?;
-    }
-
-    Ok(Json(
-        change_note_status_from(&state, current, "rejected", payload.label).await?,
-    ))
 }
 
 #[cfg(test)]
@@ -507,17 +508,11 @@ mod tests {
         let result = note::ActiveModel {
             id: Set(Uuid::new_v4()),
             strategy_id: Set(None),
-            title: Set("t".into()),
-            body_md: Set("b".into()),
-            frontmatter_json: Set(json!({})),
             type_tag: Set(None),
-            status: Set("unread".into()),
             trigger: Set(None),
             trigger_label: Set(None),
-            created_by_kind: Set("human".into()),
             created_at: NotSet,
             updated_at: NotSet,
-            graphs_json: Set(json!([])),
             execution_id: Set(Some("exec-1".into())),
         }
         .insert(&db)
@@ -596,8 +591,10 @@ mod tests {
             .json(&json!({"body_md": INVALID_NOTE_BODY}))
             .await;
         let response = res.json::<Value>();
-        let saved = note::Entity::find_by_id(note_id).one(&db).await.unwrap();
-        let saved_body = saved.map(|note| note.body_md);
+        let saved_body = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .map(|version| version.body_md);
 
         assert_eq!(
             (res.status_code(), response, saved_body),
@@ -759,8 +756,11 @@ mod tests {
             .await;
         res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
 
-        let note = find_note_or_404(&db, note_id).await.unwrap();
-        assert_eq!(note.status, "unread");
+        let current_version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(current_version.status, "unread");
     }
 
     #[sqlx::test(migrations = false)]

@@ -4,6 +4,7 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use crate::entities::{annotation, note};
+use crate::services::note_versions::{find_current_versions, find_initial_created_by_kind};
 
 use super::MgmtServer;
 use super::dto::{
@@ -24,16 +25,40 @@ impl MgmtServer {
             .all(&self.db)
             .await
             .map_err(db_error)?;
+        let versions =
+            find_current_versions(&self.db, &rows.iter().map(|row| row.id).collect::<Vec<_>>())
+                .await
+                .map_err(db_error)?;
+        let creators = find_initial_created_by_kind(
+            &self.db,
+            &rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+        )
+        .await
+        .map_err(db_error)?;
         let notes = rows
             .into_iter()
-            .map(|row| NoteMeta {
-                note_id: row.id,
-                title: row.title,
-                status: row.status,
-                created_by_kind: row.created_by_kind,
-                updated_at: row.updated_at,
+            .map(|row| {
+                let version = versions.get(&row.id).ok_or_else(|| {
+                    db_error(sea_orm::DbErr::Custom(format!(
+                        "note {} has no current version",
+                        row.id
+                    )))
+                })?;
+                let created_by_kind = creators.get(&row.id).cloned().ok_or_else(|| {
+                    db_error(sea_orm::DbErr::Custom(format!(
+                        "note {} has no initial version",
+                        row.id
+                    )))
+                })?;
+                Ok(NoteMeta {
+                    note_id: row.id,
+                    title: version.title.clone(),
+                    status: version.status.clone(),
+                    created_by_kind,
+                    updated_at: row.updated_at,
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, McpError>>()?;
         Ok(ListRecentNotesResult { notes })
     }
 
@@ -69,13 +94,10 @@ mod tests {
     use std::sync::Arc;
 
     use rmcp::handler::server::wrapper::{Json, Parameters};
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
     use sqlx::PgPool;
-    use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::testing::create_test_db;
+    use crate::testing::{create_test_db, insert_test_note};
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
@@ -85,25 +107,7 @@ mod tests {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
         for i in 0..5 {
-            note::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                strategy_id: Set(Some(strategy_id)),
-                title: Set(format!("note-{i}")),
-                body_md: Set("body".into()),
-                frontmatter_json: Set(serde_json::json!({})),
-                type_tag: Set(None),
-                status: Set("unread".into()),
-                trigger: Set(None),
-                trigger_label: Set(None),
-                created_by_kind: Set("human".into()),
-                created_at: sea_orm::ActiveValue::NotSet,
-                updated_at: sea_orm::ActiveValue::NotSet,
-                graphs_json: Set(serde_json::json!([])),
-                execution_id: Set(None),
-            }
-            .insert(&db)
-            .await
-            .unwrap();
+            insert_test_note(&db, strategy_id, &format!("note-{i}"), "body").await;
         }
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let Json(result) = server
