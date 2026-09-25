@@ -57,7 +57,7 @@
     "@storybook/addon-docs": "10.6.0",
     "@storybook/addon-vitest": "10.6.0",
     "@storybook/react-vite": "10.6.0",
-    "@storycap-testrun/browser": "3.0.0",
+    "@storycap-testrun/browser": "3.1.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query-devtools": "5.91.3",
     "@tanstack/router-cli": "1.167.35",
