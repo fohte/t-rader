@@ -612,15 +612,15 @@ jobs:
             fi
           done < <(find dist -name '*.js' -not -name 'chunk-*')
 
-  # Aggregation gate for the unit-test and cargo-clippy jobs. The dynamic
-  # per-package job names cannot be pinned as required status checks, so this
-  # single fixed-name job is the branch protection gate instead. It fails only
-  # when a needed job failed; when every leg succeeds (or is skipped because
-  # nothing changed) it is skipped, and a skipped required check counts as success.
+  # package 別 job 名を branch protection の required check に指定できないため、固定名の gate を使う。
+  # テスト、entity 同期、API fuzzing、knip、cargo-clippy の失敗を集約し、失敗がなければ skip する。
+  # required check の skip は成功として扱われる。
   unit-test:
     runs-on: ubuntu-slim
     needs:
       - detect-changes
+      - check-entity-sync
+      - api-fuzzing-backend
       - cargo-clippy
       - unit-test-frontend
       - unit-test-backend
