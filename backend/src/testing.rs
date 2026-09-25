@@ -2,12 +2,13 @@ use std::sync::{Arc, Mutex};
 
 use axum_test::TestServer;
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
-use migration::{Migrator, MigratorTrait};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionTrait};
 use sqlx::PgPool;
 use uuid::Uuid;
+
+mod template_db;
 
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
@@ -25,15 +26,10 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 
 /// `#[sqlx::test]` から注入された PgPool を SeaORM DatabaseConnection に変換する
 ///
-/// マイグレーションも実行する。HTTP サーバー不要な repository テスト向け。
+/// マイグレーション済み template の複製を返す。HTTP サーバー不要な repository テスト向け。
 pub async fn create_test_db(pool: PgPool) -> DatabaseConnection {
-    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
-
-    Migrator::up(&db, None)
-        .await
-        .expect("failed to run migrations");
-
-    db
+    let pool = template_db::create_test_pool_from_template(pool).await;
+    SqlxPostgresConnector::from_sqlx_postgres_pool(pool)
 }
 
 /// agent_task_client を disabled にした最小構成の `AppState` を組み立てる。
@@ -51,7 +47,7 @@ fn base_state(db: DatabaseConnection) -> AppState {
 
 /// `#[sqlx::test]` から注入された PgPool を使って TestServer を作成する
 ///
-/// PgPool を SeaORM の DatabaseConnection に変換し、マイグレーションを実行する。
+/// PgPool を SeaORM の DatabaseConnection に変換する。
 pub async fn create_test_server(pool: PgPool) -> TestServer {
     let db = create_test_db(pool).await;
     let router = create_router(base_state(db));

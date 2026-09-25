@@ -53,11 +53,11 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@fohte/storybook-addon": "0.1.9",
+    "@fohte/storybook-addon": "0.2.0",
     "@storybook/addon-docs": "10.6.0",
     "@storybook/addon-vitest": "10.6.0",
     "@storybook/react-vite": "10.6.0",
-    "@storycap-testrun/browser": "2.1.1",
+    "@storycap-testrun/browser": "3.0.0",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/react-query-devtools": "5.91.3",
     "@tanstack/router-cli": "1.167.35",
