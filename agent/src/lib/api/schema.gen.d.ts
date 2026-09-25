@@ -6157,6 +6157,15 @@ export interface operations {
           'application/json': components['schemas']['NoteVersion'][]
         }
       }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
       404: {
         headers: {
           [name: string]: unknown
@@ -6195,6 +6204,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['NoteVersion']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       404: {
@@ -6315,6 +6333,15 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['NoteVersion']
+        }
+      }
+      /** @description リクエストパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
         }
       }
       404: {

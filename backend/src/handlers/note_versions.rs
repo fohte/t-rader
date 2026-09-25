@@ -39,6 +39,7 @@ async fn find_note_version<C: sea_orm::ConnectionTrait>(
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
         (status = 200, body = Vec<note_version::Model>),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -73,6 +74,7 @@ pub async fn list_note_versions(
     ),
     responses(
         (status = 200, body = note_version::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -297,6 +299,7 @@ pub async fn reject_note_version(
     ),
     responses(
         (status = 200, body = note_version::Model),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
