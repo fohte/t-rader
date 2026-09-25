@@ -14,6 +14,7 @@ pub mod imports;
 pub mod jquants_plan_setting;
 pub mod note_hypotheses;
 pub mod note_kinds;
+pub mod note_links;
 pub mod note_predictions;
 pub mod note_versions;
 pub mod notes;

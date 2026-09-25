@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider } from '@tanstack/react-router'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
 import type { components } from '#lib/api/schema.gen'
 import { mockResolveRef } from '#storybook/mock-resolve-ref'
+import { createStoryRouter } from '#storybook/story-router'
 
 const queryClient = new QueryClient()
 
@@ -38,6 +40,9 @@ SUMCO [[stock:3436]] は約 2 ヶ月にわたり 1,480-1,640 のレンジで推�
 
 詳細は [参考記事](https://example.com/sumco-range) と [[sector:半導体]] の動向を参照。
 
+判断の前提は [[note:00000000-0000-0000-0000-000000000101]] のバージョンに記録した。
+現行の資料は [[note:00000000-0000-0000-0000-000000000102@current]] を参照する。
+
 - 直近レンジ
     - 下限: 1,480
     - 上限: 1,640
@@ -46,6 +51,21 @@ SUMCO [[stock:3436]] は約 2 ヶ月にわたり 1,480-1,640 のレンジで推�
 print("nsjail で集計したサンプル")
 \`\`\`
 `
+
+const NOTE_LINKS: components['schemas']['NoteLinkItem'][] = [
+  {
+    note_id: '00000000-0000-0000-0000-000000000101',
+    version_id: '00000000-0000-0000-0000-000000000201',
+    version_no: 2,
+    title: '架空銘柄の購入判断',
+  },
+  {
+    note_id: '00000000-0000-0000-0000-000000000102',
+    version_id: null,
+    version_no: 4,
+    title: '市場環境の観察',
+  },
+]
 
 const meta = {
   title: 'NoteDetail/MarkdownBody',
@@ -56,11 +76,18 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <QueryClientProvider client={queryClient}>
-        <div className="max-w-3xl bg-background p-5 text-foreground">
-          <Story />
-        </div>
-      </QueryClientProvider>
+      <RouterProvider
+        router={createStoryRouter(
+          () => (
+            <QueryClientProvider client={queryClient}>
+              <div className="max-w-3xl bg-background p-5 text-foreground">
+                <Story />
+              </div>
+            </QueryClientProvider>
+          ),
+          { paths: ['/notes/$noteId'] },
+        )}
+      />
     ),
   ],
 } satisfies Meta<typeof MarkdownBody>
@@ -69,7 +96,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  args: { source: SAMPLE },
+  args: { source: SAMPLE, noteLinks: NOTE_LINKS },
 }
 
 // 以下のノード/ティッカーはすべて架空のもの。実在の企業・銘柄コードとは無関係

@@ -3,7 +3,7 @@ use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::IbkrClient;
-use crate::data_provider::DataProviderError;
+use super::IbkrError;
 
 /// IBKR Client Portal API のテスト用モックサーバー
 pub(crate) struct IbkrMockServer {
@@ -17,7 +17,7 @@ impl IbkrMockServer {
         }
     }
 
-    pub fn client(&self) -> Result<IbkrClient, DataProviderError> {
+    pub fn client(&self) -> Result<IbkrClient, IbkrError> {
         IbkrClient::with_base_url(&self.server.uri())
     }
 

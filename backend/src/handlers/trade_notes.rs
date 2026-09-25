@@ -4,15 +4,15 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{note, trade, trade_note};
+use crate::entities::{note, note_version, trade, trade_note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateTradeNoteRequest, NoteResponse};
-use crate::services::note_versions::{find_current_versions, find_initial_created_by_kind};
+use crate::services::note_versions::find_initial_created_by_kind;
 
 async fn find_trade_or_404(
     db: &sea_orm::DatabaseConnection,
@@ -24,7 +24,7 @@ async fn find_trade_or_404(
         .ok_or_else(|| AppError::NotFound(format!("trade {trade_id} not found")))
 }
 
-/// 取引に紐づく判断ノート一覧 (リンク作成順)
+/// 取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す)
 #[utoipa::path(
     get,
     path = "/api/trades/{id}/notes",
@@ -49,42 +49,52 @@ pub async fn list_trade_notes(
         .all(&state.db)
         .await?;
     let note_ids: Vec<Uuid> = links.iter().map(|l| l.note_id).collect();
+    let version_ids: Vec<Uuid> = links.iter().map(|l| l.note_version_id).collect();
 
     let notes = note::Entity::find()
         .filter(note::Column::Id.is_in(note_ids.iter().copied()))
         .all(&state.db)
         .await?;
-    let versions_by_id = find_current_versions(&state.db, &note_ids).await?;
+    let versions = note_version::Entity::find()
+        .filter(note_version::Column::Id.is_in(version_ids.iter().copied()))
+        .all(&state.db)
+        .await?;
+    let versions_by_id: HashMap<Uuid, note_version::Model> = versions
+        .into_iter()
+        .map(|version| (version.id, version))
+        .collect();
     let creators = find_initial_created_by_kind(&state.db, &note_ids).await?;
-    let mut notes_by_id: HashMap<Uuid, NoteResponse> = notes
-        .into_iter()
-        .map(|note| {
-            let version = versions_by_id.get(&note.id).cloned().ok_or_else(|| {
-                AppError::NotFound(format!("current version for note {} not found", note.id))
-            })?;
-            let created_by_kind = creators.get(&note.id).cloned().ok_or_else(|| {
-                AppError::NotFound(format!("initial version for note {} not found", note.id))
-            })?;
-            Ok((
-                note.id,
-                NoteResponse::from_current_version(note, version, created_by_kind),
-            ))
-        })
-        .collect::<Result<_, AppError>>()?;
+    let mut notes_by_id: HashMap<Uuid, note::Model> =
+        notes.into_iter().map(|note| (note.id, note)).collect();
 
-    // is_in() は順序を保証しないため、リンク作成順の note_ids を基準に組み立て直す
-    let ordered = note_ids
+    // is_in() は順序を保証しないため、リンク作成順の links を基準に固定バージョンを組み立て直す
+    let ordered = links
         .into_iter()
-        .map(|id| {
-            notes_by_id
+        .map(|link| {
+            let id = link.note_id;
+            let note = notes_by_id
                 .remove(&id)
-                .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
+                .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
+            let version = versions_by_id
+                .get(&link.note_version_id)
+                .cloned()
+                .filter(|version| version.note_id == id)
+                .ok_or_else(|| {
+                    AppError::NotFound(format!(
+                        "version {} for note {id} not found",
+                        link.note_version_id
+                    ))
+                })?;
+            let created_by_kind = creators.get(&id).cloned().ok_or_else(|| {
+                AppError::NotFound(format!("initial version for note {id} not found"))
+            })?;
+            Ok(NoteResponse::from_version(note, version, created_by_kind))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
     Ok(Json(ordered))
 }
 
-/// 取引に判断ノートを紐付ける
+/// 取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する)
 #[utoipa::path(
     post,
     path = "/api/trades/{id}/notes",
@@ -118,14 +128,23 @@ pub async fn create_trade_note(
         }
     }
 
+    let txn = state.db.begin().await?;
+    let version = crate::services::note_versions::find_current_version(&txn, p.note_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("current version for note {} not found", p.note_id))
+        })?;
+
     let model = trade_note::ActiveModel {
         trade_id: Set(trade_id),
         note_id: Set(p.note_id),
+        note_version_id: Set(version.id),
         created_at: sea_orm::ActiveValue::NotSet,
     };
     let created = trade_note::Entity::insert(model)
-        .exec_with_returning(&state.db)
+        .exec_with_returning(&txn)
         .await?;
+    txn.commit().await?;
     Ok((StatusCode::CREATED, Json(created)))
 }
 
@@ -206,12 +225,14 @@ mod tests {
 
     fn normalize_trade_note(mut v: serde_json::Value) -> serde_json::Value {
         v["created_at"] = json!("<dyn>");
+        v["note_version_id"] = json!("<dyn>");
         v
     }
 
     fn normalize_note(mut v: serde_json::Value) -> serde_json::Value {
         v["created_at"] = json!("<dyn>");
         v["updated_at"] = json!("<dyn>");
+        v["version_id"] = json!("<dyn>");
         v
     }
 
@@ -232,6 +253,7 @@ mod tests {
             json!({
                 "trade_id": tid,
                 "note_id": nid,
+                "note_version_id": "<dyn>",
                 "created_at": "<dyn>",
             }),
         );
@@ -247,6 +269,9 @@ mod tests {
             normalized,
             vec![json!({
                 "id": nid,
+                "version_id": "<dyn>",
+                "version_no": 1,
+                "is_current": true,
                 "strategy_id": sid,
                 "title": "t",
                 "body_md": "b",

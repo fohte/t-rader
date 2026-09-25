@@ -6,6 +6,7 @@ use std::ops::Range;
 
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use uuid::Uuid;
 
 use crate::entities::note_ref;
 use crate::error::AppError;
@@ -116,7 +117,14 @@ enum TokenKind {
     Ref(String, String),
     Annotation,
     Graph(String),
+    Note(NoteLinkToken),
     Invalid(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NoteLinkToken {
+    pub note_id: Uuid,
+    pub follows_current: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -320,6 +328,25 @@ fn classify_token(inner: &str) -> TokenKind {
         return TokenKind::Ref(kind.to_string(), id.to_string());
     }
 
+    if kind == "note" {
+        let (id, follows_current) = match id.strip_suffix("@current") {
+            Some(id) => (id, true),
+            None => (id, false),
+        };
+        let Ok(note_id) = Uuid::parse_str(id) else {
+            return TokenKind::Invalid("ノート ID は UUID で指定してください".to_string());
+        };
+        if !note_id.to_string().eq_ignore_ascii_case(id) {
+            return TokenKind::Invalid(
+                "ノート ID は標準形式の UUID で指定してください".to_string(),
+            );
+        }
+        return TokenKind::Note(NoteLinkToken {
+            note_id,
+            follows_current,
+        });
+    }
+
     if kind == "anno" {
         if is_valid_token_id(id, false) {
             return TokenKind::Annotation;
@@ -339,6 +366,28 @@ fn classify_token(inner: &str) -> TokenKind {
     }
 
     TokenKind::Invalid(format!("未知の prefix `{kind}` です"))
+}
+
+pub(crate) fn extract_note_link_tokens(body: &str) -> Vec<NoteLinkToken> {
+    tokens_outside_code(body)
+        .into_iter()
+        .filter_map(|token| match classify_token(token.inner) {
+            TokenKind::Note(note_link) => Some(note_link),
+            _ => None,
+        })
+        .collect()
+}
+
+fn tokens_outside_code(body: &str) -> Vec<NoteToken<'_>> {
+    let code_ranges = markdown_code_ranges(body);
+    extract_tokens(body)
+        .into_iter()
+        .filter(|token| {
+            !code_ranges
+                .iter()
+                .any(|range| token.start >= range.start && token.end <= range.end)
+        })
+        .collect()
 }
 
 /// frontend の anno / graph token matcher と同じ ID 文字を受け付ける。
@@ -370,19 +419,11 @@ fn collect_note_refs_with_policy(
     let mut refs = Vec::new();
     let mut errors = Vec::new();
     let graph_blocks = blank_line_blocks(body);
-    let code_ranges = markdown_code_ranges(body);
-
-    for token in extract_tokens(body) {
-        if code_ranges
-            .iter()
-            .any(|range| token.start >= range.start && token.end <= range.end)
-        {
-            continue;
-        }
+    for token in tokens_outside_code(body) {
         let token_text = &body[token.start..token.end];
         match classify_token(token.inner) {
             TokenKind::Ref(kind, id) => refs.push((kind, id)),
-            TokenKind::Annotation => {}
+            TokenKind::Annotation | TokenKind::Note(_) => {}
             TokenKind::Graph(id) => {
                 let mut reasons = Vec::new();
                 if !is_standalone_graph_token(body, token, &graph_blocks) {
@@ -420,7 +461,7 @@ fn collect_note_refs_with_policy(
                     refs.push((kind, id));
                     continue;
                 }
-                TokenKind::Annotation | TokenKind::Graph(_) => {
+                TokenKind::Annotation | TokenKind::Graph(_) | TokenKind::Note(_) => {
                     "図ノードでは stock / indicator / sector / theme の参照だけを使用できます"
                         .to_string()
                 }
@@ -508,7 +549,7 @@ fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
     indoc::formatdoc! {"
         ノートのトークンに問題があります:
         {details}
-        許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。
+        許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。
     "}
     .trim_end()
     .to_string()
@@ -628,7 +669,7 @@ mod tests {
                 "- 本文のトークン \"[[graph:missing]]\": 対応する graphs[].id がありません\n",
                 "- 本文のトークン \"[[graph:g1]]\": 図トークンは空行区切りブロック内で単独にしてください\n",
                 "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます\n",
-                "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+                "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
             ),
         );
     }

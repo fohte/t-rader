@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import type { ComponentType, ReactNode } from 'react'
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import Markdown, { type Components } from 'react-markdown'
@@ -10,10 +11,12 @@ import { RefChip } from '#components/strategy-shell/ref-chip'
 import type { components } from '#lib/api/schema.gen'
 
 type ApiGraphDef = components['schemas']['GraphDef']
+type NoteLinkItem = components['schemas']['NoteLinkItem']
 
 interface MarkdownBodyProps {
   source: string
   graphs?: ApiGraphDef[]
+  noteLinks?: NoteLinkItem[]
   onAnno?: (id: string) => void
   onRef?: (token: string) => void
 }
@@ -23,6 +26,7 @@ type NoteTokenComponents = {
   'note-ref': ComponentType<{ token: string }>
   'note-anno': ComponentType<{ annoId: string }>
   'note-graph': ComponentType<{ graphId: string }>
+  'note-link': ComponentType<{ noteId: string; token: string }>
 }
 
 // backend は Option<T> を持つフィールドを `T | null` として返す。
@@ -101,6 +105,7 @@ function cellAlign(value: unknown): 'left' | 'right' | 'center' | undefined {
 export function MarkdownBody({
   source,
   graphs = [],
+  noteLinks = [],
   onAnno,
   onRef,
 }: MarkdownBodyProps) {
@@ -193,6 +198,25 @@ export function MarkdownBody({
       </td>
     ),
     'note-ref': ({ token }) => <RefChip token={token} onOpen={onRef} />,
+    'note-link': ({ noteId, token }) => {
+      const noteLink = noteLinks.find((link) => link.note_id === noteId)
+      if (!noteLink) return <>{`[[${token}]]`}</>
+      return (
+        <Link
+          to="/notes/$noteId"
+          params={{ noteId }}
+          search={{ version_id: noteLink.version_id ?? undefined }}
+          className="text-primary hover:underline"
+        >
+          {noteLink.title ?? 'タイトルなし'}
+          {noteLink.version_id == null
+            ? ' (現行バージョンに追従)'
+            : noteLink.version_no == null
+              ? ''
+              : ` (v${String(noteLink.version_no)})`}
+        </Link>
+      )
+    },
     'note-anno': ({ annoId }) => (
       <button
         type="button"

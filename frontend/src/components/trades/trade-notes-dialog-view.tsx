@@ -91,9 +91,13 @@ export function TradeNotesDialogView({
                   <Link
                     to="/notes/$noteId"
                     params={{ noteId: note.id }}
-                    className="min-w-0 flex-1 truncate text-sm text-foreground hover:text-primary hover:underline"
+                    search={{ version_id: note.version_id }}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-2 text-sm text-foreground hover:text-primary hover:underline"
                   >
-                    {note.title}
+                    <span className="truncate">{note.title}</span>
+                    <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                      v{String(note.version_no)}
+                    </span>
                   </Link>
                   <Button
                     type="button"

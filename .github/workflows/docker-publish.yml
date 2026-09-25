@@ -25,6 +25,8 @@ jobs:
         with:
           fetch-depth: 2
 
+      # backend.extra の agent/openapi.json は、backend/crates/gateways/t-rader-agent/build.rs が
+      # agent の internal API client を生成する際に読むため。
       # docker-publish-components.json の dir から「自分のディレクトリ配下は無条件でそのコンポーネントの
       # 変更として扱う」ルールを生成し、exclude/extra だけを明示的な例外として合成する。
       # コンポーネントの実体 (どのディレクトリを持つか) は build job の context/file 解決とこの

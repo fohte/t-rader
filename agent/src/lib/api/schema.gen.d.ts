@@ -788,6 +788,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/notes/{id}/links': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** ノートのバージョンから出るリンクと、現行バージョンからの被リンクを返す。 */
+    get: operations['get_note_links']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/notes/{id}/predictions': {
     parameters: {
       query?: never
@@ -1362,10 +1379,10 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** 取引に紐づく判断ノート一覧 (リンク作成順) */
+    /** 取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す) */
     get: operations['list_trade_notes']
     put?: never
-    /** 取引に判断ノートを紐付ける */
+    /** 取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する) */
     post: operations['create_trade_note']
     delete?: never
     options?: never
@@ -1645,6 +1662,10 @@ export interface components {
       sort_order?: number | null
     }
     CreateNoteRequest: {
+      /**
+       * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+       *     `@current` を付けると以降の現行バージョンに追従する。
+       */
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
       created_by_kind?: string | null
@@ -1869,6 +1890,7 @@ export interface components {
       graphs_json: components['schemas']['GraphDef'][]
       /** Format: uuid */
       id: string
+      is_current: boolean
       status: string
       /** Format: uuid */
       strategy_id?: string | null
@@ -1878,6 +1900,10 @@ export interface components {
       type_tag?: string | null
       /** Format: date-time */
       updated_at: string
+      /** Format: uuid */
+      version_id: string
+      /** Format: int32 */
+      version_no: number
     }
     NoteHypothesis: {
       /** Format: date-time */
@@ -1897,6 +1923,26 @@ export interface components {
       requires_approval: boolean
       /** Format: int32 */
       sort_order: number
+    }
+    NoteLinkItem: {
+      /**
+       * Format: uuid
+       * @description 出リンクでは参照先、被リンクでは参照元のノート ID。
+       */
+      note_id: string
+      title?: string | null
+      /**
+       * Format: uuid
+       * @description 出リンクでは固定先のバージョン ID、被リンクでは現行の参照元バージョン ID。
+       *     `null` は参照先の現行バージョンへの追従を表す。
+       */
+      version_id?: string | null
+      /** Format: int32 */
+      version_no?: number | null
+    }
+    NoteLinksResponse: {
+      incoming: components['schemas']['NoteLinkItem'][]
+      outgoing: components['schemas']['NoteLinkItem'][]
     }
     /**
      * @description ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
@@ -2248,6 +2294,8 @@ export interface components {
       /** Format: uuid */
       note_id: string
       /** Format: uuid */
+      note_version_id: string
+      /** Format: uuid */
       trade_id: string
     }
     Trigger: {
@@ -2312,6 +2360,10 @@ export interface components {
       sort_order?: number | null
     }
     UpdateNoteRequest: {
+      /**
+       * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+       *     `@current` を付けると以降の現行バージョンに追従する。
+       */
       body_md?: string | null
       frontmatter_json?: {
         [key: string]: unknown
@@ -5412,7 +5464,10 @@ export interface operations {
   }
   get_note: {
     parameters: {
-      query?: never
+      query?: {
+        /** @description 省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。 */
+        version_id?: string
+      }
       header?: never
       path: {
         /** @description ノート ID */
@@ -5713,6 +5768,55 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_note_links: {
+    parameters: {
+      query?: {
+        /** @description 省略時はノートの現行バージョンから出るリンクを返す。 */
+        version_id?: string
+      }
+      header?: never
+      path: {
+        /** @description ノート ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['NoteLinksResponse']
+        }
       }
       400: {
         headers: {

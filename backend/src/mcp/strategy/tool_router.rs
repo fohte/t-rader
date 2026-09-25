@@ -80,7 +80,7 @@ impl StrategyServer {
     /// ノートを読み出す
     #[tool(
         name = "read_note",
-        description = "Read a single note owned by the strategy, including its graphs.",
+        description = "Read a single note owned by the strategy, including its graphs and linked note versions. Omit version_id to read the current version.",
         annotations(read_only_hint = true)
     )]
     async fn read_note(
