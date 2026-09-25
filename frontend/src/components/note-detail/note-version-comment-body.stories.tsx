@@ -55,3 +55,15 @@ export const ResolvedAgentReply: Story = {
     },
   },
 }
+
+export const UnanchoredComment: Story = {
+  args: {
+    comment: {
+      ...comment,
+      anchor_text: null,
+      anchor_side: null,
+      start_line: null,
+      end_line: null,
+    },
+  },
+}

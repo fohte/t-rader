@@ -41,6 +41,13 @@ export function NoteVersionCommentBody({
           </span>
         </div>
       </div>
+      {comment.anchor_text != null && (
+        <blockquote className="border-l-2 border-border pl-2 text-muted-foreground">
+          <p className="whitespace-pre-wrap leading-relaxed">
+            {comment.anchor_text}
+          </p>
+        </blockquote>
+      )}
       <p
         className={`whitespace-pre-wrap leading-relaxed ${comment.resolved ? 'text-muted-foreground line-through decoration-border' : 'text-foreground'}`}
       >

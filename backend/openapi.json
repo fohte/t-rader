@@ -4035,6 +4035,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "description": "省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -4425,6 +4435,79 @@
         "responses": {
           "204": {
             "description": ""
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/links": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートのバージョンから出るリンクと、現行バージョンからの被リンクを返す。",
+        "operationId": "get_note_links",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "description": "省略時はノートの現行バージョンから出るリンクを返す。",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteLinksResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "",
@@ -7667,7 +7750,7 @@
         "tags": [
           "trades"
         ],
-        "summary": "取引に紐づく判断ノート一覧 (リンク作成順)",
+        "summary": "取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す)",
         "operationId": "list_trade_notes",
         "parameters": [
           {
@@ -7731,7 +7814,7 @@
         "tags": [
           "trades"
         ],
-        "summary": "取引に判断ノートを紐付ける",
+        "summary": "取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する)",
         "operationId": "create_trade_note",
         "parameters": [
           {
@@ -8896,7 +8979,8 @@
         ],
         "properties": {
           "body_md": {
-            "type": "string"
+            "type": "string",
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
           },
           "created_by_kind": {
             "type": [
@@ -9582,6 +9666,9 @@
         "type": "object",
         "required": [
           "id",
+          "version_id",
+          "version_no",
+          "is_current",
           "title",
           "body_md",
           "frontmatter_json",
@@ -9621,6 +9708,9 @@
             "type": "string",
             "format": "uuid"
           },
+          "is_current": {
+            "type": "boolean"
+          },
           "status": {
             "type": "string"
           },
@@ -9655,6 +9745,14 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version_no": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -9719,6 +9817,61 @@
           "sort_order": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "NoteLinkItem": {
+        "type": "object",
+        "required": [
+          "note_id"
+        ],
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "出リンクでは参照先、被リンクでは参照元のノート ID。"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "出リンクでは固定先のバージョン ID、被リンクでは現行の参照元バージョン ID。\n`null` は参照先の現行バージョンへの追従を表す。"
+          },
+          "version_no": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "NoteLinksResponse": {
+        "type": "object",
+        "required": [
+          "outgoing",
+          "incoming"
+        ],
+        "properties": {
+          "incoming": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteLinkItem"
+            }
+          },
+          "outgoing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteLinkItem"
+            }
           }
         }
       },
@@ -10705,7 +10858,8 @@
         "required": [
           "trade_id",
           "note_id",
-          "created_at"
+          "created_at",
+          "note_version_id"
         ],
         "properties": {
           "created_at": {
@@ -10713,6 +10867,10 @@
             "format": "date-time"
           },
           "note_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note_version_id": {
             "type": "string",
             "format": "uuid"
           },
@@ -10984,7 +11142,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
           },
           "frontmatter_json": {
             "type": [
