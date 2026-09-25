@@ -14,7 +14,7 @@ file = "scripts/db-up"
 [tools]
 lefthook = "2.1.14"
 "github:ast-grep/ast-grep" = "0.45.3"
-"cargo:sea-orm-cli" = "2.0.2"
+"cargo:sea-orm-cli" = "2.0.3"
 
 # lefthook hooks
 actionlint = "1.7.12"
