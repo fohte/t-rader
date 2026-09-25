@@ -40,15 +40,6 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #0a0a0a;
-  --sidebar-foreground: #fafafa;
-  --sidebar-primary: #ef4444;
-  --sidebar-primary-foreground: #fafafa;
-  --sidebar-accent: #141414;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #2a2a2a;
-  --sidebar-ring: #ef4444;
-
   /* Extra tiers the shadcn set has no slot for — see docs/design-system.md */
   --surface-strong: #1f1f1f;
   --muted-foreground-strong: #a1a1aa;
@@ -109,16 +100,6 @@
 
   /* shadcn Dialog: viewport 端に接しないための sm 未満での max-width */
   --dialog-inset: calc(100% - 2rem);
-
-  /*
-   * shadcn Sidebar: SidebarProvider/Sidebar が inline style で設定する
-   * --sidebar-width / --sidebar-width-icon から導出する計算値。
-   */
-  --sidebar-width-icon-inset: calc(var(--sidebar-width-icon) + 1rem);
-  --sidebar-width-icon-inset-bordered: calc(
-    var(--sidebar-width-icon) + 1rem + 2px
-  );
-  --sidebar-width-negative: calc(var(--sidebar-width) * -1);
 }
 
 @theme inline {
@@ -152,14 +133,6 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
   --color-surface-strong: var(--surface-strong);
   --color-muted-foreground-strong: var(--muted-foreground-strong);
 
@@ -198,10 +171,6 @@
   --spacing-floating-chat-w: var(--floating-chat-max-w);
   --spacing-floating-chat-h: var(--floating-chat-max-h);
   --height-note-graph: var(--note-graph-height);
-
-  /* shadcn Sidebar の outline variant: box-shadow で 1px 枠を表現する */
-  --shadow-sidebar-border: 0 0 0 1px var(--sidebar-border);
-  --shadow-sidebar-accent: 0 0 0 1px var(--sidebar-accent);
 }
 
 /*
@@ -216,21 +185,8 @@
 /*
  * transition-property には --theme namespace がなく、単一プロパティであっても
  * bracket 構文 (transition-[width] 等) は no-arbitrary-value の対象になる。
- * shadcn Sidebar / chat-sidebar の折りたたみアニメーションや input/select の
- * focus 遷移が使う組み合わせを個別の named utility にする。
+ * input/select の focus 遷移で使う組み合わせを named utility にする。
  */
-@utility transition-width {
-  transition-property: width;
-}
-@utility transition-position-width {
-  transition-property: left, right, width;
-}
-@utility transition-size {
-  transition-property: width, height, padding;
-}
-@utility transition-margin-opacity {
-  transition-property: margin, opacity;
-}
 @utility transition-colors-shadow {
   transition-property: color, box-shadow;
 }

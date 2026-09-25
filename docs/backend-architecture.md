@@ -35,7 +35,7 @@ backend/crates/
 
 | crate                | 責務                                                                                     |
 | -------------------- | ---------------------------------------------------------------------------------------- |
-| `core/domain`        | 値、エンティティ、ドメインルールを定義する。Rust 標準 library のみを使う。               |
+| `core/domain`        | 値、エンティティ、ドメインルールを定義する。                                             |
 | `core/application`   | ユースケースと port を定義する。port は application が必要とする機能を表す。             |
 | `entrypoints/*`      | HTTP、MCP、webhook、定期実行などの入力を受け取り、application のユースケースを呼び出す。 |
 | `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                             |
@@ -46,7 +46,7 @@ backend/crates/
 
 ## crate 間の依存
 
-crate 間の依存は `Cargo.toml` で次の関係に限定する。
+`backend/crates/` 内の crate 間の直接依存は `Cargo.toml` で次の関係に限定する。
 
 | crate              | 依存先                                                       |
 | ------------------ | ------------------------------------------------------------ |
@@ -56,7 +56,7 @@ crate 間の依存は `Cargo.toml` で次の関係に限定する。
 | `gateways/*`       | `core/application`, `core/domain`                            |
 | `app`              | `backend/crates/` 内のすべての crate と `backend/migration/` |
 
-`entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` の依存 crate は設けない。
+`entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror` と `serde` の derive に限る。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
 
 ## entrypoint と gateway の名前
 
