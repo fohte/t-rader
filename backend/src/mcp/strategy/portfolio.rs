@@ -115,7 +115,7 @@ fn sum_market_value(positions: &[PortfolioPositionDto]) -> f64 {
 mod tests {
     use std::sync::Arc;
 
-    use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use chrono::{Duration, TimeZone, Utc};
     use rust_decimal::Decimal;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{ActiveModelTrait, DatabaseConnection};
@@ -123,7 +123,6 @@ mod tests {
     use uuid::Uuid;
 
     use crate::data_provider::SharedDailyBarSource;
-    use crate::date_utils::latest_business_day;
     use crate::entities::trade;
     use crate::models::bar::{Bar, Timeframe};
     use crate::models::instrument::{Instrument, Market};
@@ -277,7 +276,7 @@ mod tests {
         .await
         .expect("record investable amount");
 
-        // known_fetchable_range の上限 latest_business_day(today) より古い日付なら fresh 判定される
+        // 取得可能範囲が未検出なら today が取得の上限になり、それより古い日付なら fresh 判定される
         let bar_date = Utc::now().date_naive() - Duration::weeks(12) - Duration::days(1);
         let provider: SharedDailyBarSource = Arc::new(
             MockProvider::new()
@@ -297,11 +296,7 @@ mod tests {
                     low: Decimal::from(1100),
                     close: Decimal::from(1200),
                     volume: 10_000,
-                }])
-                .with_known_fetchable_range(
-                    NaiveDate::from_ymd_opt(1990, 1, 1).expect("date"),
-                    latest_business_day(Utc::now().date_naive()),
-                ),
+                }]),
         );
 
         let server = StrategyServer::new(db, Some(provider));
