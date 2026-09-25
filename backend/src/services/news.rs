@@ -1,16 +1,26 @@
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
+use core_application::{NewsAggregator, NewsAggregatorError, NewsFeed, NewsItem};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait, Set};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use crate::data_provider::DataProviderError;
-use crate::data_provider::news::{NewsAggregator, NewsItem};
 use crate::entities::news_item;
+use crate::services::rss_feed;
+
+#[derive(Debug, thiserror::Error)]
+pub enum NewsAggregationError {
+    #[error(transparent)]
+    Aggregator(#[from] NewsAggregatorError),
+
+    #[error("database error: {0}")]
+    Database(String),
+}
 
 /// fetch と upsert を行う poll task の 1 サイクルの結果統計
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,16 +32,25 @@ pub struct AggregationStats {
 pub async fn run_aggregation_cycle(
     db: &DatabaseConnection,
     aggregator: &dyn NewsAggregator,
-) -> Result<AggregationStats, DataProviderError> {
-    let fetched = aggregator.fetch_news().await?;
+) -> Result<AggregationStats, NewsAggregationError> {
+    let rows = rss_feed::list(db, true).await.map_err(db_err)?;
+    // 既存の news_item.source と表示名を揃えるため、slug ではなく display_name を渡す。
+    let feeds = rows
+        .into_iter()
+        .map(|row| NewsFeed {
+            source: row.display_name,
+            url: row.url,
+        })
+        .collect::<Vec<_>>();
+    let fetched = aggregator.fetch_news(&feeds).await?;
     let fetched_count = upsert_news_items(db, &fetched).await.map_err(db_err)?;
     Ok(AggregationStats {
         fetched: fetched_count,
     })
 }
 
-fn db_err(e: sea_orm::DbErr) -> DataProviderError {
-    DataProviderError::Database(e.to_string())
+fn db_err(e: impl Display) -> NewsAggregationError {
+    NewsAggregationError::Database(e.to_string())
 }
 
 /// `news_item` テーブルに upsert し、対象 URL の件数を返す

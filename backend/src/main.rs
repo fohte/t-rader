@@ -188,7 +188,9 @@ async fn main() -> Result<(), AppError> {
     // フィード一覧は `rss_feed` テーブルから tick ごとに読み直す (UI / MCP からの追加・無効化を
     // 再起動なしで反映するため)。0 件運用も許容する。
     let news_aggregator: Arc<dyn NewsAggregator> =
-        Arc::new(RssNewsAggregator::from_db(db.clone())?);
+        Arc::new(RssNewsAggregator::new().map_err(|err| {
+            AppError::Config(format!("failed to initialize RSS news aggregator: {err}"))
+        })?);
     let _news_poll = backend::services::news::spawn_poll(
         db.clone(),
         news_aggregator,
