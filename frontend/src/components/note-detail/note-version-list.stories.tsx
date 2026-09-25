@@ -77,10 +77,16 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const SelectedPending: Story = {}
+export const SelectedPending: Story = {
+  name: 'selects the pending version in the note version list.',
+}
 
 export const SelectedCurrent: Story = {
+  name: 'selects the current approved version in the note version list.',
   args: { selectedVersionNo: 2 },
 }
 
-export const Empty: Story = { args: { versions: [] } }
+export const Empty: Story = {
+  name: 'shows an empty state when there are no note versions.',
+  args: { versions: [] },
+}

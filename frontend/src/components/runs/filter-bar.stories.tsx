@@ -31,9 +31,11 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const All: Story = {
+  name: 'shows run counts with every strategy included.',
   render: () => <Interactive initial="all" />,
 }
 
 export const OptionActive: Story = {
+  name: 'shows the run filter with a single strategy selected.',
   render: () => <Interactive initial="mid-term" />,
 }

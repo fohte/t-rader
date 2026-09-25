@@ -35,6 +35,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Outperform: Story = {
+  name: 'shows a prediction for outperforming its benchmark.',
   args: {
     predictions: [basePrediction],
     stockNameById: new Map([
@@ -45,6 +46,7 @@ export const Outperform: Story = {
 }
 
 export const Underperform: Story = {
+  name: 'shows a prediction for underperforming its benchmark.',
   args: {
     predictions: [{ ...basePrediction, direction: 'underperform' }],
     stockNameById: new Map([
@@ -55,6 +57,7 @@ export const Underperform: Story = {
 }
 
 export const UnresolvedStockName: Story = {
+  name: 'shows a prediction when target stock names are unavailable.',
   args: {
     predictions: [basePrediction],
     stockNameById: new Map(),
@@ -62,6 +65,7 @@ export const UnresolvedStockName: Story = {
 }
 
 export const MultiplePredictions: Story = {
+  name: 'shows multiple predictions for different stocks.',
   args: {
     predictions: [
       basePrediction,

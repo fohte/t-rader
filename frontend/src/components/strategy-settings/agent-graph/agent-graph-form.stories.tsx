@@ -134,6 +134,7 @@ function Interactive({
 }
 
 export const ToggleOff: Story = {
+  name: 'shows the graph editor switched off with no configured phases.',
   args: {
     purpose: 'explore',
     value: '',
@@ -144,6 +145,7 @@ export const ToggleOff: Story = {
 }
 
 export const ToggleOn: Story = {
+  name: 'shows the graph editor switched on with one configured phase.',
   args: {
     purpose: 'explore',
     value: SINGLE_PHASE,
@@ -154,6 +156,7 @@ export const ToggleOn: Story = {
 }
 
 export const MultiPhaseWithForEach: Story = {
+  name: 'shows a multi-phase graph that investigates each generated hypothesis.',
   args: {
     purpose: 'explore',
     value: MULTI_PHASE_WITH_FOR_EACH,
@@ -164,6 +167,7 @@ export const MultiPhaseWithForEach: Story = {
 }
 
 export const WithError: Story = {
+  name: 'highlights a phase with a configuration error.',
   args: {
     purpose: 'explore',
     value: MULTI_PHASE_WITH_FOR_EACH,

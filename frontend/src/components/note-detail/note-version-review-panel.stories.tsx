@@ -55,19 +55,24 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const ReasonRequiredWithoutComments: Story = {}
+export const ReasonRequiredWithoutComments: Story = {
+  name: 'shows the rejection reason marked as required when there are no line comments.',
+}
 
 export const CommentAllowsEmptyReason: Story = {
+  name: 'shows the rejection reason marked as optional when the review has a line comment.',
   args: { lineCommentCount: 1 },
 }
 
 export const RestoringApprovedVersion: Story = {
+  name: 'shows the action for making an older approved version current.',
   args: {
     version: { ...pendingVersion, status: 'approved', is_current: false },
   },
 }
 
 export const CurrentVersion: Story = {
+  name: 'shows the review panel for the current approved version.',
   args: {
     version: { ...pendingVersion, status: 'approved', is_current: true },
   },

@@ -41,6 +41,7 @@ const SAMPLE = `# AGENTS.md
 `
 
 export const Default: Story = {
+  name: 'edits strategy guidance with markdown and linked references.',
   args: {
     initialValue: SAMPLE,
     onSave: () => {},
@@ -48,6 +49,7 @@ export const Default: Story = {
 }
 
 export const Saving: Story = {
+  name: 'shows the editor while changes are being saved.',
   args: {
     initialValue: SAMPLE,
     onSave: () => {},
@@ -56,6 +58,7 @@ export const Saving: Story = {
 }
 
 export const WithError: Story = {
+  name: 'shows a save error beneath the editor.',
   args: {
     initialValue: SAMPLE,
     onSave: () => {},
@@ -64,6 +67,7 @@ export const WithError: Story = {
 }
 
 export const Empty: Story = {
+  name: 'shows the editor before any guidance is entered.',
   args: {
     initialValue: '',
     onSave: () => {},

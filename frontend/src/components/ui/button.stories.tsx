@@ -30,12 +30,14 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows a standard button.',
   args: {
     children: 'ボタン',
   },
 }
 
 export const Destructive: Story = {
+  name: 'shows a destructive button for a delete action.',
   args: {
     variant: 'destructive',
     children: '削除',
@@ -43,6 +45,7 @@ export const Destructive: Story = {
 }
 
 export const Outline: Story = {
+  name: 'shows an outlined button for a secondary action.',
   args: {
     variant: 'outline',
     children: 'アウトライン',
@@ -50,6 +53,7 @@ export const Outline: Story = {
 }
 
 export const Secondary: Story = {
+  name: 'shows a filled button for a secondary action.',
   args: {
     variant: 'secondary',
     children: 'セカンダリ',
@@ -57,6 +61,7 @@ export const Secondary: Story = {
 }
 
 export const Ghost: Story = {
+  name: 'shows a low-emphasis ghost button.',
   args: {
     variant: 'ghost',
     children: 'ゴースト',
@@ -64,6 +69,7 @@ export const Ghost: Story = {
 }
 
 export const LinkVariant: Story = {
+  name: 'renders a button as a text link.',
   args: {
     variant: 'link',
     children: 'リンク',
@@ -71,6 +77,7 @@ export const LinkVariant: Story = {
 }
 
 export const Small: Story = {
+  name: 'shows a compact button size.',
   args: {
     size: 'sm',
     children: '小さいボタン',
@@ -78,6 +85,7 @@ export const Small: Story = {
 }
 
 export const Large: Story = {
+  name: 'shows an enlarged button size.',
   args: {
     size: 'lg',
     children: '大きいボタン',
@@ -85,6 +93,7 @@ export const Large: Story = {
 }
 
 export const WithIcon: Story = {
+  name: 'pairs an icon with the button label.',
   args: {
     children: (
       <>
@@ -96,6 +105,7 @@ export const WithIcon: Story = {
 }
 
 export const IconOnly: Story = {
+  name: 'shows an outlined button with only an icon.',
   args: {
     variant: 'outline',
     size: 'icon',
@@ -104,6 +114,7 @@ export const IconOnly: Story = {
 }
 
 export const Disabled: Story = {
+  name: 'shows a button in its disabled state.',
   args: {
     disabled: true,
     children: '無効',
