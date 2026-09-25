@@ -10,17 +10,18 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
-    let src = "../agent/openapi.json";
-    println!("cargo:rerun-if-changed={src}");
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../agent/openapi.json");
+    let src_label = src.display().to_string();
+    println!("cargo:rerun-if-changed={src_label}");
 
-    let file = fs::File::open(src).unwrap_or_else(|e| panic!("failed to open {src}: {e}"));
+    let file = fs::File::open(&src).unwrap_or_else(|e| panic!("failed to open {src_label}: {e}"));
     let spec = serde_json::from_reader(file)
-        .unwrap_or_else(|e| panic!("failed to parse {src} as OpenAPI document: {e}"));
+        .unwrap_or_else(|e| panic!("failed to parse {src_label} as OpenAPI document: {e}"));
 
     let mut generator = progenitor::Generator::default();
     let tokens = generator
         .generate_tokens(&spec)
-        .unwrap_or_else(|e| panic!("failed to generate agent client from {src}: {e}"));
+        .unwrap_or_else(|e| panic!("failed to generate agent client from {src_label}: {e}"));
     let ast = syn::parse2(tokens).expect("generated agent client tokens must parse as Rust");
     let content = prettyplease::unparse(&ast);
 

@@ -1,0 +1,19 @@
+[package]
+name = "core-application"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+test-support = ["dep:tokio"]
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, optional = true, features = ["sync"] }
+uuid = { workspace = true, features = ["v4"] }
+
+[lints]
+workspace = true
