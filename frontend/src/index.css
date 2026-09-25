@@ -65,16 +65,6 @@
 
   /* shadcn Dialog: viewport 端に接しないための sm 未満での max-width */
   --dialog-inset: calc(100% - 2rem);
-
-  /*
-   * shadcn Sidebar: SidebarProvider/Sidebar が inline style で設定する
-   * --sidebar-width / --sidebar-width-icon から導出する計算値。
-   */
-  --sidebar-width-icon-inset: calc(var(--sidebar-width-icon) + 1rem);
-  --sidebar-width-icon-inset-bordered: calc(
-    var(--sidebar-width-icon) + 1rem + 2px
-  );
-  --sidebar-width-negative: calc(var(--sidebar-width) * -1);
 }
 
 @theme inline {
@@ -113,10 +103,6 @@
   --spacing-floating-chat-w: var(--floating-chat-max-w);
   --spacing-floating-chat-h: var(--floating-chat-max-h);
   --height-note-graph: var(--note-graph-height);
-
-  /* shadcn Sidebar の outline variant: box-shadow で 1px 枠を表現する */
-  --shadow-sidebar-border: 0 0 0 1px var(--sidebar-border);
-  --shadow-sidebar-accent: 0 0 0 1px var(--sidebar-accent);
 }
 
 /*
@@ -131,21 +117,8 @@
 /*
  * transition-property には --theme namespace がなく、単一プロパティであっても
  * bracket 構文 (transition-[width] 等) は no-arbitrary-value の対象になる。
- * shadcn Sidebar / chat-sidebar の折りたたみアニメーションや input/select の
- * focus 遷移が使う組み合わせを個別の named utility にする。
+ * input/select の focus 遷移で使う組み合わせを named utility にする。
  */
-@utility transition-width {
-  transition-property: width;
-}
-@utility transition-position-width {
-  transition-property: left, right, width;
-}
-@utility transition-size {
-  transition-property: width, height, padding;
-}
-@utility transition-margin-opacity {
-  transition-property: margin, opacity;
-}
 @utility transition-colors-shadow {
   transition-property: color, box-shadow;
 }
