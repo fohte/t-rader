@@ -2,6 +2,10 @@
 
 backend の Rust crate は次の構成とする。`backend/migration/` は独立した migration crate として扱う。
 
+## Clean Architecture の依存性ルール
+
+backend の構成は [Clean Architecture の依存性ルール](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html) を基準にする。ソースコードの依存は内側へ向け、`entrypoints` と `gateways` は `core/application` と `core/domain` に依存し、`core/application` は `core/domain` に依存する。許可する crate 間の直接依存は後述の表に定める。
+
 ## crate 構成
 
 ```text
@@ -77,7 +81,3 @@ entrypoint はセッションなどから戦略スコープや管理者を表す
 ## エラーの境界
 
 gateway は外部システム固有のエラーを port のエラーへ変換する。HTTP と MCP のエラー型、および application の結果から各プロトコルの応答への変換は entrypoint に置く。
-
-## 参照するパターン
-
-port と adapter の境界には [Hexagonal Architecture (Ports & Adapters)](https://alistair.cockburn.us/hexagonal-architecture/) を用いる。外部システムの形式を domain から隔離する境界は [Anti-Corruption Layer](https://learn.microsoft.com/en-us/azure/architecture/patterns/anti-corruption-layer) に対応する。`entrypoints` の構成は [Cosmic Python の project structure](https://www.cosmicpython.com/book/appendix_project_structure.html)、`gateways` の用語は [Fowler の Gateway pattern](https://martinfowler.com/eaaCatalog/gateway.html) を参照する。

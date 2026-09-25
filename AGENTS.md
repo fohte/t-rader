@@ -139,7 +139,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 
 ### Backend architecture
 
-backend の Rust crate を追加・変更するときは [`docs/architecture.md`](./docs/architecture.md) の crate 構成、依存規則、境界の責務に従うこと。
+backend の Rust crate を追加・変更するときは [`docs/backend-architecture.md`](./docs/backend-architecture.md) の crate 構成、依存規則、境界の責務に従うこと。
 
 ### Split files before they grow past ~500 lines of production code
 
