@@ -46,7 +46,7 @@ use uuid::Uuid;
 use crate::data_provider::SharedDailyBarSource;
 use crate::entities::{annotation, note, strategy};
 use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::{LiteLlmClient, LiteLlmError};
+use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -131,7 +131,7 @@ pub struct StrategyServer {
     db: DatabaseConnection,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
-    pub(super) litellm_client: Option<LiteLlmClient>,
+    pub(super) litellm_client: Option<SharedLlmClient>,
 }
 
 impl StrategyServer {
@@ -149,7 +149,7 @@ impl StrategyServer {
         self
     }
 
-    pub fn with_litellm_client(mut self, litellm_client: Option<LiteLlmClient>) -> Self {
+    pub fn with_litellm_client(mut self, litellm_client: Option<SharedLlmClient>) -> Self {
         self.litellm_client = litellm_client;
         self
     }

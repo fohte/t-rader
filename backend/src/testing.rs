@@ -398,10 +398,10 @@ pub async fn create_test_server_with_llm_gateway(
 ) -> TestServer {
     let db = create_test_db(pool).await;
     let mut state = base_state(db);
-    state.llm_gateway_client = Some(
+    state.llm_gateway_client = Some(Arc::new(
         crate::services::litellm_client::LiteLlmClient::new(llm_gateway_base_url, None)
             .expect("build llm gateway client"),
-    );
+    ));
     let router = create_router(state);
     TestServer::new(router).expect("failed to create test server")
 }

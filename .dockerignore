@@ -26,4 +26,4 @@ storybook-static
 **/*.test.ts
 .env.local
 backend/target
-/target
+target

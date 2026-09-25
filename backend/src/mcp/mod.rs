@@ -19,7 +19,7 @@ use sea_orm::DatabaseConnection;
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::LiteLlmClient;
+use crate::services::litellm_client::SharedLlmClient;
 use crate::services::strategy_tasks::DEADLINE_DURATION;
 pub use mgmt::MgmtServer;
 pub use strategy::StrategyServer;
@@ -33,7 +33,7 @@ pub fn router(
     agent_client: SharedAgentTaskClient,
     daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
-    litellm_client: Option<LiteLlmClient>,
+    litellm_client: Option<SharedLlmClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let mgmt_db = db.clone();
