@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '@fohte/ui/tokens.css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/jetbrains-mono';
@@ -6,51 +7,12 @@
 @import '@fontsource/ibm-plex-mono/500.css';
 @import '@fontsource/ibm-plex-mono/600.css';
 
-@custom-variant dark (&:is(.dark *));
-
-/*
- * Single dark palette: light theme is unused (index.html hardcodes
- * class="dark" and no theme toggle exists), so all tokens live directly on
- * :root instead of duplicating them under a separate .dark block.
- * Values are aligned with tq (https://github.com/fohte/tq) — see
- * docs/design-system.md.
- */
 :root {
-  --radius: 0.625rem;
-  --background: #0a0a0a;
-  --foreground: #fafafa;
-  --card: #141414;
-  --card-foreground: #fafafa;
-  --popover: #141414;
-  --popover-foreground: #fafafa;
-  --primary: #ef4444;
-  --primary-foreground: #fafafa;
-  --secondary: #141414;
-  --secondary-foreground: #fafafa;
-  --muted: #141414;
-  --muted-foreground: #71717a;
-  --accent: #141414;
-  --accent-foreground: #fafafa;
-  --destructive: #ef4444;
-  --border: #2a2a2a;
-  --input: #2a2a2a;
-  --ring: #ef4444;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  /* Extra tiers the shadcn set has no slot for — see docs/design-system.md */
-  --surface-strong: #1f1f1f;
-  --muted-foreground-strong: #a1a1aa;
-
-  --font-mono-ui:
-    'JetBrains Mono Variable', 'IBM Plex Mono', 'SFMono-Regular', Consolas,
-    'Liberation Mono', Menlo, monospace;
-  --font-mono-body: var(--font-mono-ui);
-  --font-sans:
-    'Inter', 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN',
-    'Noto Sans JP', sans-serif;
 
   /* t-rader 固有: shadcn の3段では表現しない背景の中間段 */
   --color-bg-secondary: #0f0f0f;
@@ -103,48 +65,12 @@
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-surface-strong: var(--surface-strong);
-  --color-muted-foreground-strong: var(--muted-foreground-strong);
-
-  /* Tailwind 既定の font-mono utility (既存呼び出し箇所) にも新フォントを効かせる */
-  --font-mono: var(--font-mono-ui);
-  --font-mono-ui: var(--font-mono-ui);
-  --font-mono-body: var(--font-mono-body);
-
-  /* Tailwind 標準スケールの text-xs (12px) より小さい最小段 */
-  --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 0.9375rem;
-  /* text-2xs よりさらに小さい、隣接ラベルとの階層差を保つための最小段 */
+  /* @fohte/ui の text-2xs よりさらに小さい、隣接ラベルとの階層差を保つ段 */
   --text-3xs: 0.5625rem;
 
   /*
