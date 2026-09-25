@@ -586,7 +586,7 @@ jobs:
                       continue
 
                   query = statement.group(1).strip()
-                  if re.match(r"ALTER SYSTEM SET log_min_duration_statement\b", query, re.IGNORECASE):
+                  if re.match(r"(?:ALTER\s+SYSTEM\s+SET|SHOW)\b", query, re.IGNORECASE):
                       continue
                   if re.match(r"SELECT\s+pg_reload_conf\s*\(", query, re.IGNORECASE):
                       continue
