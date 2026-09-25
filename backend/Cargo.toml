@@ -5,6 +5,7 @@ members = [
     "crates/core/domain",
     "crates/core/application",
     "crates/gateways/fred",
+    "crates/gateways/ibkr",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
     "crates/gateways/rss",
@@ -15,6 +16,7 @@ default-members = [
     "crates/core/domain",
     "crates/core/application",
     "crates/gateways/fred",
+    "crates/gateways/ibkr",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
     "crates/gateways/rss",
@@ -27,6 +29,7 @@ axum = "=0.8.9"
 core-domain = { path = "crates/core/domain" }
 core-application = { path = "crates/core/application" }
 gateway-fred = { path = "crates/gateways/fred" }
+gateway-ibkr = { path = "crates/gateways/ibkr" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }
 gateway-litellm = { path = "crates/gateways/litellm" }
 gateway-rss = { path = "crates/gateways/rss" }
@@ -38,6 +41,7 @@ chrono = { version = "=0.4.45", default-features = false }
 clap = "=4.5.60"
 csv = "=1.3.1"
 encoding_rs = "=0.8.41"
+jpholiday = "=0.2.0"
 jsonschema = { version = "=0.46.9", default-features = false }
 percent-encoding = "=2.3.2"
 prettyplease = "=0.2.37"
@@ -77,6 +81,7 @@ clap = { workspace = true, features = ["derive"] }
 core-domain = { workspace = true }
 core-application = { workspace = true }
 gateway-fred = { workspace = true }
+gateway-ibkr = { workspace = true }
 gateway-litellm = { workspace = true }
 gateway-kata-exec = { workspace = true }
 gateway-rss = { workspace = true }
@@ -84,7 +89,6 @@ gateway-t-rader-agent = { workspace = true }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
-jpholiday = "=0.2.0"
 jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }

@@ -471,12 +471,12 @@ dependencies = [
  "csv",
  "encoding_rs",
  "gateway-fred",
+ "gateway-ibkr",
  "gateway-kata-exec",
  "gateway-litellm",
  "gateway-rss",
  "gateway-t-rader-agent",
  "indoc",
- "jpholiday",
  "jsonschema",
  "migration",
  "percent-encoding",
@@ -838,6 +838,8 @@ name = "core-domain"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "jpholiday",
+ "rstest",
  "rust_decimal",
  "serde",
 ]
@@ -1530,6 +1532,25 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "gateway-ibkr"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "core-domain",
+ "reqwest",
+ "rstest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]
