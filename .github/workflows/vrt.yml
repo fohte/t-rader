@@ -41,7 +41,7 @@ jobs:
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          version: 2026.9.5
+          version: 2026.9.11
 
       # corepack creates the pnpm executable inside mise's node install
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.
@@ -65,7 +65,7 @@ jobs:
 
       # `project` must match createStorybookProject()'s `name` in
       # vitest.screenshot.config.ts, and be unique per vrt_pkgs entry.
-      - uses: fohte/storybook-vrt-workflows/vrt-capture@b1745100ad0c07758b763db13f25e5a0f2d7beec # v0.1.5
+      - uses: fohte/storybook-vrt-workflows/vrt-capture@691148d6e8e53b86c8f93b5b54cadbd8308b06d3 # v0.1.6
         with:
           project: storybook-screenshot-frontend
           shard: 1
@@ -91,7 +91,7 @@ jobs:
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          version: 2026.9.5
+          version: 2026.9.11
 
       - run: |
           corepack enable
@@ -113,7 +113,7 @@ jobs:
 
       # The R2 storage keys aren't scoped per project, so only one
       # vrt_pkgs entry may exist per repo.
-      - uses: fohte/storybook-vrt-workflows/vrt-report@b1745100ad0c07758b763db13f25e5a0f2d7beec # v0.1.5
+      - uses: fohte/storybook-vrt-workflows/vrt-report@691148d6e8e53b86c8f93b5b54cadbd8308b06d3 # v0.1.6
         with:
           package-dir: frontend
           screenshots-dir: __screenshots__/desktop
