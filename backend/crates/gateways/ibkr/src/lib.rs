@@ -1,3 +1,4 @@
+mod error;
 #[cfg(test)]
 pub(crate) mod mock;
 mod response;
@@ -9,10 +10,11 @@ use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 
-use crate::data_provider::{DailyBarSource, DailyBarSourceError, DataProviderError, DateRange};
-use crate::date_utils::latest_business_day;
-use crate::models::bar::{Bar, Timeframe};
-use crate::models::instrument::{Instrument, Market};
+use core_application::{DailyBarSource, DailyBarSourceError, DateRange};
+use core_domain::bar::{Bar, Timeframe};
+use core_domain::business_day::latest_business_day;
+use core_domain::instrument::{Instrument, Market};
+pub use error::IbkrError;
 use response::{ErrorResponse, HistoryResponse, StocksResponse};
 
 /// Client Portal Gateway のデフォルト URL
@@ -49,13 +51,13 @@ impl IbkrClient {
         base_url: Option<String>,
         session_token: Option<String>,
         exchange: Option<String>,
-    ) -> Result<Self, DataProviderError> {
+    ) -> Result<Self, IbkrError> {
         let http = reqwest::Client::builder()
             // CP Gateway は自己署名証明書を使うことが多いため、運用上は信頼できる接続経路 (cluster 内) で
             // のみ利用する前提とする。証明書検証を緩める設定はここでは入れない。
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| DataProviderError::Network(e.to_string()))?;
+            .map_err(|e| IbkrError::Network(e.to_string()))?;
 
         let mut base_url = base_url
             .filter(|s| !s.trim().is_empty())
@@ -65,7 +67,7 @@ impl IbkrClient {
             base_url.pop();
         }
         Url::parse(&base_url)
-            .map_err(|e| DataProviderError::Parse(format!("invalid IBKR_BASE_URL: {e}")))?;
+            .map_err(|e| IbkrError::Parse(format!("invalid IBKR_BASE_URL: {e}")))?;
 
         let exchange = exchange
             .filter(|s| !s.trim().is_empty())
@@ -82,11 +84,11 @@ impl IbkrClient {
 
     /// テスト用: 任意の base URL を指定して構築する
     #[cfg(test)]
-    pub fn with_base_url(base_url: &str) -> Result<Self, DataProviderError> {
+    pub fn with_base_url(base_url: &str) -> Result<Self, IbkrError> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
-            .map_err(|e| DataProviderError::Network(e.to_string()))?;
+            .map_err(|e| IbkrError::Network(e.to_string()))?;
 
         Ok(Self {
             http,
@@ -97,8 +99,8 @@ impl IbkrClient {
     }
 
     /// 指数バックオフ付き GET。429 と 5xx に対してのみリトライする。
-    async fn get_with_retry(&self, url: &Url) -> Result<reqwest::Response, DataProviderError> {
-        let mut last_error: Option<DataProviderError> = None;
+    async fn get_with_retry(&self, url: &Url) -> Result<reqwest::Response, IbkrError> {
+        let mut last_error: Option<IbkrError> = None;
         let url_str = url.as_str();
 
         for attempt in 0..=MAX_RETRIES {
@@ -122,28 +124,28 @@ impl IbkrClient {
             let response = req
                 .send()
                 .await
-                .map_err(|e| DataProviderError::Network(e.to_string()))?;
+                .map_err(|e| IbkrError::Network(e.to_string()))?;
 
             let status = response.status().as_u16();
             match status {
                 200..=299 => return Ok(response),
                 429 => {
                     tracing::warn!(attempt, url = url_str, "IBKR レートリミット超過 (429)");
-                    last_error = Some(DataProviderError::RateLimited { retries: attempt });
+                    last_error = Some(IbkrError::RateLimited { retries: attempt });
                 }
                 500..=599 => {
                     let message = Self::extract_error_message(response).await;
                     tracing::warn!(attempt, status, url = url_str, %message, "IBKR サーバーエラー、リトライ実行");
-                    last_error = Some(DataProviderError::Api { status, message });
+                    last_error = Some(IbkrError::Api { status, message });
                 }
                 _ => {
                     let message = Self::extract_error_message(response).await;
-                    return Err(DataProviderError::Api { status, message });
+                    return Err(IbkrError::Api { status, message });
                 }
             }
         }
 
-        Err(last_error.unwrap_or(DataProviderError::RateLimited {
+        Err(last_error.unwrap_or(IbkrError::RateLimited {
             retries: MAX_RETRIES,
         }))
     }
@@ -157,9 +159,9 @@ impl IbkrClient {
             .unwrap_or_else(|_| format!("request failed ({status})"))
     }
 
-    fn build_url(&self, path: &str, params: &[(&str, &str)]) -> Result<Url, DataProviderError> {
+    fn build_url(&self, path: &str, params: &[(&str, &str)]) -> Result<Url, IbkrError> {
         let mut url = Url::parse(&format!("{}{path}", self.base_url))
-            .map_err(|e| DataProviderError::Parse(format!("invalid base URL: {e}")))?;
+            .map_err(|e| IbkrError::Parse(format!("invalid base URL: {e}")))?;
         {
             let mut query = url.query_pairs_mut();
             for (key, value) in params {
@@ -169,16 +171,13 @@ impl IbkrClient {
         Ok(url)
     }
 
-    fn to_decimal(value: f64) -> Result<Decimal, DataProviderError> {
+    fn to_decimal(value: f64) -> Result<Decimal, IbkrError> {
         Decimal::try_from(value)
-            .map_err(|e| DataProviderError::Parse(format!("invalid decimal value {value}: {e}")))
+            .map_err(|e| IbkrError::Parse(format!("invalid decimal value {value}: {e}")))
     }
 
     /// 銘柄コードと取引所から conid と銘柄情報を 1 回の API 呼び出しで解決する。
-    async fn lookup_stock(
-        &self,
-        instrument_id: &str,
-    ) -> Result<(i64, Instrument), DataProviderError> {
+    async fn lookup_stock(&self, instrument_id: &str) -> Result<(i64, Instrument), IbkrError> {
         let url = self.build_url("/trsrv/stocks", &[("symbols", instrument_id)])?;
 
         tracing::debug!(%url, instrument_id, "IBKR API から銘柄情報を取得中");
@@ -187,10 +186,10 @@ impl IbkrClient {
         let body: StocksResponse = response
             .json()
             .await
-            .map_err(|e| DataProviderError::Parse(e.to_string()))?;
+            .map_err(|e| IbkrError::Parse(e.to_string()))?;
 
         let issuers = body.get(instrument_id).ok_or_else(|| {
-            DataProviderError::NotFound(format!("instrument '{instrument_id}' not found"))
+            IbkrError::NotFound(format!("instrument '{instrument_id}' not found"))
         })?;
 
         // 同名 issuer が複数返ることがあるため、指定の取引所と一致する contract を持つ最初の issuer を使う
@@ -217,7 +216,7 @@ impl IbkrClient {
             }
         }
 
-        Err(DataProviderError::NotFound(format!(
+        Err(IbkrError::NotFound(format!(
             "instrument '{instrument_id}' not listed on {}",
             self.exchange
         )))
@@ -249,7 +248,7 @@ impl IbkrClient {
         &self,
         instrument_id: &str,
         range: &DateRange,
-    ) -> Result<Vec<Bar>, DataProviderError> {
+    ) -> Result<Vec<Bar>, IbkrError> {
         let (conid, _) = self.lookup_stock(instrument_id).await?;
 
         let (period, start_time) = period_and_start_time(range);
@@ -269,27 +268,28 @@ impl IbkrClient {
         let body: HistoryResponse = response
             .json()
             .await
-            .map_err(|e| DataProviderError::Parse(e.to_string()))?;
+            .map_err(|e| IbkrError::Parse(e.to_string()))?;
 
         let from_dt: DateTime<Utc> = Utc.from_utc_datetime(
             &range
                 .from
                 .and_hms_opt(0, 0, 0)
-                .ok_or_else(|| DataProviderError::Parse("invalid from date".to_string()))?,
+                .ok_or_else(|| IbkrError::Parse("invalid from date".to_string()))?,
         );
         // to は inclusive なので翌日 00:00 を排他的上限に使う
         let to_exclusive_date = range.to.succ_opt().unwrap_or(range.to);
         let to_dt: DateTime<Utc> = Utc.from_utc_datetime(
             &to_exclusive_date
                 .and_hms_opt(0, 0, 0)
-                .ok_or_else(|| DataProviderError::Parse("invalid to date".to_string()))?,
+                .ok_or_else(|| IbkrError::Parse("invalid to date".to_string()))?,
         );
 
         let mut bars = Vec::with_capacity(body.data.len());
         for h in body.data {
-            let timestamp = Utc.timestamp_millis_opt(h.t).single().ok_or_else(|| {
-                DataProviderError::Parse(format!("invalid timestamp millis: {}", h.t))
-            })?;
+            let timestamp = Utc
+                .timestamp_millis_opt(h.t)
+                .single()
+                .ok_or_else(|| IbkrError::Parse(format!("invalid timestamp millis: {}", h.t)))?;
 
             // 要求された期間外のバーは捨てる (IBKR は period から逆算して余分に返すことがある)
             if timestamp < from_dt || timestamp >= to_dt {
@@ -303,7 +303,7 @@ impl IbkrClient {
             let normalized = Utc.from_utc_datetime(
                 &date
                     .and_hms_opt(0, 0, 0)
-                    .ok_or_else(|| DataProviderError::Parse("invalid time".to_string()))?,
+                    .ok_or_else(|| IbkrError::Parse("invalid time".to_string()))?,
             );
 
             bars.push(Bar {
@@ -322,10 +322,7 @@ impl IbkrClient {
         Ok(bars)
     }
 
-    pub async fn fetch_instrument(
-        &self,
-        instrument_id: &str,
-    ) -> Result<Instrument, DataProviderError> {
+    pub async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, IbkrError> {
         let (_, instrument) = self.lookup_stock(instrument_id).await?;
         Ok(instrument)
     }

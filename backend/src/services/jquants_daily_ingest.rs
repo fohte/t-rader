@@ -7,10 +7,8 @@ use std::future::Future;
 use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::DatabaseConnection;
 
-use crate::data_provider::DataProviderError;
-use crate::data_provider::jquants::JQuantsClient;
+use crate::data_provider::{SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError};
 use crate::error::AppError;
-use crate::models::jquants_plan::JQuantsPlan;
 
 /// 既存データの再取得で遡る日数。J-Quants は差分取得非対応で訂正が上書き反映されるため、
 /// 直近の訂正を拾えるよう毎サイクル少し遡って取り直す。この日数より前まで遡る訂正
@@ -38,9 +36,9 @@ pub(crate) trait DailyJQuantsIngest: Sized {
     const START_DATE: NaiveDate;
 
     fn fetch(
-        client: &JQuantsClient,
+        source: &dyn ShortSellingSource,
         day: NaiveDate,
-    ) -> impl Future<Output = Result<Vec<Self>, DataProviderError>> + Send;
+    ) -> impl Future<Output = Result<Vec<Self>, ShortSellingSourceError>> + Send;
     fn upsert(
         db: &DatabaseConnection,
         items: Vec<Self>,
@@ -57,46 +55,32 @@ pub(crate) trait DailyJQuantsIngest: Sized {
 /// リクエストは `JQuantsClient` の共有 `RateLimiter` によって直列化されるため、長時間の
 /// 初回バックフィル中も他ジョブ (チャート表示の株価取得等) は自分の順番が来るまで
 /// 待つだけで済み、専有にはならない。
-///
-/// `T` は Standard 以上のプランでのみ提供されるデータであることを前提にしている
-/// (未満のプランではスキップする)。
 pub(crate) async fn run_ingest_cycle<T: DailyJQuantsIngest>(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
-) -> Result<DailyIngestStats, DataProviderError> {
+    source: &dyn ShortSellingSource,
+) -> Result<DailyIngestStats, AppError> {
     let mut stats = DailyIngestStats::default();
 
-    let Some(plan) = client.manual_plan() else {
-        tracing::debug!("契約プラン未設定のため取り込みをスキップ");
+    let today = Utc::now().date_naive();
+    let Some(range) = source.fetchable_range(today) else {
+        tracing::debug!("取得できないため取り込みをスキップ");
         return Ok(stats);
     };
-    if !matches!(plan, JQuantsPlan::Standard | JQuantsPlan::Premium) {
-        tracing::debug!(
-            ?plan,
-            "このデータは Standard 以上のプランが必要なためスキップ"
-        );
-        return Ok(stats);
-    }
 
-    let today = Utc::now().date_naive();
-    let floor = plan.range(today).0.max(T::START_DATE);
-    let latest = T::find_latest_date(db)
-        .await
-        .map_err(|e| DataProviderError::Database(e.to_string()))?;
+    let floor = range.from.max(T::START_DATE);
+    let latest = T::find_latest_date(db).await?;
     let from = latest
         .map(|d| (d - Duration::days(CATCH_UP_LOOKBACK_DAYS)).max(floor))
         .unwrap_or(floor);
 
     let mut day = from;
     while day <= today {
-        match T::fetch(client, day).await {
+        match T::fetch(source, day).await {
             Ok(items) => {
                 stats.days_fetched += 1;
                 if !items.is_empty() {
                     stats.rows_upserted += items.len();
-                    T::upsert(db, items)
-                        .await
-                        .map_err(|e| DataProviderError::Database(e.to_string()))?;
+                    T::upsert(db, items).await?;
                 }
             }
             Err(err) => {
@@ -117,7 +101,7 @@ pub(crate) async fn run_ingest_cycle<T: DailyJQuantsIngest>(
 /// poll task を起動する共通ヘルパー。1 回目は即実行し、その後 `interval` で繰り返す。
 pub(crate) fn spawn_poll<T: DailyJQuantsIngest + Send + 'static>(
     db: DatabaseConnection,
-    client: std::sync::Arc<JQuantsClient>,
+    source: SharedShortSellingSource,
     interval: std::time::Duration,
     label: &'static str,
 ) -> tokio::task::JoinHandle<()> {
@@ -126,7 +110,7 @@ pub(crate) fn spawn_poll<T: DailyJQuantsIngest + Send + 'static>(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_ingest_cycle::<T>(&db, &client).await {
+            match run_ingest_cycle::<T>(&db, source.as_ref()).await {
                 Ok(stats) => tracing::debug!(
                     label,
                     days_fetched = stats.days_fetched,

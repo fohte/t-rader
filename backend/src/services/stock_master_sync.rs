@@ -4,16 +4,16 @@
 //! master に含まれなくなった行 (上場廃止した保有銘柄等) は削除せずそのまま残す。
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
+use core_domain::equity_master::EquityMasterEntry;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tokio::task::JoinHandle;
 
-use crate::data_provider::jquants::{EquityMasterEntry, JQuantsClient};
+use crate::data_provider::{EquityMasterSource, SharedEquityMasterSource};
 use crate::entities::{sector, stock};
 use crate::error::AppError;
 
@@ -96,12 +96,9 @@ async fn upsert_stocks(
 /// 全上場銘柄マスタを取得し、`stock` (および参照先の `sector`) に反映する 1 サイクル。
 pub async fn run_sync_cycle(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
+    source: &dyn EquityMasterSource,
 ) -> Result<SyncStats, AppError> {
-    let entries = client
-        .fetch_all_equities_master()
-        .await
-        .map_err(AppError::DataProvider)?;
+    let entries = source.fetch_all_equities_master().await?;
 
     upsert_sectors(db, &entries).await?;
     let stocks_upserted = upsert_stocks(db, &entries).await?;
@@ -110,10 +107,9 @@ pub async fn run_sync_cycle(
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-/// J-Quants client が設定された場合に起動する。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    client: Arc<JQuantsClient>,
+    source: SharedEquityMasterSource,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -121,7 +117,7 @@ pub fn spawn_poll(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_sync_cycle(&db, &client).await {
+            match run_sync_cycle(&db, source.as_ref()).await {
                 Ok(stats) => {
                     tracing::info!(
                         stocks_upserted = stats.stocks_upserted,
