@@ -503,10 +503,10 @@ jobs:
         with:
           version: 2026.9.11
 
-      - name: Install cargo-llvm-cov
+      - name: Install cargo-llvm-cov and cargo-nextest
         uses: taiki-e/install-action@50414676f9f5d50a65992c6dd2ed02641263226c # v2.82.10
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov,cargo-nextest
 
       - name: Install llvm-tools-preview
         run: rustup component add llvm-tools-preview
@@ -519,7 +519,7 @@ jobs:
           STRATEGY_AGENT_MODEL: test-model
           WEB_SEARCH_MODEL: test-web-search-model
           GEMINI_MEDIA_MODEL: gemini-9-flash
-        run: cargo llvm-cov --lcov --output-path lcov.info
+        run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
