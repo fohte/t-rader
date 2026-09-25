@@ -297,41 +297,6 @@ pub struct ReadAnnotationsResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct AddInterestParams {
-    /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
-    pub ref_kind: String,
-    pub ref_id: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct AddInterestResult {
-    pub strategy_id: Uuid,
-    pub ref_kind: String,
-    pub ref_id: String,
-    pub role: String,
-    pub origin: String,
-    /// 既存と一致したため idempotent に成功した場合は false
-    pub created: bool,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListWatchTargetsParams {
-    pub limit: Option<u32>,
-}
-
-/// 人間が「追う」と決めた監視対象銘柄。保有状況によるフィルタは行わない
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct WatchTargetDto {
-    pub ref_id: String,
-    pub created_at: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct ListWatchTargetsResult {
-    pub watch_targets: Vec<WatchTargetDto>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCommentsParams {
     /// "note_version" | "annotation"
     pub target_kind: String,
@@ -469,33 +434,6 @@ pub struct EvalIndicatorResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ReadNewsParams {
-    pub limit: Option<u32>,
-}
-
-/// 戦略に紐づいた news の 1 match。同じ記事が複数の interest に一致した場合、
-/// 一致ごとに 1 行になる (同じ url が複数回出現し得る)。
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct NewsUpdateDto {
-    pub id: Uuid,
-    pub source: String,
-    pub url: String,
-    pub title: String,
-    pub body_snippet: Option<String>,
-    pub published_at: DateTime<FixedOffset>,
-    pub ref_kind: String,
-    pub ref_id: String,
-    pub matched_term: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct ReadNewsResult {
-    pub items: Vec<NewsUpdateDto>,
-    /// true なら未読がまだ残っている (limit で切られた)。再度呼び出せば続きから読める
-    pub has_more: bool,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchNewsParams {
     /// title / body_snippet の部分一致 (大文字小文字を区別しない)。省略時はキーワード条件なし
     pub keyword: Option<String>,
@@ -506,8 +444,7 @@ pub struct SearchNewsParams {
     pub limit: Option<u32>,
 }
 
-/// news_item を直接検索した 1 件。`read_news` と異なり戦略の interest 一致とは無関係なため
-/// ref_kind/ref_id/matched_term は持たない。
+/// `search_news` で返す記事 1 件
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NewsItemDto {
     pub id: Uuid,

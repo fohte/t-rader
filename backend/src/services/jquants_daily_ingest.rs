@@ -117,7 +117,7 @@ pub(crate) async fn run_ingest_cycle<T: DailyJQuantsIngest>(
 /// poll task を起動する共通ヘルパー。1 回目は即実行し、その後 `interval` で繰り返す。
 pub(crate) fn spawn_poll<T: DailyJQuantsIngest + Send + 'static>(
     db: DatabaseConnection,
-    provider: std::sync::Arc<crate::data_provider::DataProviderKind>,
+    client: std::sync::Arc<JQuantsClient>,
     interval: std::time::Duration,
     label: &'static str,
 ) -> tokio::task::JoinHandle<()> {
@@ -126,14 +126,7 @@ pub(crate) fn spawn_poll<T: DailyJQuantsIngest + Send + 'static>(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            let crate::data_provider::DataProviderKind::JQuants(client) = provider.as_ref() else {
-                tracing::warn!(
-                    label,
-                    "J-Quants 以外の DataProvider のため取り込みをスキップ"
-                );
-                continue;
-            };
-            match run_ingest_cycle::<T>(&db, client).await {
+            match run_ingest_cycle::<T>(&db, &client).await {
                 Ok(stats) => tracing::debug!(
                     label,
                     days_fetched = stats.days_fetched,

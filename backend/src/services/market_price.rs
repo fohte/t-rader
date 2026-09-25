@@ -1,5 +1,5 @@
 //! 銘柄リストから直近終値を取得する。バーが `backfill_daily_bars` の取得可能上限に
-//! 届いていない銘柄は DataProvider から再取得してから読み直す。
+//! 届いていない銘柄は日足データ取得元から再取得してから読み直す。
 
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait, Set};
 
-use crate::data_provider::DataProvider;
+use crate::data_provider::DailyBarSource;
 use crate::date_utils::latest_business_day;
 use crate::entities::instruments;
 use crate::models::Timeframe;
@@ -25,11 +25,11 @@ pub struct LatestPrices {
 }
 
 /// `symbols` それぞれの最新終値を返す。取得可能上限日に届いていない銘柄は
-/// DataProvider から再取得を試みる。全銘柄中の最新観測日 (`priced_at`) に満たない
+/// 日足データ取得元から再取得を試みる。全銘柄中の最新観測日 (`priced_at`) に満たない
 /// 銘柄は結果から省かれる。
-pub async fn fetch_latest_prices<P: DataProvider>(
+pub async fn fetch_latest_prices(
     db: &DatabaseConnection,
-    provider: Option<&P>,
+    provider: Option<&dyn DailyBarSource>,
     symbols: &[String],
 ) -> LatestPrices {
     let timeframe = Timeframe::Daily.to_string();
@@ -333,7 +333,7 @@ mod tests {
     async fn missing_bar_is_omitted_when_provider_is_none(pool: PgPool) {
         let db = create_test_db(pool).await;
 
-        let result = fetch_latest_prices::<MockProvider>(&db, None, &["7203".to_string()]).await;
+        let result = fetch_latest_prices(&db, None, &["7203".to_string()]).await;
 
         assert_eq!(
             result,

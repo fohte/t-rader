@@ -10,8 +10,8 @@ use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
+use crate::data_provider::DataProviderError;
 use crate::data_provider::jquants::JQuantsClient;
-use crate::data_provider::{DataProviderError, DataProviderKind};
 use crate::error::AppError;
 use crate::models::ShortRatio;
 use crate::repositories::short_ratio::{find_latest_date, upsert_short_ratios};
@@ -55,10 +55,10 @@ pub async fn run_ingest_cycle(
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    client: Arc<JQuantsClient>,
     interval: Duration,
 ) -> JoinHandle<()> {
-    jquants_daily_ingest::spawn_poll::<ShortRatio>(db, provider, interval, "short ratio ingest")
+    jquants_daily_ingest::spawn_poll::<ShortRatio>(db, client, interval, "short ratio ingest")
 }
 
 #[cfg(test)]

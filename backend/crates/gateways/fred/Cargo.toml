@@ -1,0 +1,21 @@
+[package]
+name = "gateway-fred"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true, features = ["alloc"] }
+core-application = { workspace = true }
+core-domain = { workspace = true }
+reqwest = { workspace = true, features = ["json", "rustls"] }
+rust_decimal = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+indoc = "=2.0.7"
+rstest = { workspace = true }
+
+[lints]
+workspace = true

@@ -63,6 +63,8 @@ mod m20260924_171836_note_version;
 mod m20260925_035409_remove_watchlist;
 mod m20260925_043733_note_version_review;
 mod m20260925_043735_note_links_and_trade_note_versions;
+mod m20260925_075026_drop_news_strategy_link;
+mod m20260925_093011_drop_strategy_interest;
 
 pub struct Migrator;
 
@@ -134,6 +136,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260925_035409_remove_watchlist::Migration),
             Box::new(m20260925_043733_note_version_review::Migration),
             Box::new(m20260925_043735_note_links_and_trade_note_versions::Migration),
+            Box::new(m20260925_075026_drop_news_strategy_link::Migration),
+            Box::new(m20260925_093011_drop_strategy_interest::Migration),
         ]
     }
 }

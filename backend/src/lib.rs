@@ -34,26 +34,28 @@ use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
-use crate::data_provider::DataProviderKind;
+use crate::data_provider::SharedDailyBarSource;
+use crate::data_provider::jquants::JQuantsClient;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
-    jquants_plan_setting, news, note_hypotheses, note_kinds, note_links, note_predictions,
-    note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
-    triggers,
+    custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports,
+    jquants_plan_setting, note_hypotheses, note_kinds, note_links, note_predictions, note_versions,
+    notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers,
 };
 use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
+use crate::services::litellm_client::SharedLlmClient;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseConnection,
-    /// 株価データプロバイダー (J-Quants API 等)
+    /// 日足データ取得元
     ///
-    /// `JQUANTS_API_KEY` 未設定時は None で起動する。
+    /// `DATA_PROVIDER=none` または client の未設定時は `None` で起動する。
     /// データ取得系のエンドポイントは利用時にエラーを返す。
-    pub data_provider: Option<Arc<DataProviderKind>>,
+    pub daily_bar_source: Option<SharedDailyBarSource>,
+    /// J-Quants 固有の設定と取り込みに使う client。
+    pub jquants_client: Option<Arc<JQuantsClient>>,
     /// t-rader-agent 内部 API クライアント。戦略タスクの投入 / 状態照会に使う。
     /// `TRADER_AGENT_API_URL=disabled` (dev opt-out) の場合は `DisabledAgentTaskClient` が入る。
     pub agent_task_client: SharedAgentTaskClient,
@@ -68,7 +70,7 @@ pub struct AppState {
     pub kata_executor: Option<SharedKataExecutor>,
     /// LLM ゲートウェイ client。`LLM_BASE_URL` 未設定時は `None` で起動し、
     /// `GET /api/agent-models` は空配列を返す。
-    pub llm_gateway_client: Option<LlmGatewayClient>,
+    pub llm_gateway_client: Option<SharedLlmClient>,
 }
 
 impl AppState {
@@ -80,13 +82,13 @@ impl AppState {
 }
 
 impl AppState {
-    /// DataProvider を取得する
+    /// 日足データ取得元を取得する
     ///
-    /// `JQUANTS_API_KEY` 未設定で起動した場合は 503 エラーを返す。
-    pub fn data_provider(&self) -> Result<&DataProviderKind, AppError> {
-        self.data_provider
-            .as_deref()
-            .ok_or_else(|| AppError::ServiceUnavailable("data provider is not configured".into()))
+    /// source が未設定の場合は 503 エラーを返す。
+    pub fn daily_bar_source(&self) -> Result<&dyn crate::data_provider::DailyBarSource, AppError> {
+        self.daily_bar_source.as_deref().ok_or_else(|| {
+            AppError::ServiceUnavailable("daily bar source is not configured".into())
+        })
     }
 }
 
@@ -110,7 +112,6 @@ impl AppState {
         (name = "hypothesis_proposals", description = "仮説への変更提案 (エージェントが作成し、人間が承認/却下する)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
-        (name = "news", description = "ニュース (公開 RSS の集約結果と戦略への紐付け)"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
         (name = "config", description = "frontend 向けランタイム設定値"),
@@ -137,32 +138,35 @@ mod app_state_tests {
     }
 
     #[rstest]
-    fn test_data_provider_returns_provider_when_set() {
+    fn test_daily_bar_source_returns_source_when_set() {
         let client = crate::data_provider::jquants::JQuantsClient::new("test-key".into()).unwrap();
+        let daily_bar_source: SharedDailyBarSource = Arc::new(client);
         let state = AppState {
             db: mock_db(),
-            data_provider: Some(Arc::new(DataProviderKind::JQuants(client))),
+            daily_bar_source: Some(daily_bar_source),
+            jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
             agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             llm_gateway_client: None,
         };
-        assert!(state.data_provider().is_ok());
+        assert!(state.daily_bar_source().is_ok());
     }
 
     #[rstest]
-    fn test_data_provider_returns_error_when_none() {
+    fn test_daily_bar_source_returns_error_when_none() {
         let state = AppState {
             db: mock_db(),
-            data_provider: None,
+            daily_bar_source: None,
+            jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
             agent_task_notify: Arc::new(tokio::sync::Notify::new()),
             agent_webhook_token: Arc::from("test-token"),
             kata_executor: None,
             llm_gateway_client: None,
         };
-        let result = state.data_provider();
+        let result = state.daily_bar_source();
         assert!(result.is_err());
     }
 }
@@ -188,22 +192,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::get_strategy,
             strategies::update_strategy,
             strategies::delete_strategy
-        ))
-        .routes(routes!(
-            strategies::list_strategy_interests,
-            interests::create_strategy_interest
-        ))
-        .routes(routes!(
-            interests::update_strategy_interest,
-            interests::delete_strategy_interest
-        ))
-        .routes(routes!(
-            interests::list_global_interests,
-            interests::create_global_interest
-        ))
-        .routes(routes!(
-            interests::update_global_interest,
-            interests::delete_global_interest
         ))
         // hypotheses
         .routes(routes!(
@@ -356,8 +344,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(custom_indicators::get_strategy_indicator))
         .routes(routes!(custom_indicators::preview_indicator))
-        // news
-        .routes(routes!(news::list_strategy_news))
         // rss feeds
         .routes(routes!(
             rss_feeds::list_rss_feeds,
@@ -402,7 +388,7 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 pub fn create_router(state: AppState) -> Router {
     let db = state.db.clone();
     let agent_task_client = state.agent_task_client.clone();
-    let data_provider = state.data_provider.clone();
+    let daily_bar_source = state.daily_bar_source.clone();
     let kata_executor = state.kata_executor.clone();
     let llm_gateway_client = state.llm_gateway_client.clone();
     let (router, api) = build_openapi_router().with_state(state).split_for_parts();
@@ -413,7 +399,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(mcp::router(
             db,
             agent_task_client,
-            data_provider,
+            daily_bar_source,
             kata_executor,
             llm_gateway_client,
             mcp::allowed_hosts_from_env(),

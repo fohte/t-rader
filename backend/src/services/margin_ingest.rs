@@ -1,7 +1,7 @@
 //! 信用取引週末残高・日々公表信用取引残高を日次で取得し、DB に蓄積する定期タスク。
 //!
-//! IBKR には対応するデータが無いため DataProvider trait には追加せず、JQuantsClient を
-//! 直接使う。契約プランが未設定の間は取り込まない (未設定時のレート制限は 5 req/min のため)。
+//! IBKR には対応するデータが無いため JQuantsClient を直接使う。契約プランが未設定の間は
+//! 取り込まない (未設定時のレート制限は 5 req/min のため)。
 
 use std::future::Future;
 use std::sync::Arc;
@@ -12,7 +12,6 @@ use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
 use crate::data_provider::DataProviderError;
-use crate::data_provider::DataProviderKind;
 use crate::data_provider::jquants::JQuantsClient;
 use crate::error::AppError;
 use crate::repositories::{margin_alert, margin_interest};
@@ -143,21 +142,16 @@ pub async fn run_ingest_cycle(
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    client: Arc<JQuantsClient>,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let DataProviderKind::JQuants(client) = provider.as_ref() else {
-            tracing::warn!("margin ingest には J-Quants provider が必要なため起動しません");
-            return;
-        };
-
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
             let today = Utc::now().date_naive();
-            match run_ingest_cycle(&db, client, today).await {
+            match run_ingest_cycle(&db, &client, today).await {
                 Ok((interest_stats, alert_stats)) => {
                     tracing::info!(
                         ?interest_stats,

@@ -8,7 +8,6 @@ pub mod mgmt;
 pub mod strategy;
 pub mod watcher;
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
@@ -18,9 +17,9 @@ use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 use sea_orm::DatabaseConnection;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::data_provider::DataProviderKind;
+use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::LiteLlmClient;
+use crate::services::litellm_client::SharedLlmClient;
 use crate::services::strategy_tasks::DEADLINE_DURATION;
 pub use mgmt::MgmtServer;
 pub use strategy::StrategyServer;
@@ -32,9 +31,9 @@ pub use strategy::StrategyServer;
 pub fn router(
     db: DatabaseConnection,
     agent_client: SharedAgentTaskClient,
-    data_provider: Option<Arc<DataProviderKind>>,
+    daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
-    litellm_client: Option<LiteLlmClient>,
+    litellm_client: Option<SharedLlmClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
     let mgmt_db = db.clone();
@@ -45,7 +44,7 @@ pub fn router(
     );
     let strategy = StreamableHttpService::new(
         move || {
-            Ok(StrategyServer::new(db.clone(), data_provider.clone())
+            Ok(StrategyServer::new(db.clone(), daily_bar_source.clone())
                 .with_kata_executor(kata_executor.clone())
                 .with_litellm_client(litellm_client.clone()))
         },
@@ -162,6 +161,8 @@ pub(crate) fn assert_no_boolean_property_schemas(tool: &rmcp::model::Tool) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use axum_test::TestServer;
     use rstest::rstest;
     use serde_json::json;

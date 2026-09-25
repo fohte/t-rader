@@ -10,7 +10,6 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::DataProviderError;
-use crate::data_provider::DataProviderKind;
 use crate::data_provider::jquants::JQuantsClient;
 use crate::date_utils::latest_business_day;
 use crate::entities::{jquants_valuation, jquants_valuation_ingested_date};
@@ -197,23 +196,18 @@ pub async fn run_ingest_cycle(
     Ok(stats)
 }
 
-/// poll task を起動する。`provider` は J-Quants のときのみ呼び出す。
+/// J-Quants client が設定された場合に poll task を起動する。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    client: Arc<JQuantsClient>,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let DataProviderKind::JQuants(client) = provider.as_ref() else {
-            tracing::error!("valuation ingest は J-Quants 専用のため起動できません");
-            return;
-        };
-
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_ingest_cycle(&db, client).await {
+            match run_ingest_cycle(&db, &client).await {
                 Ok(stats) => tracing::debug!(
                     days_attempted = stats.days_attempted,
                     rows_upserted = stats.rows_upserted,

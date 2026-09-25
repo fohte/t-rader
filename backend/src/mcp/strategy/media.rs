@@ -121,7 +121,8 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db(), None).with_litellm_client(Some(client));
+        let server = StrategyServer::new(mock_db(), None)
+            .with_litellm_client(Some(std::sync::Arc::new(client)));
 
         let out = server
             .query_media_inner(

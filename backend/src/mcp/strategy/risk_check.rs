@@ -61,7 +61,8 @@ impl StrategyServer {
         symbols.insert(symbol.clone());
         let symbols: Vec<String> = symbols.into_iter().collect();
 
-        let prices = fetch_latest_prices(&self.db, self.data_provider.as_deref(), &symbols).await;
+        let prices =
+            fetch_latest_prices(&self.db, self.daily_bar_source.as_deref(), &symbols).await;
         let target_price = prices.prices.get(&symbol).copied();
 
         let current_qty = strategy_summary

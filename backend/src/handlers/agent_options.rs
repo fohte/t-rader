@@ -3,7 +3,7 @@ use axum::extract::State;
 
 use crate::AppState;
 use crate::mcp::StrategyServer;
-use crate::models::{AgentModelsResponse, AgentTool, AgentToolsResponse};
+use crate::models::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 
 /// 戦略 Agent 設定フォームに供給するモデル一覧を取得する。
 /// LLM ゲートウェイが未設定、または応答不能な場合は空配列を返す (設定画面全体を壊さないため)。
@@ -24,7 +24,18 @@ pub async fn get_agent_models(State(state): State<AppState>) -> Json<AgentModels
         }),
         None => Vec::new(),
     };
-    Json(AgentModelsResponse { models })
+    Json(AgentModelsResponse {
+        models: models
+            .into_iter()
+            .map(|model| AgentModel {
+                id: model.id,
+                providers: model.providers,
+                max_input_tokens: model.max_input_tokens,
+                max_output_tokens: model.max_output_tokens,
+                supports_reasoning: model.supports_reasoning,
+            })
+            .collect(),
+    })
 }
 
 /// 戦略 MCP の tool 一覧を取得する。`#[tool(...)]` の登録情報から動的に組み立てるので、
@@ -69,8 +80,10 @@ mod tests {
                 wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
                     "data": [
                         {
-                            "model_group": "claude-opus-4",
-                            "providers": ["anthropic"],
+                            "model_group": "sample-model",
+                            "providers": ["test-provider"],
+                            "max_input_tokens": 12345.0,
+                            "max_output_tokens": 6789.0,
                             "supports_reasoning": true,
                         },
                     ],
@@ -87,10 +100,10 @@ mod tests {
             serde_json::json!({
                 "models": [
                     {
-                        "id": "claude-opus-4",
-                        "providers": ["anthropic"],
-                        "max_input_tokens": null,
-                        "max_output_tokens": null,
+                        "id": "sample-model",
+                        "providers": ["test-provider"],
+                        "max_input_tokens": 12345.0,
+                        "max_output_tokens": 6789.0,
                         "supports_reasoning": true,
                     },
                 ],
@@ -126,7 +139,6 @@ mod tests {
             response.json::<serde_json::Value>(),
             serde_json::json!({
                 "tools": [
-                    {"name": "add_interest", "description": "Add a derived interest (role=derived, origin=llm) to the current strategy. Idempotent: returns created=false if the same (ref_kind, ref_id) already exists for the strategy. If ref_id doesn't match a master id but uniquely matches a registered alias, it is resolved to the canonical id before being stored."},
                     {"name": "add_ref_terms", "description": "Add aliases (alternate spellings, abbreviations, former names, etc.) to a first-class reference (stock/indicator/sector/theme). Idempotent: terms already registered for the same (ref_kind, ref_id) are silently skipped and excluded from the returned added list. Blank terms are ignored."},
                     {"name": "check_buyable_qty", "description": "Calculate how many more shares of a symbol can be bought, per constraint (account-wide sector ratio cap and the strategy's remaining unused investable amount), plus the overall minimum and which constraint is binding. Works for symbols not currently held (current_qty is 0). max_additional_qty values are floored to 100-share lots (see lot_size). A constraint with no configured cap reports status=unlimited; a constraint that cannot be computed (missing price, missing sector, no investable amount recorded) reports status=unavailable with a reason instead of a possibly-wrong number, and poisons the overall max_qty to unavailable too."},
                     {"name": "create_annotation", "description": "Create a chart annotation owned by the strategy. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."},
@@ -135,7 +147,6 @@ mod tests {
                     {"name": "list_hypotheses", "description": "List hypotheses visible to the current strategy: hypotheses owned by this strategy plus account-wide (global) hypotheses, newest first."},
                     {"name": "list_notes", "description": "List notes owned by the strategy, newest first. Filter by status and/or updated_after, and set include_body: false to omit body_md and save context."},
                     {"name": "list_predictions", "description": "List predictions recorded by the current strategy, newest first. Filter by due_after/due_before (e.g. due_after=today to see only predictions not yet graded)."},
-                    {"name": "list_watch_targets", "description": "List stocks a human has marked to watch for the current strategy (origin=human, status=active), oldest first. Excludes interests the agent added itself (origin=llm) and archived ones. Not pre-filtered against current holdings; combine with read_portfolio / check_buyable_qty as needed."},
                     {"name": "propose_hypothesis_change", "description": "Propose a change to a hypothesis's title, body, and/or status, with a rationale. The proposal is persisted but not applied — a human must approve it via the API before the hypothesis itself is updated. The agent cannot write to hypotheses directly."},
                     {"name": "query_data", "description": "Fetch daily OHLCV bars for one or more instruments (up to 100 per call, no duplicates) over a shared date range from the DB. Results are in the same order as instrument_ids; an instrument with no ingested data returns an empty bars array rather than an error."},
                     {"name": "query_media", "description": "Fetch a video or audio URL (YouTube links are well supported; other public https:// URLs are best-effort) and answer prompt about its content via Gemini, returning free-form text. Use for source material with no text equivalent, such as a YouTube video."},
@@ -145,7 +156,6 @@ mod tests {
                     {"name": "read_hypothesis", "description": "Read a single hypothesis (its title, body, and status) visible to the current strategy (own or global)."},
                     {"name": "read_macro_indicator", "description": "Read daily observations (date + value) for a macro indicator between from and to (inclusive), oldest first. Discover available indicator_id values via search_refs (ref_kind=indicator), e.g. USDJPY, VIX, US10Y, NIKKEI225. Values are in the source's native units (USDJPY: yen per dollar, VIX: index level, US10Y: percent). Days with no observation (holidays, no update) are simply absent rather than interpolated; USDJPY in particular is batched weekly at the source and can lag by up to about a week, so the last item's date shows how fresh the latest available value is. Returns an empty list if the indicator_id is unknown or has no data in range."},
                     {"name": "read_margin", "description": "Read a stock's margin trading balances: weekly (later daily) margin interest balances (margin_interest) newest first, tagged with the 5-digit J-Quants code and iss_type (1=margin-eligible, 2=loan-eligible, 3=other), plus daily-published margin balances (margin_alert, only for stocks the exchange has designated for daily publication — absence from this list does not mean a zero balance) with pub_reason flags and tse_mrgn_reg_cls. When the same application date has multiple corrections, only the one with the latest publication date is returned. symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters); from/to filter by date (inclusive) and default to no bound."},
-                    {"name": "read_news", "description": "Read news items linked to the strategy that haven't been returned by a previous call, oldest first. A per-strategy checkpoint automatically advances past whatever this call returns, so repeated calls only surface items linked since the last call — nothing is skipped even across long gaps between runs. Each row is one interest match; a news item matched by more than one interest (e.g. a stock and a theme) appears once per match, so the same url/title can repeat. If has_more is true, call again to continue from where this call left off. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that."},
                     {"name": "read_note", "description": "Read a single note owned by the strategy, including its graphs and linked note versions. Omit version_id to read the current version."},
                     {"name": "read_portfolio", "description": "Return account-wide open positions and realized P&L (FIFO) aggregated across all strategies, plus the connecting strategy's own slice, both priced at current market value. Use this to check existing holdings and available investable amount before proposing new trades."},
                     {"name": "read_prediction_stats", "description": "Return calibration stats for the current strategy's graded predictions: the Brier score (mean squared error between each prediction's recorded probability and its 0/1 outcome; lower is better-calibrated) and per-probability-step count/hit_rate (hit_rate is null for steps with zero graded predictions). Predictions are graded automatically once their due_date's daily bar has been ingested; ungraded predictions are excluded entirely, so graded_count can be smaller than the total number of predictions recorded so far."},
@@ -158,9 +168,9 @@ mod tests {
                     {"name": "remove_ref_terms", "description": "Remove aliases from a first-class reference (stock/indicator/sector/theme). Idempotent: terms not currently registered are silently skipped and excluded from the returned removed list."},
                     {"name": "reply_comment", "description": "Reply to an existing review comment owned by the strategy. Posted with author_kind=llm, author_label=analyst."},
                     {"name": "resolve_comment", "description": "Mark a review comment owned by the strategy as resolved or unresolved."},
-                    {"name": "search_news", "description": "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. Unlike read_news, this ignores news_strategy_link entirely, so results are not affected by whether the strategy has registered a matching interest term. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that."},
-                    {"name": "search_refs", "description": "Search across all first-class reference types (stock, indicator, sector, theme) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name, usable directly as input to add_interest."},
-                    {"name": "search_web", "description": "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes not yet tracked by add_interest / RSS feeds, or to read the actual content of a read_news / search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error."},
+                    {"name": "search_news", "description": "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that."},
+                    {"name": "search_refs", "description": "Search across all first-class reference types (stock, indicator, sector, theme) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name."},
+                    {"name": "search_web", "description": "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error."},
                     {"name": "write_note", "description": "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."},
                 ],
             }),

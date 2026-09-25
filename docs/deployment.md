@@ -25,7 +25,7 @@ t-rader-backend は Kubernetes クラスタ上に Deployment + Service として
 | 任意                           | `BACKEND_PORT`           | listen port                                                                                                                                                                                                                                                                                                                                         | `3000` で listen                                                                                                                             |
 | 任意                           | `TRACE_URL_TEMPLATE`     | トレースビューアの URL テンプレート (`{trace_id}`/`{span_id}` プレースホルダ)。`GET /api/config` 経由で frontend に渡る                                                                                                                                                                                                                             | トレースリンクを表示しない                                                                                                                   |
 
-kata-exec の追加の任意変数 (`KATA_EXEC_NAMESPACE`, `KATA_EXEC_IMAGE`, `KATA_EXEC_TOKEN`, `KATA_EXEC_DEFAULT_TIMEOUT_SECS`, `KATA_EXEC_MAX_OUTPUT_BYTES` 等) は backend のソース (`backend/src/kata_exec/`) を参照。in-cluster で動かす場合 token / CA は ServiceAccount のものを自動で読む。
+kata-exec の追加の任意変数 (`KATA_EXEC_NAMESPACE`, `KATA_EXEC_IMAGE`, `KATA_EXEC_TOKEN`, `KATA_EXEC_DEFAULT_TIMEOUT_SECS`, `KATA_EXEC_MAX_OUTPUT_BYTES` 等) は gateway crate (`backend/crates/gateways/kata-exec/`) を参照。in-cluster で動かす場合 token / CA は ServiceAccount のものを自動で読む。
 
 ## backend が要求する権限
 

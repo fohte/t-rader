@@ -3,8 +3,8 @@
 //! 一級参照型 (stock / indicator / sector / theme) はそれぞれ独立したテーブルに
 //! 分かれており umbrella エンティティを持たない (プロジェクト方針)。横断検索は
 //! この 4 テーブルを `UNION ALL` した raw SQL で行う。id / name / `ref_term` の別名
-//! いずれかへの部分一致 (大文字小文字・全角半角を区別しない) で検索し、結果は
-//! `add_interest` にそのまま渡せる `ref_kind` / `ref_id` の組で返す。
+//! いずれかへの部分一致 (大文字小文字・全角半角を区別しない) で検索し、`ref_kind` / `ref_id`
+//! / `name` の組で返す。
 
 use indoc::indoc;
 use rmcp::ErrorData as McpError;

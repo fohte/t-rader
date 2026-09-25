@@ -14,7 +14,6 @@ pub mod graph;
 pub mod hypotheses;
 pub mod hypothesis_proposals;
 pub mod import;
-pub mod interests;
 pub mod investable_amount;
 pub mod jquants_daily_ingest;
 pub mod jquants_plan_setting;

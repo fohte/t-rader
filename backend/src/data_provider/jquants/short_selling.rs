@@ -1,6 +1,6 @@
 //! 空売り残高報告・業種別空売り比率の取得 (`JQuantsClient` の inherent メソッド)。
 //!
-//! IBKR に対応するデータが無いため `DataProvider` trait には追加しない。
+//! IBKR に対応するデータが無いため日足取得の port には含めない。
 
 use chrono::NaiveDate;
 

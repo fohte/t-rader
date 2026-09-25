@@ -6,7 +6,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, ResponseTemplate};
 
 use crate::data_provider::ibkr::mock::{IbkrMockServer, MockHistoryBar};
-use crate::data_provider::{DataProvider, DataProviderError, DataProviderKind, DateRange};
+use crate::data_provider::{DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::Market;
 
@@ -134,7 +134,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
 
         let expected = vec![
             Bar {
@@ -206,7 +208,9 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
 
         let expected = vec![Bar {
             instrument_id: "7203".to_string(),
@@ -235,7 +239,9 @@ mod fetch_daily_bars {
         mock.history().conid(12345).bars(vec![]).ok().await;
 
         let client = mock.client()?;
-        let bars = client.fetch_daily_bars("7203", &default_range()).await?;
+        let bars = client
+            .fetch_daily_bars_internal("7203", &default_range())
+            .await?;
         assert_eq!(bars, vec![]);
         Ok(())
     }
@@ -287,39 +293,6 @@ mod error_handling {
             result,
             Err(DataProviderError::Api { status: 401, .. })
         ));
-    }
-}
-
-// === DataProviderKind ===
-
-mod data_provider_kind {
-    use super::*;
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_delegates_fetch_instrument_to_ibkr() -> Result<(), DataProviderError> {
-        let mock = IbkrMockServer::start().await;
-        mock.stocks()
-            .symbol("7203")
-            .name(Some("TOYOTA MOTOR CORP"))
-            .contracts(vec![("TSEJ", 12345)])
-            .ok()
-            .await;
-
-        let client = mock.client()?;
-        let kind = DataProviderKind::Ibkr(client);
-        let instrument = kind.fetch_instrument("7203").await?;
-        assert_eq!(
-            instrument,
-            crate::models::instrument::Instrument {
-                id: "7203".to_string(),
-                name: "TOYOTA MOTOR CORP".to_string(),
-                market: Market::Tse,
-                sector: None,
-                product_category: None,
-            }
-        );
-        Ok(())
     }
 }
 

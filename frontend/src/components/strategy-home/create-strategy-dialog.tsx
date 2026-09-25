@@ -74,7 +74,7 @@ export function CreateStrategyDialog({
           <DialogHeader>
             <DialogTitle>新しい戦略を作る</DialogTitle>
             <DialogDescription>
-              名前と説明を入れて作成します。シード関心は後から設定で追加できます。
+              名前と説明を入れて作成します。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">

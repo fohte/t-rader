@@ -5,9 +5,8 @@
 //! が担う。
 //!
 //! スコープは「自戦略の仮説」+「account-wide (global, `strategy_id IS NULL`) 仮説」の和集合。
-//! `list_watch_targets_inner` (`super::interests`) と同じ考え方だが、他戦略専属の仮説への
-//! アクセスは拒否する (`fetch_note_owned_by` 等と同様、対象が厳密に決まる読み取り/書き込みの
-//! ため)。
+//! 他戦略専属の仮説へのアクセスは拒否する (`fetch_note_owned_by` 等と同様、対象が厳密に
+//! 決まる読み取り/書き込みのため)。
 
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};

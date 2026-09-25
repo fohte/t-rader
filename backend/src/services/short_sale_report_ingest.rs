@@ -10,8 +10,8 @@ use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
+use crate::data_provider::DataProviderError;
 use crate::data_provider::jquants::JQuantsClient;
-use crate::data_provider::{DataProviderError, DataProviderKind};
 use crate::error::AppError;
 use crate::models::ShortSaleReport;
 use crate::repositories::short_sale_report::{find_latest_disc_date, upsert_short_sale_reports};
@@ -55,12 +55,12 @@ pub async fn run_ingest_cycle(
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    client: Arc<JQuantsClient>,
     interval: Duration,
 ) -> JoinHandle<()> {
     jquants_daily_ingest::spawn_poll::<ShortSaleReport>(
         db,
-        provider,
+        client,
         interval,
         "short sale report ingest",
     )
