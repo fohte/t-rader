@@ -511,7 +511,7 @@ jobs:
       - name: Install llvm-tools-preview
         run: rustup component add llvm-tools-preview
 
-      - name: Enable PostgreSQL statement timing
+      - name: Configure PostgreSQL for timing experiment
         env:
           DB_CONTAINER_ID: ${{ job.services.db.id }}
         run: |
@@ -520,7 +520,14 @@ jobs:
             --dbname=t_rader_test \
             --set=ON_ERROR_STOP=1 \
             --command="ALTER SYSTEM SET log_min_duration_statement = 0" \
-            --command="SELECT pg_reload_conf()"
+            --command="ALTER SYSTEM SET fsync = off" \
+            --command="ALTER SYSTEM SET synchronous_commit = off" \
+            --command="ALTER SYSTEM SET full_page_writes = off" \
+            --command="SELECT pg_reload_conf()" \
+            --command="SHOW log_min_duration_statement" \
+            --command="SHOW fsync" \
+            --command="SHOW synchronous_commit" \
+            --command="SHOW full_page_writes"
 
       - name: Run tests with coverage
         working-directory: backend
