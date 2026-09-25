@@ -31,6 +31,8 @@ impl std::fmt::Display for NoteTrigger {
 #[schema(as = Note)]
 pub struct NoteResponse {
     pub id: Uuid,
+    pub version_id: Uuid,
+    pub version_no: i32,
     pub strategy_id: Option<Uuid>,
     pub title: String,
     pub body_md: String,
@@ -50,13 +52,15 @@ pub struct NoteResponse {
 }
 
 impl NoteResponse {
-    pub fn from_current_version(
+    pub fn from_version(
         note: note::Model,
         version: note_version::Model,
         created_by_kind: String,
     ) -> Self {
         Self {
             id: note.id,
+            version_id: version.id,
+            version_no: version.version_no,
             strategy_id: note.strategy_id,
             title: version.title,
             body_md: version.body_md,
@@ -81,6 +85,8 @@ pub struct CreateNoteRequest {
     pub strategy_id: Option<Uuid>,
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: String,
+    /// `[[note:<uuid>]]` はリンク元版を作成した時点の現行版に固定する。
+    /// `@current` を付けると以降の現行版に追従する。
     pub body_md: String,
     #[serde(default)]
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
@@ -100,6 +106,8 @@ pub struct CreateNoteRequest {
 pub struct UpdateNoteRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub title: Option<String>,
+    /// `[[note:<uuid>]]` はリンク元版を作成した時点の現行版に固定する。
+    /// `@current` を付けると以降の現行版に追従する。
     pub body_md: Option<String>,
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,

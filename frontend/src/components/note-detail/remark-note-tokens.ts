@@ -6,6 +6,8 @@ import { REF_PREFIX_RE } from '#lib/note-utils'
 const TOKEN_RE = /\[\[([^\]]+)\]\]/g
 const ANNO_RE = /^anno:([A-Za-z0-9][\w-]*)$/
 const GRAPH_TOKEN_RE = /^\[\[graph:([A-Za-z][\w-]*)\]\]$/
+const NOTE_TOKEN_RE =
+  /^note:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(@current)?$/i
 
 interface NoteToken extends Node {
   type: 'noteToken'
@@ -67,6 +69,12 @@ export function remarkNoteTokens() {
     findAndReplace(tree, [
       TOKEN_RE,
       (_value: string, inner: string) => {
+        const note = NOTE_TOKEN_RE.exec(inner)
+        if (note)
+          return noteToken('note-link', {
+            noteId: note[1]?.toLowerCase() ?? '',
+            token: inner,
+          })
         const anno = ANNO_RE.exec(inner)
         if (anno) return noteToken('note-anno', { annoId: anno[1] ?? '' })
         if (REF_PREFIX_RE.test(inner))

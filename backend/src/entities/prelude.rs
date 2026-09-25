@@ -30,6 +30,7 @@ pub use super::news_strategy_link::Entity as NewsStrategyLink;
 pub use super::note::Entity as Note;
 pub use super::note_hypothesis::Entity as NoteHypothesis;
 pub use super::note_kind::Entity as NoteKind;
+pub use super::note_link::Entity as NoteLink;
 pub use super::note_ref::Entity as NoteRef;
 pub use super::note_version::Entity as NoteVersion;
 pub use super::prediction::Entity as Prediction;

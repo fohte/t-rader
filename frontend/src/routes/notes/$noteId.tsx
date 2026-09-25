@@ -5,7 +5,7 @@ import { CommentsPanel } from '#components/note-detail/comments-panel'
 import { HistoryPanel } from '#components/note-detail/history-panel'
 import { NoteDocument } from '#components/note-detail/note-document'
 import { NoteHeader } from '#components/note-detail/note-header'
-import { NoteHypothesesPanel } from '#components/note-detail/note-hypotheses-panel'
+import { NoteLinksPanelView } from '#components/note-detail/note-links-panel'
 import { PredictionsPanel } from '#components/note-detail/predictions-panel'
 import { ReviewPanel } from '#components/note-detail/review-panel'
 import { openFloatingChat } from '#components/strategy-shell/floating-chat-store'
@@ -13,14 +13,36 @@ import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/notes/$noteId')({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { version_id?: string } => ({
+    version_id:
+      typeof search.version_id === 'string' ? search.version_id : undefined,
+  }),
   component: NoteDetailPage,
 })
 
 function NoteDetailPage() {
   const { noteId } = Route.useParams()
+  const { version_id } = Route.useSearch()
   const { data: note, isPending } = $api.useQuery('get', '/api/notes/{id}', {
-    params: { path: { id: noteId } },
+    params: { path: { id: noteId }, query: { version_id } },
   })
+  const {
+    data: noteLinks,
+    isPending: linksPending,
+    isError: linksError,
+  } = $api.useQuery(
+    'get',
+    '/api/notes/{id}/links',
+    {
+      params: {
+        path: { id: noteId },
+        query: { version_id: note?.version_id },
+      },
+    },
+    { enabled: note != null },
+  )
   const [pendingQuote, setPendingQuote] = useState<string | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const onConsumeQuote = useCallback(() => {
@@ -65,6 +87,7 @@ function NoteDetailPage() {
           <NoteDocument
             source={note.body_md}
             graphs={note.graphs_json}
+            noteLinks={noteLinks?.outgoing}
             onQuoteSelection={onQuoteSelection}
             bodyRef={bodyRef}
           />
@@ -85,9 +108,11 @@ function NoteDetailPage() {
         <aside className="space-y-4">
           <ReviewPanel noteId={note.id} status={note.status} />
           <PredictionsPanel noteId={note.id} />
-          <NoteHypothesesPanel
-            noteId={note.id}
-            strategyId={note.strategy_id ?? null}
+          <NoteLinksPanelView
+            outgoing={noteLinks?.outgoing ?? []}
+            incoming={noteLinks?.incoming ?? []}
+            isPending={linksPending}
+            isError={linksError}
           />
           <CommentsPanel
             noteId={note.id}

@@ -53,13 +53,4 @@ impl Related<super::trade_note::Entity> for Entity {
     }
 }
 
-impl Related<super::note::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::trade_note::Relation::Note.def()
-    }
-    fn via() -> Option<RelationDef> {
-        Some(super::trade_note::Relation::Trade.def().rev())
-    }
-}
-
 impl ActiveModelBehavior for ActiveModel {}

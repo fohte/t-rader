@@ -6,23 +6,21 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
 )]
-#[sea_orm(table_name = "trade_note")]
-#[schema(as = TradeNote)]
+#[sea_orm(table_name = "note_link")]
+#[schema(as = NoteLink)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub trade_id: Uuid,
+    pub from_version_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
-    pub note_id: Uuid,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
-    pub created_at: DateTimeWithTimeZone,
-    pub note_version_id: Uuid,
+    pub to_note_id: Uuid,
+    pub to_version_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::note::Entity",
-        from = "Column::NoteId",
+        from = "Column::ToNoteId",
         to = "super::note::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
@@ -30,37 +28,25 @@ pub enum Relation {
     Note,
     #[sea_orm(
         belongs_to = "super::note_version::Entity",
-        from = "Column::NoteVersionId",
+        from = "Column::FromVersionId",
         to = "super::note_version::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
-    NoteVersion,
+    NoteVersion2,
     #[sea_orm(
-        belongs_to = "super::trade::Entity",
-        from = "Column::TradeId",
-        to = "super::trade::Column::Id",
+        belongs_to = "super::note_version::Entity",
+        from = "Column::ToVersionId",
+        to = "super::note_version::Column::Id",
         on_update = "NoAction",
-        on_delete = "Cascade"
+        on_delete = "SetNull"
     )]
-    Trade,
+    NoteVersion1,
 }
 
 impl Related<super::note::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Note.def()
-    }
-}
-
-impl Related<super::note_version::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::NoteVersion.def()
-    }
-}
-
-impl Related<super::trade::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Trade.def()
     }
 }
 

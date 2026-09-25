@@ -13,6 +13,7 @@ use crate::entities::{note, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
 use crate::services::comment_anchor;
+use crate::services::note_links::sync_note_links;
 use crate::services::note_refs::{sync_note_refs, sync_note_refs_after_graphs_only_update};
 
 pub struct AppendVersion {
@@ -80,6 +81,11 @@ pub async fn append_version(
     .exec_with_returning(txn)
     .await?;
 
+    let source_note = note::Entity::find_by_id(note_id)
+        .one(txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
+
     note::ActiveModel {
         id: Set(note_id),
         updated_at: Set(chrono::Utc::now().fixed_offset()),
@@ -107,6 +113,14 @@ pub async fn append_version(
             .await?;
         }
     }
+    sync_note_links(
+        txn,
+        &source_note,
+        version.id,
+        &version.body_md,
+        body_changed,
+    )
+    .await?;
     if body_changed {
         comment_anchor::reanchor_note_comments(txn, note_id, &version.body_md).await?;
     }

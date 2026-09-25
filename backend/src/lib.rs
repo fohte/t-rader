@@ -39,8 +39,8 @@ use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
     custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
-    jquants_plan_setting, news, note_hypotheses, note_kinds, note_predictions, notes, refs,
-    risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers, watchlists,
+    jquants_plan_setting, news, note_hypotheses, note_kinds, note_links, note_predictions, notes,
+    refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers, watchlists,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -285,6 +285,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(notes::approve_note))
         .routes(routes!(notes::reject_note))
+        .routes(routes!(note_links::get_note_links))
         // note hypotheses
         .routes(routes!(
             note_hypotheses::list_note_hypotheses,

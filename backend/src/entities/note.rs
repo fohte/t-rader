@@ -29,6 +29,8 @@ pub enum Relation {
     Annotation,
     #[sea_orm(has_many = "super::note_hypothesis::Entity")]
     NoteHypothesis,
+    #[sea_orm(has_many = "super::note_link::Entity")]
+    NoteLink,
     #[sea_orm(has_many = "super::note_ref::Entity")]
     NoteRef,
     #[sea_orm(has_many = "super::note_version::Entity")]
@@ -56,6 +58,12 @@ impl Related<super::annotation::Entity> for Entity {
 impl Related<super::note_hypothesis::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::NoteHypothesis.def()
+    }
+}
+
+impl Related<super::note_link::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::NoteLink.def()
     }
 }
 
@@ -95,15 +103,6 @@ impl Related<super::hypothesis::Entity> for Entity {
     }
     fn via() -> Option<RelationDef> {
         Some(super::note_hypothesis::Relation::Note.def().rev())
-    }
-}
-
-impl Related<super::trade::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::trade_note::Relation::Trade.def()
-    }
-    fn via() -> Option<RelationDef> {
-        Some(super::trade_note::Relation::Note.def().rev())
     }
 }
 

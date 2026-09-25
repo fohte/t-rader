@@ -29,6 +29,8 @@ const trade: Trade = {
 function noteStub(id: string, title: string): Note {
   return {
     id,
+    version_id: '00000000-0000-0000-0000-000000000301',
+    version_no: 1,
     strategy_id: strategyId,
     title,
     body_md: '検証用のメモです。',

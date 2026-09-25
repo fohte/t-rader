@@ -7,6 +7,7 @@ import type { components } from '#lib/api/schema.gen'
 interface NoteDocumentProps {
   source: string
   graphs?: components['schemas']['GraphDef'][]
+  noteLinks?: components['schemas']['NoteLinkItem'][]
   onQuoteSelection: (text: string) => void
   bodyRef: RefObject<HTMLDivElement | null>
 }
@@ -14,6 +15,7 @@ interface NoteDocumentProps {
 export function NoteDocument({
   source,
   graphs,
+  noteLinks,
   onQuoteSelection,
   bodyRef,
 }: NoteDocumentProps) {
@@ -114,7 +116,7 @@ export function NoteDocument({
         </div>
       )}
       <div ref={bodyRef}>
-        <MarkdownBody source={source} graphs={graphs} />
+        <MarkdownBody source={source} graphs={graphs} noteLinks={noteLinks} />
       </div>
     </div>
   )

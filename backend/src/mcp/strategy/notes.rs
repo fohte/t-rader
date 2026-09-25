@@ -15,13 +15,15 @@ use uuid::Uuid;
 use crate::entities::{note, note_version};
 use crate::services::change_history::Actor;
 use crate::services::graph::{GraphDef, validate_graphs};
+use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
     self, AppendVersion, current_note_ids_with_status, find_current_version, find_current_versions,
     find_initial_created_by_kind,
 };
 
 use super::dto::{
-    ListNotesParams, ListNotesResult, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
+    ListNotesParams, ListNotesResult, NoteDto, NoteLinkDto, ReadNoteParams, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, clamp_limit, db_error,
@@ -135,6 +137,7 @@ fn note_to_dto(
         created_at: m.created_at,
         updated_at: m.updated_at,
         graphs,
+        links: None,
     })
 }
 
@@ -360,12 +363,26 @@ impl StrategyServer {
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
-        let version = find_current_version(&self.db, params.note_id)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| {
-                internal_error(format!("note {} has no current version", params.note_id))
-            })?;
+        let version = if let Some(version_id) = params.version_id {
+            note_version::Entity::find_by_id(version_id)
+                .filter(note_version::Column::NoteId.eq(params.note_id))
+                .one(&self.db)
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| {
+                    invalid_params(format!(
+                        "version_id {version_id} does not belong to note {}",
+                        params.note_id
+                    ))
+                })?
+        } else {
+            find_current_version(&self.db, params.note_id)
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| {
+                    internal_error(format!("note {} has no current version", params.note_id))
+                })?
+        };
         let created_by_kind = find_initial_created_by_kind(&self.db, &[params.note_id])
             .await
             .map_err(db_error)?
@@ -373,7 +390,18 @@ impl StrategyServer {
             .ok_or_else(|| {
                 internal_error(format!("note {} has no initial version", params.note_id))
             })?;
-        note_to_dto(row, version, created_by_kind, true)
+        let links = find_links_from_version(&self.db, version.id)
+            .await
+            .map_err(db_error)?
+            .into_iter()
+            .map(|link| NoteLinkDto {
+                to_note_id: link.to_note_id,
+                to_version_id: link.to_version_id,
+            })
+            .collect();
+        let mut dto = note_to_dto(row, version, created_by_kind, true)?;
+        dto.links = Some(links);
+        Ok(dto)
     }
 
     pub(crate) async fn list_notes_inner(
@@ -459,14 +487,14 @@ mod tests {
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
     );
     const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
         "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
     );
 
     fn test_node(id: &str) -> GraphNode {
@@ -544,6 +572,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: written.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -563,6 +592,7 @@ mod tests {
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
                 graphs: vec![],
+                links: Some(vec![]),
             },
         );
     }
@@ -719,6 +749,7 @@ mod tests {
                     strategy_id,
                     ReadNoteParams {
                         note_id: created.note_id,
+                        version_id: None,
                     },
                 )
                 .await
@@ -737,6 +768,7 @@ mod tests {
                     created_at: ts_sentinel(),
                     updated_at: ts_sentinel(),
                     graphs: vec![],
+                    links: Some(vec![]),
                 },
                 "case {label}",
             );
@@ -788,6 +820,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -849,7 +882,13 @@ mod tests {
         let note_id = seed_foreign_note(&db, strategy_b, "b's note").await;
 
         let err = server
-            .read_note_inner(strategy_a, ReadNoteParams { note_id })
+            .read_note_inner(
+                strategy_a,
+                ReadNoteParams {
+                    note_id,
+                    version_id: None,
+                },
+            )
             .await
             .expect_err("cross-strategy read expected to fail");
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
@@ -1076,6 +1115,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: written.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -1095,6 +1135,7 @@ mod tests {
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
                 graphs: vec![graph],
+                links: Some(vec![]),
             },
         );
     }
@@ -1210,6 +1251,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -1285,6 +1327,7 @@ mod tests {
                     strategy_id,
                     ReadNoteParams {
                         note_id: created.note_id,
+                        version_id: None,
                     },
                 )
                 .await
@@ -1303,6 +1346,7 @@ mod tests {
                     created_at: ts_sentinel(),
                     updated_at: ts_sentinel(),
                     graphs: expected_graphs,
+                    links: Some(vec![]),
                 },
                 "case {label}",
             );
@@ -1363,6 +1407,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -1432,6 +1477,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -1484,6 +1530,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: created.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -1502,6 +1549,7 @@ mod tests {
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
                 graphs: vec![graph],
+                links: Some(vec![]),
             },
         );
     }
@@ -1706,6 +1754,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: first.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -1724,6 +1773,7 @@ mod tests {
                 created_at: ts_sentinel(),
                 updated_at: ts_sentinel(),
                 graphs: vec![],
+                links: Some(vec![]),
             },
         );
     }
@@ -1909,6 +1959,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: note_a.note_id,
+                    version_id: None,
                 },
             )
             .await
@@ -1918,6 +1969,7 @@ mod tests {
                 strategy_id,
                 ReadNoteParams {
                     note_id: note_b.note_id,
+                    version_id: None,
                 },
             )
             .await

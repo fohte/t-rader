@@ -17,6 +17,8 @@ const NAMES: Record<string, string> = {
 
 const note: Note = {
   id: '00000000-0000-0000-0000-000000000001',
+  version_id: '00000000-0000-0000-0000-000000000101',
+  version_no: 1,
   strategy_id: 'semi-swing',
   title: 'SUMCO レンジ回帰の確度評価',
   body_md: '[[stock:3436]] [[indicator:USDJPY]] [[sector:半導体]]',

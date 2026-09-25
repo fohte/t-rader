@@ -23,6 +23,7 @@ pub mod margin_ingest;
 pub mod market_price;
 pub mod news;
 pub mod note_kinds;
+pub mod note_links;
 pub mod note_refs;
 pub mod note_versions;
 pub mod prediction_grading;

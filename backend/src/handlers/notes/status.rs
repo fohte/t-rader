@@ -61,7 +61,7 @@ async fn change_note_status_from(
     )
     .await?;
     txn.commit().await?;
-    Ok(NoteResponse::from_current_version(
+    Ok(NoteResponse::from_version(
         updated_note,
         updated_version,
         created_by_kind,

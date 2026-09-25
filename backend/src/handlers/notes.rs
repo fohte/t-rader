@@ -64,17 +64,41 @@ struct CurrentNote {
     created_by_kind: String,
 }
 
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct GetNoteQuery {
+    pub version_id: Option<Uuid>,
+}
+
 async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
     db: &C,
     id: Uuid,
+) -> Result<CurrentNote, AppError> {
+    find_note_version_or_404(db, id, None).await
+}
+
+async fn find_note_version_or_404<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    id: Uuid,
+    version_id: Option<Uuid>,
 ) -> Result<CurrentNote, AppError> {
     let note = note::Entity::find_by_id(id)
         .one(db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
-    let version = note_versions::find_current_version(db, id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("current version for note {id} not found")))?;
+    let version = if let Some(version_id) = version_id {
+        note_version::Entity::find_by_id(version_id)
+            .filter(note_version::Column::NoteId.eq(id))
+            .one(db)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("version {version_id} for note {id} not found"))
+            })?
+    } else {
+        note_versions::find_current_version(db, id)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("current version for note {id} not found")))?
+    };
     let created_by_kind = find_initial_created_by_kind(db, &[id])
         .await?
         .remove(&id)
@@ -87,7 +111,7 @@ async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
 }
 
 fn current_note_response(current: CurrentNote) -> NoteResponse {
-    NoteResponse::from_current_version(current.note, current.version, current.created_by_kind)
+    NoteResponse::from_version(current.note, current.version, current.created_by_kind)
 }
 
 /// ノート一覧
@@ -136,11 +160,7 @@ pub async fn list_notes(
             let created_by_kind = creators.get(&item.id).cloned().ok_or_else(|| {
                 AppError::NotFound(format!("initial version for note {} not found", item.id))
             })?;
-            Ok(NoteResponse::from_current_version(
-                item,
-                version,
-                created_by_kind,
-            ))
+            Ok(NoteResponse::from_version(item, version, created_by_kind))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
     Ok(Json(responses))
@@ -151,7 +171,10 @@ pub async fn list_notes(
     get,
     path = "/api/notes/{id}",
     tag = "notes",
-    params(("id" = Uuid, Path, description = "ノート ID")),
+    params(
+        ("id" = Uuid, Path, description = "ノート ID"),
+        GetNoteQuery,
+    ),
     responses(
         (status = 200, body = NoteResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
@@ -162,9 +185,10 @@ pub async fn list_notes(
 pub async fn get_note(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
+    JsonQuery(params): JsonQuery<GetNoteQuery>,
 ) -> Result<Json<NoteResponse>, AppError> {
     Ok(Json(current_note_response(
-        find_current_note_or_404(&state.db, id).await?,
+        find_note_version_or_404(&state.db, id, params.version_id).await?,
     )))
 }
 
@@ -271,9 +295,7 @@ pub async fn create_note(
     txn.commit().await?;
     Ok((
         StatusCode::CREATED,
-        Json(NoteResponse::from_current_version(
-            created, version, created_by,
-        )),
+        Json(NoteResponse::from_version(created, version, created_by)),
     ))
 }
 
@@ -453,7 +475,7 @@ mod tests {
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
     );
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
