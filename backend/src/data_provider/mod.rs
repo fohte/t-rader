@@ -12,7 +12,7 @@ use ibkr::IbkrClient;
 use jquants::JQuantsClient;
 
 /// データプロバイダーで発生しうるエラー
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum DataProviderError {
     /// 指定された銘柄が見つからない
     #[error("instrument not found: {0}")]
@@ -29,6 +29,10 @@ pub enum DataProviderError {
     /// レートリミット超過でリトライ上限に到達
     #[error("rate limited after {retries} retries")]
     RateLimited { retries: u32 },
+
+    /// クライアント側のレート制限ウィンドウが満杯
+    #[error("rate limit window full (max {max_requests} requests)")]
+    RateLimitWindowFull { max_requests: usize },
 
     /// レスポンスのパースに失敗
     #[error("failed to parse response: {0}")]
