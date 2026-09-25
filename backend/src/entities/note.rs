@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    #[sea_orm(unique_key = "idx_note_strategy_id_execution_id")]
     pub strategy_id: Option<Uuid>,
     pub type_tag: Option<String>,
     pub trigger: Option<String>,
@@ -20,11 +19,7 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
-    #[sea_orm(
-        column_type = "Text",
-        nullable,
-        unique_key = "idx_note_strategy_id_execution_id"
-    )]
+    #[sea_orm(column_type = "Text", nullable)]
     pub execution_id: Option<String>,
 }
 

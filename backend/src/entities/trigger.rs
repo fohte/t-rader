@@ -16,7 +16,7 @@ pub struct Model {
     pub kind: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub schedule: Option<String>,
-    #[sea_orm(column_type = "Text", nullable, unique)]
+    #[sea_orm(column_type = "Text", nullable)]
     pub hook_slug: Option<String>,
     #[sea_orm(column_type = "JsonBinary", nullable)]
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
