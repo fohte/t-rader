@@ -1,4 +1,5 @@
 mod daily_bars;
+mod earnings_schedule;
 mod equities_master;
 mod margin;
 #[cfg(test)]
@@ -21,7 +22,6 @@ use crate::data_provider::{DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-pub(crate) use response::EarningsDateRecord;
 use response::{
     EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
     FinSummaryResponse, Paginated, ValuationResponse,
