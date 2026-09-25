@@ -276,7 +276,7 @@ mod tests {
                 "title": "t",
                 "body_md": "b",
                 "frontmatter_json": {},
-                "type_tag": null,
+                "kind": null,
                 "status": "unread",
                 "trigger": null,
                 "trigger_label": null,

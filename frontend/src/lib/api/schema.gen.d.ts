@@ -1672,7 +1672,8 @@ export interface components {
       frontmatter_json?: {
         [key: string]: unknown
       } | null
-      /** @description 任意。デフォルトは "unread" */
+      kind?: string | null
+      /** @description 作成者が人間の場合は承認済み。それ以外では省略時に "unread" */
       status?: string | null
       /**
        * Format: uuid
@@ -1682,7 +1683,6 @@ export interface components {
       title: string
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
-      type_tag?: string | null
     }
     CreateRssFeedRequest: {
       /** @description UI 表示用名前 */
@@ -1891,13 +1891,13 @@ export interface components {
       /** Format: uuid */
       id: string
       is_current: boolean
+      kind?: string | null
       status: string
       /** Format: uuid */
       strategy_id?: string | null
       title: string
       trigger?: string | null
       trigger_label?: string | null
-      type_tag?: string | null
       /** Format: date-time */
       updated_at: string
       /** Format: uuid */
@@ -2368,10 +2368,10 @@ export interface components {
       frontmatter_json?: {
         [key: string]: unknown
       } | null
+      kind?: string | null
       title?: string | null
       trigger?: null | components['schemas']['NoteTrigger']
       trigger_label?: string | null
-      type_tag?: string | null
     }
     UpdateRssFeedRequest: {
       display_name?: string | null
@@ -5369,7 +5369,7 @@ export interface operations {
       query?: {
         strategy_id?: string
         status?: string
-        type_tag?: string
+        kind?: string
       }
       header?: never
       path?: never

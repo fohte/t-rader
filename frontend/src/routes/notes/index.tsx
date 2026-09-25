@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { PendingNoteVersionsLink } from '#components/note-detail/pending-note-versions-link'
 import { StrategyFilterSelect } from '#components/strategy-filter-select'
+import { CreateNoteDialog } from '#components/strategy-home/create-note-dialog'
 import { NotesList } from '#components/strategy-home/notes-list'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
@@ -30,6 +31,7 @@ function NotesPage() {
           ノート
         </h1>
         <div className="flex items-center gap-2">
+          <CreateNoteDialog strategyId={strategy_id} />
           <PendingNoteVersionsLink />
           <StrategyFilterSelect
             value={strategy_id}

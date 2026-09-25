@@ -3,27 +3,24 @@
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
 use rmcp::ErrorData as McpError;
-use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
-use sea_orm::{
-    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect,
-    TransactionTrait,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
 use uuid::Uuid;
 
 use crate::entities::{note, note_version};
 use crate::services::change_history::Actor;
 use crate::services::graph::{GraphDef, validate_graphs};
+use crate::services::note_kinds;
 use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
-    self, AppendVersion, current_note_ids_with_status, find_current_version, find_current_versions,
-    find_initial_created_by_kind, find_version_of_note,
+    self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_version,
+    find_current_versions, find_initial_created_by_kind, find_version_of_note,
 };
 
 use super::dto::{
-    ListNotesParams, ListNotesResult, NoteDto, NoteLinkDto, ReadNoteParams, WriteNoteParams,
-    WriteNoteResult,
+    ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, NoteKindDto, NoteLinkDto,
+    ReadNoteParams, WriteNoteParams, WriteNoteResult,
 };
 use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, clamp_limit, db_error,
@@ -74,7 +71,7 @@ fn build_new_note_model(
         note::ActiveModel {
             id: Set(id),
             strategy_id: Set(Some(session_strategy_id)),
-            type_tag: Set(params.type_tag.flatten()),
+            kind: Set(params.kind.flatten()),
             trigger: Set(None),
             trigger_label: Set(None),
             created_at: NotSet,
@@ -88,7 +85,7 @@ fn build_new_note_model(
             graphs_json,
             created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
             execution_id,
-            change_reason: None,
+            change_reason: params.change_reason,
             change_diff: None,
             actor: Actor::Llm {
                 label: STRATEGY_AGENT_ACTOR,
@@ -133,7 +130,7 @@ fn note_to_dto(
         title: version.title,
         body_md: include_body.then_some(version.body_md),
         frontmatter_json,
-        type_tag: m.type_tag,
+        kind: m.kind,
         status: version.status,
         created_by_kind,
         created_at: m.created_at,
@@ -144,6 +141,22 @@ fn note_to_dto(
 }
 
 impl StrategyServer {
+    pub(crate) async fn list_note_kinds_inner(&self) -> Result<ListNoteKindsResult, McpError> {
+        let note_kinds = note_kinds::list(&self.db)
+            .await
+            .map_err(app_error_to_mcp)?
+            .into_iter()
+            .map(|kind| NoteKindDto {
+                key: kind.key,
+                display_name: kind.display_name,
+                requires_approval: kind.requires_approval,
+                description: kind.description,
+                sort_order: kind.sort_order,
+            })
+            .collect();
+        Ok(ListNoteKindsResult { note_kinds })
+    }
+
     pub(crate) async fn write_note_inner(
         &self,
         session_strategy_id: Uuid,
@@ -172,6 +185,11 @@ impl StrategyServer {
         }
 
         ensure_strategy_exists(&self.db, session_strategy_id).await?;
+        if let Some(Some(kind)) = params.kind.as_ref() {
+            note_kinds::ensure_reference(&self.db, kind)
+                .await
+                .map_err(app_error_to_mcp)?;
+        }
 
         let Some(exec_id) = execution_id else {
             return self.insert_note(session_strategy_id, None, params).await;
@@ -232,8 +250,10 @@ impl StrategyServer {
         let current_version = find_current_version(&self.db, note_id)
             .await
             .map_err(db_error)?
+            .or(note_versions::find_latest_version(&self.db, note_id)
+                .await
+                .map_err(db_error)?)
             .ok_or_else(|| internal_error(format!("note {note_id} has no current version")))?;
-        let mut active = current.clone().into_active_model();
         let mut touched = false;
         let mut version_changed = false;
         let mut title = current_version.title.clone();
@@ -254,9 +274,12 @@ impl StrategyServer {
             touched = true;
             version_changed = true;
         }
-        if let Some(tag) = params.type_tag {
-            active.type_tag = Set(tag);
-            touched = true;
+        if let Some(kind) = params.kind
+            && kind != current.kind
+        {
+            return Err(invalid_params(
+                "kind can only be set when creating a new note",
+            ));
         }
         if let Some(fm) = params.frontmatter_json {
             frontmatter_json = fm.into();
@@ -270,16 +293,10 @@ impl StrategyServer {
         }
         if !touched {
             return Err(invalid_params(
-                "at least one of title / body_md / type_tag / frontmatter_json / graphs must be provided",
+                "at least one of title / body_md / frontmatter_json / graphs must be provided",
             ));
         }
-        active.updated_at = if version_changed {
-            NotSet
-        } else {
-            Set(chrono::Utc::now().fixed_offset())
-        };
         let txn = self.db.begin().await.map_err(db_error)?;
-        active.update(&txn).await.map_err(db_error)?;
         if version_changed {
             note_versions::append_version(
                 &txn,
@@ -291,7 +308,7 @@ impl StrategyServer {
                     graphs_json,
                     created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
                     execution_id,
-                    change_reason: None,
+                    change_reason: params.change_reason,
                     change_diff: None,
                     actor: Actor::Llm {
                         label: STRATEGY_AGENT_ACTOR,
@@ -314,6 +331,11 @@ impl StrategyServer {
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
+        if let Some(Some(kind)) = params.kind.as_ref() {
+            note_kinds::ensure_reference(&self.db, kind)
+                .await
+                .map_err(app_error_to_mcp)?;
+        }
         let (id, model, content) = build_new_note_model(session_strategy_id, execution_id, params)?;
         let txn = self.db.begin().await.map_err(db_error)?;
         note::Entity::insert(model)
@@ -334,6 +356,11 @@ impl StrategyServer {
         execution_id: String,
         params: WriteNoteParams,
     ) -> Result<Option<WriteNoteResult>, McpError> {
+        if let Some(Some(kind)) = params.kind.as_ref() {
+            note_kinds::ensure_reference(&self.db, kind)
+                .await
+                .map_err(app_error_to_mcp)?;
+        }
         let (id, model, content) =
             build_new_note_model(session_strategy_id, Some(execution_id), params)?;
         let txn = self.db.begin().await.map_err(db_error)?;
@@ -410,8 +437,9 @@ impl StrategyServer {
         }
         let include_body = params.include_body.unwrap_or(true);
 
-        let mut query =
-            note::Entity::find().filter(note::Column::StrategyId.eq(session_strategy_id));
+        let mut query = note::Entity::find()
+            .filter(note::Column::StrategyId.eq(session_strategy_id))
+            .filter(note::Column::Id.in_subquery(current_note_ids()));
         if let Some(status) = params.status {
             query =
                 query.filter(note::Column::Id.in_subquery(current_note_ids_with_status(&status)));
@@ -470,9 +498,9 @@ mod tests {
         ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
     };
     use super::super::tests_common::{
-        build_server, current_note_version_id, insert_strategy, normalize_comment_model,
-        normalize_note, seed_foreign_note, seed_note_version_comment_with_anchor, set_note_status,
-        set_note_updated_at, ts_sentinel,
+        build_server, current_note_version_id, insert_note_kind, insert_strategy,
+        normalize_comment_model, normalize_note, seed_foreign_note,
+        seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
@@ -541,6 +569,7 @@ mod tests {
     async fn write_note_creates_then_read_note_returns_it(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
+        insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db);
 
         let written = server
@@ -551,8 +580,9 @@ mod tests {
                     note_id: None,
                     title: Some("first note".into()),
                     body_md: Some("body".into()),
-                    type_tag: Some(Some("observation".into())),
+                    kind: Some(Some("sample-kind".into())),
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -581,7 +611,7 @@ mod tests {
                 title: "first note".into(),
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: Some("observation".into()),
+                kind: Some("sample-kind".into()),
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -622,8 +652,9 @@ mod tests {
                     note_id: None,
                     title: Some("note with refs".into()),
                     body_md: Some("mentions [[theme:weak-jpy]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph]),
                 },
             )
@@ -653,8 +684,9 @@ mod tests {
                     note_id: None,
                     title: Some("note".into()),
                     body_md: Some("mentions [[stock:7203]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -673,8 +705,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("now mentions [[indicator:USDJPY]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -704,8 +737,9 @@ mod tests {
                         note_id: None,
                         title: Some("original".into()),
                         body_md: Some("v1".into()),
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -723,8 +757,9 @@ mod tests {
                         note_id: Some(created.note_id),
                         title: None,
                         body_md: Some("v2".into()),
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -759,7 +794,7 @@ mod tests {
                     title: "original".into(),
                     body_md: Some("v2".into()),
                     frontmatter_json: serde_json::Map::new(),
-                    type_tag: None,
+                    kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
@@ -772,75 +807,21 @@ mod tests {
         }
     }
 
-    /// `type_tag: Some(None)` (JSON で `"type_tag": null`) は既存タグの NULL クリアとして扱う
-    #[sqlx::test(migrations = false)]
-    async fn write_note_clears_type_tag_with_explicit_null(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy(&db, "x").await;
-        let server = build_server(db);
-
-        let created = server
-            .write_note_inner(
-                strategy_id,
-                None,
-                WriteNoteParams {
-                    note_id: None,
-                    title: Some("t".into()),
-                    body_md: None,
-                    type_tag: Some(Some("observation".into())),
-                    frontmatter_json: None,
-                    graphs: None,
-                },
-            )
-            .await
-            .expect("create");
-
-        // タグを明示的に null へ更新
-        server
-            .write_note_inner(
-                strategy_id,
-                None,
-                WriteNoteParams {
-                    note_id: Some(created.note_id),
-                    title: None,
-                    body_md: None,
-                    type_tag: Some(None),
-                    frontmatter_json: None,
-                    graphs: None,
-                },
-            )
-            .await
-            .expect("clear");
-
-        let read = server
-            .read_note_inner(
-                strategy_id,
-                ReadNoteParams {
-                    note_id: created.note_id,
-                    version_id: None,
-                },
-            )
-            .await
-            .expect("read");
-        assert_eq!(read.type_tag, None);
-    }
-
-    /// `Option<Option<String>>` のシリアライズ意味論を pin する。
-    /// フィールド省略 → `None` (touch しない)、`null` 明示 → `Some(None)` (NULL クリア)、値あり → `Some(Some(v))`。
+    /// `Option<Option<String>>` は省略と新規作成時の null を区別する。
     #[test]
-    fn write_note_params_type_tag_deserialization() {
+    fn write_note_params_kind_deserialization() {
         fn parse(json: &str) -> Option<Option<String>> {
             serde_json::from_str::<WriteNoteParams>(json)
                 .expect("parse")
-                .type_tag
+                .kind
         }
         assert_eq!(
             (
                 parse("{}"),
-                parse(r#"{"type_tag":null}"#),
-                parse(r#"{"type_tag":"observation"}"#),
+                parse(r#"{"kind":null}"#),
+                parse(r#"{"kind":"sample-kind"}"#),
             ),
-            (None, Some(None), Some(Some("observation".into()))),
+            (None, Some(None), Some(Some("sample-kind".into()))),
         );
     }
 
@@ -860,8 +841,9 @@ mod tests {
                     note_id: Some(note_id),
                     title: None,
                     body_md: Some("hijack".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -907,8 +889,9 @@ mod tests {
                         note_id: None,
                         title: Some(title.into()),
                         body_md: None,
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -948,8 +931,9 @@ mod tests {
                         note_id: None,
                         title: Some(title.into()),
                         body_md: None,
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -1007,8 +991,9 @@ mod tests {
                     note_id: None,
                     title: Some("old".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1022,8 +1007,9 @@ mod tests {
                     note_id: None,
                     title: Some("new".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1062,8 +1048,9 @@ mod tests {
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("secret".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1099,8 +1086,9 @@ mod tests {
                     note_id: None,
                     title: Some("note with graph".into()),
                     body_md: Some("[[graph:g1]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph.clone()]),
                 },
             )
@@ -1128,7 +1116,7 @@ mod tests {
                 title: "note with graph".into(),
                 body_md: Some("[[graph:g1]]".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: None,
+                kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -1153,8 +1141,9 @@ mod tests {
                     note_id: None,
                     title: Some("broken".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![invalid_graph("g1")]),
                 },
             )
@@ -1185,8 +1174,9 @@ mod tests {
                     note_id: None,
                     title: Some("token validation".into()),
                     body_md: Some(INVALID_NOTE_BODY.into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph]),
                 },
             )
@@ -1222,8 +1212,9 @@ mod tests {
                     note_id: None,
                     title: Some("token validation".into()),
                     body_md: Some("original".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1238,8 +1229,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some(INVALID_NOTE_BODY.into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1297,8 +1289,9 @@ mod tests {
                         note_id: None,
                         title: Some("t".into()),
                         body_md: Some("orig".into()),
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: Some(vec![sample_graph("g1")]),
                     },
                 )
@@ -1313,8 +1306,9 @@ mod tests {
                         note_id: Some(created.note_id),
                         title: None,
                         body_md: update_body,
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: update_graphs,
                     },
                 )
@@ -1341,7 +1335,7 @@ mod tests {
                     title: "t".into(),
                     body_md: Some(expected_body),
                     frontmatter_json: serde_json::Map::new(),
-                    type_tag: None,
+                    kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
@@ -1367,8 +1361,9 @@ mod tests {
                     note_id: None,
                     title: Some("token validation".into()),
                     body_md: Some("original".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g1")]),
                 },
             )
@@ -1396,8 +1391,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g2")]),
                 },
             )
@@ -1448,8 +1444,9 @@ mod tests {
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("orig".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g1")]),
                 },
             )
@@ -1465,8 +1462,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g2")]),
                 },
             )
@@ -1501,8 +1499,9 @@ mod tests {
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("orig".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph.clone()]),
                 },
             )
@@ -1517,8 +1516,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("hijacked".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![invalid_graph("g2")]),
                 },
             )
@@ -1546,7 +1546,7 @@ mod tests {
                 title: "t".into(),
                 body_md: Some("orig".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: None,
+                kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -1577,8 +1577,9 @@ mod tests {
                         line three"}
                         .into(),
                     ),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1602,8 +1603,9 @@ mod tests {
                         line three"}
                         .into(),
                     ),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1655,8 +1657,9 @@ mod tests {
                         line three"}
                         .into(),
                     ),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1673,8 +1676,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("completely rewritten".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1722,8 +1726,9 @@ mod tests {
                     note_id: None,
                     title: Some("first".into()),
                     body_md: Some("v1".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1739,8 +1744,9 @@ mod tests {
                     note_id: None,
                     title: Some("second".into()),
                     body_md: Some("v2".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1774,7 +1780,7 @@ mod tests {
                 title: "second".into(),
                 body_md: Some("v2".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: None,
+                kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -1800,8 +1806,9 @@ mod tests {
                     note_id: None,
                     title: Some("a".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1815,8 +1822,9 @@ mod tests {
                     note_id: None,
                     title: Some("b".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1855,8 +1863,9 @@ mod tests {
                     note_id: None,
                     title: Some("a".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1870,8 +1879,9 @@ mod tests {
                     note_id: None,
                     title: Some("b".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1911,8 +1921,9 @@ mod tests {
                     note_id: None,
                     title: Some("note b".into()),
                     body_md: Some("b body".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1928,8 +1939,9 @@ mod tests {
                     note_id: None,
                     title: Some("note a".into()),
                     body_md: Some("a body".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1946,8 +1958,9 @@ mod tests {
                     note_id: Some(note_a.note_id),
                     title: None,
                     body_md: Some("a body updated".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -2019,8 +2032,9 @@ mod tests {
                     note_id: None,
                     title: Some("loser".into()),
                     body_md: Some("loser body".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )

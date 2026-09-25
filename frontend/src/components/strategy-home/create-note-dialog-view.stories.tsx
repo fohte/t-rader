@@ -1,0 +1,67 @@
+import type { Meta, StoryObj } from '@storybook/react-vite'
+
+import {
+  CreateNoteDialogView,
+  type CreateNoteDialogViewProps,
+} from '#components/strategy-home/create-note-dialog-view'
+import type { components } from '#lib/api/schema.gen'
+
+type NoteKind = components['schemas']['NoteKind']
+
+const noteKinds: NoteKind[] = [
+  {
+    key: 'sample-kind',
+    display_name: 'サンプル種別',
+    requires_approval: false,
+    description: null,
+    sort_order: 0,
+  },
+  {
+    key: 'review-kind',
+    display_name: 'レビュー種別',
+    requires_approval: true,
+    description: null,
+    sort_order: 1,
+  },
+]
+
+const args: CreateNoteDialogViewProps = {
+  open: true,
+  onOpenChange: () => {},
+  title: '',
+  body: '',
+  kind: '',
+  noteKinds,
+  noteKindsPending: false,
+  noteKindsError: false,
+  formError: null,
+  isSubmitting: false,
+  onTitleChange: () => {},
+  onBodyChange: () => {},
+  onKindChange: () => {},
+  onSubmit: (event) => {
+    event.preventDefault()
+  },
+}
+
+const meta = {
+  title: 'StrategyHome/CreateNoteDialogView',
+  component: CreateNoteDialogView,
+} satisfies Meta<typeof CreateNoteDialogView>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const Open: Story = { args }
+
+export const LoadingKinds: Story = {
+  args: { ...args, noteKinds: [], noteKindsPending: true },
+}
+
+export const WithoutKinds: Story = {
+  args: { ...args, noteKinds: [] },
+}
+
+export const KindsLoadError: Story = {
+  args: { ...args, noteKinds: [], noteKindsError: true },
+}

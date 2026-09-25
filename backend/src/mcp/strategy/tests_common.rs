@@ -7,7 +7,7 @@ use sea_orm::TransactionTrait;
 use sea_orm::{ActiveModelTrait, EntityTrait};
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment, hypothesis, note, note_version, strategy};
+use crate::entities::{annotation, comment, hypothesis, note, note_kind, note_version, strategy};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
@@ -26,6 +26,19 @@ pub(super) async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid
     .await
     .expect("insert strategy");
     id
+}
+
+pub(super) async fn insert_note_kind(db: &DatabaseConnection, key: &str, requires_approval: bool) {
+    note_kind::ActiveModel {
+        key: Set(key.to_string()),
+        display_name: Set(key.to_string()),
+        requires_approval: Set(requires_approval),
+        description: Set(None),
+        sort_order: Set(0),
+    }
+    .insert(db)
+    .await
+    .expect("insert note kind");
 }
 
 pub(super) fn build_server(db: DatabaseConnection) -> StrategyServer {
@@ -107,7 +120,7 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
     note::Entity::insert(note::ActiveModel {
         id: Set(id),
         strategy_id: Set(Some(owner)),
-        type_tag: Set(None),
+        kind: Set(None),
         trigger: Set(None),
         trigger_label: Set(None),
         created_at: NotSet,
