@@ -1,7 +1,7 @@
 # Design system
 
 t-rader フロントエンドのデザインシステムのトークン契約。
-共通トークンは [`@fohte/ui`](https://www.npmjs.com/package/@fohte/ui) の CSS を使い、各アプリで値が分岐しないようにする。
+共通トークン (色・radius・フォント・`--text-2xs`) は [`@fohte/ui`](https://www.npmjs.com/package/@fohte/ui) の `tokens.css` の値を使い、`frontend/src/index.css` で再定義しない。値を変える場合は t-rader 固有の別名で定義する。
 t-rader 固有のトークンと utility は `frontend/src/index.css` に定義する。
 
 共通トークンの値の出典は `@fohte/ui/tokens.css`、t-rader 固有の値の出典は `frontend/src/index.css` の `:root` / `@theme inline` ブロック。
