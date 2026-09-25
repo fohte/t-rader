@@ -4,7 +4,10 @@ use axum_test::TestServer;
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionTrait};
+use sea_orm::{
+    ConnectOptions, Database, DatabaseConnection, EntityTrait, SqlxPostgresConnector,
+    TransactionTrait,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -30,6 +33,15 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 pub async fn create_test_db(pool: PgPool) -> DatabaseConnection {
     let pool = template_db::create_test_pool_from_template(pool).await;
     SqlxPostgresConnector::from_sqlx_postgres_pool(pool)
+}
+
+pub async fn connect_with_application_name(application_name: &str) -> DatabaseConnection {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL");
+    let mut options = ConnectOptions::new(database_url);
+    options.set_application_name(application_name);
+    Database::connect(options)
+        .await
+        .expect("database connection")
 }
 
 /// agent_task_client を disabled にした最小構成の `AppState` を組み立てる。

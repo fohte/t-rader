@@ -474,6 +474,7 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: 'true'
       RUSTC_WRAPPER: 'sccache'
+      H8_STRESS_COUNT: '5'
     services:
       db:
         image: timescale/timescaledb:latest-pg17
@@ -560,18 +561,28 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test?application_name=h8-baseline
-        run: >-
-          cargo llvm-cov nextest --no-report --stress-count 5
-          --filterset 'test(=repositories::short_ratio::tests::upsert_inserts_new_records)'
-          --test-threads 1 --color never
+        run: |
+          cargo llvm-cov nextest --no-report --stress-count "$H8_STRESS_COUNT" \
+            --filterset 'test(=repositories::short_ratio::tests::upsert_inserts_new_records)' \
+            --test-threads 1 --color never 2>&1 | tee h8-baseline-nextest.log
 
       - name: Measure transaction rollback PoC
         working-directory: backend
         env:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
+        run: |
+          cargo llvm-cov nextest --no-report --run-ignored ignored-only \
+            --stress-count "$H8_STRESS_COUNT" \
+            --filterset 'test(=repositories::short_ratio::tests::upsert_within_rolled_back_transaction_refactoring)' \
+            --test-threads 1 --color never 2>&1 | tee h8-poc-nextest.log
+
+      - name: Verify nested commit rollback
+        working-directory: backend
+        env:
+          DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
         run: >-
-          cargo llvm-cov nextest --no-report --stress-count 5
-          --filterset 'test(=repositories::short_ratio::tests::transaction_rollback_inserts_new_records)'
+          cargo llvm-cov nextest --no-report --run-ignored ignored-only
+          --filterset 'test(=services::note_kinds::tests::nested_create_commit_is_rolled_back_by_outer_transaction_refactoring)'
           --test-threads 1 --color never
 
       - name: Upload coverage to Codecov
@@ -590,6 +601,7 @@ jobs:
           docker logs "$DB_CONTAINER_ID" > backend-db.log 2>&1 || true
           python3 - <<'PY'
           import re
+          import os
           from collections import defaultdict
           from datetime import datetime
 
@@ -612,7 +624,7 @@ jobs:
           )
           log_prefix_pattern = re.compile(
               r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)"
-              r"\s+\S+\s+\[(?P<pid>\d+)\]"
+              r"\s+\S+\s+\[(?P<pid>\d+)\](?:\s+(?P<application_name>\S+))?"
           )
           connection_received_pattern = re.compile(r"\bconnection received:", re.IGNORECASE)
           ignored_connection_pattern = re.compile(
@@ -631,6 +643,10 @@ jobs:
               r"(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>[0-9.]+)",
               re.IGNORECASE,
           )
+          nextest_duration_pattern = re.compile(
+              r"\bPASS\s+\[\s*(?P<duration>[0-9.]+)\s*(?P<unit>ms|s)\s*\]"
+              r"\s+\[(?P<iteration>\d+)/(?P<total>\d+)\]"
+          )
           totals = defaultdict(float)
           counts = defaultdict(int)
           maximums = defaultdict(float)
@@ -645,11 +661,13 @@ jobs:
                   log_prefix = log_prefix_pattern.search(line)
                   timestamp = None
                   pid = None
+                  prefix_application_name = ""
                   if log_prefix is not None:
                       timestamp = datetime.strptime(
                           log_prefix.group("timestamp"), "%Y-%m-%d %H:%M:%S.%f"
                       )
                       pid = log_prefix.group("pid")
+                      prefix_application_name = log_prefix.group("application_name") or ""
 
                   if pid is not None and connection_received_pattern.search(line):
                       connection_received_at[pid] = timestamp
@@ -657,6 +675,13 @@ jobs:
                   connection_authorized = connection_authorized_pattern.search(line)
                   if connection_authorized is not None:
                       received_at = connection_received_at.pop(pid, None)
+                      application_name = connection_application_name_pattern.search(line)
+                      application_name = (
+                          application_name.group("application_name").strip('"')
+                          if application_name is not None
+                          else prefix_application_name
+                      )
+                      is_h8_connection = application_name.startswith("h8-")
                       if not ignored_connection_pattern.search(line):
                           database_name = connection_authorized.group("database").strip('"')
                           if database_name.startswith("_sqlx_test_"):
@@ -665,22 +690,23 @@ jobs:
                               database_category = "template database"
                           else:
                               database_category = "other databases"
-                          connection_counts[database_category] += 1
+                          if not is_h8_connection:
+                              connection_counts[database_category] += 1
 
                           if received_at is not None:
                               duration_ms = (timestamp - received_at).total_seconds() * 1000
-                              connection_auth_durations_ms.append(duration_ms)
-                              application_name = connection_application_name_pattern.search(line)
-                              if application_name is not None:
-                                  name = application_name.group("application_name").strip('"')
-                                  connection_auth_durations_by_application[name].append(
-                                      duration_ms
-                                  )
+                              if not is_h8_connection:
+                                  connection_auth_durations_ms.append(duration_ms)
+                              if application_name:
+                                  connection_auth_durations_by_application[
+                                      application_name
+                                  ].append(duration_ms)
 
                   session_time = session_time_pattern.search(line)
                   if (
                       session_time is not None
                       and not ignored_connection_pattern.search(line)
+                      and not prefix_application_name.startswith("h8-")
                   ):
                       session_seconds = (
                           int(session_time.group("hours")) * 3600
@@ -691,7 +717,11 @@ jobs:
 
                   timing = timing_pattern.search(line)
                   statement = statement_pattern.search(line)
-                  if timing is None or statement is None:
+                  if (
+                      timing is None
+                      or statement is None
+                      or prefix_application_name.startswith("h8-")
+                  ):
                       continue
 
                   query = statement.group(1).strip()
@@ -761,21 +791,82 @@ jobs:
                       f"PostgreSQL received-to-authorized time ({application_name})",
                       connection_auth_durations_by_application[application_name],
                   )
+
+          def read_nextest_durations(path, test_name):
+              samples = []
+              if not os.path.exists(path):
+                  return samples
+              with open(path, encoding="utf-8") as output:
+                  for line in output:
+                      if test_name not in line:
+                          continue
+                      match = nextest_duration_pattern.search(line)
+                      if match is None:
+                          continue
+                      value = float(match.group("duration"))
+                      duration_ms = value * (1000 if match.group("unit") == "s" else 1)
+                      samples.append(duration_ms)
+              return samples
+
+          expected_stress_count = int(os.environ["H8_STRESS_COUNT"])
+          baseline_test_name = "repositories::short_ratio::tests::upsert_inserts_new_records"
+          poc_test_name = "repositories::short_ratio::tests::upsert_within_rolled_back_transaction_refactoring"
+          baseline_test_durations = read_nextest_durations(
+              "backend/h8-baseline-nextest.log", baseline_test_name
+          )
+          poc_test_durations = read_nextest_durations(
+              "backend/h8-poc-nextest.log", poc_test_name
+          )
+
+          def print_test_duration_summary(title, values_ms):
+              count = len(values_ms)
+              total = sum(values_ms)
+              average = total / count if count else 0
+              maximum = max(values_ms) if values_ms else 0
+              print(f"{title} (milliseconds)")
+              print("count | total | average | max")
+              print(f"{count} | {total:.3f} | {average:.3f} | {maximum:.3f}")
+
+          print_test_duration_summary(
+              "H8 database-per-test baseline nextest test duration",
+              baseline_test_durations,
+          )
+          print_test_duration_summary(
+              "H8 rollback PoC nextest test duration",
+              poc_test_durations,
+          )
           baseline_auth = connection_auth_durations_by_application["h8-baseline"]
-          if baseline_auth:
+          if len(baseline_test_durations) == expected_stress_count and baseline_auth:
               print(
-                  "H8 database-per-test baseline average authentication time per test "
-                  f"(5 stress iterations): {sum(baseline_auth) / 5:.3f} ms"
+                  "H8 database-per-test baseline authentication time per test "
+                  f"(all connections): {sum(baseline_auth) / len(baseline_test_durations):.3f} ms"
               )
+          else:
+              print(
+                  "::warning::H8 baseline authentication average unavailable: "
+                  f"tests={len(baseline_test_durations)}/{expected_stress_count}, "
+                  f"connections={len(baseline_auth)}"
+              )
+
           poc_primary_auth = connection_auth_durations_by_application["h8-poc-primary"]
           poc_verifier_auth = connection_auth_durations_by_application["h8-poc-verify"]
-          if poc_primary_auth and len(poc_primary_auth) == len(poc_verifier_auth):
-              test_count = len(poc_primary_auth)
-              total_auth_ms = sum(poc_primary_auth) + sum(poc_verifier_auth)
+          if (
+              len(poc_test_durations) == expected_stress_count
+              and len(poc_primary_auth) == expected_stress_count
+              and len(poc_verifier_auth) == expected_stress_count
+          ):
               print(
-                  "H8 rollback PoC authentication time per test "
-                  f"(primary and verification connections): {total_auth_ms / test_count:.3f} ms "
-                  f"({test_count} tests, {test_count * 2} connections)"
+                  "H8 rollback PoC authentication time per test: "
+                  f"primary={sum(poc_primary_auth) / expected_stress_count:.3f} ms, "
+                  f"verification={sum(poc_verifier_auth) / expected_stress_count:.3f} ms, "
+                  f"combined={(sum(poc_primary_auth) + sum(poc_verifier_auth)) / expected_stress_count:.3f} ms "
+                  f"({len(poc_primary_auth) + len(poc_verifier_auth)} connections)"
+              )
+          else:
+              print(
+                  "::warning::H8 rollback PoC authentication average unavailable: "
+                  f"tests={len(poc_test_durations)}/{expected_stress_count}, "
+                  f"primary={len(poc_primary_auth)}, verification={len(poc_verifier_auth)}"
               )
           PY
 

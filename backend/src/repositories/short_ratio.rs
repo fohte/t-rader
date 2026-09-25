@@ -63,11 +63,11 @@ where
 #[cfg(test)]
 mod tests {
     use rust_decimal::Decimal;
-    use sea_orm::{ConnectOptions, Database, DatabaseConnection, TransactionTrait};
+    use sea_orm::{ColumnTrait, QueryFilter, QueryOrder, TransactionTrait};
     use sqlx::PgPool;
 
     use super::*;
-    use crate::testing::create_test_db;
+    use crate::testing::{connect_with_application_name, create_test_db};
 
     /// テスト用の業種別空売り比率を生成する
     fn make_ratio(date: NaiveDate, sector33_code: &str, value: i64) -> ShortRatio {
@@ -80,13 +80,14 @@ mod tests {
         }
     }
 
-    async fn connect_with_application_name(application_name: &str) -> DatabaseConnection {
-        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL");
-        let mut options = ConnectOptions::new(database_url);
-        options.set_application_name(application_name);
-        Database::connect(options)
-            .await
-            .expect("database connection")
+    fn expected_ratio(date: NaiveDate, sector33_code: &str, value: i64) -> short_ratio::Model {
+        short_ratio::Model {
+            date,
+            sector33_code: sector33_code.to_string(),
+            sell_excluding_short_value: Some(Decimal::new(value, 0)),
+            short_with_restriction_value: Some(Decimal::new(value, 0)),
+            short_without_restriction_value: Some(Decimal::new(value, 0)),
+        }
     }
 
     #[sqlx::test(migrations = false)]
@@ -94,20 +95,29 @@ mod tests {
         let db = create_test_db(pool).await;
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
-        let ratios = vec![make_ratio(date, "0050", 100), make_ratio(date, "3050", 200)];
+        let ratios = vec![make_ratio(date, "H801", 100), make_ratio(date, "H802", 200)];
         upsert_short_ratios(&db, ratios)
             .await
             .expect("upsert failed");
 
         let rows = short_ratio::Entity::find()
+            .order_by_asc(short_ratio::Column::Sector33Code)
             .all(&db)
             .await
             .expect("find failed");
-        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows,
+            vec![
+                expected_ratio(date, "H801", 100),
+                expected_ratio(date, "H802", 200)
+            ]
+        );
     }
 
     #[tokio::test]
-    async fn transaction_rollback_inserts_new_records() {
+    #[ignore = "一時的な rollback 方式の計測 PoC"]
+    // 削除条件: rollback 方式の実用性計測が完了したら削除する。
+    async fn upsert_within_rolled_back_transaction_refactoring() {
         let db = connect_with_application_name("h8-poc-primary").await;
         let txn = db.begin().await.expect("begin outer transaction");
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
@@ -118,20 +128,35 @@ mod tests {
             .expect("upsert failed");
 
         let rows = short_ratio::Entity::find()
+            .filter(short_ratio::Column::Date.eq(date))
+            .filter(
+                short_ratio::Column::Sector33Code.is_in(["H801".to_string(), "H802".to_string()]),
+            )
+            .order_by_asc(short_ratio::Column::Sector33Code)
             .all(&txn)
             .await
             .expect("find failed");
-        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows,
+            vec![
+                expected_ratio(date, "H801", 100),
+                expected_ratio(date, "H802", 200)
+            ]
+        );
 
         txn.rollback().await.expect("rollback outer transaction");
         db.close().await.expect("close primary connection");
 
         let verifier = connect_with_application_name("h8-poc-verify").await;
         let remaining_rows = short_ratio::Entity::find()
+            .filter(short_ratio::Column::Date.eq(date))
+            .filter(
+                short_ratio::Column::Sector33Code.is_in(["H801".to_string(), "H802".to_string()]),
+            )
             .all(&verifier)
             .await
             .expect("verify rollback");
-        assert_eq!(remaining_rows, Vec::new());
+        assert_eq!(remaining_rows, Vec::<short_ratio::Model>::new());
         verifier.close().await.expect("close verifier connection");
     }
 
