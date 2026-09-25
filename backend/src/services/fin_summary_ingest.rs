@@ -10,7 +10,7 @@ use std::time::Duration;
 use chrono::{NaiveDate, Utc};
 use core_domain::FinancialSummary;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
+use sea_orm::{DatabaseConnection, EntityTrait, Iterable, QueryOrder, Set, TransactionTrait};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{DateRange, FinancialSummarySource, SharedFinancialSummarySource};
@@ -22,6 +22,7 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 格納済み最新開示日から訂正を取りこぼさないためにさかのぼる日数。
 const LOOKBACK_DAYS: i64 = 30;
+const MAX_UPSERT_ROWS_PER_STATEMENT: usize = 1_000;
 
 /// `/fins/summary` のデータ提供開始日 (公式ページ記載)。これより前を取得しても空振りになる。
 fn provision_start_date() -> NaiveDate {
@@ -114,53 +115,30 @@ async fn upsert_fin_summaries(
         })
         .collect::<Vec<_>>();
 
-    financial_summary::Entity::insert_many(active_models)
-        .on_conflict(
-            OnConflict::columns([
-                financial_summary::Column::Code,
-                financial_summary::Column::DisclosureNo,
-            ])
-            .update_columns([
-                financial_summary::Column::DisclosureDate,
-                financial_summary::Column::ReportGroupKey,
-                financial_summary::Column::DocumentType,
-                financial_summary::Column::CurrentPeriodType,
-                financial_summary::Column::CurrentPeriodStart,
-                financial_summary::Column::CurrentPeriodEnd,
-                financial_summary::Column::CurrentFiscalYearStart,
-                financial_summary::Column::CurrentFiscalYearEnd,
-                financial_summary::Column::Sales,
-                financial_summary::Column::OperatingProfit,
-                financial_summary::Column::OrdinaryProfit,
-                financial_summary::Column::NetProfit,
-                financial_summary::Column::Eps,
-                financial_summary::Column::Bps,
-                financial_summary::Column::TotalAssets,
-                financial_summary::Column::Equity,
-                financial_summary::Column::EquityToAssetRatio,
-                financial_summary::Column::Roe,
-                financial_summary::Column::CashFlowOperating,
-                financial_summary::Column::CashFlowInvesting,
-                financial_summary::Column::CashFlowFinancing,
-                financial_summary::Column::CashAndEquivalents,
-                financial_summary::Column::DividendAnnual,
-                financial_summary::Column::DividendAnnualForecast,
-                financial_summary::Column::DividendAnnualForecastNext,
-                financial_summary::Column::ForecastSales,
-                financial_summary::Column::ForecastOperatingProfit,
-                financial_summary::Column::ForecastOrdinaryProfit,
-                financial_summary::Column::ForecastNetProfit,
-                financial_summary::Column::ForecastEps,
-                financial_summary::Column::NextForecastSales,
-                financial_summary::Column::NextForecastOperatingProfit,
-                financial_summary::Column::NextForecastOrdinaryProfit,
-                financial_summary::Column::NextForecastNetProfit,
-                financial_summary::Column::NextForecastEps,
-            ])
-            .to_owned(),
-        )
-        .exec_without_returning(db)
-        .await?;
+    let columns_per_row = financial_summary::Column::iter().count();
+    let chunk_size = (u16::MAX as usize / columns_per_row).min(MAX_UPSERT_ROWS_PER_STATEMENT);
+    let transaction = db.begin().await?;
+
+    for chunk in active_models.chunks(chunk_size) {
+        financial_summary::Entity::insert_many(chunk.to_vec())
+            .on_conflict(
+                OnConflict::columns([
+                    financial_summary::Column::Code,
+                    financial_summary::Column::DisclosureNo,
+                ])
+                .update_columns(financial_summary::Column::iter().filter(|column| {
+                    !matches!(
+                        column,
+                        financial_summary::Column::Code | financial_summary::Column::DisclosureNo
+                    )
+                }))
+                .to_owned(),
+            )
+            .exec_without_returning(&transaction)
+            .await?;
+    }
+
+    transaction.commit().await?;
 
     Ok(count)
 }
@@ -401,6 +379,115 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn test_replaces_all_fields_for_corrected_disclosures(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let mock = JQuantsMockServer::start().await;
+        let client = mock.client().expect("client");
+        client.set_manual_plan(Some(JQuantsPlan::Standard));
+
+        let today = Utc::now().date_naive();
+        let to = crate::date_utils::latest_business_day(today);
+        let seed_disc_date = to - chrono::Duration::days(1);
+        seed_populated_fin_summary(&db, seed_disc_date).await;
+
+        mock.fin_summary()
+            .date(&to.format("%Y-%m-%d").to_string())
+            .items(vec![json!({
+                "DiscDate": to.format("%Y-%m-%d").to_string(),
+                "Code": "99990",
+                "DiscNo": "1",
+                "DocType": "QuarterlyStatement",
+                "CurPerType": "1Q",
+                "CurPerSt": "2026-04-01",
+                "CurPerEn": "2026-06-30",
+                "CurFYSt": "2026-01-01",
+                "CurFYEn": "2026-12-31",
+                "Sales": "201",
+                "OP": "202",
+                "OdP": "203",
+                "NP": "204",
+                "EPS": "205",
+                "BPS": "206",
+                "TA": "207",
+                "Eq": "208",
+                "EqAR": "209",
+                "ROE": "210",
+                "CFO": "211",
+                "CFI": "212",
+                "CFF": "213",
+                "CashEq": "214",
+                "DivAnn": "215",
+                "FDivAnn": "216",
+                "NxFDivAnn": "217",
+                "FSales": "218",
+                "FOP": "219",
+                "FOdP": "220",
+                "FNP": "221",
+                "FEPS": "222",
+                "NxFSales": "223",
+                "NxFOP": "224",
+                "NxFOdP": "225",
+                "NxFNp": "226",
+                "NxFEPS": "227",
+            })])
+            .ok()
+            .await;
+
+        run_ingest_cycle(&db, &client, today)
+            .await
+            .expect("cycle succeeds");
+
+        let actual = financial_summary::Entity::find_by_id(("99990".to_string(), "1".to_string()))
+            .one(&db)
+            .await
+            .expect("query succeeds")
+            .expect("corrected row exists");
+        assert_eq!(
+            actual,
+            financial_summary::Model {
+                code: "99990".to_string(),
+                disclosure_no: "1".to_string(),
+                disclosure_date: to,
+                report_group_key: "V18:QuarterlyStatement;V10:2026-04-01;V10:2026-06-30;"
+                    .to_string(),
+                document_type: Some("QuarterlyStatement".to_string()),
+                current_period_type: Some("1Q".to_string()),
+                current_period_start: Some(date(2026, 4, 1)),
+                current_period_end: Some(date(2026, 6, 30)),
+                current_fiscal_year_start: Some(date(2026, 1, 1)),
+                current_fiscal_year_end: Some(date(2026, 12, 31)),
+                sales: Some(201.0),
+                operating_profit: Some(202.0),
+                ordinary_profit: Some(203.0),
+                net_profit: Some(204.0),
+                eps: Some(205.0),
+                bps: Some(206.0),
+                total_assets: Some(207.0),
+                equity: Some(208.0),
+                equity_to_asset_ratio: Some(209.0),
+                roe: Some(210.0),
+                cash_flow_operating: Some(211.0),
+                cash_flow_investing: Some(212.0),
+                cash_flow_financing: Some(213.0),
+                cash_and_equivalents: Some(214.0),
+                dividend_annual: Some(215.0),
+                dividend_annual_forecast: Some(216.0),
+                dividend_annual_forecast_next: Some(217.0),
+                forecast_sales: Some(218.0),
+                forecast_operating_profit: Some(219.0),
+                forecast_ordinary_profit: Some(220.0),
+                forecast_net_profit: Some(221.0),
+                forecast_eps: Some(222.0),
+                next_forecast_sales: Some(223.0),
+                next_forecast_operating_profit: Some(224.0),
+                next_forecast_ordinary_profit: Some(225.0),
+                next_forecast_net_profit: Some(226.0),
+                next_forecast_eps: Some(227.0),
+            }
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn test_continues_past_days_that_fail_to_fetch(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -455,5 +542,50 @@ mod tests {
         .insert(db)
         .await
         .expect("seed fin summary");
+    }
+
+    async fn seed_populated_fin_summary(db: &DatabaseConnection, disc_date: NaiveDate) {
+        financial_summary::ActiveModel {
+            code: Set("99990".to_string()),
+            disclosure_no: Set("1".to_string()),
+            disclosure_date: Set(disc_date),
+            report_group_key: Set("old report group".to_string()),
+            document_type: Set(Some("OldStatement".to_string())),
+            current_period_type: Set(Some("FY".to_string())),
+            current_period_start: Set(Some(date(2025, 1, 1))),
+            current_period_end: Set(Some(date(2025, 12, 31))),
+            current_fiscal_year_start: Set(Some(date(2025, 1, 1))),
+            current_fiscal_year_end: Set(Some(date(2025, 12, 31))),
+            sales: Set(Some(1.0)),
+            operating_profit: Set(Some(1.0)),
+            ordinary_profit: Set(Some(1.0)),
+            net_profit: Set(Some(1.0)),
+            eps: Set(Some(1.0)),
+            bps: Set(Some(1.0)),
+            total_assets: Set(Some(1.0)),
+            equity: Set(Some(1.0)),
+            equity_to_asset_ratio: Set(Some(1.0)),
+            roe: Set(Some(1.0)),
+            cash_flow_operating: Set(Some(1.0)),
+            cash_flow_investing: Set(Some(1.0)),
+            cash_flow_financing: Set(Some(1.0)),
+            cash_and_equivalents: Set(Some(1.0)),
+            dividend_annual: Set(Some(1.0)),
+            dividend_annual_forecast: Set(Some(1.0)),
+            dividend_annual_forecast_next: Set(Some(1.0)),
+            forecast_sales: Set(Some(1.0)),
+            forecast_operating_profit: Set(Some(1.0)),
+            forecast_ordinary_profit: Set(Some(1.0)),
+            forecast_net_profit: Set(Some(1.0)),
+            forecast_eps: Set(Some(1.0)),
+            next_forecast_sales: Set(Some(1.0)),
+            next_forecast_operating_profit: Set(Some(1.0)),
+            next_forecast_ordinary_profit: Set(Some(1.0)),
+            next_forecast_net_profit: Set(Some(1.0)),
+            next_forecast_eps: Set(Some(1.0)),
+        }
+        .insert(db)
+        .await
+        .expect("seed populated financial summary");
     }
 }

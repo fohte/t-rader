@@ -121,7 +121,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 旧 reader と同様に、不正な任意項目は欠損値として扱う。
+        // 不正な任意項目は欠損値 (NULL) として扱う。
         manager
             .get_connection()
             .execute_unprepared(

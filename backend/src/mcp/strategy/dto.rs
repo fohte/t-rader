@@ -467,9 +467,8 @@ pub struct ReadFinSummaryParams {
     pub limit: Option<u32>,
 }
 
-/// `jquants_fin_summary.raw` の 1 開示分を意味の分かるフィールド名に変換したもの。
-/// 記載の無い項目 (raw 側では空文字 `""`) は null。IFRS/米国基準では ordinary_profit
-/// (経常利益) が概念自体存在せず null になる。
+/// 財務情報テーブルの 1 開示分。記載の無い項目は null。
+/// IFRS/米国基準では ordinary_profit (経常利益) が概念自体存在せず null になる。
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct FinSummaryDto {
     /// 開示日

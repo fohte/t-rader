@@ -12,31 +12,14 @@ const READ_FIN_SUMMARY_SQL: &str = indoc::indoc! {"
     -- 同じ書類種別・会計期間の開示が複数あれば開示番号が最大の 1 件のみ残す
     -- (訂正、あるいは業績予想修正の再修正)
     WITH deduped AS (
-        SELECT DISTINCT ON (report_group_key)
-            disclosure_date, document_type, current_period_type, current_period_start,
-            current_period_end, current_fiscal_year_start, current_fiscal_year_end,
-            sales, operating_profit, ordinary_profit, net_profit, eps, bps, total_assets,
-            equity, equity_to_asset_ratio, roe, cash_flow_operating, cash_flow_investing,
-            cash_flow_financing, cash_and_equivalents, dividend_annual,
-            dividend_annual_forecast, dividend_annual_forecast_next, forecast_sales,
-            forecast_operating_profit, forecast_ordinary_profit, forecast_net_profit,
-            forecast_eps, next_forecast_sales, next_forecast_operating_profit,
-            next_forecast_ordinary_profit, next_forecast_net_profit, next_forecast_eps,
+        SELECT DISTINCT ON (report_group_key) financial_summary.*,
             disclosure_no::bigint AS disclosure_no_num
         FROM financial_summary
         -- 4 桁銘柄コードは、登録済みコードの先頭 4 文字と突き合わせる
         WHERE LEFT(code, 4) = $1
         ORDER BY report_group_key, disclosure_no_num DESC
     )
-    SELECT disclosure_date, document_type, current_period_type, current_period_start,
-        current_period_end, current_fiscal_year_start, current_fiscal_year_end,
-        sales, operating_profit, ordinary_profit, net_profit, eps, bps, total_assets,
-        equity, equity_to_asset_ratio, roe, cash_flow_operating, cash_flow_investing,
-        cash_flow_financing, cash_and_equivalents, dividend_annual,
-        dividend_annual_forecast, dividend_annual_forecast_next, forecast_sales,
-        forecast_operating_profit, forecast_ordinary_profit, forecast_net_profit,
-        forecast_eps, next_forecast_sales, next_forecast_operating_profit,
-        next_forecast_ordinary_profit, next_forecast_net_profit, next_forecast_eps
+    SELECT *
     FROM deduped
     ORDER BY disclosure_date DESC, disclosure_no_num DESC
     LIMIT $2

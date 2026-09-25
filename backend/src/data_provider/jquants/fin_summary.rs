@@ -119,39 +119,53 @@ mod tests {
     use crate::data_provider::jquants::mock::JQuantsMockServer;
 
     #[tokio::test]
-    async fn fetches_typed_financial_summaries_and_maps_blank_fields_to_none() {
-        let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        let date = NaiveDate::from_ymd_opt(2026, 5, 1).expect("valid date");
-
-        mock.fin_summary()
-            .date("2026-05-01")
-            .items(vec![json!({
-                "DiscDate": "2026-05-01",
-                "Code": "99990",
-                "DiscNo": "2",
-                "DocType": "QuarterlyStatement",
-                "CurPerType": "1Q",
-                "CurPerSt": "2026-04-01",
-                "CurPerEn": "2026-06-30",
-                "Sales": "120.5",
-                "OP": "",
-                "NxFNp": "-2",
-            })])
-            .ok()
-            .await;
-
-        let actual = client
-            .fetch_financial_summaries_by_date(date)
-            .await
-            .expect("fetch succeeds");
+    async fn fetches_typed_financial_summaries() {
+        let actual = fetch_summaries(json!({
+            "DiscDate": "2026-05-01",
+            "Code": "99990",
+            "DiscNo": "2",
+            "DocType": "QuarterlyStatement",
+            "CurPerType": "1Q",
+            "CurPerSt": "2026-04-01",
+            "CurPerEn": "2026-06-30",
+            "CurFYSt": "2026-01-01",
+            "CurFYEn": "2026-12-31",
+            "Sales": "101",
+            "OP": "102",
+            "OdP": "103",
+            "NP": "104",
+            "EPS": "105",
+            "BPS": "106",
+            "TA": "107",
+            "Eq": "108",
+            "EqAR": "109",
+            "ROE": "110",
+            "CFO": "111",
+            "CFI": "112",
+            "CFF": "113",
+            "CashEq": "114",
+            "DivAnn": "115",
+            "FDivAnn": "116",
+            "NxFDivAnn": "117",
+            "FSales": "118",
+            "FOP": "119",
+            "FOdP": "120",
+            "FNP": "121",
+            "FEPS": "122",
+            "NxFSales": "123",
+            "NxFOP": "124",
+            "NxFOdP": "125",
+            "NxFNp": "-126",
+            "NxFEPS": "127",
+        }))
+        .await;
 
         assert_eq!(
             actual,
             vec![FinancialSummary {
                 code: "99990".to_string(),
                 disclosure_no: "2".to_string(),
-                disclosure_date: date,
+                disclosure_date: NaiveDate::from_ymd_opt(2026, 5, 1).expect("valid date"),
                 report_group_key: "V18:QuarterlyStatement;V10:2026-04-01;V10:2026-06-30;"
                     .to_string(),
                 document_type: Some("QuarterlyStatement".to_string()),
@@ -160,9 +174,67 @@ mod tests {
                     NaiveDate::from_ymd_opt(2026, 4, 1).expect("valid date")
                 ),
                 current_period_end: Some(NaiveDate::from_ymd_opt(2026, 6, 30).expect("valid date")),
+                current_fiscal_year_start: Some(
+                    NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date")
+                ),
+                current_fiscal_year_end: Some(
+                    NaiveDate::from_ymd_opt(2026, 12, 31).expect("valid date")
+                ),
+                sales: Some(101.0),
+                operating_profit: Some(102.0),
+                ordinary_profit: Some(103.0),
+                net_profit: Some(104.0),
+                eps: Some(105.0),
+                bps: Some(106.0),
+                total_assets: Some(107.0),
+                equity: Some(108.0),
+                equity_to_asset_ratio: Some(109.0),
+                roe: Some(110.0),
+                cash_flow_operating: Some(111.0),
+                cash_flow_investing: Some(112.0),
+                cash_flow_financing: Some(113.0),
+                cash_and_equivalents: Some(114.0),
+                dividend_annual: Some(115.0),
+                dividend_annual_forecast: Some(116.0),
+                dividend_annual_forecast_next: Some(117.0),
+                forecast_sales: Some(118.0),
+                forecast_operating_profit: Some(119.0),
+                forecast_ordinary_profit: Some(120.0),
+                forecast_net_profit: Some(121.0),
+                forecast_eps: Some(122.0),
+                next_forecast_sales: Some(123.0),
+                next_forecast_operating_profit: Some(124.0),
+                next_forecast_ordinary_profit: Some(125.0),
+                next_forecast_net_profit: Some(-126.0),
+                next_forecast_eps: Some(127.0),
+            }],
+        );
+    }
+
+    #[tokio::test]
+    async fn maps_blank_and_missing_fields_to_none() {
+        let actual = fetch_summaries(json!({
+            "DiscDate": "2026-05-01",
+            "Code": "99990",
+            "DiscNo": "2",
+            "OP": "",
+        }))
+        .await;
+
+        assert_eq!(
+            actual,
+            vec![FinancialSummary {
+                code: "99990".to_string(),
+                disclosure_no: "2".to_string(),
+                disclosure_date: NaiveDate::from_ymd_opt(2026, 5, 1).expect("valid date"),
+                report_group_key: "N;N;N;".to_string(),
+                document_type: None,
+                current_period_type: None,
+                current_period_start: None,
+                current_period_end: None,
                 current_fiscal_year_start: None,
                 current_fiscal_year_end: None,
-                sales: Some(120.5),
+                sales: None,
                 operating_profit: None,
                 ordinary_profit: None,
                 net_profit: None,
@@ -187,10 +259,27 @@ mod tests {
                 next_forecast_sales: None,
                 next_forecast_operating_profit: None,
                 next_forecast_ordinary_profit: None,
-                next_forecast_net_profit: Some(-2.0),
+                next_forecast_net_profit: None,
                 next_forecast_eps: None,
             }],
         );
+    }
+
+    async fn fetch_summaries(item: serde_json::Value) -> Vec<FinancialSummary> {
+        let mock = JQuantsMockServer::start().await;
+        let client = mock.client().expect("client");
+        let date = NaiveDate::from_ymd_opt(2026, 5, 1).expect("valid date");
+
+        mock.fin_summary()
+            .date("2026-05-01")
+            .items(vec![item])
+            .ok()
+            .await;
+
+        client
+            .fetch_financial_summaries_by_date(date)
+            .await
+            .expect("fetch succeeds")
     }
 
     #[test]

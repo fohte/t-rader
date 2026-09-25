@@ -5,8 +5,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::data_provider::{
-    DailyBarSourceError, DataProviderError, EquityMasterSourceError, FinancialSummarySourceError,
-    MarketDailyBarSourceError,
+    DailyBarSourceError, DataProviderError, EquityMasterSourceError, MarketDailyBarSourceError,
 };
 
 // SeaORM の `SqlErr` で拾えない PostgreSQL SQLSTATE を補完する。
@@ -81,9 +80,6 @@ pub enum AppError {
 
     #[error("{0}")]
     MarketDailyBarSource(#[from] MarketDailyBarSourceError),
-
-    #[error("{0}")]
-    FinancialSummarySource(#[from] FinancialSummarySourceError),
 
     #[error("service unavailable: {0}")]
     ServiceUnavailable(String),
@@ -160,8 +156,7 @@ impl IntoResponse for AppError {
             }
             AppError::DailyBarSource(DailyBarSourceError::Failed(_))
             | AppError::EquityMasterSource(_)
-            | AppError::MarketDailyBarSource(_)
-            | AppError::FinancialSummarySource(_) => {
+            | AppError::MarketDailyBarSource(_) => {
                 tracing::error!("{self}");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
