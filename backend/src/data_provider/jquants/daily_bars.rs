@@ -3,7 +3,10 @@ use chrono::{NaiveDate, Utc};
 
 use super::response::DailyBarsResponse;
 use super::{JQuantsClient, normalize_local_code, parse_daily_bar};
-use crate::data_provider::{DailyBarSource, DailyBarSourceError, DataProviderError, DateRange};
+use crate::data_provider::{
+    DailyBarSource, DailyBarSourceError, DataProviderError, DateRange, MarketDailyBarSource,
+    MarketDailyBarSourceError,
+};
 use crate::models::bar::Bar;
 use crate::models::jquants_plan::JQuantsPlan;
 
@@ -170,6 +173,24 @@ impl DailyBarSource for JQuantsClient {
 
     fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
         JQuantsClient::known_fetchable_range(self)
+    }
+}
+
+#[async_trait]
+impl MarketDailyBarSource for JQuantsClient {
+    async fn fetch_daily_bars_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<Bar>, MarketDailyBarSourceError> {
+        JQuantsClient::fetch_daily_bars_by_date(self, date)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// 契約プランが手動設定されている間だけ取得できる (未設定時のレート制限は 5 req/分で、
+    /// 全銘柄分の取得には数百リクエストを要するため)。
+    fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
+        self.manual_plan_date_range(today)
     }
 }
 

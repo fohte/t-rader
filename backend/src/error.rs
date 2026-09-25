@@ -4,7 +4,9 @@ use sea_orm::{DbErr, RuntimeErr, SqlErr};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::data_provider::{DailyBarSourceError, DataProviderError};
+use crate::data_provider::{
+    DailyBarSourceError, DataProviderError, EquityMasterSourceError, MarketDailyBarSourceError,
+};
 
 // SeaORM の `SqlErr` で拾えない PostgreSQL SQLSTATE を補完する。
 // NOT NULL 違反 (23502) は handler 側の入力検証漏れまたは型不整合を示すサーバーバグなので
@@ -72,6 +74,12 @@ pub enum AppError {
 
     #[error("daily bar source error: {0}")]
     DailyBarSource(#[from] DailyBarSourceError),
+
+    #[error("{0}")]
+    EquityMasterSource(#[from] EquityMasterSourceError),
+
+    #[error("{0}")]
+    MarketDailyBarSource(#[from] MarketDailyBarSourceError),
 
     #[error("service unavailable: {0}")]
     ServiceUnavailable(String),
@@ -146,7 +154,9 @@ impl IntoResponse for AppError {
                     "service temporarily unavailable".to_string(),
                 )
             }
-            AppError::DailyBarSource(DailyBarSourceError::Failed(_)) => {
+            AppError::DailyBarSource(DailyBarSourceError::Failed(_))
+            | AppError::EquityMasterSource(_)
+            | AppError::MarketDailyBarSource(_) => {
                 tracing::error!("{self}");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,

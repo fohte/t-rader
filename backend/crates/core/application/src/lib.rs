@@ -1,9 +1,13 @@
 mod agent_task_client;
 mod daily_bar_source;
+mod equity_master_source;
 mod indicator_observation_source;
 mod kata_exec;
 mod llm_client;
+mod margin_source;
+mod market_daily_bar_source;
 mod news_aggregator;
+mod short_selling_source;
 
 pub use agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
@@ -24,6 +28,16 @@ pub use llm_client::{
 pub use kata_exec::FakeKataExecutor;
 
 pub use daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange, SharedDailyBarSource};
+pub use equity_master_source::{
+    EquityMasterSource, EquityMasterSourceError, SharedEquityMasterSource,
+};
+pub use margin_source::{MarginSource, MarginSourceError, SharedMarginSource};
+pub use market_daily_bar_source::{
+    MarketDailyBarSource, MarketDailyBarSourceError, SharedMarketDailyBarSource,
+};
+pub use short_selling_source::{
+    SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError,
+};
 
 #[cfg(feature = "test-support")]
 pub use agent_task_client::FakeAgentTaskClient;

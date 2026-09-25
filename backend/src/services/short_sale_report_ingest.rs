@@ -1,17 +1,15 @@
 //! J-Quants `/markets/short-sale-report` (空売り残高報告) を日次で取り込むバックグラウンドタスク。
 //!
-//! Standard 以上のプランでのみ提供されるデータのため、契約プランがそれ未満の間は
-//! スキップする。日次取り込みの共通ロジックは `jquants_daily_ingest` を参照。
+//! 取得元が取得できる範囲を返さない間はスキップする。日次取り込みの共通ロジックは
+//! `jquants_daily_ingest` を参照。
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
-use crate::data_provider::DataProviderError;
-use crate::data_provider::jquants::JQuantsClient;
+use crate::data_provider::{SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError};
 use crate::error::AppError;
 use crate::models::ShortSaleReport;
 use crate::repositories::short_sale_report::{find_latest_disc_date, upsert_short_sale_reports};
@@ -30,8 +28,11 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 impl DailyJQuantsIngest for ShortSaleReport {
     const START_DATE: NaiveDate = SHORT_SALE_REPORT_START_DATE;
 
-    async fn fetch(client: &JQuantsClient, day: NaiveDate) -> Result<Vec<Self>, DataProviderError> {
-        client.fetch_short_sale_reports(day).await
+    async fn fetch(
+        source: &dyn ShortSellingSource,
+        day: NaiveDate,
+    ) -> Result<Vec<Self>, ShortSellingSourceError> {
+        source.fetch_short_sale_reports(day).await
     }
 
     async fn upsert(db: &DatabaseConnection, items: Vec<Self>) -> Result<(), AppError> {
@@ -47,20 +48,20 @@ impl DailyJQuantsIngest for ShortSaleReport {
 /// 日ごとに 1 リクエストずつ取得して upsert する。
 pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
-) -> Result<DailyIngestStats, DataProviderError> {
-    jquants_daily_ingest::run_ingest_cycle::<ShortSaleReport>(db, client).await
+    source: &dyn ShortSellingSource,
+) -> Result<DailyIngestStats, AppError> {
+    jquants_daily_ingest::run_ingest_cycle::<ShortSaleReport>(db, source).await
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す
 pub fn spawn_poll(
     db: DatabaseConnection,
-    client: Arc<JQuantsClient>,
+    source: SharedShortSellingSource,
     interval: Duration,
 ) -> JoinHandle<()> {
     jquants_daily_ingest::spawn_poll::<ShortSaleReport>(
         db,
-        client,
+        source,
         interval,
         "short sale report ingest",
     )

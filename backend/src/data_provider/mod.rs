@@ -3,7 +3,12 @@ pub mod jquants;
 mod mock;
 pub mod news;
 
-pub use core_application::{DailyBarSource, DailyBarSourceError, DateRange, SharedDailyBarSource};
+pub use core_application::{
+    DailyBarSource, DailyBarSourceError, DateRange, EquityMasterSource, EquityMasterSourceError,
+    MarginSource, MarginSourceError, MarketDailyBarSource, MarketDailyBarSourceError,
+    SharedDailyBarSource, SharedEquityMasterSource, SharedMarginSource, SharedMarketDailyBarSource,
+    SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError,
+};
 
 /// データプロバイダーで発生しうるエラー
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -49,6 +54,30 @@ impl From<DataProviderError> for DailyBarSourceError {
             )),
             error => Self::Failed(error.to_string()),
         }
+    }
+}
+
+impl From<DataProviderError> for EquityMasterSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+impl From<DataProviderError> for MarginSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+impl From<DataProviderError> for ShortSellingSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+impl From<DataProviderError> for MarketDailyBarSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
     }
 }
 
