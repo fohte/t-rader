@@ -528,7 +528,7 @@ mod error_handling {
 
     #[rstest]
     #[tokio::test]
-    async fn test_test_client_returns_error_when_window_limit_is_exceeded() {
+    async fn test_client_fails_immediately_when_window_limit_is_exceeded() {
         let mock = JQuantsMockServer::start().await;
         mock.instrument().code("00001").ok().await;
 
@@ -545,14 +545,13 @@ mod error_handling {
             client.fetch_instrument("00001"),
         )
         .await
-        .map(|result| result.map(|_| ()))
-        .map_err(|_| ());
+        .expect("test client should fail fast instead of waiting for the window");
 
         assert_eq!(
-            result,
-            Ok(Err(DataProviderError::RateLimitWindowFull {
+            result.map(|_| ()),
+            Err(DataProviderError::RateLimitWindowFull {
                 max_requests: RATE_LIMIT_MAX_REQUESTS,
-            })),
+            }),
         );
     }
 }
@@ -621,6 +620,15 @@ mod rate_limiter {
     use crate::data_provider::DataProviderError;
     use rstest::rstest;
 
+    async fn fill_window(limiter: &RateLimiter, limit: usize) {
+        for _ in 0..limit {
+            limiter
+                .acquire(limit)
+                .await
+                .expect("request within the limit should be allowed");
+        }
+    }
+
     #[rstest]
     #[case::default_limit(RATE_LIMIT_MAX_REQUESTS)]
     #[case::higher_limit(RATE_LIMIT_MAX_REQUESTS * 2)]
@@ -629,12 +637,7 @@ mod rate_limiter {
         let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
 
         // 上限以内のリクエストは即座に通過する
-        for _ in 0..limit {
-            limiter
-                .acquire(limit)
-                .await
-                .expect("request should be allowed");
-        }
+        fill_window(&limiter, limit).await;
     }
 
     #[rstest]
@@ -643,12 +646,7 @@ mod rate_limiter {
         let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
 
         // 上限まで消費
-        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
-            limiter
-                .acquire(RATE_LIMIT_MAX_REQUESTS)
-                .await
-                .expect("request within the limit should be allowed");
-        }
+        fill_window(&limiter, RATE_LIMIT_MAX_REQUESTS).await;
 
         // 次の acquire は待機するはず
         let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
@@ -692,12 +690,7 @@ mod rate_limiter {
     async fn test_fails_immediately_when_limit_exceeded_with_fail_fast_behavior() {
         let limiter = RateLimiter::new_fail_fast(RATE_LIMIT_COOLDOWN);
 
-        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
-            limiter
-                .acquire(RATE_LIMIT_MAX_REQUESTS)
-                .await
-                .expect("request within the limit should be allowed");
-        }
+        fill_window(&limiter, RATE_LIMIT_MAX_REQUESTS).await;
 
         assert_eq!(
             limiter.acquire(RATE_LIMIT_MAX_REQUESTS).await,

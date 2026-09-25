@@ -20,26 +20,27 @@ pub(super) struct RateLimiter {
     /// 429 を受けてから送信を止める時間
     cooldown: std::time::Duration,
     /// window 枠が空くまで待つか、枠超過をエラーとして返すか
+    #[cfg(test)]
     fail_fast_on_window_limit: bool,
 }
 
 impl RateLimiter {
     pub(super) fn new(cooldown: std::time::Duration) -> Self {
-        Self::with_window_limit_behavior(cooldown, false)
+        Self {
+            timestamps: Mutex::new(VecDeque::new()),
+            cooldown_until: Mutex::new(None),
+            cooldown,
+            #[cfg(test)]
+            fail_fast_on_window_limit: false,
+        }
     }
 
     /// テスト用: window 枠が満杯になった時点で待機せずエラーを返す。
     #[cfg(test)]
     pub(super) fn new_fail_fast(cooldown: std::time::Duration) -> Self {
-        Self::with_window_limit_behavior(cooldown, true)
-    }
-
-    fn with_window_limit_behavior(cooldown: std::time::Duration, fail_fast: bool) -> Self {
         Self {
-            timestamps: Mutex::new(VecDeque::new()),
-            cooldown_until: Mutex::new(None),
-            cooldown,
-            fail_fast_on_window_limit: fail_fast,
+            fail_fast_on_window_limit: true,
+            ..Self::new(cooldown)
         }
     }
 
@@ -87,6 +88,7 @@ impl RateLimiter {
                 return Ok(());
             }
 
+            #[cfg(test)]
             if self.fail_fast_on_window_limit {
                 return Err(DataProviderError::RateLimitWindowFull { max_requests });
             }
