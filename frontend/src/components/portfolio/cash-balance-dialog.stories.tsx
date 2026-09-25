@@ -16,6 +16,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Open: Story = {
+  name: 'shows the cash balance dialog with an existing balance.',
   args: {
     open: true,
     initial: 1000000,
@@ -23,6 +24,7 @@ export const Open: Story = {
 }
 
 export const EmptyInitial: Story = {
+  name: 'shows the cash balance dialog with no balance recorded.',
   args: {
     open: true,
     initial: 0,

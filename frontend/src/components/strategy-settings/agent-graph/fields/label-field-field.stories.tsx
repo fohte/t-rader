@@ -61,6 +61,7 @@ function Interactive({
 }
 
 export const Default: Story = {
+  name: 'shows the label field with available output properties.',
   args: {
     phases: [PLAN],
     forEach: 'plan.hypotheses',
@@ -77,6 +78,7 @@ export const Default: Story = {
 }
 
 export const Selected: Story = {
+  name: 'shows a selected label from an earlier phase output.',
   args: {
     phases: [PLAN],
     forEach: 'plan.hypotheses',
@@ -89,6 +91,7 @@ export const Selected: Story = {
 }
 
 export const StaleValue: Story = {
+  name: 'preserves a selected label that is missing from the output properties.',
   args: {
     phases: [PLAN],
     forEach: 'plan.hypotheses',
@@ -105,6 +108,7 @@ export const StaleValue: Story = {
 }
 
 export const NoOptions: Story = {
+  name: 'shows the label field when array items have no named properties.',
   args: {
     phases: [PLAN_WITH_PRIMITIVE_ARRAY],
     forEach: 'plan.checks',

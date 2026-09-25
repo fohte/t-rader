@@ -24,12 +24,17 @@ const args = {
   hasUpdateError: false,
 }
 
-export const Default: Story = { args }
+export const Default: Story = {
+  name: 'shows an unverified hypothesis and its status controls.',
+  args,
+}
 
 export const Updating: Story = {
+  name: 'shows the status panel while a change is being saved.',
   args: { ...args, isUpdating: true },
 }
 
 export const UpdateError: Story = {
+  name: 'shows the status panel after a status change fails.',
   args: { ...args, hasUpdateError: true },
 }

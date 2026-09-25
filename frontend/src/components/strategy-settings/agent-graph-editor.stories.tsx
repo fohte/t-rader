@@ -123,6 +123,7 @@ const SAMPLE = `phases:
 `
 
 export const FormView: Story = {
+  name: 'shows a populated multi-phase agent graph form.',
   args: {
     purpose: 'explore',
     initialValue: SAMPLE,
@@ -131,6 +132,7 @@ export const FormView: Story = {
 }
 
 export const PhaseSplitDisabled: Story = {
+  name: 'shows the phase split toggle switched off with no phase cards.',
   args: {
     purpose: 'explore',
     initialValue: '',
@@ -139,6 +141,7 @@ export const PhaseSplitDisabled: Story = {
 }
 
 export const BrokenYaml: Story = {
+  name: 'shows a parse error for malformed graph YAML.',
   args: {
     purpose: 'explore',
     initialValue: 'phases: [',
@@ -147,6 +150,7 @@ export const BrokenYaml: Story = {
 }
 
 export const SaveErrorOnPhase: Story = {
+  name: 'shows a save error attached to a specific phase.',
   args: {
     purpose: 'explore',
     initialValue: SAMPLE,
@@ -156,6 +160,7 @@ export const SaveErrorOnPhase: Story = {
 }
 
 export const Saving: Story = {
+  name: 'shows the graph editor while changes are being saved.',
   args: {
     purpose: 'explore',
     initialValue: SAMPLE,

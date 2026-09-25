@@ -10,4 +10,6 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Loading: Story = {}
+export const Loading: Story = {
+  name: 'shows placeholder rows while the hypothesis list is loading.',
+}

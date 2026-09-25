@@ -46,12 +46,14 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows the strategy shell around the strategy list.',
   render: () => (
     <RouterProvider router={createStrategyShellRouter('/strategies')} />
   ),
 }
 
 export const StrategyHome: Story = {
+  name: 'shows the strategy shell around a performance page.',
   render: () => (
     <RouterProvider
       router={createStrategyShellRouter('/strategies/semi-swing/performance')}

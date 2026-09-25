@@ -33,25 +33,31 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Stock: Story = {
+  name: 'shows a stock reference with its resolved company name.',
   args: { token: 'stock:7203' },
 }
 
 export const Indicator: Story = {
+  name: 'shows an indicator reference with its resolved label.',
   args: { token: 'indicator:USDJPY' },
 }
 
 export const Sector: Story = {
+  name: 'shows a sector reference with its resolved name.',
   args: { token: 'sector:半導体' },
 }
 
 export const Theme: Story = {
+  name: 'shows a theme reference with its resolved name.',
   args: { token: 'theme:円安' },
 }
 
 export const Pill: Story = {
+  name: 'shows a stock reference in the compact pill style.',
   args: { token: 'stock:3436', pill: true },
 }
 
 export const Unknown: Story = {
+  name: 'shows an unresolved stock reference.',
   args: { token: 'stock:9999' },
 }
