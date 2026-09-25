@@ -12,7 +12,7 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{comment, note_version};
+use crate::entities::comment;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateCommentRequest, UpdateCommentRequest};
@@ -109,17 +109,6 @@ pub async fn create_comment(
         }
     }
 
-    if p.target_kind == "note_version"
-        && note_version::Entity::find_by_id(p.target_id)
-            .one(&state.db)
-            .await?
-            .is_none()
-    {
-        return Err(AppError::NotFound(format!(
-            "note version {} not found",
-            p.target_id
-        )));
-    }
     let (start_line, end_line) = comment_anchor::validate_version_anchor(
         &state.db,
         &p.target_kind,

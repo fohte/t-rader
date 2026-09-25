@@ -59,6 +59,11 @@ export function NoteVersionDiffView({
   onReply,
   onToggleResolved,
 }: NoteVersionDiffViewProps) {
+  const unanchoredTopLevel = comments.filter(
+    (comment) => comment.parent_id == null && comment.start_line == null,
+  )
+  const unanchoredComments = commentsForThreads(comments, unanchoredTopLevel)
+
   return (
     <section className="border border-border bg-card">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3.5 py-2">
@@ -101,6 +106,33 @@ export function NoteVersionDiffView({
         <p className="border-b border-border px-3.5 py-2 font-mono text-2xs text-primary">
           コメントを読み込めませんでした
         </p>
+      )}
+      {unanchoredTopLevel.length > 0 && (
+        <div className="border-b border-border px-3.5 py-3">
+          <h3 className="mb-2 font-mono text-2xs font-bold uppercase tracking-wider text-muted-foreground">
+            本文全体のコメント
+          </h3>
+          <LineCommentGroup
+            comments={unanchoredComments}
+            anchor={null}
+            anchorKey={null}
+            allowNewComment={false}
+            activeCommentKey={activeCommentKey}
+            replyingCommentId={replyingCommentId}
+            isCreating={isCreating}
+            isReplying={isReplying}
+            resolvingCommentId={resolvingCommentId}
+            hasCreateError={hasCreateError}
+            hasReplyError={hasReplyError}
+            onStartComment={onStartComment}
+            onCancelComment={onCancelComment}
+            onCreateComment={onCreateComment}
+            onStartReply={onStartReply}
+            onCancelReply={onCancelReply}
+            onReply={onReply}
+            onToggleResolved={onToggleResolved}
+          />
+        </div>
       )}
       {rows.length === 0 ? (
         <p className="px-3.5 py-3 font-mono text-xs text-muted-foreground">
@@ -242,17 +274,23 @@ function DiffCell({
           : kind === 'changed'
             ? 'border-l-status-approved bg-status-approved/10'
             : 'border-l-transparent'
-  const relevantComments = comments.filter(
+  const relevantTopLevel = comments.filter(
     (comment) =>
+      comment.parent_id == null &&
       comment.start_line === lineNumber &&
       (comment.anchor_side ?? 'new') === side,
   )
-  const oldComments = alsoShowOldComments
+  const relevantComments = commentsForThreads(comments, relevantTopLevel)
+  const oldTopLevel = alsoShowOldComments
     ? comments.filter(
         (comment) =>
+          comment.parent_id == null &&
           comment.start_line === oldLineNumber &&
           (comment.anchor_side ?? 'new') === 'old',
       )
+    : []
+  const oldComments = alsoShowOldComments
+    ? commentsForThreads(comments, oldTopLevel)
     : []
   const anchor: DiffCommentAnchor = { side, lineNumber, text }
   const anchorKey = `${side}:${String(lineNumber)}`
@@ -267,16 +305,19 @@ function DiffCell({
           {text === '' ? ' ' : text}
         </pre>
       </div>
-      {alsoShowOldComments && oldLineNumber != null && (
-        <div className="pl-10">
-          <LineCommentGroup
-            comments={oldComments}
-            anchor={{ side: 'old', lineNumber: oldLineNumber, text }}
-            anchorKey={`old:${String(oldLineNumber)}`}
-            {...props}
-          />
-        </div>
-      )}
+      {alsoShowOldComments &&
+        oldLineNumber != null &&
+        oldComments.length > 0 && (
+          <div className="pl-10">
+            <LineCommentGroup
+              comments={oldComments}
+              anchor={{ side: 'old', lineNumber: oldLineNumber, text }}
+              anchorKey={`old:${String(oldLineNumber)}`}
+              allowNewComment={false}
+              {...props}
+            />
+          </div>
+        )}
       <div className="pl-10">
         <LineCommentGroup
           comments={relevantComments}
@@ -291,14 +332,16 @@ function DiffCell({
 
 interface LineCommentGroupProps extends Omit<DiffRowProps, 'row' | 'mode'> {
   comments: NoteVersionComment[]
-  anchor: DiffCommentAnchor
-  anchorKey: string
+  anchor: DiffCommentAnchor | null
+  anchorKey: string | null
+  allowNewComment?: boolean
 }
 
 function LineCommentGroup({
   comments,
   anchor,
   anchorKey,
+  allowNewComment = true,
   activeCommentKey,
   replyingCommentId,
   isCreating,
@@ -314,7 +357,8 @@ function LineCommentGroup({
   onReply,
   onToggleResolved,
 }: LineCommentGroupProps) {
-  const [draft, setDraft] = useState('')
+  const [commentDraft, setCommentDraft] = useState('')
+  const [replyDraft, setReplyDraft] = useState('')
   const topLevel = comments.filter((comment) => comment.parent_id == null)
   const repliesByParent = new Map<string, NoteVersionComment[]>()
   for (const comment of comments) {
@@ -326,8 +370,8 @@ function LineCommentGroup({
   }
 
   const submit = (): void => {
-    const body = draft.trim()
-    if (body === '' || isCreating) return
+    const body = commentDraft.trim()
+    if (body === '' || isCreating || anchor == null) return
     onCreateComment(anchor, body)
   }
 
@@ -354,18 +398,18 @@ function LineCommentGroup({
               <input
                 autoFocus
                 aria-label="返信"
-                value={draft}
+                value={replyDraft}
                 onChange={(event) => {
-                  setDraft(event.target.value)
+                  setReplyDraft(event.target.value)
                 }}
                 className="min-w-0 flex-1 border border-border bg-background px-2 py-1 font-mono text-2xs text-foreground outline-none focus:border-muted-foreground"
                 placeholder="返信を入力"
               />
               <button
                 type="button"
-                disabled={draft.trim() === '' || isReplying}
+                disabled={replyDraft.trim() === '' || isReplying}
                 onClick={() => {
-                  const body = draft.trim()
+                  const body = replyDraft.trim()
                   if (body === '') return
                   onReply(comment.id, body)
                 }}
@@ -376,7 +420,7 @@ function LineCommentGroup({
               <button
                 type="button"
                 onClick={() => {
-                  setDraft('')
+                  setReplyDraft('')
                   onCancelReply()
                 }}
                 className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-foreground"
@@ -388,7 +432,7 @@ function LineCommentGroup({
             <button
               type="button"
               onClick={() => {
-                setDraft('')
+                setReplyDraft('')
                 onStartReply(comment.id)
               }}
               className="font-mono text-2xs text-muted-foreground hover:text-primary"
@@ -403,13 +447,13 @@ function LineCommentGroup({
           )}
         </div>
       ))}
-      {activeCommentKey === anchorKey ? (
+      {anchorKey !== null && activeCommentKey === anchorKey ? (
         <div className="space-y-2">
           <textarea
             aria-label="行コメント"
-            value={draft}
+            value={commentDraft}
             onChange={(event) => {
-              setDraft(event.target.value)
+              setCommentDraft(event.target.value)
             }}
             rows={2}
             className="w-full border border-border bg-background px-2 py-1.5 font-mono text-2xs text-foreground outline-none focus:border-muted-foreground"
@@ -418,7 +462,7 @@ function LineCommentGroup({
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={draft.trim() === '' || isCreating}
+              disabled={commentDraft.trim() === '' || isCreating}
               onClick={submit}
               className="border border-border px-2 py-1 font-mono text-2xs text-foreground hover:border-primary hover:text-primary disabled:opacity-50"
             >
@@ -427,7 +471,7 @@ function LineCommentGroup({
             <button
               type="button"
               onClick={() => {
-                setDraft('')
+                setCommentDraft('')
                 onCancelComment()
               }}
               className="px-2 py-1 font-mono text-2xs text-muted-foreground hover:text-foreground"
@@ -441,18 +485,30 @@ function LineCommentGroup({
             </p>
           )}
         </div>
-      ) : (
+      ) : anchor !== null && allowNewComment ? (
         <button
           type="button"
           onClick={() => {
-            setDraft('')
+            setCommentDraft('')
             onStartComment(anchor)
           }}
           className="font-mono text-2xs text-muted-foreground hover:text-primary"
         >
           + 行コメント
         </button>
-      )}
+      ) : null}
     </div>
+  )
+}
+
+function commentsForThreads(
+  comments: NoteVersionComment[],
+  topLevelComments: NoteVersionComment[],
+): NoteVersionComment[] {
+  const parentIds = new Set(topLevelComments.map((comment) => comment.id))
+  return comments.filter(
+    (comment) =>
+      (comment.parent_id == null && parentIds.has(comment.id)) ||
+      (comment.parent_id != null && parentIds.has(comment.parent_id)),
   )
 }

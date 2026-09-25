@@ -15,7 +15,6 @@ use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::strategies::map_submit_error;
 use crate::models::ChangeStatusRequest;
 use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::note_refs::sync_note_refs;
 use crate::services::note_versions::{self, INITIAL_NOTE_STATUS};
 use crate::services::strategy_tasks::{self, TaskSource};
 
@@ -110,66 +109,14 @@ pub async fn list_pending_note_versions(
     Ok(Json(versions))
 }
 
-async fn set_current_version(
-    txn: &sea_orm::DatabaseTransaction,
-    note_id: Uuid,
-    version: note_version::Model,
-    new_status: Option<&str>,
-    reviewed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
-) -> Result<(note_version::Model, Option<Uuid>), AppError> {
-    let current = note_versions::find_current_version(txn, note_id).await?;
-    let previous_current_id = current.as_ref().map(|current| current.id);
-    if let Some(current) = current.as_ref().filter(|current| current.id != version.id) {
-        note_version::ActiveModel {
-            id: Set(current.id),
-            is_current: Set(false),
-            ..Default::default()
-        }
-        .update(txn)
-        .await?;
+fn ensure_pending_version(version: &note_version::Model) -> Result<(), AppError> {
+    if version.status != INITIAL_NOTE_STATUS {
+        return Err(AppError::Conflict(format!(
+            "note version {}/{} is not pending",
+            version.note_id, version.version_no
+        )));
     }
-
-    let mut active = note_version::ActiveModel {
-        id: Set(version.id),
-        is_current: Set(true),
-        ..Default::default()
-    };
-    if let Some(status) = new_status {
-        active.status = Set(status.to_string());
-    }
-    if let Some(reviewed_at) = reviewed_at {
-        active.reviewed_at = Set(Some(reviewed_at));
-    }
-    let updated_version = active.update(txn).await?;
-
-    let note_row = note::Entity::find_by_id(note_id)
-        .one(txn)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
-    let now = chrono::Utc::now().fixed_offset();
-    note::ActiveModel {
-        id: Set(note_id),
-        updated_at: Set(now),
-        ..Default::default()
-    }
-    .update(txn)
-    .await?;
-
-    let content_changed = current.as_ref().is_none_or(|current| {
-        current.body_md != updated_version.body_md
-            || current.graphs_json != updated_version.graphs_json
-    });
-    if content_changed {
-        sync_note_refs(
-            txn,
-            note_row.id,
-            &updated_version.body_md,
-            &updated_version.graphs_json,
-        )
-        .await?;
-    }
-
-    Ok((updated_version, previous_current_id))
+    Ok(())
 }
 
 /// 承認待ちバージョンを承認し、現行バージョンにする。
@@ -184,11 +131,11 @@ async fn set_current_version(
     request_body = ChangeStatusRequest,
     responses(
         (status = 200, body = note_version::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
-        (status = 409, body = ErrorResponse),
-        (status = 415, body = ErrorResponse),
-        (status = 422, body = ErrorResponse),
+        (status = 409, description = "バージョンが承認待ちではない", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
 )]
@@ -199,15 +146,17 @@ pub async fn approve_note_version(
 ) -> Result<Json<note_version::Model>, AppError> {
     let txn = state.db.begin().await?;
     let version = find_note_version(&txn, note_id, version_no).await?;
-    if version.status != INITIAL_NOTE_STATUS {
-        return Err(AppError::Conflict(format!(
-            "note version {note_id}/{version_no} is not pending"
-        )));
-    }
+    ensure_pending_version(&version)?;
 
     let now = chrono::Utc::now().fixed_offset();
-    let (updated, previous_current_id) =
-        set_current_version(&txn, note_id, version.clone(), Some("approved"), Some(now)).await?;
+    let (updated, previous_current_id) = note_versions::set_current_version(
+        &txn,
+        note_id,
+        version.clone(),
+        Some("approved"),
+        Some(now),
+    )
+    .await?;
     change_history::record(
         &txn,
         TargetKind::Note,
@@ -239,13 +188,13 @@ pub async fn approve_note_version(
     request_body = ChangeStatusRequest,
     responses(
         (status = 200, body = note_version::Model),
-        (status = 400, body = ErrorResponse),
+        (status = 400, description = "リクエストパラメータが不正、または却下理由が必要", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
-        (status = 409, body = ErrorResponse),
-        (status = 415, body = ErrorResponse),
-        (status = 422, body = ErrorResponse),
+        (status = 409, description = "バージョンが承認待ちではない", body = ErrorResponse),
+        (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
+        (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
-        (status = 503, body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定、または agent_config が見つからない", body = ErrorResponse),
     )
 )]
 pub async fn reject_note_version(
@@ -254,11 +203,7 @@ pub async fn reject_note_version(
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<note_version::Model>, AppError> {
     let version = find_note_version(&state.db, note_id, version_no).await?;
-    if version.status != INITIAL_NOTE_STATUS {
-        return Err(AppError::Conflict(format!(
-            "note version {note_id}/{version_no} is not pending"
-        )));
-    }
+    ensure_pending_version(&version)?;
 
     let line_comment_count = comment::Entity::find()
         .filter(comment::Column::TargetKind.eq("note_version"))
@@ -306,11 +251,7 @@ pub async fn reject_note_version(
 
     let txn = state.db.begin().await?;
     let current_version = find_note_version(&txn, note_id, version_no).await?;
-    if current_version.status != INITIAL_NOTE_STATUS {
-        return Err(AppError::Conflict(format!(
-            "note version {note_id}/{version_no} is not pending"
-        )));
-    }
+    ensure_pending_version(&current_version)?;
     let now = chrono::Utc::now().fixed_offset();
     let updated = note_version::ActiveModel {
         id: Set(current_version.id),
@@ -382,7 +323,7 @@ pub async fn make_note_version_current(
     }
 
     let (updated, previous_current_id) =
-        set_current_version(&txn, note_id, version.clone(), None, None).await?;
+        note_versions::set_current_version(&txn, note_id, version.clone(), None, None).await?;
     change_history::record(
         &txn,
         TargetKind::Note,

@@ -6339,6 +6339,7 @@ export interface operations {
           'application/json': components['schemas']['NoteVersion']
         }
       }
+      /** @description リクエストパラメータが不正 */
       400: {
         headers: {
           [name: string]: unknown
@@ -6355,6 +6356,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description バージョンが承認待ちではない */
       409: {
         headers: {
           [name: string]: unknown
@@ -6363,6 +6365,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description Content-Type ヘッダが application/json ではない */
       415: {
         headers: {
           [name: string]: unknown
@@ -6371,6 +6374,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description リクエストボディのパースに失敗 */
       422: {
         headers: {
           [name: string]: unknown
@@ -6463,6 +6467,7 @@ export interface operations {
           'application/json': components['schemas']['NoteVersion']
         }
       }
+      /** @description リクエストパラメータが不正、または却下理由が必要 */
       400: {
         headers: {
           [name: string]: unknown
@@ -6479,6 +6484,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description バージョンが承認待ちではない */
       409: {
         headers: {
           [name: string]: unknown
@@ -6487,6 +6493,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description Content-Type ヘッダが application/json ではない */
       415: {
         headers: {
           [name: string]: unknown
@@ -6495,6 +6502,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description リクエストボディのパースに失敗 */
       422: {
         headers: {
           [name: string]: unknown
@@ -6511,6 +6519,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
+      /** @description agent task client が未設定、または agent_config が見つからない */
       503: {
         headers: {
           [name: string]: unknown

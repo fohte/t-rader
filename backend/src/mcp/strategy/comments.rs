@@ -75,24 +75,19 @@ impl StrategyServer {
         session_strategy_id: Uuid,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
-        match params.target_kind.as_str() {
-            "note_version" => {
-                let version = note_version::Entity::find_by_id(params.target_id)
-                    .one(&self.db)
-                    .await
-                    .map_err(db_error)?
-                    .ok_or_else(|| McpError::resource_not_found("note version not found", None))?;
-                fetch_note_owned_by(&self.db, version.note_id, session_strategy_id).await?;
-            }
-            "annotation" => {
-                fetch_annotation_owned_by(&self.db, params.target_id, session_strategy_id).await?;
-            }
-            other => {
-                return Err(invalid_params(format!(
-                    "invalid target_kind: {other} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})"
-                )));
-            }
+        if !ALLOWED_COMMENT_TARGET_KIND.contains(&params.target_kind.as_str()) {
+            return Err(invalid_params(format!(
+                "invalid target_kind: {} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})",
+                params.target_kind
+            )));
         }
+        ensure_comment_target_owned_by(
+            &self.db,
+            &params.target_kind,
+            params.target_id,
+            session_strategy_id,
+        )
+        .await?;
 
         let mut query = comment::Entity::find()
             .filter(comment::Column::TargetKind.eq(params.target_kind))

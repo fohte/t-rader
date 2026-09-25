@@ -46,7 +46,35 @@ const replies: NoteVersionComment[] = [
     author_kind: 'llm',
     author_label: 'analyst',
     resolved: true,
+    anchor_text: null,
+    anchor_side: null,
+    start_line: null,
+    end_line: null,
     created_at: '2026-01-12T03:05:00Z',
+  },
+]
+
+const unanchoredThread: NoteVersionComment[] = [
+  {
+    ...comment,
+    id: 'fake-comment-c',
+    body: '全体の前提を確認してください。',
+    anchor_text: null,
+    anchor_side: null,
+    start_line: null,
+    end_line: null,
+  },
+  {
+    ...comment,
+    id: 'fake-comment-d',
+    parent_id: 'fake-comment-c',
+    body: '前提を追記しました。',
+    author_kind: 'llm',
+    author_label: 'analyst',
+    anchor_text: null,
+    anchor_side: null,
+    start_line: null,
+    end_line: null,
   },
 ]
 
@@ -97,6 +125,12 @@ export const TwoColumns: Story = { args: { mode: 'two-column' } }
 export const ThreadAndReply: Story = {
   args: {
     comments: replies,
+  },
+}
+
+export const UnanchoredThread: Story = {
+  args: {
+    comments: unanchoredThread,
   },
 }
 

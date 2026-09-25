@@ -136,6 +136,68 @@ pub async fn append_version(
     Ok(version)
 }
 
+/// 指定した版を現行にし、本文に紐づく参照データを同期する。
+pub async fn set_current_version(
+    txn: &DatabaseTransaction,
+    note_id: Uuid,
+    version: note_version::Model,
+    new_status: Option<&str>,
+    reviewed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+) -> Result<(note_version::Model, Option<Uuid>), AppError> {
+    let current = find_current_version(txn, note_id).await?;
+    let previous_current_id = current.as_ref().map(|current| current.id);
+    if let Some(current) = current.as_ref().filter(|current| current.id != version.id) {
+        note_version::ActiveModel {
+            id: Set(current.id),
+            is_current: Set(false),
+            ..Default::default()
+        }
+        .update(txn)
+        .await?;
+    }
+
+    let mut active = note_version::ActiveModel {
+        id: Set(version.id),
+        is_current: Set(true),
+        ..Default::default()
+    };
+    if let Some(status) = new_status {
+        active.status = Set(status.to_string());
+    }
+    if let Some(reviewed_at) = reviewed_at {
+        active.reviewed_at = Set(Some(reviewed_at));
+    }
+    let updated_version = active.update(txn).await?;
+
+    let note_row = note::Entity::find_by_id(note_id)
+        .one(txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
+    note::ActiveModel {
+        id: Set(note_id),
+        updated_at: Set(chrono::Utc::now().fixed_offset()),
+        ..Default::default()
+    }
+    .update(txn)
+    .await?;
+
+    let content_changed = current.as_ref().is_none_or(|current| {
+        current.body_md != updated_version.body_md
+            || current.graphs_json != updated_version.graphs_json
+    });
+    if content_changed {
+        sync_note_refs(
+            txn,
+            note_row.id,
+            &updated_version.body_md,
+            &updated_version.graphs_json,
+        )
+        .await?;
+    }
+
+    Ok((updated_version, previous_current_id))
+}
+
 pub async fn find_current_version<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: Uuid,

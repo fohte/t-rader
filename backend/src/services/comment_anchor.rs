@@ -5,21 +5,6 @@ use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use crate::entities::note_version;
 use crate::error::AppError;
 
-/// `body_md` 中から `anchor_text` を検索し、見つかれば 1-indexed の `(start_line, end_line)` を返す。
-/// 複数箇所に一致する場合は位置を一意に決められないため `None` を返す。
-pub fn locate_anchor(body_md: &str, anchor_text: &str) -> Option<(i32, i32)> {
-    if anchor_text.is_empty() {
-        return None;
-    }
-    if body_md.matches(anchor_text).count() != 1 {
-        return None;
-    }
-    let pos = body_md.find(anchor_text)?;
-    let start_line = body_md[..pos].matches('\n').count() as i32 + 1;
-    let end_line = start_line + anchor_text.matches('\n').count() as i32;
-    Some((start_line, end_line))
-}
-
 /// `note_version` コメントの行範囲を本文と照合して検証する。
 pub async fn validate_version_anchor<C: ConnectionTrait>(
     db: &C,
@@ -67,11 +52,12 @@ pub async fn validate_version_anchor<C: ConnectionTrait>(
     let body_md = if anchor_side == "new" {
         version.body_md
     } else {
-        let Some(previous_version_no) = version.version_no.checked_sub(1) else {
+        if version.version_no <= 1 {
             return Err(AppError::Validation(
                 "the first version has no old-side lines".into(),
             ));
-        };
+        }
+        let previous_version_no = version.version_no - 1;
         note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(version.note_id))
             .filter(note_version::Column::VersionNo.eq(previous_version_no))
@@ -93,41 +79,4 @@ pub async fn validate_version_anchor<C: ConnectionTrait>(
     }
 
     Ok((Some(start_line), Some(end_line)))
-}
-
-#[cfg(test)]
-mod tests {
-    use rstest::rstest;
-
-    use super::*;
-
-    #[rstest]
-    #[case::found_single_line(indoc::indoc! {"
-        line1
-        line2
-        line3"}, "line2", Some((2, 2)))]
-    #[case::found_multi_line(indoc::indoc! {"
-        a
-        b
-        c
-        d"}, "b\nc", Some((2, 3)))]
-    #[case::not_found(indoc::indoc! {"
-        a
-        b
-        c"}, "missing", None)]
-    #[case::empty_anchor(indoc::indoc! {"
-        a
-        b
-        c"}, "", None)]
-    #[case::multiple_matches(indoc::indoc! {"
-        dup
-        b
-        dup"}, "dup", None)]
-    fn test_locate_anchor(
-        #[case] body_md: &str,
-        #[case] anchor_text: &str,
-        #[case] expected: Option<(i32, i32)>,
-    ) {
-        assert_eq!(locate_anchor(body_md, anchor_text), expected);
-    }
 }

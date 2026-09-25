@@ -36,6 +36,7 @@ export function NoteVersionDiffPanel({
     params: { query: { target_kind: 'note_version', target_id: version.id } },
   })
   const createComment = $api.useMutation('post', '/api/comments')
+  const replyComment = $api.useMutation('post', '/api/comments')
   const resolveComment = $api.useMutation('patch', '/api/comments/{id}')
 
   const invalidateComments = (): void => {
@@ -71,7 +72,7 @@ export function NoteVersionDiffPanel({
   }
 
   const submitReply = (parentId: string, body: string): void => {
-    createComment.mutate(
+    replyComment.mutate(
       {
         body: {
           target_kind: 'note_version',
@@ -115,14 +116,16 @@ export function NoteVersionDiffPanel({
       activeCommentKey={activeCommentKey}
       replyingCommentId={replyingCommentId}
       isCreating={createComment.isPending}
-      isReplying={createComment.isPending}
+      isReplying={replyComment.isPending}
       resolvingCommentId={resolvingCommentId}
       hasCreateError={createComment.isError}
-      hasReplyError={createComment.isError}
+      hasReplyError={replyComment.isError}
       isCommentsPending={isPending}
       hasCommentsError={isError}
       onModeChange={setMode}
       onStartComment={(anchor) => {
+        createComment.reset()
+        replyComment.reset()
         setReplyingCommentId(null)
         setActiveCommentKey(`${anchor.side}:${String(anchor.lineNumber)}`)
       }}
@@ -130,7 +133,12 @@ export function NoteVersionDiffPanel({
         setActiveCommentKey(null)
       }}
       onCreateComment={submitComment}
-      onStartReply={setReplyingCommentId}
+      onStartReply={(commentId) => {
+        createComment.reset()
+        replyComment.reset()
+        setActiveCommentKey(null)
+        setReplyingCommentId(commentId)
+      }}
       onCancelReply={() => {
         setReplyingCommentId(null)
       }}

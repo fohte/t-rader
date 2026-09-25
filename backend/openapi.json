@@ -4971,7 +4971,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "リクエストパラメータが不正",
             "content": {
               "application/json": {
                 "schema": {
@@ -4991,7 +4991,7 @@
             }
           },
           "409": {
-            "description": "",
+            "description": "バージョンが承認待ちではない",
             "content": {
               "application/json": {
                 "schema": {
@@ -5001,7 +5001,7 @@
             }
           },
           "415": {
-            "description": "",
+            "description": "Content-Type ヘッダが application/json ではない",
             "content": {
               "application/json": {
                 "schema": {
@@ -5011,7 +5011,7 @@
             }
           },
           "422": {
-            "description": "",
+            "description": "リクエストボディのパースに失敗",
             "content": {
               "application/json": {
                 "schema": {
@@ -5157,7 +5157,7 @@
             }
           },
           "400": {
-            "description": "",
+            "description": "リクエストパラメータが不正、または却下理由が必要",
             "content": {
               "application/json": {
                 "schema": {
@@ -5177,7 +5177,7 @@
             }
           },
           "409": {
-            "description": "",
+            "description": "バージョンが承認待ちではない",
             "content": {
               "application/json": {
                 "schema": {
@@ -5187,7 +5187,7 @@
             }
           },
           "415": {
-            "description": "",
+            "description": "Content-Type ヘッダが application/json ではない",
             "content": {
               "application/json": {
                 "schema": {
@@ -5197,7 +5197,7 @@
             }
           },
           "422": {
-            "description": "",
+            "description": "リクエストボディのパースに失敗",
             "content": {
               "application/json": {
                 "schema": {
@@ -5217,7 +5217,7 @@
             }
           },
           "503": {
-            "description": "",
+            "description": "agent task client が未設定、または agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
