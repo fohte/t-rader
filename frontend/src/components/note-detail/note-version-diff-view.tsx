@@ -6,7 +6,7 @@ import type { NoteVersionComment } from '#lib/api/note-version-types'
 import type { NoteVersionDiffRow } from '#lib/note-version-diff'
 
 export type DiffColumnMode = 'one-column' | 'two-column'
-export type DiffAnchorSide = 'old' | 'new'
+type DiffAnchorSide = 'old' | 'new'
 
 export interface DiffCommentAnchor {
   side: DiffAnchorSide

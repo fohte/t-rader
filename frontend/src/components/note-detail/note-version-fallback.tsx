@@ -1,6 +1,6 @@
 import { Skeleton } from '#components/ui/skeleton'
 
-export type NoteVersionFallbackState = 'loading' | 'missing' | 'error'
+type NoteVersionFallbackState = 'loading' | 'missing' | 'error'
 
 interface NoteVersionFallbackProps {
   state: NoteVersionFallbackState
