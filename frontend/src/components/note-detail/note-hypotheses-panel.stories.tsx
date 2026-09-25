@@ -90,18 +90,22 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Linked: Story = {
+  name: 'shows hypotheses already linked to the note.',
   args: { hypotheses: linkedHypotheses },
 }
 
 export const Empty: Story = {
+  name: 'shows the panel when no hypotheses are linked to the note.',
   args: {},
 }
 
 export const NoStrategy: Story = {
+  name: 'shows the message when no strategy is available.',
   args: { strategyAvailable: false },
 }
 
 export const AttachDialog: Story = {
+  name: 'shows the dialog for linking an existing hypothesis to the note.',
   args: {
     candidates: [candidate],
     isDialogOpen: true,
@@ -109,6 +113,7 @@ export const AttachDialog: Story = {
 }
 
 export const SearchMatchesCandidate: Story = {
+  name: 'shows a candidate that matches the hypothesis search.',
   args: {
     candidates: [candidate],
     isDialogOpen: true,
@@ -117,6 +122,7 @@ export const SearchMatchesCandidate: Story = {
 }
 
 export const NoMatchingCandidates: Story = {
+  name: 'shows the empty search result when no hypotheses match.',
   args: {
     candidates: [],
     isDialogOpen: true,

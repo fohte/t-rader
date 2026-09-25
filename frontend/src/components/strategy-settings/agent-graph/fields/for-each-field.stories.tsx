@@ -65,11 +65,13 @@ function Interactive({
 }
 
 export const NoPriorArrayOutput: Story = {
+  name: 'shows the repeat field when no earlier phase has array output.',
   args: { phases: [PLAN], index: 0, value: undefined, onChange: () => {} },
   render: () => <Interactive phases={[PLAN]} index={0} initial={undefined} />,
 }
 
 export const WithArrayOption: Story = {
+  name: 'shows available array outputs while choosing items to process.',
   args: {
     phases: [PLAN, INVESTIGATE],
     index: 1,
@@ -87,6 +89,7 @@ export const WithArrayOption: Story = {
 }
 
 export const Selected: Story = {
+  name: 'shows a selected array output to process for each run.',
   args: {
     phases: [PLAN, INVESTIGATE],
     index: 1,

@@ -72,9 +72,11 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows the confirmation dialog for deleting a strategy.',
   render: () => <RouterProvider router={createDialogRouter()} />,
 }
 
 export const NameMismatch: Story = {
+  name: 'shows an error when the confirmation name does not match.',
   render: () => <RouterProvider router={createDialogRouter('違う名前')} />,
 }

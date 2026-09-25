@@ -27,6 +27,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const List: Story = {
+  name: 'shows running, completed, and failed tasks in the run history.',
   render: () => (
     <RouterProvider
       router={createTaskRunListViewRouter({
@@ -66,6 +67,7 @@ export const List: Story = {
 }
 
 export const Loading: Story = {
+  name: 'shows the loading state while task runs are being fetched.',
   render: () => (
     <RouterProvider
       router={createTaskRunListViewRouter({
@@ -76,6 +78,7 @@ export const Loading: Story = {
 }
 
 export const Empty: Story = {
+  name: 'shows the empty state when the strategy has no task runs.',
   render: () => (
     <RouterProvider
       router={createTaskRunListViewRouter({

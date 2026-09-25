@@ -12,6 +12,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'summarizes profitable trading with fees and open positions.',
   args: {
     realizedPnl: 124500,
     feesTotal: 8920,
@@ -21,6 +22,7 @@ export const Default: Story = {
 }
 
 export const Loss: Story = {
+  name: 'shows a net loss alongside fees and open positions.',
   args: {
     realizedPnl: -38200,
     feesTotal: 12400,
@@ -30,6 +32,7 @@ export const Loss: Story = {
 }
 
 export const Empty: Story = {
+  name: 'shows zeroed trading stats before any trades are recorded.',
   args: {
     realizedPnl: 0,
     feesTotal: 0,

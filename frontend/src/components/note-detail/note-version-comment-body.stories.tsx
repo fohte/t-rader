@@ -40,9 +40,12 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const UnresolvedHumanComment: Story = {}
+export const UnresolvedHumanComment: Story = {
+  name: 'shows an unresolved comment written by a reviewer.',
+}
 
 export const ResolvedAgentReply: Story = {
+  name: 'shows a resolved assistant reply in a comment thread.',
   args: {
     comment: {
       ...comment,

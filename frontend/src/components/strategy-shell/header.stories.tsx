@@ -39,10 +39,12 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const StrategyList: Story = {
+  name: 'shows strategy navigation on the strategy list page.',
   render: () => <RouterProvider router={createHeaderRouter('/strategies')} />,
 }
 
 export const StrategyHome: Story = {
+  name: 'shows the header on a strategy performance page.',
   render: () => (
     <RouterProvider
       router={createHeaderRouter('/strategies/semi-swing/performance')}
@@ -51,5 +53,6 @@ export const StrategyHome: Story = {
 }
 
 export const Portfolio: Story = {
+  name: 'shows the portfolio page with portfolio navigation active.',
   render: () => <RouterProvider router={createHeaderRouter('/portfolio')} />,
 }

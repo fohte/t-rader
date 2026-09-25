@@ -21,6 +21,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Create: Story = {
+  name: 'opens a blank form for creating an RSS feed.',
   args: {
     open: true,
     onOpenChange: () => {},
@@ -29,6 +30,7 @@ export const Create: Story = {
 }
 
 export const Edit: Story = {
+  name: 'opens the RSS feed form with its current settings.',
   args: {
     open: true,
     onOpenChange: () => {},

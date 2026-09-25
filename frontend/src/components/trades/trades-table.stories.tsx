@@ -107,6 +107,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const WithStrategyColumn: Story = {
+  name: 'shows trades with strategy labels and note actions.',
   args: {
     trades,
     strategies,
@@ -117,6 +118,7 @@ export const WithStrategyColumn: Story = {
 }
 
 export const SingleStrategy: Story = {
+  name: 'shows one strategy’s trades without a strategy column.',
   args: {
     trades: trades.filter((t) => t.strategy_id === SWING_ID),
     strategies,
@@ -127,14 +129,17 @@ export const SingleStrategy: Story = {
 }
 
 export const Empty: Story = {
+  name: 'shows the default empty state for a trade table.',
   args: { trades: [], strategies, stocks, showStrategy: true },
 }
 
 export const StaticNoteCount: Story = {
+  name: 'shows note counts without trade-note management actions.',
   args: { trades, strategies, stocks, showStrategy: true },
 }
 
 export const EmptyUnlinked: Story = {
+  name: 'shows an empty state when no unlinked trades remain.',
   args: {
     trades: [],
     strategies,

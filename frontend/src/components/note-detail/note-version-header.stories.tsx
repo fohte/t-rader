@@ -36,9 +36,13 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const PendingReview: Story = { args: { version: baseVersion } }
+export const PendingReview: Story = {
+  name: 'shows the header for a version awaiting review.',
+  args: { version: baseVersion },
+}
 
 export const CurrentApproved: Story = {
+  name: 'shows the header for the current approved version.',
   args: {
     version: {
       ...baseVersion,

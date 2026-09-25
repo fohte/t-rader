@@ -47,16 +47,19 @@ const INVALID_OUTPUT = {
 }
 
 export const Valid: Story = {
+  name: 'shows a valid structured output schema.',
   args: { value: VALID_OUTPUT, onChange: () => {} },
   render: () => <Interactive initial={VALID_OUTPUT} />,
 }
 
 export const Invalid: Story = {
+  name: 'shows a schema with an invalid field definition.',
   args: { value: INVALID_OUTPUT, onChange: () => {} },
   render: () => <Interactive initial={INVALID_OUTPUT} />,
 }
 
 export const Empty: Story = {
+  name: 'shows an empty output schema.',
   args: { value: {}, onChange: () => {} },
   render: () => <Interactive initial={{}} />,
 }

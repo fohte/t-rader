@@ -23,11 +23,13 @@ function Interactive({ initial }: { initial: string[] }) {
 }
 
 export const Empty: Story = {
+  name: 'shows the skills field with no selection.',
   args: { value: [], onChange: () => {}, options: OPTIONS },
   render: () => <Interactive initial={[]} />,
 }
 
 export const Selected: Story = {
+  name: 'shows the skills field with one selected skill.',
   args: { value: ['snapshot'], onChange: () => {}, options: OPTIONS },
   render: () => <Interactive initial={['snapshot']} />,
 }

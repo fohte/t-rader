@@ -69,6 +69,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'renders formatted markdown content for a note.',
   args: { source: SAMPLE },
 }
 
@@ -101,5 +102,6 @@ const GRAPH_DEF: components['schemas']['GraphDef'] = {
 }
 
 export const WithGraph: Story = {
+  name: 'renders a markdown note alongside an embedded graph.',
   args: { source: GRAPH_SAMPLE, graphs: [GRAPH_DEF] },
 }
