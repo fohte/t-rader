@@ -175,8 +175,8 @@ pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
     pub note_id: Option<Uuid>,
     pub title: Option<String>,
-    /// `[[note:<uuid>]]` はリンク元版を作成した時点の現行版に固定する。
-    /// `@current` を付けると以降の現行版に追従する。
+    /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+    /// `@current` を付けると以降の現行バージョンに追従する。
     pub body_md: Option<String>,
     /// `null` を明示すると既存タグを NULL に更新する。フィールド省略時は変更しない。
     #[serde(
@@ -202,7 +202,7 @@ pub struct WriteNoteResult {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadNoteParams {
     pub note_id: Uuid,
-    /// 省略時は現行版を読む。
+    /// 省略時は現行バージョンを読む。
     pub version_id: Option<Uuid>,
 }
 
@@ -210,7 +210,7 @@ pub struct ReadNoteParams {
 pub struct NoteLinkDto {
     /// 参照先ノート ID。
     pub to_note_id: Uuid,
-    /// 固定した版 ID。null の場合は参照先ノートの現行版に追従する。
+    /// 固定したバージョン ID。null の場合は参照先ノートの現行バージョンに追従する。
     pub to_version_id: Option<Uuid>,
 }
 
@@ -229,6 +229,7 @@ pub struct NoteDto {
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
     pub graphs: Vec<GraphDef>,
+    /// `read_note` の結果でのみ含まれる、このバージョンから出るリンク。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<NoteLinkDto>>,
 }

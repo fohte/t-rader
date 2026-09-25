@@ -58,22 +58,23 @@ pub(crate) async fn find_note_or_404(
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
 }
 
-struct CurrentNote {
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct GetNoteQuery {
+    /// 省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。
+    pub version_id: Option<Uuid>,
+}
+
+struct NoteWithVersion {
     note: note::Model,
     version: note_version::Model,
     created_by_kind: String,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct GetNoteQuery {
-    pub version_id: Option<Uuid>,
-}
-
 async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
     db: &C,
     id: Uuid,
-) -> Result<CurrentNote, AppError> {
+) -> Result<NoteWithVersion, AppError> {
     find_note_version_or_404(db, id, None).await
 }
 
@@ -81,36 +82,31 @@ async fn find_note_version_or_404<C: sea_orm::ConnectionTrait>(
     db: &C,
     id: Uuid,
     version_id: Option<Uuid>,
-) -> Result<CurrentNote, AppError> {
+) -> Result<NoteWithVersion, AppError> {
     let note = note::Entity::find_by_id(id)
         .one(db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
-    let version = if let Some(version_id) = version_id {
-        note_version::Entity::find_by_id(version_id)
-            .filter(note_version::Column::NoteId.eq(id))
-            .one(db)
-            .await?
-            .ok_or_else(|| {
+    let version = note_versions::find_version_of_note(db, id, version_id)
+        .await?
+        .ok_or_else(|| match version_id {
+            Some(version_id) => {
                 AppError::NotFound(format!("version {version_id} for note {id} not found"))
-            })?
-    } else {
-        note_versions::find_current_version(db, id)
-            .await?
-            .ok_or_else(|| AppError::NotFound(format!("current version for note {id} not found")))?
-    };
+            }
+            None => AppError::NotFound(format!("current version for note {id} not found")),
+        })?;
     let created_by_kind = find_initial_created_by_kind(db, &[id])
         .await?
         .remove(&id)
         .ok_or_else(|| AppError::NotFound(format!("initial version for note {id} not found")))?;
-    Ok(CurrentNote {
+    Ok(NoteWithVersion {
         note,
         version,
         created_by_kind,
     })
 }
 
-fn current_note_response(current: CurrentNote) -> NoteResponse {
+fn note_version_response(current: NoteWithVersion) -> NoteResponse {
     NoteResponse::from_version(current.note, current.version, current.created_by_kind)
 }
 
@@ -187,7 +183,7 @@ pub async fn get_note(
     JsonPath(id): JsonPath<Uuid>,
     JsonQuery(params): JsonQuery<GetNoteQuery>,
 ) -> Result<Json<NoteResponse>, AppError> {
-    Ok(Json(current_note_response(
+    Ok(Json(note_version_response(
         find_note_version_or_404(&state.db, id, params.version_id).await?,
     )))
 }
@@ -420,7 +416,7 @@ pub async fn update_note(
     let updated_current = find_current_note_or_404(&txn, id).await?;
     txn.commit().await?;
 
-    Ok(Json(current_note_response(updated_current)))
+    Ok(Json(note_version_response(updated_current)))
 }
 
 /// ノート削除
@@ -558,12 +554,16 @@ mod tests {
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
         obj.remove("id");
+        obj.insert("version_id".into(), json!("<dyn>"));
         obj.remove("created_at");
         obj.remove("updated_at");
         assert_eq!(
             body,
             json!({
                 "strategy_id": null,
+                "version_id": "<dyn>",
+                "version_no": 1,
+                "is_current": true,
                 "title": "市況ノート",
                 "body_md": "body",
                 "frontmatter_json": {},
@@ -653,12 +653,16 @@ mod tests {
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
         obj.remove("id");
+        obj.insert("version_id".into(), json!("<dyn>"));
         obj.remove("created_at");
         obj.remove("updated_at");
         assert_eq!(
             body,
             json!({
                 "strategy_id": null,
+                "version_id": "<dyn>",
+                "version_no": 1,
+                "is_current": true,
                 "title": "市況ノート",
                 "body_md": "body",
                 "frontmatter_json": {},
@@ -696,10 +700,14 @@ mod tests {
         let obj = body.as_object_mut().unwrap();
         obj.remove("created_at");
         obj.remove("updated_at");
+        obj.insert("version_id".into(), json!("<dyn>"));
         assert_eq!(
             body,
             json!({
                 "id": note_id,
+                "version_id": "<dyn>",
+                "version_no": 1,
+                "is_current": true,
                 "strategy_id": strategy_id,
                 "title": "タイトル",
                 "body_md": "body",

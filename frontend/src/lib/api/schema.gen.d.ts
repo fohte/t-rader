@@ -831,7 +831,7 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** ノート版からの出リンクと、現行版からの被リンクを返す。 */
+    /** ノートのバージョンから出るリンクと、現行バージョンからの被リンクを返す。 */
     get: operations['get_note_links']
     put?: never
     post?: never
@@ -1404,10 +1404,10 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** 取引に紐づく判断ノート一覧 (リンク作成順) */
+    /** 取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す) */
     get: operations['list_trade_notes']
     put?: never
-    /** 取引に判断ノートを紐付ける */
+    /** 取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する) */
     post: operations['create_trade_note']
     delete?: never
     options?: never
@@ -1767,8 +1767,8 @@ export interface components {
     }
     CreateNoteRequest: {
       /**
-       * @description `[[note:<uuid>]]` はリンク元版を作成した時点の現行版に固定する。
-       *     `@current` を付けると以降の現行版に追従する。
+       * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+       *     `@current` を付けると以降の現行バージョンに追従する。
        */
       body_md: string
       /** @description 作成者種別 ("human" | "llm")。デフォルトは "human" */
@@ -2003,6 +2003,7 @@ export interface components {
       graphs_json: components['schemas']['GraphDef'][]
       /** Format: uuid */
       id: string
+      is_current: boolean
       status: string
       /** Format: uuid */
       strategy_id?: string | null
@@ -2045,8 +2046,8 @@ export interface components {
       title?: string | null
       /**
        * Format: uuid
-       * @description 出リンクでは固定先の版 ID、被リンクでは現行の参照元版 ID。
-       *     `null` は参照先の現行版への追従を表す。
+       * @description 出リンクでは固定先のバージョン ID、被リンクでは現行の参照元バージョン ID。
+       *     `null` は参照先の現行バージョンへの追従を表す。
        */
       version_id?: string | null
       /** Format: int32 */
@@ -2484,8 +2485,8 @@ export interface components {
     }
     UpdateNoteRequest: {
       /**
-       * @description `[[note:<uuid>]]` はリンク元版を作成した時点の現行版に固定する。
-       *     `@current` を付けると以降の現行版に追従する。
+       * @description `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+       *     `@current` を付けると以降の現行バージョンに追従する。
        */
       body_md?: string | null
       frontmatter_json?: {
@@ -5787,6 +5788,7 @@ export interface operations {
   get_note: {
     parameters: {
       query?: {
+        /** @description 省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。 */
         version_id?: string
       }
       header?: never
@@ -6188,7 +6190,7 @@ export interface operations {
   get_note_links: {
     parameters: {
       query?: {
-        /** @description 省略時はノートの現行版から出るリンクを返す。 */
+        /** @description 省略時はノートの現行バージョンから出るリンクを返す。 */
         version_id?: string
       }
       header?: never

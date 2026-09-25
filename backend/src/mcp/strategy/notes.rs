@@ -18,7 +18,7 @@ use crate::services::graph::{GraphDef, validate_graphs};
 use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
     self, AppendVersion, current_note_ids_with_status, find_current_version, find_current_versions,
-    find_initial_created_by_kind,
+    find_initial_created_by_kind, find_version_of_note,
 };
 
 use super::dto::{
@@ -363,26 +363,16 @@ impl StrategyServer {
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
-        let version = if let Some(version_id) = params.version_id {
-            note_version::Entity::find_by_id(version_id)
-                .filter(note_version::Column::NoteId.eq(params.note_id))
-                .one(&self.db)
-                .await
-                .map_err(db_error)?
-                .ok_or_else(|| {
-                    invalid_params(format!(
-                        "version_id {version_id} does not belong to note {}",
-                        params.note_id
-                    ))
-                })?
-        } else {
-            find_current_version(&self.db, params.note_id)
-                .await
-                .map_err(db_error)?
-                .ok_or_else(|| {
-                    internal_error(format!("note {} has no current version", params.note_id))
-                })?
-        };
+        let version = find_version_of_note(&self.db, params.note_id, params.version_id)
+            .await
+            .map_err(db_error)?
+            .ok_or_else(|| match params.version_id {
+                Some(version_id) => invalid_params(format!(
+                    "version_id {version_id} does not belong to note {}",
+                    params.note_id
+                )),
+                None => internal_error(format!("note {} has no current version", params.note_id)),
+            })?;
         let created_by_kind = find_initial_created_by_kind(&self.db, &[params.note_id])
             .await
             .map_err(db_error)?

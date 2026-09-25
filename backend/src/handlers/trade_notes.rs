@@ -24,7 +24,7 @@ async fn find_trade_or_404(
         .ok_or_else(|| AppError::NotFound(format!("trade {trade_id} not found")))
 }
 
-/// 取引に紐づく判断ノート一覧 (リンク作成順)
+/// 取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す)
 #[utoipa::path(
     get,
     path = "/api/trades/{id}/notes",
@@ -67,7 +67,7 @@ pub async fn list_trade_notes(
     let mut notes_by_id: HashMap<Uuid, note::Model> =
         notes.into_iter().map(|note| (note.id, note)).collect();
 
-    // is_in() は順序を保証しないため、リンク作成順の note_ids を基準に組み立て直す
+    // is_in() は順序を保証しないため、リンク作成順の links を基準に固定バージョンを組み立て直す
     let ordered = links
         .into_iter()
         .map(|link| {
@@ -94,7 +94,7 @@ pub async fn list_trade_notes(
     Ok(Json(ordered))
 }
 
-/// 取引に判断ノートを紐付ける
+/// 取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する)
 #[utoipa::path(
     post,
     path = "/api/trades/{id}/notes",
@@ -225,12 +225,14 @@ mod tests {
 
     fn normalize_trade_note(mut v: serde_json::Value) -> serde_json::Value {
         v["created_at"] = json!("<dyn>");
+        v["note_version_id"] = json!("<dyn>");
         v
     }
 
     fn normalize_note(mut v: serde_json::Value) -> serde_json::Value {
         v["created_at"] = json!("<dyn>");
         v["updated_at"] = json!("<dyn>");
+        v["version_id"] = json!("<dyn>");
         v
     }
 
@@ -251,6 +253,7 @@ mod tests {
             json!({
                 "trade_id": tid,
                 "note_id": nid,
+                "note_version_id": "<dyn>",
                 "created_at": "<dyn>",
             }),
         );
@@ -266,6 +269,9 @@ mod tests {
             normalized,
             vec![json!({
                 "id": nid,
+                "version_id": "<dyn>",
+                "version_no": 1,
+                "is_current": true,
                 "strategy_id": sid,
                 "title": "t",
                 "body_md": "b",

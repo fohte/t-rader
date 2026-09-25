@@ -13,7 +13,7 @@ use crate::entities::{note, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
 use crate::services::comment_anchor;
-use crate::services::note_links::sync_note_links;
+use crate::services::note_links::{copy_note_links, sync_note_links};
 use crate::services::note_refs::{sync_note_refs, sync_note_refs_after_graphs_only_update};
 
 pub struct AppendVersion {
@@ -81,11 +81,6 @@ pub async fn append_version(
     .exec_with_returning(txn)
     .await?;
 
-    let source_note = note::Entity::find_by_id(note_id)
-        .one(txn)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
-
     note::ActiveModel {
         id: Set(note_id),
         updated_at: Set(chrono::Utc::now().fixed_offset()),
@@ -100,10 +95,15 @@ pub async fn append_version(
     let graphs_changed = previous
         .as_ref()
         .is_none_or(|previous| previous.graphs_json != version.graphs_json);
-    if body_changed || graphs_changed {
-        if body_changed {
-            sync_note_refs(txn, note_id, &version.body_md, &version.graphs_json).await?;
-        } else {
+    if body_changed {
+        sync_note_refs(txn, note_id, &version.body_md, &version.graphs_json).await?;
+        let source_note = note::Entity::find_by_id(note_id)
+            .one(txn)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
+        sync_note_links(txn, &source_note, version.id, &version.body_md).await?;
+    } else {
+        if graphs_changed {
             sync_note_refs_after_graphs_only_update(
                 txn,
                 note_id,
@@ -112,15 +112,10 @@ pub async fn append_version(
             )
             .await?;
         }
+        if let Some(previous) = previous.as_ref() {
+            copy_note_links(txn, previous.id, version.id).await?;
+        }
     }
-    sync_note_links(
-        txn,
-        &source_note,
-        version.id,
-        &version.body_md,
-        body_changed,
-    )
-    .await?;
     if body_changed {
         comment_anchor::reanchor_note_comments(txn, note_id, &version.body_md).await?;
     }
@@ -164,6 +159,21 @@ pub async fn find_current_version<C: sea_orm::ConnectionTrait>(
         .filter(note_version::Column::IsCurrent.eq(true))
         .one(db)
         .await
+}
+
+pub async fn find_version_of_note<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    note_id: Uuid,
+    version_id: Option<Uuid>,
+) -> Result<Option<note_version::Model>, sea_orm::DbErr> {
+    if let Some(version_id) = version_id {
+        note_version::Entity::find_by_id(version_id)
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .one(db)
+            .await
+    } else {
+        find_current_version(db, note_id).await
+    }
 }
 
 pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(

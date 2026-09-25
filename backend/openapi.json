@@ -4281,6 +4281,7 @@
           {
             "name": "version_id",
             "in": "query",
+            "description": "省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。",
             "required": false,
             "schema": {
               "type": "string",
@@ -4808,7 +4809,7 @@
         "tags": [
           "notes"
         ],
-        "summary": "ノート版からの出リンクと、現行版からの被リンクを返す。",
+        "summary": "ノートのバージョンから出るリンクと、現行バージョンからの被リンクを返す。",
         "operationId": "get_note_links",
         "parameters": [
           {
@@ -4824,7 +4825,7 @@
           {
             "name": "version_id",
             "in": "query",
-            "description": "省略時はノートの現行版から出るリンクを返す。",
+            "description": "省略時はノートの現行バージョンから出るリンクを返す。",
             "required": false,
             "schema": {
               "type": "string",
@@ -8136,7 +8137,7 @@
         "tags": [
           "trades"
         ],
-        "summary": "取引に紐づく判断ノート一覧 (リンク作成順)",
+        "summary": "取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す)",
         "operationId": "list_trade_notes",
         "parameters": [
           {
@@ -8200,7 +8201,7 @@
         "tags": [
           "trades"
         ],
-        "summary": "取引に判断ノートを紐付ける",
+        "summary": "取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する)",
         "operationId": "create_trade_note",
         "parameters": [
           {
@@ -9776,7 +9777,7 @@
         "properties": {
           "body_md": {
             "type": "string",
-            "description": "`[[note:<uuid>]]` はリンク元版を作成した時点の現行版に固定する。\n`@current` を付けると以降の現行版に追従する。"
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
           },
           "created_by_kind": {
             "type": [
@@ -10498,6 +10499,7 @@
           "id",
           "version_id",
           "version_no",
+          "is_current",
           "title",
           "body_md",
           "frontmatter_json",
@@ -10536,6 +10538,9 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "is_current": {
+            "type": "boolean"
           },
           "status": {
             "type": "string"
@@ -10669,7 +10674,7 @@
               "null"
             ],
             "format": "uuid",
-            "description": "出リンクでは固定先の版 ID、被リンクでは現行の参照元版 ID。\n`null` は参照先の現行版への追従を表す。"
+            "description": "出リンクでは固定先のバージョン ID、被リンクでは現行の参照元バージョン ID。\n`null` は参照先の現行バージョンへの追従を表す。"
           },
           "version_no": {
             "type": [
@@ -12005,7 +12010,7 @@
               "string",
               "null"
             ],
-            "description": "`[[note:<uuid>]]` はリンク元版を作成した時点の現行版に固定する。\n`@current` を付けると以降の現行版に追従する。"
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
           },
           "frontmatter_json": {
             "type": [

@@ -62,7 +62,7 @@ function replaceGraphParagraphs(root: Root): void {
   })
 }
 
-// `[[stock:xxx]]` / `[[anno:xxx]]` を note-ref / note-anno 要素に差し替える remark plugin。
+// `[[stock:xxx]]` / `[[anno:xxx]]` / `[[note:<uuid>]]` を note-ref / note-anno / note-link 要素に差し替える remark plugin。
 export function remarkNoteTokens() {
   return (tree: Root) => {
     replaceGraphParagraphs(tree)

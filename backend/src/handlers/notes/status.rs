@@ -15,15 +15,15 @@ use crate::models::{ChangeStatusRequest, NoteResponse};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategy_tasks::{self, TaskSource};
 
-use super::{CurrentNote, current_note_response, find_current_note_or_404};
+use super::{NoteWithVersion, find_current_note_or_404, note_version_response};
 
 async fn change_note_status_from(
     state: &AppState,
-    current: CurrentNote,
+    current: NoteWithVersion,
     new_status: &str,
     label: Option<String>,
 ) -> Result<NoteResponse, AppError> {
-    let CurrentNote {
+    let NoteWithVersion {
         note: current_note,
         version: current_version,
         created_by_kind,
@@ -130,7 +130,7 @@ pub async fn reject_note(
     // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
     // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
     if current.version.status == "rejected" {
-        return Ok(Json(current_note_response(current)));
+        return Ok(Json(note_version_response(current)));
     }
 
     if let Some(strategy_id) = current.note.strategy_id {

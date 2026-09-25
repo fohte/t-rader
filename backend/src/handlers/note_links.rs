@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use axum::Json;
 use axum::extract::State;
@@ -12,12 +12,12 @@ use crate::entities::{note, note_version};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::services::note_links::{find_current_links_to_note, find_links_from_version};
-use crate::services::note_versions::{find_current_version, find_current_versions};
+use crate::services::note_versions::{find_current_versions, find_version_of_note};
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct GetNoteLinksQuery {
-    /// 省略時はノートの現行版から出るリンクを返す。
+    /// 省略時はノートの現行バージョンから出るリンクを返す。
     pub version_id: Option<Uuid>,
 }
 
@@ -25,8 +25,8 @@ pub struct GetNoteLinksQuery {
 pub struct NoteLinkItem {
     /// 出リンクでは参照先、被リンクでは参照元のノート ID。
     pub note_id: Uuid,
-    /// 出リンクでは固定先の版 ID、被リンクでは現行の参照元版 ID。
-    /// `null` は参照先の現行版への追従を表す。
+    /// 出リンクでは固定先のバージョン ID、被リンクでは現行の参照元バージョン ID。
+    /// `null` は参照先の現行バージョンへの追従を表す。
     pub version_id: Option<Uuid>,
     pub version_no: Option<i32>,
     pub title: Option<String>,
@@ -38,7 +38,7 @@ pub struct NoteLinksResponse {
     pub incoming: Vec<NoteLinkItem>,
 }
 
-/// ノート版からの出リンクと、現行版からの被リンクを返す。
+/// ノートのバージョンから出るリンクと、現行バージョンからの被リンクを返す。
 #[utoipa::path(
     get,
     path = "/api/notes/{id}/links",
@@ -64,21 +64,14 @@ pub async fn get_note_links(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
 
-    let source_version = if let Some(version_id) = params.version_id {
-        note_version::Entity::find_by_id(version_id)
-            .filter(note_version::Column::NoteId.eq(note_id))
-            .one(&state.db)
-            .await?
-            .ok_or_else(|| {
+    let source_version = find_version_of_note(&state.db, note_id, params.version_id)
+        .await?
+        .ok_or_else(|| match params.version_id {
+            Some(version_id) => {
                 AppError::NotFound(format!("version {version_id} for note {note_id} not found"))
-            })?
-    } else {
-        find_current_version(&state.db, note_id)
-            .await?
-            .ok_or_else(|| {
-                AppError::NotFound(format!("current version for note {note_id} not found"))
-            })?
-    };
+            }
+            None => AppError::NotFound(format!("current version for note {note_id} not found")),
+        })?;
 
     let outgoing_links = find_links_from_version(&state.db, source_version.id).await?;
     let target_note_ids = outgoing_links
@@ -133,7 +126,7 @@ pub async fn get_note_links(
             .all(&state.db)
             .await?
     };
-    let source_by_id: BTreeMap<Uuid, note_version::Model> = source_versions
+    let source_by_id: HashMap<Uuid, note_version::Model> = source_versions
         .into_iter()
         .map(|version| (version.id, version))
         .collect();

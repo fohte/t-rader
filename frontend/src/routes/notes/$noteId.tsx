@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useRef, useState } from 'react'
 
 import { CommentsPanel } from '#components/note-detail/comments-panel'
+import { HistoricalVersionNotice } from '#components/note-detail/historical-version-notice'
 import { HistoryPanel } from '#components/note-detail/history-panel'
 import { NoteDocument } from '#components/note-detail/note-document'
 import { NoteHeader } from '#components/note-detail/note-header'
@@ -106,7 +107,14 @@ function NoteDetailPage() {
           </div>
         </article>
         <aside className="space-y-4">
-          <ReviewPanel noteId={note.id} status={note.status} />
+          {note.is_current ? (
+            <ReviewPanel noteId={note.id} status={note.status} />
+          ) : (
+            <HistoricalVersionNotice
+              noteId={note.id}
+              versionNo={note.version_no}
+            />
+          )}
           <PredictionsPanel noteId={note.id} />
           <NoteLinksPanelView
             outgoing={noteLinks?.outgoing ?? []}

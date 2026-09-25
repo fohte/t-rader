@@ -36,7 +36,7 @@ export function NoteLinksPanelView({
         </p>
       ) : (
         <div className="divide-y divide-border">
-          <LinkList title="この版から" items={outgoing} followsCurrent />
+          <LinkList title="このバージョンから" items={outgoing} isOutgoing />
           <LinkList title="このノートへの参照" items={incoming} />
         </div>
       )}
@@ -47,11 +47,11 @@ export function NoteLinksPanelView({
 function LinkList({
   title,
   items,
-  followsCurrent = false,
+  isOutgoing = false,
 }: {
   title: string
   items: NoteLinkItem[]
-  followsCurrent?: boolean
+  isOutgoing?: boolean
 }) {
   return (
     <section>
@@ -60,9 +60,9 @@ function LinkList({
       </h4>
       {items.length === 0 ? (
         <p className="px-3.5 py-2 font-mono text-2xs text-muted-foreground">
-          {followsCurrent
-            ? 'この版からのリンクはありません'
-            : '現行版からの参照はありません'}
+          {isOutgoing
+            ? 'このバージョンからのリンクはありません'
+            : '現行バージョンからの参照はありません'}
         </p>
       ) : (
         <ul className="divide-y divide-border/70">
@@ -80,8 +80,8 @@ function LinkList({
                 {item.title ?? 'タイトルなし'}
               </Link>
               <span className="shrink-0 font-mono text-2xs text-muted-foreground">
-                {followsCurrent && item.version_id == null
-                  ? '現行版'
+                {isOutgoing && item.version_id == null
+                  ? '現行バージョン'
                   : item.version_no == null
                     ? ''
                     : `v${String(item.version_no)}`}

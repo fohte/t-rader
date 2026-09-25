@@ -9,13 +9,12 @@ use crate::error::AppError;
 use crate::services::note_refs::extract_note_link_tokens;
 use crate::services::note_versions::find_current_versions;
 
-/// 新しいノート版の作成時点でリンク先の現行版を解決する。
+/// 新しいノートバージョンの作成時点でリンク先の現行バージョンを解決する。
 pub async fn sync_note_links<C: sea_orm::ConnectionTrait>(
     db: &C,
     source_note: &note::Model,
     source_version_id: Uuid,
     body_md: &str,
-    validate_targets: bool,
 ) -> Result<(), AppError> {
     let mut target_policies = BTreeMap::new();
     let mut conflicted_targets = HashSet::new();
@@ -27,7 +26,7 @@ pub async fn sync_note_links<C: sea_orm::ConnectionTrait>(
         }
     }
 
-    if validate_targets && !conflicted_targets.is_empty() {
+    if !conflicted_targets.is_empty() {
         return Err(AppError::Validation(
             "同じノートへのリンクでは固定指定と @current 指定を混在できません".into(),
         ));
@@ -56,32 +55,24 @@ pub async fn sync_note_links<C: sea_orm::ConnectionTrait>(
     for target_id in target_ids {
         let follows_current = target_policies[&target_id];
         let Some(target) = targets_by_id.get(&target_id) else {
-            if validate_targets {
-                return Err(AppError::Validation(format!(
-                    "参照先のノート {target_id} が存在しません"
-                )));
-            }
-            continue;
+            return Err(AppError::Validation(format!(
+                "参照先のノート {target_id} が存在しません"
+            )));
         };
         if source_note.strategy_id != target.strategy_id {
-            if validate_targets {
-                return Err(AppError::Validation(
-                    "参照先のノートは同じ戦略に属している必要があります".into(),
-                ));
-            }
-            continue;
+            return Err(AppError::Validation(
+                "参照先のノートは同じ戦略に属している必要があります".into(),
+            ));
         }
 
         let to_version_id = if follows_current {
             None
         } else if let Some(version) = current_versions.get(&target_id) {
             Some(version.id)
-        } else if validate_targets {
-            return Err(AppError::Validation(format!(
-                "参照先のノート {target_id} に現行版がありません"
-            )));
         } else {
-            continue;
+            return Err(AppError::Validation(format!(
+                "参照先のノート {target_id} に現行バージョンがありません"
+            )));
         };
 
         links.push(note_link::ActiveModel {
@@ -96,6 +87,26 @@ pub async fn sync_note_links<C: sea_orm::ConnectionTrait>(
             .exec_without_returning(db)
             .await?;
     }
+    Ok(())
+}
+
+pub async fn copy_note_links<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    source_version_id: Uuid,
+    new_source_version_id: Uuid,
+) -> Result<(), AppError> {
+    let links = find_links_from_version(db, source_version_id).await?;
+    if links.is_empty() {
+        return Ok(());
+    }
+
+    note_link::Entity::insert_many(links.into_iter().map(|link| note_link::ActiveModel {
+        from_version_id: Set(new_source_version_id),
+        to_note_id: Set(link.to_note_id),
+        to_version_id: Set(link.to_version_id),
+    }))
+    .exec_without_returning(db)
+    .await?;
     Ok(())
 }
 

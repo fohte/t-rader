@@ -210,7 +210,7 @@ export function MarkdownBody({
         >
           {noteLink.title ?? 'タイトルなし'}
           {noteLink.version_id == null
-            ? ' (現行版に追従)'
+            ? ' (現行バージョンに追従)'
             : noteLink.version_no == null
               ? ''
               : ` (v${String(noteLink.version_no)})`}
