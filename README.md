@@ -184,5 +184,6 @@ IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐�
 
 ## Deployment と外部連携
 
+- [`docs/backend-architecture.md`](./docs/backend-architecture.md): backend の crate 構成、依存規則、境界の責務
 - [`docs/mcp.md`](./docs/mcp.md): `/mcp/mgmt` と `/mcp/strategy` の tool 一覧、session 管理方針、`MCP_ALLOWED_HOSTS` の挙動
 - [`docs/deployment.md`](./docs/deployment.md): 必須 env、backend が要求する権限、Service port

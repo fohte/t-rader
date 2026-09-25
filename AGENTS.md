@@ -137,6 +137,10 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 
 ## Code organization rules
 
+### Backend architecture
+
+backend の Rust crate を追加・変更するときは [`docs/backend-architecture.md`](./docs/backend-architecture.md) の crate 構成、依存規則、境界の責務に従うこと。
+
 ### Split files before they grow past ~500 lines of production code
 
 When a change would push a file's non-test code past ~500 lines, split it along responsibility seams before adding more. Splits must be move-only commits: no logic changes, renames, or reformatting mixed in. Keep external import paths unchanged by keeping the entrypoint file in place and re-exporting the pieces you split out into new files (e.g. `foo.rs` gains a `foo/` directory for its submodules, `index.ts` re-exports from the new files). Tests move together with the code they verify.
