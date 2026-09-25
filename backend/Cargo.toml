@@ -5,6 +5,7 @@ members = [
     "crates/core/domain",
     "crates/core/application",
     "crates/gateways/fred",
+    "crates/gateways/kata-exec",
     "crates/gateways/t-rader-agent",
 ]
 default-members = [
@@ -12,6 +13,7 @@ default-members = [
     "crates/core/domain",
     "crates/core/application",
     "crates/gateways/fred",
+    "crates/gateways/kata-exec",
     "crates/gateways/t-rader-agent",
 ]
 
@@ -21,6 +23,7 @@ axum = "=0.8.9"
 core-domain = { path = "crates/core/domain" }
 core-application = { path = "crates/core/application" }
 gateway-fred = { path = "crates/gateways/fred" }
+gateway-kata-exec = { path = "crates/gateways/kata-exec" }
 gateway-t-rader-agent = { path = "crates/gateways/t-rader-agent" }
 cron = "=0.17.0"
 axum-test = "=18.7.0"
@@ -63,13 +66,13 @@ edition = "2024"
 [dependencies]
 async-trait = { workspace = true }
 axum = { workspace = true }
-base64 = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 clap = { workspace = true, features = ["derive"] }
 core-domain = { workspace = true }
 core-application = { workspace = true }
 gateway-fred = { workspace = true }
 gateway-t-rader-agent = { workspace = true }
+gateway-kata-exec = { workspace = true }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }

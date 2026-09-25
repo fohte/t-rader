@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use core_application::KataExecError;
 use reqwest::{Certificate, StatusCode, header::HeaderMap, header::HeaderValue};
 use serde::Deserialize;
 
 use super::config::KataExecutorConfig;
-use super::error::KataExecError;
 use super::manifest::{PodPhase, PodStatusInfo};
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
