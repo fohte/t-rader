@@ -445,7 +445,7 @@ function TriggerForm({
           onChange={(e) => {
             update('kind', parseKind(e.target.value))
           }}
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="cron">cron</option>
           <option value="hook">hook</option>

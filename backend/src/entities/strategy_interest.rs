@@ -9,11 +9,8 @@ use serde::{Deserialize, Serialize};
 #[sea_orm(table_name = "strategy_interest")]
 #[schema(as = StrategyInterest)]
 pub struct Model {
-    #[sea_orm(unique_key = "strategy_interest_scoped_unique_idx")]
     pub strategy_id: Option<Uuid>,
-    #[sea_orm(unique_key = "strategy_interest_global_unique_idx")]
     pub ref_kind: String,
-    #[sea_orm(unique_key = "strategy_interest_global_unique_idx")]
     pub ref_id: String,
     pub role: String,
     pub origin: String,

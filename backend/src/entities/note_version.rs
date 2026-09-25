@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-
+    #[sea_orm(unique_key = "note_version_note_id_version_no_key")]
     pub note_id: Uuid,
     #[sea_orm(unique_key = "note_version_note_id_version_no_key")]
     pub version_no: i32,
