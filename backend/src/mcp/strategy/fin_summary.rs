@@ -1,5 +1,4 @@
-//! 戦略実行 MCP の `read_fin_summary` tool。`jquants_fin_summary.raw` (J-Quants
-//! `/fins/summary` の raw JSONB) を意味の分かるフィールド名に変換して返す。
+//! 戦略実行 MCP の `read_fin_summary` tool。財務情報テーブルの型付き列を返却 DTO に変換する。
 
 use chrono::NaiveDate;
 use rmcp::ErrorData as McpError;
@@ -10,25 +9,75 @@ use super::dto::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
 use super::{StrategyServer, clamp_limit, db_error};
 
 const READ_FIN_SUMMARY_SQL: &str = indoc::indoc! {"
-    -- 同じ (DocType, 当会計期間) の開示が複数あれば DiscNo 最大の 1 件のみ残す
+    -- 同じ書類種別・会計期間の開示が複数あれば開示番号が最大の 1 件のみ残す
     -- (訂正、あるいは業績予想修正の再修正)
     WITH deduped AS (
-        SELECT DISTINCT ON (raw->>'DocType', raw->>'CurPerSt', raw->>'CurPerEn')
-            disc_date, raw, (raw->>'DiscNo')::bigint AS disc_no_num
-        FROM jquants_fin_summary
-        -- code は J-Quants の 5 桁コード。4 桁 symbol への変換仕様が無いため先頭 4 文字一致で突き合わせる
+        SELECT DISTINCT ON (report_group_key)
+            disclosure_date, document_type, current_period_type, current_period_start,
+            current_period_end, current_fiscal_year_start, current_fiscal_year_end,
+            sales, operating_profit, ordinary_profit, net_profit, eps, bps, total_assets,
+            equity, equity_to_asset_ratio, roe, cash_flow_operating, cash_flow_investing,
+            cash_flow_financing, cash_and_equivalents, dividend_annual,
+            dividend_annual_forecast, dividend_annual_forecast_next, forecast_sales,
+            forecast_operating_profit, forecast_ordinary_profit, forecast_net_profit,
+            forecast_eps, next_forecast_sales, next_forecast_operating_profit,
+            next_forecast_ordinary_profit, next_forecast_net_profit, next_forecast_eps,
+            disclosure_no::bigint AS disclosure_no_num
+        FROM financial_summary
+        -- 4 桁銘柄コードは、登録済みコードの先頭 4 文字と突き合わせる
         WHERE LEFT(code, 4) = $1
-        ORDER BY raw->>'DocType', raw->>'CurPerSt', raw->>'CurPerEn', disc_no_num DESC
+        ORDER BY report_group_key, disclosure_no_num DESC
     )
-    SELECT disc_date, raw FROM deduped
-    ORDER BY disc_date DESC, disc_no_num DESC
+    SELECT disclosure_date, document_type, current_period_type, current_period_start,
+        current_period_end, current_fiscal_year_start, current_fiscal_year_end,
+        sales, operating_profit, ordinary_profit, net_profit, eps, bps, total_assets,
+        equity, equity_to_asset_ratio, roe, cash_flow_operating, cash_flow_investing,
+        cash_flow_financing, cash_and_equivalents, dividend_annual,
+        dividend_annual_forecast, dividend_annual_forecast_next, forecast_sales,
+        forecast_operating_profit, forecast_ordinary_profit, forecast_net_profit,
+        forecast_eps, next_forecast_sales, next_forecast_operating_profit,
+        next_forecast_ordinary_profit, next_forecast_net_profit, next_forecast_eps
+    FROM deduped
+    ORDER BY disclosure_date DESC, disclosure_no_num DESC
     LIMIT $2
 "};
 
 #[derive(Debug, FromQueryResult)]
 struct FinSummaryRow {
-    disc_date: NaiveDate,
-    raw: serde_json::Value,
+    disclosure_date: NaiveDate,
+    document_type: Option<String>,
+    current_period_type: Option<String>,
+    current_period_start: Option<NaiveDate>,
+    current_period_end: Option<NaiveDate>,
+    current_fiscal_year_start: Option<NaiveDate>,
+    current_fiscal_year_end: Option<NaiveDate>,
+    sales: Option<f64>,
+    operating_profit: Option<f64>,
+    ordinary_profit: Option<f64>,
+    net_profit: Option<f64>,
+    eps: Option<f64>,
+    bps: Option<f64>,
+    total_assets: Option<f64>,
+    equity: Option<f64>,
+    equity_to_asset_ratio: Option<f64>,
+    roe: Option<f64>,
+    cash_flow_operating: Option<f64>,
+    cash_flow_investing: Option<f64>,
+    cash_flow_financing: Option<f64>,
+    cash_and_equivalents: Option<f64>,
+    dividend_annual: Option<f64>,
+    dividend_annual_forecast: Option<f64>,
+    dividend_annual_forecast_next: Option<f64>,
+    forecast_sales: Option<f64>,
+    forecast_operating_profit: Option<f64>,
+    forecast_ordinary_profit: Option<f64>,
+    forecast_net_profit: Option<f64>,
+    forecast_eps: Option<f64>,
+    next_forecast_sales: Option<f64>,
+    next_forecast_operating_profit: Option<f64>,
+    next_forecast_ordinary_profit: Option<f64>,
+    next_forecast_net_profit: Option<f64>,
+    next_forecast_eps: Option<f64>,
 }
 
 impl StrategyServer {
@@ -56,80 +105,74 @@ impl StrategyServer {
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_error)?
             .into_iter()
-            .map(|row| fin_summary_dto_from_row(row.disc_date, &row.raw))
+            .map(fin_summary_dto_from_row)
             .collect();
 
         Ok(ReadFinSummaryResult { items })
     }
 }
 
-fn fin_summary_dto_from_row(disc_date: NaiveDate, raw: &serde_json::Value) -> FinSummaryDto {
-    let doc_type = str_field(raw, "DocType");
-    let current_period_type = str_field(raw, "CurPerType");
-    let sales = f64_field(raw, "Sales");
-    let operating_profit = f64_field(raw, "OP");
-    let ordinary_profit = f64_field(raw, "OdP");
-    let net_profit = f64_field(raw, "NP");
-    let forecast_sales = f64_field(raw, "FSales");
-    let forecast_operating_profit = f64_field(raw, "FOP");
-    let forecast_ordinary_profit = f64_field(raw, "FOdP");
-    let forecast_net_profit = f64_field(raw, "FNP");
-    let is_quarterly_financial_statement =
-        is_quarterly_financial_statement(doc_type.as_deref(), current_period_type.as_deref());
+fn fin_summary_dto_from_row(row: FinSummaryRow) -> FinSummaryDto {
+    let is_quarterly_financial_statement = is_quarterly_financial_statement(
+        row.document_type.as_deref(),
+        row.current_period_type.as_deref(),
+    );
 
     FinSummaryDto {
-        disc_date,
-        doc_type,
-        current_period_type,
-        current_period_start: date_field(raw, "CurPerSt"),
-        current_period_end: date_field(raw, "CurPerEn"),
-        current_fiscal_year_start: date_field(raw, "CurFYSt"),
-        current_fiscal_year_end: date_field(raw, "CurFYEn"),
-        sales,
-        operating_profit,
-        ordinary_profit,
-        net_profit,
-        sales_progress_rate: progress_rate(is_quarterly_financial_statement, sales, forecast_sales),
+        disc_date: row.disclosure_date,
+        doc_type: row.document_type,
+        current_period_type: row.current_period_type,
+        current_period_start: row.current_period_start,
+        current_period_end: row.current_period_end,
+        current_fiscal_year_start: row.current_fiscal_year_start,
+        current_fiscal_year_end: row.current_fiscal_year_end,
+        sales: row.sales,
+        operating_profit: row.operating_profit,
+        ordinary_profit: row.ordinary_profit,
+        net_profit: row.net_profit,
+        sales_progress_rate: progress_rate(
+            is_quarterly_financial_statement,
+            row.sales,
+            row.forecast_sales,
+        ),
         operating_profit_progress_rate: progress_rate(
             is_quarterly_financial_statement,
-            operating_profit,
-            forecast_operating_profit,
+            row.operating_profit,
+            row.forecast_operating_profit,
         ),
         ordinary_profit_progress_rate: progress_rate(
             is_quarterly_financial_statement,
-            ordinary_profit,
-            forecast_ordinary_profit,
+            row.ordinary_profit,
+            row.forecast_ordinary_profit,
         ),
         net_profit_progress_rate: progress_rate(
             is_quarterly_financial_statement,
-            net_profit,
-            forecast_net_profit,
+            row.net_profit,
+            row.forecast_net_profit,
         ),
-        eps: f64_field(raw, "EPS"),
-        bps: f64_field(raw, "BPS"),
-        total_assets: f64_field(raw, "TA"),
-        equity: f64_field(raw, "Eq"),
-        equity_to_asset_ratio: f64_field(raw, "EqAR"),
-        roe: f64_field(raw, "ROE"),
-        cf_operating: f64_field(raw, "CFO"),
-        cf_investing: f64_field(raw, "CFI"),
-        cf_financing: f64_field(raw, "CFF"),
-        cash_and_equivalents: f64_field(raw, "CashEq"),
-        dividend_annual: f64_field(raw, "DivAnn"),
-        dividend_annual_forecast: f64_field(raw, "FDivAnn"),
-        dividend_annual_forecast_next: f64_field(raw, "NxFDivAnn"),
-        forecast_sales,
-        forecast_operating_profit,
-        forecast_ordinary_profit,
-        forecast_net_profit,
-        forecast_eps: f64_field(raw, "FEPS"),
-        next_forecast_sales: f64_field(raw, "NxFSales"),
-        next_forecast_operating_profit: f64_field(raw, "NxFOP"),
-        next_forecast_ordinary_profit: f64_field(raw, "NxFOdP"),
-        // J-Quants 仕様上このキーのみ NxFNp (p が小文字)。他の翌期予想キー (NxFOP 等) との
-        // 表記ゆれで typo ではない。
-        next_forecast_net_profit: f64_field(raw, "NxFNp"),
-        next_forecast_eps: f64_field(raw, "NxFEPS"),
+        eps: row.eps,
+        bps: row.bps,
+        total_assets: row.total_assets,
+        equity: row.equity,
+        equity_to_asset_ratio: row.equity_to_asset_ratio,
+        roe: row.roe,
+        cf_operating: row.cash_flow_operating,
+        cf_investing: row.cash_flow_investing,
+        cf_financing: row.cash_flow_financing,
+        cash_and_equivalents: row.cash_and_equivalents,
+        dividend_annual: row.dividend_annual,
+        dividend_annual_forecast: row.dividend_annual_forecast,
+        dividend_annual_forecast_next: row.dividend_annual_forecast_next,
+        forecast_sales: row.forecast_sales,
+        forecast_operating_profit: row.forecast_operating_profit,
+        forecast_ordinary_profit: row.forecast_ordinary_profit,
+        forecast_net_profit: row.forecast_net_profit,
+        forecast_eps: row.forecast_eps,
+        next_forecast_sales: row.next_forecast_sales,
+        next_forecast_operating_profit: row.next_forecast_operating_profit,
+        next_forecast_ordinary_profit: row.next_forecast_ordinary_profit,
+        next_forecast_net_profit: row.next_forecast_net_profit,
+        next_forecast_eps: row.next_forecast_eps,
     }
 }
 
@@ -160,32 +203,15 @@ fn progress_rate(
     rate.is_finite().then_some(rate)
 }
 
-/// raw の文字列項目を取り出す。キー欠落・非文字列・空文字はすべて「記載なし」として null。
-fn str_field(raw: &serde_json::Value, key: &str) -> Option<String> {
-    raw.get(key)
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-}
-
-fn date_field(raw: &serde_json::Value, key: &str) -> Option<NaiveDate> {
-    str_field(raw, key).and_then(|s| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
-}
-
-fn f64_field(raw: &serde_json::Value, key: &str) -> Option<f64> {
-    str_field(raw, key).and_then(|s| s.parse::<f64>().ok())
-}
-
 #[cfg(test)]
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
     use sea_orm::DatabaseConnection;
-    use serde_json::json;
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::jquants_fin_summary;
+    use crate::entities::financial_summary;
     use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
@@ -238,17 +264,40 @@ mod tests {
         }
     }
 
-    async fn seed(db: &DatabaseConnection, code: &str, disc_no: &str, raw: serde_json::Value) {
-        let disc_date = raw
-            .get("DiscDate")
-            .and_then(|v| v.as_str())
-            .map(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").expect("valid date"))
-            .expect("DiscDate required in test fixture");
-        jquants_fin_summary::ActiveModel {
+    async fn seed(
+        db: &DatabaseConnection,
+        code: &str,
+        disclosure_no: &str,
+        disclosure_date: chrono::NaiveDate,
+        configure: impl FnOnce(&mut financial_summary::ActiveModel),
+    ) {
+        let mut summary = financial_summary::ActiveModel {
             code: Set(code.to_string()),
-            disc_no: Set(disc_no.to_string()),
-            disc_date: Set(disc_date),
-            raw: Set(raw),
+            disclosure_no: Set(disclosure_no.to_string()),
+            disclosure_date: Set(disclosure_date),
+            ..Default::default()
+        };
+        configure(&mut summary);
+        summary.report_group_key = Set(format!(
+            "{:?}|{:?}|{:?}",
+            summary.document_type, summary.current_period_start, summary.current_period_end
+        ));
+        summary.insert(db).await.expect("seed fin summary");
+    }
+
+    async fn seed_with_report_group_key(
+        db: &DatabaseConnection,
+        code: &str,
+        disclosure_no: &str,
+        disclosure_date: chrono::NaiveDate,
+        report_group_key: &str,
+    ) {
+        financial_summary::ActiveModel {
+            code: Set(code.to_string()),
+            disclosure_no: Set(disclosure_no.to_string()),
+            disclosure_date: Set(disclosure_date),
+            report_group_key: Set(report_group_key.to_string()),
+            ..Default::default()
         }
         .insert(db)
         .await
@@ -256,62 +305,44 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn read_fin_summary_converts_abbreviations_to_named_fields_and_blanks_to_null(
-        pool: PgPool,
-    ) {
+    async fn read_fin_summary_returns_typed_fields_and_nulls_missing_values(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
 
-        seed(
-            &db,
-            "72030",
-            "1",
-            json!({
-                "DiscDate": "2026-05-01",
-                "Code": "72030",
-                "DiscNo": "1",
-                "DocType": "FYFinancialStatements_Consolidated_JP",
-                "CurPerType": "FY",
-                "CurPerSt": "2025-04-01",
-                "CurPerEn": "2026-03-31",
-                "CurFYSt": "2025-04-01",
-                "CurFYEn": "2026-03-31",
-                "Sales": "3000000",
-                "OP": "200000",
-                "OdP": "",
-                "NP": "150000",
-                "EPS": "120.5",
-                "BPS": "1500.0",
-                "TA": "5000000",
-                "Eq": "2000000",
-                "EqAR": "0.4",
-                "ROE": "0.08",
-                "CFO": "100000",
-                "CFI": "-50000",
-                "CFF": "-20000",
-                "CashEq": "300000",
-                "DivAnn": "30",
-                "FDivAnn": "32",
-                "NxFDivAnn": "",
-                "FSales": "3100000",
-                "FOP": "210000",
-                "FOdP": "",
-                "FNP": "160000",
-                "FEPS": "128.0",
-                "NxFSales": "",
-                "NxFOP": "",
-                "NxFOdP": "",
-                "NxFNp": "",
-                "NxFEPS": "",
-            }),
-        )
+        seed(&db, "99990", "1", ymd(2026, 5, 1), |summary| {
+            summary.document_type = Set(Some("FYFinancialStatements_TestFixture".to_string()));
+            summary.current_period_type = Set(Some("FY".to_string()));
+            summary.current_period_start = Set(Some(ymd(2025, 4, 1)));
+            summary.current_period_end = Set(Some(ymd(2026, 3, 31)));
+            summary.current_fiscal_year_start = Set(Some(ymd(2025, 4, 1)));
+            summary.current_fiscal_year_end = Set(Some(ymd(2026, 3, 31)));
+            summary.sales = Set(Some(3_000_000.0));
+            summary.operating_profit = Set(Some(200_000.0));
+            summary.net_profit = Set(Some(150_000.0));
+            summary.eps = Set(Some(120.5));
+            summary.bps = Set(Some(1_500.0));
+            summary.total_assets = Set(Some(5_000_000.0));
+            summary.equity = Set(Some(2_000_000.0));
+            summary.equity_to_asset_ratio = Set(Some(0.4));
+            summary.roe = Set(Some(0.08));
+            summary.cash_flow_operating = Set(Some(100_000.0));
+            summary.cash_flow_investing = Set(Some(-50_000.0));
+            summary.cash_flow_financing = Set(Some(-20_000.0));
+            summary.cash_and_equivalents = Set(Some(300_000.0));
+            summary.dividend_annual = Set(Some(30.0));
+            summary.dividend_annual_forecast = Set(Some(32.0));
+            summary.forecast_sales = Set(Some(3_100_000.0));
+            summary.forecast_operating_profit = Set(Some(210_000.0));
+            summary.forecast_net_profit = Set(Some(160_000.0));
+            summary.forecast_eps = Set(Some(128.0));
+        })
         .await;
 
         let result = server
             .read_fin_summary_inner(
                 Uuid::new_v4(),
                 ReadFinSummaryParams {
-                    symbol: "7203".to_string(),
+                    symbol: "9999".to_string(),
                     limit: None,
                 },
             )
@@ -323,7 +354,7 @@ mod tests {
             ReadFinSummaryResult {
                 items: vec![FinSummaryDto {
                     disc_date: ymd(2026, 5, 1),
-                    doc_type: Some("FYFinancialStatements_Consolidated_JP".to_string()),
+                    doc_type: Some("FYFinancialStatements_TestFixture".to_string()),
                     current_period_type: Some("FY".to_string()),
                     current_period_start: Some(ymd(2025, 4, 1)),
                     current_period_end: Some(ymd(2026, 3, 31)),
@@ -370,89 +401,56 @@ mod tests {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
 
-        seed(
-            &db,
-            "ABCD0",
-            "1",
-            json!({
-                "DiscDate": "2001-05-01",
-                "Code": "ABCD0",
-                "DiscNo": "1",
-                "DocType": "1QFinancialStatements_Consolidated_JP",
-                "CurPerType": "1Q",
-                "Sales": "50",
-                "FSales": "100",
-                "OP": "20",
-                "FOP": "40",
-                "OdP": "15",
-                "FOdP": "30",
-                "NP": "5",
-                "FNP": "10",
-            }),
-        )
+        seed(&db, "ABCD0", "1", ymd(2001, 5, 1), |summary| {
+            summary.document_type = Set(Some("1QFinancialStatements_TestFixture".to_string()));
+            summary.current_period_type = Set(Some("1Q".to_string()));
+            summary.sales = Set(Some(50.0));
+            summary.forecast_sales = Set(Some(100.0));
+            summary.operating_profit = Set(Some(20.0));
+            summary.forecast_operating_profit = Set(Some(40.0));
+            summary.ordinary_profit = Set(Some(15.0));
+            summary.forecast_ordinary_profit = Set(Some(30.0));
+            summary.net_profit = Set(Some(5.0));
+            summary.forecast_net_profit = Set(Some(10.0));
+        })
         .await;
-        seed(
-            &db,
-            "ABCD0",
-            "2",
-            json!({
-                "DiscDate": "2001-05-02",
-                "Code": "ABCD0",
-                "DiscNo": "2",
-                "DocType": "2QFinancialStatements_Consolidated_JP",
-                "CurPerType": "2Q",
-                "Sales": "50",
-                "FSales": "",
-                "OP": "20",
-                "FOP": "0",
-                "OdP": "15",
-                "FOdP": "-30",
-                "NP": "5",
-                "FNP": "10",
-            }),
-        )
+        seed(&db, "ABCD0", "2", ymd(2001, 5, 2), |summary| {
+            summary.document_type = Set(Some("2QFinancialStatements_TestFixture".to_string()));
+            summary.current_period_type = Set(Some("2Q".to_string()));
+            summary.sales = Set(Some(50.0));
+            summary.operating_profit = Set(Some(20.0));
+            summary.forecast_operating_profit = Set(Some(0.0));
+            summary.ordinary_profit = Set(Some(15.0));
+            summary.forecast_ordinary_profit = Set(Some(-30.0));
+            summary.net_profit = Set(Some(5.0));
+            summary.forecast_net_profit = Set(Some(10.0));
+        })
         .await;
-        seed(
-            &db,
-            "ABCD0",
-            "3",
-            json!({
-                "DiscDate": "2001-05-03",
-                "Code": "ABCD0",
-                "DiscNo": "3",
-                "DocType": "FYFinancialStatements_Consolidated_JP",
-                "CurPerType": "FY",
-                "Sales": "50",
-                "FSales": "100",
-                "OP": "20",
-                "FOP": "40",
-                "OdP": "15",
-                "FOdP": "30",
-                "NP": "5",
-                "FNP": "10",
-            }),
-        )
+        seed(&db, "ABCD0", "3", ymd(2001, 5, 3), |summary| {
+            summary.document_type = Set(Some("FYFinancialStatements_TestFixture".to_string()));
+            summary.current_period_type = Set(Some("FY".to_string()));
+            summary.sales = Set(Some(50.0));
+            summary.forecast_sales = Set(Some(100.0));
+            summary.operating_profit = Set(Some(20.0));
+            summary.forecast_operating_profit = Set(Some(40.0));
+            summary.ordinary_profit = Set(Some(15.0));
+            summary.forecast_ordinary_profit = Set(Some(30.0));
+            summary.net_profit = Set(Some(5.0));
+            summary.forecast_net_profit = Set(Some(10.0));
+        })
         .await;
-        seed(
-            &db,
-            "ABCD0",
-            "4",
-            json!({
-                "DiscDate": "2001-05-04",
-                "Code": "ABCD0",
-                "DiscNo": "4",
-                "DocType": "EarnForecastRevision",
-                "CurPerType": "2Q",
-                "Sales": "50",
-                "FSales": "100",
-                "OP": "20",
-                "FOP": "40",
-                "OdP": "15",
-                "FOdP": "30",
-                "NP": "5",
-                "FNP": "10",
-            }),
-        )
+        seed(&db, "ABCD0", "4", ymd(2001, 5, 4), |summary| {
+            summary.document_type = Set(Some("ForecastUpdate_Fictional".to_string()));
+            summary.current_period_type = Set(Some("2Q".to_string()));
+            summary.sales = Set(Some(50.0));
+            summary.forecast_sales = Set(Some(100.0));
+            summary.operating_profit = Set(Some(20.0));
+            summary.forecast_operating_profit = Set(Some(40.0));
+            summary.ordinary_profit = Set(Some(15.0));
+            summary.forecast_ordinary_profit = Set(Some(30.0));
+            summary.net_profit = Set(Some(5.0));
+            summary.forecast_net_profit = Set(Some(10.0));
+        })
         .await;
 
         let result = server
@@ -471,7 +469,7 @@ mod tests {
             ReadFinSummaryResult {
                 items: vec![
                     FinSummaryDto {
-                        doc_type: Some("EarnForecastRevision".to_string()),
+                        doc_type: Some("ForecastUpdate_Fictional".to_string()),
                         current_period_type: Some("2Q".to_string()),
                         sales: Some(50.0),
                         operating_profit: Some(20.0),
@@ -484,7 +482,7 @@ mod tests {
                         ..blank_dto(ymd(2001, 5, 4))
                     },
                     FinSummaryDto {
-                        doc_type: Some("FYFinancialStatements_Consolidated_JP".to_string()),
+                        doc_type: Some("FYFinancialStatements_TestFixture".to_string()),
                         current_period_type: Some("FY".to_string()),
                         sales: Some(50.0),
                         operating_profit: Some(20.0),
@@ -497,7 +495,7 @@ mod tests {
                         ..blank_dto(ymd(2001, 5, 3))
                     },
                     FinSummaryDto {
-                        doc_type: Some("2QFinancialStatements_Consolidated_JP".to_string()),
+                        doc_type: Some("2QFinancialStatements_TestFixture".to_string()),
                         current_period_type: Some("2Q".to_string()),
                         sales: Some(50.0),
                         operating_profit: Some(20.0),
@@ -512,7 +510,7 @@ mod tests {
                         ..blank_dto(ymd(2001, 5, 2))
                     },
                     FinSummaryDto {
-                        doc_type: Some("1QFinancialStatements_Consolidated_JP".to_string()),
+                        doc_type: Some("1QFinancialStatements_TestFixture".to_string()),
                         current_period_type: Some("1Q".to_string()),
                         sales: Some(50.0),
                         operating_profit: Some(20.0),
@@ -538,26 +536,14 @@ mod tests {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
 
-        seed(
-            &db,
-            "72030",
-            "1",
-            json!({ "DiscDate": "2026-05-01", "Code": "72030", "DiscNo": "1" }),
-        )
-        .await;
-        seed(
-            &db,
-            "99840",
-            "1",
-            json!({ "DiscDate": "2026-05-01", "Code": "99840", "DiscNo": "1" }),
-        )
-        .await;
+        seed(&db, "99990", "1", ymd(2026, 5, 1), |_| {}).await;
+        seed(&db, "88880", "1", ymd(2026, 5, 1), |_| {}).await;
 
         let result = server
             .read_fin_summary_inner(
                 Uuid::new_v4(),
                 ReadFinSummaryParams {
-                    symbol: "7203".to_string(),
+                    symbol: "9999".to_string(),
                     limit: None,
                 },
             )
@@ -577,56 +563,32 @@ mod tests {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
 
-        seed(
-            &db,
-            "72030",
-            "1",
-            json!({
-                "DiscDate": "2026-05-01",
-                "Code": "72030",
-                "DiscNo": "1",
-                "DocType": "FYFinancialStatements_Consolidated_JP",
-                "CurPerSt": "2025-04-01",
-                "CurPerEn": "2026-03-31",
-                "Sales": "3000000",
-            }),
-        )
+        seed(&db, "99990", "1", ymd(2026, 5, 1), |summary| {
+            summary.document_type = Set(Some("FYFinancialStatements_TestFixture".to_string()));
+            summary.current_period_start = Set(Some(ymd(2025, 4, 1)));
+            summary.current_period_end = Set(Some(ymd(2026, 3, 31)));
+            summary.sales = Set(Some(3_000_000.0));
+        })
         .await;
-        seed(
-            &db,
-            "72030",
-            "2",
-            json!({
-                "DiscDate": "2026-05-10",
-                "Code": "72030",
-                "DiscNo": "2",
-                "DocType": "FYFinancialStatements_Consolidated_JP",
-                "CurPerSt": "2025-04-01",
-                "CurPerEn": "2026-03-31",
-                "Sales": "3050000",
-            }),
-        )
+        seed(&db, "99990", "2", ymd(2026, 5, 10), |summary| {
+            summary.document_type = Set(Some("FYFinancialStatements_TestFixture".to_string()));
+            summary.current_period_start = Set(Some(ymd(2025, 4, 1)));
+            summary.current_period_end = Set(Some(ymd(2026, 3, 31)));
+            summary.sales = Set(Some(3_050_000.0));
+        })
         .await;
-        seed(
-            &db,
-            "72030",
-            "3",
-            json!({
-                "DiscDate": "2026-06-01",
-                "Code": "72030",
-                "DiscNo": "3",
-                "DocType": "EarnForecastRevision",
-                "CurPerSt": "2025-04-01",
-                "CurPerEn": "2026-03-31",
-            }),
-        )
+        seed(&db, "99990", "3", ymd(2026, 6, 1), |summary| {
+            summary.document_type = Set(Some("ForecastUpdate_Fictional".to_string()));
+            summary.current_period_start = Set(Some(ymd(2025, 4, 1)));
+            summary.current_period_end = Set(Some(ymd(2026, 3, 31)));
+        })
         .await;
 
         let result = server
             .read_fin_summary_inner(
                 Uuid::new_v4(),
                 ReadFinSummaryParams {
-                    symbol: "7203".to_string(),
+                    symbol: "9999".to_string(),
                     limit: None,
                 },
             )
@@ -638,13 +600,13 @@ mod tests {
             ReadFinSummaryResult {
                 items: vec![
                     FinSummaryDto {
-                        doc_type: Some("EarnForecastRevision".to_string()),
+                        doc_type: Some("ForecastUpdate_Fictional".to_string()),
                         current_period_start: Some(ymd(2025, 4, 1)),
                         current_period_end: Some(ymd(2026, 3, 31)),
                         ..blank_dto(ymd(2026, 6, 1))
                     },
                     FinSummaryDto {
-                        doc_type: Some("FYFinancialStatements_Consolidated_JP".to_string()),
+                        doc_type: Some("FYFinancialStatements_TestFixture".to_string()),
                         current_period_start: Some(ymd(2025, 4, 1)),
                         current_period_end: Some(ymd(2026, 3, 31)),
                         sales: Some(3050000.0),
@@ -656,26 +618,45 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
+    async fn read_fin_summary_keeps_missing_and_blank_group_values_separate(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        let server = build_server(db.clone());
+
+        seed_with_report_group_key(&db, "99990", "1", ymd(2026, 5, 1), "N;N;N;").await;
+        seed_with_report_group_key(&db, "99990", "2", ymd(2026, 5, 2), "V0:;V0:;V0:;").await;
+
+        let result = server
+            .read_fin_summary_inner(
+                Uuid::new_v4(),
+                ReadFinSummaryParams {
+                    symbol: "9999".to_string(),
+                    limit: None,
+                },
+            )
+            .await
+            .expect("read_fin_summary");
+
+        assert_eq!(
+            result,
+            ReadFinSummaryResult {
+                items: vec![blank_dto(ymd(2026, 5, 2)), blank_dto(ymd(2026, 5, 1))],
+            }
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
     async fn read_fin_summary_orders_newest_first_and_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
 
         for (disc_no, date) in [
-            ("1", "2026-01-01"),
-            ("2", "2026-02-01"),
-            ("3", "2026-03-01"),
+            ("1", ymd(2026, 1, 1)),
+            ("2", ymd(2026, 2, 1)),
+            ("3", ymd(2026, 3, 1)),
         ] {
-            seed(
-                &db,
-                "72030",
-                disc_no,
-                json!({
-                    "DiscDate": date,
-                    "Code": "72030",
-                    "DiscNo": disc_no,
-                    "DocType": format!("doc-{disc_no}"),
-                }),
-            )
+            seed(&db, "99990", disc_no, date, |summary| {
+                summary.document_type = Set(Some(format!("doc-{disc_no}")));
+            })
             .await;
         }
 
@@ -683,7 +664,7 @@ mod tests {
             .read_fin_summary_inner(
                 Uuid::new_v4(),
                 ReadFinSummaryParams {
-                    symbol: "7203".to_string(),
+                    symbol: "9999".to_string(),
                     limit: Some(2),
                 },
             )

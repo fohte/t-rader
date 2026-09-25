@@ -1,5 +1,6 @@
 mod daily_bars;
 mod equities_master;
+mod fin_summary;
 mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
