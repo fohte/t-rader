@@ -471,6 +471,7 @@ dependencies = [
  "cron",
  "csv",
  "encoding_rs",
+ "gateway-litellm",
  "gateway-t-rader-agent",
  "indoc",
  "jpholiday",
@@ -1511,6 +1512,22 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gateway-litellm"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "core-application",
+ "indoc",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]

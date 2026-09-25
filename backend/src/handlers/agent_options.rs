@@ -3,7 +3,7 @@ use axum::extract::State;
 
 use crate::AppState;
 use crate::mcp::StrategyServer;
-use crate::models::{AgentModelsResponse, AgentTool, AgentToolsResponse};
+use crate::models::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 
 /// 戦略 Agent 設定フォームに供給するモデル一覧を取得する。
 /// LLM ゲートウェイが未設定、または応答不能な場合は空配列を返す (設定画面全体を壊さないため)。
@@ -24,7 +24,18 @@ pub async fn get_agent_models(State(state): State<AppState>) -> Json<AgentModels
         }),
         None => Vec::new(),
     };
-    Json(AgentModelsResponse { models })
+    Json(AgentModelsResponse {
+        models: models
+            .into_iter()
+            .map(|model| AgentModel {
+                id: model.id,
+                providers: model.providers,
+                max_input_tokens: model.max_input_tokens,
+                max_output_tokens: model.max_output_tokens,
+                supports_reasoning: model.supports_reasoning,
+            })
+            .collect(),
+    })
 }
 
 /// 戦略 MCP の tool 一覧を取得する。`#[tool(...)]` の登録情報から動的に組み立てるので、
@@ -69,8 +80,8 @@ mod tests {
                 wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
                     "data": [
                         {
-                            "model_group": "claude-opus-4",
-                            "providers": ["anthropic"],
+                            "model_group": "sample-model",
+                            "providers": ["test-provider"],
                             "supports_reasoning": true,
                         },
                     ],
@@ -87,8 +98,8 @@ mod tests {
             serde_json::json!({
                 "models": [
                     {
-                        "id": "claude-opus-4",
-                        "providers": ["anthropic"],
+                        "id": "sample-model",
+                        "providers": ["test-provider"],
                         "max_input_tokens": null,
                         "max_output_tokens": null,
                         "supports_reasoning": true,

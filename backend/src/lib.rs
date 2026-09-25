@@ -43,7 +43,7 @@ use crate::handlers::{
     notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers,
 };
 use crate::kata_exec::SharedKataExecutor;
-use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
+use crate::services::litellm_client::SharedLlmClient;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -67,7 +67,7 @@ pub struct AppState {
     pub kata_executor: Option<SharedKataExecutor>,
     /// LLM ゲートウェイ client。`LLM_BASE_URL` 未設定時は `None` で起動し、
     /// `GET /api/agent-models` は空配列を返す。
-    pub llm_gateway_client: Option<LlmGatewayClient>,
+    pub llm_gateway_client: Option<SharedLlmClient>,
 }
 
 impl AppState {
