@@ -56,11 +56,11 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const ReasonRequiredWithoutComments: Story = {
-  name: 'requires a reason when reviewing a version without comments.',
+  name: 'shows the rejection reason marked as required when there are no line comments.',
 }
 
 export const CommentAllowsEmptyReason: Story = {
-  name: 'allows an empty reason when the review has a line comment.',
+  name: 'shows the rejection reason marked as optional when the review has a line comment.',
   args: { lineCommentCount: 1 },
 }
 

@@ -132,7 +132,7 @@ export const FormView: Story = {
 }
 
 export const PhaseSplitDisabled: Story = {
-  name: 'shows disabled phase controls before a graph is enabled.',
+  name: 'shows the phase split toggle switched off with no phase cards.',
   args: {
     purpose: 'explore',
     initialValue: '',

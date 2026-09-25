@@ -53,6 +53,6 @@ export const StrategyHome: Story = {
 }
 
 export const Portfolio: Story = {
-  name: 'shows the portfolio page with portfolio navigation active.',
+  name: 'shows the header with portfolio navigation active.',
   render: () => <RouterProvider router={createHeaderRouter('/portfolio')} />,
 }

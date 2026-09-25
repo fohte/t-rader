@@ -77,6 +77,6 @@ export const Default: Story = {
 }
 
 export const NameMismatch: Story = {
-  name: 'shows an error when the confirmation name does not match.',
+  name: 'shows the delete button disabled when the confirmation name does not match.',
   render: () => <RouterProvider router={createDialogRouter('違う名前')} />,
 }
