@@ -125,8 +125,8 @@ impl JQuantsClient {
             http,
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
-            // 429 の cooldown を実時間で短くし、テストが実際に数分待つのを避ける
-            rate_limiter: RateLimiter::new(std::time::Duration::from_millis(50)),
+            // 429 cooldown を短縮し、window 枠超過では待たずに失敗させる
+            rate_limiter: RateLimiter::new_fail_fast(std::time::Duration::from_millis(50)),
             detected_range: std::sync::Mutex::new(None),
             manual_plan: std::sync::Mutex::new(None),
         })
@@ -201,7 +201,7 @@ impl JQuantsClient {
         let mut rate_limit_attempt = 0u32;
 
         loop {
-            self.rate_limiter.acquire(max_requests).await;
+            self.rate_limiter.acquire(max_requests).await?;
 
             if retry_attempt > 0 {
                 let backoff = std::time::Duration::from_millis(

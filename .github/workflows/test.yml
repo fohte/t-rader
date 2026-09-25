@@ -80,7 +80,7 @@ jobs:
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          version: 2026.9.5
+          version: 2026.9.11
 
       # corepack creates the pnpm executable inside mise's node install bin
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.
@@ -120,8 +120,8 @@ jobs:
         id: lefthook
         continue-on-error: true
         env:
-          # バックエンド変更がない場合、OpenAPI ダンプやバックエンド専用コマンドをスキップする
-          LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep' || '' }}
+          # cargo-clippy は専用 job で実行するため、test job では常にスキップする
+          LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep' || 'cargo-clippy' }}
           # pinact's min-age check calls the GitHub API; without a token it hits
           # the 60 req/h unauthenticated limit shared per IP and fails on CI.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -146,6 +146,33 @@ jobs:
       - name: Fail if lefthook failed
         if: steps.lefthook.outcome == 'failure'
         run: exit 1
+
+  cargo-clippy:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      RUSTC_WRAPPER: 'sccache'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: rustup show
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.11
+
+      - name: Run cargo-clippy
+        run: lefthook run pre-commit --all-files --command cargo-clippy
 
   detect-changes:
     runs-on: ubuntu-slim
@@ -260,7 +287,7 @@ jobs:
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          version: 2026.9.5
+          version: 2026.9.11
 
       # corepack creates the pnpm executable inside mise's node install bin
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.
@@ -474,7 +501,7 @@ jobs:
 
       - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
         with:
-          version: 2026.9.4
+          version: 2026.9.11
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@50414676f9f5d50a65992c6dd2ed02641263226c # v2.82.10
@@ -528,7 +555,7 @@ jobs:
 
       - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
         with:
-          version: 2026.9.4
+          version: 2026.9.11
 
       # corepack creates the pnpm executable inside mise's node install bin
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.
@@ -585,15 +612,16 @@ jobs:
             fi
           done < <(find dist -name '*.js' -not -name 'chunk-*')
 
-  # Aggregation gate for the per-package unit-test jobs. The dynamic per-package
-  # job names cannot be pinned as required status checks, so this single
-  # fixed-name job is the branch protection gate instead. It fails only when a
-  # needed job failed; when every leg succeeds (or is skipped because nothing
-  # changed) it is skipped, and a skipped required check counts as success.
+  # package 別 job 名を branch protection の required check に指定できないため、固定名の gate を使う。
+  # テスト、entity 同期、API fuzzing、knip、cargo-clippy の失敗を集約し、失敗がなければ skip する。
+  # required check の skip は成功として扱われる。
   unit-test:
     runs-on: ubuntu-slim
     needs:
       - detect-changes
+      - check-entity-sync
+      - api-fuzzing-backend
+      - cargo-clippy
       - unit-test-frontend
       - unit-test-backend
       - unit-test-agent
@@ -610,7 +638,7 @@ jobs:
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          version: 2026.9.5
+          version: 2026.9.11
 
       # corepack creates the pnpm executable inside mise's node install bin
       # directory; reshim so the mise shims dir (which is on PATH) picks it up.

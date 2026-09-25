@@ -26,4 +26,3 @@ pub mod tasks;
 pub mod trade_notes;
 pub mod trades;
 pub mod triggers;
-pub mod watchlists;
