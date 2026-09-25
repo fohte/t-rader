@@ -113,7 +113,6 @@ function StrategyListPage() {
             >
               <Plus className="size-6" />
               <div className="font-mono text-sm">新しい戦略を作る</div>
-              <div className="font-mono text-2xs">シード関心は後から追加</div>
             </button>
           </div>
         </>
