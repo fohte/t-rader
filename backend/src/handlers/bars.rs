@@ -92,13 +92,13 @@ mod tests {
     use chrono::{NaiveDate, TimeZone, Utc};
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
-    use sea_orm::{DatabaseConnection, EntityTrait, Set, SqlxPostgresConnector};
+    use sea_orm::{DatabaseConnection, EntityTrait, Set};
     use sqlx::PgPool;
 
     use crate::entities::instruments;
     use crate::models::bar::{Bar, Timeframe};
     use crate::repositories;
-    use crate::testing::create_test_server;
+    use crate::testing::{create_test_server, create_test_server_with_db};
 
     /// テスト用の instrument を DB に挿入する
     async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
@@ -136,18 +136,9 @@ mod tests {
         }
     }
 
-    /// テストサーバーとセットアップ済みの DB 接続を返す
-    ///
-    /// PgPool を clone してサーバー用と直接操作用に分ける。
-    async fn setup(pool: PgPool) -> (axum_test::TestServer, DatabaseConnection) {
-        let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool.clone());
-        let server = create_test_server(pool).await;
-        (server, db)
-    }
-
     #[sqlx::test(migrations = false)]
     async fn list_bars_returns_200_with_data(pool: PgPool) {
-        let (server, db) = setup(pool).await;
+        let (db, server) = create_test_server_with_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![make_test_bar(
@@ -200,7 +191,7 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn list_bars_with_date_range_filters_correctly(pool: PgPool) {
-        let (server, db) = setup(pool).await;
+        let (db, server) = create_test_server_with_db(pool).await;
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
