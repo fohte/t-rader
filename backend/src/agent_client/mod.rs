@@ -6,12 +6,4 @@
 
 pub mod client;
 
-pub use client::{
-    AgentTaskClient, AgentTaskClientConfig, AgentTaskClientConfigError,
-    AgentTaskClientConfigSource, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
-    DisabledAgentTaskClient, EXECUTION_LOST_ERROR_KIND, HttpAgentTaskClient, SharedAgentTaskClient,
-    SubmitAgentTask, TRADER_AGENT_API_DISABLED_SENTINEL,
-};
-
-#[cfg(test)]
-pub use client::FakeAgentTaskClient;
+pub use client::*;

@@ -25,7 +25,6 @@ pub enum AgentTaskError {
     Init(String),
 }
 
-/// t-rader-agent が返すタスク状態を表す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentTaskState {
     Submitted,
@@ -50,7 +49,7 @@ pub struct SubmitAgentTask {
     /// この投入の締切。agent 側で実行全体を打ち切るための signal に使われる。
     pub deadline_at: DateTime<FixedOffset>,
     /// 実行の論理的な基準時刻 (`strategy_task.as_of`)。agent がプロンプトに含めて LLM に伝える。
-    /// resume でも初回投入時の値を渡す。`None` は `as_of` カラム追加前に作成された行の resume に限られる。
+    /// resume でも初回投入時の値を渡す。
     pub as_of: Option<DateTime<FixedOffset>>,
 }
 

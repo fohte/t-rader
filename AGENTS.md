@@ -89,7 +89,9 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - `backend/scripts/generate-entities.sh` - エンティティ生成スクリプト (CLI オプション一元管理)
 - `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
-- `backend/src/agent_client/` - t-rader-agent 内部 API client (`AgentTaskClient` trait、戦略タスクの投入 / 状態照会)
+- `backend/crates/core/application/` - agent task client の port と値型
+- `backend/crates/gateways/t-rader-agent/` - t-rader-agent 内部 API client の HTTP 実装
+- `backend/src/agent_client/` - application port と gateway 実装の互換 facade
 - `backend/src/services/strategy_tasks/` - 戦略タスク投入の共通 service (`submit_task`、5 経路から呼ばれる)
 - `backend/src/mcp/watcher.rs` - 戦略タスクの phase polling (pending/running 行の状態照会 + deadline 超過の失敗確定)
 - `backend/src/handlers/agent_tasks.rs` - t-rader-agent からのタスク決着 webhook 受信
