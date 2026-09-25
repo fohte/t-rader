@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-trait = { workspace = true }
-chrono = { workspace = true, features = ["alloc"] }
+chrono = { workspace = true, features = ["alloc", "now"] }
 core-application = { workspace = true }
 core-domain = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls"] }
