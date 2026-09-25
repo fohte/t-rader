@@ -21,14 +21,13 @@ use super::dto::{
     ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult, QueryMediaParams,
     QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
     ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadHypothesisParams,
-    ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReadPredictionStatsResult, ReadSectorShortRatioParams,
-    ReadSectorShortRatioResult, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
-    ReadShortSaleReportsParams, ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult,
-    ReadValuationParams, ReadValuationResult, RecordPredictionParams, RecordPredictionResult,
-    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
-    SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams,
-    WriteNoteResult,
+    ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams, ReadPortfolioResult,
+    ReadPredictionStatsResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
+    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
+    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, ReadValuationParams,
+    ReadValuationResult, RecordPredictionParams, RecordPredictionResult, ReplyCommentParams,
+    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
+    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
@@ -36,8 +35,7 @@ use super::ref_terms::{
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
-    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, execution_task_id_from_ctx,
-    strategy_id_from_ctx,
+    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, strategy_id_from_ctx,
 };
 
 #[tool_router]
@@ -261,7 +259,7 @@ impl StrategyServer {
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes not yet tracked by add_interest / RSS feeds, or to read the actual content of a read_news / search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes not yet tracked by add_interest / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -386,27 +384,10 @@ impl StrategyServer {
         self.read_macro_indicator_inner(sid, params).await.map(Json)
     }
 
-    /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
-    #[tool(
-        name = "read_news",
-        description = "Read news items linked to the strategy that haven't been returned by a previous call, oldest first. A per-strategy checkpoint automatically advances past whatever this call returns, so repeated calls only surface items linked since the last call — nothing is skipped even across long gaps between runs. Each row is one interest match; a news item matched by more than one interest (e.g. a stock and a theme) appears once per match, so the same url/title can repeat. If has_more is true, call again to continue from where this call left off. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that."
-    )]
-    async fn read_news(
-        &self,
-        Parameters(params): Parameters<ReadNewsParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ReadNewsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        let execution_id = execution_id_from_ctx(&ctx);
-        self.read_news_inner(sid, execution_id, params)
-            .await
-            .map(Json)
-    }
-
     /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
     #[tool(
         name = "search_news",
-        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. Unlike read_news, this ignores news_strategy_link entirely, so results are not affected by whether the strategy has registered a matching interest term. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
+        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
         annotations(read_only_hint = true)
     )]
     async fn search_news(
@@ -662,7 +643,6 @@ mod tests {
                 ("read_hypothesis", Some(true)),
                 ("read_macro_indicator", Some(true)),
                 ("read_margin", Some(true)),
-                ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
                 ("read_prediction_stats", Some(true)),

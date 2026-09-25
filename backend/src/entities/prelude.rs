@@ -26,7 +26,6 @@ pub use super::margin_alert::Entity as MarginAlert;
 pub use super::margin_interest::Entity as MarginInterest;
 pub use super::mcp_tool_call_count::Entity as McpToolCallCount;
 pub use super::news_item::Entity as NewsItem;
-pub use super::news_strategy_link::Entity as NewsStrategyLink;
 pub use super::note::Entity as Note;
 pub use super::note_hypothesis::Entity as NoteHypothesis;
 pub use super::note_kind::Entity as NoteKind;

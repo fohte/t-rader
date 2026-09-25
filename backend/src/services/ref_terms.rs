@@ -1,37 +1,16 @@
 //! ref_term (参照型の別名) の読み出しと、id 優先 -> 別名フォールバックの解決ロジック。
 //!
 //! 別名の追加・削除は `mcp/strategy/ref_terms.rs` の MCP tool から行う。
-//! ニュースの語マッチ (`services/news.rs`) と内部リンク解決の両方から利用する。
+//! 内部リンク解決に利用する。
 
 use std::collections::HashMap;
 
-use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::entities::{indicator, ref_term, sector, stock, theme};
 use crate::error::AppError;
 use crate::models::RefResolution;
 use crate::text_normalize::normalize;
-
-/// 指定した (ref_kind, ref_id) の集合に登録された別名をまとめて返す。
-pub async fn load_terms(
-    db: &DatabaseConnection,
-    refs: &[(String, String)],
-) -> Result<Vec<ref_term::Model>, AppError> {
-    if refs.is_empty() {
-        return Ok(vec![]);
-    }
-    let condition = refs
-        .iter()
-        .fold(Condition::any(), |cond, (ref_kind, ref_id)| {
-            cond.add(
-                Condition::all()
-                    .add(ref_term::Column::RefKind.eq(ref_kind.as_str()))
-                    .add(ref_term::Column::RefId.eq(ref_id.as_str())),
-            )
-        });
-    let terms = ref_term::Entity::find().filter(condition).all(db).await?;
-    Ok(terms)
-}
 
 async fn exists_in_master(
     db: &DatabaseConnection,
@@ -256,7 +235,7 @@ mod tests {
     use crate::models::RefResolution;
     use crate::testing::create_test_db;
 
-    use super::{load_terms, resolve_by_term, resolve_ref_id, resolve_refs};
+    use super::{resolve_by_term, resolve_ref_id, resolve_refs};
 
     async fn seed_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
         ref_term::ActiveModel {
@@ -295,34 +274,6 @@ mod tests {
         .insert(db)
         .await
         .expect("seed indicator");
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn load_terms_returns_only_requested_refs(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        seed_term(&db, "stock", "7203", "トヨタ").await;
-        seed_term(&db, "stock", "7203", "Toyota").await;
-        seed_term(&db, "stock", "9984", "ソフトバンク").await;
-        seed_term(&db, "indicator", "USDJPY", "ドル円").await;
-
-        let mut terms = load_terms(&db, &[("stock".into(), "7203".into())])
-            .await
-            .expect("load_terms");
-        terms.sort_by(|a, b| a.term.cmp(&b.term));
-
-        assert_eq!(
-            terms.into_iter().map(|t| t.term).collect::<Vec<_>>(),
-            vec!["Toyota".to_string(), "トヨタ".to_string()],
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn load_terms_returns_empty_for_empty_refs(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
-        let terms = load_terms(&db, &[]).await.expect("load_terms");
-
-        assert_eq!(terms, vec![]);
     }
 
     #[sqlx::test(migrations = false)]
