@@ -26,7 +26,7 @@ pub async fn resolve_many_by_term(
         .await?;
     let mut by_normalized: HashMap<String, Vec<String>> = HashMap::new();
     for row in rows {
-        // 表記違いの別名 (例: "Toyota" / "TOYOTA") が同じ ref_id に複数登録されて
+        // 表記違いの別名 (例: "DemoTerm" / "DEMOTERM") が同じ ref_id に複数登録されて
         // いても、正規化後は 1 件の候補として扱う。dedup しないと同じ ref_id が
         // 2 件以上の「候補」に見えてしまい、本来一意に解決できるはずの別名が
         // 誤って曖昧判定される
@@ -45,18 +45,6 @@ pub async fn resolve_many_by_term(
             (term.clone(), candidates)
         })
         .collect())
-}
-
-/// 別名から同じ ref_kind 内の正規の ref_id 候補を引く。2 件以上ヒットした場合、
-/// どれが正しいかはコード側で判断しない。呼び出し側で未解決として扱うこと。
-pub async fn resolve_by_term(
-    db: &DatabaseConnection,
-    ref_kind: &str,
-    term: &str,
-) -> Result<Vec<String>, AppError> {
-    let terms = vec![term.to_string()];
-    let mut result = resolve_many_by_term(db, ref_kind, &terms).await?;
-    Ok(result.remove(term).unwrap_or_default())
 }
 
 /// ref_kind ごとに master テーブルから id -> name を引く
@@ -186,6 +174,8 @@ pub async fn resolve_refs(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, HashMap};
+
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::DatabaseConnection;
@@ -195,7 +185,17 @@ mod tests {
     use crate::models::RefResolution;
     use crate::testing::create_test_db;
 
-    use super::{resolve_by_term, resolve_refs};
+    use super::{resolve_many_by_term, resolve_refs};
+
+    fn sort_matches(matches: HashMap<String, Vec<String>>) -> BTreeMap<String, Vec<String>> {
+        matches
+            .into_iter()
+            .map(|(term, mut ref_ids)| {
+                ref_ids.sort();
+                (term, ref_ids)
+            })
+            .collect()
+    }
 
     async fn seed_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
         ref_term::ActiveModel {
@@ -237,74 +237,94 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn resolve_by_term_can_return_multiple_candidates(pool: PgPool) {
+    async fn resolve_many_by_term_returns_multiple_candidates(pool: PgPool) {
         let db = create_test_db(pool).await;
-        seed_term(&db, "stock", "7203", "トヨタ").await;
-        seed_term(&db, "stock", "9984", "トヨタ").await;
-        seed_term(&db, "indicator", "TOYOTA_IDX", "トヨタ").await;
+        seed_term(&db, "stock", "SAMPLE-STOCK-A", "サンプル語").await;
+        seed_term(&db, "stock", "SAMPLE-STOCK-B", "サンプル語").await;
+        seed_term(&db, "indicator", "SAMPLE-INDEX", "サンプル語").await;
 
-        let mut ref_ids = resolve_by_term(&db, "stock", "トヨタ")
+        let matches = resolve_many_by_term(&db, "stock", &["サンプル語".to_string()])
             .await
-            .expect("resolve_by_term");
-        ref_ids.sort();
+            .expect("resolve_many_by_term");
 
-        assert_eq!(ref_ids, vec!["7203".to_string(), "9984".to_string()]);
+        assert_eq!(
+            sort_matches(matches),
+            BTreeMap::from([(
+                "サンプル語".to_string(),
+                vec!["SAMPLE-STOCK-A".to_string(), "SAMPLE-STOCK-B".to_string()],
+            )]),
+        );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn resolve_by_term_returns_empty_when_no_match(pool: PgPool) {
+    async fn resolve_many_by_term_returns_empty_when_no_match(pool: PgPool) {
         let db = create_test_db(pool).await;
 
-        let ref_ids = resolve_by_term(&db, "stock", "存在しない")
+        let matches = resolve_many_by_term(&db, "stock", &["存在しない".to_string()])
             .await
-            .expect("resolve_by_term");
+            .expect("resolve_many_by_term");
 
-        assert_eq!(ref_ids, Vec::<String>::new());
+        assert_eq!(
+            sort_matches(matches),
+            BTreeMap::from([("存在しない".to_string(), Vec::<String>::new())]),
+        );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn resolve_by_term_matches_normalized_variants(pool: PgPool) {
+    async fn resolve_many_by_term_matches_normalized_variants(pool: PgPool) {
         let db = create_test_db(pool).await;
-        seed_term(&db, "indicator", "USDJPY", "USDJPY").await;
+        seed_term(&db, "indicator", "SAMPLE-INDICATOR", "DemoKey").await;
 
-        for (label, input) in [("zenkaku", "ＵＳＤＪＰＹ"), ("lowercase", "usdjpy")] {
-            let ref_ids = resolve_by_term(&db, "indicator", input)
-                .await
-                .unwrap_or_else(|e| panic!("resolve_by_term ({label}): {e}"));
-            assert_eq!(ref_ids, vec!["USDJPY".to_string()], "case: {label}");
-        }
+        let inputs = ["ＤＥＭＯＫＥＹ".to_string(), "demokey".to_string()];
+        let matches = resolve_many_by_term(&db, "indicator", &inputs)
+            .await
+            .expect("resolve_many_by_term");
+
+        assert_eq!(
+            sort_matches(matches),
+            BTreeMap::from([
+                (
+                    "ＤＥＭＯＫＥＹ".to_string(),
+                    vec!["SAMPLE-INDICATOR".to_string()],
+                ),
+                ("demokey".to_string(), vec!["SAMPLE-INDICATOR".to_string()]),
+            ]),
+        );
     }
 
     #[sqlx::test(migrations = false)]
-    async fn resolve_by_term_dedups_candidates_from_normalized_variant_aliases_on_same_ref_id(
+    async fn resolve_many_by_term_dedups_candidates_from_normalized_variant_aliases_on_same_ref_id(
         pool: PgPool,
     ) {
         let db = create_test_db(pool).await;
         // 表記違いの別名 (大文字/小文字) が同じ ref_id に 2 件登録されていても、
         // 候補は 1 件に集約される
-        seed_term(&db, "stock", "7203", "Toyota").await;
-        seed_term(&db, "stock", "7203", "TOYOTA").await;
+        seed_term(&db, "stock", "SAMPLE-STOCK", "DemoTerm").await;
+        seed_term(&db, "stock", "SAMPLE-STOCK", "DEMOTERM").await;
 
-        let ref_ids = resolve_by_term(&db, "stock", "toyota")
+        let matches = resolve_many_by_term(&db, "stock", &["demoterm".to_string()])
             .await
-            .expect("resolve_by_term");
+            .expect("resolve_many_by_term");
 
-        assert_eq!(ref_ids, vec!["7203".to_string()]);
+        assert_eq!(
+            sort_matches(matches),
+            BTreeMap::from([("demoterm".to_string(), vec!["SAMPLE-STOCK".to_string()])]),
+        );
     }
 
     #[sqlx::test(migrations = false)]
     async fn resolve_refs_resolves_exact_id_alias_and_unresolved_in_input_order(pool: PgPool) {
         let db = create_test_db(pool).await;
-        seed_stock(&db, "7203", "トヨタ自動車").await;
-        seed_indicator(&db, "USDJPY", "ドル円").await;
-        seed_term(&db, "indicator", "USDJPY", "ＵＳＤＪＰＹ").await;
+        seed_stock(&db, "SAMPLE-STOCK", "サンプル銘柄").await;
+        seed_indicator(&db, "SAMPLE-INDICATOR", "サンプル指標").await;
+        seed_term(&db, "indicator", "SAMPLE-INDICATOR", "ＳＡＭＰＬＥＫＥＹ").await;
 
         let result = resolve_refs(
             &db,
             &[
-                ("stock".into(), "7203".into()),
-                ("indicator".into(), "ＵＳＤＪＰＹ".into()),
-                ("stock".into(), "9999".into()),
+                ("stock".into(), "SAMPLE-STOCK".into()),
+                ("indicator".into(), "samplekey".into()),
+                ("stock".into(), "UNKNOWN-STOCK".into()),
             ],
         )
         .await
@@ -315,17 +335,17 @@ mod tests {
             vec![
                 RefResolution {
                     kind: "stock".into(),
-                    id: "7203".into(),
-                    name: Some("トヨタ自動車".into()),
+                    id: "SAMPLE-STOCK".into(),
+                    name: Some("サンプル銘柄".into()),
                 },
                 RefResolution {
                     kind: "indicator".into(),
-                    id: "USDJPY".into(),
-                    name: Some("ドル円".into()),
+                    id: "SAMPLE-INDICATOR".into(),
+                    name: Some("サンプル指標".into()),
                 },
                 RefResolution {
                     kind: "stock".into(),
-                    id: "9999".into(),
+                    id: "UNKNOWN-STOCK".into(),
                     name: None,
                 },
             ],
@@ -335,12 +355,12 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn resolve_refs_leaves_ambiguous_alias_unresolved(pool: PgPool) {
         let db = create_test_db(pool).await;
-        seed_stock(&db, "7203", "トヨタ自動車").await;
-        seed_stock(&db, "9984", "ソフトバンクグループ").await;
-        seed_term(&db, "stock", "7203", "トヨタ").await;
-        seed_term(&db, "stock", "9984", "トヨタ").await;
+        seed_stock(&db, "SAMPLE-STOCK-A", "サンプル銘柄 A").await;
+        seed_stock(&db, "SAMPLE-STOCK-B", "サンプル銘柄 B").await;
+        seed_term(&db, "stock", "SAMPLE-STOCK-A", "サンプル語").await;
+        seed_term(&db, "stock", "SAMPLE-STOCK-B", "サンプル語").await;
 
-        let result = resolve_refs(&db, &[("stock".into(), "トヨタ".into())])
+        let result = resolve_refs(&db, &[("stock".into(), "サンプル語".into())])
             .await
             .expect("resolve_refs");
 
@@ -348,7 +368,7 @@ mod tests {
             result,
             vec![RefResolution {
                 kind: "stock".into(),
-                id: "トヨタ".into(),
+                id: "サンプル語".into(),
                 name: None,
             }],
         );
@@ -357,10 +377,10 @@ mod tests {
     #[sqlx::test(migrations = false)]
     async fn resolve_refs_leaves_dangling_alias_unresolved(pool: PgPool) {
         let db = create_test_db(pool).await;
-        // master に存在しない ref_id (9999) を指す dangling な別名
-        seed_term(&db, "stock", "9999", "トヨタ").await;
+        // master に存在しない ref_id を指す dangling な別名
+        seed_term(&db, "stock", "MISSING-STOCK", "サンプル語").await;
 
-        let result = resolve_refs(&db, &[("stock".into(), "トヨタ".into())])
+        let result = resolve_refs(&db, &[("stock".into(), "サンプル語".into())])
             .await
             .expect("resolve_refs");
 
@@ -368,7 +388,7 @@ mod tests {
             result,
             vec![RefResolution {
                 kind: "stock".into(),
-                id: "トヨタ".into(),
+                id: "サンプル語".into(),
                 name: None,
             }],
         );

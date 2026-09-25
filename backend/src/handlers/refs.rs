@@ -11,6 +11,7 @@ use crate::entities::{indicator, sector, stock, theme};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::RefResolution;
+use crate::services::note_refs::ALLOWED_REF_KINDS;
 use crate::services::ref_terms;
 
 /// LIKE のメタ文字 (`%` `_` `\`) を入力から除去する。
@@ -277,9 +278,10 @@ pub async fn resolve_refs(
         if kind.is_empty() || id.is_empty() {
             return Err(AppError::Validation(format!("invalid link: {raw}")));
         }
-        if !["stock", "indicator", "sector", "theme"].contains(&kind) {
+        if !ALLOWED_REF_KINDS.contains(&kind) {
             return Err(AppError::Validation(format!(
-                "unknown ref kind: {kind} (allowed: stock, indicator, sector, theme)"
+                "unknown ref kind: {kind} (allowed: {})",
+                ALLOWED_REF_KINDS.join(", ")
             )));
         }
         requested.push((kind.to_string(), id.to_string()));

@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use super::{StrategyServer, db_error, invalid_params};
 use crate::entities::ref_term;
+use crate::services::note_refs::ALLOWED_REF_KINDS;
 
 /// 戦略 Agent が追加する別名の固定 origin。
 const AGENT_TERM_ORIGIN: &str = "llm";
@@ -54,7 +55,7 @@ pub struct RemoveRefTermsResult {
 /// ref_kind / ref_id を trim + 値域チェックする。add/remove 両 tool で共通。
 fn normalize_ref(ref_kind: &str, ref_id: &str) -> Result<(String, String), McpError> {
     let ref_kind = ref_kind.trim();
-    if !matches!(ref_kind, "stock" | "indicator" | "sector" | "theme") {
+    if !ALLOWED_REF_KINDS.contains(&ref_kind) {
         return Err(invalid_params(format!("invalid ref_kind: {ref_kind}")));
     }
     let ref_id = ref_id.trim();
