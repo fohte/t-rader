@@ -51,7 +51,7 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@fohte/storybook-addon": "0.1.9",
+    "@fohte/storybook-addon": "0.2.0",
     "@storybook/addon-docs": "10.6.0",
     "@storybook/addon-vitest": "10.6.0",
     "@storybook/react-vite": "10.6.0",

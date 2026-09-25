@@ -361,8 +361,8 @@ importers:
         version: 2.9.0
     devDependencies:
       '@fohte/storybook-addon':
-        specifier: 0.1.9
-        version: 0.1.9(@storybook/addon-vitest@10.6.0(@vitest/browser-playwright@4.1.11)(@vitest/browser@4.1.11(msw@2.15.0(@types/node@24.13.4)(typescript@6.0.3))(vite@8.3.0(@types/node@24.13.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))(vitest@4.1.11))(@vitest/runner@4.1.11)(react@19.2.8)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11))(@storycap-testrun/browser@2.1.1(@vitest/browser-playwright@4.1.11))(@vitest/browser-playwright@4.1.11)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11)
+        specifier: 0.2.0
+        version: 0.2.0(@storybook/addon-vitest@10.6.0(@vitest/browser-playwright@4.1.11)(@vitest/browser@4.1.11(msw@2.15.0(@types/node@24.13.4)(typescript@6.0.3))(vite@8.3.0(@types/node@24.13.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))(vitest@4.1.11))(@vitest/runner@4.1.11)(react@19.2.8)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11))(@storycap-testrun/browser@2.1.1(@vitest/browser-playwright@4.1.11))(@vitest/browser-playwright@4.1.11)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11)
       '@storybook/addon-docs':
         specifier: 10.6.0
         version: 10.6.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))
@@ -1623,11 +1623,11 @@ packages:
       pino-pretty:
         optional: true
 
-  '@fohte/storybook-addon@0.1.9':
-    resolution: {integrity: sha512-LSr1b9b3naZRx3L3EkTovfe2Gxyci1NlmcSHwBeN1+llQCfBFbE0GeWlho/eYpfUZ+eCa2iIcbjRve7ftOJVXw==}
+  '@fohte/storybook-addon@0.2.0':
+    resolution: {integrity: sha512-UxeUYOKwPzCcmjBdLCiiYDFTJnluNdaMgh7TRpHknPeH7of+i7R/03Idkk5meaUcXpsr1xqU3vn5U7ObQwbDnw==}
     peerDependencies:
       '@storybook/addon-vitest': ^10.0.0
-      '@storycap-testrun/browser': ^2.0.0
+      '@storycap-testrun/browser': ^3.0.0
       '@vitest/browser-playwright': ^4.0.0
       storybook: ^10.0.0
       vitest: ^4.0.0
@@ -8905,7 +8905,7 @@ snapshots:
       - '@opentelemetry/exporter-trace-otlp-http'
       - supports-color
 
-  '@fohte/storybook-addon@0.1.9(@storybook/addon-vitest@10.6.0(@vitest/browser-playwright@4.1.11)(@vitest/browser@4.1.11(msw@2.15.0(@types/node@24.13.4)(typescript@6.0.3))(vite@8.3.0(@types/node@24.13.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))(vitest@4.1.11))(@vitest/runner@4.1.11)(react@19.2.8)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11))(@storycap-testrun/browser@2.1.1(@vitest/browser-playwright@4.1.11))(@vitest/browser-playwright@4.1.11)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11)':
+  '@fohte/storybook-addon@0.2.0(@storybook/addon-vitest@10.6.0(@vitest/browser-playwright@4.1.11)(@vitest/browser@4.1.11(msw@2.15.0(@types/node@24.13.4)(typescript@6.0.3))(vite@8.3.0(@types/node@24.13.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))(vitest@4.1.11))(@vitest/runner@4.1.11)(react@19.2.8)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11))(@storycap-testrun/browser@2.1.1(@vitest/browser-playwright@4.1.11))(@vitest/browser-playwright@4.1.11)(storybook@10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8))(vitest@4.1.11)':
     dependencies:
       neverthrow: 8.2.0
       storybook: 10.6.0(@types/react@19.3.0)(prettier@3.9.6)(react@19.2.8)
