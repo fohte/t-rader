@@ -25,7 +25,8 @@ pub struct Model {
     pub anchor_text: Option<String>,
     pub start_line: Option<i32>,
     pub end_line: Option<i32>,
-    pub drifted: bool,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub anchor_side: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

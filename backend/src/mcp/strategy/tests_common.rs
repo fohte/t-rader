@@ -91,6 +91,14 @@ pub(super) fn normalize_comment_model(mut c: comment::Model) -> comment::Model {
     c
 }
 
+pub(super) async fn current_note_version_id(db: &DatabaseConnection, note_id: Uuid) -> Uuid {
+    crate::services::note_versions::find_current_version(db, note_id)
+        .await
+        .expect("find current note version")
+        .expect("current note version exists")
+        .id
+}
+
 /// 指定戦略の所有として固定タイトルの note を seed する (cross-strategy violation 用)
 pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, title: &str) -> Uuid {
     let id = Uuid::new_v4();
@@ -176,9 +184,9 @@ pub(super) async fn seed_comment(
         resolved: NotSet,
         created_at: NotSet,
         anchor_text: Set(None),
+        anchor_side: Set(None),
         start_line: Set(None),
         end_line: Set(None),
-        drifted: NotSet,
     }
     .insert(db)
     .await
@@ -212,17 +220,17 @@ pub(super) async fn seed_hypothesis(
     id
 }
 
-/// note にトップレベルの anchor_text 付きコメントを seed する (再アンカリングのテスト用)
-pub(super) async fn seed_note_comment_with_anchor(
+/// note_version にトップレベルの行コメントを seed する。
+pub(super) async fn seed_note_version_comment_with_anchor(
     db: &DatabaseConnection,
-    note_id: Uuid,
+    version_id: Uuid,
     anchor_text: &str,
 ) -> Uuid {
     let id = Uuid::new_v4();
     comment::ActiveModel {
         id: Set(id),
-        target_kind: Set("note".into()),
-        target_id: Set(note_id),
+        target_kind: Set("note_version".into()),
+        target_id: Set(version_id),
         parent_id: Set(None),
         body: Set("please fix".into()),
         author_kind: Set("human".into()),
@@ -230,12 +238,12 @@ pub(super) async fn seed_note_comment_with_anchor(
         resolved: NotSet,
         created_at: NotSet,
         anchor_text: Set(Some(anchor_text.to_string())),
-        start_line: Set(Some(1)),
-        end_line: Set(Some(1)),
-        drifted: Set(false),
+        anchor_side: Set(Some("new".into())),
+        start_line: Set(Some(2)),
+        end_line: Set(Some(2)),
     }
     .insert(db)
     .await
-    .expect("seed note comment with anchor");
+    .expect("seed note version comment with anchor");
     id
 }

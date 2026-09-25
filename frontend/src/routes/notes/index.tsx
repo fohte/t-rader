@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+import { PendingNoteVersionsLink } from '#components/note-detail/pending-note-versions-link'
 import { StrategyFilterSelect } from '#components/strategy-filter-select'
 import { NotesList } from '#components/strategy-home/notes-list'
 import { Skeleton } from '#components/ui/skeleton'
@@ -28,12 +29,15 @@ function NotesPage() {
         <h1 className="text-2xl font-bold leading-tight tracking-tight">
           ノート
         </h1>
-        <StrategyFilterSelect
-          value={strategy_id}
-          onChange={(v) => {
-            void navigate({ search: (prev) => ({ ...prev, strategy_id: v }) })
-          }}
-        />
+        <div className="flex items-center gap-2">
+          <PendingNoteVersionsLink />
+          <StrategyFilterSelect
+            value={strategy_id}
+            onChange={(v) => {
+              void navigate({ search: (prev) => ({ ...prev, strategy_id: v }) })
+            }}
+          />
+        </div>
       </header>
       {isPending ? (
         <Skeleton className="h-40 w-full" />

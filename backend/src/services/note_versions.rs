@@ -12,7 +12,6 @@ use uuid::Uuid;
 use crate::entities::{note, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
-use crate::services::comment_anchor;
 use crate::services::note_refs::{sync_note_refs, sync_note_refs_after_graphs_only_update};
 
 pub struct AppendVersion {
@@ -107,10 +106,6 @@ pub async fn append_version(
             .await?;
         }
     }
-    if body_changed {
-        comment_anchor::reanchor_note_comments(txn, note_id, &version.body_md).await?;
-    }
-
     let mut diff = json!({
         "from_version_id": previous.as_ref().map(|version| version.id),
         "to_version_id": version.id,
