@@ -1,9 +1,10 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{DatabaseConnection, EntityTrait, Set};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -23,9 +24,9 @@ pub async fn run_aggregation_cycle(
     aggregator: &dyn NewsAggregator,
 ) -> Result<AggregationStats, DataProviderError> {
     let fetched = aggregator.fetch_news().await?;
-    let news_rows = upsert_news_items(db, &fetched).await.map_err(db_err)?;
+    let fetched_count = upsert_news_items(db, &fetched).await.map_err(db_err)?;
     Ok(AggregationStats {
-        fetched: news_rows.len(),
+        fetched: fetched_count,
     })
 }
 
@@ -33,13 +34,13 @@ fn db_err(e: sea_orm::DbErr) -> DataProviderError {
     DataProviderError::Database(e.to_string())
 }
 
-/// `news_item` テーブルに upsert し、対象行の Model 全件を返す
+/// `news_item` テーブルに upsert し、対象 URL の件数を返す
 pub async fn upsert_news_items(
     db: &DatabaseConnection,
     items: &[NewsItem],
-) -> Result<Vec<news_item::Model>, sea_orm::DbErr> {
+) -> Result<usize, sea_orm::DbErr> {
     if items.is_empty() {
-        return Ok(Vec::new());
+        return Ok(0);
     }
     let now = Utc::now().into();
     let actives: Vec<news_item::ActiveModel> = items
@@ -71,11 +72,11 @@ pub async fn upsert_news_items(
         .exec(db)
         .await?;
 
-    let urls: Vec<String> = items.iter().map(|n| n.url.clone()).collect();
-    news_item::Entity::find()
-        .filter(news_item::Column::Url.is_in(urls))
-        .all(db)
-        .await
+    Ok(items
+        .iter()
+        .map(|item| item.url.as_str())
+        .collect::<HashSet<_>>()
+        .len())
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す
