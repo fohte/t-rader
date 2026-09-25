@@ -1,12 +1,13 @@
 //! 戦略実行 MCP の統合テストで共有するヘルパー。
 
 use chrono::{DateTime, FixedOffset};
-use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::DatabaseConnection;
+use sea_orm::TransactionTrait;
+use sea_orm::{ActiveModelTrait, EntityTrait};
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment, hypothesis, note, strategy};
+use crate::entities::{annotation, comment, hypothesis, note, note_version, strategy};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
@@ -48,10 +49,14 @@ pub(super) fn normalize_annotation(mut a: AnnotationDto) -> AnnotationDto {
     a
 }
 
-/// note の status を直接書き換える (レビュー確定状態からの遷移をテストするため)
+/// 現行バージョンの status を直接書き換える (レビュー確定状態からの遷移をテストするため)
 pub(super) async fn set_note_status(db: &DatabaseConnection, note_id: Uuid, status: &str) {
-    note::ActiveModel {
-        id: Set(note_id),
+    let version = crate::services::note_versions::find_current_version(db, note_id)
+        .await
+        .expect("find current note version")
+        .expect("current note version exists");
+    note_version::ActiveModel {
+        id: Set(version.id),
         status: Set(status.to_string()),
         ..Default::default()
     }
@@ -89,25 +94,40 @@ pub(super) fn normalize_comment_model(mut c: comment::Model) -> comment::Model {
 /// 指定戦略の所有として固定タイトルの note を seed する (cross-strategy violation 用)
 pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, title: &str) -> Uuid {
     let id = Uuid::new_v4();
-    note::ActiveModel {
+    let txn = db.begin().await.expect("begin note transaction");
+    note::Entity::insert(note::ActiveModel {
         id: Set(id),
         strategy_id: Set(Some(owner)),
-        title: Set(title.to_string()),
-        body_md: Set("body".into()),
-        frontmatter_json: Set(serde_json::json!({})),
         type_tag: Set(None),
-        status: Set(super::DEFAULT_NOTE_STATUS.into()),
         trigger: Set(None),
         trigger_label: Set(None),
-        created_by_kind: Set(super::STRATEGY_AGENT_ACTOR.into()),
         created_at: NotSet,
         updated_at: NotSet,
-        graphs_json: Set(serde_json::json!([])),
         execution_id: Set(None),
-    }
-    .insert(db)
+    })
+    .exec_without_returning(&txn)
     .await
     .expect("seed note");
+    crate::services::note_versions::append_version(
+        &txn,
+        id,
+        crate::services::note_versions::AppendVersion {
+            title: title.to_string(),
+            body_md: "body".into(),
+            frontmatter_json: serde_json::json!({}),
+            graphs_json: serde_json::json!([]),
+            created_by_kind: super::STRATEGY_AGENT_ACTOR.into(),
+            execution_id: None,
+            change_reason: None,
+            change_diff: None,
+            actor: crate::services::change_history::Actor::Llm {
+                label: super::STRATEGY_AGENT_ACTOR,
+            },
+        },
+    )
+    .await
+    .expect("append note version");
+    txn.commit().await.expect("commit note transaction");
     id
 }
 

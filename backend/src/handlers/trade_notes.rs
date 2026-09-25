@@ -11,7 +11,8 @@ use crate::AppState;
 use crate::entities::{note, trade, trade_note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::models::CreateTradeNoteRequest;
+use crate::models::{CreateTradeNoteRequest, NoteResponse};
+use crate::services::note_versions::{find_current_versions, find_initial_created_by_kind};
 
 async fn find_trade_or_404(
     db: &sea_orm::DatabaseConnection,
@@ -30,7 +31,7 @@ async fn find_trade_or_404(
     tag = "trades",
     params(("id" = Uuid, Path, description = "取引 ID")),
     responses(
-        (status = 200, body = Vec<note::Model>),
+        (status = 200, body = Vec<NoteResponse>),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -39,7 +40,7 @@ async fn find_trade_or_404(
 pub async fn list_trade_notes(
     State(state): State<AppState>,
     JsonPath(trade_id): JsonPath<Uuid>,
-) -> Result<Json<Vec<note::Model>>, AppError> {
+) -> Result<Json<Vec<NoteResponse>>, AppError> {
     find_trade_or_404(&state.db, trade_id).await?;
 
     let links = trade_note::Entity::find()
@@ -53,13 +54,33 @@ pub async fn list_trade_notes(
         .filter(note::Column::Id.is_in(note_ids.iter().copied()))
         .all(&state.db)
         .await?;
-    let notes_by_id: HashMap<Uuid, note::Model> = notes.into_iter().map(|n| (n.id, n)).collect();
+    let versions_by_id = find_current_versions(&state.db, &note_ids).await?;
+    let creators = find_initial_created_by_kind(&state.db, &note_ids).await?;
+    let mut notes_by_id: HashMap<Uuid, NoteResponse> = notes
+        .into_iter()
+        .map(|note| {
+            let version = versions_by_id.get(&note.id).cloned().ok_or_else(|| {
+                AppError::NotFound(format!("current version for note {} not found", note.id))
+            })?;
+            let created_by_kind = creators.get(&note.id).cloned().ok_or_else(|| {
+                AppError::NotFound(format!("initial version for note {} not found", note.id))
+            })?;
+            Ok((
+                note.id,
+                NoteResponse::from_current_version(note, version, created_by_kind),
+            ))
+        })
+        .collect::<Result<_, AppError>>()?;
 
     // is_in() は順序を保証しないため、リンク作成順の note_ids を基準に組み立て直す
     let ordered = note_ids
         .into_iter()
-        .filter_map(|id| notes_by_id.get(&id).cloned())
-        .collect();
+        .map(|id| {
+            notes_by_id
+                .remove(&id)
+                .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
     Ok(Json(ordered))
 }
 
@@ -152,8 +173,10 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::{note, trade};
-    use crate::testing::{create_test_server_with_db, insert_test_strategy};
+    use crate::entities::trade;
+    use crate::testing::{
+        create_test_server_with_db, insert_test_note_in_scope, insert_test_strategy,
+    };
 
     async fn seed_trade(db: &DatabaseConnection, strategy_id: Uuid) -> Uuid {
         let id = Uuid::new_v4();
@@ -178,27 +201,7 @@ mod tests {
     }
 
     async fn seed_note(db: &DatabaseConnection, strategy_id: Option<Uuid>) -> Uuid {
-        let id = Uuid::new_v4();
-        note::ActiveModel {
-            id: Set(id),
-            strategy_id: Set(strategy_id),
-            title: Set("t".into()),
-            body_md: Set("b".into()),
-            frontmatter_json: Set(json!({})),
-            type_tag: Set(None),
-            status: Set("unread".into()),
-            trigger: Set(None),
-            trigger_label: Set(None),
-            created_by_kind: Set("human".into()),
-            created_at: NotSet,
-            updated_at: NotSet,
-            graphs_json: Set(json!([])),
-            execution_id: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("insert note");
-        id
+        insert_test_note_in_scope(db, strategy_id, "t", "b").await
     }
 
     fn normalize_trade_note(mut v: serde_json::Value) -> serde_json::Value {

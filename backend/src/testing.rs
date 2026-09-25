@@ -5,7 +5,7 @@ use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, SqlxPostgresConnector};
+use sea_orm::{DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionTrait};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -13,7 +13,7 @@ use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::{DataProvider, DataProviderError, DateRange};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::{
-    hypothesis, hypothesis_proposal, note, stock, strategy, strategy_task, trigger,
+    hypothesis, hypothesis_proposal, note, note_version, stock, strategy, strategy_task, trigger,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::models::{Bar, Instrument};
@@ -95,26 +95,100 @@ pub async fn insert_test_note(
     title: &str,
     body_md: &str,
 ) -> Uuid {
+    insert_test_note_in_scope(db, Some(strategy_id), title, body_md).await
+}
+
+pub async fn insert_test_note_in_scope(
+    db: &DatabaseConnection,
+    strategy_id: Option<Uuid>,
+    title: &str,
+    body_md: &str,
+) -> Uuid {
+    insert_test_note_with_options(db, strategy_id, title, body_md, None, "human", "unread").await
+}
+
+pub async fn insert_test_note_with_status(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+    title: &str,
+    body_md: &str,
+    status: &str,
+) -> Uuid {
+    insert_test_note_with_options(db, Some(strategy_id), title, body_md, None, "human", status)
+        .await
+}
+
+pub async fn insert_test_note_with_execution_id(
+    db: &DatabaseConnection,
+    strategy_id: Uuid,
+    title: &str,
+    body_md: &str,
+    execution_id: &str,
+) -> Uuid {
+    insert_test_note_with_options(
+        db,
+        Some(strategy_id),
+        title,
+        body_md,
+        Some(execution_id.to_string()),
+        "llm",
+        "unread",
+    )
+    .await
+}
+
+async fn insert_test_note_with_options(
+    db: &DatabaseConnection,
+    strategy_id: Option<Uuid>,
+    title: &str,
+    body_md: &str,
+    execution_id: Option<String>,
+    created_by_kind: &str,
+    status: &str,
+) -> Uuid {
     let id = Uuid::new_v4();
-    note::ActiveModel {
+    let txn = db.begin().await.expect("begin test note transaction");
+    note::Entity::insert(note::ActiveModel {
         id: Set(id),
-        strategy_id: Set(Some(strategy_id)),
-        title: Set(title.to_string()),
-        body_md: Set(body_md.to_string()),
-        frontmatter_json: Set(serde_json::json!({})),
+        strategy_id: Set(strategy_id),
         type_tag: Set(None),
-        status: Set("unread".to_string()),
         trigger: Set(None),
         trigger_label: Set(None),
-        created_by_kind: Set("human".to_string()),
         created_at: NotSet,
         updated_at: NotSet,
-        graphs_json: Set(serde_json::json!([])),
-        execution_id: Set(None),
-    }
-    .insert(db)
+        execution_id: Set(execution_id.clone()),
+    })
+    .exec_without_returning(&txn)
     .await
     .expect("insert test note");
+    let version = crate::services::note_versions::append_version(
+        &txn,
+        id,
+        crate::services::note_versions::AppendVersion {
+            title: title.to_string(),
+            body_md: body_md.to_string(),
+            frontmatter_json: serde_json::json!({}),
+            graphs_json: serde_json::json!([]),
+            created_by_kind: created_by_kind.to_string(),
+            execution_id,
+            change_reason: None,
+            change_diff: None,
+            actor: crate::services::change_history::Actor::Human,
+        },
+    )
+    .await
+    .expect("append test note version");
+    if status != "unread" {
+        note_version::ActiveModel {
+            id: Set(version.id),
+            status: Set(status.to_string()),
+            ..Default::default()
+        }
+        .update(&txn)
+        .await
+        .expect("set test note version status");
+    }
+    txn.commit().await.expect("commit test note transaction");
     id
 }
 
