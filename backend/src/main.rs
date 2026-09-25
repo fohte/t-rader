@@ -9,7 +9,6 @@ use backend::agent_client::{
 use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::SharedDailyBarSource;
-use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
@@ -18,6 +17,7 @@ use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, Share
 use clap::Parser;
 use core_application::{IndicatorObservationSource, SharedNewsAggregator};
 use gateway_fred::FredClient;
+use gateway_ibkr::IbkrClient;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
 
@@ -91,7 +91,10 @@ async fn main() -> Result<(), AppError> {
             let exchange = std::env::var("IBKR_EXCHANGE")
                 .ok()
                 .filter(|s| !s.is_empty());
-            let client = Arc::new(IbkrClient::new(base_url, session_token, exchange)?);
+            let client = Arc::new(
+                IbkrClient::new(base_url, session_token, exchange)
+                    .map_err(|e| AppError::DailyBarSource(e.into()))?,
+            );
             tracing::info!("IBKR 日足データ取得元を初期化しました");
             let source: SharedDailyBarSource = client;
             (Some(source), None)
