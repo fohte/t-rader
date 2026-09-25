@@ -532,6 +532,14 @@ jobs:
           GEMINI_MEDIA_MODEL: gemini-9-flash
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: backend/lcov.info
+          flags: backend
+          fail_ci_if_error: false
+
       - name: Collect and summarize PostgreSQL statement timings
         if: always()
         env:
@@ -542,12 +550,17 @@ jobs:
           import re
           from collections import defaultdict
 
+          create_without_template = "CREATE DATABASE without TEMPLATE"
+          create_with_template = "CREATE DATABASE with TEMPLATE"
+          drop_database = "DROP DATABASE"
+          advisory_lock = "pg_advisory_*"
+          other_statements = "other statements"
           categories = (
-              "CREATE DATABASE without TEMPLATE",
-              "CREATE DATABASE with TEMPLATE",
-              "DROP DATABASE",
-              "pg_advisory_*",
-              "other statements",
+              create_without_template,
+              create_with_template,
+              drop_database,
+              advisory_lock,
+              other_statements,
           )
           timing_pattern = re.compile(r"\bduration:\s*([0-9.]+)\s*ms\b", re.IGNORECASE)
           # Parse / Bind も別々に記録されるため、Execute と単純 query の statement だけを数える。
@@ -573,16 +586,16 @@ jobs:
 
                   if re.match(r"CREATE\s+DATABASE\b", query, re.IGNORECASE):
                       category = (
-                          "CREATE DATABASE with TEMPLATE"
+                          create_with_template
                           if re.search(r"\bTEMPLATE\b", query, re.IGNORECASE)
-                          else "CREATE DATABASE without TEMPLATE"
+                          else create_without_template
                       )
                   elif re.match(r"DROP\s+DATABASE\b", query, re.IGNORECASE):
-                      category = "DROP DATABASE"
-                  elif re.search(r"\bpg_advisory_[a-z_]+\s*\(", query, re.IGNORECASE):
-                      category = "pg_advisory_*"
+                      category = drop_database
+                  elif re.search(r"\bpg_(?:try_)?advisory_[a-z_]+\s*\(", query, re.IGNORECASE):
+                      category = advisory_lock
                   else:
-                      category = "other statements"
+                      category = other_statements
 
                   duration_ms = float(timing.group(1))
                   totals[category] += duration_ms
@@ -607,14 +620,6 @@ jobs:
           name: backend-db-statement-log
           path: backend-db.log
           if-no-files-found: warn
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: backend/lcov.info
-          flags: backend
-          fail_ci_if_error: false
 
   unit-test-agent:
     needs: detect-changes
