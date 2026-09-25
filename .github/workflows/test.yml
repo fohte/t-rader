@@ -585,15 +585,16 @@ jobs:
             fi
           done < <(find dist -name '*.js' -not -name 'chunk-*')
 
-  # Aggregation gate for the per-package unit-test jobs. The dynamic per-package
-  # job names cannot be pinned as required status checks, so this single
-  # fixed-name job is the branch protection gate instead. It fails only when a
-  # needed job failed; when every leg succeeds (or is skipped because nothing
-  # changed) it is skipped, and a skipped required check counts as success.
+  # Aggregation gate for the Test workflow's validation jobs. This fixed-name
+  # job is a required status check and collects package tests, entity sync,
+  # API fuzzing, and knip. It fails when any needed job fails; otherwise it is
+  # skipped, which GitHub treats as success for a required check.
   unit-test:
     runs-on: ubuntu-slim
     needs:
       - detect-changes
+      - check-entity-sync
+      - api-fuzzing-backend
       - unit-test-frontend
       - unit-test-backend
       - unit-test-agent
