@@ -511,6 +511,33 @@ jobs:
       - name: Install llvm-tools-preview
         run: rustup component add llvm-tools-preview
 
+      - name: Disable PostgreSQL durability for backend tests
+        env:
+          DB_CONTAINER_ID: ${{ job.services.db.id }}
+        run: |
+          docker exec "$DB_CONTAINER_ID" psql \
+            --username=t_rader \
+            --dbname=t_rader_test \
+            --set=ON_ERROR_STOP=1 \
+            --command="ALTER SYSTEM SET fsync = off" \
+            --command="ALTER SYSTEM SET synchronous_commit = off" \
+            --command="ALTER SYSTEM SET full_page_writes = off" \
+            --command="SELECT pg_reload_conf()"
+          sleep 1
+          settings=$(docker exec "$DB_CONTAINER_ID" psql \
+            --username=t_rader \
+            --dbname=t_rader_test \
+            --set=ON_ERROR_STOP=1 \
+            --tuples-only \
+            --no-align \
+            --command="SHOW fsync" \
+            --command="SHOW synchronous_commit" \
+            --command="SHOW full_page_writes")
+          if [[ "$settings" != $'off\noff\noff' ]]; then
+            printf 'PostgreSQL durability settings are not disabled:\n%s\n' "$settings" >&2
+            exit 1
+          fi
+
       - name: Run tests with coverage
         working-directory: backend
         env:
