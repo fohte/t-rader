@@ -1,5 +1,5 @@
 //! 表記揺れ (全角/半角・大文字小文字) を吸収する文字列正規化。
-//! ref_term (参照型の別名) 照合やニュースの語マッチなど、テキスト同士の緩い一致判定に使う。
+//! ref_term (参照型の別名) 照合など、テキスト同士の緩い一致判定に使う。
 
 use unicode_normalization::UnicodeNormalization;
 

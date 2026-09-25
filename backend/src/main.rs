@@ -9,7 +9,6 @@ use backend::agent_client::{
 use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::DataProviderKind;
-use backend::data_provider::fred::FredClient;
 use backend::data_provider::ibkr::IbkrClient;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::NewsAggregator;
@@ -18,6 +17,8 @@ use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
+use core_application::IndicatorObservationSource;
+use gateway_fred::FredClient;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
 
@@ -206,10 +207,13 @@ async fn main() -> Result<(), AppError> {
 
     match std::env::var("FRED_API_KEY") {
         Ok(api_key) if !api_key.is_empty() => {
-            let fred_client = FredClient::new(api_key)?;
+            let fred_client = FredClient::new(api_key).map_err(|err| {
+                AppError::Config(format!("failed to initialize FRED client: {err}"))
+            })?;
+            let source: Arc<dyn IndicatorObservationSource> = Arc::new(fred_client);
             let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
                 db.clone(),
-                fred_client,
+                source,
                 backend::services::fred_ingest::DEFAULT_INTERVAL,
             );
             tracing::info!(

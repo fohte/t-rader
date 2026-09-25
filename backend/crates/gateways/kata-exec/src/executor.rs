@@ -2,13 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use core_application::{ExecRequest, ExecResult, KataExecError, KataExecutor};
 
 use super::config::KataExecutorConfig;
 use super::config::PodResourceLimits;
-use super::error::KataExecError;
 use super::manifest::{PodPhase, assemble_result, build_pod_manifest, generate_pod_name};
 use super::pod_api::{PodApi, ReqwestPodApi};
-use super::types::{ExecRequest, ExecResult, KataExecutor};
 
 /// Pod 削除を `Drop` で fire-and-forget 予約する RAII ガード。
 /// 正常パスでは `disarm()` を呼んでから同期 `delete` する。disarm を忘れると
@@ -144,7 +143,7 @@ impl KataExecutor for HttpKataExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kata_exec::manifest::{ENVELOPE_MARKER, PodStatusInfo};
+    use crate::manifest::{ENVELOPE_MARKER, PodStatusInfo};
     use serde_json::json;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};

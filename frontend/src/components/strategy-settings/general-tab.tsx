@@ -154,7 +154,7 @@ export function GeneralTab({ strategyId }: GeneralTabProps) {
           危険な操作
         </h2>
         <p className="text-sm text-muted-foreground-strong">
-          戦略を削除すると、紐づくノート・アノテーション・トレード・仮説・トリガー・カスタムインジケーター・戦略タスク・関心もすべて削除されます。この操作は取り消せません。
+          戦略を削除すると、紐づくノート・アノテーション・トレード・仮説・トリガー・カスタムインジケーター・戦略タスクなどもすべて削除されます。この操作は取り消せません。
         </p>
         <Button
           type="button"
