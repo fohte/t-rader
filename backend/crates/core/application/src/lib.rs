@@ -1,4 +1,5 @@
 mod agent_task_client;
+mod daily_bar_source;
 mod indicator_observation_source;
 mod kata_exec;
 mod llm_client;
@@ -21,6 +22,8 @@ pub use llm_client::{
 
 #[cfg(feature = "test-support")]
 pub use kata_exec::FakeKataExecutor;
+
+pub use daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange, SharedDailyBarSource};
 
 #[cfg(feature = "test-support")]
 pub use agent_task_client::FakeAgentTaskClient;

@@ -15,7 +15,6 @@ use serde_json::Value;
 use tokio::task::JoinHandle;
 
 use crate::data_provider::jquants::JQuantsClient;
-use crate::data_provider::{DataProvider, DataProviderKind};
 
 /// ポーリング実行間隔。リアルタイム性を求めない pull 型運用のプロダクト方針に基づき 1 日間隔とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -206,10 +205,9 @@ async fn run_ingest_cycle<T: EdinetEndpoint>(
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-/// IBKR には EDINET 相当のデータが無いため、JQuants 以外の provider では何もしない。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    client: Arc<JQuantsClient>,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -217,10 +215,7 @@ pub fn spawn_poll(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            let DataProviderKind::JQuants(client) = provider.as_ref() else {
-                continue;
-            };
-            run_all(&db, client).await;
+            run_all(&db, &client).await;
         }
     })
 }

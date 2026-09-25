@@ -35,7 +35,8 @@ impl StrategyServer {
         symbols.extend(strategy_summary.positions.iter().map(|p| p.symbol.clone()));
         let symbols: Vec<String> = symbols.into_iter().collect();
 
-        let prices = fetch_latest_prices(&self.db, self.data_provider.as_deref(), &symbols).await;
+        let prices =
+            fetch_latest_prices(&self.db, self.daily_bar_source.as_deref(), &symbols).await;
 
         let account_positions = to_position_dtos(account_summary.positions, &prices.prices);
         let account = PortfolioScopeDto {
@@ -121,7 +122,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::data_provider::DataProviderKind;
+    use crate::data_provider::SharedDailyBarSource;
     use crate::data_provider::ibkr::mock::{IbkrMockServer, MockHistoryBar};
     use crate::entities::trade;
     use crate::services::investable_amount;
@@ -295,7 +296,7 @@ mod tests {
             .ok()
             .await;
         let client = ibkr.client().expect("client");
-        let provider = Arc::new(DataProviderKind::Ibkr(client));
+        let provider: SharedDailyBarSource = Arc::new(client);
 
         let server = StrategyServer::new(db, Some(provider));
 
