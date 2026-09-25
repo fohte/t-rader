@@ -50,5 +50,3 @@ pub use super::theme::Entity as Theme;
 pub use super::trade::Entity as Trade;
 pub use super::trade_note::Entity as TradeNote;
 pub use super::trigger::Entity as Trigger;
-pub use super::watchlist_items::Entity as WatchlistItems;
-pub use super::watchlists::Entity as Watchlists;
