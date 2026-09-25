@@ -35,7 +35,13 @@ impl ShortSellingSource for JQuantsClient {
             Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
                 self.manual_plan_date_range(today)
             }
-            _ => None,
+            plan => {
+                tracing::debug!(
+                    ?plan,
+                    "空売り関連データは Standard 以上の契約プランが必要なため取得できません"
+                );
+                None
+            }
         }
     }
 }

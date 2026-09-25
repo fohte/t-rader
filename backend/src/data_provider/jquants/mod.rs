@@ -158,7 +158,11 @@ impl JQuantsClient {
 
     /// 手動設定された契約プランで取得できる範囲。自動検出した範囲は使わない。
     fn manual_plan_date_range(&self, today: NaiveDate) -> Option<DateRange> {
-        let (from, to) = self.manual_plan()?.range(today);
+        let Some(plan) = self.manual_plan() else {
+            tracing::debug!("J-Quants 契約プランが未設定のため取得できません");
+            return None;
+        };
+        let (from, to) = plan.range(today);
         Some(DateRange { from, to })
     }
 
