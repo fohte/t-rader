@@ -1,6 +1,7 @@
 mod agent_task_client;
 mod indicator_observation_source;
 mod kata_exec;
+mod llm_client;
 
 pub use agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
@@ -11,6 +12,10 @@ pub use indicator_observation_source::{
     IndicatorObservationSource, IndicatorObservationSourceError, SharedIndicatorObservationSource,
 };
 pub use kata_exec::{ExecRequest, ExecResult, KataExecError, KataExecutor, SharedKataExecutor};
+pub use llm_client::{
+    ChatMessage, ContentPart, FilePart, LlmClient, LlmClientError, LlmModel, SharedLlmClient,
+    WebSearchOutcome,
+};
 
 #[cfg(feature = "test-support")]
 pub use kata_exec::FakeKataExecutor;
