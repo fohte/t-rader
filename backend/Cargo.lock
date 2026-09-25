@@ -1542,7 +1542,9 @@ dependencies = [
  "quick-xml",
  "reqwest",
  "rstest",
+ "tokio",
  "tracing",
+ "wiremock",
 ]
 
 [[package]]

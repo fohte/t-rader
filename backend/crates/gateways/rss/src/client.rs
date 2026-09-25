@@ -79,9 +79,9 @@ impl NewsAggregator for RssNewsAggregator {
 /// のみ拾い、その他のタグは無視する。
 ///
 /// Atom 1.0 (`<entry>` / `<published>` / `<summary>`) には対応していない。フィード側で
-/// 形式が切り替わった場合は 0 件返り、`spawn_poll` の warn ログにのみ現れる。
+/// 形式が切り替わった場合はエラーにならず 0 件を返す。
 /// Atom 化が判明したフィードは設定から外す運用前提。
-pub fn parse_rss(source: &str, body: &str) -> Result<Vec<NewsItem>, NewsAggregatorError> {
+fn parse_rss(source: &str, body: &str) -> Result<Vec<NewsItem>, NewsAggregatorError> {
     let mut reader = Reader::from_str(body);
     reader.config_mut().trim_text(true);
 
@@ -386,11 +386,125 @@ mod tests {
     use chrono::TimeZone;
     use indoc::indoc;
     use rstest::rstest;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    async fn mount_response(server: &MockServer, path_value: &str, response: ResponseTemplate) {
+        Mock::given(method("GET"))
+            .and(path(path_value))
+            .respond_with(response)
+            .mount(server)
+            .await;
+    }
+
+    fn single_item_feed(title: &str, url: &str) -> String {
+        format!(
+            r#"<rss version="2.0"><channel><item><title>{title}</title><link>{url}</link><pubDate>Mon, 01 Jan 2024 09:00:00 +0900</pubDate></item></channel></rss>"#
+        )
+    }
 
     fn ymd_hms(year: i32, mon: u32, day: u32, h: u32, m: u32, s: u32) -> DateTime<Utc> {
         Utc.with_ymd_and_hms(year, mon, day, h, m, s)
             .single()
             .expect("valid time")
+    }
+
+    #[tokio::test]
+    async fn fetch_news_continues_after_a_feed_fails() {
+        let server = MockServer::start().await;
+        mount_response(&server, "/broken", ResponseTemplate::new(503)).await;
+        mount_response(
+            &server,
+            "/healthy",
+            ResponseTemplate::new(200).set_body_string(single_item_feed(
+                "Example headline",
+                "https://example.invalid/news/1",
+            )),
+        )
+        .await;
+        let aggregator = RssNewsAggregator::new().expect("aggregator builds");
+        let feeds = vec![
+            NewsFeed {
+                source: "Broken feed".into(),
+                url: format!("{}/broken", server.uri()),
+            },
+            NewsFeed {
+                source: "Healthy feed".into(),
+                url: format!("{}/healthy", server.uri()),
+            },
+        ];
+
+        let result = aggregator.fetch_news(&feeds).await.expect("fetch succeeds");
+
+        assert_eq!(
+            result,
+            vec![NewsItem {
+                source: "Healthy feed".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "Example headline".into(),
+                body_snippet: None,
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_news_keeps_the_first_item_for_duplicate_urls() {
+        let server = MockServer::start().await;
+        let url = "https://example.invalid/news/1";
+        mount_response(
+            &server,
+            "/first",
+            ResponseTemplate::new(200).set_body_string(single_item_feed("First headline", url)),
+        )
+        .await;
+        mount_response(
+            &server,
+            "/second",
+            ResponseTemplate::new(200).set_body_string(single_item_feed("Second headline", url)),
+        )
+        .await;
+        let aggregator = RssNewsAggregator::new().expect("aggregator builds");
+        let feeds = vec![
+            NewsFeed {
+                source: "First feed".into(),
+                url: format!("{}/first", server.uri()),
+            },
+            NewsFeed {
+                source: "Second feed".into(),
+                url: format!("{}/second", server.uri()),
+            },
+        ];
+
+        let result = aggregator.fetch_news(&feeds).await.expect("fetch succeeds");
+
+        assert_eq!(
+            result,
+            vec![NewsItem {
+                source: "First feed".into(),
+                url: url.into(),
+                title: "First headline".into(),
+                body_snippet: None,
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_news_returns_empty_when_every_feed_fails() {
+        let server = MockServer::start().await;
+        mount_response(&server, "/broken", ResponseTemplate::new(503)).await;
+        let aggregator = RssNewsAggregator::new().expect("aggregator builds");
+
+        let result = aggregator
+            .fetch_news(&[NewsFeed {
+                source: "Broken feed".into(),
+                url: format!("{}/broken", server.uri()),
+            }])
+            .await
+            .expect("feed failures are skipped");
+
+        assert_eq!(result, Vec::<NewsItem>::new());
     }
 
     #[rstest]

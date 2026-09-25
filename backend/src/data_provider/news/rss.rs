@@ -1,1 +1,1 @@
-pub use gateway_rss::{RssNewsAggregator, parse_rss};
+pub use gateway_rss::RssNewsAggregator;
