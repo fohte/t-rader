@@ -1,4 +1,3 @@
-pub mod fred;
 pub mod ibkr;
 pub mod jquants;
 #[cfg(test)]

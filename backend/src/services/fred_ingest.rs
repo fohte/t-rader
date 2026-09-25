@@ -5,13 +5,25 @@
 use std::time::Duration;
 
 use chrono::NaiveDate;
+use core_application::{
+    IndicatorObservationSource, IndicatorObservationSourceError, SharedIndicatorObservationSource,
+};
+use core_domain::IndicatorObservation;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
 use tokio::task::JoinHandle;
 
-use crate::data_provider::fred::FredClient;
 use crate::entities::{indicator, indicator_observation};
 use crate::error::AppError;
+
+#[derive(Debug, thiserror::Error)]
+enum FredIngestError {
+    #[error(transparent)]
+    App(#[from] AppError),
+
+    #[error(transparent)]
+    Source(#[from] IndicatorObservationSourceError),
+}
 
 /// poll task のデフォルト実行間隔。対象系列はいずれも日次更新のため 1 日とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -96,7 +108,7 @@ async fn find_latest_observation_date(
 async fn upsert_observations(
     db: &DatabaseConnection,
     indicator_id: &str,
-    observations: Vec<crate::data_provider::fred::FredObservation>,
+    observations: Vec<IndicatorObservation>,
 ) -> Result<usize, AppError> {
     if observations.is_empty() {
         return Ok(0);
@@ -129,15 +141,15 @@ async fn upsert_observations(
 /// 1 系列を 1 サイクル分取り込む。初回 (格納済みデータが無い) は全履歴を取得する。
 async fn run_ingest_cycle(
     db: &DatabaseConnection,
-    client: &FredClient,
+    source: &dyn IndicatorObservationSource,
     def: &SeriesDef,
-) -> Result<IngestStats, AppError> {
+) -> Result<IngestStats, FredIngestError> {
     ensure_indicator(db, def).await?;
 
     let latest = find_latest_observation_date(db, def.indicator_id).await?;
     let observation_start = latest.map(|d| d - chrono::Duration::days(LOOKBACK_DAYS));
 
-    let observations = client
+    let observations = source
         .fetch_observations(def.fred_series_id, observation_start)
         .await?;
     let upserted = upsert_observations(db, def.indicator_id, observations).await?;
@@ -148,7 +160,7 @@ async fn run_ingest_cycle(
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    client: FredClient,
+    source: SharedIndicatorObservationSource,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -157,7 +169,7 @@ pub fn spawn_poll(
         loop {
             ticker.tick().await;
             for def in SERIES {
-                match run_ingest_cycle(&db, &client, def).await {
+                match run_ingest_cycle(&db, source.as_ref(), def).await {
                     Ok(stats) => {
                         tracing::debug!(
                             series = def.fred_series_id,
@@ -176,6 +188,7 @@ pub fn spawn_poll(
 
 #[cfg(test)]
 mod tests {
+    use gateway_fred::FredClient;
     use sea_orm::{ActiveModelTrait, EntityTrait};
     use sqlx::PgPool;
     use wiremock::matchers::{method, path, query_param};

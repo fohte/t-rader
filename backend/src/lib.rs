@@ -40,8 +40,8 @@ use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
     custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports, interests,
-    jquants_plan_setting, news, note_hypotheses, note_kinds, note_predictions, note_versions,
-    notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers,
+    jquants_plan_setting, note_hypotheses, note_kinds, note_predictions, note_versions, notes,
+    refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::LiteLlmClient as LlmGatewayClient;
@@ -112,7 +112,6 @@ impl AppState {
         (name = "hypothesis_proposals", description = "仮説への変更提案 (エージェントが作成し、人間が承認/却下する)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
-        (name = "news", description = "ニュース (公開 RSS の集約結果と戦略への紐付け)"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
         (name = "config", description = "frontend 向けランタイム設定値"),
@@ -360,8 +359,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(custom_indicators::get_strategy_indicator))
         .routes(routes!(custom_indicators::preview_indicator))
-        // news
-        .routes(routes!(news::list_strategy_news))
         // rss feeds
         .routes(routes!(
             rss_feeds::list_rss_feeds,
