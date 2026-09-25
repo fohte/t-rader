@@ -515,19 +515,21 @@ jobs:
         env:
           DB_CONTAINER_ID: ${{ job.services.db.id }}
         run: |
-          docker exec "$DB_CONTAINER_ID" psql \
-            --username=t_rader \
-            --dbname=t_rader_test \
-            --set=ON_ERROR_STOP=1 \
+          db_psql() {
+            docker exec "$DB_CONTAINER_ID" psql \
+              --username=t_rader \
+              --dbname=t_rader_test \
+              --set=ON_ERROR_STOP=1 \
+              "$@"
+          }
+
+          db_psql \
             --command="ALTER SYSTEM SET fsync = off" \
             --command="ALTER SYSTEM SET synchronous_commit = off" \
             --command="ALTER SYSTEM SET full_page_writes = off" \
             --command="SELECT pg_reload_conf()"
           sleep 1
-          settings=$(docker exec "$DB_CONTAINER_ID" psql \
-            --username=t_rader \
-            --dbname=t_rader_test \
-            --set=ON_ERROR_STOP=1 \
+          settings=$(db_psql \
             --tuples-only \
             --no-align \
             --command="SHOW fsync" \
