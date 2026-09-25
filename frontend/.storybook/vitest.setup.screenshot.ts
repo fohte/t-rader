@@ -37,12 +37,6 @@ async function waitForPaint(): Promise<void> {
 }
 
 afterEach(async (context) => {
-<<<<<<< before updating
   await waitForPaint()
-||||||| last update
-  // @vitest/runner's TestAnnotation type isn't exactOptionalPropertyTypes-safe.
-  // @ts-expect-error see comment above
-=======
->>>>>>> after updating
   await screenshot(page, context)
 })
