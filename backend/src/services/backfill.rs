@@ -1,10 +1,11 @@
 use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::DatabaseConnection;
 
-use crate::data_provider::{DataProvider, DateRange};
+use crate::data_provider::{DailyBarSource, DateRange};
 use crate::models::Timeframe;
-use crate::models::jquants_plan::PROBE_MAX_HISTORY_DAYS;
 use crate::repositories::bars::upsert_bars;
+
+const FALLBACK_FETCH_HISTORY_DAYS: i64 = 365 * 20;
 
 /// 価格データを取得可能な最新日 (未検出時は today、検出済み時は契約上限日) を返す。
 /// 保有時価の評価上限 (`market_price::fetch_latest_prices`) もこの関数を経由するため、
@@ -28,26 +29,19 @@ pub(crate) fn latest_fetchable_date(
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
     db: &DatabaseConnection,
-    data_provider: &impl DataProvider,
+    data_source: &dyn DailyBarSource,
     instrument_id: &str,
 ) {
     let today = Utc::now().date_naive();
-    let range = match data_provider.known_fetchable_range() {
+    let range = match data_source.known_fetchable_range() {
         Some((from, to)) => DateRange { from, to },
         None => DateRange {
-            from: today - Duration::days(PROBE_MAX_HISTORY_DAYS),
+            from: today - Duration::days(FALLBACK_FETCH_HISTORY_DAYS),
             to: today,
         },
     };
 
-    let fetch_result = data_provider.fetch_daily_bars(instrument_id, &range).await;
-
-    // 未設定の間だけ、検出済みの契約範囲を初回のプランとして推定・永続化する。
-    // fetch の成否に関わらず (400 検出はリトライ前に記録されるため) 呼んでよい。
-    // backfill 全体を失敗させたくないため warn ログのみに留める。
-    if let Err(e) = data_provider.persist_inferred_range_if_needed(db).await {
-        tracing::warn!(error = %e, "契約プランの推定結果の永続化に失敗しました");
-    }
+    let fetch_result = data_source.fetch_daily_bars(instrument_id, &range).await;
 
     let bars = match fetch_result {
         Ok(bars) => bars,

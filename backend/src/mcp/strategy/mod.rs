@@ -36,8 +36,6 @@ pub(super) mod web_search;
 #[cfg(test)]
 mod tests_common;
 
-use std::sync::Arc;
-
 use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
@@ -45,7 +43,7 @@ use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use uuid::Uuid;
 
-use crate::data_provider::DataProviderKind;
+use crate::data_provider::SharedDailyBarSource;
 use crate::entities::{annotation, note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmClient, LiteLlmError};
@@ -131,16 +129,16 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 #[derive(Clone)]
 pub struct StrategyServer {
     db: DatabaseConnection,
-    data_provider: Option<Arc<DataProviderKind>>,
+    daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
     pub(super) litellm_client: Option<LiteLlmClient>,
 }
 
 impl StrategyServer {
-    pub fn new(db: DatabaseConnection, data_provider: Option<Arc<DataProviderKind>>) -> Self {
+    pub fn new(db: DatabaseConnection, daily_bar_source: Option<SharedDailyBarSource>) -> Self {
         Self {
             db,
-            data_provider,
+            daily_bar_source,
             kata_executor: None,
             litellm_client: None,
         }

@@ -11,7 +11,7 @@ use uuid::Uuid;
 mod template_db;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::data_provider::{DataProvider, DataProviderError, DateRange};
+use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange, SharedDailyBarSource};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::{
     hypothesis, hypothesis_proposal, note, note_version, stock, strategy, strategy_task, trigger,
@@ -36,7 +36,8 @@ pub async fn create_test_db(pool: PgPool) -> DatabaseConnection {
 fn base_state(db: DatabaseConnection) -> AppState {
     AppState {
         db,
-        data_provider: None,
+        daily_bar_source: None,
+        jquants_client: None,
         agent_task_client: AppState::disabled_agent_task_client(),
         agent_task_notify: Arc::new(tokio::sync::Notify::new()),
         agent_webhook_token: Arc::from(TEST_AGENT_WEBHOOK_TOKEN),
@@ -365,13 +366,15 @@ pub async fn create_test_server_with_db(pool: PgPool) -> (DatabaseConnection, Te
 }
 
 /// data_provider を差し替えて TestServer を作成する
-pub async fn create_test_server_with_data_provider(
+pub async fn create_test_server_with_jquants_client(
     pool: PgPool,
-    data_provider: Arc<crate::data_provider::DataProviderKind>,
+    client: Arc<crate::data_provider::jquants::JQuantsClient>,
 ) -> TestServer {
     let db = create_test_db(pool).await;
     let mut state = base_state(db);
-    state.data_provider = Some(data_provider);
+    let source: SharedDailyBarSource = client.clone();
+    state.daily_bar_source = Some(source);
+    state.jquants_client = Some(client);
     let router = create_router(state);
     TestServer::new(router).expect("failed to create test server")
 }
@@ -483,12 +486,13 @@ impl Default for MockProvider {
     }
 }
 
-impl DataProvider for MockProvider {
+#[async_trait::async_trait]
+impl DailyBarSource for MockProvider {
     async fn fetch_daily_bars(
         &self,
         instrument_id: &str,
         range: &DateRange,
-    ) -> Result<Vec<Bar>, DataProviderError> {
+    ) -> Result<Vec<Bar>, DailyBarSourceError> {
         self.calls
             .lock()
             .expect("lock")
@@ -496,7 +500,7 @@ impl DataProvider for MockProvider {
 
         let exists = self.instruments.iter().any(|i| i.id == instrument_id);
         if !exists {
-            return Err(DataProviderError::NotFound(format!(
+            return Err(DailyBarSourceError::NotFound(format!(
                 "instrument '{instrument_id}' not found"
             )));
         }
@@ -516,16 +520,6 @@ impl DataProvider for MockProvider {
 
         bars.sort_by_key(|b| b.timestamp);
         Ok(bars)
-    }
-
-    async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
-        self.instruments
-            .iter()
-            .find(|i| i.id == instrument_id)
-            .cloned()
-            .ok_or_else(|| {
-                DataProviderError::NotFound(format!("instrument '{instrument_id}' not found"))
-            })
     }
 
     fn known_fetchable_range(&self) -> Option<(chrono::NaiveDate, chrono::NaiveDate)> {

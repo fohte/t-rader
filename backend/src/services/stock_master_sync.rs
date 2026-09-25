@@ -13,7 +13,6 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use tokio::task::JoinHandle;
 
-use crate::data_provider::DataProviderKind;
 use crate::data_provider::jquants::{EquityMasterEntry, JQuantsClient};
 use crate::entities::{sector, stock};
 use crate::error::AppError;
@@ -111,23 +110,18 @@ pub async fn run_sync_cycle(
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-/// `provider` は `DataProviderKind::JQuants` である前提 (呼び出し側の main.rs で条件分岐済み)。
+/// J-Quants client が設定された場合に起動する。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    client: Arc<JQuantsClient>,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let DataProviderKind::JQuants(client) = provider.as_ref() else {
-            tracing::error!("stock master sync は J-Quants 専用のため起動できません");
-            return;
-        };
-
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_sync_cycle(&db, client).await {
+            match run_sync_cycle(&db, &client).await {
                 Ok(stats) => {
                     tracing::info!(
                         stocks_upserted = stats.stocks_upserted,

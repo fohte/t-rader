@@ -4,7 +4,7 @@ use axum::Json;
 use axum::extract::State;
 
 use crate::AppState;
-use crate::data_provider::{DataProvider, DataProviderKind};
+use crate::data_provider::DailyBarSource;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
@@ -16,7 +16,7 @@ use crate::services::jquants_plan_setting;
 /// 現在有効な取得可能範囲。`plan` の手動/自動を問わず `JQuantsClient` に問い合わせるだけでよい
 /// (`known_fetchable_range` が手動設定を自動検出より優先する)。
 fn effective_range(state: &AppState) -> Option<(chrono::NaiveDate, chrono::NaiveDate)> {
-    state.data_provider.as_ref()?.known_fetchable_range()
+    state.jquants_client.as_ref()?.known_fetchable_range()
 }
 
 /// J-Quants の契約プラン設定を取得。未設定なら null (自動検出) を返す
@@ -72,9 +72,7 @@ pub async fn put_jquants_plan_setting(
     let saved = jquants_plan_setting::save(&state.db, value).await?;
     let data = parse_plan_setting::<JQuantsPlanSettingData>(saved.plan_setting)?;
 
-    if let Some(provider) = &state.data_provider
-        && let DataProviderKind::JQuants(client) = provider.as_ref()
-    {
+    if let Some(client) = &state.jquants_client {
         client.set_manual_plan(data.plan);
     }
 
@@ -88,10 +86,10 @@ mod tests {
 
     use sqlx::PgPool;
 
-    use crate::data_provider::DataProvider;
+    use crate::data_provider::DailyBarSource;
     use crate::data_provider::jquants::JQuantsClient;
     use crate::models::JQuantsPlan;
-    use crate::testing::{create_test_server, create_test_server_with_data_provider};
+    use crate::testing::{create_test_server, create_test_server_with_jquants_client};
 
     #[sqlx::test(migrations = false)]
     async fn get_returns_null_when_unset(pool: PgPool) {
@@ -177,11 +175,8 @@ mod tests {
 
     #[sqlx::test(migrations = false)]
     async fn put_updates_running_jquants_client_in_memory(pool: PgPool) {
-        use crate::data_provider::DataProviderKind;
-
-        let client = JQuantsClient::new("test-key".into()).expect("build client");
-        let provider = Arc::new(DataProviderKind::JQuants(client));
-        let server = create_test_server_with_data_provider(pool, provider.clone()).await;
+        let client = Arc::new(JQuantsClient::new("test-key".into()).expect("build client"));
+        let server = create_test_server_with_jquants_client(pool, client.clone()).await;
 
         let put = server
             .put("/api/jquants/plan-setting")
@@ -192,7 +187,7 @@ mod tests {
         let today = chrono::Utc::now().date_naive();
         let (from, to) = JQuantsPlan::Standard.range(today);
         assert_eq!(
-            provider.known_fetchable_range(),
+            client.known_fetchable_range(),
             Some((from, to)),
             "PUT はプロセス再起動なしで稼働中のクライアントへ即座に反映する必要がある"
         );

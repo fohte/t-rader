@@ -4,11 +4,12 @@ mod response;
 #[cfg(test)]
 mod tests;
 
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 
-use crate::data_provider::{DataProvider, DataProviderError, DateRange};
+use crate::data_provider::{DailyBarSource, DailyBarSourceError, DataProviderError, DateRange};
 use crate::date_utils::latest_business_day;
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
@@ -243,7 +244,7 @@ fn period_and_start_time(range: &DateRange) -> (String, String) {
     (format!("{days}d"), start_time)
 }
 
-impl DataProvider for IbkrClient {
+impl IbkrClient {
     async fn fetch_daily_bars(
         &self,
         instrument_id: &str,
@@ -321,7 +322,10 @@ impl DataProvider for IbkrClient {
         Ok(bars)
     }
 
-    async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
+    pub async fn fetch_instrument(
+        &self,
+        instrument_id: &str,
+    ) -> Result<Instrument, DataProviderError> {
         let (_, instrument) = self.lookup_stock(instrument_id).await?;
         Ok(instrument)
     }
@@ -335,6 +339,23 @@ impl DataProvider for IbkrClient {
             NaiveDate::from_ymd_opt(1990, 1, 1).unwrap_or_default(),
             latest_business_day(Utc::now().date_naive()),
         ))
+    }
+}
+
+#[async_trait]
+impl DailyBarSource for IbkrClient {
+    async fn fetch_daily_bars(
+        &self,
+        instrument_id: &str,
+        range: &DateRange,
+    ) -> Result<Vec<Bar>, DailyBarSourceError> {
+        IbkrClient::fetch_daily_bars(self, instrument_id, range)
+            .await
+            .map_err(Into::into)
+    }
+
+    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        IbkrClient::known_fetchable_range(self)
     }
 }
 

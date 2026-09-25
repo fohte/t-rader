@@ -8,14 +8,16 @@ mod short_selling;
 #[cfg(test)]
 mod tests;
 
+use async_trait::async_trait;
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
+use sea_orm::DatabaseConnection;
 
 pub(crate) use equities_master::EquityMasterEntry;
 use rate_limiter::RateLimiter;
 
-use crate::data_provider::{DataProvider, DataProviderError, DateRange};
+use crate::data_provider::{DailyBarSource, DailyBarSourceError, DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
@@ -91,6 +93,7 @@ pub struct JQuantsClient {
     api_key: String,
     rate_limiter: RateLimiter,
     detected_range: std::sync::Mutex<Option<DetectedRange>>,
+    db: Option<DatabaseConnection>,
     /// 設定ページから手動設定された契約プラン。`None` の間は自動検出
     /// (`detected_range`) を使う。
     manual_plan: std::sync::Mutex<Option<JQuantsPlan>>,
@@ -109,6 +112,7 @@ impl JQuantsClient {
             api_key,
             rate_limiter: RateLimiter::new(RATE_LIMIT_COOLDOWN),
             detected_range: std::sync::Mutex::new(None),
+            db: None,
             manual_plan: std::sync::Mutex::new(None),
         })
     }
@@ -128,8 +132,14 @@ impl JQuantsClient {
             // 429 cooldown を短縮し、window 枠超過では待たずに失敗させる
             rate_limiter: RateLimiter::new_fail_fast(std::time::Duration::from_millis(50)),
             detected_range: std::sync::Mutex::new(None),
+            db: None,
             manual_plan: std::sync::Mutex::new(None),
         })
+    }
+
+    pub fn with_db(mut self, db: DatabaseConnection) -> Self {
+        self.db = Some(db);
+        self
     }
 
     /// 設定ページからの手動プラン設定を反映する。プロセス再起動なしで即座に
@@ -464,7 +474,7 @@ impl JQuantsClient {
     }
 }
 
-impl DataProvider for JQuantsClient {
+impl JQuantsClient {
     /// 契約範囲外エラー (400) 発生時は契約範囲を検出し、その範囲でこの呼び出し内で
     /// 1 回だけ再試行する (検出済み範囲外の日付を再度指定すれば何度でも発動しうる)。
     async fn fetch_daily_bars(
@@ -472,7 +482,7 @@ impl DataProvider for JQuantsClient {
         instrument_id: &str,
         range: &DateRange,
     ) -> Result<Vec<Bar>, DataProviderError> {
-        match self.fetch_daily_bars_once(instrument_id, range).await {
+        let result = match self.fetch_daily_bars_once(instrument_id, range).await {
             Err(DataProviderError::Api {
                 status: 400,
                 message,
@@ -494,7 +504,15 @@ impl DataProvider for JQuantsClient {
                     .await
             }
             other => other,
+        };
+
+        if let Some(db) = &self.db
+            && let Err(error) = self.persist_inferred_range_if_needed(db).await
+        {
+            tracing::warn!(error = %error, "契約プランの推定結果の永続化に失敗しました");
         }
+
+        result
     }
 
     /// 手動設定 (設定ページ) が優先。未設定なら 400 エラーからの自動検出結果を使う。
@@ -544,7 +562,10 @@ impl DataProvider for JQuantsClient {
         Ok(())
     }
 
-    async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
+    pub async fn fetch_instrument(
+        &self,
+        instrument_id: &str,
+    ) -> Result<Instrument, DataProviderError> {
         let url = self.build_url("/equities/master", &[("code", instrument_id)])?;
 
         tracing::debug!(%url, instrument_id, "J-Quants API から銘柄情報を取得中");
@@ -567,6 +588,23 @@ impl DataProvider for JQuantsClient {
             sector: master.sector_name,
             product_category: master.product_category,
         })
+    }
+}
+
+#[async_trait]
+impl DailyBarSource for JQuantsClient {
+    async fn fetch_daily_bars(
+        &self,
+        instrument_id: &str,
+        range: &DateRange,
+    ) -> Result<Vec<Bar>, DailyBarSourceError> {
+        JQuantsClient::fetch_daily_bars(self, instrument_id, range)
+            .await
+            .map_err(Into::into)
+    }
+
+    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        JQuantsClient::known_fetchable_range(self)
     }
 }
 

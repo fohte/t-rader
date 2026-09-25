@@ -1,7 +1,8 @@
+use async_trait::async_trait;
 use chrono::{NaiveDate, TimeZone, Utc};
 use rust_decimal::Decimal;
 
-use crate::data_provider::{DataProvider, DataProviderError, DateRange};
+use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 
@@ -35,16 +36,17 @@ impl MockDataProvider {
     }
 }
 
-impl DataProvider for MockDataProvider {
+#[async_trait]
+impl DailyBarSource for MockDataProvider {
     async fn fetch_daily_bars(
         &self,
         instrument_id: &str,
         range: &DateRange,
-    ) -> Result<Vec<Bar>, DataProviderError> {
+    ) -> Result<Vec<Bar>, DailyBarSourceError> {
         let instrument_exists = self.instruments.iter().any(|i| i.id == instrument_id);
 
         if !instrument_exists {
-            return Err(DataProviderError::NotFound(format!(
+            return Err(DailyBarSourceError::NotFound(format!(
                 "instrument '{instrument_id}' not found"
             )));
         }
@@ -68,14 +70,8 @@ impl DataProvider for MockDataProvider {
         Ok(bars)
     }
 
-    async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
-        self.instruments
-            .iter()
-            .find(|i| i.id == instrument_id)
-            .cloned()
-            .ok_or_else(|| {
-                DataProviderError::NotFound(format!("instrument '{instrument_id}' not found"))
-            })
+    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        None
     }
 }
 
@@ -138,7 +134,7 @@ mod tests {
         #[case] from: NaiveDate,
         #[case] to: NaiveDate,
         #[case] expected_count: usize,
-    ) -> Result<(), DataProviderError> {
+    ) -> Result<(), DailyBarSourceError> {
         let range = DateRange { from, to };
         let bars = provider.fetch_daily_bars("86970", &range).await?;
         assert_eq!(bars.len(), expected_count);
@@ -149,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_daily_bars_sorted_by_timestamp(
         provider: MockDataProvider,
-    ) -> Result<(), DataProviderError> {
+    ) -> Result<(), DailyBarSourceError> {
         let range = DateRange {
             from: date(2025, 1, 6),
             to: date(2025, 1, 8),
@@ -166,7 +162,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_daily_bars_filters_by_instrument(
         provider: MockDataProvider,
-    ) -> Result<(), DataProviderError> {
+    ) -> Result<(), DailyBarSourceError> {
         let range = DateRange {
             from: date(2025, 1, 6),
             to: date(2025, 1, 8),
@@ -190,24 +186,11 @@ mod tests {
             to: date(2025, 1, 8),
         };
         let result = provider.fetch_daily_bars("99999", &range).await;
-        assert!(matches!(result, Err(DataProviderError::NotFound(_))));
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_fetch_instrument_returns_matching_data(
-        provider: MockDataProvider,
-    ) -> Result<(), DataProviderError> {
-        let instrument = provider.fetch_instrument("86970").await?;
-        assert_eq!(instrument.id, "86970");
-        assert_eq!(instrument.market, Market::Tse);
-        Ok(())
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_fetch_instrument_unknown_returns_not_found(provider: MockDataProvider) {
-        let result = provider.fetch_instrument("99999").await;
-        assert!(matches!(result, Err(DataProviderError::NotFound(_))));
+        assert_eq!(
+            result,
+            Err(DailyBarSourceError::NotFound(
+                "instrument '99999' not found".to_string()
+            )),
+        );
     }
 }

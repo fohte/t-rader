@@ -6,7 +6,7 @@ use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
 use crate::data_provider::jquants::mock::{JQuantsMockServer, MockBar};
-use crate::data_provider::{DataProvider, DataProviderError, DateRange};
+use crate::data_provider::{DataProviderError, DateRange};
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap_or_default()
@@ -781,7 +781,6 @@ mod subscription_range_detection {
 mod manual_plan_priority {
     use rstest::{fixture, rstest};
 
-    use crate::data_provider::DataProvider;
     use crate::models::jquants_plan::JQuantsPlan;
 
     use super::super::JQuantsClient;
@@ -851,7 +850,6 @@ mod persist_inferred_range_if_needed {
     use chrono::Duration;
     use sqlx::PgPool;
 
-    use crate::data_provider::DataProvider;
     use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
     use crate::services::jquants_plan_setting;
     use crate::testing::create_test_db;
@@ -996,35 +994,15 @@ mod detected_range_ttl {
     }
 }
 
-// === DataProviderKind ===
-
-mod data_provider_kind {
+mod daily_bar_source {
     use super::*;
-    use crate::data_provider::DataProviderKind;
+    use std::sync::Arc;
+
+    use crate::data_provider::SharedDailyBarSource;
 
     #[rstest]
     #[tokio::test]
-    async fn test_delegates_fetch_instrument_to_jquants() -> Result<(), DataProviderError> {
-        let mock = JQuantsMockServer::start().await;
-        mock.instrument()
-            .code("72030")
-            .company_name("トヨタ自動車")
-            .sector_name(Some("輸送用機器"))
-            .ok()
-            .await;
-
-        let client = mock.client()?;
-        let kind = DataProviderKind::JQuants(client);
-        let instrument = kind.fetch_instrument("72030").await?;
-
-        assert_eq!(instrument.id, "72030");
-        assert_eq!(instrument.name, "トヨタ自動車");
-        Ok(())
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_delegates_fetch_daily_bars_to_jquants() -> Result<(), DataProviderError> {
+    async fn test_fetches_daily_bars_through_shared_source() {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars()
             .code("8697")
@@ -1032,12 +1010,14 @@ mod data_provider_kind {
             .ok()
             .await;
 
-        let client = mock.client()?;
-        let kind = DataProviderKind::JQuants(client);
-        let bars = kind.fetch_daily_bars("8697", &default_range()).await?;
+        let client = Arc::new(mock.client().expect("client"));
+        let source: SharedDailyBarSource = client;
+        let bars = source
+            .fetch_daily_bars("8697", &default_range())
+            .await
+            .expect("fetch daily bars");
 
         assert_eq!(bars.len(), 1);
         assert_eq!(bars[0].close, dec(105.0));
-        Ok(())
     }
 }
