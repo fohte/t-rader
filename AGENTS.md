@@ -185,6 +185,10 @@ Use `ResultAsync.fromPromise()` or `Result.fromThrowable()` to interop with a th
 
 Every presentational component under `src/components/` should have a co-located `.stories.tsx` file matching the component's filename (e.g. `src/components/card.tsx` pairs with `src/components/card.stories.tsx`). If a source file exports multiple components, give each one its own `<component-name>.stories.tsx` file instead of matching the source filename. Write one story per meaningful state/variant of the component.
 
+### Give each story a descriptive `name`
+
+Write a short, natural-language sentence describing the rendered state, including the detail that distinguishes it from sibling stories. Splitting the story's export name into words (e.g. `open editor shows next preview`) does not describe the state as a sentence; write something like `the editor shows the next preview` instead. The `name` is displayed in Storybook.
+
 ### Extract route-inline UI that has its own appearance or state
 
 Stories are the only thing the `vrt` CI check renders and screenshots. A route file is never rendered by a story, so UI written inline in a route — a `<select>`, a checkbox, a column header, an empty state, a full-screen loading/not-found view — has no visual-regression coverage even when the rule above (every presentational component under `src/components/` has a story) is fully satisfied.
