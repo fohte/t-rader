@@ -1,10 +1,42 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
 
 use crate::entities::bars;
 use crate::error::AppError;
-use crate::models::Bar;
+use crate::models::{Bar, Timeframe};
+
+impl From<Bar> for bars::ActiveModel {
+    fn from(bar: Bar) -> Self {
+        bars::ActiveModel {
+            instrument_id: Set(bar.instrument_id),
+            timeframe: Set(bar.timeframe.to_string()),
+            timestamp: Set(bar.timestamp.fixed_offset()),
+            open: Set(bar.open),
+            high: Set(bar.high),
+            low: Set(bar.low),
+            close: Set(bar.close),
+            volume: Set(bar.volume),
+        }
+    }
+}
+
+/// DB の CHECK 制約により不正な timeframe は入らない前提で、
+/// パース失敗時は Daily をフォールバックとする。
+impl From<bars::Model> for Bar {
+    fn from(model: bars::Model) -> Self {
+        Bar {
+            instrument_id: model.instrument_id,
+            timeframe: model.timeframe.parse().unwrap_or(Timeframe::Daily),
+            timestamp: model.timestamp.to_utc(),
+            open: model.open,
+            high: model.high,
+            low: model.low,
+            close: model.close,
+            volume: model.volume,
+        }
+    }
+}
 
 /// バーデータを一括 upsert する
 ///

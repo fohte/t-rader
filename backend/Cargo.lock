@@ -466,6 +466,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "clap",
+ "core-domain",
  "cron",
  "csv",
  "encoding_rs",
@@ -817,6 +818,15 @@ checksum = "1a373e3602691c3cdea496d2f0ee5935151e6168fe87739483c463db1b2f2f87"
 dependencies = [
  "time",
  "version_check",
+]
+
+[[package]]
+name = "core-domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rust_decimal",
+ "serde",
 ]
 
 [[package]]

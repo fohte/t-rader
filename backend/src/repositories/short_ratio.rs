@@ -1,10 +1,22 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_ratio;
 use crate::error::AppError;
 use crate::models::ShortRatio;
+
+impl From<ShortRatio> for short_ratio::ActiveModel {
+    fn from(ratio: ShortRatio) -> Self {
+        short_ratio::ActiveModel {
+            date: Set(ratio.date),
+            sector33_code: Set(ratio.sector33_code),
+            sell_excluding_short_value: Set(ratio.sell_excluding_short_value),
+            short_with_restriction_value: Set(ratio.short_with_restriction_value),
+            short_without_restriction_value: Set(ratio.short_without_restriction_value),
+        }
+    }
+}
 
 /// 業種別空売り比率を一括 upsert する
 ///
