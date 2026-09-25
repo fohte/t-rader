@@ -90,9 +90,11 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
 - `backend/crates/core/domain/` - application と gateway が共有する値型
-- `backend/crates/core/application/` - agent task、indicator observation、news aggregation の port
+- `backend/crates/core/application/` - agent task、indicator observation、kata-exec executor、news aggregation の port と値型
 - `backend/crates/gateways/fred/` - FRED API client の HTTP 実装
+- `backend/crates/gateways/kata-exec/` - Kata Containers exec Pod の HTTP 実装
 - `backend/crates/gateways/rss/` - RSS news aggregation の HTTP 実装
+- `backend/src/kata_exec/` - application port と gateway 実装の互換 facade
 - `backend/crates/gateways/t-rader-agent/` - t-rader-agent 内部 API client の HTTP 実装
 - `backend/src/agent_client/` - application port と gateway 実装の互換 facade
 - `backend/src/services/strategy_tasks/` - 戦略タスク投入の共通 service (`submit_task`、5 経路から呼ばれる)

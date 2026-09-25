@@ -472,6 +472,7 @@ dependencies = [
  "csv",
  "encoding_rs",
  "gateway-fred",
+ "gateway-kata-exec",
  "gateway-rss",
  "gateway-t-rader-agent",
  "indoc",
@@ -1529,6 +1530,23 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "gateway-kata-exec"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "core-application",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]
