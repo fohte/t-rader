@@ -4,25 +4,19 @@
 
 use std::str::FromStr;
 
+use async_trait::async_trait;
 use chrono::NaiveDate;
+use core_application::{IndicatorObservationSource, IndicatorObservationSourceError};
+use core_domain::IndicatorObservation;
 use reqwest::Url;
 use rust_decimal::Decimal;
 use serde::Deserialize;
-
-use crate::data_provider::DataProviderError;
 
 const DEFAULT_BASE_URL: &str = "https://api.stlouisfed.org/fred/series/observations";
 const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// 欠損値を表す FRED の慣習的な表記
 const MISSING_VALUE: &str = ".";
-
-/// FRED から取得した 1 日分の観測値
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FredObservation {
-    pub date: NaiveDate,
-    pub value: Decimal,
-}
 
 #[derive(Debug, Deserialize)]
 struct ObservationsResponse {
@@ -42,15 +36,18 @@ pub struct FredClient {
 }
 
 impl FredClient {
-    pub fn new(api_key: String) -> Result<Self, DataProviderError> {
+    pub fn new(api_key: String) -> Result<Self, IndicatorObservationSourceError> {
         Self::with_base_url(api_key, DEFAULT_BASE_URL)
     }
 
-    pub fn with_base_url(api_key: String, base_url: &str) -> Result<Self, DataProviderError> {
+    pub fn with_base_url(
+        api_key: String,
+        base_url: &str,
+    ) -> Result<Self, IndicatorObservationSourceError> {
         let http = reqwest::Client::builder()
             .timeout(HTTP_TIMEOUT)
             .build()
-            .map_err(|e| DataProviderError::Network(e.to_string()))?;
+            .map_err(|e| IndicatorObservationSourceError::Initialization(e.to_string()))?;
         Ok(Self {
             http,
             base_url: base_url.to_string(),
@@ -62,9 +59,10 @@ impl FredClient {
         &self,
         series_id: &str,
         observation_start: Option<NaiveDate>,
-    ) -> Result<Url, DataProviderError> {
-        let mut url = Url::parse(&self.base_url)
-            .map_err(|e| DataProviderError::Parse(format!("invalid base URL: {e}")))?;
+    ) -> Result<Url, IndicatorObservationSourceError> {
+        let mut url = Url::parse(&self.base_url).map_err(|e| {
+            IndicatorObservationSourceError::Parse(format!("invalid base URL: {e}"))
+        })?;
         {
             let mut q = url.query_pairs_mut();
             q.append_pair("series_id", series_id);
@@ -76,15 +74,15 @@ impl FredClient {
         }
         Ok(url)
     }
+}
 
-    /// 指定した系列の観測値を `observation_start` 以降取得する。`observation_start` が
-    /// `None` の場合は FRED 側のデフォルト (系列の提供開始日) から取得する。
-    /// 欠損値 (`"."`) は結果から除く。
-    pub async fn fetch_observations(
+#[async_trait]
+impl IndicatorObservationSource for FredClient {
+    async fn fetch_observations(
         &self,
         series_id: &str,
         observation_start: Option<NaiveDate>,
-    ) -> Result<Vec<FredObservation>, DataProviderError> {
+    ) -> Result<Vec<IndicatorObservation>, IndicatorObservationSourceError> {
         let url = self.build_url(series_id, observation_start)?;
         let response = self
             .http
@@ -92,11 +90,11 @@ impl FredClient {
             .send()
             .await
             // URL に api_key を含むため、エラーメッセージに残らないよう取り除く
-            .map_err(|e| DataProviderError::Network(e.without_url().to_string()))?;
+            .map_err(|e| IndicatorObservationSourceError::Network(e.without_url().to_string()))?;
 
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            return Err(DataProviderError::Api {
+            return Err(IndicatorObservationSourceError::Api {
                 status,
                 message: format!("FRED returned status {status} for series {series_id}"),
             });
@@ -105,25 +103,29 @@ impl FredClient {
         let body = response
             .text()
             .await
-            .map_err(|e| DataProviderError::Network(e.without_url().to_string()))?;
+            .map_err(|e| IndicatorObservationSourceError::Network(e.without_url().to_string()))?;
         parse_observations(&body)
     }
 }
 
-fn parse_observations(body: &str) -> Result<Vec<FredObservation>, DataProviderError> {
+fn parse_observations(
+    body: &str,
+) -> Result<Vec<IndicatorObservation>, IndicatorObservationSourceError> {
     let parsed: ObservationsResponse = serde_json::from_str(body)
-        .map_err(|e| DataProviderError::Parse(format!("FRED response: {e}")))?;
+        .map_err(|e| IndicatorObservationSourceError::Parse(format!("FRED response: {e}")))?;
 
     let mut observations = Vec::with_capacity(parsed.observations.len());
     for raw in parsed.observations {
         if raw.value == MISSING_VALUE {
             continue;
         }
-        let date = NaiveDate::parse_from_str(&raw.date, "%Y-%m-%d")
-            .map_err(|e| DataProviderError::Parse(format!("invalid date '{}': {e}", raw.date)))?;
-        let value = Decimal::from_str(&raw.value)
-            .map_err(|e| DataProviderError::Parse(format!("invalid value '{}': {e}", raw.value)))?;
-        observations.push(FredObservation { date, value });
+        let date = NaiveDate::parse_from_str(&raw.date, "%Y-%m-%d").map_err(|e| {
+            IndicatorObservationSourceError::Parse(format!("invalid date '{}': {e}", raw.date))
+        })?;
+        let value = Decimal::from_str(&raw.value).map_err(|e| {
+            IndicatorObservationSourceError::Parse(format!("invalid value '{}': {e}", raw.value))
+        })?;
+        observations.push(IndicatorObservation { date, value });
     }
     Ok(observations)
 }
@@ -158,11 +160,11 @@ mod tests {
         assert_eq!(
             parse_observations(body).expect("parse ok"),
             vec![
-                FredObservation {
+                IndicatorObservation {
                     date: date(2026, 9, 1),
                     value: dec("147.50"),
                 },
-                FredObservation {
+                IndicatorObservation {
                     date: date(2026, 9, 3),
                     value: dec("148.02"),
                 },
