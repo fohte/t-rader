@@ -14,7 +14,7 @@ use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
-use backend::services::litellm_client::LiteLlmClient as LlmGatewayClient;
+use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
 use core_application::{IndicatorObservationSource, SharedNewsAggregator};
 use gateway_fred::FredClient;
@@ -337,7 +337,8 @@ async fn main() -> Result<(), AppError> {
         );
     }
 
-    let llm_gateway_client = LlmGatewayClient::from_env();
+    let llm_gateway_client =
+        LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
     let state = AppState {
         db,

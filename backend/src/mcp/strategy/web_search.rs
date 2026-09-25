@@ -250,7 +250,8 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(mock_db(), None).with_litellm_client(Some(client));
+        let server = StrategyServer::new(mock_db(), None)
+            .with_litellm_client(Some(std::sync::Arc::new(client)));
 
         let out = server
             .search_web_inner(Uuid::new_v4(), None, params("半導体 関連ニュース"))
@@ -277,7 +278,8 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(db, None).with_litellm_client(Some(client));
+        let server =
+            StrategyServer::new(db, None).with_litellm_client(Some(std::sync::Arc::new(client)));
         let task_execution_id = format!("task-{}", Uuid::new_v4());
 
         for _ in 0..SEARCH_WEB_MAX_CALLS_PER_TASK {
@@ -329,7 +331,8 @@ mod tests {
             .await;
 
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
-        let server = StrategyServer::new(db, None).with_litellm_client(Some(client));
+        let server =
+            StrategyServer::new(db, None).with_litellm_client(Some(std::sync::Arc::new(client)));
         let task_execution_id = format!("task-{}", Uuid::new_v4());
 
         // 予約したカウントが都度解放されなければ、SEARCH_WEB_MAX_CALLS_PER_TASK 回目以降は
