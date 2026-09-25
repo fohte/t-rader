@@ -18,8 +18,17 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Loading: Story = { args: { state: 'loading' } }
+export const Loading: Story = {
+  name: 'shows a loading state while the note version is fetched.',
+  args: { state: 'loading' },
+}
 
-export const Missing: Story = { args: { state: 'missing' } }
+export const Missing: Story = {
+  name: 'shows a not found state for a missing note version.',
+  args: { state: 'missing' },
+}
 
-export const Error: Story = { args: { state: 'error' } }
+export const Error: Story = {
+  name: 'shows an error state when the note version cannot be loaded.',
+  args: { state: 'error' },
+}

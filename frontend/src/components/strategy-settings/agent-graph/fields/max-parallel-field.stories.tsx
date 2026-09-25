@@ -22,11 +22,13 @@ function Interactive({ initial }: { initial: number | undefined }) {
 }
 
 export const Default: Story = {
+  name: 'sets a limit of four parallel runs.',
   args: { value: 4, onChange: () => {} },
   render: () => <Interactive initial={4} />,
 }
 
 export const Unset: Story = {
+  name: 'shows the parallel run limit before a value is set.',
   args: { value: undefined, onChange: () => {} },
   render: () => <Interactive initial={undefined} />,
 }

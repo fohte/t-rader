@@ -21,6 +21,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows a closed dialog with a trigger button.',
   render: () => (
     <Dialog>
       <DialogTrigger render={<Button variant="outline">開く</Button>} />
@@ -36,6 +37,7 @@ export const Default: Story = {
 }
 
 export const AutoFocusInput: Story = {
+  name: 'opens a dialog with its input focused and selected.',
   render: () => (
     <Dialog defaultOpen>
       <DialogTrigger render={<Button variant="outline">開く</Button>} />
@@ -54,6 +56,7 @@ export const AutoFocusInput: Story = {
 }
 
 export const InitialFocusDisabled: Story = {
+  name: 'opens a dialog with its input left unfocused.',
   render: () => (
     <Dialog defaultOpen>
       <DialogTrigger render={<Button variant="outline">開く</Button>} />

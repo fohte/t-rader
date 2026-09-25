@@ -68,13 +68,16 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const All: Story = {
+  name: 'shows trades from every strategy with the unlinked filter off.',
   args: { value: 'all' },
 }
 
 export const SwingActive: Story = {
+  name: 'selects one strategy and shows its unlinked trade count.',
   args: { value: SWING_ID, unlinkedCount: 1 },
 }
 
 export const UnlinkedOnly: Story = {
+  name: 'filters the trade list to trades without notes.',
   args: { onlyUnlinked: true },
 }

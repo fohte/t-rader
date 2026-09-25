@@ -25,11 +25,13 @@ const SAMPLE_PROMPT =
   '与えられた問いに対し、検証すべき仮説を 2-4 件立てよ。\n\n[[indicator:USDJPY]] の direction も考慮すること。'
 
 export const Default: Story = {
+  name: 'shows a prompt containing an internal reference.',
   args: { value: SAMPLE_PROMPT, onChange: () => {} },
   render: () => <Interactive initial={SAMPLE_PROMPT} />,
 }
 
 export const Empty: Story = {
+  name: 'shows an empty prompt field.',
   args: { value: '', onChange: () => {} },
   render: () => <Interactive initial="" />,
 }

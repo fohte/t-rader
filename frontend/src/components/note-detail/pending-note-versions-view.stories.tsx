@@ -82,14 +82,21 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const MultipleNotes: Story = {}
+export const MultipleNotes: Story = {
+  name: 'shows pending versions from multiple notes.',
+}
 
 export const Loading: Story = {
+  name: 'shows loading placeholders while pending versions load.',
   args: { versions: [], isPending: true },
 }
 
-export const Empty: Story = { args: { versions: [] } }
+export const Empty: Story = {
+  name: 'shows the empty state when no versions await review.',
+  args: { versions: [] },
+}
 
 export const Error: Story = {
+  name: 'shows an error when pending versions fail to load.',
   args: { versions: [], hasError: true },
 }

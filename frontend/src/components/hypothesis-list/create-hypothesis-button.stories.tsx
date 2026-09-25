@@ -11,5 +11,6 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  name: 'shows the action for creating a new hypothesis.',
   args: { onClick: () => {} },
 }

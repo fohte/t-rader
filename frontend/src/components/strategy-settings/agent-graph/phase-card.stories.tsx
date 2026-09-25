@@ -83,6 +83,7 @@ function Interactive({
 }
 
 export const Default: Story = {
+  name: 'shows a phase card with its model and prompt fields.',
   args: {
     index: 0,
     total: 2,
@@ -97,6 +98,7 @@ export const Default: Story = {
 }
 
 export const ForEach: Story = {
+  name: 'shows a phase card that runs for each item from an earlier phase.',
   args: {
     index: 1,
     total: 2,
@@ -114,6 +116,7 @@ export const ForEach: Story = {
 }
 
 export const WithError: Story = {
+  name: 'shows a phase card with a validation error.',
   args: {
     index: 0,
     total: 2,
@@ -129,6 +132,7 @@ export const WithError: Story = {
 }
 
 export const ModelUnset: Story = {
+  name: 'shows a phase card without a selected model.',
   args: {
     index: 0,
     total: 2,

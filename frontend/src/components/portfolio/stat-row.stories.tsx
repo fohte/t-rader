@@ -12,6 +12,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const PortfolioOverview: Story = {
+  name: 'shows portfolio totals, realized profit, cash, and holdings.',
   args: {
     stats: [
       { label: '総資産', value: '¥4,820,000' },
@@ -32,6 +33,7 @@ export const PortfolioOverview: Story = {
 }
 
 export const Performance: Story = {
+  name: 'summarizes realized performance and trading activity.',
   args: {
     stats: [
       {

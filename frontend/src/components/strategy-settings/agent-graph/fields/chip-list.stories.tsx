@@ -38,6 +38,7 @@ function Interactive({
 const OPTIONS = ['alpha', 'beta', 'gamma', 'delta']
 
 export const Selected: Story = {
+  name: 'shows multiple selected items and additional choices.',
   args: {
     values: ['alpha', 'beta'],
     options: OPTIONS,
@@ -50,6 +51,7 @@ export const Selected: Story = {
 }
 
 export const NoCandidates: Story = {
+  name: 'shows all choices selected with no remaining candidates.',
   args: {
     values: OPTIONS,
     options: OPTIONS,
@@ -63,6 +65,7 @@ export const NoCandidates: Story = {
 
 // options に無い値 (API 未取得・削除済みなど) も chip としてそのまま表示され続ける
 export const ValueNotInOptions: Story = {
+  name: 'keeps a selected item when it is missing from the available choices.',
   args: {
     values: ['legacy-value'],
     options: OPTIONS,

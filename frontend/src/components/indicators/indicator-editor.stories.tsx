@@ -46,6 +46,7 @@ print(json.dumps({"value": period * 2}))
 const QUIET: PreviewState = { isRunning: false, error: null, result: null }
 
 export const GlobalEdit: Story = {
+  name: 'shows the editor for a global indicator with a fixed name.',
   args: {
     scope: 'global',
     initial: INITIAL,
@@ -57,6 +58,7 @@ export const GlobalEdit: Story = {
 }
 
 export const StrategyCreate: Story = {
+  name: 'shows a blank form for creating a strategy-specific indicator.',
   args: {
     scope: 'strategy',
     initial: { ...INITIAL, name: '', description: '' },
@@ -67,6 +69,7 @@ export const StrategyCreate: Story = {
 }
 
 export const PreviewSuccess: Story = {
+  name: 'shows a successful indicator preview with its output value.',
   args: {
     scope: 'global',
     initial: INITIAL,
@@ -87,6 +90,7 @@ export const PreviewSuccess: Story = {
 }
 
 export const PreviewSandboxRejected: Story = {
+  name: 'shows a sandbox error when the preview script requests network access.',
   args: {
     scope: 'global',
     initial: INITIAL,
@@ -107,6 +111,7 @@ export const PreviewSandboxRejected: Story = {
 }
 
 export const Saving: Story = {
+  name: 'shows the global indicator editor while changes are saving.',
   args: {
     scope: 'global',
     initial: INITIAL,
