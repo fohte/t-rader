@@ -60,6 +60,7 @@ export const ResolvedAgentReply: Story = {
 }
 
 export const UnanchoredComment: Story = {
+  name: 'shows a comment without a line anchor.',
   args: {
     comment: {
       ...comment,
