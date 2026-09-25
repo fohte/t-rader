@@ -1,4 +1,5 @@
 pub mod bar;
+pub mod equity_master;
 pub mod indicator_observation;
 pub mod instrument;
 pub mod margin;

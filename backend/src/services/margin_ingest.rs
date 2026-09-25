@@ -1,18 +1,15 @@
 //! 信用取引週末残高・日々公表信用取引残高を日次で取得し、DB に蓄積する定期タスク。
 //!
-//! IBKR には対応するデータが無いため JQuantsClient を直接使う。契約プランが未設定の間は
-//! 取り込まない (未設定時のレート制限は 5 req/min のため)。
+//! 取得元が取得できる範囲を返さない間は取り込まない。
 
 use std::future::Future;
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
-use crate::data_provider::DataProviderError;
-use crate::data_provider::jquants::JQuantsClient;
+use crate::data_provider::{MarginSource, MarginSourceError, SharedMarginSource};
 use crate::error::AppError;
 use crate::repositories::{margin_alert, margin_interest};
 
@@ -55,7 +52,7 @@ pub struct IngestStats {
 /// 1 日分の取得・保存に失敗しても残りの日付は続行する。
 async fn ingest_daily<'c, T, F, FetchFut, G, UpsertFut>(
     db: &'c DatabaseConnection,
-    client: &'c JQuantsClient,
+    source: &'c dyn MarginSource,
     start: NaiveDate,
     end: NaiveDate,
     label: &str,
@@ -63,15 +60,15 @@ async fn ingest_daily<'c, T, F, FetchFut, G, UpsertFut>(
     upsert: G,
 ) -> IngestStats
 where
-    F: Fn(&'c JQuantsClient, NaiveDate) -> FetchFut,
-    FetchFut: Future<Output = Result<Vec<T>, DataProviderError>>,
+    F: Fn(&'c dyn MarginSource, NaiveDate) -> FetchFut,
+    FetchFut: Future<Output = Result<Vec<T>, MarginSourceError>>,
     G: Fn(&'c DatabaseConnection, Vec<T>) -> UpsertFut,
     UpsertFut: Future<Output = Result<(), AppError>>,
 {
     let mut stats = IngestStats::default();
     let mut date = start;
     while date <= end {
-        match fetch(client, date).await {
+        match fetch(source, date).await {
             Ok(records) => {
                 let count = records.len();
                 match upsert(db, records).await {
@@ -94,44 +91,42 @@ where
 }
 
 /// 1 サイクル実行: margin_interest, margin_alert それぞれ未取得区間を取得・保存する。
-/// 契約プランが未設定なら何もしない。
+/// 取得元が取得できる範囲を返さないなら何もしない。
 pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
+    source: &dyn MarginSource,
     today: NaiveDate,
 ) -> Result<(IngestStats, IngestStats), AppError> {
-    let Some(plan) = client.manual_plan() else {
-        tracing::debug!("J-Quants 契約プラン未設定のため、信用残データの取り込みをスキップします");
+    // 配信遅延を反映した上限日 (range.to) を超えては取得できない (backfill.rs::latest_fetchable_date と同様)
+    let Some(range) = source.fetchable_range(today) else {
+        tracing::debug!("信用残データを取得できないため、取り込みをスキップします");
         return Ok((IngestStats::default(), IngestStats::default()));
     };
 
-    // 配信遅延を反映した契約上限日 (plan_to) を超えては取得できない (backfill.rs::latest_fetchable_date と同様)
-    let (plan_from, plan_to) = plan.range(today);
-
-    let interest_earliest = plan_from.max(margin_interest_start_date());
+    let interest_earliest = range.from.max(margin_interest_start_date());
     let interest_latest = margin_interest::find_latest_margin_interest_date(db).await?;
     let interest_start = resolve_start_date(interest_latest, interest_earliest);
     let interest_stats = ingest_daily(
         db,
-        client,
+        source,
         interest_start,
-        plan_to,
+        range.to,
         "信用取引週末残高",
-        JQuantsClient::fetch_margin_interest,
+        MarginSource::fetch_margin_interest,
         margin_interest::upsert_margin_interest,
     )
     .await;
 
-    let alert_earliest = plan_from.max(margin_alert_start_date());
+    let alert_earliest = range.from.max(margin_alert_start_date());
     let alert_latest = margin_alert::find_latest_margin_alert_pub_date(db).await?;
     let alert_start = resolve_start_date(alert_latest, alert_earliest);
     let alert_stats = ingest_daily(
         db,
-        client,
+        source,
         alert_start,
-        plan_to,
+        range.to,
         "日々公表信用取引残高",
-        JQuantsClient::fetch_margin_alert,
+        MarginSource::fetch_margin_alert,
         margin_alert::upsert_margin_alert,
     )
     .await;
@@ -142,7 +137,7 @@ pub async fn run_ingest_cycle(
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    client: Arc<JQuantsClient>,
+    source: SharedMarginSource,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -151,7 +146,7 @@ pub fn spawn_poll(
         loop {
             ticker.tick().await;
             let today = Utc::now().date_naive();
-            match run_ingest_cycle(&db, &client, today).await {
+            match run_ingest_cycle(&db, source.as_ref(), today).await {
                 Ok((interest_stats, alert_stats)) => {
                     tracing::info!(
                         ?interest_stats,
@@ -257,7 +252,7 @@ mod tests {
             start,
             end,
             "テスト",
-            JQuantsClient::fetch_margin_interest,
+            MarginSource::fetch_margin_interest,
             margin_interest::upsert_margin_interest,
         )
         .await;

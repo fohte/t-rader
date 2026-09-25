@@ -14,10 +14,9 @@ use reqwest::Url;
 use rust_decimal::Decimal;
 use sea_orm::DatabaseConnection;
 
-pub(crate) use equities_master::EquityMasterEntry;
 use rate_limiter::RateLimiter;
 
-use crate::data_provider::DataProviderError;
+use crate::data_provider::{DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
@@ -151,13 +150,16 @@ impl JQuantsClient {
         *guard = plan;
     }
 
-    /// 信用残・財務情報・空売り関連の取り込み (`services::margin_ingest`,
-    /// `services::fin_summary_ingest`, `services::short_sale_report_ingest`,
-    /// `services::short_ratio_ingest`) が、契約プラン未設定の間は取り込みをスキップする
-    /// 判定に使う。
+    /// 契約プラン未設定の間は取り込みをスキップする判定に使う。
     pub(crate) fn manual_plan(&self) -> Option<JQuantsPlan> {
         let guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
         *guard
+    }
+
+    /// 手動設定された契約プランで取得できる範囲。自動検出した範囲は使わない。
+    fn manual_plan_date_range(&self, today: NaiveDate) -> Option<DateRange> {
+        let (from, to) = self.manual_plan()?.range(today);
+        Some(DateRange { from, to })
     }
 
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
