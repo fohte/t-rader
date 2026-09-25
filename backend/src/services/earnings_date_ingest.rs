@@ -1,7 +1,7 @@
 //! 決算発表予定日を日付指定で定期的に取り込む定期タスク。
 //!
 //! 取得済みかどうかを判定する専用テーブルは持たず、`jquants_earnings_date` に格納済みの
-//! 最新公表日から判断する (テーブルが空なら契約プランの取得可能範囲の先頭から取り込む)。
+//! 最新公表日から判断する (テーブルが空なら取得元の取得可能範囲の先頭から取り込む)。
 //! 予定日の変更は新しい公表日の行として返り差分取得もできないため、格納済み最新日
 //! からさかのぼって再取得することで取りこぼしに備える。(code, fq_name, pub_date) を
 //! 複合主キーとして公表日ごとの行をすべて残し、上書きしない。
@@ -194,6 +194,11 @@ mod tests {
         count
     }
 
+    fn plan_range(plan: JQuantsPlan, today: NaiveDate) -> DateRange {
+        let (from, to) = plan.range(today);
+        DateRange { from, to }
+    }
+
     #[rstest]
     #[case::empty_table_starts_at_range_from(
         JQuantsPlan::Standard,
@@ -216,8 +221,7 @@ mod tests {
         #[case] expected: (NaiveDate, NaiveDate),
     ) {
         let today = date(2026, 9, 13);
-        let (from, to) = plan.range(today);
-        let source_range = DateRange { from, to };
+        let source_range = plan_range(plan, today);
         assert_eq!(fetch_range(&source_range, latest_stored), expected);
     }
 
@@ -271,8 +275,7 @@ mod tests {
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
-        let (from, to) = JQuantsPlan::Standard.range(today);
-        let source_range = DateRange { from, to };
+        let source_range = plan_range(JQuantsPlan::Standard, today);
         let (range_from, range_to) = fetch_range(&source_range, Some(seed_pub_date));
         assert_eq!(
             stats,
@@ -333,8 +336,7 @@ mod tests {
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
-        let (from, to) = JQuantsPlan::Standard.range(today);
-        let source_range = DateRange { from, to };
+        let source_range = plan_range(JQuantsPlan::Standard, today);
         let (range_from, range_to) = fetch_range(&source_range, Some(seed_pub_date));
         assert_eq!(
             stats,
