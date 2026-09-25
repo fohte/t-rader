@@ -277,8 +277,8 @@ mod tests {
 
         let today = Utc::now().date_naive();
         let to = crate::date_utils::latest_business_day(today);
-        // 格納済み最新日を直近にしておき、取り込み対象の範囲を数日に絞る
-        let seed_disc_date = to - chrono::Duration::days(3 + LOOKBACK_DAYS);
+        // 格納済み最新日を直近にしておき、ルックバック期間と数日分に絞る
+        let seed_disc_date = to - chrono::Duration::days(3);
         seed_fin_summary(&db, "00000", "0", seed_disc_date).await;
 
         mock.fin_summary()
@@ -341,7 +341,7 @@ mod tests {
 
         let today = Utc::now().date_naive();
         let to = crate::date_utils::latest_business_day(today);
-        let seed_disc_date = to - chrono::Duration::days(1 + LOOKBACK_DAYS);
+        let seed_disc_date = to - chrono::Duration::days(1);
         seed_fin_summary(&db, "00000", "0", seed_disc_date).await;
 
         let prev_business_day =

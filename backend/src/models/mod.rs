@@ -22,7 +22,6 @@ pub mod strategy;
 pub mod trade;
 pub mod trade_note;
 pub mod trigger;
-pub mod watchlist;
 
 pub use agent_config::{
     AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateAgentConfigRequest, SkillBody,
@@ -67,4 +66,3 @@ pub use strategy::{
 pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
 pub use trade_note::CreateTradeNoteRequest;
 pub use trigger::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};
-pub use watchlist::{AddWatchlistItemRequest, CreateWatchlistRequest};
