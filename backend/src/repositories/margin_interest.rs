@@ -1,10 +1,32 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_interest;
 use crate::error::AppError;
 use crate::models::margin::MarginInterestRecord;
+
+impl From<MarginInterestRecord> for margin_interest::ActiveModel {
+    fn from(r: MarginInterestRecord) -> Self {
+        margin_interest::ActiveModel {
+            date: Set(r.date),
+            code: Set(r.code),
+            iss_type: Set(r.iss_type),
+            shrt_vol: Set(r.shrt_vol),
+            long_vol: Set(r.long_vol),
+            shrt_neg_vol: Set(r.shrt_neg_vol),
+            long_neg_vol: Set(r.long_neg_vol),
+            shrt_std_vol: Set(r.shrt_std_vol),
+            long_std_vol: Set(r.long_std_vol),
+            shrt_val: Set(r.shrt_val),
+            long_val: Set(r.long_val),
+            shrt_neg_val: Set(r.shrt_neg_val),
+            long_neg_val: Set(r.long_neg_val),
+            shrt_std_val: Set(r.shrt_std_val),
+            long_std_val: Set(r.long_std_val),
+        }
+    }
+}
 
 /// 信用取引週末残高を一括 upsert する。複合 PK (date, code, iss_type) で重複排除し、
 /// 既存行は数量・金額カラムを更新する (J-Quants の訂正は上書きで反映されるため)。
