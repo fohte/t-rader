@@ -9,7 +9,7 @@ WORKDIR /app/backend
 # bind マウントでソースを参照し、cache マウントでビルドキャッシュを永続化する。
 # bind マウントは read-only のため、target ディレクトリをその外に配置する。
 # キャッシュマウントは RUN 終了後にアンマウントされるため、同じ RUN 内で cp する。
-# progenitor が build.rs でビルド時に agent/openapi.json を読むため、
+# t-rader-agent gateway の build.rs が agent/openapi.json を読むため、
 # bind マウントは context ルート (リポジトリ全体) を対象にする。
 RUN --mount=type=bind,target=/app \
     --mount=type=cache,target=/build/target,sharing=locked \

@@ -1,13 +1,50 @@
 //! 空売り残高報告・業種別空売り比率の取得 (`JQuantsClient` の inherent メソッド)。
 //!
-//! IBKR に対応するデータが無いため `DataProvider` trait には追加しない。
+//! IBKR に対応するデータが無いため日足取得の port には含めない。
 
+use async_trait::async_trait;
 use chrono::NaiveDate;
 
 use super::JQuantsClient;
 use super::response::{ShortRatioResponse, ShortSaleReportResponse};
-use crate::data_provider::DataProviderError;
+use crate::data_provider::{
+    DataProviderError, DateRange, ShortSellingSource, ShortSellingSourceError,
+};
+use crate::models::jquants_plan::JQuantsPlan;
 use crate::models::{ShortRatio, ShortSaleReport};
+
+#[async_trait]
+impl ShortSellingSource for JQuantsClient {
+    async fn fetch_short_sale_reports(
+        &self,
+        disc_date: NaiveDate,
+    ) -> Result<Vec<ShortSaleReport>, ShortSellingSourceError> {
+        Ok(JQuantsClient::fetch_short_sale_reports(self, disc_date).await?)
+    }
+
+    async fn fetch_short_ratios(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Vec<ShortRatio>, ShortSellingSourceError> {
+        Ok(JQuantsClient::fetch_short_ratios(self, date).await?)
+    }
+
+    /// Standard 以上のプランでのみ提供されるデータのため、それ未満や未設定の間は取得できない。
+    fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
+        match self.manual_plan() {
+            Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
+                self.manual_plan_date_range(today)
+            }
+            plan => {
+                tracing::debug!(
+                    ?plan,
+                    "空売り関連データは Standard 以上の契約プランが必要なため取得できません"
+                );
+                None
+            }
+        }
+    }
+}
 
 impl JQuantsClient {
     /// `/markets/short-sale-report` を呼び出し、指定公表日の全銘柄分を取得する

@@ -175,6 +175,8 @@ pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
     pub note_id: Option<Uuid>,
     pub title: Option<String>,
+    /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
+    /// `@current` を付けると以降の現行バージョンに追従する。
     pub body_md: Option<String>,
     /// `null` を明示すると既存タグを NULL に更新する。フィールド省略時は変更しない。
     #[serde(
@@ -200,12 +202,26 @@ pub struct WriteNoteResult {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadNoteParams {
     pub note_id: Uuid,
+    /// 省略時は現行バージョンを読む。
+    pub version_id: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct NoteLinkDto {
+    /// 参照先ノート ID。
+    pub to_note_id: Uuid,
+    /// 固定したバージョン ID。null の場合は参照先ノートの現行バージョンに追従する。
+    pub to_version_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NoteDto {
     pub note_id: Uuid,
     pub strategy_id: Uuid,
+    /// 本文が属するバージョン ID。`read_comments` の `target_id` に使う。
+    pub version_id: Uuid,
+    /// ノート内のバージョン番号。
+    pub version_no: i32,
     pub title: String,
     /// `list_notes` で `include_body: false` を指定したときのみ省略される (null)。
     /// `read_note` の結果では常に値を含む
@@ -217,6 +233,9 @@ pub struct NoteDto {
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
     pub graphs: Vec<GraphDef>,
+    /// `read_note` の結果でのみ含まれる、このバージョンから出るリンク。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub links: Option<Vec<NoteLinkDto>>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -278,43 +297,8 @@ pub struct ReadAnnotationsResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct AddInterestParams {
-    /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
-    pub ref_kind: String,
-    pub ref_id: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct AddInterestResult {
-    pub strategy_id: Uuid,
-    pub ref_kind: String,
-    pub ref_id: String,
-    pub role: String,
-    pub origin: String,
-    /// 既存と一致したため idempotent に成功した場合は false
-    pub created: bool,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListWatchTargetsParams {
-    pub limit: Option<u32>,
-}
-
-/// 人間が「追う」と決めた監視対象銘柄。保有状況によるフィルタは行わない
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct WatchTargetDto {
-    pub ref_id: String,
-    pub created_at: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct ListWatchTargetsResult {
-    pub watch_targets: Vec<WatchTargetDto>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCommentsParams {
-    /// "note" | "annotation"
+    /// "note_version" | "annotation"
     pub target_kind: String,
     pub target_id: Uuid,
     /// true/false で絞り込み。省略時は全件
@@ -335,11 +319,11 @@ pub struct CommentDto {
     pub created_at: DateTime<FixedOffset>,
     /// コメント時点で選択された本文の該当箇所全文。
     pub anchor_text: Option<String>,
-    /// note 本文中の現在位置 (1-indexed)。追跡できない場合は null。
+    /// 行コメントが対応する本文側。`note_version` の場合のみ設定される。
+    pub anchor_side: Option<String>,
+    /// 対応する本文中の行位置 (1-indexed)。
     pub start_line: Option<i32>,
     pub end_line: Option<i32>,
-    /// 位置が当てにならなくなったかどうか (note 本文の書き換えで見失った等)。
-    pub drifted: bool,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
@@ -450,33 +434,6 @@ pub struct EvalIndicatorResult {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct ReadNewsParams {
-    pub limit: Option<u32>,
-}
-
-/// 戦略に紐づいた news の 1 match。同じ記事が複数の interest に一致した場合、
-/// 一致ごとに 1 行になる (同じ url が複数回出現し得る)。
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct NewsUpdateDto {
-    pub id: Uuid,
-    pub source: String,
-    pub url: String,
-    pub title: String,
-    pub body_snippet: Option<String>,
-    pub published_at: DateTime<FixedOffset>,
-    pub ref_kind: String,
-    pub ref_id: String,
-    pub matched_term: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct ReadNewsResult {
-    pub items: Vec<NewsUpdateDto>,
-    /// true なら未読がまだ残っている (limit で切られた)。再度呼び出せば続きから読める
-    pub has_more: bool,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchNewsParams {
     /// title / body_snippet の部分一致 (大文字小文字を区別しない)。省略時はキーワード条件なし
     pub keyword: Option<String>,
@@ -487,8 +444,7 @@ pub struct SearchNewsParams {
     pub limit: Option<u32>,
 }
 
-/// news_item を直接検索した 1 件。`read_news` と異なり戦略の interest 一致とは無関係なため
-/// ref_kind/ref_id/matched_term は持たない。
+/// `search_news` で返す記事 1 件
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct NewsItemDto {
     pub id: Uuid,

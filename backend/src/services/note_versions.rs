@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::entities::{note, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
-use crate::services::comment_anchor;
+use crate::services::note_links::{copy_note_links, sync_note_links};
 use crate::services::note_refs::{sync_note_refs, sync_note_refs_after_graphs_only_update};
 
 pub struct AppendVersion {
@@ -94,10 +94,15 @@ pub async fn append_version(
     let graphs_changed = previous
         .as_ref()
         .is_none_or(|previous| previous.graphs_json != version.graphs_json);
-    if body_changed || graphs_changed {
-        if body_changed {
-            sync_note_refs(txn, note_id, &version.body_md, &version.graphs_json).await?;
-        } else {
+    if body_changed {
+        sync_note_refs(txn, note_id, &version.body_md, &version.graphs_json).await?;
+        let source_note = note::Entity::find_by_id(note_id)
+            .one(txn)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
+        sync_note_links(txn, &source_note, version.id, &version.body_md).await?;
+    } else {
+        if graphs_changed {
             sync_note_refs_after_graphs_only_update(
                 txn,
                 note_id,
@@ -106,11 +111,10 @@ pub async fn append_version(
             )
             .await?;
         }
+        if let Some(previous) = previous.as_ref() {
+            copy_note_links(txn, previous.id, version.id).await?;
+        }
     }
-    if body_changed {
-        comment_anchor::reanchor_note_comments(txn, note_id, &version.body_md).await?;
-    }
-
     let mut diff = json!({
         "from_version_id": previous.as_ref().map(|version| version.id),
         "to_version_id": version.id,
@@ -141,6 +145,68 @@ pub async fn append_version(
     Ok(version)
 }
 
+/// 指定した版を現行にし、本文に紐づく参照データを同期する。
+pub async fn set_current_version(
+    txn: &DatabaseTransaction,
+    note_id: Uuid,
+    version: note_version::Model,
+    new_status: Option<&str>,
+    reviewed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+) -> Result<(note_version::Model, Option<Uuid>), AppError> {
+    let current = find_current_version(txn, note_id).await?;
+    let previous_current_id = current.as_ref().map(|current| current.id);
+    if let Some(current) = current.as_ref().filter(|current| current.id != version.id) {
+        note_version::ActiveModel {
+            id: Set(current.id),
+            is_current: Set(false),
+            ..Default::default()
+        }
+        .update(txn)
+        .await?;
+    }
+
+    let mut active = note_version::ActiveModel {
+        id: Set(version.id),
+        is_current: Set(true),
+        ..Default::default()
+    };
+    if let Some(status) = new_status {
+        active.status = Set(status.to_string());
+    }
+    if let Some(reviewed_at) = reviewed_at {
+        active.reviewed_at = Set(Some(reviewed_at));
+    }
+    let updated_version = active.update(txn).await?;
+
+    let note_row = note::Entity::find_by_id(note_id)
+        .one(txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
+    note::ActiveModel {
+        id: Set(note_id),
+        updated_at: Set(chrono::Utc::now().fixed_offset()),
+        ..Default::default()
+    }
+    .update(txn)
+    .await?;
+
+    let content_changed = current.as_ref().is_none_or(|current| {
+        current.body_md != updated_version.body_md
+            || current.graphs_json != updated_version.graphs_json
+    });
+    if content_changed {
+        sync_note_refs(
+            txn,
+            note_row.id,
+            &updated_version.body_md,
+            &updated_version.graphs_json,
+        )
+        .await?;
+    }
+
+    Ok((updated_version, previous_current_id))
+}
+
 pub async fn find_current_version<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: Uuid,
@@ -150,6 +216,21 @@ pub async fn find_current_version<C: sea_orm::ConnectionTrait>(
         .filter(note_version::Column::IsCurrent.eq(true))
         .one(db)
         .await
+}
+
+pub async fn find_version_of_note<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    note_id: Uuid,
+    version_id: Option<Uuid>,
+) -> Result<Option<note_version::Model>, sea_orm::DbErr> {
+    if let Some(version_id) = version_id {
+        note_version::Entity::find_by_id(version_id)
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .one(db)
+            .await
+    } else {
+        find_current_version(db, note_id).await
+    }
 }
 
 pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(

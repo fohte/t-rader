@@ -7,7 +7,6 @@
 //! 時間にする。
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
@@ -15,8 +14,7 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use tokio::task::JoinHandle;
 
-use crate::data_provider::DataProviderKind;
-use crate::data_provider::jquants::JQuantsClient;
+use crate::data_provider::{MarketDailyBarSource, SharedMarketDailyBarSource};
 use crate::date_utils::latest_business_day;
 use crate::entities::{instruments, jquants_daily_bars_ingested_date};
 use crate::error::AppError;
@@ -128,13 +126,10 @@ async fn mark_ingested(db: &DatabaseConnection, date: NaiveDate) -> Result<(), A
 /// `0` を返す。
 async fn ingest_date(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
+    source: &dyn MarketDailyBarSource,
     date: NaiveDate,
 ) -> Result<usize, AppError> {
-    let bars: Vec<Bar> = client
-        .fetch_daily_bars_by_date(date)
-        .await
-        .map_err(AppError::DataProvider)?;
+    let bars: Vec<Bar> = source.fetch_daily_bars_by_date(date).await?;
 
     if bars.is_empty() {
         return Ok(0);
@@ -150,22 +145,20 @@ async fn ingest_date(
     Ok(bar_count)
 }
 
-/// 日足を取り込む 1 サイクル。契約プラン未設定の間は取り込まない (未設定時のレートリミットは
-/// 5 req/分で、全銘柄分の取得には数百リクエストを要するため)。
+/// 日足を取り込む 1 サイクル。取得元が取得できる範囲を返さない間は取り込まない。
 pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
+    source: &dyn MarketDailyBarSource,
 ) -> Result<IngestStats, AppError> {
-    let Some(plan) = client.manual_plan() else {
-        tracing::debug!("J-Quants 契約プランが未設定のため日足の取り込みをスキップします");
+    let today = Utc::now().date_naive();
+    let Some(range) = source.fetchable_range(today) else {
+        tracing::debug!("日足を取得できないため取り込みをスキップします");
         return Ok(IngestStats::default());
     };
 
-    let today = Utc::now().date_naive();
-    // Free プランは配信遅延 (84日) があり、素の today だとまだ提供されていない日を
-    // 対象にして 400 エラーを繰り返してしまうため、プランの提供可能範囲でクランプする。
-    let (_, plan_to) = plan.range(today);
-    let to = latest_business_day(plan_to.min(today));
+    // 配信遅延がある場合、素の today だとまだ提供されていない日を対象にして 400 エラーを
+    // 繰り返してしまうため、取得できる範囲でクランプする。
+    let to = latest_business_day(range.to.min(today));
     let business_days = recent_business_days(to, TARGET_BUSINESS_DAYS);
     let Some(&earliest) = business_days.first() else {
         return Ok(IngestStats::default());
@@ -177,7 +170,7 @@ pub async fn run_ingest_cycle(
     let mut stats = IngestStats::default();
     for date in targets {
         stats.days_attempted += 1;
-        match ingest_date(db, client, date).await {
+        match ingest_date(db, source, date).await {
             Ok(0) => {
                 tracing::debug!(%date, "この日の日足はまだ公開されていません");
             }
@@ -192,23 +185,17 @@ pub async fn run_ingest_cycle(
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-/// `provider` は `DataProviderKind::JQuants` である前提 (呼び出し側の main.rs で条件分岐済み)。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    source: SharedMarketDailyBarSource,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let DataProviderKind::JQuants(client) = provider.as_ref() else {
-            tracing::error!("daily bars ingest は J-Quants 専用のため起動できません");
-            return;
-        };
-
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            match run_ingest_cycle(&db, client).await {
+            match run_ingest_cycle(&db, source.as_ref()).await {
                 Ok(stats) => {
                     tracing::debug!(
                         days_attempted = stats.days_attempted,
@@ -231,6 +218,7 @@ mod tests {
     use sqlx::PgPool;
 
     use super::*;
+    use crate::data_provider::jquants::JQuantsClient;
     use crate::data_provider::jquants::mock::{JQuantsMockServer, MockBar};
     use crate::models::jquants_plan::JQuantsPlan;
     use crate::repositories::bars::{BarsQuery, find_bars};

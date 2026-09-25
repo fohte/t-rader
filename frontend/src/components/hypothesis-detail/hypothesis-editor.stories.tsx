@@ -29,20 +29,27 @@ const args = {
   saveError: null,
 }
 
-export const Default: Story = { args }
+export const Default: Story = {
+  name: 'shows a clean hypothesis draft in the editor.',
+  args,
+}
 
 export const Dirty: Story = {
+  name: 'shows a hypothesis draft with unsaved changes.',
   args: { ...args, isDirty: true },
 }
 
 export const Saving: Story = {
+  name: 'shows the editor while saving an updated hypothesis.',
   args: { ...args, isDirty: true, isSaving: true },
 }
 
 export const ValidationError: Story = {
+  name: 'shows validation feedback for a hypothesis missing required fields.',
   args: { ...args, isDirty: true, validationError: 'title と body は必須です' },
 }
 
 export const SaveError: Story = {
+  name: 'shows the save error for an edited hypothesis.',
   args: { ...args, isDirty: true, saveError: '保存に失敗しました' },
 }

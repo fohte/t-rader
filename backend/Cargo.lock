@@ -463,22 +463,23 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-test",
- "base64 0.22.1",
  "chrono",
  "clap",
+ "core-application",
  "core-domain",
  "cron",
  "csv",
  "encoding_rs",
+ "gateway-fred",
+ "gateway-ibkr",
+ "gateway-kata-exec",
+ "gateway-litellm",
+ "gateway-rss",
+ "gateway-t-rader-agent",
  "indoc",
- "jpholiday",
  "jsonschema",
  "migration",
  "percent-encoding",
- "prettyplease",
- "progenitor",
- "progenitor-client",
- "quick-xml",
  "reqwest",
  "rmcp",
  "rstest",
@@ -489,7 +490,6 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sqlx",
- "syn 2.0.119",
  "thiserror",
  "tokio",
  "tracing",
@@ -821,10 +821,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-application"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-domain",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "core-domain"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "jpholiday",
+ "rstest",
  "rust_decimal",
  "serde",
 ]
@@ -1501,6 +1516,111 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gateway-fred"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "core-domain",
+ "indoc",
+ "reqwest",
+ "rstest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "gateway-ibkr"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "core-domain",
+ "reqwest",
+ "rstest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "gateway-kata-exec"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "core-application",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
+name = "gateway-litellm"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "core-application",
+ "indoc",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "gateway-rss"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "indoc",
+ "quick-xml",
+ "reqwest",
+ "rstest",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "gateway-t-rader-agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "core-application",
+ "prettyplease",
+ "progenitor",
+ "progenitor-client",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "thiserror",
+ "tokio",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]

@@ -3486,282 +3486,6 @@
         }
       }
     },
-    "/api/interests": {
-      "get": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "どの戦略にも属さない関心 (口座全体として追う日経平均・業種・テーマなど) の一覧を取得する",
-        "operationId": "list_global_interests",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/StrategyInterest"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "どの戦略にも属さない関心を追加する",
-        "operationId": "create_global_interest",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateInterestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StrategyInterest"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "リクエストボディのパースに失敗",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/interests/{ref_kind}/{ref_id}": {
-      "delete": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "どの戦略にも属さない関心を削除する",
-        "operationId": "delete_global_interest",
-        "parameters": [
-          {
-            "name": "ref_kind",
-            "in": "path",
-            "description": "参照型",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "ref_id",
-            "in": "path",
-            "description": "参照 ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "どの戦略にも属さない関心を更新する (role / origin のみ)",
-        "operationId": "update_global_interest",
-        "parameters": [
-          {
-            "name": "ref_kind",
-            "in": "path",
-            "description": "参照型 (stock / indicator / sector / theme)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "ref_id",
-            "in": "path",
-            "description": "参照 ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateInterestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StrategyInterest"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "リクエストボディのパースに失敗",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/jquants/plan-setting": {
       "get": {
         "tags": [
@@ -4120,6 +3844,40 @@
         }
       }
     },
+    "/api/note-versions/pending": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認待ちバージョンを作成日時順に返す。",
+        "operationId": "list_pending_note_versions",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteVersion"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes": {
       "get": {
         "tags": [
@@ -4277,6 +4035,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "description": "省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -4399,99 +4167,6 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateNoteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Note"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "リクエストパラメータが不正",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "リクエストボディのパースに失敗",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/notes/{id}/approve": {
-      "post": {
-        "tags": [
-          "notes"
-        ],
-        "summary": "ノートを approved に遷移",
-        "operationId": "approve_note",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "ノート ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangeStatusRequest"
               }
             }
           },
@@ -4794,6 +4469,79 @@
         }
       }
     },
+    "/api/notes/{id}/links": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートのバージョンから出るリンクと、現行バージョンからの被リンクを返す。",
+        "operationId": "get_note_links",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "description": "省略時はノートの現行バージョンから出るリンクを返す。",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteLinksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/{id}/predictions": {
       "get": {
         "tags": [
@@ -4860,13 +4608,13 @@
         }
       }
     },
-    "/api/notes/{id}/reject": {
-      "post": {
+    "/api/notes/{id}/versions": {
+      "get": {
         "tags": [
           "notes"
         ],
-        "summary": "ノートを rejected に遷移",
-        "operationId": "reject_note",
+        "summary": "ノートの全バージョンを古い順に返す。",
+        "operationId": "list_note_versions",
         "parameters": [
           {
             "name": "id",
@@ -4876,6 +4624,155 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NoteVersion"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "ノートの指定バージョンを返す。",
+        "operationId": "get_note_version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}/approve": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認待ちバージョンを承認し、現行バージョンにする。",
+        "operationId": "approve_note_version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
             }
           }
         ],
@@ -4895,7 +4792,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Note"
+                  "$ref": "#/components/schemas/NoteVersion"
                 }
               }
             }
@@ -4912,6 +4809,212 @@
           },
           "404": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "バージョンが承認待ちではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type ヘッダが application/json ではない",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "リクエストボディのパースに失敗",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}/make-current": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認済みの過去バージョンを現行にする。",
+        "operationId": "make_note_version_current",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/versions/{n}/reject": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "summary": "承認待ちバージョンを却下する。",
+        "operationId": "reject_note_version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ノート ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "description": "バージョン番号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "リクエストパラメータが不正、または却下理由が必要",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "バージョンが承認待ちではない",
             "content": {
               "application/json": {
                 "schema": {
@@ -6717,346 +6820,6 @@
         }
       }
     },
-    "/api/strategies/{id}/interests": {
-      "get": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略の関心 (シード + LLM 派生) 一覧",
-        "operationId": "list_strategy_interests",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/StrategyInterest"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "リクエストパラメータが不正",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "戦略の関心を追加する",
-        "operationId": "create_strategy_interest",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateInterestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StrategyInterest"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "リクエストボディのパースに失敗",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/strategies/{id}/interests/{ref_kind}/{ref_id}": {
-      "delete": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "関心を削除する",
-        "operationId": "delete_strategy_interest",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "ref_kind",
-            "in": "path",
-            "description": "参照型",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "ref_id",
-            "in": "path",
-            "description": "参照 ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "strategies"
-        ],
-        "summary": "既存の関心を更新する (role / origin のみ)",
-        "operationId": "update_strategy_interest",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "ref_kind",
-            "in": "path",
-            "description": "参照型 (stock / indicator / sector / theme)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "ref_id",
-            "in": "path",
-            "description": "参照 ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateInterestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StrategyInterest"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Content-Type ヘッダが application/json ではない",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "リクエストボディのパースに失敗",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/strategies/{id}/investable-amount": {
       "get": {
         "tags": [
@@ -7189,73 +6952,6 @@
             }
           },
           "422": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/strategies/{id}/news": {
-      "get": {
-        "tags": [
-          "news"
-        ],
-        "summary": "戦略に関連付けられたニュース一覧を取得する",
-        "description": "`news_strategy_link` を介して `strategy_id` で絞り込み、`published_at` 降順で返す。\n他戦略のニュースは含まれない (link 経由のためテーブル境界で隔離される)。",
-        "operationId": "list_strategy_news",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "戦略 ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "関連ニュース",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/StrategyNewsItem"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "リクエストパラメータが不正",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
             "description": "",
             "content": {
               "application/json": {
@@ -8054,7 +7750,7 @@
         "tags": [
           "trades"
         ],
-        "summary": "取引に紐づく判断ノート一覧 (リンク作成順)",
+        "summary": "取引に紐づく判断ノート一覧 (リンク作成順。各ノートは紐付け時点で固定したバージョンを返す)",
         "operationId": "list_trade_notes",
         "parameters": [
           {
@@ -8118,7 +7814,7 @@
         "tags": [
           "trades"
         ],
-        "summary": "取引に判断ノートを紐付ける",
+        "summary": "取引に判断ノートを紐付ける (紐付け時点の現行バージョンを固定して記録する)",
         "operationId": "create_trade_note",
         "parameters": [
           {
@@ -8907,10 +8603,15 @@
           "author_kind",
           "author_label",
           "created_at",
-          "resolved",
-          "drifted"
+          "resolved"
         ],
         "properties": {
+          "anchor_side": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "anchor_text": {
             "type": [
               "string",
@@ -8929,9 +8630,6 @@
           "created_at": {
             "type": "string",
             "format": "date-time"
-          },
-          "drifted": {
-            "type": "boolean"
           },
           "end_line": {
             "type": [
@@ -8969,6 +8667,13 @@
             "type": "string"
           }
         }
+      },
+      "CommentAnchorSide": {
+        "type": "string",
+        "enum": [
+          "old",
+          "new"
+        ]
       },
       "ConfigResponse": {
         "type": "object",
@@ -9066,12 +8771,23 @@
           "body"
         ],
         "properties": {
+          "anchor_side": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CommentAnchorSide",
+                "description": "note_version のどちら側の本文に対する行コメントか。"
+              }
+            ]
+          },
           "anchor_text": {
             "type": [
               "string",
               "null"
             ],
-            "description": "コメント時点で選択された本文の該当箇所全文。target_kind が \"note\" の場合のみ\nnote 更新後の位置追跡に使う (annotation では保存されるだけで追跡されない)。"
+            "description": "行コメントに添える引用文。空行では空文字になる場合がある。"
           },
           "author_kind": {
             "type": [
@@ -9090,6 +8806,15 @@
             "type": "string",
             "minLength": 1
           },
+          "end_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "note_version 本文上の 1-indexed の終了行。",
+            "minimum": 1
+          },
           "parent_id": {
             "type": [
               "string",
@@ -9097,13 +8822,22 @@
             ],
             "format": "uuid"
           },
+          "start_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "note_version 本文上の 1-indexed の開始行。",
+            "minimum": 1
+          },
           "target_id": {
             "type": "string",
             "format": "uuid"
           },
           "target_kind": {
             "type": "string",
-            "description": "\"note\" | \"annotation\""
+            "description": "\"note_version\" | \"annotation\""
           }
         },
         "additionalProperties": false
@@ -9191,41 +8925,6 @@
         },
         "additionalProperties": false
       },
-      "CreateInterestRequest": {
-        "type": "object",
-        "description": "戦略の関心 (interest) を新規追加するリクエスト。\n\n`ref_kind` は参照型 (`stock` / `indicator` / `sector` / `theme`) を指定する。\n`role` は省略時 `seed`、`origin` は省略時 `human`、`status` は省略時 `active`。",
-        "required": [
-          "ref_kind",
-          "ref_id"
-        ],
-        "properties": {
-          "origin": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "ref_id": {
-            "type": "string"
-          },
-          "ref_kind": {
-            "type": "string"
-          },
-          "role": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
       "CreateNoteHypothesisRequest": {
         "type": "object",
         "required": [
@@ -9280,7 +8979,8 @@
         ],
         "properties": {
           "body_md": {
-            "type": "string"
+            "type": "string",
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
           },
           "created_by_kind": {
             "type": [
@@ -9962,29 +9662,13 @@
           "scatter"
         ]
       },
-      "MatchedRef": {
-        "type": "object",
-        "required": [
-          "ref_kind",
-          "ref_id",
-          "matched_term"
-        ],
-        "properties": {
-          "matched_term": {
-            "type": "string"
-          },
-          "ref_id": {
-            "type": "string"
-          },
-          "ref_kind": {
-            "type": "string"
-          }
-        }
-      },
       "Note": {
         "type": "object",
         "required": [
           "id",
+          "version_id",
+          "version_no",
+          "is_current",
           "title",
           "body_md",
           "frontmatter_json",
@@ -10024,6 +9708,9 @@
             "type": "string",
             "format": "uuid"
           },
+          "is_current": {
+            "type": "boolean"
+          },
           "status": {
             "type": "string"
           },
@@ -10058,6 +9745,14 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version_no": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -10125,6 +9820,61 @@
           }
         }
       },
+      "NoteLinkItem": {
+        "type": "object",
+        "required": [
+          "note_id"
+        ],
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "出リンクでは参照先、被リンクでは参照元のノート ID。"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "出リンクでは固定先のバージョン ID、被リンクでは現行の参照元バージョン ID。\n`null` は参照先の現行バージョンへの追従を表す。"
+          },
+          "version_no": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "NoteLinksResponse": {
+        "type": "object",
+        "required": [
+          "outgoing",
+          "incoming"
+        ],
+        "properties": {
+          "incoming": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteLinkItem"
+            }
+          },
+          "outgoing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteLinkItem"
+            }
+          }
+        }
+      },
       "NoteTrigger": {
         "type": "string",
         "description": "ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる",
@@ -10134,6 +9884,83 @@
           "on-demand",
           "manual"
         ]
+      },
+      "NoteVersion": {
+        "type": "object",
+        "required": [
+          "id",
+          "note_id",
+          "version_no",
+          "title",
+          "body_md",
+          "frontmatter_json",
+          "graphs_json",
+          "status",
+          "is_current",
+          "created_by_kind",
+          "created_at"
+        ],
+        "properties": {
+          "body_md": {
+            "type": "string"
+          },
+          "change_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by_kind": {
+            "type": "string"
+          },
+          "execution_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frontmatter_json": {
+            "$ref": "#/components/schemas/Value"
+          },
+          "graphs_json": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GraphDef"
+            }
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_current": {
+            "type": "boolean"
+          },
+          "note_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reviewed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version_no": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
       },
       "PerformanceSummary": {
         "type": "object",
@@ -10782,94 +10609,6 @@
           }
         }
       },
-      "StrategyInterest": {
-        "type": "object",
-        "required": [
-          "ref_kind",
-          "ref_id",
-          "role",
-          "origin",
-          "created_at",
-          "id",
-          "status"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "origin": {
-            "type": "string"
-          },
-          "ref_id": {
-            "type": "string"
-          },
-          "ref_kind": {
-            "type": "string"
-          },
-          "role": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "strategy_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          }
-        }
-      },
-      "StrategyNewsItem": {
-        "type": "object",
-        "description": "戦略ホームの「関連ニュース」セクション用 1 件",
-        "required": [
-          "id",
-          "source",
-          "url",
-          "title",
-          "published_at",
-          "matched_refs"
-        ],
-        "properties": {
-          "body_snippet": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "matched_refs": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MatchedRef"
-            },
-            "description": "この戦略の interest のうち、このニュースに紐付いたものの一覧 (ref_kind:ref_id)"
-          },
-          "published_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "source": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          }
-        }
-      },
       "StrategyTaskStatusResponse": {
         "type": "object",
         "description": "`GET /api/strategies/:id/tasks/:task_id` の戻り値。",
@@ -11119,7 +10858,8 @@
         "required": [
           "trade_id",
           "note_id",
-          "created_at"
+          "created_at",
+          "note_version_id"
         ],
         "properties": {
           "created_at": {
@@ -11127,6 +10867,10 @@
             "format": "date-time"
           },
           "note_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note_version_id": {
             "type": "string",
             "format": "uuid"
           },
@@ -11360,31 +11104,6 @@
         },
         "additionalProperties": false
       },
-      "UpdateInterestRequest": {
-        "type": "object",
-        "description": "既存の関心の role / origin / status を更新するリクエスト。",
-        "properties": {
-          "origin": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "role": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
       "UpdateNoteKindRequest": {
         "type": "object",
         "properties": {
@@ -11423,7 +11142,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "`[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。\n`@current` を付けると以降の現行バージョンに追従する。"
           },
           "frontmatter_json": {
             "type": [
@@ -11687,10 +11407,6 @@
     {
       "name": "custom_indicators",
       "description": "カスタムインジケーター (Python 定義)"
-    },
-    {
-      "name": "news",
-      "description": "ニュース (公開 RSS の集約結果と戦略への紐付け)"
     },
     {
       "name": "rss_feeds",

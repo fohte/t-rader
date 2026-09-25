@@ -13,22 +13,20 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 
 use super::dto::{
-    AddInterestParams, AddInterestResult, CheckBuyableQtyParams, CheckBuyableQtyResult,
-    CreateAnnotationParams, CreateAnnotationResult, EvalIndicatorParams, EvalIndicatorResult,
-    EvalPythonParams, EvalPythonResult, HypothesisDto, ListHypothesesParams, ListHypothesesResult,
-    ListNotesParams, ListNotesResult, ListPredictionsParams, ListPredictionsResult,
-    ListWatchTargetsParams, ListWatchTargetsResult, NoteDto, ProposeHypothesisChangeParams,
+    CheckBuyableQtyParams, CheckBuyableQtyResult, CreateAnnotationParams, CreateAnnotationResult,
+    EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, HypothesisDto,
+    ListHypothesesParams, ListHypothesesResult, ListNotesParams, ListNotesResult,
+    ListPredictionsParams, ListPredictionsResult, NoteDto, ProposeHypothesisChangeParams,
     ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult, QueryMediaParams,
     QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
     ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadHypothesisParams,
-    ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNewsParams, ReadNewsResult,
-    ReadNoteParams, ReadPortfolioResult, ReadPredictionStatsResult, ReadSectorShortRatioParams,
-    ReadSectorShortRatioResult, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
-    ReadShortSaleReportsParams, ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult,
-    ReadValuationParams, ReadValuationResult, RecordPredictionParams, RecordPredictionResult,
-    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
-    SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams,
-    WriteNoteResult,
+    ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams, ReadPortfolioResult,
+    ReadPredictionStatsResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
+    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
+    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, ReadValuationParams,
+    ReadValuationResult, RecordPredictionParams, RecordPredictionResult, ReplyCommentParams,
+    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
+    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
@@ -36,8 +34,7 @@ use super::ref_terms::{
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
 use super::{
-    StrategyServer, execution_id_from_ctx, execution_step_id_from_ctx, execution_task_id_from_ctx,
-    strategy_id_from_ctx,
+    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, strategy_id_from_ctx,
 };
 
 #[tool_router]
@@ -83,7 +80,7 @@ impl StrategyServer {
     /// ノートを読み出す
     #[tool(
         name = "read_note",
-        description = "Read a single note owned by the strategy, including its graphs.",
+        description = "Read a single note owned by the strategy, including its graphs and linked note versions. Omit version_id to read the current version.",
         annotations(read_only_hint = true)
     )]
     async fn read_note(
@@ -146,7 +143,7 @@ impl StrategyServer {
     /// ノート / アノテーションに付いたレビューコメントを読み出す
     #[tool(
         name = "read_comments",
-        description = "List review comments attached to a note or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved.",
+        description = "List review comments attached to a note version or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved.",
         annotations(read_only_hint = true)
     )]
     async fn read_comments(
@@ -200,35 +197,6 @@ impl StrategyServer {
         self.eval_python_inner(sid, params).await.map(Json)
     }
 
-    /// 戦略 Agent が新しい関心 (derived / origin=llm 固定) を追加する
-    #[tool(
-        name = "add_interest",
-        description = "Add a derived interest (role=derived, origin=llm) to the current strategy. Idempotent: returns created=false if the same (ref_kind, ref_id) already exists for the strategy. If ref_id doesn't match a master id but uniquely matches a registered alias, it is resolved to the canonical id before being stored."
-    )]
-    async fn add_interest(
-        &self,
-        Parameters(params): Parameters<AddInterestParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<AddInterestResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.add_interest_inner(sid, params).await.map(Json)
-    }
-
-    /// 人間が「追う」と決めた監視対象銘柄一覧を返す (保有状況によるフィルタは行わない)
-    #[tool(
-        name = "list_watch_targets",
-        description = "List stocks a human has marked to watch for the current strategy (origin=human, status=active), oldest first. Excludes interests the agent added itself (origin=llm) and archived ones. Not pre-filtered against current holdings; combine with read_portfolio / check_buyable_qty as needed.",
-        annotations(read_only_hint = true)
-    )]
-    async fn list_watch_targets(
-        &self,
-        Parameters(params): Parameters<ListWatchTargetsParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ListWatchTargetsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.list_watch_targets_inner(sid, params).await.map(Json)
-    }
-
     /// 永続化された indicator (戦略 scope 優先) を exec Pod 上で評価する
     #[tool(
         name = "eval_indicator",
@@ -261,7 +229,7 @@ impl StrategyServer {
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes not yet tracked by add_interest / RSS feeds, or to read the actual content of a read_news / search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -386,27 +354,10 @@ impl StrategyServer {
         self.read_macro_indicator_inner(sid, params).await.map(Json)
     }
 
-    /// 戦略に紐づく未読ニュースを checkpoint 以降分だけ返す
-    #[tool(
-        name = "read_news",
-        description = "Read news items linked to the strategy that haven't been returned by a previous call, oldest first. A per-strategy checkpoint automatically advances past whatever this call returns, so repeated calls only surface items linked since the last call — nothing is skipped even across long gaps between runs. Each row is one interest match; a news item matched by more than one interest (e.g. a stock and a theme) appears once per match, so the same url/title can repeat. If has_more is true, call again to continue from where this call left off. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that."
-    )]
-    async fn read_news(
-        &self,
-        Parameters(params): Parameters<ReadNewsParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ReadNewsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        let execution_id = execution_id_from_ctx(&ctx);
-        self.read_news_inner(sid, execution_id, params)
-            .await
-            .map(Json)
-    }
-
     /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
     #[tool(
         name = "search_news",
-        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. Unlike read_news, this ignores news_strategy_link entirely, so results are not affected by whether the strategy has registered a matching interest term. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
+        description = "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that.",
         annotations(read_only_hint = true)
     )]
     async fn search_news(
@@ -421,7 +372,7 @@ impl StrategyServer {
     /// 参照型 (stock/indicator/sector/theme) を id/name/別名の部分一致で横断検索する
     #[tool(
         name = "search_refs",
-        description = "Search across all first-class reference types (stock, indicator, sector, theme) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name, usable directly as input to add_interest.",
+        description = "Search across all first-class reference types (stock, indicator, sector, theme) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name.",
         annotations(read_only_hint = true)
     )]
     async fn search_refs(
@@ -643,7 +594,6 @@ mod tests {
         assert_eq!(
             read_only_hints,
             [
-                ("add_interest", None),
                 ("add_ref_terms", None),
                 ("check_buyable_qty", Some(true)),
                 ("create_annotation", None),
@@ -652,7 +602,6 @@ mod tests {
                 ("list_hypotheses", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
-                ("list_watch_targets", Some(true)),
                 ("propose_hypothesis_change", None),
                 ("query_data", Some(true)),
                 ("query_media", Some(true)),
@@ -662,7 +611,6 @@ mod tests {
                 ("read_hypothesis", Some(true)),
                 ("read_macro_indicator", Some(true)),
                 ("read_margin", Some(true)),
-                ("read_news", None),
                 ("read_note", Some(true)),
                 ("read_portfolio", Some(true)),
                 ("read_prediction_stats", Some(true)),

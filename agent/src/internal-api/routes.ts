@@ -51,7 +51,7 @@ const taskIdParamsSchema = z.object({
 })
 
 // steps の要素の中身は producer 側 (StrategyTaskStep) の型で保証されている前提
-// とし、backend 同様に検証しない (backend/src/agent_client/client.rs の
+// とし、backend 同様に検証しない (backend/crates/gateways/t-rader-agent/src/client.rs の
 // GetTaskResponse.steps も serde_json::Value で素通ししている)。
 const taskResponseSchema = z
   .object({

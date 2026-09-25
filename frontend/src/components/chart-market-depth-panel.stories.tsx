@@ -22,6 +22,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Open: Story = {
+  name: 'shows the open market depth panel for a selected instrument.',
   args: {
     instrumentId: '7203',
     isOpen: true,

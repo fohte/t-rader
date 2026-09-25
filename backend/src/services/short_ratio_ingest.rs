@@ -1,17 +1,15 @@
 //! J-Quants `/markets/short-ratio` (業種別空売り比率) を日次で取り込むバックグラウンドタスク。
 //!
-//! Standard 以上のプランでのみ提供されるデータのため、契約プランがそれ未満の間は
-//! スキップする。日次取り込みの共通ロジックは `jquants_daily_ingest` を参照。
+//! 取得元が取得できる範囲を返さない間はスキップする。日次取り込みの共通ロジックは
+//! `jquants_daily_ingest` を参照。
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
-use crate::data_provider::jquants::JQuantsClient;
-use crate::data_provider::{DataProviderError, DataProviderKind};
+use crate::data_provider::{SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError};
 use crate::error::AppError;
 use crate::models::ShortRatio;
 use crate::repositories::short_ratio::{find_latest_date, upsert_short_ratios};
@@ -30,8 +28,11 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 impl DailyJQuantsIngest for ShortRatio {
     const START_DATE: NaiveDate = SHORT_RATIO_START_DATE;
 
-    async fn fetch(client: &JQuantsClient, day: NaiveDate) -> Result<Vec<Self>, DataProviderError> {
-        client.fetch_short_ratios(day).await
+    async fn fetch(
+        source: &dyn ShortSellingSource,
+        day: NaiveDate,
+    ) -> Result<Vec<Self>, ShortSellingSourceError> {
+        source.fetch_short_ratios(day).await
     }
 
     async fn upsert(db: &DatabaseConnection, items: Vec<Self>) -> Result<(), AppError> {
@@ -47,18 +48,18 @@ impl DailyJQuantsIngest for ShortRatio {
 /// 日ごとに 1 リクエストずつ取得して upsert する。
 pub async fn run_ingest_cycle(
     db: &DatabaseConnection,
-    client: &JQuantsClient,
-) -> Result<DailyIngestStats, DataProviderError> {
-    jquants_daily_ingest::run_ingest_cycle::<ShortRatio>(db, client).await
+    source: &dyn ShortSellingSource,
+) -> Result<DailyIngestStats, AppError> {
+    jquants_daily_ingest::run_ingest_cycle::<ShortRatio>(db, source).await
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す
 pub fn spawn_poll(
     db: DatabaseConnection,
-    provider: Arc<DataProviderKind>,
+    source: SharedShortSellingSource,
     interval: Duration,
 ) -> JoinHandle<()> {
-    jquants_daily_ingest::spawn_poll::<ShortRatio>(db, provider, interval, "short ratio ingest")
+    jquants_daily_ingest::spawn_poll::<ShortRatio>(db, source, interval, "short ratio ingest")
 }
 
 #[cfg(test)]

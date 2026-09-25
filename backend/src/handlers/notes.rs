@@ -23,10 +23,6 @@ use crate::services::note_versions::{
 };
 use crate::services::strategies::ensure_strategy_exists;
 
-pub(crate) mod status;
-pub(crate) use status::{__path_approve_note, __path_reject_note};
-pub use status::{approve_note, reject_note};
-
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
 
@@ -58,7 +54,14 @@ pub(crate) async fn find_note_or_404(
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
 }
 
-struct CurrentNote {
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct GetNoteQuery {
+    /// 省略時は現行バージョンを返す。指定バージョンがこのノートに属さない場合は 404。
+    pub version_id: Option<Uuid>,
+}
+
+struct NoteWithVersion {
     note: note::Model,
     version: note_version::Model,
     created_by_kind: String,
@@ -67,27 +70,40 @@ struct CurrentNote {
 async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
     db: &C,
     id: Uuid,
-) -> Result<CurrentNote, AppError> {
+) -> Result<NoteWithVersion, AppError> {
+    find_note_version_or_404(db, id, None).await
+}
+
+async fn find_note_version_or_404<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    id: Uuid,
+    version_id: Option<Uuid>,
+) -> Result<NoteWithVersion, AppError> {
     let note = note::Entity::find_by_id(id)
         .one(db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
-    let version = note_versions::find_current_version(db, id)
+    let version = note_versions::find_version_of_note(db, id, version_id)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("current version for note {id} not found")))?;
+        .ok_or_else(|| match version_id {
+            Some(version_id) => {
+                AppError::NotFound(format!("version {version_id} for note {id} not found"))
+            }
+            None => AppError::NotFound(format!("current version for note {id} not found")),
+        })?;
     let created_by_kind = find_initial_created_by_kind(db, &[id])
         .await?
         .remove(&id)
         .ok_or_else(|| AppError::NotFound(format!("initial version for note {id} not found")))?;
-    Ok(CurrentNote {
+    Ok(NoteWithVersion {
         note,
         version,
         created_by_kind,
     })
 }
 
-fn current_note_response(current: CurrentNote) -> NoteResponse {
-    NoteResponse::from_current_version(current.note, current.version, current.created_by_kind)
+fn note_version_response(current: NoteWithVersion) -> NoteResponse {
+    NoteResponse::from_version(current.note, current.version, current.created_by_kind)
 }
 
 /// ノート一覧
@@ -136,11 +152,7 @@ pub async fn list_notes(
             let created_by_kind = creators.get(&item.id).cloned().ok_or_else(|| {
                 AppError::NotFound(format!("initial version for note {} not found", item.id))
             })?;
-            Ok(NoteResponse::from_current_version(
-                item,
-                version,
-                created_by_kind,
-            ))
+            Ok(NoteResponse::from_version(item, version, created_by_kind))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
     Ok(Json(responses))
@@ -151,7 +163,10 @@ pub async fn list_notes(
     get,
     path = "/api/notes/{id}",
     tag = "notes",
-    params(("id" = Uuid, Path, description = "ノート ID")),
+    params(
+        ("id" = Uuid, Path, description = "ノート ID"),
+        GetNoteQuery,
+    ),
     responses(
         (status = 200, body = NoteResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
@@ -162,9 +177,10 @@ pub async fn list_notes(
 pub async fn get_note(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
+    JsonQuery(params): JsonQuery<GetNoteQuery>,
 ) -> Result<Json<NoteResponse>, AppError> {
-    Ok(Json(current_note_response(
-        find_current_note_or_404(&state.db, id).await?,
+    Ok(Json(note_version_response(
+        find_note_version_or_404(&state.db, id, params.version_id).await?,
     )))
 }
 
@@ -271,9 +287,7 @@ pub async fn create_note(
     txn.commit().await?;
     Ok((
         StatusCode::CREATED,
-        Json(NoteResponse::from_current_version(
-            created, version, created_by,
-        )),
+        Json(NoteResponse::from_version(created, version, created_by)),
     ))
 }
 
@@ -398,7 +412,7 @@ pub async fn update_note(
     let updated_current = find_current_note_or_404(&txn, id).await?;
     txn.commit().await?;
 
-    Ok(Json(current_note_response(updated_current)))
+    Ok(Json(note_version_response(updated_current)))
 }
 
 /// ノート削除
@@ -453,7 +467,7 @@ mod tests {
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
     );
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
@@ -536,12 +550,16 @@ mod tests {
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
         obj.remove("id");
+        obj.insert("version_id".into(), json!("<dyn>"));
         obj.remove("created_at");
         obj.remove("updated_at");
         assert_eq!(
             body,
             json!({
                 "strategy_id": null,
+                "version_id": "<dyn>",
+                "version_no": 1,
+                "is_current": true,
                 "title": "市況ノート",
                 "body_md": "body",
                 "frontmatter_json": {},
@@ -622,29 +640,37 @@ mod tests {
         res.assert_status(StatusCode::CREATED);
         let note_id =
             Uuid::parse_str(res.json::<Value>()["id"].as_str().expect("id")).expect("uuid");
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
         let res = server
-            .post(&format!("/api/notes/{note_id}/reject"))
-            .json(&json!({}))
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
             .await;
         res.assert_status_ok();
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
-        obj.remove("id");
+        obj.insert("id".into(), json!("<dyn>"));
         obj.remove("created_at");
-        obj.remove("updated_at");
+        obj.remove("reviewed_at");
         assert_eq!(
             body,
             json!({
-                "strategy_id": null,
+                "id": "<dyn>",
+                "note_id": note_id,
+                "version_no": version.version_no,
                 "title": "市況ノート",
                 "body_md": "body",
                 "frontmatter_json": {},
                 "graphs_json": [],
-                "type_tag": null,
                 "status": "rejected",
-                "trigger": null,
-                "trigger_label": null,
+                "is_current": true,
+                "change_reason": null,
                 "created_by_kind": "human",
                 "execution_id": null,
             }),
@@ -664,29 +690,36 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "タイトル").await;
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
         let res = server
-            .post(&format!("/api/notes/{note_id}/reject"))
-            .json(&json!({}))
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
             .await;
         res.assert_status_ok();
         let mut body: Value = res.json();
         let obj = body.as_object_mut().unwrap();
+        obj.remove("id");
         obj.remove("created_at");
-        obj.remove("updated_at");
+        obj.remove("reviewed_at");
         assert_eq!(
             body,
             json!({
-                "id": note_id,
-                "strategy_id": strategy_id,
+                "note_id": note_id,
+                "version_no": version.version_no,
                 "title": "タイトル",
                 "body_md": "body",
                 "frontmatter_json": {},
                 "graphs_json": [],
-                "type_tag": null,
                 "status": "rejected",
-                "trigger": null,
-                "trigger_label": null,
+                "is_current": true,
+                "change_reason": null,
                 "created_by_kind": "human",
                 "execution_id": null,
             }),
@@ -703,8 +736,8 @@ mod tests {
                 strategy_id,
                 source: "review".to_string(),
                 prompt: format!(
-                    "ノート「タイトル」(id: {note_id}) がレビューで却下されました。\
-付いているコメントを確認し、指摘を反映してください。"
+                    "ノート「タイトル」(id: {note_id}) の v{} (version_id: {}) がレビューで却下されました。理由: 確認事項。付いているコメントを確認し、指摘を反映してください。",
+                    version.version_no, version.id,
                 ),
                 phase: StrategyTaskPhase::Running,
             }],
@@ -721,14 +754,27 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "t").await;
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
-        for _ in 0..2 {
-            let res = server
-                .post(&format!("/api/notes/{note_id}/reject"))
-                .json(&json!({}))
-                .await;
-            res.assert_status_ok();
-        }
+        let first = server
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
+            .await;
+        first.assert_status_ok();
+        let second = server
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
+            .await;
+        second.assert_status(StatusCode::CONFLICT);
 
         let tasks = strategy_task::Entity::find()
             .filter(strategy_task::Column::StrategyId.eq(strategy_id))
@@ -749,10 +795,17 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let note_id = create_test_note(&server, strategy_id, "t").await;
+        let version = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
 
         let res = server
-            .post(&format!("/api/notes/{note_id}/reject"))
-            .json(&json!({}))
+            .post(&format!(
+                "/api/notes/{note_id}/versions/{}/reject",
+                version.version_no
+            ))
+            .json(&json!({"label": "確認事項"}))
             .await;
         res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
 
@@ -764,7 +817,7 @@ mod tests {
     }
 
     #[sqlx::test(migrations = false)]
-    async fn update_note_reanchors_comment_when_body_md_changes(pool: PgPool) {
+    async fn update_note_keeps_comment_anchored_to_original_version(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         let note_id = create_test_note_with_body(
@@ -777,14 +830,22 @@ mod tests {
                 line three"},
         )
         .await;
+        let version_id = note_versions::find_current_version(&db, note_id)
+            .await
+            .expect("find current version")
+            .expect("current version exists")
+            .id;
 
         let created_comment = server
             .post("/api/comments")
             .json(&json!({
-                "target_kind": "note",
-                "target_id": note_id,
+                "target_kind": "note_version",
+                "target_id": version_id,
                 "body": "fix this",
                 "anchor_text": "line two",
+                "anchor_side": "new",
+                "start_line": 2,
+                "end_line": 2,
             }))
             .await;
         created_comment.assert_status(StatusCode::CREATED);
@@ -814,8 +875,8 @@ mod tests {
             updated_comment,
             comment::Model {
                 id: comment_id,
-                target_kind: "note".into(),
-                target_id: note_id,
+                target_kind: "note_version".into(),
+                target_id: version_id,
                 parent_id: None,
                 body: "fix this".into(),
                 author_kind: "human".into(),
@@ -823,9 +884,9 @@ mod tests {
                 created_at: chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset(),
                 resolved: false,
                 anchor_text: Some("line two".into()),
-                start_line: Some(3),
-                end_line: Some(3),
-                drifted: false,
+                anchor_side: Some("new".into()),
+                start_line: Some(2),
+                end_line: Some(2),
             },
         );
     }

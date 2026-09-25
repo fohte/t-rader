@@ -29,6 +29,9 @@ const trade: Trade = {
 function noteStub(id: string, title: string): Note {
   return {
     id,
+    version_id: '00000000-0000-0000-0000-000000000301',
+    version_no: 1,
+    is_current: true,
     strategy_id: strategyId,
     title,
     body_md: '検証用のメモです。',
@@ -88,17 +91,22 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const LinkedAndAvailable: Story = {}
+export const LinkedAndAvailable: Story = {
+  name: 'shows linked notes and notes available to link with a trade.',
+}
 
 export const NoLinkedNotes: Story = {
+  name: 'shows a trade with no linked notes and available candidates.',
   args: { linkedNotes: [] },
 }
 
 export const NoAvailableNotes: Story = {
+  name: 'shows linked notes when no more notes are available to link.',
   args: { candidateNotes: [] },
 }
 
 export const Loading: Story = {
+  name: 'shows loading placeholders while trade notes are fetched.',
   args: {
     linkedNotes: [],
     candidateNotes: [],
@@ -108,5 +116,6 @@ export const Loading: Story = {
 }
 
 export const OperationError: Story = {
+  name: 'shows an error after a note-link operation fails.',
   args: { operationError: 'ノートの紐付けに失敗しました。' },
 }

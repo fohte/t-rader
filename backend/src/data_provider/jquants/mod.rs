@@ -1,3 +1,4 @@
+mod daily_bars;
 mod equities_master;
 mod margin;
 #[cfg(test)]
@@ -11,19 +12,19 @@ mod tests;
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
+use sea_orm::DatabaseConnection;
 
-pub(crate) use equities_master::EquityMasterEntry;
 use rate_limiter::RateLimiter;
 
-use crate::data_provider::{DataProvider, DataProviderError, DateRange};
+use crate::data_provider::{DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-use response::{
-    DailyBarsResponse, EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse,
-    ErrorResponse, FinSummaryResponse, Paginated, ValuationResponse,
-};
 pub(crate) use response::{EarningsDateRecord, ValuationRecord};
+use response::{
+    EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
+    FinSummaryResponse, Paginated, ValuationResponse,
+};
 
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
 const MAX_RETRIES: u32 = 3;
@@ -91,6 +92,7 @@ pub struct JQuantsClient {
     api_key: String,
     rate_limiter: RateLimiter,
     detected_range: std::sync::Mutex<Option<DetectedRange>>,
+    db: Option<DatabaseConnection>,
     /// 設定ページから手動設定された契約プラン。`None` の間は自動検出
     /// (`detected_range`) を使う。
     manual_plan: std::sync::Mutex<Option<JQuantsPlan>>,
@@ -109,6 +111,7 @@ impl JQuantsClient {
             api_key,
             rate_limiter: RateLimiter::new(RATE_LIMIT_COOLDOWN),
             detected_range: std::sync::Mutex::new(None),
+            db: None,
             manual_plan: std::sync::Mutex::new(None),
         })
     }
@@ -128,8 +131,16 @@ impl JQuantsClient {
             // 429 cooldown を短縮し、window 枠超過では待たずに失敗させる
             rate_limiter: RateLimiter::new_fail_fast(std::time::Duration::from_millis(50)),
             detected_range: std::sync::Mutex::new(None),
+            db: None,
             manual_plan: std::sync::Mutex::new(None),
         })
+    }
+
+    /// 検出した契約範囲をプラン設定として永続化する DB を設定する。
+    /// 未設定の場合も範囲の検出と取得は行うが、プラン設定は保存しない。
+    pub fn with_db(mut self, db: DatabaseConnection) -> Self {
+        self.db = Some(db);
+        self
     }
 
     /// 設定ページからの手動プラン設定を反映する。プロセス再起動なしで即座に
@@ -139,13 +150,20 @@ impl JQuantsClient {
         *guard = plan;
     }
 
-    /// 信用残・財務情報・空売り関連の取り込み (`services::margin_ingest`,
-    /// `services::fin_summary_ingest`, `services::short_sale_report_ingest`,
-    /// `services::short_ratio_ingest`) が、契約プラン未設定の間は取り込みをスキップする
-    /// 判定に使う。
+    /// 契約プラン未設定の間は取り込みをスキップする判定に使う。
     pub(crate) fn manual_plan(&self) -> Option<JQuantsPlan> {
         let guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
         *guard
+    }
+
+    /// 手動設定された契約プランで取得できる範囲。自動検出した範囲は使わない。
+    fn manual_plan_date_range(&self, today: NaiveDate) -> Option<DateRange> {
+        let Some(plan) = self.manual_plan() else {
+            tracing::debug!("J-Quants 契約プランが未設定のため取得できません");
+            return None;
+        };
+        let (from, to) = plan.range(today);
+        Some(DateRange { from, to })
     }
 
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
@@ -352,68 +370,6 @@ impl JQuantsClient {
             .await
     }
 
-    /// `/equities/bars/daily` を実際に呼び出す (契約範囲外エラーの自己修復はしない)
-    async fn fetch_daily_bars_once(
-        &self,
-        instrument_id: &str,
-        range: &DateRange,
-    ) -> Result<Vec<Bar>, DataProviderError> {
-        let from_str = range.from.format("%Y%m%d").to_string();
-        let to_str = range.to.format("%Y%m%d").to_string();
-        let params = [
-            ("code", instrument_id),
-            ("from", &from_str),
-            ("to", &to_str),
-        ];
-
-        let raw_bars = self
-            .fetch_all_pages::<DailyBarsResponse>(
-                "/equities/bars/daily",
-                &params,
-                self.current_rate_limit(),
-            )
-            .await?;
-
-        let mut all_bars = Vec::with_capacity(raw_bars.len());
-        for d in raw_bars {
-            // API レスポンスの Code (5 桁) ではなく、引数の instrument_id (4 桁) を使う
-            if let Some(bar) = parse_daily_bar(d, instrument_id.to_string())? {
-                all_bars.push(bar);
-            }
-        }
-
-        all_bars.sort_by_key(|b| b.timestamp);
-        Ok(all_bars)
-    }
-
-    /// `/equities/bars/daily` を `date` のみ指定して呼び出し、その日の全上場銘柄分の
-    /// 日足をまとめて取得する。銘柄コードはレスポンスの 5 桁 Code から正規化する。
-    pub(crate) async fn fetch_daily_bars_by_date(
-        &self,
-        date: NaiveDate,
-    ) -> Result<Vec<Bar>, DataProviderError> {
-        let date_str = date.format("%Y-%m-%d").to_string();
-        let params = [("date", date_str.as_str())];
-
-        let raw_bars = self
-            .fetch_all_pages::<DailyBarsResponse>(
-                "/equities/bars/daily",
-                &params,
-                self.current_rate_limit(),
-            )
-            .await?;
-
-        let mut all_bars = Vec::with_capacity(raw_bars.len());
-        for d in raw_bars {
-            let instrument_id = normalize_local_code(&d.code).to_string();
-            if let Some(bar) = parse_daily_bar(d, instrument_id)? {
-                all_bars.push(bar);
-            }
-        }
-
-        Ok(all_bars)
-    }
-
     /// `/equities/valuation` を `date` 指定で取得する。全上場銘柄の指標が返る。
     pub(crate) async fn fetch_valuation_by_date(
         &self,
@@ -464,87 +420,11 @@ impl JQuantsClient {
     }
 }
 
-impl DataProvider for JQuantsClient {
-    /// 契約範囲外エラー (400) 発生時は契約範囲を検出し、その範囲でこの呼び出し内で
-    /// 1 回だけ再試行する (検出済み範囲外の日付を再度指定すれば何度でも発動しうる)。
-    async fn fetch_daily_bars(
+impl JQuantsClient {
+    pub async fn fetch_instrument(
         &self,
         instrument_id: &str,
-        range: &DateRange,
-    ) -> Result<Vec<Bar>, DataProviderError> {
-        match self.fetch_daily_bars_once(instrument_id, range).await {
-            Err(DataProviderError::Api {
-                status: 400,
-                message,
-            }) => {
-                let Some((from, to)) = parse_subscription_range(&message) else {
-                    return Err(DataProviderError::Api {
-                        status: 400,
-                        message,
-                    });
-                };
-                tracing::info!(
-                    instrument_id,
-                    %from,
-                    %to,
-                    "契約範囲を検出しました。検出した範囲で再取得します"
-                );
-                self.set_detected_range((from, to));
-                self.fetch_daily_bars_once(instrument_id, &DateRange { from, to })
-                    .await
-            }
-            other => other,
-        }
-    }
-
-    /// 手動設定 (設定ページ) が優先。未設定なら 400 エラーからの自動検出結果を使う。
-    fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
-        match self.manual_plan() {
-            Some(plan) => Some(plan.range(Utc::now().date_naive())),
-            None => self.detected_range(),
-        }
-    }
-
-    /// 手動設定 (推定して確定した後の値も含む) が既にあるなら何もしない。これが「初回だけ」
-    /// であることを保証する。まだ何も検出されていない、または DB 側で既に設定済み
-    /// (他プロセス/リクエストが先に推定・永続化した等) の場合も何もしない。
-    async fn persist_inferred_range_if_needed(
-        &self,
-        db: &sea_orm::DatabaseConnection,
-    ) -> Result<(), DataProviderError> {
-        if self.manual_plan().is_some() {
-            return Ok(());
-        }
-        let Some(range) = self.detected_range() else {
-            return Ok(());
-        };
-
-        let inferred = JQuantsPlan::infer_from_range(range);
-        let data = crate::models::JQuantsPlanSettingData {
-            schema_version: crate::models::jquants_plan::JQUANTS_PLAN_SETTING_SCHEMA_VERSION,
-            plan: Some(inferred),
-        };
-        let value = crate::models::serialize_plan_setting(&data)
-            .map_err(|e| DataProviderError::Database(e.to_string()))?;
-        let saved = crate::services::jquants_plan_setting::save_if_unset(db, value)
-            .await
-            .map_err(|e| DataProviderError::Database(e.to_string()))?;
-        if !saved {
-            // 手動設定 (PUT) と競合し、既に設定済みだったため何もしない
-            return Ok(());
-        }
-
-        self.set_manual_plan(Some(inferred));
-        tracing::info!(
-            ?inferred,
-            from = %range.0,
-            to = %range.1,
-            "契約範囲を検出したためプランを推定し、設定として永続化しました (初回のみ)"
-        );
-        Ok(())
-    }
-
-    async fn fetch_instrument(&self, instrument_id: &str) -> Result<Instrument, DataProviderError> {
+    ) -> Result<Instrument, DataProviderError> {
         let url = self.build_url("/equities/master", &[("code", instrument_id)])?;
 
         tracing::debug!(%url, instrument_id, "J-Quants API から銘柄情報を取得中");
@@ -568,20 +448,6 @@ impl DataProvider for JQuantsClient {
             product_category: master.product_category,
         })
     }
-}
-
-/// J-Quants API が契約範囲外の日付を指定されたときに返す 400 エラーメッセージから
-/// 契約範囲を抽出する。想定する message の例 (日付は形式を示すための架空の値):
-/// "Your subscription covers the following dates: 2020-04-01 ~ 2022-04-01. ..."
-fn parse_subscription_range(message: &str) -> Option<(NaiveDate, NaiveDate)> {
-    let after_marker = message.split("covers the following dates:").nth(1)?;
-    let mut dates = after_marker.split_whitespace().filter_map(|token| {
-        let cleaned = token.trim_matches(|c: char| !c.is_ascii_digit() && c != '-');
-        NaiveDate::parse_from_str(cleaned, "%Y-%m-%d").ok()
-    });
-    let from = dates.next()?;
-    let to = dates.next()?;
-    Some((from, to))
 }
 
 /// J-Quants の 5 桁ローカルコードをアプリ内の 4 桁銘柄コード規約に正規化する。
