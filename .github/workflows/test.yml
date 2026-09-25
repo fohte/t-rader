@@ -515,7 +515,7 @@ jobs:
         env:
           DB_CONTAINER_ID: ${{ job.services.db.id }}
         run: |
-          docker exec "$DB_CONTAINER_ID" psql \
+          docker exec --env PGAPPNAME=ci-db-timing-setup "$DB_CONTAINER_ID" psql \
             --username=t_rader \
             --dbname=t_rader_test \
             --set=ON_ERROR_STOP=1 \
@@ -523,16 +523,22 @@ jobs:
             --command="ALTER SYSTEM SET fsync = off" \
             --command="ALTER SYSTEM SET synchronous_commit = off" \
             --command="ALTER SYSTEM SET full_page_writes = off" \
+            --command="ALTER SYSTEM SET log_connections = on" \
+            --command="ALTER SYSTEM SET log_disconnections = on" \
+            --command="ALTER SYSTEM SET log_line_prefix = '%m [%p] %a '" \
             --command="SELECT pg_reload_conf()"
           sleep 1
-          docker exec "$DB_CONTAINER_ID" psql \
+          docker exec --env PGAPPNAME=ci-db-timing-setup "$DB_CONTAINER_ID" psql \
             --username=t_rader \
             --dbname=t_rader_test \
             --set=ON_ERROR_STOP=1 \
             --command="SHOW log_min_duration_statement" \
             --command="SHOW fsync" \
             --command="SHOW synchronous_commit" \
-            --command="SHOW full_page_writes"
+            --command="SHOW full_page_writes" \
+            --command="SHOW log_connections" \
+            --command="SHOW log_disconnections" \
+            --command="SHOW log_line_prefix"
 
       - name: Run tests with coverage
         working-directory: backend
@@ -561,6 +567,7 @@ jobs:
           python3 - <<'PY'
           import re
           from collections import defaultdict
+          from datetime import datetime
 
           create_without_template = "CREATE DATABASE without TEMPLATE"
           create_with_template = "CREATE DATABASE with TEMPLATE"
@@ -579,12 +586,70 @@ jobs:
           statement_pattern = re.compile(
               r"\b(?:statement|execute(?:\s+[^:]+)?):\s*(.*)$", re.IGNORECASE
           )
+          log_prefix_pattern = re.compile(
+              r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)"
+              r"\s+\S+\s+\[(?P<pid>\d+)\]"
+          )
+          connection_received_pattern = re.compile(r"\bconnection received:", re.IGNORECASE)
+          setup_connection_pattern = re.compile(r"\bci-db-timing-setup\b")
+          connection_authorized_pattern = re.compile(
+              r"\bconnection authorized:.*\bdatabase=(?P<database>\"[^\"]+\"|\S+)",
+              re.IGNORECASE,
+          )
+          session_time_pattern = re.compile(
+              r"\bdisconnection: session time:\s*"
+              r"(?P<hours>\d+):(?P<minutes>\d+):(?P<seconds>[0-9.]+)",
+              re.IGNORECASE,
+          )
           totals = defaultdict(float)
           counts = defaultdict(int)
           maximums = defaultdict(float)
+          connection_counts = defaultdict(int)
+          connection_received_at = {}
+          connection_auth_durations_ms = []
+          session_times_ms = []
 
           with open("backend-db.log", encoding="utf-8") as log:
               for line in log:
+                  log_prefix = log_prefix_pattern.search(line)
+                  timestamp = None
+                  pid = None
+                  if log_prefix is not None:
+                      timestamp = datetime.strptime(
+                          log_prefix.group("timestamp"), "%Y-%m-%d %H:%M:%S.%f"
+                      )
+                      pid = log_prefix.group("pid")
+
+                  if pid is not None and connection_received_pattern.search(line):
+                      connection_received_at[pid] = timestamp
+
+                  connection_authorized = connection_authorized_pattern.search(line)
+                  if connection_authorized is not None:
+                      received_at = connection_received_at.pop(pid, None) if pid else None
+                      if not setup_connection_pattern.search(line):
+                          database_name = connection_authorized.group("database").strip('"')
+                          if database_name.startswith("_sqlx_test_"):
+                              database_category = "sqlx test database"
+                          elif database_name.startswith("t_rader_test_template_"):
+                              database_category = "template database"
+                          else:
+                              database_category = "other databases"
+                          connection_counts[database_category] += 1
+
+                          if timestamp is not None and received_at is not None:
+                              connection_auth_durations_ms.append(
+                                  (timestamp - received_at).total_seconds() * 1000
+                              )
+
+                  session_time = session_time_pattern.search(line)
+                  if session_time is not None and not setup_connection_pattern.search(line):
+                      session_seconds = (
+                          int(session_time.group("hours")) * 3600
+                          + int(session_time.group("minutes")) * 60
+                          + float(session_time.group("seconds"))
+                      )
+                      session_times_ms.append(session_seconds * 1000)
+
                   timing = timing_pattern.search(line)
                   statement = statement_pattern.search(line)
                   if timing is None or statement is None:
@@ -623,6 +688,35 @@ jobs:
                   f"{category} | {count} | {totals[category]:.3f} | "
                   f"{average:.3f} | {maximums[category]:.3f}"
               )
+
+          connection_categories = (
+              "sqlx test database",
+              "template database",
+              "other databases",
+          )
+          total_connections = sum(connection_counts.values())
+          print("PostgreSQL connection counts")
+          print("database category | count")
+          print(f"total | {total_connections}")
+          for category in connection_categories:
+              print(f"{category} | {connection_counts[category]}")
+
+          session_count = len(session_times_ms)
+          session_total_ms = sum(session_times_ms)
+          session_average_ms = session_total_ms / session_count if session_count else 0
+          print("PostgreSQL disconnection session time (milliseconds)")
+          print("count | total | average")
+          print(
+              f"{session_count} | {session_total_ms:.3f} | "
+              f"{session_average_ms:.3f}"
+          )
+
+          auth_count = len(connection_auth_durations_ms)
+          auth_total_ms = sum(connection_auth_durations_ms)
+          auth_average_ms = auth_total_ms / auth_count if auth_count else 0
+          print("PostgreSQL connection received-to-authorized time (milliseconds)")
+          print("count | total | average")
+          print(f"{auth_count} | {auth_total_ms:.3f} | {auth_average_ms:.3f}")
           PY
 
       - name: Upload PostgreSQL server log
