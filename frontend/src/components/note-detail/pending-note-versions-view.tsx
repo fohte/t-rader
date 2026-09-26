@@ -28,7 +28,7 @@ export function PendingNoteVersionsView({
           承認待ちバージョン
         </h1>
         <p className="mt-1 font-mono text-xs text-muted-foreground">
-          未レビューのノート版をまとめて確認できます。
+          未レビューのノートバージョンをまとめて確認できます。
         </p>
       </header>
       {isPending ? (

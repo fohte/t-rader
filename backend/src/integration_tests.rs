@@ -77,7 +77,12 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
 
     let note_res = server
         .post("/api/notes")
-        .json(&json!({ "strategy_id": strategy_id, "title": "note", "body_md": "body" }))
+        .json(&json!({
+            "strategy_id": strategy_id,
+            "title": "note",
+            "body_md": "body",
+            "created_by_kind": "llm",
+        }))
         .await;
     note_res.assert_status(axum::http::StatusCode::CREATED);
     let note_body: Value = note_res.json();
