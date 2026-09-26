@@ -266,7 +266,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn search_web_inner_enforces_per_task_call_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(requests.len(), SEARCH_WEB_MAX_CALLS_PER_TASK as usize);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -351,7 +351,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn increment_task_tool_call_count_is_independent_per_task_and_tool(pool: PgPool) {
         let db = create_test_db(pool).await;
         let task_a = format!("task-{}", Uuid::new_v4());

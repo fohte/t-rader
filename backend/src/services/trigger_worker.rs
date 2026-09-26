@@ -390,7 +390,7 @@ mod run_once_tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fires_due_cron_and_writes_strategy_task(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
@@ -440,7 +440,7 @@ mod run_once_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn skips_disabled_cron(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
@@ -455,7 +455,7 @@ mod run_once_tests {
         assert!(tasks.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn skips_when_no_slot_after_last_fire(pool: PgPool) {
         // 9:00 だけ発火する schedule で「直前に発火済み + 次回 9:00 はまだ先」のケース。
         // last_fired_at を「現時刻直前」に置いて、現 tick では発火対象にならないことを確認する。
@@ -471,7 +471,7 @@ mod run_once_tests {
         assert!(tasks.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn ignores_hook_kind(pool: PgPool) {
         // hook 種別の trigger は cron worker の対象外。
         let db = create_test_db(pool).await;

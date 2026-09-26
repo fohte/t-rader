@@ -107,7 +107,7 @@ mod tests {
         mock.error().forbidden("/markets/short-ratio").await;
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn backfills_from_endpoint_start_date_when_db_is_empty(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(latest, Some(SHORT_RATIO_START_DATE));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resumes_from_latest_date_minus_lookback(pool: PgPool) {
         let db = create_test_db(pool).await;
         let latest = Utc::now().date_naive() - chrono::Duration::days(365);
@@ -162,7 +162,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_date_is_clamped_to_endpoint_start_date(pool: PgPool) {
         let db = create_test_db(pool).await;
         // latest - lookback がエンドポイント開始日より前になるケース
@@ -187,7 +187,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn standard_plan_is_also_accepted_by_the_plan_gate(pool: PgPool) {
         let db = create_test_db(pool).await;
         let today = Utc::now().date_naive();
@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(stats, DailyIngestStats::default());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn overwrites_existing_row_on_correction(pool: PgPool) {
         let db = create_test_db(pool).await;
         let target_date = SHORT_RATIO_START_DATE;

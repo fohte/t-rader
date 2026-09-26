@@ -10,6 +10,7 @@ members = [
     "crates/gateways/litellm",
     "crates/gateways/rss",
     "crates/gateways/t-rader-agent",
+    "crates/test-macros",
 ]
 default-members = [
     ".",
@@ -131,6 +132,7 @@ utoipa-swagger-ui = { workspace = true, features = ["axum"] }
 uuid = { workspace = true, features = ["serde", "v4", "v5"] }
 
 [dev-dependencies]
+backend-test-macros = { path = "crates/test-macros" }
 axum-test = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }

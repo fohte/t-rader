@@ -237,7 +237,7 @@ mod tests {
         ));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_and_list_roundtrip(pool: PgPool) {
         let db = create_test_db(pool).await;
         let created = create(
@@ -263,7 +263,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_filters_by_enabled(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, input("a", "A", "https://example.com/a"))
@@ -297,7 +297,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rejects_duplicate_source(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, input("dup", "Dup", "https://example.com/a"))
@@ -309,7 +309,7 @@ mod tests {
         assert!(matches!(err, RssFeedError::DuplicateSource(s) if s == "dup"));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rejects_invalid_source_slug(pool: PgPool) {
         let db = create_test_db(pool).await;
         let err = create(&db, input("Bad Source", "x", "https://example.com/a"))
@@ -318,7 +318,7 @@ mod tests {
         assert!(matches!(err, RssFeedError::InvalidSource(_)));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rejects_invalid_url(pool: PgPool) {
         let db = create_test_db(pool).await;
         let err = create(&db, input("ok", "x", "not-a-url"))
@@ -327,7 +327,7 @@ mod tests {
         assert!(matches!(err, RssFeedError::InvalidUrl(_)));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_partial_patches_only_provided_fields(pool: PgPool) {
         let db = create_test_db(pool).await;
         let created = create(&db, input("src", "Old", "https://example.com/old"))
@@ -357,7 +357,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_removes_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let created = create(&db, input("src", "x", "https://example.com/a"))
@@ -367,7 +367,7 @@ mod tests {
         assert!(list(&db, false).await.unwrap().is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_missing_returns_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let err = delete(&db, Uuid::new_v4()).await.unwrap_err();

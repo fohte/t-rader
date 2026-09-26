@@ -88,7 +88,7 @@ mod tests {
     use super::*;
     use crate::testing::create_test_db;
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_current_returns_none_when_row_missing(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -96,7 +96,7 @@ mod tests {
         assert_eq!(current, None);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn save_creates_row_when_missing(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -117,7 +117,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn save_twice_keeps_single_row_and_updates_value(pool: PgPool) {
         let db = create_test_db(pool).await;
 

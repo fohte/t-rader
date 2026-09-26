@@ -85,7 +85,7 @@ mod tests {
 
     use crate::testing::{create_strategy, create_test_server};
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_returns_null_when_unset(pool: PgPool) {
         let server = create_test_server(pool).await;
         let id = create_strategy(&server, "s").await;
@@ -100,7 +100,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_then_get_round_trips(pool: PgPool) {
         let server = create_test_server(pool).await;
         let id = create_strategy(&server, "s").await;
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(get.json::<serde_json::Value>(), expected);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_without_effective_at_defaults_to_now(pool: PgPool) {
         let server = create_test_server(pool).await;
         let id = create_strategy(&server, "s").await;
@@ -148,7 +148,7 @@ mod tests {
         assert!(effective_at >= before);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_keeps_previous_history_row(pool: PgPool) {
         let server = create_test_server(pool).await;
         let id = create_strategy(&server, "s").await;
@@ -183,7 +183,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_404_for_unknown_strategy(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -192,7 +192,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_404_for_unknown_strategy(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -202,7 +202,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_400_for_negative_amount(pool: PgPool) {
         let server = create_test_server(pool).await;
         let id = create_strategy(&server, "s").await;

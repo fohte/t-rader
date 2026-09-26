@@ -162,7 +162,7 @@ mod tests {
         .expect("seed trade");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_portfolio_returns_account_and_strategy_scopes(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -228,7 +228,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_portfolio_returns_empty_scopes_when_no_trades(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -261,7 +261,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_portfolio_backfills_prices_and_computes_investable_amount(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;

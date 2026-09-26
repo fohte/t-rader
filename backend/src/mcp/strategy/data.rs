@@ -194,7 +194,9 @@ mod tests {
         }
     }
 
-    async fn setup_server_with_bars(pool: PgPool) -> (DatabaseConnection, StrategyServer, Uuid) {
+    async fn setup_server_with_bars(
+        pool: crate::database::DatabaseHandle,
+    ) -> (crate::database::DatabaseHandle, StrategyServer, Uuid) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
 
@@ -241,7 +243,7 @@ mod tests {
         rows
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn query_data_returns_bars_for_each_requested_instrument(pool: PgPool) {
         let (_db, server, strategy_id) = setup_server_with_bars(pool).await;
 
@@ -281,7 +283,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn query_data_returns_empty_bars_for_instrument_with_no_data(pool: PgPool) {
         let (_db, server, strategy_id) = setup_server_with_bars(pool).await;
 
@@ -318,7 +320,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn query_data_records_evidence_per_instrument_when_execution_step_id_present(
         pool: PgPool,
     ) {
@@ -343,7 +345,7 @@ mod tests {
         assert_eq!(source_refs, vec!["7203".to_string(), "9984".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn query_data_records_no_evidence_when_execution_step_id_absent(pool: PgPool) {
         let (db, server, strategy_id) = setup_server_with_bars(pool).await;
 

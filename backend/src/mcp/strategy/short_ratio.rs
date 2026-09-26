@@ -207,7 +207,7 @@ mod tests {
         .expect("seed short ratio");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn rejects_unknown_sector_name(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -226,7 +226,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn returns_matching_sector_newest_first_with_computed_ratio(pool: PgPool) {
         let db = create_test_db(pool).await;
         seed(&db, "3700", ymd(2026, 1, 5), Some(("700", "200", "100"))).await;
@@ -270,7 +270,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn filters_by_date_range_and_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         for day in [1u32, 2, 3, 4] {

@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(blank_to_none(input), expected);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn rejects_non_4_digit_symbol(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -154,7 +154,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn matches_by_first_4_chars_newest_first_with_blank_fields_as_null(pool: PgPool) {
         let db = create_test_db(pool).await;
         seed(
@@ -241,7 +241,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn filters_by_disc_date_range(pool: PgPool) {
         let db = create_test_db(pool).await;
         for (day, name) in [(1u32, "Jan"), (15, "Mid"), (28, "Late")] {
@@ -280,7 +280,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn respects_limit_after_ordering(pool: PgPool) {
         let db = create_test_db(pool).await;
         for (day, name) in [(1u32, "A"), (2, "B"), (3, "C")] {

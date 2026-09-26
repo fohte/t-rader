@@ -556,7 +556,7 @@ mod tests {
 
     /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
     /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn note_without_strategy_id_rejects_execution_id(pool: PgPool) {
         let (db, _server) = create_test_server_with_db(pool).await;
 
@@ -576,7 +576,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_note_without_strategy_id_succeeds(pool: PgPool) {
         let (_db, server) = create_test_server_with_db(pool).await;
 
@@ -615,7 +615,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_note_rejects_invalid_tokens_without_saving(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
 
@@ -639,7 +639,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_note_rejects_invalid_tokens_and_keeps_original_body(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "strategy").await;
@@ -665,7 +665,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reject_note_without_strategy_id_does_not_submit_task(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -722,7 +722,7 @@ mod tests {
         assert_eq!(tasks, vec![]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reject_note_submits_single_review_task_referencing_note(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -786,7 +786,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn rejecting_already_rejected_note_does_not_resubmit(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -826,7 +826,7 @@ mod tests {
         assert_eq!(tasks.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reject_note_leaves_status_unchanged_when_agent_submission_fails(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
@@ -858,7 +858,7 @@ mod tests {
         assert_eq!(current_version.status, "unread");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_note_keeps_comment_anchored_to_original_version(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;

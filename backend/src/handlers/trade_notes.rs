@@ -192,7 +192,7 @@ mod tests {
     use sqlx::PgPool;
     use uuid::Uuid;
 
-    use crate::entities::trade;
+    use crate::entities::{trade, trade_note};
     use crate::testing::{
         create_test_server_with_db, insert_test_note_in_scope, insert_test_strategy,
     };
@@ -239,7 +239,7 @@ mod tests {
         v
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_then_list_round_trips(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -292,7 +292,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_preserves_link_creation_order(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -311,6 +311,26 @@ mod tests {
             .await
             .assert_status(StatusCode::CREATED);
 
+        let link_time = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset();
+        trade_note::ActiveModel {
+            trade_id: Set(tid),
+            note_id: Set(n2),
+            created_at: Set(link_time),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set first trade-note link time");
+        trade_note::ActiveModel {
+            trade_id: Set(tid),
+            note_id: Set(n1),
+            created_at: Set(link_time + chrono::Duration::seconds(1)),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set second trade-note link time");
+
         let list = server.get(&format!("/api/trades/{tid}/notes")).await;
         list.assert_status_ok();
         let ids: Vec<Uuid> = list
@@ -321,7 +341,7 @@ mod tests {
         assert_eq!(ids, vec![n2, n1]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rejects_cross_strategy_note(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let a = insert_test_strategy(&db, "a").await;
@@ -336,7 +356,7 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_for_unknown_trade_returns_404(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -349,7 +369,7 @@ mod tests {
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_for_unknown_note_returns_400(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -362,7 +382,7 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn duplicate_create_returns_409(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -382,7 +402,7 @@ mod tests {
         dup.assert_status(StatusCode::CONFLICT);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_unlinks_and_unknown_pair_returns_404(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;

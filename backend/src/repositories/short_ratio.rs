@@ -78,7 +78,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_inserts_new_records(pool: PgPool) {
         let db = create_test_db(pool).await;
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(rows.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_updates_existing_record_on_correction(pool: PgPool) {
         let db = create_test_db(pool).await;
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
@@ -119,7 +119,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_with_empty_vec_is_noop(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -127,7 +127,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_latest_date_returns_most_recent(pool: PgPool) {
         let db = create_test_db(pool).await;
         let d1 = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
@@ -149,7 +149,7 @@ mod tests {
         assert_eq!(result, Some(d2));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_latest_date_returns_none_when_empty(pool: PgPool) {
         let db = create_test_db(pool).await;
 

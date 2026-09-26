@@ -287,7 +287,7 @@ mod tests {
         .expect("seed fin summary");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_fin_summary_returns_typed_fields_and_nulls_missing_values(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -379,7 +379,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_fin_summary_computes_progress_rates_only_for_quarterly_statements(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -514,7 +514,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_fin_summary_matches_5_digit_code_by_leading_4_chars(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -541,7 +541,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_fin_summary_keeps_only_the_highest_disc_no_per_period_and_doc_type(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -600,7 +600,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_fin_summary_keeps_missing_and_blank_group_values_separate(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -627,7 +627,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_fin_summary_orders_newest_first_and_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());

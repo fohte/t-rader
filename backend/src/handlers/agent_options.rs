@@ -60,7 +60,7 @@ mod tests {
 
     use crate::testing::{create_test_server, create_test_server_with_llm_gateway};
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn agent_models_returns_empty_list_when_llm_gateway_unconfigured(pool: PgPool) {
         let server = create_test_server(pool).await;
         let response = server.get("/api/agent-models").await;
@@ -71,7 +71,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn agent_models_proxies_llm_gateway_response(pool: PgPool) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
@@ -111,7 +111,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn agent_models_returns_empty_list_when_llm_gateway_unreachable(pool: PgPool) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
@@ -129,7 +129,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn agent_tools_lists_known_strategy_mcp_tools(pool: PgPool) {
         let server = create_test_server(pool).await;
         let response = server.get("/api/agent-tools").await;

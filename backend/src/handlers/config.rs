@@ -55,7 +55,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_config_returns_null_when_env_unset(pool: PgPool) {
         let server = create_test_server(pool).await;
         let response = server.get("/api/config").await;

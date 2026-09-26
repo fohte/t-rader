@@ -185,8 +185,11 @@ impl StrategyServer {
 
 #[cfg(test)]
 mod tests {
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
     use sqlx::PgPool;
 
+    use crate::entities::comment;
     use crate::testing::create_test_db;
 
     use super::super::dto::{
@@ -197,7 +200,7 @@ mod tests {
         seed_foreign_annotation, seed_foreign_note, ts_sentinel,
     };
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_comments_returns_target_comments_in_thread_order(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
@@ -216,6 +219,23 @@ mod tests {
             "reply comment",
         )
         .await;
+        let comment_time = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset();
+        comment::ActiveModel {
+            id: Set(root),
+            created_at: Set(comment_time),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set root comment time");
+        comment::ActiveModel {
+            id: Set(reply),
+            created_at: Set(comment_time + chrono::Duration::seconds(1)),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set reply comment time");
         seed_comment(
             &db,
             "note_version",
@@ -278,7 +298,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_comments_supports_annotation_target(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;
@@ -322,7 +342,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_comments_rejects_invalid_target_kind(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -342,7 +362,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_comments_rejects_cross_strategy_note(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -365,7 +385,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_comments_rejects_cross_strategy_annotation(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -387,7 +407,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_comments_filters_by_resolved(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
@@ -476,7 +496,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_comment_toggles_resolved(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
@@ -544,7 +564,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_comment_rejects_missing_comment(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -563,7 +583,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_comment_rejects_cross_strategy(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -586,7 +606,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reply_comment_inherits_parent_target(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
@@ -629,7 +649,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reply_comment_rejects_empty_body(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
@@ -652,7 +672,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reply_comment_rejects_missing_parent(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -671,7 +691,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reply_comment_rejects_cross_strategy(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -695,7 +715,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reply_comment_rejects_reply_to_reply(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;

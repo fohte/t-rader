@@ -98,7 +98,7 @@ mod tests {
     use super::super::tests_common::build_server;
     use super::*;
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rss_feed_inserts_and_lists(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -143,7 +143,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rss_feed_rejects_invalid_source(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));

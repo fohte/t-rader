@@ -587,7 +587,7 @@ mod integration_tests {
         .expect("record investable amount");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn defaults_to_cash_constraint_when_no_risk_policy_is_configured(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -625,7 +625,7 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn sector_ratio_binds_across_strategies(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -675,7 +675,7 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn all_constraints_become_unavailable_when_target_price_is_missing(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -716,7 +716,7 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn sector_ratio_is_unavailable_when_target_has_no_sector(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -758,7 +758,7 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn sector_ratio_is_unavailable_when_a_held_position_price_is_missing(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;

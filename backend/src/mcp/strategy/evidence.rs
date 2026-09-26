@@ -89,7 +89,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn record_query_data_truncates_to_most_recent_bars_when_exceeding_max(pool: PgPool) {
         let db = create_test_db(pool).await;
         let execution_step_id = Uuid::new_v4();
@@ -137,7 +137,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn record_query_data_with_no_bars_leaves_published_and_effective_at_unset(pool: PgPool) {
         let db = create_test_db(pool).await;
         let execution_step_id = Uuid::new_v4();

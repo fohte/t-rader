@@ -269,7 +269,7 @@ mod tests {
             .json()
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_comment_sets_resolved(pool: PgPool) {
         let server = create_test_server(pool).await;
         let created = create_note_comment(&server).await;
@@ -324,7 +324,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_comment_missing_id_is_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -381,7 +381,7 @@ mod tests {
             .to_string()
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_comment_with_line_anchor_stores_explicit_lines(pool: PgPool) {
         let server = create_test_server(pool).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
@@ -429,7 +429,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_comment_keeps_quote_with_explicit_line_anchor(pool: PgPool) {
         let server = create_test_server(pool).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
@@ -477,7 +477,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_comment_on_annotation_with_anchor_text_saves_text_without_line_numbers(
         pool: PgPool,
     ) {

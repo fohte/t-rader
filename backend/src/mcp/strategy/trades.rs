@@ -106,7 +106,7 @@ mod tests {
         id
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_trades_returns_full_shape_across_strategies(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -147,7 +147,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_trades_filters_by_symbol(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -170,7 +170,7 @@ mod tests {
         assert_eq!(symbols, vec!["7203"]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_trades_filters_by_date_from_inclusive(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -194,7 +194,7 @@ mod tests {
         assert_eq!(dates, vec![ymd(2026, 6, 10), ymd(2026, 6, 5)]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_trades_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;

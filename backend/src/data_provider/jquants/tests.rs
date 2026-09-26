@@ -796,7 +796,7 @@ mod subscription_range_detection {
         Ok(())
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn persists_inferred_plan_after_fetching_detected_range(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -929,13 +929,13 @@ mod persist_inferred_range_if_needed {
     use super::super::JQuantsClient;
     use super::date;
 
-    // rstest の #[fixture] は #[sqlx::test] と組み合わせられないため、プレーンな
+    // rstest の #[fixture] は #[backend_test_macros::database_test] と組み合わせられないため、プレーンな
     // ヘルパー関数として抽出する
     fn test_client() -> JQuantsClient {
         JQuantsClient::with_base_url("http://localhost", "key").expect("client")
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn does_nothing_when_manual_plan_already_set(pool: PgPool) {
         let db = create_test_db(pool).await;
         let client = test_client().with_db(db.clone());
@@ -954,7 +954,7 @@ mod persist_inferred_range_if_needed {
         assert_eq!(client.manual_plan(), Some(JQuantsPlan::Premium));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn does_nothing_when_no_range_detected(pool: PgPool) {
         let db = create_test_db(pool).await;
         let client = test_client().with_db(db.clone());
@@ -971,7 +971,7 @@ mod persist_inferred_range_if_needed {
         assert_eq!(client.manual_plan(), None);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn infers_and_persists_plan_from_detected_range_once(pool: PgPool) {
         let db = create_test_db(pool).await;
         let client = test_client().with_db(db.clone());
@@ -995,7 +995,7 @@ mod persist_inferred_range_if_needed {
         assert_eq!(data.plan, Some(JQuantsPlan::Standard));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn does_not_overwrite_when_already_persisted_in_db(pool: PgPool) {
         let db = create_test_db(pool).await;
         let client = test_client().with_db(db.clone());

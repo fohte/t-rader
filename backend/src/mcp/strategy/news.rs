@@ -130,7 +130,7 @@ mod tests {
         result.items.iter().map(|i| i.url.clone()).collect()
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn search_news_returns_full_item_shape(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -173,7 +173,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn search_news_matches_keyword_case_insensitively_in_title_or_body(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -219,7 +219,7 @@ mod tests {
         assert_eq!(result_urls(&result), vec!["https://ex.com/1".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn search_news_does_not_treat_underscore_as_single_char_wildcard(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -249,7 +249,7 @@ mod tests {
         assert_eq!(result_urls(&result), Vec::<String>::new());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn search_news_filters_by_published_at_range_inclusive(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(result_urls(&result), vec!["https://ex.com/2".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn search_news_orders_newest_first_and_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());

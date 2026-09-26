@@ -718,7 +718,7 @@ mod tests {
         assert_eq!(got.map_err(|_| "invalid"), expected);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn sync_note_refs_indexes_refs_from_body_and_graphs_without_duplication(
         pool: sqlx::PgPool,
     ) {

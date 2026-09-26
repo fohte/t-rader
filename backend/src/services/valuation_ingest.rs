@@ -312,7 +312,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn ingests_valuations_and_marks_non_empty_dates(pool: PgPool) {
         let db = create_test_db(pool).await;
         let to = latest_business_day(Utc::now().date_naive());
@@ -361,7 +361,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn does_not_mark_empty_valuation_dates_as_ingested(pool: PgPool) {
         let db = create_test_db(pool).await;
         let to = latest_business_day(Utc::now().date_naive());

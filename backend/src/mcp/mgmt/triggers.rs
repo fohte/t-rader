@@ -111,7 +111,7 @@ mod tests {
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_strategy_trigger_inserts_cron_trigger(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "s").await;
@@ -167,7 +167,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_strategy_trigger_rejects_cron_without_schedule(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "s").await;
@@ -194,7 +194,7 @@ mod tests {
         assert!(rows.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_strategy_trigger_rejects_unknown_strategy(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_strategy_trigger_applies_fields(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "s").await;
@@ -252,7 +252,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_strategy_trigger_rejects_hook_slug_on_cron_trigger(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "s").await;
@@ -274,7 +274,7 @@ mod tests {
         assert_eq!((result.ok, result.errors.len()), (false, 1));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_strategy_trigger_rejects_unknown_trigger(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
@@ -294,7 +294,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_strategy_trigger_removes_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "s").await;
@@ -314,7 +314,7 @@ mod tests {
         assert!(trigger_crud::get_trigger(&db, trigger_id).await.is_err());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_strategy_trigger_rejects_unknown_trigger(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));

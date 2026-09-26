@@ -105,7 +105,7 @@ mod tests {
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_recent_notes_caps_by_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;

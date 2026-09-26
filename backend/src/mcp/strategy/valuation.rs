@@ -133,7 +133,7 @@ mod tests {
         .expect("seed valuation");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_valuation_matches_code_prefix_and_date_range(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());

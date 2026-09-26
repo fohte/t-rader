@@ -240,7 +240,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn creates_indicator_and_ingests_full_history_when_table_is_empty(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = MockServer::start().await;
@@ -283,7 +283,7 @@ mod tests {
         assert_eq!(obs.value, rust_decimal::Decimal::new(14750, 2));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resumes_from_latest_date_minus_lookback_and_updates_existing_value(pool: PgPool) {
         let db = create_test_db(pool).await;
         let def = series_def();
@@ -335,7 +335,7 @@ mod tests {
         assert_eq!(obs.value, rust_decimal::Decimal::new(14750, 2));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn does_not_overwrite_existing_indicator_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let def = series_def();

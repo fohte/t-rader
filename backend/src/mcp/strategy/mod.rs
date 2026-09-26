@@ -38,10 +38,11 @@ use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::EntityTrait;
 use uuid::Uuid;
 
 use crate::data_provider::SharedDailyBarSource;
+use crate::database::DatabaseHandle;
 use crate::entities::{annotation, note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
@@ -126,16 +127,19 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 
 #[derive(Clone)]
 pub struct StrategyServer {
-    db: DatabaseConnection,
+    db: DatabaseHandle,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
     pub(super) litellm_client: Option<SharedLlmClient>,
 }
 
 impl StrategyServer {
-    pub fn new(db: DatabaseConnection, daily_bar_source: Option<SharedDailyBarSource>) -> Self {
+    pub fn new(
+        db: impl Into<DatabaseHandle>,
+        daily_bar_source: Option<SharedDailyBarSource>,
+    ) -> Self {
         Self {
-            db,
+            db: db.into(),
             daily_bar_source,
             kata_executor: None,
             litellm_client: None,

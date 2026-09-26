@@ -409,7 +409,7 @@ mod fire_tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fire_creates_strategy_task_with_expected_source(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "長期").await;
@@ -452,7 +452,7 @@ mod fire_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fire_with_cron_source_writes_cron(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "s").await;
@@ -498,7 +498,7 @@ mod fire_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fire_disabled_trigger_returns_error(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "s").await;
@@ -527,7 +527,7 @@ mod fire_tests {
         assert_eq!(err.to_string(), format!("trigger {id} is disabled"));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fire_missing_trigger_returns_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
@@ -538,7 +538,7 @@ mod fire_tests {
         assert_eq!(err.to_string(), format!("trigger {missing} not found"));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fire_trigger_without_strategy_returns_no_strategy_error(pool: PgPool) {
         // strategy_id が NULL の trigger を作る API が無いため直接 insert する
         let db = create_test_db(pool).await;
@@ -567,7 +567,7 @@ mod fire_tests {
         assert_eq!(err.to_string(), format!("trigger {id} has no strategy_id"));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fire_does_not_update_last_fired_when_submit_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = seed_strategy(&db, "p").await;

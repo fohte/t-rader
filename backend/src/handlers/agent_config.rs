@@ -391,7 +391,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_and_list_roundtrip(pool: PgPool) {
         let server = create_test_server(pool).await;
         let created = server
@@ -419,7 +419,7 @@ mod tests {
         assert_eq!(body[0]["purpose"], "explore");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn duplicate_purpose_is_409(pool: PgPool) {
         let server = create_test_server(pool).await;
         let body = json!({ "purpose": "explore" });
@@ -432,7 +432,7 @@ mod tests {
         res.assert_status(StatusCode::CONFLICT);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn invalid_purpose_is_400(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -442,14 +442,14 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_nonexistent_agent_config_returns_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server.get("/api/agent-configs/missing").await;
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_agent_config_removes_row(pool: PgPool) {
         let server = create_test_server(pool).await;
         server
@@ -468,7 +468,7 @@ mod tests {
             .assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_then_get_agents_md_round_trips(pool: PgPool) {
         let server = create_test_server(pool).await;
         server
@@ -490,14 +490,14 @@ mod tests {
         assert_eq!(get.json::<Value>(), json!({ "content": body }));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn agents_md_get_404_for_unknown_purpose(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server.get("/api/agent-configs/missing/agents-md").await;
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn single_skill_add_update_delete_lifecycle(pool: PgPool) {
         let server = create_test_server(pool).await;
         server
@@ -540,7 +540,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_unknown_skill_returns_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         server
@@ -554,7 +554,7 @@ mod tests {
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_then_get_agent_graph_round_trips(pool: PgPool) {
         let server = create_test_server(pool).await;
         server
@@ -582,7 +582,7 @@ mod tests {
         assert_eq!(get.json::<Value>(), json!({ "content": yaml }));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_agent_graph_rejects_invalid_yaml(pool: PgPool) {
         let server = create_test_server(pool).await;
         server
@@ -598,7 +598,7 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_agent_config_bundle_returns_agents_md_skills_and_model(pool: PgPool) {
         let model = std::env::var("STRATEGY_AGENT_MODEL")
             .expect("STRATEGY_AGENT_MODEL must be set to run this test (see .github/workflows/test.yml, or set it in .env.local)");
@@ -637,7 +637,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_agent_config_bundle_404_for_unknown_purpose(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server.get("/api/agent-configs/missing/agent-config").await;

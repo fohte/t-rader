@@ -56,7 +56,7 @@ mod tests {
     use super::*;
     use crate::testing::{create_test_db, insert_test_strategy};
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_current_returns_none_when_no_history(pool: sqlx::PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
@@ -65,7 +65,7 @@ mod tests {
         assert_eq!(current, None);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_current_ignores_future_effective_at(pool: sqlx::PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(current.amount_jpy, Decimal::from_str("1000000").unwrap());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_current_returns_latest_of_multiple_past_rows(pool: sqlx::PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;

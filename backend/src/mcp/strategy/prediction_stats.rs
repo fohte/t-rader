@@ -143,7 +143,7 @@ mod tests {
             .collect()
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_prediction_stats_returns_empty_when_no_graded_predictions(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -164,7 +164,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_prediction_stats_excludes_ungraded_predictions(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;
@@ -188,7 +188,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_prediction_stats_excludes_other_strategy_predictions(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -214,7 +214,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_prediction_stats_aggregates_buckets_and_brier_score(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "a").await;

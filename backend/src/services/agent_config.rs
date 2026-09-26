@@ -370,7 +370,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_and_list_roundtrip(pool: PgPool) {
         let db = create_test_db(pool).await;
         let created = create(&db, "explore".to_string()).await.unwrap();
@@ -391,7 +391,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rejects_duplicate_purpose(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -399,21 +399,21 @@ mod tests {
         assert!(matches!(err, AgentConfigError::DuplicatePurpose(p) if p == "explore"));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_rejects_invalid_purpose_slug(pool: PgPool) {
         let db = create_test_db(pool).await;
         let err = create(&db, "Bad Purpose".to_string()).await.unwrap_err();
         assert!(matches!(err, AgentConfigError::InvalidPurpose(_)));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_or_404_rejects_unknown_purpose(pool: PgPool) {
         let db = create_test_db(pool).await;
         let err = find_or_404(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(p) if p == "missing"));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_removes_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -421,14 +421,14 @@ mod tests {
         assert!(list(&db).await.unwrap().is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_missing_returns_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let err = delete(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(_)));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn save_then_get_agents_md_round_trips(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -443,7 +443,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_skills_replaces_whole_map(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -465,7 +465,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_skills_rejects_invalid_name(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -475,7 +475,7 @@ mod tests {
         assert!(matches!(err, AgentConfigError::InvalidSkillName(_)));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_skill_add_update_delete_lifecycle(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -504,7 +504,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_skill_rejects_unknown_skill(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -512,7 +512,7 @@ mod tests {
         assert!(matches!(err, AgentConfigError::SkillNotFound(name) if name == "missing"));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn save_then_get_agent_graph_round_trips(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();
@@ -528,7 +528,7 @@ mod tests {
         assert_eq!(find_or_404(&db, "explore").await.unwrap().agent_graph, yaml);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn save_agent_graph_rejects_invalid_yaml_and_leaves_row_unchanged(pool: PgPool) {
         let db = create_test_db(pool).await;
         create(&db, "explore".to_string()).await.unwrap();

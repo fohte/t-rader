@@ -211,7 +211,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn skips_provider_when_bar_already_reaches_the_fetchable_ceiling(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -232,7 +232,7 @@ mod tests {
         assert_provider_calls(&provider, &[]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn stops_calling_provider_once_bar_reaches_the_fetchable_ceiling(pool: PgPool) {
         let db = create_test_db(pool).await;
         let provider = MockProvider::new()
@@ -246,7 +246,7 @@ mod tests {
         assert_provider_calls(&provider, &["7203"]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn refetches_stale_bar_even_when_one_already_exists(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -273,7 +273,7 @@ mod tests {
         assert_provider_calls(&provider, &["7203"]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn backfills_missing_bar_and_creates_instrument(pool: PgPool) {
         let db = create_test_db(pool).await;
         let bar = backfillable_bar("7203", 200);
@@ -294,7 +294,7 @@ mod tests {
         assert_provider_calls(&provider, &["7203"]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn stale_symbols_that_cannot_catch_up_are_excluded_from_prices(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -329,7 +329,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn missing_bar_is_omitted_when_provider_is_none(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -344,7 +344,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn provider_error_is_skipped_and_other_symbols_still_processed(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "6758").await;

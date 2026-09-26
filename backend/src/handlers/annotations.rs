@@ -466,7 +466,7 @@ mod tests {
         Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_without_strategy_id_succeeds(pool: PgPool) {
         let (_db, server) = create_test_server_with_db(pool).await;
 
@@ -503,7 +503,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reject_annotation_without_strategy_id_does_not_submit_task(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(tasks, vec![]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reject_annotation_submits_single_review_task_referencing_annotation(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -610,7 +610,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn rejecting_already_rejected_annotation_does_not_resubmit(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -637,7 +637,7 @@ mod tests {
         assert_eq!(tasks.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reject_annotation_leaves_status_unchanged_when_agent_submission_fails(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;

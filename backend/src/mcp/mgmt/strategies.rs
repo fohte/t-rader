@@ -220,7 +220,7 @@ mod tests {
     /// 管理 MCP 経由で投入されたタスクの `strategy_task.source` 値。
     const MGMT_TASK_SOURCE: &str = "mgmt-mcp";
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_strategy_task_inserts_row_and_submits_to_agent(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long-term").await;
@@ -276,7 +276,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_strategy_task_forwards_purpose_to_agent_client(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long-term").await;
@@ -346,7 +346,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_strategy_task_rejects_unknown_strategy(pool: PgPool) {
         let db = create_test_db(pool).await;
         let fake = Arc::new(FakeAgentTaskClient::new());
@@ -364,7 +364,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_strategy_task_rejects_empty_prompt(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -381,7 +381,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_strategy_task_persists_failure_on_agent_error(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -416,7 +416,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_strategy_task_resumes_a_failed_task_in_place(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -466,7 +466,7 @@ mod tests {
         assert!(row.error_summary.is_none());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_strategy_task_rejects_when_not_failed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -493,7 +493,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_strategy_task_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
@@ -508,7 +508,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_strategy_task_status_returns_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -540,7 +540,7 @@ mod tests {
         assert!(status.result_text.is_none());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_strategy_task_status_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
@@ -554,7 +554,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_strategies_counts_unread_cards(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;

@@ -167,7 +167,7 @@ mod tests {
         value
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_cron_trigger_succeeds(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;
@@ -198,7 +198,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_hook_trigger_succeeds(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;
@@ -230,7 +230,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_cron_without_schedule_is_400(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;
@@ -241,7 +241,7 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_hook_with_schedule_is_400(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;
@@ -257,7 +257,7 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_for_missing_strategy_is_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -271,7 +271,7 @@ mod tests {
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn duplicate_hook_slug_is_409(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;
@@ -292,7 +292,7 @@ mod tests {
         res.assert_status(StatusCode::CONFLICT);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_filters_by_kind(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;
@@ -342,7 +342,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_scoped_to_owning_strategy(pool: PgPool) {
         let server = create_test_server(pool).await;
         let s1 = create_strategy(&server, "a").await;
@@ -357,7 +357,7 @@ mod tests {
         assert_eq!(res.json::<Vec<Value>>(), Vec::<Value>::new());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_update_delete_round_trip(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;
@@ -406,7 +406,7 @@ mod tests {
         after.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn update_hook_slug_on_cron_trigger_is_400(pool: PgPool) {
         let server = create_test_server(pool).await;
         let sid = create_strategy(&server, "s").await;

@@ -30,7 +30,7 @@ use crate::testing::{
     insert_test_hook_trigger, insert_test_strategy,
 };
 
-#[sqlx::test(migrations = false)]
+#[backend_test_macros::database_test]
 async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
@@ -168,7 +168,7 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
+#[backend_test_macros::database_test]
 async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(pool: PgPool) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();

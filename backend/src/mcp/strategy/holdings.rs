@@ -233,7 +233,6 @@ mod tests {
     use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::DatabaseConnection;
     use serde_json::{Value, json};
     use sqlx::PgPool;
     use uuid::Uuid;
@@ -386,7 +385,10 @@ mod tests {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
     }
 
-    async fn read(db: &DatabaseConnection, symbol: &str) -> ReadShareholdingStructureResult {
+    async fn read(
+        db: &crate::database::DatabaseHandle,
+        symbol: &str,
+    ) -> ReadShareholdingStructureResult {
         build_server(db.clone())
             .read_shareholding_structure_inner(
                 Uuid::new_v4(),
@@ -399,7 +401,7 @@ mod tests {
             .expect("read_shareholding_structure")
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn returns_empty_and_null_sections_when_nothing_ingested(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -416,7 +418,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn rejects_non_4_digit_symbol(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -433,7 +435,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn large_volume_reports_match_by_first_4_chars_newest_first_with_holder_details(
         pool: PgPool,
     ) {
@@ -527,7 +529,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn large_volume_reports_respects_limit_after_ordering(pool: PgPool) {
         let db = create_test_db(pool).await;
         for (i, day) in [1u32, 2, 3].into_iter().enumerate() {
@@ -582,7 +584,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn major_shareholders_returns_only_the_latest_filing(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_major_shareholders(
@@ -645,7 +647,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn major_shareholders_skips_documents_without_decoded_content(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_major_shareholders(
@@ -691,7 +693,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn cross_shareholdings_combines_spec_and_deem_with_mutual_holding(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_cross_shareholdings(

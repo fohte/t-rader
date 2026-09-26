@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(fetch_range(&source_range, latest_stored), expected);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn test_skips_when_plan_is_unset(pool: PgPool) {
         let db = create_test_db(pool).await;
         let client = JQuantsClient::new("test-api-key".to_string()).expect("client");
@@ -237,7 +237,7 @@ mod tests {
         assert_eq!(stats, IngestStats::default());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn test_ingests_and_upserts_new_disclosures_including_undecided_schedule(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -307,7 +307,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn test_continues_past_days_that_fail_to_fetch(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;

@@ -202,7 +202,7 @@ mod tests {
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
 
     // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_then_read_annotations(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;
@@ -265,7 +265,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_rejects_empty_target_kind(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "x").await;
@@ -289,7 +289,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_rejects_cross_strategy_linked_note(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_a = insert_strategy(&db, "a").await;
@@ -319,7 +319,7 @@ mod tests {
     /// resume で同じステップの新しい試行 (execution_task_id が変わる) が create_annotation を
     /// 呼んだとき、前の試行が作った未レビュー (unread) のアノテーションは削除され、
     /// 新しい試行のものだけが残る。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_replaces_unread_annotations_from_previous_attempt_of_same_step(
         pool: PgPool,
     ) {
@@ -384,7 +384,7 @@ mod tests {
 
     /// 前の試行が作ったアノテーションでも、既にレビュー済み (unread 以外) のものは
     /// 新しい試行が来ても削除されず残る。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_keeps_reviewed_annotations_from_previous_attempt(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;
@@ -460,7 +460,7 @@ mod tests {
 
     /// 前の試行が作った unread のアノテーションでも、既にコメントが付いている場合は
     /// (comment.target_id が FK を持たないため) 削除すると孤児化してしまうので残る。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_keeps_unread_annotations_with_comments_from_previous_attempt(
         pool: PgPool,
     ) {
@@ -538,7 +538,7 @@ mod tests {
 
     /// resume していない通常の実行 (同じ execution_task_id) で 1 ステップが複数件の
     /// アノテーションを作る動作はこれまでどおり全件残る。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_annotation_keeps_multiple_annotations_from_the_same_attempt(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;

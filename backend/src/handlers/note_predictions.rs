@@ -81,7 +81,7 @@ mod tests {
             .expect("parse timestamp")
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_returns_predictions_linked_to_note_in_creation_order(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(res.json::<Vec<prediction::Model>>(), vec![first, second]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_returns_empty_for_note_without_predictions(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -140,7 +140,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_for_unknown_note_returns_404(pool: PgPool) {
         let (_db, server) = create_test_server_with_db(pool).await;
 

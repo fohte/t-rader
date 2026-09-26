@@ -311,7 +311,7 @@ mod tests {
             .expect("find documents")
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fetches_from_available_from_when_table_is_empty(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -403,7 +403,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn refetches_from_latest_submitted_on_minus_window(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -446,7 +446,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn skips_when_fetchable_range_is_unknown(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -461,7 +461,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upserts_the_document_with_the_same_id(pool: PgPool) {
         let db = create_test_db(pool).await;
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
@@ -517,7 +517,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upserts_major_shareholder_documents(pool: PgPool) {
         let db = create_test_db(pool).await;
         let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
@@ -579,7 +579,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upserts_cross_shareholding_documents(pool: PgPool) {
         let db = create_test_db(pool).await;
         let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
@@ -647,7 +647,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn retries_a_failed_date_within_the_same_cycle_and_recovers(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -712,7 +712,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn counts_a_date_when_its_retry_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;

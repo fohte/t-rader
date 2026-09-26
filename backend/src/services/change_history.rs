@@ -135,7 +135,7 @@ mod tests {
     use super::*;
     use crate::testing::{create_test_db, insert_test_strategy};
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn record_as_persists_the_given_actor(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;

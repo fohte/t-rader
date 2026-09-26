@@ -71,7 +71,7 @@ mod tests {
 
     use crate::testing::create_test_server;
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_returns_null_when_unset(pool: PgPool) {
         let server = create_test_server(pool).await;
 
@@ -83,7 +83,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_then_get_round_trips(pool: PgPool) {
         let server = create_test_server(pool).await;
 
@@ -100,7 +100,7 @@ mod tests {
         assert_eq!(get.json::<serde_json::Value>(), expected);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_multiple_times_updates_to_latest_value(pool: PgPool) {
         let server = create_test_server(pool).await;
 
@@ -122,7 +122,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_null_clears_limit(pool: PgPool) {
         let server = create_test_server(pool).await;
 
@@ -142,7 +142,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn put_400_for_out_of_range_ratio(pool: PgPool) {
         let server = create_test_server(pool).await;
 

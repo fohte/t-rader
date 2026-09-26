@@ -176,7 +176,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_chat_creates_task_row_and_submits_to_agent(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_next_task_id("agent-task-1").await;
@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(submitted, vec![(strategy_id, "inspect 7203".to_string())]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_chat_unknown_strategy_returns_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -251,7 +251,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_chat_empty_prompt_returns_400(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
@@ -264,7 +264,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_chat_agent_not_configured_returns_503(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
@@ -286,7 +286,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_chat_missing_agent_config_returns_503(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
@@ -303,7 +303,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_strategy_task_returns_phase(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
@@ -349,7 +349,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_strategy_task_unknown_returns_404(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
@@ -363,7 +363,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_strategy_task_strategy_mismatch_returns_404(pool: PgPool) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
@@ -389,7 +389,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_strategy_tasks_returns_tasks_newest_first(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -453,7 +453,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_strategy_tasks_unknown_strategy_returns_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -462,7 +462,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_strategy_tasks_scoped_to_strategy(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_a = insert_test_strategy(&db, "a").await;

@@ -95,7 +95,7 @@ mod tests {
         .expect("seed observation");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn returns_observations_in_date_range_oldest_first(pool: sqlx::PgPool) {
         let db = create_test_db(pool).await;
         seed_indicator(&db, "USDJPY").await;
@@ -130,7 +130,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn returns_empty_when_no_observation_in_range(pool: sqlx::PgPool) {
         let db = create_test_db(pool).await;
         seed_indicator(&db, "VIX").await;
@@ -157,7 +157,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn rejects_empty_indicator_id(pool: sqlx::PgPool) {
         let db = create_test_db(pool).await;
 
@@ -175,7 +175,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn rejects_from_after_to(pool: sqlx::PgPool) {
         let db = create_test_db(pool).await;
 

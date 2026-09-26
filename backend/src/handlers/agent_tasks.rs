@@ -69,7 +69,7 @@ mod tests {
 
     use super::*;
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn valid_token_returns_204_and_notifies_watcher(pool: PgPool) {
         let (state, server) = create_test_server_with_state(pool).await;
         let notified = state.agent_task_notify.notified();
@@ -89,7 +89,7 @@ mod tests {
             .expect("watcher should have been notified");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn mismatched_token_returns_401(pool: PgPool) {
         let (_state, server) = create_test_server_with_state(pool).await;
 
@@ -101,7 +101,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::UNAUTHORIZED);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn missing_token_header_returns_401(pool: PgPool) {
         let (_state, server) = create_test_server_with_state(pool).await;
 

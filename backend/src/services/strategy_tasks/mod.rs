@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(source.as_str(), expected);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn submit_task_rejects_missing_purpose_before_inserting_task_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;

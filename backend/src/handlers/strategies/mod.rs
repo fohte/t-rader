@@ -166,7 +166,7 @@ mod tests {
 
     use crate::testing::{create_strategy, create_test_server};
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_and_list_strategy(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(body[0]["name"], "長期投資");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn get_nonexistent_strategy_returns_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -191,7 +191,7 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_strategy_removes_row(pool: PgPool) {
         let server = create_test_server(pool).await;
         let id = create_strategy(&server, "to-delete").await;

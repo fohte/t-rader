@@ -355,7 +355,7 @@ mod tests {
         .expect("seed bars");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn grades_outperform_prediction_as_correct(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "test").await;
@@ -393,7 +393,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn grades_underperform_prediction_as_incorrect(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "test").await;
@@ -432,7 +432,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn skips_when_due_date_bar_is_stale(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "test").await;
@@ -468,7 +468,7 @@ mod tests {
         assert_eq!(find_grade(&db, prediction_id).await, None);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn skips_when_base_date_bar_is_missing(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "test").await;
@@ -501,7 +501,7 @@ mod tests {
         assert_eq!(find_grade(&db, prediction_id).await, None);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn already_graded_prediction_is_not_regraded(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "test").await;
@@ -531,7 +531,7 @@ mod tests {
         assert_eq!(grade_after_first, grade_after_second);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn one_skipped_prediction_does_not_block_others_in_same_cycle(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "test").await;

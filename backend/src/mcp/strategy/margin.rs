@@ -339,7 +339,7 @@ mod tests {
         .expect("seed margin_alert");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_returns_interest_newest_first_matching_5_digit_code_by_prefix(
         pool: PgPool,
     ) {
@@ -407,7 +407,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_includes_distinct_iss_type_rows_for_the_same_date(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(iss_types, vec![1, 2]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_filters_interest_by_date_range_inclusive(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -458,7 +458,7 @@ mod tests {
         assert_eq!(dates, vec![ymd(2026, 9, 8)]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_rejects_from_after_to(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -477,7 +477,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_orders_interest_newest_first_and_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -503,7 +503,7 @@ mod tests {
         assert_eq!(dates, vec![ymd(2026, 9, 15), ymd(2026, 9, 8)]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_keeps_only_latest_pub_date_per_app_date_for_alerts(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -574,7 +574,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_orders_alerts_newest_first_and_respects_limit(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -609,7 +609,7 @@ mod tests {
         assert_eq!(app_dates, vec![ymd(2026, 9, 15), ymd(2026, 9, 8)]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_matches_alerts_5_digit_code_by_prefix(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -652,7 +652,7 @@ mod tests {
         assert_eq!(codes, vec!["72030".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn read_margin_filters_alerts_by_date_range_inclusive(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());

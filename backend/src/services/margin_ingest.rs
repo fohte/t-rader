@@ -197,7 +197,7 @@ mod tests {
         assert_eq!(resolve_start_date(latest_stored, earliest), expected);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn run_ingest_cycle_skips_when_no_manual_plan(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;
@@ -214,7 +214,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn ingest_daily_fetches_past_the_former_per_cycle_cap(pool: PgPool) {
         let db = create_test_db(pool).await;
         let mock = JQuantsMockServer::start().await;

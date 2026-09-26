@@ -136,7 +136,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_bars_returns_200_with_data(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -159,7 +159,7 @@ mod tests {
         assert_eq!(body[0]["timeframe"], "1d");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_bars_with_invalid_params_returns_400(pool: PgPool) {
         let server = create_test_server(pool).await;
 
@@ -178,7 +178,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_bars_returns_empty_when_no_data(pool: PgPool) {
         let server = create_test_server(pool).await;
 
@@ -189,7 +189,7 @@ mod tests {
         assert!(body.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_bars_with_date_range_filters_correctly(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         insert_test_instrument(&db, "7203").await;

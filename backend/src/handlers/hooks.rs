@@ -164,7 +164,7 @@ mod tests {
         id
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn fires_when_event_match_satisfied(pool: PgPool) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
@@ -211,7 +211,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn skips_when_event_match_not_satisfied(pool: PgPool) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
@@ -241,7 +241,7 @@ mod tests {
         assert!(tasks.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn disabled_trigger_is_404(pool: PgPool) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
@@ -252,7 +252,7 @@ mod tests {
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn unknown_slug_is_404(pool: PgPool) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (_db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
@@ -260,7 +260,7 @@ mod tests {
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn placeholders_expand_from_payload(pool: PgPool) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
@@ -300,7 +300,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn agent_not_configured_returns_503(pool: PgPool) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;

@@ -290,7 +290,7 @@ mod tests {
     }
 
     // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_task_rejects_a_task_that_is_neither_failed_nor_completed_with_a_failed_step(
         pool: PgPool,
     ) {
@@ -341,7 +341,7 @@ mod tests {
         assert!(fake.submitted.lock().await.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_task_not_found(pool: PgPool) {
         let db = create_test_db(pool).await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
@@ -355,7 +355,7 @@ mod tests {
 
     // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
     // Completed は for_each の部分失敗で failed なステップを抱えたまま終わったタスク。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_task_resubmits_all_steps_and_updates_the_row_in_place(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
@@ -475,7 +475,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_task_rejects_a_second_call_after_the_first_claims_the_row(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(fake.submitted.lock().await.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn auto_resume_task_resubmits_and_marks_auto_resumed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
@@ -541,7 +541,7 @@ mod tests {
         assert_eq!(fake.submitted.lock().await.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn auto_resume_task_rejects_a_second_call_once_already_auto_resumed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
@@ -575,7 +575,7 @@ mod tests {
         assert_eq!(fake.submitted.lock().await.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn auto_resume_task_marks_auto_resumed_at_even_when_submission_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
@@ -598,7 +598,7 @@ mod tests {
         assert!(row.auto_resumed_at.is_some());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resume_task_does_not_touch_auto_resumed_at(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;

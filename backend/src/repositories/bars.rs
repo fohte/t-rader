@@ -224,7 +224,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_bars_inserts_new_records(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_bars_updates_existing_records(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -282,7 +282,7 @@ mod tests {
         assert_eq!(result[0].close, Decimal::new(200, 0));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_bars_with_empty_vec_is_noop(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -290,7 +290,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_bars_filters_by_date_range(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -332,7 +332,7 @@ mod tests {
         assert_eq!(result[0].close, Decimal::new(105, 0));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_bars_by_instruments_filters_to_requested_instruments(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -370,7 +370,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_latest_bar_returns_most_recent(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -400,7 +400,7 @@ mod tests {
         assert_eq!(result.map(|b| b.close), Some(Decimal::new(103, 0)));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_latest_bar_returns_none_when_no_bars(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -410,7 +410,7 @@ mod tests {
         assert_eq!(result, None);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_latest_bar_on_or_before_returns_latest_bar_at_or_before_date(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;
@@ -441,7 +441,7 @@ mod tests {
         assert_eq!(result.map(|b| b.close), Some(Decimal::new(100, 0)));
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_latest_bar_on_or_before_returns_none_when_no_bar_before_date(pool: PgPool) {
         let db = create_test_db(pool).await;
         insert_test_instrument(&db, "7203").await;

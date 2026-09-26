@@ -187,7 +187,7 @@ mod tests {
         value
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn create_returns_201_with_full_row(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -213,7 +213,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn duplicate_source_is_409(pool: PgPool) {
         let server = create_test_server(pool).await;
         let body = json!({
@@ -230,7 +230,7 @@ mod tests {
         res.assert_status(StatusCode::CONFLICT);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn invalid_source_slug_is_400(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -244,7 +244,7 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn invalid_url_is_400(pool: PgPool) {
         let server = create_test_server(pool).await;
         let res = server
@@ -258,7 +258,7 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_enabled_only_filters(pool: PgPool) {
         let server = create_test_server(pool).await;
         let a: Value = server
@@ -299,7 +299,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn patch_updates_fields(pool: PgPool) {
         let server = create_test_server(pool).await;
         let created: Value = server
@@ -329,7 +329,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn delete_returns_204_then_404(pool: PgPool) {
         let server = create_test_server(pool).await;
         let created: Value = server

@@ -234,7 +234,7 @@ mod tests {
     }
 
     fn build_server(
-        db: sea_orm::DatabaseConnection,
+        db: impl Into<crate::database::DatabaseHandle>,
         executor: Arc<FakeKataExecutor>,
     ) -> (StrategyServer, SharedKataExecutor) {
         let shared: SharedKataExecutor = executor;
@@ -251,7 +251,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_resolves_and_runs(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
@@ -304,7 +304,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_prefers_strategy_scope(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
@@ -357,7 +357,7 @@ mod tests {
     }
 
     /// 戦略 A の session から戦略 B 専用 indicator は見えない (resolve 段で not found)。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_rejects_cross_strategy_scope(pool: PgPool) {
         let db = create_test_db(pool).await;
         let s_a = insert_strategy(&db, "a").await;
@@ -390,7 +390,7 @@ mod tests {
         assert!(executor.requests.lock().await.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_validates_input_args(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
@@ -429,7 +429,7 @@ mod tests {
 
     /// sandbox 拒否 (network / subprocess / fs write) は MCP エラーではなく
     /// `exit_code != 0` + `stderr` で透過する。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_passes_through_sandbox_rejection(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
@@ -471,7 +471,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_rejects_invalid_output(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
@@ -510,7 +510,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_rejects_output_schema_mismatch(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
@@ -552,7 +552,7 @@ mod tests {
     /// indicator の input_schema が JSON Schema として壊れていた場合は operator 側の
     /// 問題なので `invalid_params` ではなく `internal_error` を返す。caller (LLM) に
     /// 「args が悪い」と誤認させない。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_reports_broken_input_schema_as_internal(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;
@@ -586,7 +586,7 @@ mod tests {
         assert!(executor.requests.lock().await.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn eval_indicator_errors_when_executor_not_configured(pool: PgPool) {
         let db = create_test_db(pool).await;
         let sid = insert_strategy(&db, "s").await;

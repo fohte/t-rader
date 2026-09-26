@@ -170,7 +170,7 @@ mod tests {
         .expect("seed ref_term");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn add_ref_terms_inserts_new_terms(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db);
@@ -193,7 +193,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn add_ref_terms_is_idempotent_and_skips_blank_terms(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(result.added, vec!["Toyota".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn add_ref_terms_rejects_invalid_ref_kind(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db);
@@ -233,7 +233,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn add_ref_terms_rejects_empty_ref_id(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db);
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn remove_ref_terms_deletes_only_matching_terms(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db.clone());
@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(remaining.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn remove_ref_terms_rejects_invalid_ref_kind(pool: PgPool) {
         let db = create_test_db(pool).await;
         let server = build_server(db);

@@ -422,7 +422,7 @@ mod tests {
     const FAR_FUTURE: chrono::Duration = chrono::Duration::minutes(15);
     const PAST: chrono::Duration = chrono::Duration::seconds(-1);
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn reconciles_completed_running_and_failed_states(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -521,7 +521,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn input_required_maps_to_failed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -561,7 +561,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn failed_error_summary_is_agent_error_message_over_error_kind(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -610,7 +610,7 @@ mod tests {
     // deadline 超過時は agent の応答内容 (completed/working 問わず) より deadline を優先して
     // failed に確定する。rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため
     // for ループで列挙する。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn agent_response_after_deadline_marks_failed_regardless_of_state(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -670,7 +670,7 @@ mod tests {
     }
 
     // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn deadline_exceeded_includes_agent_reported_reason(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -729,7 +729,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn deadline_exceeded_still_upserts_steps_reported_by_agent(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -799,7 +799,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn not_found_after_deadline_marks_failed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -824,7 +824,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn not_found_before_deadline_is_skipped(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -846,7 +846,7 @@ mod tests {
         assert_eq!(row.error_summary, None);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn orphaned_row_without_a2a_task_id_failed_after_deadline(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -864,7 +864,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn orphaned_row_without_a2a_task_id_skipped_before_deadline(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -885,7 +885,7 @@ mod tests {
         assert_eq!(row.phase, StrategyTaskPhase::Pending);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn transient_error_after_deadline_marks_failed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -909,7 +909,7 @@ mod tests {
         assert_eq!(row.phase, StrategyTaskPhase::Failed);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn transient_error_before_deadline_is_skipped(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -933,7 +933,7 @@ mod tests {
         assert_eq!(row.phase, StrategyTaskPhase::Running);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn apply_phase_upserts_steps_and_skips_unchanged(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -1063,7 +1063,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn apply_phase_rolls_back_row_update_when_step_upsert_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -1112,7 +1112,7 @@ mod tests {
         assert_eq!(fetch_steps(&db, task_id).await, vec![]);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn execution_lost_failure_triggers_auto_resume(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -1167,7 +1167,7 @@ mod tests {
         assert_eq!(fake.submitted.lock().await.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn execution_lost_failure_is_not_auto_resumed_twice(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -1210,7 +1210,7 @@ mod tests {
         assert_not_auto_resumed(&db, task_id, &fake).await;
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn non_execution_lost_failure_is_not_auto_resumed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;
@@ -1243,7 +1243,7 @@ mod tests {
         assert_not_auto_resumed(&db, task_id, &fake).await;
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn execution_lost_failure_past_deadline_is_not_auto_resumed(pool: PgPool) {
         let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db).await;

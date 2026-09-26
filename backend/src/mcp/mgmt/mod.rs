@@ -57,14 +57,13 @@ mod triggers;
 #[cfg(test)]
 mod tests_common;
 
+use crate::agent_client::SharedAgentTaskClient;
+use crate::database::DatabaseHandle;
+use crate::error::AppError;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
-use sea_orm::DatabaseConnection;
-
-use crate::agent_client::SharedAgentTaskClient;
-use crate::error::AppError;
 
 // `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
 pub use dto::SubmitStrategyTaskParams;
@@ -87,13 +86,16 @@ const MAX_LIST_LIMIT: u64 = 100;
 
 #[derive(Clone)]
 pub struct MgmtServer {
-    db: DatabaseConnection,
+    db: DatabaseHandle,
     agent_client: SharedAgentTaskClient,
 }
 
 impl MgmtServer {
-    pub fn new(db: DatabaseConnection, agent_client: SharedAgentTaskClient) -> Self {
-        Self { db, agent_client }
+    pub fn new(db: impl Into<DatabaseHandle>, agent_client: SharedAgentTaskClient) -> Self {
+        Self {
+            db: db.into(),
+            agent_client,
+        }
     }
 }
 

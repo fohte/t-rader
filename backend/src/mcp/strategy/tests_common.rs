@@ -2,7 +2,6 @@
 
 use chrono::{DateTime, FixedOffset};
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::DatabaseConnection;
 use sea_orm::{ActiveModelTrait, EntityTrait, TransactionSession};
 use uuid::Uuid;
 
@@ -44,7 +43,7 @@ pub(super) async fn insert_note_kind(
     .expect("insert note kind");
 }
 
-pub(super) fn build_server(db: DatabaseConnection) -> StrategyServer {
+pub(super) fn build_server(db: impl Into<crate::database::DatabaseHandle>) -> StrategyServer {
     StrategyServer::new(db, None)
 }
 

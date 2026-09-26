@@ -241,7 +241,7 @@ mod tests {
         .expect("seed indicator");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_many_by_term_returns_multiple_candidates(pool: PgPool) {
         let db = create_test_db(pool).await;
         seed_term(&db, "stock", "SAMPLE-STOCK-A", "サンプル語").await;
@@ -261,7 +261,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_many_by_term_returns_empty_when_no_match(pool: PgPool) {
         let db = create_test_db(pool).await;
 
@@ -275,7 +275,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_many_by_term_matches_normalized_variants(pool: PgPool) {
         let db = create_test_db(pool).await;
         seed_term(&db, "indicator", "SAMPLE-INDICATOR", "DemoKey").await;
@@ -297,7 +297,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_many_by_term_dedups_candidates_from_normalized_variant_aliases_on_same_ref_id(
         pool: PgPool,
     ) {
@@ -317,7 +317,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_refs_resolves_exact_id_alias_and_unresolved_in_input_order(pool: PgPool) {
         let db = create_test_db(pool).await;
         seed_stock(&db, "SAMPLE-STOCK", "サンプル銘柄").await;
@@ -357,7 +357,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_refs_leaves_ambiguous_alias_unresolved(pool: PgPool) {
         let db = create_test_db(pool).await;
         seed_stock(&db, "SAMPLE-STOCK-A", "サンプル銘柄 A").await;
@@ -379,7 +379,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_refs_leaves_dangling_alias_unresolved(pool: PgPool) {
         let db = create_test_db(pool).await;
         // master に存在しない ref_id を指す dangling な別名

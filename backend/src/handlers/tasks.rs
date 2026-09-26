@@ -61,7 +61,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_tasks_returns_all_strategies_newest_first(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
@@ -107,7 +107,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_tasks_filters_by_strategy_id(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
@@ -137,7 +137,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_tasks_filters_by_purpose(pool: PgPool) {
         let (db, server) = create_test_server_with_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -173,7 +173,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn list_tasks_returns_empty_for_unknown_strategy_id(pool: PgPool) {
         let server = create_test_server(pool).await;
 

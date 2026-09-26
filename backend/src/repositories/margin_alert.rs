@@ -82,7 +82,7 @@ pub async fn find_latest_margin_alert_pub_date(
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{DatabaseConnection, EntityTrait};
+    use sea_orm::EntityTrait;
     use sqlx::PgPool;
 
     use super::*;
@@ -117,9 +117,9 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_keeps_correction_rows_with_different_pub_date(pool: PgPool) {
-        let db: DatabaseConnection = create_test_db(pool).await;
+        let db = create_test_db(pool).await;
         let app_date = NaiveDate::from_ymd_opt(2024, 2, 7).expect("date");
         let original_pub_date = NaiveDate::from_ymd_opt(2024, 2, 8).expect("date");
         let correction_pub_date = NaiveDate::from_ymd_opt(2024, 2, 9).expect("date");
@@ -146,14 +146,14 @@ mod tests {
         assert_eq!(all.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn upsert_with_empty_vec_is_noop(pool: PgPool) {
         let db = create_test_db(pool).await;
         let result = upsert_margin_alert(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn find_latest_returns_none_when_empty(pool: PgPool) {
         let db = create_test_db(pool).await;
         let latest = find_latest_margin_alert_pub_date(&db)

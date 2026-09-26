@@ -150,7 +150,7 @@ mod tests {
         .expect("feed creates");
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn run_aggregation_cycle_passes_enabled_feeds_by_display_name(pool: PgPool) {
         let db = create_test_db(pool).await;
         create_feed(&db, "feed_zulu", "Zulu publication", true).await;
@@ -181,7 +181,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn run_aggregation_cycle_stops_before_upsert_when_aggregator_fails(pool: PgPool) {
         let db = create_test_db(pool).await;
         let aggregator = FakeNewsAggregator::new();
