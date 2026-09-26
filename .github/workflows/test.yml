@@ -551,21 +551,24 @@ jobs:
             dump_db_logs
             exit 1
           fi
-          settings=$(db_psql \
-            --tuples-only \
-            --no-align \
-            --command="SHOW fsync" \
-            --command="SHOW synchronous_commit" \
-            --command="SHOW full_page_writes" \
-            --command="SHOW timescaledb.max_background_workers" \
-            --command="SHOW log_lock_waits" \
-            --command="SHOW deadlock_timeout" \
-            --command="SHOW log_line_prefix")
-          if [[ "$settings" != $'off\noff\noff\n0\non\n10ms\n%m [%p] %a ' ]]; then
-            printf 'PostgreSQL test settings do not match expectations:\n%s\n' "$settings" >&2
-            dump_db_logs
-            exit 1
-          fi
+          declare -A expected_settings=(
+            [fsync]=off
+            [synchronous_commit]=off
+            [full_page_writes]=off
+            [timescaledb.max_background_workers]=0
+            [log_lock_waits]=on
+            [deadlock_timeout]=10ms
+            [log_line_prefix]='%m [%p] %a '
+          )
+          for name in "${!expected_settings[@]}"; do
+            actual=$(db_psql --tuples-only --no-align --command="SHOW $name")
+            if [[ "$actual" != "${expected_settings[$name]}" ]]; then
+              printf 'PostgreSQL setting %s: expected %q, got %q\n' \
+                "$name" "${expected_settings[$name]}" "$actual" >&2
+              dump_db_logs
+              exit 1
+            fi
+          done
           timescaledb_workers=$(db_psql \
             --tuples-only \
             --no-align \
