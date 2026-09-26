@@ -742,15 +742,32 @@ mod configured_plan {
         #[case] max_requests: usize,
     ) {
         let today = date(2025, 1, 10);
-        let (from, to) = plan.range(today);
         let client = JQuantsClient::with_base_url("http://localhost", "key", plan).expect("client");
 
         assert_eq!(
+            (client.plan_date_range(today), client.current_rate_limit(),),
             (
-                client.known_fetchable_date_range(today),
-                client.current_rate_limit(),
+                DateRange {
+                    from: plan.range(today).0,
+                    to: plan.range(today).1
+                },
+                max_requests
             ),
-            (DateRange { from, to }, max_requests),
+        );
+    }
+
+    #[test]
+    fn premium_daily_bars_range_starts_at_the_first_available_date() {
+        let today = date(2025, 1, 10);
+        let client = JQuantsClient::with_base_url("http://localhost", "key", JQuantsPlan::Premium)
+            .expect("client");
+
+        assert_eq!(
+            client.daily_bars_date_range(today),
+            DateRange {
+                from: date(2008, 5, 7),
+                to: JQuantsPlan::Premium.range(today).1,
+            },
         );
     }
 }

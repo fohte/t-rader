@@ -56,7 +56,7 @@ impl ShareholdingStructureSource for JQuantsClient {
     }
 
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        Some(self.known_fetchable_date_range(today))
+        Some(self.plan_date_range(today))
     }
 }
 

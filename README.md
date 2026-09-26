@@ -161,8 +161,8 @@ pnpm run format   # ESLint + Prettier によるフォーマット
 | `MGMT_MCP_URL`           | agent が strategy_id metadata の無い message から対象戦略を名前解決する際に使う backend の管理 MCP エンドポイント                                                                                                                                          | -                            |
 | `LLM_API_KEY`            | agent が戦略 Agent の LLM 呼び出しに使う API キー (`LLM_BASE_URL` を差し替えた場合はその接続先の API キー)。未設定だと agent の起動に失敗する。docker-compose の `agent` サービスは `.env` を読み込まないため、`.env.local` に設定すること                 | -                            |
 | `LLM_BASE_URL`           | agent が戦略 Agent の LLM 呼び出しに使う OpenAI 互換エンドポイントの base URL。任意の互換エンドポイント (LiteLLM Proxy 等) に差し替えられる                                                                                                                | OpenCode Go のエンドポイント |
-| `JQUANTS_API_KEY`        | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)                                                                                                                                                                                                       | -                            |
-| `JQUANTS_PLAN`           | J-Quants の契約プラン (`free` / `light` / `standard` / `premium`)。`JQUANTS_API_KEY` を設定する場合に必須。未設定または不正な値だと backend の起動に失敗する                                                                                               | -                            |
+| `JQUANTS_API_KEY`        | J-Quants API キー (`DATA_PROVIDER=jquants` 時に使用)。設定する場合は provider の選択にかかわらず `JQUANTS_PLAN` が必要                                                                                                                                     | -                            |
+| `JQUANTS_PLAN`           | J-Quants の契約プラン (`free` / `light` / `standard` / `premium`)。API キー設定時に未設定または不正な値だと backend の起動に失敗する。API キー未設定時は無視する                                                                                           | -                            |
 | `VITE_API_URL`           | Vite 開発サーバーのプロキシ先 URL                                                                                                                                                                                                                          | `http://localhost:3000`      |
 | `API_BACKEND_URL`        | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                                                                                                                                              | -                            |
 | `NGINX_RESOLVER`         | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                                                                                                                                    | -                            |
@@ -175,11 +175,11 @@ pnpm run format   # ESLint + Prettier によるフォーマット
 
 `DATA_PROVIDER` 環境変数で価格データの取得元を選ぶ。デフォルト (未設定) は `jquants`。
 
-| 値        | 必要な追加変数                                                                                 | 用途                                                                                                                                        |
-| --------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `jquants` | `JQUANTS_API_KEY` (未設定時は DataProvider なしで起動)、設定時は `JQUANTS_PLAN` も必須         | J-Quants API。契約プランに応じて取得可能期間とレート制限を決める。API キーがある状態でプランが未設定または不正だと backend の起動に失敗する |
-| `ibkr`    | `IBKR_BASE_URL` (任意), `IBKR_SESSION_TOKEN` (任意), `IBKR_EXCHANGE` (任意、デフォルト `TSEJ`) | IBKR Client Portal Web API。Gateway を別途常駐させて URL を指す                                                                             |
-| `none`    | (なし)                                                                                         | DataProvider を無効化。データ取得系エンドポイントは 503 を返す                                                                              |
+| 値        | 必要な追加変数                                                                                 | 用途                                                                                                                              |
+| --------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `jquants` | `JQUANTS_API_KEY` (未設定時は DataProvider なしで起動)、設定時は `JQUANTS_PLAN` も必須         | J-Quants API。契約プランに応じて取得可能期間とレート制限を決める。プランの検証は API キー設定時に provider の選択にかかわらず行う |
+| `ibkr`    | `IBKR_BASE_URL` (任意), `IBKR_SESSION_TOKEN` (任意), `IBKR_EXCHANGE` (任意、デフォルト `TSEJ`) | IBKR Client Portal Web API。Gateway を別途常駐させて URL を指す                                                                   |
+| `none`    | (なし)                                                                                         | DataProvider を無効化。データ取得系エンドポイントは 503 を返す                                                                    |
 
 IBKR を使う場合は Client Portal Gateway を VKE クラスタ等に常駐させ、その HTTP エンドポイントを `IBKR_BASE_URL` に設定する (例: `https://ibkr-gateway:5000/v1/api`)。秘密鍵相当の API キーは存在せず、認証は Gateway 側の Web ログインで維持される。
 

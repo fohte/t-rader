@@ -31,6 +31,10 @@ use response::{
 const DEFAULT_BASE_URL: &str = "https://api.jquants.com/v2";
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 500;
+const DAILY_BARS_START_DATE: NaiveDate = match NaiveDate::from_ymd_opt(2008, 5, 7) {
+    Some(date) => date,
+    None => NaiveDate::MIN,
+};
 /// API サーバーのバグで同じ pagination_key が返り続けた場合の安全策
 const MAX_PAGES: u32 = 100;
 
@@ -107,13 +111,15 @@ impl JQuantsClient {
     }
 
     /// 契約プランで取得できる範囲を返す。
-    fn plan_date_range(&self, today: NaiveDate) -> DateRange {
+    pub(crate) fn plan_date_range(&self, today: NaiveDate) -> DateRange {
         let (from, to) = self.plan.range(today);
         DateRange { from, to }
     }
 
-    pub(crate) fn known_fetchable_date_range(&self, today: NaiveDate) -> DateRange {
-        self.plan_date_range(today)
+    pub(crate) fn daily_bars_date_range(&self, today: NaiveDate) -> DateRange {
+        let mut range = self.plan_date_range(today);
+        range.from = range.from.max(DAILY_BARS_START_DATE);
+        range
     }
 
     /// Standard 以上で利用できるデータの取得範囲を返す。

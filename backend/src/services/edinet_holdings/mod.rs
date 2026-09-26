@@ -22,6 +22,17 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// 既存データの最新日からこの日数分遡って再取得する。
 const REFETCH_WINDOW_DAYS: i64 = 30;
 
+fn ingest_start_date(
+    fetchable_from: NaiveDate,
+    available_from: NaiveDate,
+    latest_submitted_on: Option<NaiveDate>,
+) -> NaiveDate {
+    let earliest = fetchable_from.max(available_from);
+    latest_submitted_on
+        .map(|latest| (latest - ChronoDuration::days(REFETCH_WINDOW_DAYS)).max(earliest))
+        .unwrap_or(earliest)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IngestStats {
     pub days_processed: usize,
@@ -77,16 +88,16 @@ async fn run_ingest_cycle<T: EdinetEndpoint>(
     let Some(fetchable_range) = source.fetchable_range(Utc::now().date_naive()) else {
         tracing::info!(
             endpoint = T::NAME,
-            "取得可能範囲が未検出のため取り込みをスキップします"
+            "取得元が取得可能範囲を公開しないため取り込みをスキップします"
         );
         return Ok(IngestStats::default());
     };
 
-    let earliest = fetchable_range.from.max(T::available_from());
-    let start = match T::latest_submitted_on(db).await? {
-        Some(latest) => (latest - ChronoDuration::days(REFETCH_WINDOW_DAYS)).max(earliest),
-        None => earliest,
-    };
+    let start = ingest_start_date(
+        fetchable_range.from,
+        T::available_from(),
+        T::latest_submitted_on(db).await?,
+    );
 
     let mut stats = IngestStats::default();
     let mut retry_dates = Vec::new();
@@ -213,6 +224,7 @@ async fn run_all(db: &impl sea_orm::ConnectionTrait, source: &dyn ShareholdingSt
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
+    use rstest::rstest;
     use sea_orm::EntityTrait;
     use serde_json::json;
     use wiremock::matchers::{method, path, query_param};
@@ -232,6 +244,37 @@ mod tests {
         MajorShareholderDocument, MajorShareholderReportType, MutualHolding,
         ShareholdingDocumentMetadata,
     };
+
+    #[rstest]
+    #[case::plan_range_starts_after_endpoint_availability(
+        NaiveDate::from_ymd_opt(2024, 1, 1).expect("date"),
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+        None,
+        NaiveDate::from_ymd_opt(2024, 1, 1).expect("date"),
+    )]
+    #[case::endpoint_availability_starts_after_plan_range(
+        NaiveDate::from_ymd_opt(2010, 1, 1).expect("date"),
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+        None,
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+    )]
+    #[case::latest_refetch_window_is_clamped_to_earliest(
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+        NaiveDate::from_ymd_opt(2010, 1, 1).expect("date"),
+        Some(NaiveDate::from_ymd_opt(2020, 1, 10).expect("date")),
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+    )]
+    fn ingest_start_date_cases(
+        #[case] fetchable_from: NaiveDate,
+        #[case] available_from: NaiveDate,
+        #[case] latest_submitted_on: Option<NaiveDate>,
+        #[case] expected: NaiveDate,
+    ) {
+        assert_eq!(
+            ingest_start_date(fetchable_from, available_from, latest_submitted_on),
+            expected,
+        );
+    }
 
     fn document(document_id: &str, stock_code: &str, date: NaiveDate) -> serde_json::Value {
         json!({
@@ -346,23 +389,26 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fetches_within_the_configured_plan_range(db: crate::database::DatabaseHandle) {
+    async fn saves_documents_returned_within_the_refetch_window(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)
             .expect("client");
         let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
         seed_latest_large_volume_document(&db, "SAMPLE-DOC-0", to).await;
+        let document_offsets = [
+            (0, "SAMPLE-DOC-0"),
+            (1, "SAMPLE-DOC-1"),
+            (2, "SAMPLE-DOC-2"),
+        ];
         mock_large_volume_range(&mock, from, to, |date| {
-            if date == from {
-                vec![document("SAMPLE-DOC-0", "99990", date)]
-            } else if date == from + ChronoDuration::days(1) {
-                vec![document("SAMPLE-DOC-1", "99990", date)]
-            } else if date == from + ChronoDuration::days(2) {
-                vec![document("SAMPLE-DOC-2", "99990", date)]
-            } else {
-                vec![]
-            }
+            document_offsets
+                .iter()
+                .filter(|(offset, _)| date == from + ChronoDuration::days(*offset))
+                .map(|(_, document_id)| document(document_id, "99990", date))
+                .collect()
         })
         .await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
@@ -377,13 +423,9 @@ mod tests {
         rows.sort_by(|left, right| left.document_id.cmp(&right.document_id));
 
         assert_eq!(
-            (stats, rows),
+            (stats.documents_saved, rows),
             (
-                IngestStats {
-                    days_processed: REFETCH_WINDOW_DAYS as usize + 1,
-                    documents_saved: 3,
-                    failed_dates: 0,
-                },
+                3,
                 vec![
                     large_volume_shareholding_documents::Model {
                         document_id: "SAMPLE-DOC-0".to_string(),

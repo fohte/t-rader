@@ -10,7 +10,7 @@ use crate::data_provider::{
 use crate::models::bar::Bar;
 
 impl JQuantsClient {
-    /// `/equities/bars/daily` を実際に呼び出す (契約範囲外エラーの自己修復はしない)
+    /// `/equities/bars/daily` を呼び出す。
     async fn fetch_daily_bars_for_instrument(
         &self,
         instrument_id: &str,
@@ -71,11 +71,6 @@ impl JQuantsClient {
 
         Ok(all_bars)
     }
-
-    pub fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
-        let range = self.known_fetchable_date_range(Utc::now().date_naive());
-        Some((range.from, range.to))
-    }
 }
 
 #[async_trait]
@@ -91,7 +86,8 @@ impl DailyBarSource for JQuantsClient {
     }
 
     fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
-        JQuantsClient::known_fetchable_range(self)
+        let range = self.daily_bars_date_range(Utc::now().date_naive());
+        Some((range.from, range.to))
     }
 }
 
@@ -107,6 +103,6 @@ impl MarketDailyBarSource for JQuantsClient {
     }
 
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        Some(self.plan_date_range(today))
+        Some(self.daily_bars_date_range(today))
     }
 }

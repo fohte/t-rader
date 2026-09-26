@@ -17,7 +17,7 @@ use sqlx::{
 use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange, SharedDailyBarSource};
+use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange};
 use crate::database::DatabaseHandle;
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
 use crate::entities::{note, note_version, stock, strategy, strategy_task, trigger};
@@ -389,19 +389,6 @@ pub async fn create_test_server_with_db(db: DatabaseHandle) -> (DatabaseHandle, 
     (db, server)
 }
 
-/// data_provider を差し替えて TestServer を作成する
-pub async fn create_test_server_with_jquants_client(
-    db: DatabaseHandle,
-    client: Arc<crate::data_provider::jquants::JQuantsClient>,
-) -> TestServer {
-    let mut state = base_state(db);
-    let source: SharedDailyBarSource = client.clone();
-    state.daily_bar_source = Some(source);
-    state.jquants_client = Some(client);
-    let router = create_router(state);
-    TestServer::new(router).expect("failed to create test server")
-}
-
 /// kata executor を差し替えて TestServer を作成する
 pub async fn create_test_server_with_kata(
     db: DatabaseHandle,
@@ -488,7 +475,7 @@ impl MockProvider {
         self
     }
 
-    /// 契約範囲を検出済みの状態にする (未設定時は `None`)
+    /// `DailyBarSource` が取得範囲を公開する状態にする。
     pub fn with_known_fetchable_range(
         mut self,
         from: chrono::NaiveDate,

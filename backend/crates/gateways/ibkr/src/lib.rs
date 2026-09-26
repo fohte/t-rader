@@ -327,10 +327,8 @@ impl IbkrClient {
         Ok(instrument)
     }
 
-    /// IBKR は契約範囲という概念を持たないライブデータプロバイダのため、常に
-    /// 直近の確定営業日までを取得可能とみなす (`None` を返すと J-Quants 向けの
-    /// 「未検出時は today を上限とみなす」フォールバックに巻き込まれ、
-    /// `fetch_latest_prices` のたびに全期間の再取得が発生してしまう)。
+    /// `None` はバックフィルで広いフォールバック範囲を使うため、取得対象を限定する。
+    /// IBKR は古い日付の取得制限を持つため、直近の確定営業日までを返す。
     fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
         Some((
             NaiveDate::from_ymd_opt(1990, 1, 1).unwrap_or_default(),
