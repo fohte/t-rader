@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
+use sea_orm::{EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_sale_report;
 use crate::error::AppError;
@@ -37,7 +37,7 @@ impl From<ShortSaleReport> for short_sale_report::ActiveModel {
 /// 同一 PK の行が引数に複数含まれると 1 回の INSERT 内で ON CONFLICT が同じ行を 2 度更新
 /// しようとして Postgres がエラーを返すため、事前に PK で dedup する (後勝ち)。
 pub async fn upsert_short_sale_reports(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     reports: Vec<ShortSaleReport>,
 ) -> Result<(), AppError> {
     if reports.is_empty() {
@@ -99,7 +99,9 @@ pub async fn upsert_short_sale_reports(
 }
 
 /// DB 上の最新の公表日を返す。1 件も無ければ `None`。
-pub async fn find_latest_disc_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+pub async fn find_latest_disc_date(
+    db: &impl sea_orm::ConnectionTrait,
+) -> Result<Option<NaiveDate>, AppError> {
     let result = short_sale_report::Entity::find()
         .order_by_desc(short_sale_report::Column::DiscDate)
         .one(db)

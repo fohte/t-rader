@@ -12,7 +12,7 @@ use crate::extractors::{JsonBody, JsonPath};
 use crate::models::CreateNoteHypothesisRequest;
 
 async fn find_note_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
 ) -> Result<note::Model, AppError> {
     note::Entity::find_by_id(note_id)
@@ -138,7 +138,7 @@ mod tests {
     use axum::http::StatusCode;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait, IntoActiveModel};
+    use sea_orm::{EntityTrait, IntoActiveModel};
     use serde_json::json;
     use sqlx::PgPool;
     use uuid::Uuid;
@@ -148,12 +148,15 @@ mod tests {
         create_test_server_with_db, insert_test_note_in_scope, insert_test_strategy,
     };
 
-    async fn seed_note(db: &DatabaseConnection, strategy_id: Option<Uuid>) -> Uuid {
+    async fn seed_note(
+        db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+        strategy_id: Option<Uuid>,
+    ) -> Uuid {
         insert_test_note_in_scope(db, strategy_id, "t", "b").await
     }
 
     async fn seed_hypothesis(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Option<Uuid>,
         title: &str,
         body: &str,

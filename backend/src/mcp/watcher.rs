@@ -15,9 +15,9 @@ use std::time::Duration;
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, TransactionSession,
 };
-use tokio::sync::{Notify, Semaphore};
+use tokio::sync::Notify;
 
 use crate::agent_client::{AgentTaskError, AgentTaskState, AgentTaskStatus, SharedAgentTaskClient};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
@@ -73,7 +73,10 @@ fn agent_reported_reason(status: &AgentTaskStatus) -> Option<&str> {
 /// 1 回分の polling を実行する。失敗した個別 task はログに残し、他の task の処理を継続する。
 ///
 /// 戻り値は phase 更新が走った task 数。
-pub async fn run_once(db: &DatabaseConnection, agent_client: &SharedAgentTaskClient) -> usize {
+pub async fn run_once(
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    agent_client: &SharedAgentTaskClient,
+) -> usize {
     let rows = match strategy_task::Entity::find()
         .filter(
             strategy_task::Column::Phase
@@ -91,30 +94,17 @@ pub async fn run_once(db: &DatabaseConnection, agent_client: &SharedAgentTaskCli
     };
 
     let now = Utc::now().fixed_offset();
-    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_STATUS_FETCHES));
-    let mut handles = Vec::with_capacity(rows.len());
-    for row in rows {
-        let agent_client = agent_client.clone();
-        let db = db.clone();
-        let sem = semaphore.clone();
-        handles.push(tokio::spawn(async move {
-            // semaphore で t-rader-agent への同時接続数を制限する。
-            let _permit = match sem.acquire_owned().await {
-                Ok(permit) => permit,
-                Err(_) => return false,
-            };
-            reconcile_one(&db, &agent_client, row, now).await
-        }));
-    }
-
+    let results =
+        crate::concurrent::map_concurrent(rows, MAX_CONCURRENT_STATUS_FETCHES, |row| async move {
+            reconcile_one(db, agent_client, row, now).await
+        })
+        .await;
     let mut updated = 0usize;
-    for handle in handles {
-        match handle.await {
+    for result in results {
+        match result {
             Ok(true) => updated += 1,
             Ok(false) => {}
-            Err(err) => {
-                tracing::warn!(error = %err, "strategy_task reconcile task panicked");
-            }
+            Err(()) => tracing::warn!("strategy_task reconcile task panicked"),
         }
     }
     updated
@@ -122,7 +112,7 @@ pub async fn run_once(db: &DatabaseConnection, agent_client: &SharedAgentTaskCli
 
 /// 単一行の status 取得 → phase 反映を行う。更新が走った場合のみ `true` を返す。
 async fn reconcile_one(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     agent_client: &SharedAgentTaskClient,
     row: strategy_task::Model,
     now: DateTime<FixedOffset>,
@@ -182,7 +172,7 @@ async fn reconcile_one(
 /// result_text/steps はエージェントから届いた内容をそのまま反映する
 /// (deadline 超過は phase/error_summary のみを上書きする)。
 async fn apply_status(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     row: strategy_task::Model,
     status: AgentTaskStatus,
     now: DateTime<FixedOffset>,
@@ -203,7 +193,11 @@ async fn apply_status(
     apply_phase_logged(db, row, new_phase, new_error, new_result_text, new_steps).await
 }
 
-async fn apply_failed(db: &DatabaseConnection, row: strategy_task::Model, message: String) -> bool {
+async fn apply_failed(
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    row: strategy_task::Model,
+    message: String,
+) -> bool {
     apply_phase_logged(
         db,
         row,
@@ -217,7 +211,7 @@ async fn apply_failed(db: &DatabaseConnection, row: strategy_task::Model, messag
 
 /// `apply_phase` を呼び、失敗した場合はログを残して `false` にフォールバックする。
 async fn apply_phase_logged(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     row: strategy_task::Model,
     new_phase: StrategyTaskPhase,
     new_error: Option<String>,
@@ -241,7 +235,7 @@ async fn apply_phase_logged(
 /// Completed/Failed に進んでいるのに steps が反映されない (またはその逆の) 行が生じ、
 /// `run_once` の対象 (`phase IN ('pending', 'running')`) から外れて恒久的に取り残される。
 async fn apply_phase(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     row: strategy_task::Model,
     new_phase: StrategyTaskPhase,
     new_error: Option<String>,
@@ -329,7 +323,7 @@ mod tests {
 
     use super::*;
 
-    async fn insert_strategy(db: &DatabaseConnection) -> Uuid {
+    async fn insert_strategy(db: &impl sea_orm::ConnectionTrait) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),
@@ -348,7 +342,7 @@ mod tests {
     /// `deadline_offset` だけ現在時刻からずらした deadline_at を持つ行を挿入する。
     /// 過去にすれば「deadline 超過」、未来にすれば「deadline 未到来」の状態を作れる。
     async fn insert_task(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         a2a_task_id: Option<&str>,
         phase: StrategyTaskPhase,
@@ -378,7 +372,7 @@ mod tests {
         task_id
     }
 
-    async fn fetch_task(db: &DatabaseConnection, task_id: Uuid) -> strategy_task::Model {
+    async fn fetch_task(db: &impl sea_orm::ConnectionTrait, task_id: Uuid) -> strategy_task::Model {
         strategy_task::Entity::find_by_id(task_id)
             .one(db)
             .await
@@ -386,7 +380,10 @@ mod tests {
             .unwrap()
     }
 
-    async fn fetch_steps(db: &DatabaseConnection, task_id: Uuid) -> Vec<strategy_task_step::Model> {
+    async fn fetch_steps(
+        db: &impl sea_orm::ConnectionTrait,
+        task_id: Uuid,
+    ) -> Vec<strategy_task_step::Model> {
         strategy_task_step::Entity::find()
             .filter(strategy_task_step::Column::TaskId.eq(task_id))
             .order_by_asc(strategy_task_step::Column::Seq)
@@ -1277,7 +1274,7 @@ mod tests {
     /// 自動 resume が起きなかったこと (phase が Failed のまま、agent への再投入が
     /// 発生していないこと) をまとめて検証する。
     async fn assert_not_auto_resumed(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         task_id: Uuid,
         fake: &FakeAgentTaskClient,
     ) {

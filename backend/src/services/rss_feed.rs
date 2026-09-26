@@ -7,8 +7,8 @@ use chrono::Utc;
 use reqwest::Url;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel,
-    QueryFilter, QueryOrder, RuntimeErr, SqlErr,
+    ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    RuntimeErr, SqlErr,
 };
 use uuid::Uuid;
 
@@ -101,7 +101,7 @@ fn classify_insert_error(err: DbErr, source: &str) -> RssFeedError {
 
 /// 全件 (またはフィルタした) フィードを display_name 昇順で返す
 pub async fn list(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     enabled_only: bool,
 ) -> Result<Vec<rss_feed::Model>, RssFeedError> {
     let mut query = rss_feed::Entity::find();
@@ -116,7 +116,7 @@ pub async fn list(
 }
 
 pub async fn create(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     input: CreateInput,
 ) -> Result<rss_feed::Model, RssFeedError> {
     let source = validate_source(&input.source)?;
@@ -138,7 +138,7 @@ pub async fn create(
 }
 
 pub async fn update(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
     patch: UpdatePatch,
 ) -> Result<rss_feed::Model, RssFeedError> {
@@ -160,7 +160,7 @@ pub async fn update(
     Ok(active.update(db).await?)
 }
 
-pub async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<(), RssFeedError> {
+pub async fn delete(db: &impl sea_orm::ConnectionTrait, id: Uuid) -> Result<(), RssFeedError> {
     let result = rss_feed::Entity::delete_by_id(id).exec(db).await?;
     if result.rows_affected == 0 {
         return Err(RssFeedError::NotFound(id));

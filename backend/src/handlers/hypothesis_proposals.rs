@@ -1,6 +1,6 @@
 use axum::Json;
 use axum::extract::State;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -14,7 +14,7 @@ use crate::services::hypotheses::find_hypothesis_or_404;
 use crate::services::hypothesis_proposals;
 
 async fn find_proposal_or_404(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<hypothesis_proposal::Model, AppError> {
     hypothesis_proposal::Entity::find_by_id(id)

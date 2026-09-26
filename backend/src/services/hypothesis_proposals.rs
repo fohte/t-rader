@@ -8,8 +8,7 @@ use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::{Expr, ExprTrait};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
-    TransactionTrait,
+    ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter, TransactionSession,
 };
 use uuid::Uuid;
 
@@ -60,7 +59,7 @@ async fn claim_pending_proposal<C: ConnectionTrait>(
 /// 提案を承認する。`pending` の場合のみ、指定されたフィールドだけを仮説本体に反映する。
 /// `approved` は再適用せず現在値を返す (冪等)。`rejected` からは遷移できない。
 pub async fn approve_proposal(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     proposal_id: Uuid,
     review_note: Option<String>,
 ) -> Result<(hypothesis_proposal::Model, hypothesis::Model), AppError> {
@@ -108,7 +107,7 @@ pub async fn approve_proposal(
 /// 提案を却下する。hypothesis 本体には触れない。`rejected` は再適用せず現在値を返す (冪等)。
 /// `approved` からは遷移できない。
 pub async fn reject_proposal(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     proposal_id: Uuid,
     review_note: Option<String>,
 ) -> Result<hypothesis_proposal::Model, AppError> {
@@ -146,7 +145,7 @@ mod tests {
     }
 
     async fn seed_hypothesis(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         title: &str,
         body: &str,
@@ -156,7 +155,7 @@ mod tests {
     }
 
     async fn seed_proposal(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         hypothesis_id: Uuid,
         proposed_title: Option<&str>,
         proposed_body: Option<&str>,

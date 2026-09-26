@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, Set};
+use sea_orm::{EntityTrait, Set};
 
 use crate::data_provider::DailyBarSource;
 use crate::date_utils::latest_business_day;
@@ -28,7 +28,7 @@ pub struct LatestPrices {
 /// 日足データ取得元から再取得を試みる。全銘柄中の最新観測日 (`priced_at`) に満たない
 /// 銘柄は結果から省かれる。
 pub async fn fetch_latest_prices(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     provider: Option<&dyn DailyBarSource>,
     symbols: &[String],
 ) -> LatestPrices {
@@ -98,7 +98,7 @@ fn select_common_priced_at(
 /// 価格取得の前提として `instruments` 行を保証する (`bars` の FK 制約のため)。
 /// 銘柄情報が未登録なら symbol を name として仮登録する。
 async fn ensure_instrument_exists(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     symbol: &str,
 ) -> Result<(), sea_orm::DbErr> {
     let model = instruments::ActiveModel {
@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(provider.calls.lock().expect("lock").as_slice(), expected);
     }
 
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
             name: Set(format!("Test {id}")),

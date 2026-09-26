@@ -180,7 +180,7 @@ fn f64_field(raw: &serde_json::Value, key: &str) -> Option<f64> {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use serde_json::json;
     use sqlx::PgPool;
     use uuid::Uuid;
@@ -238,7 +238,12 @@ mod tests {
         }
     }
 
-    async fn seed(db: &DatabaseConnection, code: &str, disc_no: &str, raw: serde_json::Value) {
+    async fn seed(
+        db: &impl sea_orm::ConnectionTrait,
+        code: &str,
+        disc_no: &str,
+        raw: serde_json::Value,
+    ) {
         let disc_date = raw
             .get("DiscDate")
             .and_then(|v| v.as_str())

@@ -191,7 +191,7 @@ mod tests {
     use super::super::dto::{EvalIndicatorParams, EvalIndicatorResult};
     use super::{EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_TIMEOUT_SECS};
 
-    async fn insert_strategy(db: &sea_orm::DatabaseConnection, name: &str) -> Uuid {
+    async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),
@@ -208,7 +208,7 @@ mod tests {
     }
 
     async fn insert_indicator(
-        db: &sea_orm::DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         scope: &str,
         strategy_id: Option<Uuid>,
         name: &str,

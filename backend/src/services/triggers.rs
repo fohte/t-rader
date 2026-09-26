@@ -7,7 +7,7 @@
 use chrono::Utc;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{DatabaseConnection, EntityTrait, IntoActiveModel};
+use sea_orm::{EntityTrait, IntoActiveModel};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -34,7 +34,7 @@ pub enum FireTriggerError {
 /// 呼び出し側は重複発火を許容する前提で組むこと: submit 成功後に `last_fired_at` 更新が
 /// 失敗すると次回 worker 走査で再発火しうる。
 pub async fn fire_trigger(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     trigger_id: Uuid,
     payload: Value,
@@ -327,7 +327,7 @@ mod fire_tests {
 
     use super::*;
 
-    async fn seed_strategy(db: &sea_orm::DatabaseConnection, name: &str) -> Uuid {
+    async fn seed_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),
@@ -344,7 +344,7 @@ mod fire_tests {
     }
 
     async fn seed_hook_trigger(
-        db: &sea_orm::DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         slug: &str,
         prompt_template: &str,

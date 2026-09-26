@@ -2,7 +2,6 @@ use chrono::NaiveDate;
 use core_application::{ShareholdingStructureSource, ShareholdingStructureSourceError};
 use core_domain::holdings::LargeVolumeShareholdingDocument;
 use sea_orm::ActiveValue::Set;
-use sea_orm::DatabaseConnection;
 use sea_orm::sea_query::OnConflict;
 
 use crate::entities::large_volume_shareholding_documents::{ActiveModel, Column, Entity};
@@ -20,7 +19,7 @@ impl super::EdinetEndpoint for Endpoint {
     }
 
     async fn latest_submitted_on(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
     ) -> Result<Option<NaiveDate>, sea_orm::DbErr> {
         super::latest_submitted_on_of::<Entity, _>(db, Column::SubmittedOn, |model| {
             model.submitted_on
@@ -36,7 +35,7 @@ impl super::EdinetEndpoint for Endpoint {
     }
 
     async fn upsert(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         documents: Vec<Self::Document>,
     ) -> Result<usize, sea_orm::DbErr> {
         super::upsert_documents::<Entity, _>(

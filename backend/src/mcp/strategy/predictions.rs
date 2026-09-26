@@ -6,7 +6,7 @@
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::entities::{prediction, stock};
@@ -47,7 +47,7 @@ fn prediction_to_dto(m: prediction::Model) -> PredictionDto {
     }
 }
 
-async fn ensure_stock_exists(db: &DatabaseConnection, id: &str) -> Result<(), McpError> {
+async fn ensure_stock_exists(db: &impl sea_orm::ConnectionTrait, id: &str) -> Result<(), McpError> {
     let exists = stock::Entity::find_by_id(id)
         .one(db)
         .await

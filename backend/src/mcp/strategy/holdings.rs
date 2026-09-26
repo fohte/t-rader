@@ -76,7 +76,7 @@ fn cross_shareholding_dto(entry: DomainCrossShareholding) -> CrossShareholdingDt
 /// major_shareholders / cross_shareholdings は「直近の書類のみ返す」という同じクエリ形を
 /// entity 違いで繰り返すため、ここに切り出す。
 async fn latest_matching_document<E>(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     code_column: E::Column,
     sub_date_column: E::Column,
     doc_id_column: E::Column,
@@ -320,7 +320,7 @@ mod tests {
     }
 
     async fn insert_large_volume(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         document_id: &str,
         stock_code: &str,
         submitted_on: NaiveDate,
@@ -341,7 +341,7 @@ mod tests {
     }
 
     async fn insert_major_shareholders(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         document_id: &str,
         stock_code: &str,
         submitted_on: NaiveDate,
@@ -362,7 +362,7 @@ mod tests {
     }
 
     async fn insert_cross_shareholdings(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         document_id: &str,
         stock_code: &str,
         submitted_on: NaiveDate,

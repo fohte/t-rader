@@ -10,7 +10,7 @@ use std::collections::{BTreeSet, HashMap};
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::stock;
@@ -149,7 +149,7 @@ impl StrategyServer {
 }
 
 async fn fetch_sector_by_symbol(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     symbols: &[String],
 ) -> Result<HashMap<String, Option<String>>, DbErr> {
     let rows = stock::Entity::find()
@@ -464,7 +464,7 @@ mod integration_tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait};
+    use sea_orm::EntityTrait;
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -478,7 +478,7 @@ mod integration_tests {
     use super::super::tests_common::{build_server, insert_strategy};
 
     async fn seed_trade(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         symbol: &str,
         qty: i64,
@@ -503,7 +503,7 @@ mod integration_tests {
         .expect("seed trade");
     }
 
-    async fn seed_bar(db: &DatabaseConnection, symbol: &str, close: i64) {
+    async fn seed_bar(db: &impl sea_orm::ConnectionTrait, symbol: &str, close: i64) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(symbol.to_string()),
             name: Set(symbol.to_string()),
@@ -533,7 +533,11 @@ mod integration_tests {
         .expect("seed bar");
     }
 
-    async fn insert_stock(db: &DatabaseConnection, symbol: &str, sector_id: Option<&str>) {
+    async fn insert_stock(
+        db: &impl sea_orm::ConnectionTrait,
+        symbol: &str,
+        sector_id: Option<&str>,
+    ) {
         if let Some(sector_id) = sector_id {
             sector::Entity::insert(sector::ActiveModel {
                 id: Set(sector_id.to_string()),
@@ -562,13 +566,17 @@ mod integration_tests {
         .expect("insert test stock");
     }
 
-    async fn set_max_sector_ratio(db: &DatabaseConnection, ratio: &str) {
+    async fn set_max_sector_ratio(db: &impl sea_orm::ConnectionTrait, ratio: &str) {
         account_risk_policy::save(db, serde_json::json!({ "max_sector_ratio": ratio }))
             .await
             .expect("set max_sector_ratio");
     }
 
-    async fn record_investable_amount(db: &DatabaseConnection, strategy_id: Uuid, amount: i64) {
+    async fn record_investable_amount(
+        db: &impl sea_orm::ConnectionTrait,
+        strategy_id: Uuid,
+        amount: i64,
+    ) {
         investable_amount::record(
             db,
             strategy_id,

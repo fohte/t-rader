@@ -117,8 +117,8 @@ mod tests {
 
     use chrono::{Duration, TimeZone, Utc};
     use rust_decimal::Decimal;
+    use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ActiveModelTrait, DatabaseConnection};
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -136,7 +136,7 @@ mod tests {
     use super::super::tests_common::{build_server, insert_strategy};
 
     async fn seed_trade(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         symbol: &str,
         side: &str,

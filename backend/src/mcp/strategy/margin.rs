@@ -245,7 +245,7 @@ impl StrategyServer {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -278,7 +278,7 @@ mod tests {
     }
 
     async fn seed_interest(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         date: chrono::NaiveDate,
         code: &str,
         iss_type: i16,
@@ -308,7 +308,7 @@ mod tests {
     }
 
     async fn seed_alert(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         pub_date: chrono::NaiveDate,
         app_date: chrono::NaiveDate,
         code: &str,

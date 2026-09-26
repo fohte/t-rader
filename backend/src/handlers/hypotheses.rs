@@ -5,7 +5,7 @@ use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
     ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
-    TransactionTrait,
+    TransactionSession,
 };
 use serde::Deserialize;
 use utoipa::IntoParams;
@@ -56,7 +56,7 @@ async fn ensure_notes_belong_to_scope<C: sea_orm::ConnectionTrait>(
 }
 
 async fn find_hypothesis_for_strategy(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     hypothesis_id: Uuid,
 ) -> Result<hypothesis::Model, AppError> {
@@ -171,7 +171,7 @@ pub async fn create_hypothesis(
 
 /// 仮説作成の共通ロジック。`strategy_id` が `None` なら global 仮説になる。
 async fn insert_hypothesis(
-    db: &sea_orm::DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     p: CreateHypothesisRequest,
 ) -> Result<hypothesis::Model, AppError> {
@@ -309,7 +309,7 @@ pub async fn update_hypothesis(
 
 /// 仮説更新の共通ロジック。note の scope チェックは `current.strategy_id` を基準に行う。
 async fn apply_hypothesis_update(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     current: hypothesis::Model,
     p: UpdateHypothesisRequest,
 ) -> Result<hypothesis::Model, AppError> {
@@ -413,7 +413,7 @@ pub async fn delete_hypothesis(
 #[cfg(test)]
 mod tests {
     use axum::http::StatusCode;
-    use sea_orm::DatabaseConnection;
+
     use serde_json::json;
     use sqlx::PgPool;
     use uuid::Uuid;
@@ -422,7 +422,10 @@ mod tests {
         create_test_server_with_db, insert_test_note_in_scope, insert_test_strategy,
     };
 
-    async fn seed_note(db: &DatabaseConnection, strategy_id: Option<Uuid>) -> Uuid {
+    async fn seed_note(
+        db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+        strategy_id: Option<Uuid>,
+    ) -> Uuid {
         insert_test_note_in_scope(db, strategy_id, "t", "b").await
     }
 

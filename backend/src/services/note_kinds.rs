@@ -2,8 +2,8 @@
 
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, SqlErr, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, IntoActiveModel,
+    QueryFilter, QueryOrder, QuerySelect, SqlErr, TransactionSession,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -69,7 +69,7 @@ fn map_insert_error(error: DbErr, key: &str) -> AppError {
     AppError::Database(error)
 }
 
-pub async fn list(db: &DatabaseConnection) -> Result<Vec<note_kind::Model>, AppError> {
+pub async fn list(db: &impl sea_orm::ConnectionTrait) -> Result<Vec<note_kind::Model>, AppError> {
     Ok(note_kind::Entity::find()
         .order_by_asc(note_kind::Column::SortOrder)
         .order_by_asc(note_kind::Column::Key)
@@ -92,7 +92,7 @@ pub async fn ensure_reference<C: ConnectionTrait>(db: &C, key: &str) -> Result<(
 }
 
 pub async fn create(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     actor: Actor,
     input: CreateNoteKind,
 ) -> Result<note_kind::Model, AppError> {
@@ -132,7 +132,7 @@ pub async fn create(
 }
 
 pub async fn update(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     actor: Actor,
     key: &str,
     patch: UpdateNoteKind,
@@ -233,7 +233,11 @@ pub async fn update(
     Ok(updated)
 }
 
-pub async fn delete(db: &DatabaseConnection, actor: Actor, key: &str) -> Result<(), AppError> {
+pub async fn delete(
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    actor: Actor,
+    key: &str,
+) -> Result<(), AppError> {
     let key = validate_key(key)?;
     let txn = db.begin().await?;
     let _current = find_by_key(&txn, &key).await?;

@@ -142,7 +142,7 @@ impl StrategyServer {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait};
+    use sea_orm::EntityTrait;
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -152,7 +152,12 @@ mod tests {
     use super::super::tests_common::build_server;
     use super::{AddRefTermsParams, RemoveRefTermsParams};
 
-    async fn seed_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
+    async fn seed_term(
+        db: &impl sea_orm::ConnectionTrait,
+        ref_kind: &str,
+        ref_id: &str,
+        term: &str,
+    ) {
         ref_term::ActiveModel {
             ref_kind: Set(ref_kind.into()),
             ref_id: Set(ref_id.into()),

@@ -59,7 +59,7 @@ fn target_dates(business_days: &[NaiveDate], ingested: &HashSet<NaiveDate>) -> V
 
 /// `from` 以降の取り込み済み営業日を返す。
 async fn find_ingested_dates(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     from: NaiveDate,
 ) -> Result<HashSet<NaiveDate>, AppError> {
     let rows = valuation_ingested_date::Entity::find()
@@ -70,7 +70,10 @@ async fn find_ingested_dates(
 }
 
 /// 取り込み済み営業日を記録する。
-async fn mark_ingested(db: &DatabaseConnection, date: NaiveDate) -> Result<(), AppError> {
+async fn mark_ingested(
+    db: &impl sea_orm::ConnectionTrait,
+    date: NaiveDate,
+) -> Result<(), AppError> {
     valuation_ingested_date::Entity::insert(valuation_ingested_date::ActiveModel {
         date: Set(date),
     })
@@ -86,7 +89,7 @@ async fn mark_ingested(db: &DatabaseConnection, date: NaiveDate) -> Result<(), A
 
 /// 1 日分の指標を型付きカラムへ upsert する。
 async fn upsert_valuations(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     items: Vec<Valuation>,
 ) -> Result<usize, AppError> {
     if items.is_empty() {
@@ -135,7 +138,7 @@ async fn upsert_valuations(
 
 /// 1 サイクル実行。データソースが取得可能範囲を返さない場合はスキップする。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn ValuationSource,
 ) -> Result<IngestStats, AppError> {
     let today = Utc::now().date_naive();

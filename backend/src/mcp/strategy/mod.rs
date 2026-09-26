@@ -269,7 +269,7 @@ fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String
 }
 
 pub(super) async fn fetch_note_owned_by(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
     expected: Uuid,
 ) -> Result<note::Model, McpError> {
@@ -287,7 +287,7 @@ pub(super) async fn fetch_note_owned_by(
 }
 
 pub(super) async fn fetch_annotation_owned_by(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     annotation_id: Uuid,
     expected: Uuid,
 ) -> Result<annotation::Model, McpError> {
@@ -305,7 +305,7 @@ pub(super) async fn fetch_annotation_owned_by(
 }
 
 pub(super) async fn ensure_strategy_exists(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<(), McpError> {
     let exists = strategy::Entity::find_by_id(id)

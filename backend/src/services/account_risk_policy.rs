@@ -2,8 +2,8 @@
 //! 行が存在しない間は「未設定」を表し、初回保存時に作成する。
 
 use sea_orm::ActiveValue::Set;
+use sea_orm::EntityTrait;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait};
 
 use crate::entities::account_risk_policy;
 use crate::error::AppError;
@@ -11,7 +11,7 @@ use crate::error::AppError;
 const SINGLETON_ID: i16 = 1;
 
 pub async fn find_current(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
 ) -> Result<Option<account_risk_policy::Model>, AppError> {
     let row = account_risk_policy::Entity::find_by_id(SINGLETON_ID)
         .one(db)
@@ -20,7 +20,7 @@ pub async fn find_current(
 }
 
 pub async fn save(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     risk_policy: serde_json::Value,
 ) -> Result<account_risk_policy::Model, AppError> {
     let prev = find_current(db).await?;

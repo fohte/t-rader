@@ -48,7 +48,7 @@ fn compute_return(base: Decimal, due: Decimal) -> Option<Decimal> {
 /// 1 件の予測を採点する。終値がまだ揃っていない場合は `Ok(None)` を返し、次回サイクルに
 /// 持ち越す。
 async fn try_grade(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     p: &prediction::Model,
 ) -> Result<Option<GradedOutcome>, AppError> {
     let due_bday = crate::date_utils::latest_business_day(p.due_date);
@@ -144,7 +144,9 @@ async fn try_grade(
 
 /// 期限到来済みかつ未採点の予測をまとめて採点する。全戦略横断で対象を取得する
 /// (個人利用規模のため全件取得で問題ない)。
-pub async fn run_grading_cycle(db: &DatabaseConnection) -> Result<GradingStats, AppError> {
+pub async fn run_grading_cycle(
+    db: &impl sea_orm::ConnectionTrait,
+) -> Result<GradingStats, AppError> {
     let today = chrono::Utc::now().date_naive();
 
     let due_predictions = prediction::Entity::find()
@@ -260,7 +262,7 @@ mod tests {
 
     /// `stock` (prediction の FK 先) と `instruments` (bars の FK 先) は別テーブルなので、
     /// 同じ id で両方に行を作る。
-    async fn insert_test_target(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn insert_test_target(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         insert_test_stock(db, id, name).await;
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
@@ -292,7 +294,7 @@ mod tests {
 
     /// テスト用の予測を 1 件挿入する。`base_date`/`due_date` 以外は固定値。
     async fn insert_prediction(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         target_stock_id: &str,
         benchmark_stock_id: &str,
@@ -320,7 +322,7 @@ mod tests {
     }
 
     async fn find_grade(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         prediction_id: Uuid,
     ) -> Option<prediction_grade::Model> {
         prediction_grade::Entity::find_by_id(prediction_id)
@@ -332,7 +334,7 @@ mod tests {
     /// 2026-06-15 (月・平日) を base、2026-06-22 (月・平日) を due とする共通シナリオ。
     /// target/benchmark ともに base/due の日足が揃っている前提を作る。
     async fn seed_scenario(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         target_base: i64,
         target_due: i64,
         benchmark_base: i64,

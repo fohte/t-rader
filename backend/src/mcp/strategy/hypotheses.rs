@@ -47,7 +47,7 @@ fn hypothesis_to_dto(m: hypothesis::Model) -> HypothesisDto {
 
 /// id で仮説を取得し、自戦略または global (`strategy_id IS NULL`) のものだけ通す。
 async fn fetch_hypothesis_visible_to(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     hypothesis_id: Uuid,
     session_strategy_id: Uuid,
 ) -> Result<hypothesis::Model, McpError> {

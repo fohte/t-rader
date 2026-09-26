@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
+use sea_orm::{EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_interest;
 use crate::error::AppError;
@@ -31,7 +31,7 @@ impl From<MarginInterestRecord> for margin_interest::ActiveModel {
 /// 信用取引週末残高を一括 upsert する。複合 PK (date, code, iss_type) で重複排除し、
 /// 既存行は数量・金額カラムを更新する (J-Quants の訂正は上書きで反映されるため)。
 pub async fn upsert_margin_interest(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     records: Vec<MarginInterestRecord>,
 ) -> Result<(), AppError> {
     if records.is_empty() {
@@ -71,7 +71,7 @@ pub async fn upsert_margin_interest(
 }
 
 pub async fn find_latest_margin_interest_date(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
 ) -> Result<Option<NaiveDate>, AppError> {
     let latest = margin_interest::Entity::find()
         .order_by_desc(margin_interest::Column::Date)

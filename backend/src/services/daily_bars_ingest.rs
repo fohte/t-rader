@@ -68,7 +68,7 @@ fn target_dates(business_days: &[NaiveDate], ingested: &HashSet<NaiveDate>) -> V
 
 /// `from` 以降で記録済みの取り込み日を返す。
 async fn find_ingested_dates(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     from: NaiveDate,
 ) -> Result<HashSet<NaiveDate>, AppError> {
     let rows = jquants_daily_bars_ingested_date::Entity::find()
@@ -81,7 +81,7 @@ async fn find_ingested_dates(
 /// `bars` の FK 制約のため `instruments` 行を保証する。銘柄名などの詳細は把握できないため、
 /// 銘柄コードをそのまま仮の name として登録する。
 async fn ensure_instruments_exist(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     instrument_ids: &HashSet<String>,
 ) -> Result<(), AppError> {
     if instrument_ids.is_empty() {
@@ -108,7 +108,10 @@ async fn ensure_instruments_exist(
 }
 
 /// `date` の取り込み日を記録する。既に記録済みなら何もしない。
-async fn mark_ingested(db: &DatabaseConnection, date: NaiveDate) -> Result<(), AppError> {
+async fn mark_ingested(
+    db: &impl sea_orm::ConnectionTrait,
+    date: NaiveDate,
+) -> Result<(), AppError> {
     jquants_daily_bars_ingested_date::Entity::insert(
         jquants_daily_bars_ingested_date::ActiveModel { date: Set(date) },
     )
@@ -125,7 +128,7 @@ async fn mark_ingested(db: &DatabaseConnection, date: NaiveDate) -> Result<(), A
 /// `date` の日足を取り込む。まだ公開されていない (0 件) 場合は取り込み日を記録せず
 /// `0` を返す。
 async fn ingest_date(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn MarketDailyBarSource,
     date: NaiveDate,
 ) -> Result<usize, AppError> {
@@ -147,7 +150,7 @@ async fn ingest_date(
 
 /// 日足を取り込む 1 サイクル。取得元が取得できる範囲を返さない間は取り込まない。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn MarketDailyBarSource,
 ) -> Result<IngestStats, AppError> {
     let today = Utc::now().date_naive();
@@ -240,7 +243,7 @@ mod tests {
         }
     }
 
-    async fn seed_ingested(db: &DatabaseConnection, date: NaiveDate) {
+    async fn seed_ingested(db: &impl sea_orm::ConnectionTrait, date: NaiveDate) {
         jquants_daily_bars_ingested_date::ActiveModel { date: Set(date) }
             .insert(db)
             .await

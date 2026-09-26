@@ -58,7 +58,9 @@ fn fetch_range(
 }
 
 /// 格納済みの最新開示日を返す。1 件も無ければ `None`。
-async fn find_latest_disc_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+async fn find_latest_disc_date(
+    db: &impl sea_orm::ConnectionTrait,
+) -> Result<Option<NaiveDate>, AppError> {
     let latest = jquants_fin_summary::Entity::find()
         .order_by_desc(jquants_fin_summary::Column::DiscDate)
         .one(db)
@@ -85,7 +87,7 @@ fn extract_key_fields(
 /// 1 日分のレスポンスを `jquants_fin_summary` に upsert する。(code, disc_no) が同じ行は
 /// 上書きする。
 async fn upsert_fin_summaries(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     items: Vec<serde_json::Value>,
 ) -> Result<usize, AppError> {
     if items.is_empty() {
@@ -126,7 +128,7 @@ async fn upsert_fin_summaries(
 /// 財務情報を取り込む 1 サイクル。契約プラン未設定の間は取り込まない
 /// (未設定時のレートリミットは 5 req/分で、バックフィルに数日かかるため)。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     client: &JQuantsClient,
 ) -> Result<IngestStats, AppError> {
     let Some(plan) = client.manual_plan() else {
@@ -365,7 +367,7 @@ mod tests {
     }
 
     async fn seed_fin_summary(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         code: &str,
         disc_no: &str,
         disc_date: NaiveDate,

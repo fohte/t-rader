@@ -15,7 +15,7 @@ use crate::models::{CreateTradeNoteRequest, NoteResponse};
 use crate::services::note_versions::find_initial_created_by_kind;
 
 async fn find_trade_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     trade_id: Uuid,
 ) -> Result<trade::Model, AppError> {
     trade::Entity::find_by_id(trade_id)
@@ -187,7 +187,7 @@ mod tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::DatabaseConnection;
+
     use serde_json::json;
     use sqlx::PgPool;
     use uuid::Uuid;
@@ -197,7 +197,7 @@ mod tests {
         create_test_server_with_db, insert_test_note_in_scope, insert_test_strategy,
     };
 
-    async fn seed_trade(db: &DatabaseConnection, strategy_id: Uuid) -> Uuid {
+    async fn seed_trade(db: &impl sea_orm::ConnectionTrait, strategy_id: Uuid) -> Uuid {
         let id = Uuid::new_v4();
         trade::ActiveModel {
             id: Set(id),
@@ -219,7 +219,10 @@ mod tests {
         id
     }
 
-    async fn seed_note(db: &DatabaseConnection, strategy_id: Option<Uuid>) -> Uuid {
+    async fn seed_note(
+        db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+        strategy_id: Option<Uuid>,
+    ) -> Uuid {
         insert_test_note_in_scope(db, strategy_id, "t", "b").await
     }
 

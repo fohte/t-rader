@@ -148,7 +148,7 @@ mod tests {
         }
     }
 
-    async fn seed_strategy(db: &sea_orm::DatabaseConnection, name: &str) -> Uuid {
+    async fn seed_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),

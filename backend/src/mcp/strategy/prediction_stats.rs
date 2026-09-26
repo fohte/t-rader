@@ -78,8 +78,8 @@ impl StrategyServer {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
+    use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ActiveModelTrait, DatabaseConnection};
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -90,7 +90,11 @@ mod tests {
     use super::super::tests_common::{build_server, insert_strategy};
 
     /// prediction を 1 件 seed する (MCP tool を経由せず ActiveModel で直接 insert)。
-    async fn seed_prediction(db: &DatabaseConnection, strategy_id: Uuid, probability: f64) -> Uuid {
+    async fn seed_prediction(
+        db: &impl sea_orm::ConnectionTrait,
+        strategy_id: Uuid,
+        probability: f64,
+    ) -> Uuid {
         let id = Uuid::new_v4();
         prediction::ActiveModel {
             prediction_id: Set(id),
@@ -111,7 +115,7 @@ mod tests {
     }
 
     /// 指定 prediction の採点結果を seed する。
-    async fn seed_grade(db: &DatabaseConnection, prediction_id: Uuid, correct: bool) {
+    async fn seed_grade(db: &impl sea_orm::ConnectionTrait, prediction_id: Uuid, correct: bool) {
         prediction_grade::ActiveModel {
             prediction_id: Set(prediction_id),
             target_base_close: Set(rust_decimal::Decimal::new(1000, 0)),

@@ -1,6 +1,6 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 
 use crate::entities::bars;
 use crate::error::AppError;
@@ -42,7 +42,10 @@ impl From<bars::Model> for Bar {
 ///
 /// 複合 PK (instrument_id, timeframe, timestamp) で重複排除し、
 /// 既存行は OHLCV カラムを更新する。
-pub async fn upsert_bars(db: &DatabaseConnection, bars_data: Vec<Bar>) -> Result<(), AppError> {
+pub async fn upsert_bars(
+    db: &impl sea_orm::ConnectionTrait,
+    bars_data: Vec<Bar>,
+) -> Result<(), AppError> {
     if bars_data.is_empty() {
         return Ok(());
     }
@@ -81,7 +84,7 @@ pub struct BarsQuery {
 
 /// 条件に一致するバーデータを取得する
 pub async fn find_bars(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     query: BarsQuery,
 ) -> Result<Vec<bars::Model>, AppError> {
     let mut select = bars::Entity::find()
@@ -104,7 +107,7 @@ pub async fn find_bars(
 /// 複数銘柄に一致するバーデータをまとめて取得する。日付範囲は全銘柄共通の条件として扱う。
 /// 結果は instrument_id 昇順 → timestamp 昇順。
 pub async fn find_bars_by_instruments(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     instrument_ids: &[String],
     timeframe: &str,
     from: Option<DateTime<FixedOffset>>,
@@ -133,7 +136,7 @@ pub async fn find_bars_by_instruments(
 
 /// 銘柄の最新の日足バーを 1 件返す。無ければ `None`。
 pub async fn find_latest_bar(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     instrument_id: &str,
     timeframe: &str,
 ) -> Result<Option<bars::Model>, AppError> {
@@ -149,7 +152,7 @@ pub async fn find_latest_bar(
 /// 指定日以前で最新の日足バーを 1 件返す。無ければ `None`。
 /// 期限日・基準日が非営業日の場合に直近の営業日の終値へフォールバックする用途を想定する。
 pub async fn find_latest_bar_on_or_before(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     instrument_id: &str,
     timeframe: &str,
     on_or_before: NaiveDate,
@@ -186,7 +189,7 @@ mod tests {
     use crate::testing::create_test_db;
 
     /// テスト用の instrument を DB に挿入する
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
             name: Set(format!("Test {id}")),

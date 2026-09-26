@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::agent_client::AgentTaskError;
@@ -22,7 +22,7 @@ use super::{MgmtServer, db_error, internal_error, invalid_params};
 
 /// annotation の `status='unread'` 件数を strategy_id ごとに集約して返す。
 async fn unread_counts_by_strategy<E, C>(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id_col: C,
     status_col: C,
     id_col: C,
@@ -49,7 +49,7 @@ where
 }
 
 async fn unread_note_counts_by_strategy(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
 ) -> Result<HashMap<Uuid, u64>, McpError> {
     let rows: Vec<(Uuid, i64)> = note::Entity::find()
         .select_only()

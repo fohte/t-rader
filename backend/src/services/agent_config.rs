@@ -9,8 +9,8 @@
 
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, IntoActiveModel,
-    QueryFilter, QueryOrder, RuntimeErr, SqlErr,
+    ActiveModelTrait, ColumnTrait, DbErr, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    RuntimeErr, SqlErr,
 };
 use uuid::Uuid;
 
@@ -124,7 +124,9 @@ pub fn apply_skills_patch(
 }
 
 /// purpose 昇順で全件返す
-pub async fn list(db: &DatabaseConnection) -> Result<Vec<agent_config::Model>, AgentConfigError> {
+pub async fn list(
+    db: &impl sea_orm::ConnectionTrait,
+) -> Result<Vec<agent_config::Model>, AgentConfigError> {
     Ok(agent_config::Entity::find()
         .order_by_asc(agent_config::Column::Purpose)
         .all(db)
@@ -132,7 +134,7 @@ pub async fn list(db: &DatabaseConnection) -> Result<Vec<agent_config::Model>, A
 }
 
 pub async fn find_or_404(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     purpose: &str,
 ) -> Result<agent_config::Model, AgentConfigError> {
     agent_config::Entity::find()
@@ -143,7 +145,7 @@ pub async fn find_or_404(
 }
 
 pub async fn create(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     purpose: String,
 ) -> Result<agent_config::Model, AgentConfigError> {
     validate_purpose(&purpose)?;
@@ -164,7 +166,10 @@ pub async fn create(
     Ok(created)
 }
 
-pub async fn delete(db: &DatabaseConnection, purpose: &str) -> Result<(), AgentConfigError> {
+pub async fn delete(
+    db: &impl sea_orm::ConnectionTrait,
+    purpose: &str,
+) -> Result<(), AgentConfigError> {
     let result = agent_config::Entity::delete_many()
         .filter(agent_config::Column::Purpose.eq(purpose))
         .exec(db)
@@ -177,7 +182,7 @@ pub async fn delete(db: &DatabaseConnection, purpose: &str) -> Result<(), AgentC
 }
 
 pub async fn save_agents_md(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     purpose: &str,
     content: String,
 ) -> Result<String, AgentConfigError> {
@@ -197,7 +202,7 @@ pub async fn save_agents_md(
 }
 
 async fn save_skills(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     current: agent_config::Model,
     skills: serde_json::Value,
 ) -> Result<agent_config::Model, AgentConfigError> {
@@ -214,7 +219,7 @@ async fn save_skills(
 
 /// skills 全置換
 pub async fn put_skills(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     purpose: &str,
     skills: std::collections::BTreeMap<String, String>,
 ) -> Result<agent_config::Model, AgentConfigError> {
@@ -231,7 +236,7 @@ pub async fn put_skills(
 
 /// 単一 skill の追加 / 更新
 pub async fn put_skill(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     purpose: &str,
     name: &str,
     content: String,
@@ -246,7 +251,7 @@ pub async fn put_skill(
 
 /// 単一 skill の削除。存在しない skill 名を指定した場合は `SkillNotFound` を返す。
 pub async fn delete_skill(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     purpose: &str,
     name: &str,
 ) -> Result<agent_config::Model, AgentConfigError> {
@@ -260,7 +265,7 @@ pub async fn delete_skill(
 
 /// agent_graph の YAML を検証した上で保存する。
 pub async fn save_agent_graph(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     purpose: &str,
     content: &str,
 ) -> Result<String, AgentConfigError> {

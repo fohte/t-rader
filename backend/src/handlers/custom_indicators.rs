@@ -41,7 +41,7 @@ fn ensure_json_object(field: &str, value: &serde_json::Value) -> Result<(), AppE
 }
 
 async fn find_indicator_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     indicator_id: Uuid,
 ) -> Result<custom_indicator::Model, AppError> {
     custom_indicator::Entity::find_by_id(indicator_id)
@@ -51,7 +51,7 @@ async fn find_indicator_or_404(
 }
 
 async fn find_strategy_scoped_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     indicator_id: Uuid,
 ) -> Result<custom_indicator::Model, AppError> {

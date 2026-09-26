@@ -41,7 +41,7 @@ mod tests {
     use chrono::{DateTime, FixedOffset, NaiveDate};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -51,7 +51,7 @@ mod tests {
     };
 
     async fn seed_prediction(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         note_id: Option<Uuid>,
         target_stock_id: &str,

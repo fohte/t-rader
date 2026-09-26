@@ -35,11 +35,13 @@ impl DailyJQuantsIngest for ShortRatio {
         source.fetch_short_ratios(day).await
     }
 
-    async fn upsert(db: &DatabaseConnection, items: Vec<Self>) -> Result<(), AppError> {
+    async fn upsert(db: &impl sea_orm::ConnectionTrait, items: Vec<Self>) -> Result<(), AppError> {
         upsert_short_ratios(db, items).await
     }
 
-    async fn find_latest_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+    async fn find_latest_date(
+        db: &impl sea_orm::ConnectionTrait,
+    ) -> Result<Option<NaiveDate>, AppError> {
         find_latest_date(db).await
     }
 }
@@ -47,7 +49,7 @@ impl DailyJQuantsIngest for ShortRatio {
 /// 業種別空売り比率を DB 上の最新対象日から訂正分を遡った日付から当日まで、
 /// 日ごとに 1 リクエストずつ取得して upsert する。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn ShortSellingSource,
 ) -> Result<DailyIngestStats, AppError> {
     jquants_daily_ingest::run_ingest_cycle::<ShortRatio>(db, source).await

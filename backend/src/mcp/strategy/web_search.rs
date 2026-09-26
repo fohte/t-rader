@@ -8,7 +8,7 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::mcp_tool_call_count;
@@ -39,7 +39,7 @@ where
 /// `(task_execution_id, tool_name)` の呼び出し回数をアトミックにインクリメントし、
 /// インクリメント後の件数を返す。
 async fn increment_task_tool_call_count(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     task_execution_id: &str,
     tool_name: &str,
 ) -> Result<i32, McpError> {
@@ -80,7 +80,7 @@ async fn increment_task_tool_call_count(
 /// デクリメント自体が失敗しても呼び出し元のエラーはそのまま返したいので、結果は返さず
 /// warn ログのみ残す。
 async fn decrement_task_tool_call_count(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     task_execution_id: &str,
     tool_name: &str,
 ) {

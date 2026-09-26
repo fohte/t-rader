@@ -1,7 +1,6 @@
 //! execution_lost で failed になった戦略タスクの自動 resume 判定・実行。
 
 use chrono::{DateTime, FixedOffset};
-use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskStatus, EXECUTION_LOST_ERROR_KIND, SharedAgentTaskClient};
@@ -27,7 +26,7 @@ pub(super) fn is_eligible(
 /// 自動 resume を試みる。投入自体が失敗しても呼び出し元は再試行しない
 /// (claim 時点で auto_resumed_at が刻まれるため、次回以降は is_eligible が false になる)。
 pub(super) async fn attempt(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     task_id: Uuid,
 ) {

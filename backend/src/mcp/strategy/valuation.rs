@@ -101,7 +101,7 @@ mod tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -114,7 +114,7 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
 
-    async fn seed(db: &DatabaseConnection, code: &str, date: NaiveDate, eps: Decimal) {
+    async fn seed(db: &impl sea_orm::ConnectionTrait, code: &str, date: NaiveDate, eps: Decimal) {
         valuation::ActiveModel {
             code: Set(code.to_string()),
             date: Set(date),

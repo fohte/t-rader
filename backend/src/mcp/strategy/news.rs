@@ -82,7 +82,7 @@ mod tests {
     use chrono::{DateTime, FixedOffset, NaiveDate};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -104,7 +104,7 @@ mod tests {
     }
 
     async fn insert_news_item_with(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         url: &str,
         title: &str,
         body_snippet: Option<&str>,

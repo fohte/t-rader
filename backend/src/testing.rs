@@ -4,7 +4,7 @@ use axum_test::TestServer;
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionSession};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -69,7 +69,7 @@ pub async fn create_strategy(server: &TestServer, name: &str) -> String {
 }
 
 /// テストで戦略レコードを 1 件 seed する。
-pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+pub async fn insert_test_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
     strategy::ActiveModel {
         id: Set(id),
@@ -87,7 +87,7 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
 
 /// テストで note を 1 件 seed する。
 pub async fn insert_test_note(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -96,7 +96,7 @@ pub async fn insert_test_note(
 }
 
 pub async fn insert_test_note_in_scope(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -105,7 +105,7 @@ pub async fn insert_test_note_in_scope(
 }
 
 pub async fn insert_test_note_with_status(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -116,7 +116,7 @@ pub async fn insert_test_note_with_status(
 }
 
 pub async fn insert_test_note_with_execution_id(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -135,7 +135,7 @@ pub async fn insert_test_note_with_execution_id(
 }
 
 async fn insert_test_note_with_options(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -192,7 +192,7 @@ async fn insert_test_note_with_options(
 /// テストで strategy_task を 1 件 seed する。`created_at`/`updated_at` を明示指定できる
 /// ため、一覧の並び順を検証するテストで使う。
 pub async fn insert_test_strategy_task(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     prompt: &str,
     purpose: Option<&str>,
@@ -223,7 +223,7 @@ pub async fn insert_test_strategy_task(
 
 /// テストで cron trigger を 1 件 seed する。
 pub async fn insert_test_cron_trigger(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     schedule: &str,
     enabled: bool,
@@ -252,7 +252,7 @@ pub async fn insert_test_cron_trigger(
 
 /// テストで hook trigger を 1 件 seed する。
 pub async fn insert_test_hook_trigger(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     slug: &str,
     prompt_template: &str,
@@ -280,7 +280,7 @@ pub async fn insert_test_hook_trigger(
 }
 
 /// テストで stock を 1 件 seed する。
-pub async fn insert_test_stock(db: &DatabaseConnection, id: &str, name: &str) {
+pub async fn insert_test_stock(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
     stock::ActiveModel {
         id: Set(id.to_string()),
         name: Set(name.to_string()),
@@ -297,7 +297,7 @@ pub async fn insert_test_stock(db: &DatabaseConnection, id: &str, name: &str) {
 
 /// テストで hypothesis を 1 件 seed する。`strategy_id = None` で global 仮説を表現できる。
 pub async fn insert_test_hypothesis(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Option<Uuid>,
     title: &str,
     body: &str,
@@ -328,7 +328,7 @@ pub async fn insert_test_hypothesis(
     reason = "hypothesis_proposal の各フィールドをテスト用に並べる関数"
 )]
 pub async fn insert_test_hypothesis_proposal(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     hypothesis_id: Uuid,
     proposed_title: Option<&str>,
     proposed_body: Option<&str>,

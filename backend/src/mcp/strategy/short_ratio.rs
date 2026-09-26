@@ -137,7 +137,7 @@ mod tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -184,7 +184,7 @@ mod tests {
     }
 
     async fn seed(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         sector33_code: &str,
         date: NaiveDate,
         values: Option<(&str, &str, &str)>,

@@ -4,7 +4,7 @@
 use chrono::{DateTime, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::entities::strategy_investable_amount;
@@ -13,7 +13,7 @@ use crate::error::AppError;
 /// `effective_at` が現在時刻以下の最新行を返す。1 行も無ければ `None`。
 /// `effective_at` が同値の行が複数あった場合は `created_at` が新しい方を優先する。
 pub async fn find_current(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
 ) -> Result<Option<strategy_investable_amount::Model>, AppError> {
     let now = Utc::now().fixed_offset();
@@ -29,7 +29,7 @@ pub async fn find_current(
 
 /// 新しい history 行を追記する。既存行は変更しない。
 pub async fn record(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     amount_jpy: Decimal,
     effective_at: DateTime<FixedOffset>,

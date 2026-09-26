@@ -12,7 +12,7 @@ use crate::entities::strategy;
 
 use super::MgmtServer;
 
-pub(super) async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+pub(super) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
     strategy::ActiveModel {
         id: Set(id),
