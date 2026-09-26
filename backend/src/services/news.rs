@@ -33,7 +33,7 @@ pub struct AggregationStats {
 
 /// RSS を取得して `news_item` に保存する
 pub async fn run_aggregation_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     aggregator: &dyn NewsAggregator,
 ) -> Result<AggregationStats, NewsAggregationError> {
     let rows = rss_feed::list(db, true).await?;
@@ -54,7 +54,7 @@ pub async fn run_aggregation_cycle(
 
 /// `news_item` テーブルに upsert し、対象 URL の件数を返す
 pub async fn upsert_news_items(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     items: &[NewsItem],
 ) -> Result<usize, sea_orm::DbErr> {
     if items.is_empty() {
@@ -123,7 +123,7 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use core_application::{FakeNewsAggregator, NewsAggregatorError, NewsFeed};
-    use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait};
+    use sea_orm::{EntityTrait, PaginatorTrait};
     use sqlx::PgPool;
 
     use super::*;
@@ -131,7 +131,12 @@ mod tests {
     use crate::services::rss_feed::{self, CreateInput};
     use crate::testing::create_test_db;
 
-    async fn create_feed(db: &DatabaseConnection, source: &str, name: &str, enabled: bool) {
+    async fn create_feed(
+        db: &impl sea_orm::ConnectionTrait,
+        source: &str,
+        name: &str,
+        enabled: bool,
+    ) {
         rss_feed::create(
             db,
             CreateInput {

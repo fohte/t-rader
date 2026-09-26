@@ -190,7 +190,7 @@ fn progress_rate(
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+    use sea_orm::ConnectionTrait;
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -248,7 +248,7 @@ mod tests {
     }
 
     async fn seed(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         code: &str,
         disclosure_no: &str,
         disclosure_date: chrono::NaiveDate,
@@ -269,7 +269,7 @@ mod tests {
     }
 
     async fn seed_with_report_group_key(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         code: &str,
         disclosure_no: &str,
         disclosure_date: chrono::NaiveDate,

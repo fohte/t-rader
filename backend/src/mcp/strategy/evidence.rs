@@ -11,7 +11,6 @@
 
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
-use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::entities::strategy_task_step_evidence;
@@ -23,7 +22,7 @@ use super::dto::BarDto;
 const MAX_SNAPSHOT_BARS: usize = 5_000;
 
 pub(super) async fn record_query_data(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     execution_step_id: Uuid,
     instrument_id: &str,
     from: chrono::NaiveDate,

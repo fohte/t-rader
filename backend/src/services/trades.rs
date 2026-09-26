@@ -1,7 +1,7 @@
 //! 取引履歴の派生計算: FIFO ベースで実現損益・未決済ポジション・平均取得単価を出す。
 
 use rust_decimal::Decimal;
-use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder};
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
@@ -108,7 +108,7 @@ pub fn summarize(strategy_id: Option<uuid::Uuid>, trades: &[trade::Model]) -> Pe
 /// `strategy_id` の trade を (date, created_at) 順で取得して [`summarize`] する。
 /// `strategy_id` が `None` なら全戦略横断 (ポートフォリオ全体)。
 pub async fn fetch_summary(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Option<uuid::Uuid>,
 ) -> Result<PerformanceSummary, DbErr> {
     let mut q = trade::Entity::find()

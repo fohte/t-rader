@@ -10,7 +10,9 @@ use std::time::Duration;
 use chrono::{NaiveDate, Utc};
 use core_domain::financial_summary::FinancialSummary;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, Iterable, QueryOrder, Set, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, EntityTrait, Iterable, QueryOrder, Set, TransactionSession,
+};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{DateRange, FinancialSummarySource, SharedFinancialSummarySource};
@@ -54,7 +56,7 @@ fn fetch_range(
 }
 
 /// 格納済みの最新開示日を返す。1 件も無ければ `None`。
-async fn find_latest_disc_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+async fn find_latest_disc_date(db: &impl ConnectionTrait) -> Result<Option<NaiveDate>, AppError> {
     let latest = financial_summary::Entity::find()
         .order_by_desc(financial_summary::Column::DisclosureDate)
         .one(db)
@@ -64,7 +66,7 @@ async fn find_latest_disc_date(db: &DatabaseConnection) -> Result<Option<NaiveDa
 
 /// 1 日分の財務情報を upsert する。同じ銘柄・開示番号の訂正は既存行を上書きする。
 async fn upsert_fin_summaries(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     items: Vec<FinancialSummary>,
 ) -> Result<usize, AppError> {
     if items.is_empty() {
@@ -145,7 +147,7 @@ async fn upsert_fin_summaries(
 
 /// 財務情報を取り込む 1 サイクル。取得元が取得可能範囲を返さない場合はスキップする。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     source: &dyn FinancialSummarySource,
     today: NaiveDate,
 ) -> Result<IngestStats, AppError> {
@@ -526,7 +528,7 @@ mod tests {
     }
 
     async fn seed_fin_summary(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         code: &str,
         disc_no: &str,
         disc_date: NaiveDate,
@@ -543,7 +545,7 @@ mod tests {
         .expect("seed fin summary");
     }
 
-    async fn seed_populated_fin_summary(db: &DatabaseConnection, disc_date: NaiveDate) {
+    async fn seed_populated_fin_summary(db: &impl ConnectionTrait, disc_date: NaiveDate) {
         financial_summary::ActiveModel {
             code: Set("99990".to_string()),
             disclosure_no: Set("1".to_string()),

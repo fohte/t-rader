@@ -2,8 +2,7 @@ use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    QueryTrait,
+    ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
 use uuid::Uuid;
 
@@ -32,7 +31,7 @@ pub enum ResumeTaskError {
 /// agent に渡し、どのステップを再利用し、どのステップを再実行するかは agent 側の判断に
 /// 委ねる — backend は中身を解釈しない。
 pub async fn resume_task(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     task_id: Uuid,
 ) -> Result<SubmittedTask, ResumeTaskError> {
@@ -44,7 +43,7 @@ pub async fn resume_task(
 /// claim 時点で `auto_resumed_at` を刻むため、投入 (agent への submit) 自体が失敗しても
 /// 次回以降は対象から外れる — 呼び出し元 (watcher) は再試行しない。
 pub async fn auto_resume_task(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     task_id: Uuid,
 ) -> Result<SubmittedTask, ResumeTaskError> {
@@ -52,7 +51,7 @@ pub async fn auto_resume_task(
 }
 
 async fn resume_task_impl(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     task_id: Uuid,
     mark_auto_resumed: bool,
@@ -230,7 +229,7 @@ mod tests {
     }
 
     async fn insert_task_with_phase(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         phase: StrategyTaskPhase,
         prompt: &str,
@@ -261,7 +260,7 @@ mod tests {
     }
 
     async fn insert_task_step(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         task_id: Uuid,
         execution_step_id: Uuid,
         phase_key: &str,

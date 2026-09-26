@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
+use sea_orm::{EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_ratio;
 use crate::error::AppError;
@@ -23,7 +23,7 @@ impl From<ShortRatio> for short_ratio::ActiveModel {
 /// 複合 PK (date, sector33_code) で重複排除し、既存行は売買代金カラムを更新する
 /// (訂正の反映)。
 pub async fn upsert_short_ratios(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     ratios: Vec<ShortRatio>,
 ) -> Result<(), AppError> {
     if ratios.is_empty() {
@@ -49,7 +49,9 @@ pub async fn upsert_short_ratios(
 }
 
 /// DB 上の最新の対象日を返す。1 件も無ければ `None`。
-pub async fn find_latest_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+pub async fn find_latest_date(
+    db: &impl sea_orm::ConnectionTrait,
+) -> Result<Option<NaiveDate>, AppError> {
     let result = short_ratio::Entity::find()
         .order_by_desc(short_ratio::Column::Date)
         .one(db)

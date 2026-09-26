@@ -128,7 +128,7 @@ impl StrategyServer {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -138,7 +138,12 @@ mod tests {
     use super::super::tests_common::build_server;
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
 
-    async fn seed_ref_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
+    async fn seed_ref_term(
+        db: &impl sea_orm::ConnectionTrait,
+        ref_kind: &str,
+        ref_id: &str,
+        term: &str,
+    ) {
         ref_term::ActiveModel {
             ref_kind: Set(ref_kind.into()),
             ref_id: Set(ref_id.into()),
@@ -151,12 +156,12 @@ mod tests {
         .expect("seed ref_term");
     }
 
-    async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn seed_stock(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         seed_stock_with_product_category(db, id, name, None).await;
     }
 
     async fn seed_stock_with_product_category(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         id: &str,
         name: &str,
         product_category: Option<&str>,
@@ -175,7 +180,7 @@ mod tests {
         .expect("seed stock");
     }
 
-    async fn seed_indicator(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn seed_indicator(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         indicator::ActiveModel {
             id: Set(id.into()),
             name: Set(name.into()),
@@ -186,7 +191,7 @@ mod tests {
         .expect("seed indicator");
     }
 
-    async fn seed_sector(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn seed_sector(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         sector::ActiveModel {
             id: Set(id.into()),
             name: Set(name.into()),
@@ -196,7 +201,7 @@ mod tests {
         .expect("seed sector");
     }
 
-    async fn seed_theme(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn seed_theme(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         theme::ActiveModel {
             id: Set(id.into()),
             name: Set(name.into()),

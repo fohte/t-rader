@@ -43,7 +43,7 @@ fn comment_to_dto(m: comment::Model) -> CommentDto {
 
 /// comment の target_kind に応じて所有権 (strategy_id 一致) を検査する。
 async fn ensure_comment_target_owned_by(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     target_kind: &str,
     target_id: Uuid,
     expected: Uuid,

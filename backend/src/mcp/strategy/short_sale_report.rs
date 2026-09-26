@@ -82,7 +82,7 @@ mod tests {
     use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
     use uuid::Uuid;
 
@@ -99,7 +99,7 @@ mod tests {
 
     /// `prev` は (直近計算年月日, 直近残高割合)。初回報告なら None
     async fn seed(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         code: &str,
         disc_date: NaiveDate,
         calc_date: NaiveDate,

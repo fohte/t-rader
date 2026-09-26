@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
+use sea_orm::{EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_alert;
 use crate::error::AppError;
@@ -33,7 +33,7 @@ impl From<MarginAlertRecord> for margin_alert::ActiveModel {
 ///
 /// (pub_date, code) が一致する既存行は最新の値で更新される。
 pub async fn upsert_margin_alert(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     records: Vec<MarginAlertRecord>,
 ) -> Result<(), AppError> {
     if records.is_empty() {
@@ -71,7 +71,7 @@ pub async fn upsert_margin_alert(
 }
 
 pub async fn find_latest_margin_alert_pub_date(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
 ) -> Result<Option<NaiveDate>, AppError> {
     let latest = margin_alert::Entity::find()
         .order_by_desc(margin_alert::Column::PubDate)

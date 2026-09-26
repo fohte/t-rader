@@ -74,7 +74,10 @@ pub struct IngestStats {
 }
 
 /// `indicator` 行が無ければ作る。既存行は上書きしない。
-async fn ensure_indicator(db: &DatabaseConnection, def: &SeriesDef) -> Result<(), AppError> {
+async fn ensure_indicator(
+    db: &impl sea_orm::ConnectionTrait,
+    def: &SeriesDef,
+) -> Result<(), AppError> {
     indicator::Entity::insert(indicator::ActiveModel {
         id: Set(def.indicator_id.to_string()),
         name: Set(def.indicator_name.to_string()),
@@ -92,7 +95,7 @@ async fn ensure_indicator(db: &DatabaseConnection, def: &SeriesDef) -> Result<()
 
 /// 格納済みの最新観測日を返す。1 件も無ければ `None`。
 async fn find_latest_observation_date(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     indicator_id: &str,
 ) -> Result<Option<NaiveDate>, AppError> {
     let latest = indicator_observation::Entity::find()
@@ -106,7 +109,7 @@ async fn find_latest_observation_date(
 /// 観測値を `(indicator_id, date)` で upsert する。既存行は値を上書きする (FRED の確定値
 /// 反映を取りこぼさないため)。
 async fn upsert_observations(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     indicator_id: &str,
     observations: Vec<IndicatorObservation>,
 ) -> Result<usize, AppError> {
@@ -140,7 +143,7 @@ async fn upsert_observations(
 
 /// 1 系列を 1 サイクル分取り込む。初回 (格納済みデータが無い) は全履歴を取得する。
 async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn IndicatorObservationSource,
     def: &SeriesDef,
 ) -> Result<IngestStats, FredIngestError> {

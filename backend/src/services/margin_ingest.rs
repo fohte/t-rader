@@ -50,8 +50,8 @@ pub struct IngestStats {
 
 /// `start` から `end` (両端含む) まで日付を 1 日ずつ進め、`fetch`/`upsert` で取得・保存する。
 /// 1 日分の取得・保存に失敗しても残りの日付は続行する。
-async fn ingest_daily<'c, T, F, FetchFut, G, UpsertFut>(
-    db: &'c DatabaseConnection,
+async fn ingest_daily<'c, C, T, F, FetchFut, G, UpsertFut>(
+    db: &'c C,
     source: &'c dyn MarginSource,
     start: NaiveDate,
     end: NaiveDate,
@@ -60,9 +60,10 @@ async fn ingest_daily<'c, T, F, FetchFut, G, UpsertFut>(
     upsert: G,
 ) -> IngestStats
 where
+    C: sea_orm::ConnectionTrait,
     F: Fn(&'c dyn MarginSource, NaiveDate) -> FetchFut,
     FetchFut: Future<Output = Result<Vec<T>, MarginSourceError>>,
-    G: Fn(&'c DatabaseConnection, Vec<T>) -> UpsertFut,
+    G: Fn(&'c C, Vec<T>) -> UpsertFut,
     UpsertFut: Future<Output = Result<(), AppError>>,
 {
     let mut stats = IngestStats::default();
@@ -93,7 +94,7 @@ where
 /// 1 サイクル実行: margin_interest, margin_alert それぞれ未取得区間を取得・保存する。
 /// 取得元が取得できる範囲を返さないなら何もしない。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn MarginSource,
     today: NaiveDate,
 ) -> Result<(IngestStats, IngestStats), AppError> {

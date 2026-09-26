@@ -4,7 +4,9 @@ use axum_test::TestServer;
 use chrono::{DateTime, TimeZone, Utc};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionTrait};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionSession,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -67,7 +69,7 @@ pub async fn create_strategy(server: &TestServer, name: &str) -> String {
 }
 
 /// テストで戦略レコードを 1 件 seed する。
-pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+pub async fn insert_test_strategy(db: &impl ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
     strategy::ActiveModel {
         id: Set(id),
@@ -85,7 +87,7 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
 
 /// テストで note を 1 件 seed する。
 pub async fn insert_test_note(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -94,7 +96,7 @@ pub async fn insert_test_note(
 }
 
 pub async fn insert_test_note_in_scope(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -103,7 +105,7 @@ pub async fn insert_test_note_in_scope(
 }
 
 pub async fn insert_test_note_with_status(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -114,7 +116,7 @@ pub async fn insert_test_note_with_status(
 }
 
 pub async fn insert_test_note_with_execution_id(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -133,7 +135,7 @@ pub async fn insert_test_note_with_execution_id(
 }
 
 async fn insert_test_note_with_options(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -190,7 +192,7 @@ async fn insert_test_note_with_options(
 /// テストで strategy_task を 1 件 seed する。`created_at`/`updated_at` を明示指定できる
 /// ため、一覧の並び順を検証するテストで使う。
 pub async fn insert_test_strategy_task(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     prompt: &str,
     purpose: Option<&str>,
@@ -221,7 +223,7 @@ pub async fn insert_test_strategy_task(
 
 /// テストで cron trigger を 1 件 seed する。
 pub async fn insert_test_cron_trigger(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     schedule: &str,
     enabled: bool,
@@ -250,7 +252,7 @@ pub async fn insert_test_cron_trigger(
 
 /// テストで hook trigger を 1 件 seed する。
 pub async fn insert_test_hook_trigger(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     slug: &str,
     prompt_template: &str,
@@ -278,7 +280,7 @@ pub async fn insert_test_hook_trigger(
 }
 
 /// テストで stock を 1 件 seed する。
-pub async fn insert_test_stock(db: &DatabaseConnection, id: &str, name: &str) {
+pub async fn insert_test_stock(db: &impl ConnectionTrait, id: &str, name: &str) {
     stock::ActiveModel {
         id: Set(id.to_string()),
         name: Set(name.to_string()),

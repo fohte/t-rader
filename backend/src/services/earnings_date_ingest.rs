@@ -47,7 +47,9 @@ fn fetch_range(
 }
 
 /// 格納済みの最新公表日を返す。1 件も無ければ `None`。
-async fn find_latest_pub_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+async fn find_latest_pub_date(
+    db: &impl sea_orm::ConnectionTrait,
+) -> Result<Option<NaiveDate>, AppError> {
     let latest = jquants_earnings_date::Entity::find()
         .order_by_desc(jquants_earnings_date::Column::PubDate)
         .one(db)
@@ -71,7 +73,7 @@ fn to_active_model(schedule: EarningsSchedule) -> jquants_earnings_date::ActiveM
 /// 1 日分の取得結果を `jquants_earnings_date` に upsert する。(code, fq_name, pub_date)
 /// が同じ行は上書きする。
 async fn upsert_earnings_dates(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     items: Vec<EarningsSchedule>,
 ) -> Result<usize, AppError> {
     if items.is_empty() {
@@ -104,7 +106,7 @@ async fn upsert_earnings_dates(
 
 /// 決算発表予定日を取り込む 1 サイクル。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn EarningsScheduleSource,
 ) -> Result<IngestStats, AppError> {
     let today = Utc::now().date_naive();
@@ -348,7 +350,7 @@ mod tests {
     }
 
     async fn seed_earnings_date(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         code: &str,
         fq_name: &str,
         pub_date: NaiveDate,

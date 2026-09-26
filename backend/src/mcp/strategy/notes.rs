@@ -626,7 +626,7 @@ mod tests {
     }
 
     async fn note_refs_of(
-        db: &sea_orm::DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         note_id: Uuid,
     ) -> Vec<(String, String)> {
         let mut refs = note_ref::Entity::find()

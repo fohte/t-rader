@@ -5,14 +5,12 @@
 //! を呼ぶ。発火失敗は次回 tick に持ち越し (`last_fired_at` 更新は `fire_trigger` 内で行われる)。
 
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use cron::Schedule;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::json;
-use tokio::sync::Semaphore;
 
 use crate::agent_client::SharedAgentTaskClient;
 use crate::entities::trigger;
@@ -137,7 +135,7 @@ fn should_fire(
 ///
 /// 戻り値は発火を試みた件数 (成功 / 失敗を問わない)。`interval` には worker の tick 間隔を渡す。
 pub async fn run_once(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     interval: Duration,
 ) -> usize {
@@ -182,19 +180,13 @@ pub async fn run_once(
         })
         .collect();
 
-    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_FIRES));
     let target_count = targets.len();
-    let mut handles = Vec::with_capacity(target_count);
-    for row in targets {
+    let trigger_ids = targets.iter().map(|row| row.trigger_id).collect::<Vec<_>>();
+    let results = crate::concurrent::map_concurrent(targets, MAX_CONCURRENT_FIRES, |row| {
         let agent_client = agent_client.clone();
-        let db = db.clone();
-        let sem = semaphore.clone();
-        let trigger_id = row.trigger_id;
-        handles.push(tokio::spawn(async move {
-            let Ok(_permit) = sem.acquire_owned().await else {
-                return;
-            };
-            match fire_trigger(&db, &agent_client, trigger_id, json!({}), TaskSource::Cron).await {
+        async move {
+            let trigger_id = row.trigger_id;
+            match fire_trigger(db, &agent_client, trigger_id, json!({}), TaskSource::Cron).await {
                 Ok(_) => {}
                 // 取得 → 発火の間に disable された race。
                 Err(FireTriggerError::Disabled(_)) => {}
@@ -202,13 +194,12 @@ pub async fn run_once(
                     tracing::warn!(error = %err, trigger_id = %trigger_id, "cron trigger fire failed");
                 }
             }
-        }));
-    }
-    for handle in handles {
-        if let Err(err) = handle.await {
-            // JoinError は子タスク panic / cancel。watcher と同じく log するに留め、
-            // 他 trigger の処理を継続する。
-            tracing::error!(error = %err, "cron trigger worker task panicked");
+        }
+    })
+    .await;
+    for (trigger_id, result) in trigger_ids.into_iter().zip(results) {
+        if let Err(error) = result {
+            tracing::error!(error = %error, trigger_id = %trigger_id, "cron trigger worker task panicked");
         }
     }
     target_count
@@ -363,7 +354,7 @@ mod run_once_tests {
 
     use super::*;
 
-    async fn seed_strategy(db: &DatabaseConnection) -> Uuid {
+    async fn seed_strategy(db: &impl sea_orm::ConnectionTrait) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),

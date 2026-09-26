@@ -92,7 +92,7 @@ mod tests {
     use chrono::{NaiveDate, TimeZone, Utc};
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
-    use sea_orm::{DatabaseConnection, EntityTrait, Set};
+    use sea_orm::{EntityTrait, Set};
     use sqlx::PgPool;
 
     use crate::entities::instruments;
@@ -101,7 +101,7 @@ mod tests {
     use crate::testing::{create_test_server, create_test_server_with_db};
 
     /// テスト用の instrument を DB に挿入する
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
             name: Set(format!("Test {id}")),

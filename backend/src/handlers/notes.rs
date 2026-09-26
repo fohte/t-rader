@@ -46,7 +46,7 @@ pub struct ListNotesQuery {
 }
 
 pub(crate) async fn find_note_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<note::Model, AppError> {
     note::Entity::find_by_id(id)

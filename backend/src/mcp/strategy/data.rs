@@ -144,7 +144,7 @@ mod tests {
         MockDatabase::new(DatabaseBackend::Postgres).into_connection()
     }
 
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
             name: Set(format!("Test {id}")),
@@ -229,7 +229,7 @@ mod tests {
     }
 
     async fn fetch_evidence_by_step(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         execution_step_id: Uuid,
     ) -> Vec<strategy_task_step_evidence::Model> {
         let mut rows = strategy_task_step_evidence::Entity::find()

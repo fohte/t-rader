@@ -55,7 +55,7 @@ mod tests {
     use chrono::NaiveDate;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
+
     use uuid::Uuid;
 
     use crate::entities::{indicator, indicator_observation};
@@ -68,7 +68,7 @@ mod tests {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
     }
 
-    async fn seed_indicator(db: &DatabaseConnection, id: &str) {
+    async fn seed_indicator(db: &impl sea_orm::ConnectionTrait, id: &str) {
         indicator::ActiveModel {
             id: Set(id.to_string()),
             name: Set(id.to_string()),
@@ -79,7 +79,12 @@ mod tests {
         .expect("seed indicator");
     }
 
-    async fn seed_observation(db: &DatabaseConnection, id: &str, date: NaiveDate, value: &str) {
+    async fn seed_observation(
+        db: &impl sea_orm::ConnectionTrait,
+        id: &str,
+        date: NaiveDate,
+        value: &str,
+    ) {
         indicator_observation::ActiveModel {
             indicator_id: Set(id.to_string()),
             date: Set(date),

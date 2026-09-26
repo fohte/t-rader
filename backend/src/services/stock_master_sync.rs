@@ -27,7 +27,7 @@ pub struct SyncStats {
 }
 
 async fn upsert_sectors(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     entries: &[EquityMasterEntry],
 ) -> Result<(), sea_orm::DbErr> {
     let names: HashSet<&str> = entries
@@ -57,7 +57,7 @@ async fn upsert_sectors(
 }
 
 async fn upsert_stocks(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     entries: &[EquityMasterEntry],
 ) -> Result<usize, sea_orm::DbErr> {
     if entries.is_empty() {
@@ -95,7 +95,7 @@ async fn upsert_stocks(
 
 /// 全上場銘柄マスタを取得し、`stock` (および参照先の `sector`) に反映する 1 サイクル。
 pub async fn run_sync_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn EquityMasterSource,
 ) -> Result<SyncStats, AppError> {
     let entries = source.fetch_all_equities_master().await?;
@@ -142,7 +142,7 @@ mod tests {
     use crate::data_provider::jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
     use crate::testing::create_test_db;
 
-    async fn fetch_stock(db: &DatabaseConnection, id: &str) -> Option<stock::Model> {
+    async fn fetch_stock(db: &impl sea_orm::ConnectionTrait, id: &str) -> Option<stock::Model> {
         stock::Entity::find_by_id(id.to_string())
             .one(db)
             .await

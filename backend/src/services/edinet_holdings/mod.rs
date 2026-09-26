@@ -38,7 +38,7 @@ trait EdinetEndpoint: Send + Sync {
     fn available_from() -> NaiveDate;
 
     async fn latest_submitted_on(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
     ) -> Result<Option<NaiveDate>, sea_orm::DbErr>;
 
     async fn fetch(
@@ -47,7 +47,7 @@ trait EdinetEndpoint: Send + Sync {
     ) -> Result<Vec<Self::Document>, ShareholdingStructureSourceError>;
 
     async fn upsert(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         documents: Vec<Self::Document>,
     ) -> Result<usize, sea_orm::DbErr>;
 }
@@ -58,7 +58,7 @@ enum IngestDateError {
 }
 
 async fn ingest_date<T: EdinetEndpoint>(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn ShareholdingStructureSource,
     date: NaiveDate,
 ) -> Result<usize, IngestDateError> {
@@ -71,7 +71,7 @@ async fn ingest_date<T: EdinetEndpoint>(
 }
 
 async fn run_ingest_cycle<T: EdinetEndpoint>(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn ShareholdingStructureSource,
 ) -> Result<IngestStats, sea_orm::DbErr> {
     let Some(fetchable_range) = source.fetchable_range(Utc::now().date_naive()) else {
@@ -124,7 +124,7 @@ async fn run_ingest_cycle<T: EdinetEndpoint>(
 }
 
 async fn latest_submitted_on_of<E, C>(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     submitted_on_column: C,
     submitted_on: impl Fn(&E::Model) -> NaiveDate,
 ) -> Result<Option<NaiveDate>, sea_orm::DbErr>
@@ -137,7 +137,7 @@ where
 }
 
 async fn upsert_documents<E, T>(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     documents: Vec<T>,
     build: impl Fn(T) -> Result<E::ActiveModel, sea_orm::DbErr>,
     conflict: sea_orm::sea_query::OnConflict,
@@ -183,7 +183,7 @@ pub fn spawn_poll(
     })
 }
 
-async fn run_all(db: &DatabaseConnection, source: &dyn ShareholdingStructureSource) {
+async fn run_all(db: &impl sea_orm::ConnectionTrait, source: &dyn ShareholdingStructureSource) {
     let results = [
         (
             large_volume_shareholdings::Endpoint::NAME,
@@ -302,7 +302,9 @@ mod tests {
         model
     }
 
-    async fn find_all(db: &DatabaseConnection) -> Vec<large_volume_shareholding_documents::Model> {
+    async fn find_all(
+        db: &impl sea_orm::ConnectionTrait,
+    ) -> Vec<large_volume_shareholding_documents::Model> {
         large_volume_shareholding_documents::Entity::find()
             .all(db)
             .await

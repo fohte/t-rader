@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::entities::{indicator, ref_term, sector, stock, theme};
 use crate::error::AppError;
@@ -16,7 +16,7 @@ use crate::text_normalize::normalize;
 /// 1 クエリで全別名をロードし、Rust 側で正規化 (NFKC -> lowercase) して比較する。
 /// 戻り値は入力の term (正規化前) -> 一致した ref_id 一覧。
 pub async fn resolve_many_by_term(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     ref_kind: &str,
     terms: &[String],
 ) -> Result<HashMap<String, Vec<String>>, AppError> {
@@ -49,7 +49,7 @@ pub async fn resolve_many_by_term(
 
 /// ref_kind ごとに master テーブルから id -> name を引く
 async fn fetch_master_names(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     ids_by_kind: &HashMap<String, Vec<String>>,
 ) -> Result<HashMap<(String, String), String>, AppError> {
     let mut names = HashMap::new();
@@ -104,7 +104,7 @@ fn group_by_kind(requested: &[(String, String)]) -> HashMap<String, Vec<String>>
 /// ものだけ別名解決を試みる。別名で解決できたときは正規の id と name を返す。
 /// どちらにも当たらなければ name = None、id は入力のまま返す。入力の順序は保つ。
 pub async fn resolve_refs(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     requested: &[(String, String)],
 ) -> Result<Vec<RefResolution>, AppError> {
     let mut names = fetch_master_names(db, &group_by_kind(requested)).await?;
@@ -178,7 +178,7 @@ mod tests {
 
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::DatabaseConnection;
+
     use sqlx::PgPool;
 
     use crate::entities::{indicator, ref_term, stock};
@@ -197,7 +197,12 @@ mod tests {
             .collect()
     }
 
-    async fn seed_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
+    async fn seed_term(
+        db: &impl sea_orm::ConnectionTrait,
+        ref_kind: &str,
+        ref_id: &str,
+        term: &str,
+    ) {
         ref_term::ActiveModel {
             ref_kind: Set(ref_kind.into()),
             ref_id: Set(ref_id.into()),
@@ -210,7 +215,7 @@ mod tests {
         .expect("seed ref_term");
     }
 
-    async fn seed_stock(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn seed_stock(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         stock::ActiveModel {
             id: Set(id.into()),
             name: Set(name.into()),
@@ -225,7 +230,7 @@ mod tests {
         .expect("seed stock");
     }
 
-    async fn seed_indicator(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn seed_indicator(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         indicator::ActiveModel {
             id: Set(id.into()),
             name: Set(name.into()),

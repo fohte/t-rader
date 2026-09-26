@@ -35,11 +35,13 @@ impl DailyJQuantsIngest for ShortSaleReport {
         source.fetch_short_sale_reports(day).await
     }
 
-    async fn upsert(db: &DatabaseConnection, items: Vec<Self>) -> Result<(), AppError> {
+    async fn upsert(db: &impl sea_orm::ConnectionTrait, items: Vec<Self>) -> Result<(), AppError> {
         upsert_short_sale_reports(db, items).await
     }
 
-    async fn find_latest_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+    async fn find_latest_date(
+        db: &impl sea_orm::ConnectionTrait,
+    ) -> Result<Option<NaiveDate>, AppError> {
         find_latest_disc_date(db).await
     }
 }
@@ -47,7 +49,7 @@ impl DailyJQuantsIngest for ShortSaleReport {
 /// 空売り残高報告を DB 上の最新公表日から訂正分を遡った日付から当日まで、
 /// 日ごとに 1 リクエストずつ取得して upsert する。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn ShortSellingSource,
 ) -> Result<DailyIngestStats, AppError> {
     jquants_daily_ingest::run_ingest_cycle::<ShortSaleReport>(db, source).await

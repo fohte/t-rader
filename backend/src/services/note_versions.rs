@@ -2,8 +2,7 @@
 
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, QueryTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -36,7 +35,7 @@ const HUMAN_CREATED_BY_KIND: &str = "human";
 /// 人間が追加したバージョンは承認済みで現行にする。承認必須の種別に対してエージェントが
 /// 追加したバージョンは、承認されるまで現行バージョンを維持する。
 pub async fn append_version(
-    txn: &DatabaseTransaction,
+    txn: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
     content: AppendVersion,
 ) -> Result<note_version::Model, AppError> {
@@ -177,7 +176,7 @@ pub async fn append_version(
 
 /// 指定したバージョンを現行にし、本文に紐づく参照データを同期する。
 pub async fn set_current_version(
-    txn: &DatabaseTransaction,
+    txn: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
     version: note_version::Model,
     new_status: Option<&str>,
@@ -238,7 +237,7 @@ pub async fn set_current_version(
 }
 
 pub async fn approve_pending_version(
-    txn: &DatabaseTransaction,
+    txn: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
     version: note_version::Model,
     reviewed_at: chrono::DateTime<chrono::FixedOffset>,

@@ -2,8 +2,8 @@
 //! 行が存在しない間は「未設定 (自動検出を使う)」を表し、初回保存時に作成する。
 
 use sea_orm::ActiveValue::Set;
+use sea_orm::EntityTrait;
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{DatabaseConnection, EntityTrait};
 
 use crate::entities::jquants_plan_setting;
 use crate::error::AppError;
@@ -11,7 +11,7 @@ use crate::error::AppError;
 const SINGLETON_ID: i16 = 1;
 
 pub async fn find_current(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
 ) -> Result<Option<jquants_plan_setting::Model>, AppError> {
     let row = jquants_plan_setting::Entity::find_by_id(SINGLETON_ID)
         .one(db)
@@ -20,7 +20,7 @@ pub async fn find_current(
 }
 
 pub async fn save(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     plan_setting: serde_json::Value,
 ) -> Result<jquants_plan_setting::Model, AppError> {
     let prev = find_current(db).await?;
@@ -56,7 +56,7 @@ pub async fn save(
 ///
 /// 戻り値は実際に保存できたかどうか。
 pub async fn save_if_unset(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     plan_setting: serde_json::Value,
 ) -> Result<bool, AppError> {
     let model = jquants_plan_setting::ActiveModel {
