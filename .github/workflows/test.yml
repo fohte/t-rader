@@ -586,6 +586,15 @@ jobs:
           GEMINI_MEDIA_MODEL: gemini-9-flash
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
+      - name: Report PostgreSQL lock waits and errors
+        if: always()
+        env:
+          DB_CONTAINER_ID: ${{ job.services.db.id }}
+        run: |
+          echo "::group::PostgreSQL lock waits and errors"
+          docker logs "$DB_CONTAINER_ID" 2>&1 | rg ' (LOG|ERROR|FATAL):' || true
+          echo "::endgroup::"
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
