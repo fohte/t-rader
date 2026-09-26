@@ -33,7 +33,7 @@ fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> 
         .map_err(|e| internal_error(format!("failed to serialize graphs: {e}")))
 }
 
-/// insert 済みの note に初版を追加し、同一トランザクションを commit する。
+/// insert 済みの note に初回バージョンを追加し、同一トランザクションを commit する。
 async fn commit_new_note(
     txn: sea_orm::DatabaseTransaction,
     id: Uuid,
@@ -49,7 +49,7 @@ async fn commit_new_note(
     })
 }
 
-/// 新規ノートのメタデータと初版を組み立てる。
+/// 新規ノートのメタデータと初回バージョンを組み立てる。
 fn build_new_note_model(
     session_strategy_id: Uuid,
     execution_id: Option<String>,

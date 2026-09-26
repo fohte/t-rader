@@ -1,4 +1,4 @@
-//! ノートの追記専用バージョンを作成し、現行版に付随するデータを同期する。
+//! ノートの追記専用バージョンを作成し、現行バージョンに付随するデータを同期する。
 
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
@@ -31,10 +31,10 @@ pub const INITIAL_NOTE_STATUS: &str = "unread";
 const APPROVED_NOTE_STATUS: &str = "approved";
 const HUMAN_CREATED_BY_KIND: &str = "human";
 
-/// 新しい版を追加し、種別の承認設定に応じて現行版を切り替える。
+/// 新しいバージョンを追加し、種別の承認設定に応じて現行バージョンを切り替える。
 ///
-/// 人間の版は承認済みで現行にする。承認必須の種別に対するエージェントの版は、
-/// 承認されるまで現行版を維持する。
+/// 人間が追加したバージョンは承認済みで現行にする。承認必須の種別に対してエージェントが
+/// 追加したバージョンは、承認されるまで現行バージョンを維持する。
 pub async fn append_version(
     txn: &DatabaseTransaction,
     note_id: Uuid,
@@ -175,7 +175,7 @@ pub async fn append_version(
     Ok(version)
 }
 
-/// 指定した版を現行にし、本文に紐づく参照データを同期する。
+/// 指定したバージョンを現行にし、本文に紐づく参照データを同期する。
 pub async fn set_current_version(
     txn: &DatabaseTransaction,
     note_id: Uuid,
