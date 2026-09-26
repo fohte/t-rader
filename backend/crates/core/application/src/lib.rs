@@ -2,6 +2,7 @@ mod agent_task_client;
 mod daily_bar_source;
 mod earnings_schedule_source;
 mod equity_master_source;
+mod financial_summary_source;
 mod indicator_observation_source;
 mod kata_exec;
 mod llm_client;
@@ -36,6 +37,9 @@ pub use earnings_schedule_source::{
 };
 pub use equity_master_source::{
     EquityMasterSource, EquityMasterSourceError, SharedEquityMasterSource,
+};
+pub use financial_summary_source::{
+    FinancialSummarySource, FinancialSummarySourceError, SharedFinancialSummarySource,
 };
 pub use margin_source::{MarginSource, MarginSourceError, SharedMarginSource};
 pub use market_daily_bar_source::{
