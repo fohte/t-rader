@@ -4,11 +4,13 @@ mod mock;
 pub mod news;
 
 pub use core_application::{
-    DailyBarSource, DailyBarSourceError, DateRange, EquityMasterSource, EquityMasterSourceError,
-    MarginSource, MarginSourceError, MarketDailyBarSource, MarketDailyBarSourceError,
-    SharedDailyBarSource, SharedEquityMasterSource, SharedMarginSource, SharedMarketDailyBarSource,
-    SharedShareholdingStructureSource, SharedShortSellingSource, ShareholdingStructureSource,
-    ShareholdingStructureSourceError, ShortSellingSource, ShortSellingSourceError,
+    DailyBarSource, DailyBarSourceError, DateRange, EarningsScheduleSource,
+    EarningsScheduleSourceError, EquityMasterSource, EquityMasterSourceError, MarginSource,
+    MarginSourceError, MarketDailyBarSource, MarketDailyBarSourceError, SharedDailyBarSource,
+    SharedEarningsScheduleSource, SharedEquityMasterSource, SharedMarginSource,
+    SharedMarketDailyBarSource, SharedShortSellingSource, SharedValuationSource,
+    ShareholdingStructureSource, ShareholdingStructureSourceError, ShortSellingSource,
+    ShortSellingSourceError, ValuationSource, ValuationSourceError,
 };
 
 /// データプロバイダーで発生しうるエラー
@@ -64,6 +66,12 @@ impl From<DataProviderError> for EquityMasterSourceError {
     }
 }
 
+impl From<DataProviderError> for EarningsScheduleSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
 impl From<DataProviderError> for MarginSourceError {
     fn from(error: DataProviderError) -> Self {
         Self::Failed(error.to_string())
@@ -83,6 +91,12 @@ impl From<DataProviderError> for MarketDailyBarSourceError {
 }
 
 impl From<DataProviderError> for ShareholdingStructureSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+impl From<DataProviderError> for ValuationSourceError {
     fn from(error: DataProviderError) -> Self {
         Self::Failed(error.to_string())
     }

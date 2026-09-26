@@ -90,7 +90,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
 - `backend/crates/core/domain/` - application と gateway が共有する値型と東証の営業日判定
-- `backend/crates/core/application/` - agent task、indicator observation、kata-exec executor、LLM client、news aggregation、日足データソース (銘柄ごと / 全銘柄の日付指定)、銘柄マスタ、信用残、空売り、保有構造の port と値型
+- `backend/crates/core/application/` - agent task、indicator observation、kata-exec executor、LLM client、news aggregation、日足データソース (銘柄ごと / 全銘柄の日付指定)、銘柄マスタ、信用残、空売り、保有構造、決算予定、バリュエーションの port と値型
 - `backend/crates/gateways/fred/` - FRED API client の HTTP 実装
 - `backend/crates/gateways/ibkr/` - IBKR Client Portal Web API client の HTTP 実装
 - `backend/crates/gateways/kata-exec/` - Kata Containers exec Pod の HTTP 実装
@@ -184,6 +184,10 @@ Use `ResultAsync.fromPromise()` or `Result.fromThrowable()` to interop with a th
 ### Write a story for every presentational component
 
 Every presentational component under `src/components/` should have a co-located `.stories.tsx` file matching the component's filename (e.g. `src/components/card.tsx` pairs with `src/components/card.stories.tsx`). If a source file exports multiple components, give each one its own `<component-name>.stories.tsx` file instead of matching the source filename. Write one story per meaningful state/variant of the component.
+
+### Give each story a descriptive `name`
+
+Write a short, natural-language sentence describing the rendered state, including the detail that distinguishes it from sibling stories. Splitting the story's export name into words (e.g. `open editor shows next preview`) does not describe the state as a sentence; write something like `the editor shows the next preview` instead. The `name` is displayed in Storybook.
 
 ### Extract route-inline UI that has its own appearance or state
 
