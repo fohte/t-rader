@@ -52,25 +52,33 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Open: Story = { args }
+export const Open: Story = {
+  name: 'shows note creation with available kinds.',
+  args,
+}
 
 export const LoadingKinds: Story = {
+  name: 'shows the kind selector while kinds are loading.',
   args: { ...args, noteKinds: [], noteKindsPending: true },
 }
 
 export const WithoutKinds: Story = {
+  name: 'shows note creation when no kinds are available.',
   args: { ...args, noteKinds: [] },
 }
 
 export const KindsLoadError: Story = {
+  name: 'shows an error when kinds cannot be loaded.',
   args: { ...args, noteKinds: [], noteKindsError: true },
 }
 
 export const FormError: Story = {
+  name: 'shows a note creation form error.',
   args: { ...args, formError: '入力に問題があります' },
 }
 
 export const Submitting: Story = {
+  name: 'shows the note creation form while submitting.',
   args: {
     ...args,
     title: 'サンプルノート',
