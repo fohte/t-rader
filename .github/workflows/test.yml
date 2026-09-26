@@ -592,7 +592,7 @@ jobs:
           DB_CONTAINER_ID: ${{ job.services.db.id }}
         run: |
           echo "::group::PostgreSQL lock waits and errors"
-          docker logs "$DB_CONTAINER_ID" 2>&1 | rg ' (LOG|ERROR|FATAL):' || true
+          docker logs "$DB_CONTAINER_ID" 2>&1 | grep -E ' (LOG|ERROR|FATAL|DETAIL|CONTEXT|STATEMENT):' || true
           echo "::endgroup::"
 
       - name: Upload coverage to Codecov
