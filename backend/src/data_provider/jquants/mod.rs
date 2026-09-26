@@ -1,5 +1,6 @@
 mod daily_bars;
 mod earnings_schedule;
+mod edinet_holdings;
 mod equities_master;
 mod margin;
 #[cfg(test)]
@@ -167,6 +168,14 @@ impl JQuantsClient {
         Some(DateRange { from, to })
     }
 
+    pub(crate) fn known_fetchable_date_range(&self, today: NaiveDate) -> Option<DateRange> {
+        if let Some(range) = self.manual_plan_date_range(today) {
+            return Some(range);
+        }
+        let (from, to) = self.detected_range_on(today)?;
+        Some(DateRange { from, to })
+    }
+
     /// Standard 以上で利用できるデータの取得範囲を返す。
     pub(crate) fn standard_plan_date_range(
         &self,
@@ -201,11 +210,15 @@ impl JQuantsClient {
     }
 
     fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        self.detected_range_on(Utc::now().date_naive())
+    }
+
+    fn detected_range_on(&self, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
         let guard = self
             .detected_range
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        effective_range(guard.as_ref(), Utc::now().date_naive())
+        effective_range(guard.as_ref(), today)
     }
 
     /// crate 内テスト (`services::edinet_holdings` 等) から 400 検出フローを経由せず

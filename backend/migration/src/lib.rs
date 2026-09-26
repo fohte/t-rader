@@ -67,6 +67,7 @@ mod m20260925_075026_drop_news_strategy_link;
 mod m20260925_093011_drop_strategy_interest;
 mod m20260925_115400_add_note_kind_fk_and_nonblank_checks;
 mod m20260925_122811_rename_valuation_tables;
+mod m20260925_122813_edinet_holdings_port;
 
 pub struct Migrator;
 
@@ -142,6 +143,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260925_093011_drop_strategy_interest::Migration),
             Box::new(m20260925_115400_add_note_kind_fk_and_nonblank_checks::Migration),
             Box::new(m20260925_122811_rename_valuation_tables::Migration),
+            Box::new(m20260925_122813_edinet_holdings_port::Migration),
         ]
     }
 }

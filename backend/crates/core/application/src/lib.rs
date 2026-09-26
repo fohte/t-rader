@@ -8,6 +8,7 @@ mod llm_client;
 mod margin_source;
 mod market_daily_bar_source;
 mod news_aggregator;
+mod shareholding_structure_source;
 mod short_selling_source;
 mod valuation_source;
 
@@ -39,6 +40,10 @@ pub use equity_master_source::{
 pub use margin_source::{MarginSource, MarginSourceError, SharedMarginSource};
 pub use market_daily_bar_source::{
     MarketDailyBarSource, MarketDailyBarSourceError, SharedMarketDailyBarSource,
+};
+pub use shareholding_structure_source::{
+    SharedShareholdingStructureSource, ShareholdingStructureSource,
+    ShareholdingStructureSourceError,
 };
 pub use short_selling_source::{
     SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError,
