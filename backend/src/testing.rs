@@ -1,51 +1,128 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 use axum_test::TestServer;
-use chrono::{DateTime, FixedOffset, TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, EntityTrait, SqlxPostgresConnector,
-    TransactionTrait,
+    ConnectionTrait, EntityTrait, SqlxPostgresConnector, TransactionSession, TransactionTrait,
 };
-use sqlx::PgPool;
+use sqlx::{
+    AssertSqlSafe, Connection as _, PgConnection, postgres::PgConnectOptions,
+    postgres::PgPoolOptions,
+};
 use uuid::Uuid;
-
-mod template_db;
 
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange, SharedDailyBarSource};
+use crate::database::DatabaseHandle;
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{
-    hypothesis, hypothesis_proposal, note, note_version, stock, strategy, strategy_task, trigger,
-};
+use crate::entities::{note, note_version, stock, strategy, strategy_task, trigger};
 use crate::kata_exec::SharedKataExecutor;
 use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
+use migration::{Migrator, MigratorTrait};
 
 /// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
 /// 参照できる。
 pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 
-/// `#[sqlx::test]` から注入された PgPool を SeaORM DatabaseConnection に変換する
-///
-/// マイグレーション済み template の複製を返す。HTTP サーバー不要な repository テスト向け。
-pub async fn create_test_db(pool: PgPool) -> DatabaseConnection {
-    let pool = template_db::create_test_pool_from_template(pool).await;
-    SqlxPostgresConnector::from_sqlx_postgres_pool(pool)
+static TEST_DATABASE_INITIALIZED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+
+/// テストごとに独立した rollback transaction を作る。
+pub async fn create_test_transaction() -> DatabaseHandle {
+    TEST_DATABASE_INITIALIZED
+        .get_or_init(initialize_test_database)
+        .await;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(test_database_options())
+        .await
+        .expect("connect to shared test database");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
+    let transaction = DatabaseHandle::from(db.begin().await.expect("begin test transaction"));
+    transaction
+        .execute_unprepared(
+            "SELECT pg_advisory_xact_lock(hashtext('t-rader-test-database'), hashtext('test-execution'))",
+        )
+        .await
+        .expect("serialize shared database tests");
+    transaction
 }
 
-pub async fn connect_with_application_name(application_name: &str) -> DatabaseConnection {
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL");
-    let mut options = ConnectOptions::new(database_url);
-    options.set_application_name(application_name);
-    Database::connect(options)
+async fn initialize_test_database() {
+    let test_database = test_database_name();
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let base_options = PgConnectOptions::from_str(&database_url).expect("parse DATABASE_URL");
+    let mut admin = PgConnection::connect_with(&base_options.clone().database("postgres"))
         .await
-        .expect("database connection")
+        .expect("connect to PostgreSQL admin database");
+
+    sqlx::query_scalar::<_, bool>(
+        "SELECT pg_advisory_lock(hashtext('t-rader-test-database'), hashtext('migration')) IS NULL",
+    )
+    .fetch_one(&mut admin)
+    .await
+    .expect("lock shared test database migration");
+
+    let database_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)",
+    )
+    .bind(&test_database)
+    .fetch_one(&mut admin)
+    .await
+    .expect("check shared test database");
+    if !database_exists {
+        sqlx::query(AssertSqlSafe(format!(
+            "CREATE DATABASE {}",
+            quote_identifier(&test_database)
+        )))
+        .execute(&mut admin)
+        .await
+        .expect("create shared test database");
+    }
+
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(base_options.database(&test_database))
+        .await
+        .expect("connect to shared test database for migrations");
+    let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
+    Migrator::up(&db, None)
+        .await
+        .expect("run shared test database migrations");
+    drop(db);
+
+    sqlx::query_scalar::<_, bool>(
+        "SELECT pg_advisory_unlock(hashtext('t-rader-test-database'), hashtext('migration'))",
+    )
+    .fetch_one(&mut admin)
+    .await
+    .expect("unlock shared test database migration");
+}
+
+fn test_database_options() -> PgConnectOptions {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    PgConnectOptions::from_str(&database_url)
+        .expect("parse DATABASE_URL")
+        .database(&test_database_name())
+}
+
+// 別 worktree のテストが古い migration source の DB を使うことがあるため、異なる hash の DB を共存させる。
+fn test_database_name() -> String {
+    format!("t_rader_test_{}", env!("MIGRATION_SOURCE_HASH"))
+}
+
+fn quote_identifier(identifier: &str) -> String {
+    format!("\"{}\"", identifier.replace('"', "\"\""))
 }
 
 /// agent_task_client を disabled にした最小構成の `AppState` を組み立てる。
-fn base_state(db: DatabaseConnection) -> AppState {
+fn base_state(db: DatabaseHandle) -> AppState {
     AppState {
         db,
         daily_bar_source: None,
@@ -58,11 +135,8 @@ fn base_state(db: DatabaseConnection) -> AppState {
     }
 }
 
-/// `#[sqlx::test]` から注入された PgPool を使って TestServer を作成する
-///
-/// PgPool を SeaORM の DatabaseConnection に変換する。
-pub async fn create_test_server(pool: PgPool) -> TestServer {
-    let db = create_test_db(pool).await;
+/// `#[backend_test_macros::database_test]` から注入された transaction を使って TestServer を作成する。
+pub async fn create_test_server(db: DatabaseHandle) -> TestServer {
     let router = create_router(base_state(db));
     TestServer::new(router).expect("failed to create test server")
 }
@@ -81,7 +155,7 @@ pub async fn create_strategy(server: &TestServer, name: &str) -> String {
 }
 
 /// テストで戦略レコードを 1 件 seed する。
-pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+pub async fn insert_test_strategy(db: &impl ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
     strategy::ActiveModel {
         id: Set(id),
@@ -99,7 +173,7 @@ pub async fn insert_test_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
 
 /// テストで note を 1 件 seed する。
 pub async fn insert_test_note(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -108,7 +182,7 @@ pub async fn insert_test_note(
 }
 
 pub async fn insert_test_note_in_scope(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -117,7 +191,7 @@ pub async fn insert_test_note_in_scope(
 }
 
 pub async fn insert_test_note_with_status(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -128,7 +202,7 @@ pub async fn insert_test_note_with_status(
 }
 
 pub async fn insert_test_note_with_execution_id(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -147,7 +221,7 @@ pub async fn insert_test_note_with_execution_id(
 }
 
 async fn insert_test_note_with_options(
-    db: &DatabaseConnection,
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -160,7 +234,7 @@ async fn insert_test_note_with_options(
     note::Entity::insert(note::ActiveModel {
         id: Set(id),
         strategy_id: Set(strategy_id),
-        type_tag: Set(None),
+        kind: Set(None),
         trigger: Set(None),
         trigger_label: Set(None),
         created_at: NotSet,
@@ -187,7 +261,7 @@ async fn insert_test_note_with_options(
     )
     .await
     .expect("append test note version");
-    if status != "unread" {
+    if status != version.status {
         note_version::ActiveModel {
             id: Set(version.id),
             status: Set(status.to_string()),
@@ -204,7 +278,7 @@ async fn insert_test_note_with_options(
 /// テストで strategy_task を 1 件 seed する。`created_at`/`updated_at` を明示指定できる
 /// ため、一覧の並び順を検証するテストで使う。
 pub async fn insert_test_strategy_task(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     prompt: &str,
     purpose: Option<&str>,
@@ -235,7 +309,7 @@ pub async fn insert_test_strategy_task(
 
 /// テストで cron trigger を 1 件 seed する。
 pub async fn insert_test_cron_trigger(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     schedule: &str,
     enabled: bool,
@@ -264,7 +338,7 @@ pub async fn insert_test_cron_trigger(
 
 /// テストで hook trigger を 1 件 seed する。
 pub async fn insert_test_hook_trigger(
-    db: &DatabaseConnection,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     slug: &str,
     prompt_template: &str,
@@ -292,7 +366,7 @@ pub async fn insert_test_hook_trigger(
 }
 
 /// テストで stock を 1 件 seed する。
-pub async fn insert_test_stock(db: &DatabaseConnection, id: &str, name: &str) {
+pub async fn insert_test_stock(db: &impl ConnectionTrait, id: &str, name: &str) {
     stock::ActiveModel {
         id: Set(id.to_string()),
         name: Set(name.to_string()),
@@ -307,70 +381,8 @@ pub async fn insert_test_stock(db: &DatabaseConnection, id: &str, name: &str) {
     .expect("insert test stock");
 }
 
-/// テストで hypothesis を 1 件 seed する。`strategy_id = None` で global 仮説を表現できる。
-pub async fn insert_test_hypothesis(
-    db: &DatabaseConnection,
-    strategy_id: Option<Uuid>,
-    title: &str,
-    body: &str,
-    status: &str,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    hypothesis::ActiveModel {
-        hypothesis_id: Set(id),
-        strategy_id: Set(strategy_id),
-        title: Set(title.to_string()),
-        body: Set(body.to_string()),
-        status: Set(status.to_string()),
-        related_note_ids: Set(vec![]),
-        related_interest_ids: Set(vec![]),
-        created_at: NotSet,
-        updated_at: NotSet,
-    }
-    .insert(db)
-    .await
-    .expect("insert test hypothesis");
-    id
-}
-
-/// テストで hypothesis_proposal を 1 件 seed する。`created_at` を明示指定できるため、
-/// 一覧の並び順を検証するテストで使う。
-#[expect(
-    clippy::too_many_arguments,
-    reason = "hypothesis_proposal の各フィールドをテスト用に並べる関数"
-)]
-pub async fn insert_test_hypothesis_proposal(
-    db: &DatabaseConnection,
-    hypothesis_id: Uuid,
-    proposed_title: Option<&str>,
-    proposed_body: Option<&str>,
-    proposed_status: Option<&str>,
-    rationale: &str,
-    status: &str,
-    created_at: DateTime<FixedOffset>,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    hypothesis_proposal::ActiveModel {
-        id: Set(id),
-        hypothesis_id: Set(hypothesis_id),
-        proposed_title: Set(proposed_title.map(str::to_string)),
-        proposed_body: Set(proposed_body.map(str::to_string)),
-        proposed_status: Set(proposed_status.map(str::to_string)),
-        rationale: Set(rationale.to_string()),
-        status: Set(status.to_string()),
-        review_note: Set(None),
-        created_at: Set(created_at),
-        reviewed_at: Set(None),
-    }
-    .insert(db)
-    .await
-    .expect("insert test hypothesis_proposal");
-    id
-}
-
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。
-pub async fn create_test_server_with_db(pool: PgPool) -> (DatabaseConnection, TestServer) {
-    let db = create_test_db(pool).await;
+pub async fn create_test_server_with_db(db: DatabaseHandle) -> (DatabaseHandle, TestServer) {
     let state = base_state(db.clone());
     let router = create_router(state);
     let server = TestServer::new(router).expect("failed to create test server");
@@ -379,10 +391,9 @@ pub async fn create_test_server_with_db(pool: PgPool) -> (DatabaseConnection, Te
 
 /// data_provider を差し替えて TestServer を作成する
 pub async fn create_test_server_with_jquants_client(
-    pool: PgPool,
+    db: DatabaseHandle,
     client: Arc<crate::data_provider::jquants::JQuantsClient>,
 ) -> TestServer {
-    let db = create_test_db(pool).await;
     let mut state = base_state(db);
     let source: SharedDailyBarSource = client.clone();
     state.daily_bar_source = Some(source);
@@ -393,10 +404,9 @@ pub async fn create_test_server_with_jquants_client(
 
 /// kata executor を差し替えて TestServer を作成する
 pub async fn create_test_server_with_kata(
-    pool: PgPool,
+    db: DatabaseHandle,
     executor: SharedKataExecutor,
 ) -> TestServer {
-    let db = create_test_db(pool).await;
     let mut state = base_state(db);
     state.kata_executor = Some(executor);
     let router = create_router(state);
@@ -405,10 +415,9 @@ pub async fn create_test_server_with_kata(
 
 /// llm_gateway_client を差し替えて TestServer を作成する
 pub async fn create_test_server_with_llm_gateway(
-    pool: PgPool,
+    db: DatabaseHandle,
     llm_gateway_base_url: &str,
 ) -> TestServer {
-    let db = create_test_db(pool).await;
     let mut state = base_state(db);
     state.llm_gateway_client = Some(Arc::new(
         crate::services::litellm_client::LiteLlmClient::new(llm_gateway_base_url, None)
@@ -420,19 +429,18 @@ pub async fn create_test_server_with_llm_gateway(
 
 /// agent_task_client (t-rader-agent 内部 API client) を差し替えて TestServer を作成する
 pub async fn create_test_server_with_agent_client(
-    pool: PgPool,
+    db: DatabaseHandle,
     agent_client: SharedAgentTaskClient,
 ) -> TestServer {
-    let (_, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+    let (_, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
     server
 }
 
 /// `create_test_server_with_db` の agent_task_client 差し替え版。
 pub async fn create_test_server_with_db_and_agent_client(
-    pool: PgPool,
+    db: DatabaseHandle,
     agent_client: SharedAgentTaskClient,
-) -> (DatabaseConnection, TestServer) {
-    let db = create_test_db(pool).await;
+) -> (DatabaseHandle, TestServer) {
     let mut state = base_state(db.clone());
     state.agent_task_client = agent_client;
     let router = create_router(state);
@@ -442,8 +450,7 @@ pub async fn create_test_server_with_db_and_agent_client(
 
 /// `AppState` 全体と `TestServer` のペアを返す。webhook token / notify への直接アクセスが
 /// 必要なテスト (webhook 受信のような) 向け。
-pub async fn create_test_server_with_state(pool: PgPool) -> (AppState, TestServer) {
-    let db = create_test_db(pool).await;
+pub async fn create_test_server_with_state(db: DatabaseHandle) -> (AppState, TestServer) {
     let state = base_state(db);
     let router = create_router(state.clone());
     let server = TestServer::new(router).expect("failed to create test server");

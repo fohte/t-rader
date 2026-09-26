@@ -38,7 +38,7 @@ pub struct NoteResponse {
     pub title: String,
     pub body_md: String,
     pub frontmatter_json: Json,
-    pub type_tag: Option<String>,
+    pub kind: Option<String>,
     pub status: String,
     pub trigger: Option<String>,
     pub trigger_label: Option<String>,
@@ -67,7 +67,7 @@ impl NoteResponse {
             title: version.title,
             body_md: version.body_md,
             frontmatter_json: version.frontmatter_json,
-            type_tag: note.type_tag,
+            kind: note.kind,
             status: version.status,
             trigger: note.trigger,
             trigger_label: note.trigger_label,
@@ -93,8 +93,9 @@ pub struct CreateNoteRequest {
     #[serde(default)]
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,
-    pub type_tag: Option<String>,
-    /// 任意。デフォルトは "unread"
+    pub kind: Option<String>,
+    /// 人間の作成では省略時に "approved"。指定する場合も "approved" のみ許可する。
+    /// エージェントの作成では省略時に "unread"。承認必須種別では "unread" のみ許可する。
     pub status: Option<String>,
     pub trigger: Option<NoteTrigger>,
     pub trigger_label: Option<String>,
@@ -113,7 +114,12 @@ pub struct UpdateNoteRequest {
     pub body_md: Option<String>,
     #[schema(value_type = Option<std::collections::HashMap<String, serde_json::Value>>)]
     pub frontmatter_json: Option<serde_json::Value>,
-    pub type_tag: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub kind: Option<Option<String>>,
     pub trigger: Option<NoteTrigger>,
     pub trigger_label: Option<String>,
 }

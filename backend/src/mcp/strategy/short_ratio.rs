@@ -137,18 +137,14 @@ mod tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::short_ratio;
-    use crate::testing::create_test_db;
 
     use super::super::dto::{
         ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto,
     };
     use super::super::tests_common::build_server;
     use super::{compute_short_ratio, sector33_code_for_name};
+    use crate::entities::short_ratio;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -184,7 +180,7 @@ mod tests {
     }
 
     async fn seed(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         sector33_code: &str,
         date: NaiveDate,
         values: Option<(&str, &str, &str)>,
@@ -207,10 +203,8 @@ mod tests {
         .expect("seed short ratio");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn rejects_unknown_sector_name(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn rejects_unknown_sector_name(db: crate::database::DatabaseHandle) {
         let err = build_server(db)
             .read_sector_short_ratio_inner(
                 Uuid::new_v4(),
@@ -226,9 +220,10 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn returns_matching_sector_newest_first_with_computed_ratio(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn returns_matching_sector_newest_first_with_computed_ratio(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed(&db, "3700", ymd(2026, 1, 5), Some(("700", "200", "100"))).await;
         seed(&db, "3700", ymd(2026, 1, 6), None).await;
         seed(&db, "3650", ymd(2026, 1, 6), Some(("100", "50", "50"))).await;
@@ -270,9 +265,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn filters_by_date_range_and_respects_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn filters_by_date_range_and_respects_limit(db: crate::database::DatabaseHandle) {
         for day in [1u32, 2, 3, 4] {
             seed(&db, "3700", ymd(2026, 1, day), Some(("100", "10", "10"))).await;
         }

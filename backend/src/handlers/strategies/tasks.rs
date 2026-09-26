@@ -153,7 +153,6 @@ mod tests {
 
     use sea_orm::EntityTrait;
     use serde_json::json;
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
@@ -176,12 +175,14 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_creates_task_row_and_submits_to_agent(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn submit_chat_creates_task_row_and_submits_to_agent(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_next_task_id("agent-task-1").await;
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "long").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -241,9 +242,9 @@ mod tests {
         assert_eq!(submitted, vec![(strategy_id, "inspect 7203".to_string())]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_unknown_strategy_returns_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn submit_chat_unknown_strategy_returns_404(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/strategies/00000000-0000-0000-0000-000000000000/chat")
             .json(&json!({ "prompt": "x" }))
@@ -251,10 +252,10 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_empty_prompt_returns_400(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn submit_chat_empty_prompt_returns_400(db: crate::database::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
         let res = server
@@ -264,12 +265,12 @@ mod tests {
         res.assert_status(axum::http::StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_agent_not_configured_returns_503(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn submit_chat_agent_not_configured_returns_503(db: crate::database::DatabaseHandle) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -286,10 +287,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_chat_missing_agent_config_returns_503(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn submit_chat_missing_agent_config_returns_503(db: crate::database::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
         let res = server
@@ -303,10 +304,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_returns_phase(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn get_strategy_task_returns_phase(db: crate::database::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -349,10 +350,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_unknown_returns_404(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn get_strategy_task_unknown_returns_404(db: crate::database::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
         let res = server
@@ -363,10 +364,10 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_strategy_mismatch_returns_404(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn get_strategy_task_strategy_mismatch_returns_404(db: crate::database::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
@@ -389,9 +390,9 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_strategy_tasks_returns_tasks_newest_first(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_strategy_tasks_returns_tasks_newest_first(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
         let base = chrono::Utc::now().fixed_offset();
@@ -453,18 +454,18 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_strategy_tasks_unknown_strategy_returns_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_strategy_tasks_unknown_strategy_returns_404(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/tasks")
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_strategy_tasks_scoped_to_strategy(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_strategy_tasks_scoped_to_strategy(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;
 

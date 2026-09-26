@@ -81,13 +81,11 @@ pub async fn put_investable_amount(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use crate::testing::{create_strategy, create_test_server};
 
-    #[sqlx::test(migrations = false)]
-    async fn get_returns_null_when_unset(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_returns_null_when_unset(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
         let res = server
@@ -100,9 +98,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_then_get_round_trips(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_then_get_round_trips(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
         let expected = serde_json::json!({
@@ -126,9 +124,9 @@ mod tests {
         assert_eq!(get.json::<serde_json::Value>(), expected);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_without_effective_at_defaults_to_now(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_without_effective_at_defaults_to_now(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
         let before = chrono::Utc::now();
 
@@ -148,9 +146,9 @@ mod tests {
         assert!(effective_at >= before);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_keeps_previous_history_row(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_keeps_previous_history_row(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
         server
@@ -183,18 +181,18 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_404_for_unknown_strategy(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_404_for_unknown_strategy(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/investable-amount")
             .await;
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_404_for_unknown_strategy(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_404_for_unknown_strategy(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .put("/api/strategies/00000000-0000-0000-0000-000000000000/investable-amount")
             .json(&serde_json::json!({ "amount_jpy": 1000000 }))
@@ -202,9 +200,9 @@ mod tests {
         res.assert_status(axum::http::StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_400_for_negative_amount(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_400_for_negative_amount(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
         let res = server

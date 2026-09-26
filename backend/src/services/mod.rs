@@ -11,8 +11,6 @@ pub mod edinet_holdings;
 pub mod fin_summary_ingest;
 pub mod fred_ingest;
 pub mod graph;
-pub mod hypotheses;
-pub mod hypothesis_proposals;
 pub mod import;
 pub mod investable_amount;
 pub mod jquants_daily_ingest;

@@ -12,7 +12,6 @@ use chrono::{TimeZone, Utc};
 use rmcp::handler::server::wrapper::Parameters;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::{Value, json};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::agent_client::{
@@ -30,12 +29,11 @@ use crate::testing::{
     insert_test_hook_trigger, insert_test_strategy,
 };
 
-#[sqlx::test(migrations = false)]
-async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
+#[backend_test_macros::database_test]
+async fn all_five_submission_routes_converge_on_submit_task(db: crate::database::DatabaseHandle) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
-    let (db, server) =
-        create_test_server_with_db_and_agent_client(pool, agent_client.clone()).await;
+    let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client.clone()).await;
     let strategy_id = insert_test_strategy(&db, "s").await;
     agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await
@@ -77,7 +75,12 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
 
     let note_res = server
         .post("/api/notes")
-        .json(&json!({ "strategy_id": strategy_id, "title": "note", "body_md": "body" }))
+        .json(&json!({
+            "strategy_id": strategy_id,
+            "title": "note",
+            "body_md": "body",
+            "created_by_kind": "llm",
+        }))
         .await;
     note_res.assert_status(axum::http::StatusCode::CREATED);
     let note_body: Value = note_res.json();
@@ -163,12 +166,13 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
     );
 }
 
-#[sqlx::test(migrations = false)]
-async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(pool: PgPool) {
+#[backend_test_macros::database_test]
+async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(
+    db: crate::database::DatabaseHandle,
+) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
-    let (db, server) =
-        create_test_server_with_db_and_agent_client(pool, agent_client.clone()).await;
+    let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client.clone()).await;
     let strategy_id = insert_test_strategy(&db, "s").await;
     agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await

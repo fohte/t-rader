@@ -40,11 +40,11 @@ pub(crate) trait DailyJQuantsIngest: Sized {
         day: NaiveDate,
     ) -> impl Future<Output = Result<Vec<Self>, ShortSellingSourceError>> + Send;
     fn upsert(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         items: Vec<Self>,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
     fn find_latest_date(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
     ) -> impl Future<Output = Result<Option<NaiveDate>, AppError>> + Send;
 }
 
@@ -56,7 +56,7 @@ pub(crate) trait DailyJQuantsIngest: Sized {
 /// 初回バックフィル中も他ジョブ (チャート表示の株価取得等) は自分の順番が来るまで
 /// 待つだけで済み、専有にはならない。
 pub(crate) async fn run_ingest_cycle<T: DailyJQuantsIngest>(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn ShortSellingSource,
 ) -> Result<DailyIngestStats, AppError> {
     let mut stats = DailyIngestStats::default();

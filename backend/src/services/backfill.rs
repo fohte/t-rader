@@ -1,5 +1,4 @@
 use chrono::{Duration, NaiveDate, Utc};
-use sea_orm::DatabaseConnection;
 
 use crate::data_provider::{DailyBarSource, DateRange};
 use crate::models::Timeframe;
@@ -28,7 +27,7 @@ pub(crate) fn latest_fetchable_date(
 /// 契約範囲が検出済みならその範囲を、未検出ならフォールバック範囲を取得する。
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     data_source: &dyn DailyBarSource,
     instrument_id: &str,
 ) {
@@ -82,15 +81,13 @@ pub async fn backfill_daily_bars(
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Duration, NaiveDate, TimeZone, Utc};
-    use rstest::rstest;
-    use rust_decimal::Decimal;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
-    use crate::testing::{MockProvider, create_test_db};
+    use crate::testing::MockProvider;
+    use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use rstest::rstest;
+    use rust_decimal::Decimal;
 
     // --- テスト用ヘルパー ---
 
@@ -119,7 +116,7 @@ mod tests {
     }
 
     async fn find_all_bars(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         instrument_id: &str,
     ) -> Vec<crate::entities::bars::Model> {
         use crate::repositories::bars::{BarsQuery, find_bars};
@@ -137,7 +134,7 @@ mod tests {
     }
 
     /// テスト用 instrument を DB に挿入する
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         use crate::entities::instruments;
         use sea_orm::sea_query::OnConflict;
         use sea_orm::{EntityTrait, Set};
@@ -180,9 +177,8 @@ mod tests {
         assert_eq!(latest_fetchable_date(today, known_range), expected);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn backfill_saves_bars_to_db(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn backfill_saves_bars_to_db(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         // フォールバック範囲内に収まる日付を使う
@@ -203,9 +199,10 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn backfill_uses_known_fetchable_range_when_detected(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn backfill_uses_known_fetchable_range_when_detected(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         let known_from = NaiveDate::from_ymd_opt(2020, 4, 1).expect("date");
@@ -228,9 +225,10 @@ mod tests {
         assert_eq!(result[0].close, Decimal::new(100, 0));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn backfill_uses_fallback_history_when_range_is_undetected(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn backfill_uses_fallback_history_when_range_is_undetected(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         // Free プランの範囲 (2 年) よりずっと古い日付
@@ -248,10 +246,8 @@ mod tests {
         assert_eq!(result.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn backfill_handles_empty_response(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn backfill_handles_empty_response(db: crate::database::DatabaseHandle) {
         // 銘柄は存在するがバーデータなし
         let provider = MockProvider::new().with_instruments(vec![sample_instrument("9999")]);
 

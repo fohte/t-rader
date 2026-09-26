@@ -6,9 +6,7 @@
 
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-};
+use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::entities::trigger;
@@ -77,7 +75,10 @@ fn validate_create(payload: &CreateTriggerRequest) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn find_strategy_or_404(db: &DatabaseConnection, id: Uuid) -> Result<(), AppError> {
+async fn find_strategy_or_404(
+    db: &impl sea_orm::ConnectionTrait,
+    id: Uuid,
+) -> Result<(), AppError> {
     let exists = crate::entities::strategy::Entity::find_by_id(id)
         .one(db)
         .await?
@@ -89,7 +90,7 @@ async fn find_strategy_or_404(db: &DatabaseConnection, id: Uuid) -> Result<(), A
 }
 
 async fn find_trigger_or_404(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     trigger_id: Uuid,
 ) -> Result<trigger::Model, AppError> {
     trigger::Entity::find_by_id(trigger_id)
@@ -100,7 +101,7 @@ async fn find_trigger_or_404(
 
 /// 戦略の trigger 一覧
 pub async fn list_triggers(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     kind: Option<TriggerKind>,
 ) -> Result<Vec<trigger::Model>, AppError> {
@@ -118,7 +119,7 @@ pub async fn list_triggers(
 
 /// trigger を作成
 pub async fn create_trigger(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     payload: CreateTriggerRequest,
 ) -> Result<trigger::Model, AppError> {
@@ -147,7 +148,7 @@ pub async fn create_trigger(
 
 /// trigger 詳細
 pub async fn get_trigger(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     trigger_id: Uuid,
 ) -> Result<trigger::Model, AppError> {
     find_trigger_or_404(db, trigger_id).await
@@ -155,7 +156,7 @@ pub async fn get_trigger(
 
 /// trigger 更新 (kind / strategy_id は不変)
 pub async fn update_trigger(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     trigger_id: Uuid,
     payload: UpdateTriggerRequest,
 ) -> Result<trigger::Model, AppError> {
@@ -203,7 +204,10 @@ pub async fn update_trigger(
 }
 
 /// trigger 削除
-pub async fn delete_trigger(db: &DatabaseConnection, trigger_id: Uuid) -> Result<(), AppError> {
+pub async fn delete_trigger(
+    db: &impl sea_orm::ConnectionTrait,
+    trigger_id: Uuid,
+) -> Result<(), AppError> {
     let result = trigger::Entity::delete_by_id(trigger_id).exec(db).await?;
     if result.rows_affected == 0 {
         return Err(AppError::NotFound(format!(

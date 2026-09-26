@@ -57,14 +57,13 @@ mod triggers;
 #[cfg(test)]
 mod tests_common;
 
+use crate::agent_client::SharedAgentTaskClient;
+use crate::database::DatabaseHandle;
+use crate::error::AppError;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
-use sea_orm::DatabaseConnection;
-
-use crate::agent_client::SharedAgentTaskClient;
-use crate::error::AppError;
 
 // `SubmitStrategyTaskParams` は integration_tests.rs からも直接参照されるため公開する。
 pub use dto::SubmitStrategyTaskParams;
@@ -87,13 +86,16 @@ const MAX_LIST_LIMIT: u64 = 100;
 
 #[derive(Clone)]
 pub struct MgmtServer {
-    db: DatabaseConnection,
+    db: DatabaseHandle,
     agent_client: SharedAgentTaskClient,
 }
 
 impl MgmtServer {
-    pub fn new(db: DatabaseConnection, agent_client: SharedAgentTaskClient) -> Self {
-        Self { db, agent_client }
+    pub fn new(db: impl Into<DatabaseHandle>, agent_client: SharedAgentTaskClient) -> Self {
+        Self {
+            db: db.into(),
+            agent_client,
+        }
     }
 }
 
@@ -154,7 +156,7 @@ impl MgmtServer {
     /// 失敗した (for_each の部分失敗を含む) 戦略タスクを、同じ行のまま再開する
     #[tool(
         name = "resume_strategy_task",
-        description = "Resume a previously failed strategy task in place. Applies to tasks in the 'failed' phase, and to tasks in the 'completed' phase that still have failed steps (a for_each phase where only some items failed). Phases before the first one containing a non-completed step are skipped (their saved output is reused); within that phase only the failed (or left running) items are re-run, and every later phase is re-run so recovered items reach it. Re-run steps reuse their original execution_step_id, so writes keyed by it (notes, annotations) are updated in place; other writes (e.g. predictions, hypothesis change proposals) made by a re-run phase are duplicated. Fails if the task is neither in the 'failed' phase nor a 'completed' task with failed steps."
+        description = "Resume a previously failed strategy task in place. Applies to tasks in the 'failed' phase, and to tasks in the 'completed' phase that still have failed steps (a for_each phase where only some items failed). Phases before the first one containing a non-completed step are skipped (their saved output is reused); within that phase only the failed (or left running) items are re-run, and every later phase is re-run so recovered items reach it. Re-run steps reuse their original execution_step_id, so writes keyed by it (notes, annotations) are updated in place; other writes (e.g. predictions) made by a re-run phase are duplicated. Fails if the task is neither in the 'failed' phase nor a 'completed' task with failed steps."
     )]
     async fn resume_strategy_task(
         &self,
@@ -216,7 +218,7 @@ impl MgmtServer {
     /// 戦略を削除する (confirm_name の完全一致必須、関連リソースは cascade 削除)
     #[tool(
         name = "delete_strategy",
-        description = "Delete a strategy and cascade-delete everything under it (notes, annotations, trades, hypotheses, triggers, custom indicators, strategy tasks). confirm_name must exactly match the strategy's current name or nothing is deleted, to guard against a wrong strategy_id."
+        description = "Delete a strategy and cascade-delete everything under it (notes, annotations, trades, triggers, custom indicators, strategy tasks). confirm_name must exactly match the strategy's current name or nothing is deleted, to guard against a wrong strategy_id."
     )]
     async fn delete_strategy(
         &self,

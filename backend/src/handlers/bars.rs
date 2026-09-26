@@ -88,20 +88,18 @@ pub async fn list_bars(
 
 #[cfg(test)]
 mod tests {
-    use axum::http::StatusCode;
-    use chrono::{NaiveDate, TimeZone, Utc};
-    use rust_decimal::Decimal;
-    use sea_orm::sea_query::OnConflict;
-    use sea_orm::{DatabaseConnection, EntityTrait, Set};
-    use sqlx::PgPool;
-
     use crate::entities::instruments;
     use crate::models::bar::{Bar, Timeframe};
     use crate::repositories;
     use crate::testing::{create_test_server, create_test_server_with_db};
+    use axum::http::StatusCode;
+    use chrono::{NaiveDate, TimeZone, Utc};
+    use rust_decimal::Decimal;
+    use sea_orm::sea_query::OnConflict;
+    use sea_orm::{EntityTrait, Set};
 
     /// テスト用の instrument を DB に挿入する
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
             name: Set(format!("Test {id}")),
@@ -136,9 +134,9 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_bars_returns_200_with_data(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_bars_returns_200_with_data(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![make_test_bar(
@@ -159,9 +157,9 @@ mod tests {
         assert_eq!(body[0]["timeframe"], "1d");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_bars_with_invalid_params_returns_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_bars_with_invalid_params_returns_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let cases = [
             ("empty_instrument_id", "?instrument_id="),
@@ -178,9 +176,9 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_bars_returns_empty_when_no_data(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_bars_returns_empty_when_no_data(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let response = server.get("/api/bars?instrument_id=9999").await;
         response.assert_status_ok();
@@ -189,9 +187,9 @@ mod tests {
         assert!(body.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_bars_with_date_range_filters_correctly(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_bars_with_date_range_filters_correctly(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![

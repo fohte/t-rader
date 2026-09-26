@@ -7,7 +7,7 @@
 use chrono::Utc;
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{DatabaseConnection, EntityTrait, IntoActiveModel};
+use sea_orm::{EntityTrait, IntoActiveModel};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -34,7 +34,7 @@ pub enum FireTriggerError {
 /// 呼び出し側は重複発火を許容する前提で組むこと: submit 成功後に `last_fired_at` 更新が
 /// 失敗すると次回 worker 走査で再発火しうる。
 pub async fn fire_trigger(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     trigger_id: Uuid,
     payload: Value,
@@ -314,20 +314,16 @@ mod tests {
 mod fire_tests {
     use std::sync::Arc;
 
-    use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-    use serde_json::json;
-    use sqlx::PgPool;
-
+    use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::{strategy, strategy_task, trigger};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
-    use crate::testing::create_test_db;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    use serde_json::json;
 
-    use super::*;
-
-    async fn seed_strategy(db: &sea_orm::DatabaseConnection, name: &str) -> Uuid {
+    async fn seed_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),
@@ -344,7 +340,7 @@ mod fire_tests {
     }
 
     async fn seed_hook_trigger(
-        db: &sea_orm::DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         slug: &str,
         prompt_template: &str,
@@ -409,9 +405,8 @@ mod fire_tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fire_creates_strategy_task_with_expected_source(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn fire_creates_strategy_task_with_expected_source(db: crate::database::DatabaseHandle) {
         let sid = seed_strategy(&db, "長期").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -452,9 +447,8 @@ mod fire_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fire_with_cron_source_writes_cron(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn fire_with_cron_source_writes_cron(db: crate::database::DatabaseHandle) {
         let sid = seed_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -498,9 +492,8 @@ mod fire_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fire_disabled_trigger_returns_error(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn fire_disabled_trigger_returns_error(db: crate::database::DatabaseHandle) {
         let sid = seed_strategy(&db, "s").await;
         let id = Uuid::new_v4();
         trigger::ActiveModel {
@@ -527,9 +520,8 @@ mod fire_tests {
         assert_eq!(err.to_string(), format!("trigger {id} is disabled"));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fire_missing_trigger_returns_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn fire_missing_trigger_returns_not_found(db: crate::database::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let missing = Uuid::new_v4();
         let err = fire_trigger(&db, &kube, missing, json!({}), TaskSource::Hook)
@@ -538,10 +530,11 @@ mod fire_tests {
         assert_eq!(err.to_string(), format!("trigger {missing} not found"));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fire_trigger_without_strategy_returns_no_strategy_error(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn fire_trigger_without_strategy_returns_no_strategy_error(
+        db: crate::database::DatabaseHandle,
+    ) {
         // strategy_id が NULL の trigger を作る API が無いため直接 insert する
-        let db = create_test_db(pool).await;
         let id = Uuid::new_v4();
         trigger::ActiveModel {
             trigger_id: Set(id),
@@ -567,9 +560,10 @@ mod fire_tests {
         assert_eq!(err.to_string(), format!("trigger {id} has no strategy_id"));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fire_does_not_update_last_fired_when_submit_fails(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn fire_does_not_update_last_fired_when_submit_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let sid = seed_strategy(&db, "p").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await

@@ -13,7 +13,6 @@ pub(super) mod eval_indicator;
 pub(super) mod evidence;
 pub(super) mod fin_summary;
 pub(super) mod holdings;
-pub(super) mod hypotheses;
 pub(super) mod macro_indicator;
 pub(super) mod margin;
 pub(super) mod media;
@@ -39,10 +38,11 @@ use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::EntityTrait;
 use uuid::Uuid;
 
 use crate::data_provider::SharedDailyBarSource;
+use crate::database::DatabaseHandle;
 use crate::entities::{annotation, note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
@@ -127,16 +127,19 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 
 #[derive(Clone)]
 pub struct StrategyServer {
-    db: DatabaseConnection,
+    db: DatabaseHandle,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
     pub(super) litellm_client: Option<SharedLlmClient>,
 }
 
 impl StrategyServer {
-    pub fn new(db: DatabaseConnection, daily_bar_source: Option<SharedDailyBarSource>) -> Self {
+    pub fn new(
+        db: impl Into<DatabaseHandle>,
+        daily_bar_source: Option<SharedDailyBarSource>,
+    ) -> Self {
         Self {
-            db,
+            db: db.into(),
             daily_bar_source,
             kata_executor: None,
             litellm_client: None,
@@ -269,7 +272,7 @@ fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String
 }
 
 pub(super) async fn fetch_note_owned_by(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
     expected: Uuid,
 ) -> Result<note::Model, McpError> {
@@ -287,7 +290,7 @@ pub(super) async fn fetch_note_owned_by(
 }
 
 pub(super) async fn fetch_annotation_owned_by(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     annotation_id: Uuid,
     expected: Uuid,
 ) -> Result<annotation::Model, McpError> {
@@ -305,7 +308,7 @@ pub(super) async fn fetch_annotation_owned_by(
 }
 
 pub(super) async fn ensure_strategy_exists(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<(), McpError> {
     let exists = strategy::Entity::find_by_id(id)

@@ -7,8 +7,7 @@
 
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TransactionSession,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -17,7 +16,10 @@ use crate::entities::strategy;
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
 
-pub async fn find_or_404(db: &DatabaseConnection, id: Uuid) -> Result<strategy::Model, AppError> {
+pub async fn find_or_404(
+    db: &impl sea_orm::ConnectionTrait,
+    id: Uuid,
+) -> Result<strategy::Model, AppError> {
     strategy::Entity::find_by_id(id)
         .one(db)
         .await?
@@ -39,7 +41,7 @@ pub struct CreateStrategy {
 }
 
 pub async fn create(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     actor: Actor,
     params: CreateStrategy,
 ) -> Result<strategy::Model, AppError> {
@@ -85,7 +87,7 @@ pub struct StrategyUpdate {
 }
 
 pub async fn update(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     actor: Actor,
     id: Uuid,
     payload: StrategyUpdate,
@@ -136,7 +138,11 @@ pub async fn update(
 
 /// 戦略を削除する。関連リソース (note / annotation / trade / trigger 等) は DB の
 /// `on_delete = Cascade` で連鎖削除される。
-pub async fn delete(db: &DatabaseConnection, actor: Actor, id: Uuid) -> Result<(), AppError> {
+pub async fn delete(
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    actor: Actor,
+    id: Uuid,
+) -> Result<(), AppError> {
     let txn = db.begin().await?;
     let result = strategy::Entity::delete_by_id(id).exec(&txn).await?;
     if result.rows_affected == 0 {
@@ -161,7 +167,7 @@ pub async fn delete(db: &DatabaseConnection, actor: Actor, id: Uuid) -> Result<(
 /// race を閉じる (呼び出し元が事前に `find_or_404` で確認していても、その後の再確認は
 /// このクエリ自体が兼ねる)。
 pub async fn delete_confirmed(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     actor: Actor,
     id: Uuid,
     expected_name: &str,
@@ -193,14 +199,11 @@ pub async fn delete_confirmed(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use super::*;
-    use crate::testing::{create_test_db, insert_test_strategy};
+    use crate::testing::insert_test_strategy;
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_records_change_history_with_given_actor(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_records_change_history_with_given_actor(db: crate::database::DatabaseHandle) {
         let id = insert_test_strategy(&db, "s").await;
 
         delete(&db, Actor::Llm { label: "mgmt-mcp" }, id)
@@ -232,18 +235,18 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_unknown_id_returns_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_unknown_id_returns_not_found(db: crate::database::DatabaseHandle) {
         let err = delete(&db, Actor::Human, Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
     }
 
     // 実際の並行リクエストは非決定的なため、confirm 済みの名前で呼ぶ delete_confirmed の
     // 直前に別経路で名前が変わることを、事前の rename で決定的に再現する。
-    #[sqlx::test(migrations = false)]
-    async fn delete_confirmed_rejects_when_name_changed_after_confirmation(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_confirmed_rejects_when_name_changed_after_confirmation(
+        db: crate::database::DatabaseHandle,
+    ) {
         let id = insert_test_strategy(&db, "original").await;
 
         update(

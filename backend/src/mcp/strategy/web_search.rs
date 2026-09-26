@@ -8,7 +8,7 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::mcp_tool_call_count;
@@ -39,7 +39,7 @@ where
 /// `(task_execution_id, tool_name)` の呼び出し回数をアトミックにインクリメントし、
 /// インクリメント後の件数を返す。
 async fn increment_task_tool_call_count(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     task_execution_id: &str,
     tool_name: &str,
 ) -> Result<i32, McpError> {
@@ -80,7 +80,7 @@ async fn increment_task_tool_call_count(
 /// デクリメント自体が失敗しても呼び出し元のエラーはそのまま返したいので、結果は返さず
 /// warn ログのみ残す。
 async fn decrement_task_tool_call_count(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     task_execution_id: &str,
     tool_name: &str,
 ) {
@@ -175,16 +175,13 @@ mod tests {
     use rstest::rstest;
     use sea_orm::{DatabaseBackend, MockDatabase};
     use serde_json::json;
-    use sqlx::PgPool;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    use crate::services::litellm_client::LiteLlmClient;
-    use crate::testing::create_test_db;
 
     use super::super::StrategyServer;
     use super::super::dto::{SearchWebParams, SearchWebResult};
     use super::*;
+    use crate::services::litellm_client::LiteLlmClient;
 
     fn mock_db() -> sea_orm::DatabaseConnection {
         MockDatabase::new(DatabaseBackend::Postgres).into_connection()
@@ -266,10 +263,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn search_web_inner_enforces_per_task_call_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn search_web_inner_enforces_per_task_call_limit(db: crate::database::DatabaseHandle) {
         let litellm = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
@@ -319,10 +314,10 @@ mod tests {
         assert_eq!(requests.len(), SEARCH_WEB_MAX_CALLS_PER_TASK as usize);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let litellm = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
@@ -351,9 +346,10 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn increment_task_tool_call_count_is_independent_per_task_and_tool(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn increment_task_tool_call_count_is_independent_per_task_and_tool(
+        db: crate::database::DatabaseHandle,
+    ) {
         let task_a = format!("task-{}", Uuid::new_v4());
         let task_b = format!("task-{}", Uuid::new_v4());
 

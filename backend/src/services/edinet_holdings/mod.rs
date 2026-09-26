@@ -1,121 +1,160 @@
-//! J-Quants EDINET 由来のデータ (大量保有報告書 / 政策保有株式 / 大株主状況) を
-//! 定期的に取り込む。書類の訂正は同じ DocId への上書きとして反映されるため、
-//! 差分取得の仕組みは無く、提出日を範囲指定して再取得することで反映する。
+//! 保有構造の書類を取得元 port 経由で定期的に取り込み、DB に蓄積する。
 
 mod cross_shareholdings;
 mod large_volume_shareholdings;
 mod major_shareholders;
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{Duration as ChronoDuration, NaiveDate};
-use sea_orm::DatabaseConnection;
-use serde_json::Value;
+use async_trait::async_trait;
+use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
+use core_application::{
+    SharedShareholdingStructureSource, ShareholdingStructureSource,
+    ShareholdingStructureSourceError,
+};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryOrder};
+use serde::Serialize;
 use tokio::task::JoinHandle;
 
-use crate::data_provider::jquants::JQuantsClient;
-
-/// ポーリング実行間隔。リアルタイム性を求めない pull 型運用のプロダクト方針に基づき 1 日間隔とする。
+/// ポーリング実行間隔。日次で更新されるデータに対して 1 日間隔とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// 既存データの最新 sub_date からこの日数分遡って再取得する幅。EDINET の訂正報告書は
-/// 差分取得 (cursor) の仕組みが無く、同じ DocId への上書きとしてのみ反映されるため、
-/// 前回サイクル以降に生じた訂正を拾うために一定期間を再取得する。
+/// 既存データの最新日からこの日数分遡って再取得する。
 const REFETCH_WINDOW_DAYS: i64 = 30;
 
-/// 1 サイクルの取り込み結果
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IngestStats {
     pub days_processed: usize,
     pub documents_saved: usize,
-    /// 同じ cycle 内の再試行 (2 回目のパス) でも取得に失敗した日数。この日付は
-    /// `latest_sub_date` 基準の再取得対象からも外れるため、書類が永久に欠落する。
     pub failed_dates: usize,
 }
 
-/// EDINET 取り込み対象の 1 エンドポイント (テーブル) が実装する設定。
-trait EdinetEndpoint {
-    /// ログ用の名前
+#[async_trait]
+trait EdinetEndpoint: Send + Sync {
+    type Document: Send;
+
     const NAME: &'static str;
-    /// J-Quants API のパス (例: "/edinet/large-volume-shareholders")
-    const PATH: &'static str;
-    /// このエンドポイントのデータ提供開始日
+
     fn available_from() -> NaiveDate;
-    /// 既存データの最新 sub_date (テーブルが空なら None)
-    async fn latest_sub_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, sea_orm::DbErr>;
-    /// 1 日分のドキュメント配列を doc_id で upsert し、保存件数を返す
-    async fn upsert(db: &DatabaseConnection, docs: Vec<Value>) -> Result<usize, sea_orm::DbErr>;
+
+    async fn latest_submitted_on(
+        db: &impl sea_orm::ConnectionTrait,
+    ) -> Result<Option<NaiveDate>, sea_orm::DbErr>;
+
+    async fn fetch(
+        source: &dyn ShareholdingStructureSource,
+        date: NaiveDate,
+    ) -> Result<Vec<Self::Document>, ShareholdingStructureSourceError>;
+
+    async fn upsert(
+        db: &impl sea_orm::ConnectionTrait,
+        documents: Vec<Self::Document>,
+    ) -> Result<usize, sea_orm::DbErr>;
 }
 
-/// 書類オブジェクトから DB カラムに必要な最小限のフィールドを取り出す。
-pub(crate) struct DocumentMeta {
-    doc_id: String,
-    code: Option<String>,
-    edinet_code: String,
-    sub_date: NaiveDate,
+enum IngestDateError {
+    Source(ShareholdingStructureSourceError),
+    Database(sea_orm::DbErr),
 }
 
-/// `doc` から `DocumentMeta` を取り出す。`DocId` / `EdinetCode` / `SubDate` のいずれかが
-/// 欠落・不正な形式の場合は警告ログを出して `None` を返す (その 1 件だけスキップし、
-/// 同じ日の他の書類の取り込みは継続する)。
-fn extract_meta(doc: &Value) -> Option<DocumentMeta> {
-    let doc_id = doc.get("DocId").and_then(Value::as_str);
-    let edinet_code = doc.get("EdinetCode").and_then(Value::as_str);
-    let sub_date_str = doc.get("SubDate").and_then(Value::as_str);
+async fn ingest_date<T: EdinetEndpoint>(
+    db: &impl sea_orm::ConnectionTrait,
+    source: &dyn ShareholdingStructureSource,
+    date: NaiveDate,
+) -> Result<usize, IngestDateError> {
+    let documents = T::fetch(source, date)
+        .await
+        .map_err(IngestDateError::Source)?;
+    T::upsert(db, documents)
+        .await
+        .map_err(IngestDateError::Database)
+}
 
-    let (Some(doc_id), Some(edinet_code), Some(sub_date_str)) = (doc_id, edinet_code, sub_date_str)
-    else {
-        tracing::warn!(
-            ?doc,
-            "DocId/EdinetCode/SubDate のいずれかが欠落、この書類をスキップします"
+async fn run_ingest_cycle<T: EdinetEndpoint>(
+    db: &impl sea_orm::ConnectionTrait,
+    source: &dyn ShareholdingStructureSource,
+) -> Result<IngestStats, sea_orm::DbErr> {
+    let Some(fetchable_range) = source.fetchable_range(Utc::now().date_naive()) else {
+        tracing::info!(
+            endpoint = T::NAME,
+            "取得可能範囲が未検出のため取り込みをスキップします"
         );
-        return None;
+        return Ok(IngestStats::default());
     };
 
-    let sub_date = match NaiveDate::parse_from_str(sub_date_str, "%Y-%m-%d") {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::warn!(doc_id, sub_date_str, error = %e, "SubDate のパースに失敗、この書類をスキップします");
-            return None;
+    let earliest = fetchable_range.from.max(T::available_from());
+    let start = match T::latest_submitted_on(db).await? {
+        Some(latest) => (latest - ChronoDuration::days(REFETCH_WINDOW_DAYS)).max(earliest),
+        None => earliest,
+    };
+
+    let mut stats = IngestStats::default();
+    let mut retry_dates = Vec::new();
+    let mut date = start;
+    while date <= fetchable_range.to {
+        match ingest_date::<T>(db, source, date).await {
+            Ok(count) => stats.documents_saved += count,
+            Err(IngestDateError::Source(error)) => {
+                tracing::warn!(endpoint = T::NAME, %date, %error, "書類の取得に失敗し、この cycle 終了後に再試行します");
+                retry_dates.push(date);
+            }
+            Err(IngestDateError::Database(error)) => return Err(error),
         }
-    };
+        stats.days_processed += 1;
+        date += ChronoDuration::days(1);
+    }
 
-    // J-Quants API が返す Code は 5 桁のまま保存する (stock/instruments 等の既存 4 桁との
-    // 突き合わせは、この列を読み出す側の責務のため、ここでは行わない)
-    let code = doc.get("Code").and_then(Value::as_str).map(str::to_string);
+    for date in retry_dates {
+        match ingest_date::<T>(db, source, date).await {
+            Ok(count) => stats.documents_saved += count,
+            Err(IngestDateError::Source(error)) => {
+                stats.failed_dates += 1;
+                tracing::error!(
+                    endpoint = T::NAME,
+                    %date,
+                    %error,
+                    "書類の再取得にも失敗しました。この日付の書類は取り込めていません"
+                );
+            }
+            Err(IngestDateError::Database(error)) => return Err(error),
+        }
+    }
 
-    Some(DocumentMeta {
-        doc_id: doc_id.to_string(),
-        code,
-        edinet_code: edinet_code.to_string(),
-        sub_date,
-    })
+    Ok(stats)
 }
 
-/// `docs` から `DocumentMeta` を取り出せた書類だけを `build` で `E::ActiveModel` に変換し、
-/// `doc_id` の重複を `conflict` の指定で upsert する。3 エンドポイントの `upsert` 実装が
-/// entity の型名以外まったく同一なため、ここに共通化する。
-pub(crate) async fn upsert_documents<E>(
-    db: &DatabaseConnection,
-    docs: Vec<Value>,
-    build: impl Fn(DocumentMeta, Value) -> E::ActiveModel,
+async fn latest_submitted_on_of<E, C>(
+    db: &impl sea_orm::ConnectionTrait,
+    submitted_on_column: C,
+    submitted_on: impl Fn(&E::Model) -> NaiveDate,
+) -> Result<Option<NaiveDate>, sea_orm::DbErr>
+where
+    E: EntityTrait,
+    C: ColumnTrait,
+{
+    let latest = E::find().order_by_desc(submitted_on_column).one(db).await?;
+    Ok(latest.map(|model| submitted_on(&model)))
+}
+
+async fn upsert_documents<E, T>(
+    db: &impl sea_orm::ConnectionTrait,
+    documents: Vec<T>,
+    build: impl Fn(T) -> Result<E::ActiveModel, sea_orm::DbErr>,
     conflict: sea_orm::sea_query::OnConflict,
 ) -> Result<usize, sea_orm::DbErr>
 where
-    E: sea_orm::EntityTrait,
+    E: EntityTrait,
     E::ActiveModel: Send,
 {
-    let models: Vec<E::ActiveModel> = docs
-        .iter()
-        .filter_map(|doc| extract_meta(doc).map(|meta| build(meta, doc.clone())))
-        .collect();
-
-    if models.is_empty() {
+    let count = documents.len();
+    if count == 0 {
         return Ok(0);
     }
-    let count = models.len();
 
+    let models = documents
+        .into_iter()
+        .map(build)
+        .collect::<Result<Vec<_>, _>>()?;
     E::insert_many(models)
         .on_conflict(conflict)
         .exec_without_returning(db)
@@ -124,90 +163,14 @@ where
     Ok(count)
 }
 
-/// `sub_date_column` で降順ソートした最新 1 行から `sub_date` を取り出す。3 エンドポイントの
-/// `latest_sub_date` 実装が entity の型名以外まったく同一なため、ここに共通化する。
-pub(crate) async fn latest_sub_date_of<E, C>(
-    db: &DatabaseConnection,
-    sub_date_column: C,
-    sub_date: impl Fn(&E::Model) -> NaiveDate,
-) -> Result<Option<NaiveDate>, sea_orm::DbErr>
-where
-    E: sea_orm::EntityTrait,
-    C: sea_orm::ColumnTrait,
-{
-    use sea_orm::QueryOrder;
-
-    let latest = E::find().order_by_desc(sub_date_column).one(db).await?;
-    Ok(latest.map(|m| sub_date(&m)))
+fn serialize_details<T: Serialize>(details: T) -> Result<serde_json::Value, sea_orm::DbErr> {
+    serde_json::to_value(details).map_err(|error| sea_orm::DbErr::Custom(error.to_string()))
 }
 
-/// 取得可能範囲・既存データの最新 sub_date から、この cycle で取得する日付範囲を決め、
-/// 1 日ずつ書類を取得して DB に保存する。契約プランが未検出 (`known_fetchable_range` が
-/// `None`) ならスキップする。取得に失敗した日付はメインループでは記録するだけにして
-/// ループを最後まで走らせ、完了後に同じ cycle 内でその日付だけ再取得する (`start` は
-/// 次 cycle 時点の `latest_sub_date` から決まるため、次 cycle を待つと `REFETCH_WINDOW_DAYS`
-/// を過ぎた時点で再取得対象から外れてしまう)。
-async fn run_ingest_cycle<T: EdinetEndpoint>(
-    db: &DatabaseConnection,
-    client: &JQuantsClient,
-) -> Result<IngestStats, sea_orm::DbErr> {
-    let Some((plan_from, plan_to)) = client.known_fetchable_range() else {
-        tracing::info!(
-            endpoint = T::NAME,
-            "契約プランが未検出のため EDINET 取り込みをスキップします"
-        );
-        return Ok(IngestStats::default());
-    };
-
-    let earliest = plan_from.max(T::available_from());
-    let start = match T::latest_sub_date(db).await? {
-        Some(latest) => (latest - ChronoDuration::days(REFETCH_WINDOW_DAYS)).max(earliest),
-        None => earliest,
-    };
-
-    let mut stats = IngestStats::default();
-    let mut retry_dates = Vec::new();
-    let mut date = start;
-    while date <= plan_to {
-        match client.fetch_edinet_documents(T::PATH, date).await {
-            Ok(docs) if !docs.is_empty() => {
-                stats.documents_saved += T::upsert(db, docs).await?;
-            }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::warn!(endpoint = T::NAME, %date, error = %e, "EDINET 書類の取得に失敗、この cycle 終了後に再試行します");
-                retry_dates.push(date);
-            }
-        }
-        stats.days_processed += 1;
-        date += ChronoDuration::days(1);
-    }
-
-    for date in retry_dates {
-        match client.fetch_edinet_documents(T::PATH, date).await {
-            Ok(docs) if !docs.is_empty() => {
-                stats.documents_saved += T::upsert(db, docs).await?;
-            }
-            Ok(_) => {}
-            Err(e) => {
-                stats.failed_dates += 1;
-                tracing::error!(
-                    endpoint = T::NAME,
-                    %date,
-                    error = %e,
-                    "EDINET 書類の再取得にも失敗しました。latest_sub_date 基準の再取得対象からも外れるため、この日付の書類は取り込めていません"
-                );
-            }
-        }
-    }
-
-    Ok(stats)
-}
-
-/// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
+/// poll task を起動する。初回は即実行し、その後 `interval` で繰り返す。
 pub fn spawn_poll(
     db: DatabaseConnection,
-    client: Arc<JQuantsClient>,
+    source: SharedShareholdingStructureSource,
     interval: Duration,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
@@ -215,160 +178,151 @@ pub fn spawn_poll(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             ticker.tick().await;
-            run_all(&db, &client).await;
+            run_all(&db, source.as_ref()).await;
         }
     })
 }
 
-async fn run_all(db: &DatabaseConnection, client: &JQuantsClient) {
+async fn run_all(db: &impl sea_orm::ConnectionTrait, source: &dyn ShareholdingStructureSource) {
     let results = [
         (
             large_volume_shareholdings::Endpoint::NAME,
-            run_ingest_cycle::<large_volume_shareholdings::Endpoint>(db, client).await,
+            run_ingest_cycle::<large_volume_shareholdings::Endpoint>(db, source).await,
         ),
         (
             cross_shareholdings::Endpoint::NAME,
-            run_ingest_cycle::<cross_shareholdings::Endpoint>(db, client).await,
+            run_ingest_cycle::<cross_shareholdings::Endpoint>(db, source).await,
         ),
         (
             major_shareholders::Endpoint::NAME,
-            run_ingest_cycle::<major_shareholders::Endpoint>(db, client).await,
+            run_ingest_cycle::<major_shareholders::Endpoint>(db, source).await,
         ),
     ];
     for (name, result) in results {
         match result {
             Ok(stats) => {
-                tracing::debug!(endpoint = name, ?stats, "EDINET ingest cycle completed")
+                tracing::debug!(endpoint = name, ?stats, "保有構造の取り込みが完了しました")
             }
-            Err(err) => tracing::warn!(endpoint = name, %err, "EDINET ingest cycle failed"),
+            Err(error) => {
+                tracing::warn!(endpoint = name, %error, "保有構造の取り込みに失敗しました")
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
+    use chrono::{DateTime, NaiveDate, Utc};
+    use sea_orm::EntityTrait;
     use serde_json::json;
-    use sqlx::PgPool;
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, ResponseTemplate};
 
     use super::*;
     use crate::data_provider::jquants::mock::JQuantsMockServer;
-    use crate::entities::edinet_large_volume_shareholdings;
-    use crate::testing::create_test_db;
+    use crate::entities::{
+        cross_shareholding_documents, large_volume_shareholding_documents,
+        major_shareholder_documents,
+    };
+    use core_domain::holdings::{
+        CrossShareholding, CrossShareholdingCategory, CrossShareholdingContent,
+        CrossShareholdingDocument, LargeVolumeReportType, LargeVolumeShareholdingContent,
+        LargeVolumeShareholdingDocument, MajorShareholder, MajorShareholderContent,
+        MajorShareholderDocument, MajorShareholderReportType, MutualHolding,
+        ShareholdingDocumentMetadata,
+    };
 
-    // --- extract_meta ---
-
-    #[rstest]
-    #[case::ok(
+    fn document(document_id: &str, stock_code: &str, date: NaiveDate) -> serde_json::Value {
         json!({
-            "DocId": "S100ABCD",
-            "Code": "72030",
-            "EdinetCode": "E00001",
-            "SubDate": "2025-01-06",
-        }),
-        Some(("S100ABCD", Some("72030"), "E00001", "2025-01-06"))
-    )]
-    #[case::missing_doc_id(
-        json!({
-            "Code": "72030",
-            "EdinetCode": "E00001",
-            "SubDate": "2025-01-06",
-        }),
-        None
-    )]
-    #[case::missing_edinet_code(
-        json!({
-            "DocId": "S100ABCD",
-            "Code": "72030",
-            "SubDate": "2025-01-06",
-        }),
-        None
-    )]
-    #[case::missing_sub_date(
-        json!({
-            "DocId": "S100ABCD",
-            "Code": "72030",
-            "EdinetCode": "E00001",
-        }),
-        None
-    )]
-    #[case::invalid_sub_date_format(
-        json!({
-            "DocId": "S100ABCD",
-            "Code": "72030",
-            "EdinetCode": "E00001",
-            "SubDate": "20250106",
-        }),
-        None
-    )]
-    #[case::missing_code_becomes_none(
-        json!({
-            "DocId": "S100ABCD",
-            "EdinetCode": "E00001",
-            "SubDate": "2025-01-06",
-        }),
-        Some(("S100ABCD", None, "E00001", "2025-01-06"))
-    )]
-    fn extract_meta_cases(
-        #[case] doc: Value,
-        #[case] expected: Option<(&str, Option<&str>, &str, &str)>,
-    ) {
-        let actual = extract_meta(&doc).map(|meta| {
-            (
-                meta.doc_id,
-                meta.code,
-                meta.edinet_code,
-                meta.sub_date.format("%Y-%m-%d").to_string(),
-            )
-        });
-        let expected = expected.map(|(doc_id, code, edinet_code, sub_date)| {
-            (
-                doc_id.to_string(),
-                code.map(str::to_string),
-                edinet_code.to_string(),
-                sub_date.to_string(),
-            )
-        });
-        assert_eq!(actual, expected);
-    }
-
-    // --- run_ingest_cycle (large_volume_shareholdings で代表して検証) ---
-
-    fn doc(doc_id: &str, code: &str, edinet_code: &str, sub_date: &str) -> Value {
-        json!({
-            "DocId": doc_id,
-            "Code": code,
-            "EdinetCode": edinet_code,
-            "SubDate": sub_date,
+            "DocId": document_id,
+            "Code": stock_code,
+            "EdinetCode": "E99999",
+            "SubDate": date.format("%Y-%m-%d").to_string(),
         })
     }
 
-    async fn find_all(db: &DatabaseConnection) -> Vec<edinet_large_volume_shareholdings::Model> {
-        use sea_orm::EntityTrait;
-        edinet_large_volume_shareholdings::Entity::find()
-            .all(db)
-            .await
-            .expect("find all")
+    fn stored_document(
+        document_id: &str,
+        stock_code: &str,
+        submitted_on: NaiveDate,
+    ) -> LargeVolumeShareholdingDocument {
+        stored_document_with_change_reason(document_id, stock_code, submitted_on, None)
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fetches_from_available_from_when_table_is_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let mock = JQuantsMockServer::start().await;
+    fn stored_document_with_change_reason(
+        document_id: &str,
+        stock_code: &str,
+        submitted_on: NaiveDate,
+        change_reason: Option<&str>,
+    ) -> LargeVolumeShareholdingDocument {
+        LargeVolumeShareholdingDocument {
+            metadata: ShareholdingDocumentMetadata {
+                document_id: document_id.to_string(),
+                stock_code: Some(stock_code.to_string()),
+                filer_code: "E99999".to_string(),
+                submitted_on,
+            },
+            content: Some(LargeVolumeShareholdingContent {
+                report_type: LargeVolumeReportType::Unknown,
+                change_reason: change_reason.map(str::to_string),
+                total_shares_ratio: None,
+                previous_total_shares_ratio: None,
+                holders: vec![],
+            }),
+        }
+    }
 
+    fn stable_timestamp() -> DateTime<chrono::FixedOffset> {
+        DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
+    }
+
+    fn normalize_large_volume_timestamps(
+        mut model: large_volume_shareholding_documents::Model,
+    ) -> large_volume_shareholding_documents::Model {
+        model.created_at = stable_timestamp();
+        model.updated_at = stable_timestamp();
+        model
+    }
+
+    fn normalize_major_shareholder_timestamps(
+        mut model: major_shareholder_documents::Model,
+    ) -> major_shareholder_documents::Model {
+        model.created_at = stable_timestamp();
+        model.updated_at = stable_timestamp();
+        model
+    }
+
+    fn normalize_cross_shareholding_timestamps(
+        mut model: cross_shareholding_documents::Model,
+    ) -> cross_shareholding_documents::Model {
+        model.created_at = stable_timestamp();
+        model.updated_at = stable_timestamp();
+        model
+    }
+
+    async fn find_all(
+        db: &impl sea_orm::ConnectionTrait,
+    ) -> Vec<large_volume_shareholding_documents::Model> {
+        large_volume_shareholding_documents::Entity::find()
+            .all(db)
+            .await
+            .expect("find documents")
+    }
+
+    #[backend_test_macros::database_test]
+    async fn fetches_from_available_from_when_table_is_empty(db: crate::database::DatabaseHandle) {
+        let mock = JQuantsMockServer::start().await;
         let from = large_volume_shareholdings::Endpoint::available_from();
         let to = from + ChronoDuration::days(2);
 
-        // 3 日分すべてに書類を用意する (available_from, +1, +2)
         for offset in 0..=2 {
             let date = from + ChronoDuration::days(offset);
             mock.edinet_documents("/edinet/large-volume-shareholders")
                 .date(&date.format("%Y%m%d").to_string())
-                .docs(vec![doc(
-                    &format!("S{offset}"),
-                    "72030",
-                    "E00001",
-                    &date.format("%Y-%m-%d").to_string(),
+                .docs(vec![document(
+                    &format!("SAMPLE-DOC-{offset}"),
+                    "99990",
+                    date,
                 )])
                 .ok()
                 .await;
@@ -376,50 +330,91 @@ mod tests {
 
         let client = mock.client().expect("client");
         client.set_detected_range((from, to));
-
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
-            .expect("cycle ok");
+            .expect("cycle succeeds");
+
+        let mut rows = find_all(&db)
+            .await
+            .into_iter()
+            .map(normalize_large_volume_timestamps)
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| left.document_id.cmp(&right.document_id));
 
         assert_eq!(
-            stats,
-            IngestStats {
-                days_processed: 3,
-                documents_saved: 3,
-                failed_dates: 0,
-            }
+            (stats, rows),
+            (
+                IngestStats {
+                    days_processed: 3,
+                    documents_saved: 3,
+                    failed_dates: 0,
+                },
+                vec![
+                    large_volume_shareholding_documents::Model {
+                        document_id: "SAMPLE-DOC-0".to_string(),
+                        stock_code: Some("99990".to_string()),
+                        filer_code: "E99999".to_string(),
+                        submitted_on: from,
+                        details: json!({
+                            "report_type": "unknown",
+                            "change_reason": null,
+                            "total_shares_ratio": null,
+                            "previous_total_shares_ratio": null,
+                            "holders": [],
+                        }),
+                        created_at: stable_timestamp(),
+                        updated_at: stable_timestamp(),
+                    },
+                    large_volume_shareholding_documents::Model {
+                        document_id: "SAMPLE-DOC-1".to_string(),
+                        stock_code: Some("99990".to_string()),
+                        filer_code: "E99999".to_string(),
+                        submitted_on: from + ChronoDuration::days(1),
+                        details: json!({
+                            "report_type": "unknown",
+                            "change_reason": null,
+                            "total_shares_ratio": null,
+                            "previous_total_shares_ratio": null,
+                            "holders": [],
+                        }),
+                        created_at: stable_timestamp(),
+                        updated_at: stable_timestamp(),
+                    },
+                    large_volume_shareholding_documents::Model {
+                        document_id: "SAMPLE-DOC-2".to_string(),
+                        stock_code: Some("99990".to_string()),
+                        filer_code: "E99999".to_string(),
+                        submitted_on: from + ChronoDuration::days(2),
+                        details: json!({
+                            "report_type": "unknown",
+                            "change_reason": null,
+                            "total_shares_ratio": null,
+                            "previous_total_shares_ratio": null,
+                            "holders": [],
+                        }),
+                        created_at: stable_timestamp(),
+                        updated_at: stable_timestamp(),
+                    },
+                ],
+            )
         );
-
-        let rows = find_all(&db).await;
-        assert_eq!(rows.len(), 3);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn refetches_from_latest_sub_date_minus_window_on_second_cycle(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn refetches_from_latest_submitted_on_minus_window(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-
-        // latest を available_from から離しておき、素朴に available_from から
-        // 取得し直すロジックとは区別できるようにする。
         let from = large_volume_shareholdings::Endpoint::available_from();
         let latest = from + ChronoDuration::days(60);
         let expected_start = latest - ChronoDuration::days(REFETCH_WINDOW_DAYS);
         let to = expected_start + ChronoDuration::days(1);
 
-        // 既存データの最新 sub_date を作る
         large_volume_shareholdings::Endpoint::upsert(
             &db,
-            vec![doc(
-                "S-EXISTING",
-                "72030",
-                "E00001",
-                &latest.format("%Y-%m-%d").to_string(),
-            )],
+            vec![stored_document("SAMPLE-DOC", "99990", latest)],
         )
         .await
-        .expect("seed existing row");
+        .expect("seed document");
 
-        // 再取得範囲 (expected_start ..= to) の全日に空レスポンスを用意する
         let mut date = expected_start;
         while date <= to {
             mock.edinet_documents("/edinet/large-volume-shareholders")
@@ -432,12 +427,11 @@ mod tests {
 
         let client = mock.client().expect("client");
         client.set_detected_range((from, to));
-
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
-            .expect("cycle ok");
-
+            .expect("cycle succeeds");
         let expected_days = (to - expected_start).num_days() as usize + 1;
+
         assert_eq!(
             stats,
             IngestStats {
@@ -448,87 +442,213 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_when_plan_is_undetected(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_when_fetchable_range_is_unknown(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
-
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
-            .expect("cycle ok");
+            .expect("cycle succeeds");
 
-        assert_eq!(stats, IngestStats::default());
-        assert_eq!(find_all(&db).await.len(), 0);
+        assert_eq!(
+            (stats, find_all(&db).await),
+            (IngestStats::default(), vec![])
+        );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upserting_same_doc_id_twice_keeps_a_single_updated_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn upserts_the_document_with_the_same_id(db: crate::database::DatabaseHandle) {
+        let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
         let saved = large_volume_shareholdings::Endpoint::upsert(
             &db,
-            vec![doc("S100ABCD", "72030", "E00001", "2025-01-06")],
+            vec![stored_document_with_change_reason(
+                "SAMPLE-DOC",
+                "99990",
+                date,
+                Some("initial"),
+            )],
         )
         .await
         .expect("first upsert");
-        assert_eq!(saved, 1);
+        let second_saved = large_volume_shareholdings::Endpoint::upsert(
+            &db,
+            vec![stored_document_with_change_reason(
+                "SAMPLE-DOC",
+                "88880",
+                date,
+                Some("corrected"),
+            )],
+        )
+        .await
+        .expect("second upsert");
 
-        let second_doc = doc("S100ABCD", "67580", "E00001", "2025-01-06");
-        let saved = large_volume_shareholdings::Endpoint::upsert(&db, vec![second_doc.clone()])
-            .await
-            .expect("second upsert");
-        assert_eq!(saved, 1);
-
-        let fixed: chrono::DateTime<chrono::FixedOffset> =
-            chrono::DateTime::UNIX_EPOCH.fixed_offset();
-        let rows: Vec<edinet_large_volume_shareholdings::Model> = find_all(&db)
+        let rows = find_all(&db)
             .await
             .into_iter()
-            .map(|mut m| {
-                m.created_at = fixed;
-                m.updated_at = fixed;
-                m
-            })
-            .collect();
-
+            .map(normalize_large_volume_timestamps)
+            .collect::<Vec<_>>();
         assert_eq!(
-            rows,
-            vec![edinet_large_volume_shareholdings::Model {
-                doc_id: "S100ABCD".to_string(),
-                code: Some("67580".to_string()),
-                edinet_code: "E00001".to_string(),
-                sub_date: NaiveDate::from_ymd_opt(2025, 1, 6).expect("date"),
-                document: second_doc,
-                created_at: fixed,
-                updated_at: fixed,
-            }]
+            (saved, second_saved, rows),
+            (
+                1,
+                1,
+                vec![large_volume_shareholding_documents::Model {
+                    document_id: "SAMPLE-DOC".to_string(),
+                    stock_code: Some("88880".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on: date,
+                    details: json!({
+                        "report_type": "unknown",
+                        "change_reason": "corrected",
+                        "total_shares_ratio": null,
+                        "previous_total_shares_ratio": null,
+                        "holders": [],
+                    }),
+                    created_at: stable_timestamp(),
+                    updated_at: stable_timestamp(),
+                }]
+            )
         );
     }
 
-    // --- run_ingest_cycle の同一 cycle 内リトライ ---
+    #[backend_test_macros::database_test]
+    async fn upserts_major_shareholder_documents(db: crate::database::DatabaseHandle) {
+        let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
+        let period_end = NaiveDate::from_ymd_opt(2024, 12, 31).expect("valid date");
+        let saved = major_shareholders::Endpoint::upsert(
+            &db,
+            vec![MajorShareholderDocument {
+                metadata: ShareholdingDocumentMetadata {
+                    document_id: "SAMPLE-MAJOR-DOC".to_string(),
+                    stock_code: Some("99990".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on,
+                },
+                content: Some(MajorShareholderContent {
+                    period_end: Some(period_end),
+                    report_type: MajorShareholderReportType::Annual,
+                    holders: vec![MajorShareholder {
+                        rank: Some(1),
+                        name: "Example Holder".to_string(),
+                        shares_held: Some(1200),
+                        shares_ratio: Some(0.12),
+                    }],
+                }),
+            }],
+        )
+        .await
+        .expect("upsert major shareholders");
+        let rows = major_shareholder_documents::Entity::find()
+            .all(&db)
+            .await
+            .expect("find major shareholder documents")
+            .into_iter()
+            .map(normalize_major_shareholder_timestamps)
+            .collect::<Vec<_>>();
 
-    #[sqlx::test(migrations = false)]
-    async fn retries_a_failed_date_within_the_same_cycle_and_recovers(pool: PgPool) {
-        use wiremock::matchers::{method, path, query_param};
-        use wiremock::{Mock, ResponseTemplate};
+        assert_eq!(
+            (saved, rows),
+            (
+                1,
+                vec![major_shareholder_documents::Model {
+                    document_id: "SAMPLE-MAJOR-DOC".to_string(),
+                    stock_code: Some("99990".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on,
+                    details: json!({
+                        "period_end": "2024-12-31",
+                        "report_type": "annual",
+                        "holders": [{
+                            "rank": 1,
+                            "name": "Example Holder",
+                            "shares_held": 1200,
+                            "shares_ratio": 0.12,
+                        }],
+                    }),
+                    created_at: stable_timestamp(),
+                    updated_at: stable_timestamp(),
+                }]
+            )
+        );
+    }
 
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upserts_cross_shareholding_documents(db: crate::database::DatabaseHandle) {
+        let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
+        let period_end = NaiveDate::from_ymd_opt(2024, 12, 31).expect("valid date");
+        let saved = cross_shareholdings::Endpoint::upsert(
+            &db,
+            vec![CrossShareholdingDocument {
+                metadata: ShareholdingDocumentMetadata {
+                    document_id: "SAMPLE-CROSS-DOC".to_string(),
+                    stock_code: Some("99990".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on,
+                },
+                content: Some(CrossShareholdingContent {
+                    period_end: Some(period_end),
+                    holdings: vec![CrossShareholding {
+                        issuer_name: "Example Issuer".to_string(),
+                        issuer_stock_code: Some("88880".to_string()),
+                        category: CrossShareholdingCategory::Specified,
+                        current_shares: Some(500),
+                        previous_shares: Some(400),
+                        current_book_value: Some(6000),
+                        previous_book_value: Some(5000),
+                        mutual_holding: MutualHolding::Held,
+                    }],
+                }),
+            }],
+        )
+        .await
+        .expect("upsert cross shareholdings");
+        let rows = cross_shareholding_documents::Entity::find()
+            .all(&db)
+            .await
+            .expect("find cross shareholding documents")
+            .into_iter()
+            .map(normalize_cross_shareholding_timestamps)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (saved, rows),
+            (
+                1,
+                vec![cross_shareholding_documents::Model {
+                    document_id: "SAMPLE-CROSS-DOC".to_string(),
+                    stock_code: Some("99990".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on,
+                    details: json!({
+                        "period_end": "2024-12-31",
+                        "holdings": [{
+                            "issuer_name": "Example Issuer",
+                            "issuer_stock_code": "88880",
+                            "category": "specified",
+                            "current_shares": 500,
+                            "previous_shares": 400,
+                            "current_book_value": 6000,
+                            "previous_book_value": 5000,
+                            "mutual_holding": "held",
+                        }],
+                    }),
+                    created_at: stable_timestamp(),
+                    updated_at: stable_timestamp(),
+                }]
+            )
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn retries_a_failed_date_within_the_same_cycle_and_recovers(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
-
         let from = large_volume_shareholdings::Endpoint::available_from();
         let to = from + ChronoDuration::days(1);
-        let recovered_doc = doc(
-            "S-RECOVERED",
-            "72030",
-            "E00001",
-            &from.format("%Y-%m-%d").to_string(),
-        );
 
-        // from 日: 1 回目 (メインループ) は 403 (リトライ非対象のエラー) で失敗し、
-        // 2 回目 (cycle 内の再試行) で成功する
         Mock::given(method("GET"))
-            .and(path(large_volume_shareholdings::Endpoint::PATH))
+            .and(path("/edinet/large-volume-shareholders"))
             .and(query_param("date", from.format("%Y%m%d").to_string()))
             .respond_with(
                 ResponseTemplate::new(403).set_body_json(json!({ "message": "Forbidden" })),
@@ -536,14 +656,12 @@ mod tests {
             .up_to_n_times(1)
             .mount(mock.server_ref())
             .await;
-        mock.edinet_documents(large_volume_shareholdings::Endpoint::PATH)
+        mock.edinet_documents("/edinet/large-volume-shareholders")
             .date(&from.format("%Y%m%d").to_string())
-            .docs(vec![recovered_doc])
+            .docs(vec![document("SAMPLE-DOC", "99990", from)])
             .ok()
             .await;
-
-        // to 日: 通常成功 (空)
-        mock.edinet_documents(large_volume_shareholdings::Endpoint::PATH)
+        mock.edinet_documents("/edinet/large-volume-shareholders")
             .date(&to.format("%Y%m%d").to_string())
             .docs(vec![])
             .ok()
@@ -551,48 +669,57 @@ mod tests {
 
         let client = mock.client().expect("client");
         client.set_detected_range((from, to));
-
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
-            .expect("cycle ok");
+            .expect("cycle succeeds");
 
+        let rows = find_all(&db)
+            .await
+            .into_iter()
+            .map(normalize_large_volume_timestamps)
+            .collect::<Vec<_>>();
         assert_eq!(
-            stats,
-            IngestStats {
-                days_processed: 2,
-                documents_saved: 1,
-                failed_dates: 0,
-            }
+            (stats, rows),
+            (
+                IngestStats {
+                    days_processed: 2,
+                    documents_saved: 1,
+                    failed_dates: 0,
+                },
+                vec![large_volume_shareholding_documents::Model {
+                    document_id: "SAMPLE-DOC".to_string(),
+                    stock_code: Some("99990".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on: from,
+                    details: json!({
+                        "report_type": "unknown",
+                        "change_reason": null,
+                        "total_shares_ratio": null,
+                        "previous_total_shares_ratio": null,
+                        "holders": [],
+                    }),
+                    created_at: stable_timestamp(),
+                    updated_at: stable_timestamp(),
+                }],
+            )
         );
-
-        let rows = find_all(&db).await;
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].doc_id, "S-RECOVERED");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn counts_failed_dates_when_the_retry_also_fails(pool: PgPool) {
-        use wiremock::matchers::{method, path, query_param};
-        use wiremock::{Mock, ResponseTemplate};
-
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn counts_a_date_when_its_retry_fails(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-
         let from = large_volume_shareholdings::Endpoint::available_from();
         let to = from + ChronoDuration::days(1);
 
-        // from 日: 何度リクエストしても失敗する
         Mock::given(method("GET"))
-            .and(path(large_volume_shareholdings::Endpoint::PATH))
+            .and(path("/edinet/large-volume-shareholders"))
             .and(query_param("date", from.format("%Y%m%d").to_string()))
             .respond_with(
                 ResponseTemplate::new(403).set_body_json(json!({ "message": "Forbidden" })),
             )
             .mount(mock.server_ref())
             .await;
-
-        // to 日: 通常成功 (空)
-        mock.edinet_documents(large_volume_shareholdings::Endpoint::PATH)
+        mock.edinet_documents("/edinet/large-volume-shareholders")
             .date(&to.format("%Y%m%d").to_string())
             .docs(vec![])
             .ok()
@@ -600,20 +727,20 @@ mod tests {
 
         let client = mock.client().expect("client");
         client.set_detected_range((from, to));
-
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
-            .expect("cycle ok");
+            .expect("cycle succeeds");
 
         assert_eq!(
-            stats,
-            IngestStats {
-                days_processed: 2,
-                documents_saved: 0,
-                failed_dates: 1,
-            }
+            (stats, find_all(&db).await),
+            (
+                IngestStats {
+                    days_processed: 2,
+                    documents_saved: 0,
+                    failed_dates: 1,
+                },
+                vec![],
+            )
         );
-
-        assert_eq!(find_all(&db).await.len(), 0);
     }
 }

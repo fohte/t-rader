@@ -38,9 +38,9 @@ export function NotesList({ notes }: NotesListProps) {
                 {n.title}
               </span>
               <span className="flex flex-wrap items-center gap-2 font-mono text-2xs">
-                {n.type_tag != null && n.type_tag !== '' && (
+                {n.kind != null && n.kind !== '' && (
                   <span className="border border-border bg-surface-strong px-1 text-2xs uppercase text-muted-foreground-strong">
-                    {n.type_tag}
+                    {n.kind}
                   </span>
                 )}
                 <StatusPill status={n.status} />

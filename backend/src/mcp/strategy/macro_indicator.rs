@@ -55,20 +55,18 @@ mod tests {
     use chrono::NaiveDate;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
-    use uuid::Uuid;
 
-    use crate::entities::{indicator, indicator_observation};
-    use crate::testing::create_test_db;
+    use uuid::Uuid;
 
     use super::super::dto::{IndicatorObservationDto, ReadMacroIndicatorParams};
     use super::super::tests_common::build_server;
+    use crate::entities::{indicator, indicator_observation};
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
     }
 
-    async fn seed_indicator(db: &DatabaseConnection, id: &str) {
+    async fn seed_indicator(db: &impl sea_orm::ConnectionTrait, id: &str) {
         indicator::ActiveModel {
             id: Set(id.to_string()),
             name: Set(id.to_string()),
@@ -79,7 +77,12 @@ mod tests {
         .expect("seed indicator");
     }
 
-    async fn seed_observation(db: &DatabaseConnection, id: &str, date: NaiveDate, value: &str) {
+    async fn seed_observation(
+        db: &impl sea_orm::ConnectionTrait,
+        id: &str,
+        date: NaiveDate,
+        value: &str,
+    ) {
         indicator_observation::ActiveModel {
             indicator_id: Set(id.to_string()),
             date: Set(date),
@@ -90,9 +93,8 @@ mod tests {
         .expect("seed observation");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn returns_observations_in_date_range_oldest_first(pool: sqlx::PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn returns_observations_in_date_range_oldest_first(db: crate::database::DatabaseHandle) {
         seed_indicator(&db, "USDJPY").await;
         seed_observation(&db, "USDJPY", ymd(2026, 9, 1), "147.50").await;
         seed_observation(&db, "USDJPY", ymd(2026, 9, 3), "148.20").await;
@@ -125,9 +127,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn returns_empty_when_no_observation_in_range(pool: sqlx::PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn returns_empty_when_no_observation_in_range(db: crate::database::DatabaseHandle) {
         seed_indicator(&db, "VIX").await;
         seed_observation(&db, "VIX", ymd(2026, 1, 1), "15.0").await;
 
@@ -152,10 +153,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn rejects_empty_indicator_id(pool: sqlx::PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn rejects_empty_indicator_id(db: crate::database::DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),
@@ -170,10 +169,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn rejects_from_after_to(pool: sqlx::PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn rejects_from_after_to(db: crate::database::DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),

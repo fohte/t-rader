@@ -14,19 +14,18 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 
 use super::dto::{
     CheckBuyableQtyParams, CheckBuyableQtyResult, CreateAnnotationParams, CreateAnnotationResult,
-    EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, HypothesisDto,
-    ListHypothesesParams, ListHypothesesResult, ListNotesParams, ListNotesResult,
-    ListPredictionsParams, ListPredictionsResult, NoteDto, ProposeHypothesisChangeParams,
-    ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult, QueryMediaParams,
+    EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult,
+    ListNoteKindsResult, ListNotesParams, ListNotesResult, ListPredictionsParams,
+    ListPredictionsResult, NoteDto, QueryDataParams, QueryDataResult, QueryMediaParams,
     QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
-    ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadHypothesisParams,
-    ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams, ReadPortfolioResult,
-    ReadPredictionStatsResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
-    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
-    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, ReadValuationParams,
-    ReadValuationResult, RecordPredictionParams, RecordPredictionResult, ReplyCommentParams,
-    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
-    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadMacroIndicatorParams,
+    ReadMacroIndicatorResult, ReadNoteParams, ReadPortfolioResult, ReadPredictionStatsResult,
+    ReadSectorShortRatioParams, ReadSectorShortRatioResult, ReadShareholdingStructureParams,
+    ReadShareholdingStructureResult, ReadShortSaleReportsParams, ReadShortSaleReportsResult,
+    ReadTradesParams, ReadTradesResult, ReadValuationParams, ReadValuationResult,
+    RecordPredictionParams, RecordPredictionResult, ReplyCommentParams, ReplyCommentResult,
+    ResolveCommentParams, ResolveCommentResult, SearchNewsParams, SearchNewsResult,
+    SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
@@ -39,6 +38,19 @@ use super::{
 
 #[tool_router]
 impl StrategyServer {
+    /// 利用できるノート種別を返す
+    #[tool(
+        name = "list_note_kinds",
+        description = "List the available note kinds and whether each kind requires human approval.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_note_kinds(
+        &self,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ListNoteKindsResult>, McpError> {
+        self.list_note_kinds_inner().await.map(Json)
+    }
+
     /// 複数銘柄 + 期間で日足バーデータをまとめて取得する
     #[tool(
         name = "query_data",
@@ -60,7 +72,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to an existing note owned by the strategy. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -457,52 +469,6 @@ impl StrategyServer {
         self.read_margin_inner(sid, params).await.map(Json)
     }
 
-    /// 接続元戦略の仮説 + account-wide (global) 仮説を一覧する
-    #[tool(
-        name = "list_hypotheses",
-        description = "List hypotheses visible to the current strategy: hypotheses owned by this strategy plus account-wide (global) hypotheses, newest first.",
-        annotations(read_only_hint = true)
-    )]
-    async fn list_hypotheses(
-        &self,
-        Parameters(params): Parameters<ListHypothesesParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ListHypothesesResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.list_hypotheses_inner(sid, params).await.map(Json)
-    }
-
-    /// 単一の仮説を読む (自戦略または global)
-    #[tool(
-        name = "read_hypothesis",
-        description = "Read a single hypothesis (its title, body, and status) visible to the current strategy (own or global).",
-        annotations(read_only_hint = true)
-    )]
-    async fn read_hypothesis(
-        &self,
-        Parameters(params): Parameters<ReadHypothesisParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<HypothesisDto>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_hypothesis_inner(sid, params).await.map(Json)
-    }
-
-    /// 仮説へのタイトル/本文/status の変更を提案として永続化する (仮説本体には反映しない)
-    #[tool(
-        name = "propose_hypothesis_change",
-        description = "Propose a change to a hypothesis's title, body, and/or status, with a rationale. The proposal is persisted but not applied — a human must approve it via the API before the hypothesis itself is updated. The agent cannot write to hypotheses directly."
-    )]
-    async fn propose_hypothesis_change(
-        &self,
-        Parameters(params): Parameters<ProposeHypothesisChangeParams>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<Json<ProposeHypothesisChangeResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.propose_hypothesis_change_inner(sid, params)
-            .await
-            .map(Json)
-    }
-
     /// 予測を記録する (書き込み専用。更新・削除 tool は存在しない)
     #[tool(
         name = "record_prediction",
@@ -599,16 +565,14 @@ mod tests {
                 ("create_annotation", None),
                 ("eval_indicator", None),
                 ("eval_python", None),
-                ("list_hypotheses", Some(true)),
+                ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
-                ("propose_hypothesis_change", None),
                 ("query_data", Some(true)),
                 ("query_media", Some(true)),
                 ("read_annotations", Some(true)),
                 ("read_comments", Some(true)),
                 ("read_fin_summary", Some(true)),
-                ("read_hypothesis", Some(true)),
                 ("read_macro_indicator", Some(true)),
                 ("read_margin", Some(true)),
                 ("read_note", Some(true)),

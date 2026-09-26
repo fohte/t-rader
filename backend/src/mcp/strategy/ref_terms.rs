@@ -142,17 +142,19 @@ impl StrategyServer {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{DatabaseConnection, EntityTrait};
-    use sqlx::PgPool;
+    use sea_orm::EntityTrait;
     use uuid::Uuid;
-
-    use crate::entities::ref_term;
-    use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
     use super::{AddRefTermsParams, RemoveRefTermsParams};
+    use crate::entities::ref_term;
 
-    async fn seed_term(db: &DatabaseConnection, ref_kind: &str, ref_id: &str, term: &str) {
+    async fn seed_term(
+        db: &impl sea_orm::ConnectionTrait,
+        ref_kind: &str,
+        ref_id: &str,
+        term: &str,
+    ) {
         ref_term::ActiveModel {
             ref_kind: Set(ref_kind.into()),
             ref_id: Set(ref_id.into()),
@@ -165,9 +167,8 @@ mod tests {
         .expect("seed ref_term");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn add_ref_terms_inserts_new_terms(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn add_ref_terms_inserts_new_terms(db: crate::database::DatabaseHandle) {
         let server = build_server(db);
 
         let result = server
@@ -188,9 +189,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn add_ref_terms_is_idempotent_and_skips_blank_terms(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn add_ref_terms_is_idempotent_and_skips_blank_terms(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
         seed_term(&db, "stock", "7203", "トヨタ").await;
 
@@ -209,9 +211,8 @@ mod tests {
         assert_eq!(result.added, vec!["Toyota".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn add_ref_terms_rejects_invalid_ref_kind(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn add_ref_terms_rejects_invalid_ref_kind(db: crate::database::DatabaseHandle) {
         let server = build_server(db);
 
         let err = server
@@ -228,9 +229,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn add_ref_terms_rejects_empty_ref_id(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn add_ref_terms_rejects_empty_ref_id(db: crate::database::DatabaseHandle) {
         let server = build_server(db);
 
         let err = server
@@ -247,9 +247,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn remove_ref_terms_deletes_only_matching_terms(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn remove_ref_terms_deletes_only_matching_terms(db: crate::database::DatabaseHandle) {
         let server = build_server(db.clone());
         seed_term(&db, "stock", "7203", "トヨタ").await;
         seed_term(&db, "stock", "7203", "Toyota").await;
@@ -276,9 +275,8 @@ mod tests {
         assert_eq!(remaining.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn remove_ref_terms_rejects_invalid_ref_kind(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn remove_ref_terms_rejects_invalid_ref_kind(db: crate::database::DatabaseHandle) {
         let server = build_server(db);
 
         let err = server

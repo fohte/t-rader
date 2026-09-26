@@ -17,8 +17,9 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 use crate::services::change_history::{self, Actor, Op, TargetKind};
+use crate::services::note_kinds;
 use crate::services::note_versions::{
-    self, AppendVersion, current_note_ids_with_status, find_current_versions,
+    self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_versions,
     find_initial_created_by_kind,
 };
 use crate::services::strategies::ensure_strategy_exists;
@@ -41,11 +42,11 @@ fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), AppError> {
 pub struct ListNotesQuery {
     pub strategy_id: Option<Uuid>,
     pub status: Option<String>,
-    pub type_tag: Option<String>,
+    pub kind: Option<String>,
 }
 
 pub(crate) async fn find_note_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<note::Model, AppError> {
     note::Entity::find_by_id(id)
@@ -122,15 +123,17 @@ pub async fn list_notes(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<ListNotesQuery>,
 ) -> Result<Json<Vec<NoteResponse>>, AppError> {
-    let mut q = note::Entity::find().order_by_desc(note::Column::UpdatedAt);
+    let mut q = note::Entity::find()
+        .filter(note::Column::Id.in_subquery(current_note_ids()))
+        .order_by_desc(note::Column::UpdatedAt);
     if let Some(sid) = params.strategy_id {
         q = q.filter(note::Column::StrategyId.eq(sid));
     }
     if let Some(status) = params.status.as_deref().filter(|s| !s.is_empty()) {
         q = q.filter(note::Column::Id.in_subquery(current_note_ids_with_status(status)));
     }
-    if let Some(tag) = params.type_tag.as_deref().filter(|s| !s.is_empty()) {
-        q = q.filter(note::Column::TypeTag.eq(tag));
+    if let Some(kind) = params.kind.as_deref().filter(|s| !s.is_empty()) {
+        q = q.filter(note::Column::Kind.eq(kind));
     }
     let items = q.all(&state.db).await?;
     let versions = find_current_versions(
@@ -214,6 +217,7 @@ pub async fn create_note(
         .as_deref()
         .unwrap_or(note_versions::INITIAL_NOTE_STATUS)
         .to_string();
+    let explicit_status = payload.status.is_some();
     if !ALLOWED_STATUSES.contains(&status.as_str()) {
         return Err(AppError::Validation(format!("invalid status: {status}")));
     }
@@ -227,6 +231,11 @@ pub async fn create_note(
             "invalid created_by_kind: {created_by}"
         )));
     }
+    if explicit_status && created_by == "human" && status != "approved" {
+        return Err(AppError::Validation(
+            "human-created notes must start as approved".into(),
+        ));
+    }
 
     let id = Uuid::new_v4();
     let history_title = title.clone();
@@ -234,11 +243,14 @@ pub async fn create_note(
     if let Some(strategy_id) = payload.strategy_id {
         ensure_strategy_exists(&txn, strategy_id).await?;
     }
+    if let Some(kind) = payload.kind.as_deref() {
+        note_kinds::ensure_reference(&txn, kind).await?;
+    }
 
     let model = note::ActiveModel {
         id: Set(id),
         strategy_id: Set(payload.strategy_id),
-        type_tag: Set(payload.type_tag.clone()),
+        kind: Set(payload.kind.clone()),
         trigger: Set(payload.trigger.map(|t| t.to_string())),
         trigger_label: Set(payload.trigger_label.clone()),
         created_at: NotSet,
@@ -268,7 +280,16 @@ pub async fn create_note(
         },
     )
     .await?;
-    if status != note_versions::INITIAL_NOTE_STATUS {
+    if explicit_status
+        && created_by != "human"
+        && !version.is_current
+        && status != note_versions::INITIAL_NOTE_STATUS
+    {
+        return Err(AppError::Validation(
+            "approval-required note versions must start as unread".into(),
+        ));
+    }
+    if created_by != "human" && version.is_current && status != note_versions::INITIAL_NOTE_STATUS {
         let reviewed_at = chrono::Utc::now().fixed_offset();
         version = note_version::ActiveModel {
             id: Set(version.id),
@@ -351,12 +372,15 @@ pub async fn update_note(
         frontmatter_json = fm;
         version_changed = true;
     }
-    if let Some(tt) = payload.type_tag {
+    if let Some(kind) = payload.kind {
+        if let Some(key) = kind.as_deref() {
+            note_kinds::ensure_reference(&state.db, key).await?;
+        }
         diff.insert(
-            "type_tag".into(),
-            json!({ "from": current_note.type_tag, "to": tt }),
+            "kind".into(),
+            json!({ "from": current_note.kind, "to": kind }),
         );
-        active.type_tag = Set(Some(tt));
+        active.kind = Set(kind);
     }
     if let Some(tr) = payload.trigger {
         let tr = tr.to_string();
@@ -446,10 +470,6 @@ pub async fn delete_note(
 mod tests {
     use std::sync::Arc;
 
-    use axum_test::TestServer;
-    use serde_json::Value;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::comment;
@@ -461,6 +481,8 @@ mod tests {
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
     };
+    use axum_test::TestServer;
+    use serde_json::Value;
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
@@ -490,15 +512,31 @@ mod tests {
         }
     }
 
-    async fn create_test_note(server: &TestServer, strategy_id: Uuid, title: &str) -> Uuid {
-        create_test_note_with_body(server, strategy_id, title, "body").await
-    }
-
     async fn create_test_note_with_body(
         server: &TestServer,
         strategy_id: Uuid,
         title: &str,
         body_md: &str,
+    ) -> Uuid {
+        create_test_note_with_body_and_creator(server, strategy_id, title, body_md, "human").await
+    }
+
+    async fn create_test_note_with_creator(
+        server: &TestServer,
+        strategy_id: Uuid,
+        title: &str,
+        created_by_kind: &str,
+    ) -> Uuid {
+        create_test_note_with_body_and_creator(server, strategy_id, title, "body", created_by_kind)
+            .await
+    }
+
+    async fn create_test_note_with_body_and_creator(
+        server: &TestServer,
+        strategy_id: Uuid,
+        title: &str,
+        body_md: &str,
+        created_by_kind: &str,
     ) -> Uuid {
         let res = server
             .post("/api/notes")
@@ -506,6 +544,7 @@ mod tests {
                 "strategy_id": strategy_id,
                 "title": title,
                 "body_md": body_md,
+                "created_by_kind": created_by_kind,
             }))
             .await;
         res.assert_status(StatusCode::CREATED);
@@ -515,14 +554,14 @@ mod tests {
 
     /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
     /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
-    #[sqlx::test(migrations = false)]
-    async fn note_without_strategy_id_rejects_execution_id(pool: PgPool) {
-        let (db, _server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn note_without_strategy_id_rejects_execution_id(db: crate::database::DatabaseHandle) {
+        let (db, _server) = create_test_server_with_db(db).await;
 
         let result = note::ActiveModel {
             id: Set(Uuid::new_v4()),
             strategy_id: Set(None),
-            type_tag: Set(None),
+            kind: Set(None),
             trigger: Set(None),
             trigger_label: Set(None),
             created_at: NotSet,
@@ -535,9 +574,9 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_note_without_strategy_id_succeeds(pool: PgPool) {
-        let (_db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_note_without_strategy_id_succeeds(db: crate::database::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
             .post("/api/notes")
@@ -564,8 +603,8 @@ mod tests {
                 "body_md": "body",
                 "frontmatter_json": {},
                 "graphs_json": [],
-                "type_tag": null,
-                "status": "unread",
+                "kind": null,
+                "status": "approved",
                 "trigger": null,
                 "trigger_label": null,
                 "created_by_kind": "human",
@@ -574,9 +613,11 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_note_rejects_invalid_tokens_without_saving(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_note_rejects_invalid_tokens_without_saving(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
 
         let res = server
             .post("/api/notes")
@@ -598,9 +639,11 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_note_rejects_invalid_tokens_and_keeps_original_body(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_note_rejects_invalid_tokens_and_keeps_original_body(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "strategy").await;
         let note_id = create_test_note_with_body(&server, strategy_id, "title", "original").await;
 
@@ -624,17 +667,20 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn reject_note_without_strategy_id_does_not_submit_task(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn reject_note_without_strategy_id_does_not_submit_task(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
 
         let res = server
             .post("/api/notes")
             .json(&json!({
                 "title": "市況ノート",
                 "body_md": "body",
+                "created_by_kind": "llm",
             }))
             .await;
         res.assert_status(StatusCode::CREATED);
@@ -671,7 +717,7 @@ mod tests {
                 "status": "rejected",
                 "is_current": true,
                 "change_reason": null,
-                "created_by_kind": "human",
+                "created_by_kind": "llm",
                 "execution_id": null,
             }),
         );
@@ -680,16 +726,18 @@ mod tests {
         assert_eq!(tasks, vec![]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn reject_note_submits_single_review_task_referencing_note(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn reject_note_submits_single_review_task_referencing_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let note_id = create_test_note(&server, strategy_id, "タイトル").await;
+        let note_id = create_test_note_with_creator(&server, strategy_id, "タイトル", "llm").await;
         let version = note_versions::find_current_version(&db, note_id)
             .await
             .unwrap()
@@ -720,7 +768,7 @@ mod tests {
                 "status": "rejected",
                 "is_current": true,
                 "change_reason": null,
-                "created_by_kind": "human",
+                "created_by_kind": "llm",
                 "execution_id": null,
             }),
         );
@@ -744,16 +792,18 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn rejecting_already_rejected_note_does_not_resubmit(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn rejecting_already_rejected_note_does_not_resubmit(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let note_id = create_test_note(&server, strategy_id, "t").await;
+        let note_id = create_test_note_with_creator(&server, strategy_id, "t", "llm").await;
         let version = note_versions::find_current_version(&db, note_id)
             .await
             .unwrap()
@@ -784,17 +834,19 @@ mod tests {
         assert_eq!(tasks.len(), 1);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn reject_note_leaves_status_unchanged_when_agent_submission_fails(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn reject_note_leaves_status_unchanged_when_agent_submission_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let note_id = create_test_note(&server, strategy_id, "t").await;
+        let note_id = create_test_note_with_creator(&server, strategy_id, "t", "llm").await;
         let version = note_versions::find_current_version(&db, note_id)
             .await
             .unwrap()
@@ -816,9 +868,11 @@ mod tests {
         assert_eq!(current_version.status, "unread");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_note_keeps_comment_anchored_to_original_version(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_note_keeps_comment_anchored_to_original_version(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         let note_id = create_test_note_with_body(
             &server,

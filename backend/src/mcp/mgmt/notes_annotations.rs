@@ -4,7 +4,9 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use crate::entities::{annotation, note};
-use crate::services::note_versions::{find_current_versions, find_initial_created_by_kind};
+use crate::services::note_versions::{
+    current_note_ids, find_current_versions, find_initial_created_by_kind,
+};
 
 use super::MgmtServer;
 use super::dto::{
@@ -20,6 +22,7 @@ impl MgmtServer {
         let limit = clamp_limit(params.limit);
         let rows = note::Entity::find()
             .filter(note::Column::StrategyId.eq(params.strategy_id))
+            .filter(note::Column::Id.in_subquery(current_note_ids()))
             .order_by_desc(note::Column::UpdatedAt)
             .limit(limit)
             .all(&self.db)
@@ -93,18 +96,15 @@ impl MgmtServer {
 mod tests {
     use std::sync::Arc;
 
-    use rmcp::handler::server::wrapper::{Json, Parameters};
-    use sqlx::PgPool;
-
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::testing::{create_test_db, insert_test_note};
+    use crate::testing::insert_test_note;
+    use rmcp::handler::server::wrapper::{Json, Parameters};
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
-    #[sqlx::test(migrations = false)]
-    async fn list_recent_notes_caps_by_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_recent_notes_caps_by_limit(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         for i in 0..5 {
             insert_test_note(&db, strategy_id, &format!("note-{i}"), "body").await;

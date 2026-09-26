@@ -56,13 +56,13 @@ pub async fn get_agent_tools() -> Json<AgentToolsResponse> {
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use crate::testing::{create_test_server, create_test_server_with_llm_gateway};
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_models_returns_empty_list_when_llm_gateway_unconfigured(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn agent_models_returns_empty_list_when_llm_gateway_unconfigured(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
         let response = server.get("/api/agent-models").await;
         response.assert_status_ok();
         assert_eq!(
@@ -71,8 +71,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_models_proxies_llm_gateway_response(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn agent_models_proxies_llm_gateway_response(db: crate::database::DatabaseHandle) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/model_group/info"))
@@ -92,7 +92,7 @@ mod tests {
             .mount(&llm_gateway)
             .await;
 
-        let server = create_test_server_with_llm_gateway(pool, &llm_gateway.uri()).await;
+        let server = create_test_server_with_llm_gateway(db, &llm_gateway.uri()).await;
         let response = server.get("/api/agent-models").await;
         response.assert_status_ok();
         assert_eq!(
@@ -111,8 +111,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_models_returns_empty_list_when_llm_gateway_unreachable(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn agent_models_returns_empty_list_when_llm_gateway_unreachable(
+        db: crate::database::DatabaseHandle,
+    ) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/model_group/info"))
@@ -120,7 +122,7 @@ mod tests {
             .mount(&llm_gateway)
             .await;
 
-        let server = create_test_server_with_llm_gateway(pool, &llm_gateway.uri()).await;
+        let server = create_test_server_with_llm_gateway(db, &llm_gateway.uri()).await;
         let response = server.get("/api/agent-models").await;
         response.assert_status_ok();
         assert_eq!(
@@ -129,9 +131,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_tools_lists_known_strategy_mcp_tools(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn agent_tools_lists_known_strategy_mcp_tools(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let response = server.get("/api/agent-tools").await;
         response.assert_status_ok();
         // ToolRouter::list_all() は name の昇順でソートして返す
@@ -144,16 +146,14 @@ mod tests {
                     {"name": "create_annotation", "description": "Create a chart annotation owned by the strategy. On a resume, an unread annotation created by an earlier attempt of the same execution step is replaced; already-reviewed ones are kept."},
                     {"name": "eval_indicator", "description": "Evaluate a stored indicator by name. Resolves strategy-scoped indicator first then global. Args are validated against the indicator's input_schema and stdout is validated against output_schema."},
                     {"name": "eval_python", "description": "Run a Python snippet inside an isolated Kata Containers exec Pod and return stdout/stderr/exit_code. Network, subprocess, and persistent filesystem are denied."},
-                    {"name": "list_hypotheses", "description": "List hypotheses visible to the current strategy: hypotheses owned by this strategy plus account-wide (global) hypotheses, newest first."},
+                    {"name": "list_note_kinds", "description": "List the available note kinds and whether each kind requires human approval."},
                     {"name": "list_notes", "description": "List notes owned by the strategy, newest first. Filter by status and/or updated_after, and set include_body: false to omit body_md and save context."},
                     {"name": "list_predictions", "description": "List predictions recorded by the current strategy, newest first. Filter by due_after/due_before (e.g. due_after=today to see only predictions not yet graded)."},
-                    {"name": "propose_hypothesis_change", "description": "Propose a change to a hypothesis's title, body, and/or status, with a rationale. The proposal is persisted but not applied — a human must approve it via the API before the hypothesis itself is updated. The agent cannot write to hypotheses directly."},
                     {"name": "query_data", "description": "Fetch daily OHLCV bars for one or more instruments (up to 100 per call, no duplicates) over a shared date range from the DB. Results are in the same order as instrument_ids; an instrument with no ingested data returns an empty bars array rather than an error."},
                     {"name": "query_media", "description": "Fetch a video or audio URL (YouTube links are well supported; other public https:// URLs are best-effort) and answer prompt about its content via Gemini, returning free-form text. Use for source material with no text equivalent, such as a YouTube video."},
                     {"name": "read_annotations", "description": "List annotations owned by the strategy. Optionally filter by target_symbol."},
                     {"name": "read_comments", "description": "List review comments attached to a note version or annotation owned by the strategy, oldest first. Threads are represented via parent_id. Optionally filter by resolved."},
                     {"name": "read_fin_summary", "description": "Read a stock's financial disclosures (J-Quants /fins/summary): actual results and company forecasts from earnings reports, plus earnings/dividend forecast revisions, newest first. Quarterly progress rates are decimal ratios of cumulative actuals to the current fiscal year's full-year company forecasts in the same disclosure row (0.5 = 50%); they are null for annual statements and forecast revisions, and when the forecast is missing or <= 0. symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters). When the same disclosure period and document type appears more than once (e.g. a correction), only the one with the highest disclosure number is returned. Fields not reported by the filer (e.g. ordinary_profit under IFRS/US GAAP) are null."},
-                    {"name": "read_hypothesis", "description": "Read a single hypothesis (its title, body, and status) visible to the current strategy (own or global)."},
                     {"name": "read_macro_indicator", "description": "Read daily observations (date + value) for a macro indicator between from and to (inclusive), oldest first. Discover available indicator_id values via search_refs (ref_kind=indicator), e.g. USDJPY, VIX, US10Y, NIKKEI225. Values are in the source's native units (USDJPY: yen per dollar, VIX: index level, US10Y: percent). Days with no observation (holidays, no update) are simply absent rather than interpolated; USDJPY in particular is batched weekly at the source and can lag by up to about a week, so the last item's date shows how fresh the latest available value is. Returns an empty list if the indicator_id is unknown or has no data in range."},
                     {"name": "read_margin", "description": "Read a stock's margin trading balances: weekly (later daily) margin interest balances (margin_interest) newest first, tagged with the 5-digit J-Quants code and iss_type (1=margin-eligible, 2=loan-eligible, 3=other), plus daily-published margin balances (margin_alert, only for stocks the exchange has designated for daily publication — absence from this list does not mean a zero balance) with pub_reason flags and tse_mrgn_reg_cls. When the same application date has multiple corrections, only the one with the latest publication date is returned. symbol is the 4-digit code (matched against the 5-digit J-Quants code by its leading 4 characters); from/to filter by date (inclusive) and default to no bound."},
                     {"name": "read_note", "description": "Read a single note owned by the strategy, including its graphs and linked note versions. Omit version_id to read the current version."},
@@ -171,7 +171,7 @@ mod tests {
                     {"name": "search_news", "description": "Search news_item directly by keyword (case-insensitive substring match against title or body_snippet) and/or a published_at date range, newest first. body_snippet is truncated to the first 280 characters of the source feed's description, not the full article; use search_web with the title if you need more than that."},
                     {"name": "search_refs", "description": "Search across all first-class reference types (stock, indicator, sector, theme) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name."},
                     {"name": "search_web", "description": "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error."},
-                    {"name": "write_note", "description": "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."},
+                    {"name": "write_note", "description": "Create a new note or append a version to an existing note owned by the strategy. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."},
                 ],
             }),
         );

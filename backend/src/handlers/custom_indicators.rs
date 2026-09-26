@@ -41,7 +41,7 @@ fn ensure_json_object(field: &str, value: &serde_json::Value) -> Result<(), AppE
 }
 
 async fn find_indicator_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     indicator_id: Uuid,
 ) -> Result<custom_indicator::Model, AppError> {
     custom_indicator::Entity::find_by_id(indicator_id)
@@ -51,7 +51,7 @@ async fn find_indicator_or_404(
 }
 
 async fn find_strategy_scoped_or_404(
-    db: &sea_orm::DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     indicator_id: Uuid,
 ) -> Result<custom_indicator::Model, AppError> {
@@ -428,11 +428,12 @@ pub async fn preview_indicator(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::testing::create_test_server;
-    use serde_json::json;
-    use sqlx::PgPool;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter};
 
+    use super::*;
+    use crate::entities::change_history;
+    use crate::testing::{create_test_server, create_test_server_with_db};
+    use serde_json::json;
     async fn create_strategy(server: &axum_test::TestServer, name: &str) -> Uuid {
         let res = server
             .post("/api/strategies")
@@ -483,9 +484,29 @@ mod tests {
         row
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_global_indicator_returns_201(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn set_history_created_at_to_epoch(db: &impl sea_orm::ConnectionTrait, target_id: &str) {
+        let row = change_history::Entity::find()
+            .filter(
+                change_history::Column::TargetId
+                    .eq(Uuid::parse_str(target_id).expect("indicator UUID")),
+            )
+            .one(db)
+            .await
+            .expect("find history row")
+            .expect("history row exists");
+        change_history::ActiveModel {
+            id: Set(row.id),
+            created_at: Set(chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset()),
+            ..Default::default()
+        }
+        .update(db)
+        .await
+        .expect("set history row time");
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_global_indicator_returns_201(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/indicators")
             .json(&create_payload("rsi", "print('{}')"))
@@ -510,9 +531,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_strategy_indicator_returns_201(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_strategy_indicator_returns_201(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let strategy_id = create_strategy(&server, "s1").await;
 
         let res = server
@@ -539,9 +560,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_records_change_history(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_records_change_history(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/indicators")
             .json(&create_payload("rsi", "print('{}')"))
@@ -567,9 +588,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn empty_name_returns_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn empty_name_returns_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/indicators")
             .json(&create_payload("   ", "print('{}')"))
@@ -577,36 +598,36 @@ mod tests {
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn input_schema_non_object_returns_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn input_schema_non_object_returns_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let mut payload = create_payload("rsi", "print('{}')");
         payload["input_schema"] = json!([1, 2, 3]);
         let res = server.post("/api/indicators").json(&payload).await;
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn output_schema_non_object_returns_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn output_schema_non_object_returns_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let mut payload = create_payload("rsi", "print('{}')");
         payload["output_schema"] = json!("not-object");
         let res = server.post("/api/indicators").json(&payload).await;
         res.assert_status(StatusCode::BAD_REQUEST);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn duplicate_global_name_returns_409(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn duplicate_global_name_returns_409(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let payload = create_payload("rsi", "print('{}')");
         server.post("/api/indicators").json(&payload).await;
         let second = server.post("/api/indicators").json(&payload).await;
         second.assert_status(StatusCode::CONFLICT);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn duplicate_strategy_name_returns_409(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn duplicate_strategy_name_returns_409(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let strategy_id = create_strategy(&server, "s1").await;
         let payload = create_payload("rsi", "print('{}')");
         server
@@ -620,9 +641,9 @@ mod tests {
         second.assert_status(StatusCode::CONFLICT);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn global_and_strategy_can_share_name(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn global_and_strategy_can_share_name(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let strategy_id = create_strategy(&server, "s1").await;
         let payload = create_payload("rsi", "print('{}')");
 
@@ -636,9 +657,9 @@ mod tests {
         s.assert_status(StatusCode::CREATED);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_isolates_strategy_scopes(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_isolates_strategy_scopes(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let s_a = create_strategy(&server, "a").await;
         let s_b = create_strategy(&server, "b").await;
         server
@@ -669,9 +690,11 @@ mod tests {
         assert_eq!(names_g, vec!["global"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_indicator_from_other_strategy_returns_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_strategy_indicator_from_other_strategy_returns_404(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
         let s_a = create_strategy(&server, "a").await;
         let s_b = create_strategy(&server, "b").await;
         let created = server
@@ -689,9 +712,9 @@ mod tests {
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_changes_fields(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_changes_fields(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let created = server
             .post("/api/indicators")
             .json(&create_payload("rsi", "old"))
@@ -725,9 +748,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_records_change_history_diff(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_records_change_history_diff(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let created = server
             .post("/api/indicators")
             .json(&create_payload("rsi", "old"))
@@ -736,6 +759,7 @@ mod tests {
             .as_str()
             .map(str::to_string)
             .expect("id");
+        set_history_created_at_to_epoch(&db, &id).await;
 
         server
             .put(&format!("/api/indicators/{id}"))
@@ -762,9 +786,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_removes_indicator(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_removes_indicator(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let created = server
             .post("/api/indicators")
             .json(&create_payload("rsi", "print('{}')"))
@@ -780,9 +804,9 @@ mod tests {
         get.assert_status(StatusCode::NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_records_change_history(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_records_change_history(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let created = server
             .post("/api/indicators")
             .json(&create_payload("rsi", "print('{}')"))
@@ -791,6 +815,7 @@ mod tests {
             .as_str()
             .map(str::to_string)
             .expect("id");
+        set_history_created_at_to_epoch(&db, &id).await;
 
         server
             .delete(&format!("/api/indicators/{id}"))
@@ -813,12 +838,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resolve_indicator_prefers_strategy_scope(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn resolve_indicator_prefers_strategy_scope(db: crate::database::DatabaseHandle) {
         use crate::services::custom_indicators::resolve_indicator;
-        use crate::testing::create_test_db;
-
-        let db = create_test_db(pool).await;
 
         let strategy_id = Uuid::new_v4();
         let now = chrono::Utc::now().fixed_offset();
@@ -900,8 +922,8 @@ mod tests {
             })
         }
 
-        #[sqlx::test(migrations = false)]
-        async fn preview_returns_validated_output(pool: PgPool) {
+        #[backend_test_macros::database_test]
+        async fn preview_returns_validated_output(db: crate::database::DatabaseHandle) {
             let executor = Arc::new(FakeKataExecutor::new());
             executor
                 .set_response(Ok(ExecResult {
@@ -911,7 +933,7 @@ mod tests {
                 }))
                 .await;
             let shared: SharedKataExecutor = executor.clone();
-            let server = create_test_server_with_kata(pool, shared).await;
+            let server = create_test_server_with_kata(db, shared).await;
 
             let res = server
                 .post("/api/indicators/preview")
@@ -945,11 +967,13 @@ mod tests {
             );
         }
 
-        #[sqlx::test(migrations = false)]
-        async fn preview_returns_400_for_input_schema_mismatch(pool: PgPool) {
+        #[backend_test_macros::database_test]
+        async fn preview_returns_400_for_input_schema_mismatch(
+            db: crate::database::DatabaseHandle,
+        ) {
             let executor = Arc::new(FakeKataExecutor::new());
             let shared: SharedKataExecutor = executor.clone();
-            let server = create_test_server_with_kata(pool, shared).await;
+            let server = create_test_server_with_kata(db, shared).await;
 
             let res = server
                 .post("/api/indicators/preview")
@@ -968,8 +992,8 @@ mod tests {
             assert!(executor.requests.lock().await.is_empty());
         }
 
-        #[sqlx::test(migrations = false)]
-        async fn preview_passes_through_sandbox_rejection(pool: PgPool) {
+        #[backend_test_macros::database_test]
+        async fn preview_passes_through_sandbox_rejection(db: crate::database::DatabaseHandle) {
             let executor = Arc::new(FakeKataExecutor::new());
             executor
                 .set_response(Ok(ExecResult {
@@ -979,7 +1003,7 @@ mod tests {
                 }))
                 .await;
             let shared: SharedKataExecutor = executor;
-            let server = create_test_server_with_kata(pool, shared).await;
+            let server = create_test_server_with_kata(db, shared).await;
 
             let res = server
                 .post("/api/indicators/preview")
@@ -999,9 +1023,9 @@ mod tests {
             );
         }
 
-        #[sqlx::test(migrations = false)]
-        async fn preview_returns_503_when_executor_disabled(pool: PgPool) {
-            let server = create_test_server(pool).await;
+        #[backend_test_macros::database_test]
+        async fn preview_returns_503_when_executor_disabled(db: crate::database::DatabaseHandle) {
+            let server = create_test_server(db).await;
             let res = server
                 .post("/api/indicators/preview")
                 .json(&preview_payload("print('{}')"))
@@ -1009,9 +1033,9 @@ mod tests {
             res.assert_status(StatusCode::SERVICE_UNAVAILABLE);
         }
 
-        #[sqlx::test(migrations = false)]
+        #[backend_test_macros::database_test]
         async fn preview_returns_200_with_validation_error_in_stderr_for_invalid_output(
-            pool: PgPool,
+            db: crate::database::DatabaseHandle,
         ) {
             let executor = Arc::new(FakeKataExecutor::new());
             executor
@@ -1022,7 +1046,7 @@ mod tests {
                 }))
                 .await;
             let shared: SharedKataExecutor = executor;
-            let server = create_test_server_with_kata(pool, shared).await;
+            let server = create_test_server_with_kata(db, shared).await;
 
             let res = server
                 .post("/api/indicators/preview")

@@ -7,7 +7,7 @@
 use chrono::{DateTime, FixedOffset, SubsecRound};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
@@ -163,7 +163,7 @@ pub enum GetTaskError {
 /// 解決した purpose に対応する `agent_config` 行が存在しない場合は `PurposeNotFound` を
 /// 返し、strategy_task 行の作成前に投入を止める。
 pub async fn submit_task(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     strategy_id: Uuid,
     prompt: &str,
@@ -282,7 +282,7 @@ const TASK_LIST_LIMIT: u64 = 50;
 /// 過去タスクを新しい順に返す (最大 `TASK_LIST_LIMIT` 件)。`strategy_id`/`purpose` は
 /// 省略すると絞り込まない (`strategy_id` 省略時は口座横断の一覧になる)。
 pub async fn list_tasks(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Option<Uuid>,
     purpose: Option<String>,
 ) -> Result<Vec<TaskStatusView>, sea_orm::DbErr> {
@@ -305,7 +305,7 @@ pub async fn list_tasks(
 /// strategy_id と task_id を厳密に突き合わせて strategy_task 行を返す。
 /// task が存在しない、または strategy_id が一致しない場合はそれぞれ別エラー。
 pub async fn get_task_for_strategy(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     strategy_id: Uuid,
     task_id: Uuid,
 ) -> Result<TaskStatusView, GetTaskError> {
@@ -326,7 +326,7 @@ pub async fn get_task_for_strategy(
 
 /// a2a_task_id で strategy_task 行を引く (管理 MCP `get_strategy_task_status` 互換)。
 pub async fn get_task_by_a2a_task_id(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     a2a_task_id: &str,
 ) -> Result<Option<TaskStatusView>, sea_orm::DbErr> {
     let row = strategy_task::Entity::find()
@@ -362,7 +362,7 @@ fn step_status_str(status: &StrategyTaskStepStatus) -> &'static str {
 /// `GET /api/strategies/:id/tasks/:task_id` の `steps` 配列と同じ wire JSON 形式で返す。
 /// `execution_step_id` は DB 内部の主キーに過ぎず、この API レスポンスの契約には含めない。
 pub async fn steps_json_for_task(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     task_id: Uuid,
 ) -> Result<serde_json::Value, sea_orm::DbErr> {
     let rows = strategy_task_step::Entity::find()
@@ -427,13 +427,11 @@ fn step_to_wire_json(
 mod tests {
     use std::sync::Arc;
 
-    use rstest::rstest;
-    use sea_orm::PaginatorTrait;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::testing::{create_test_db, insert_test_strategy};
+    use crate::testing::insert_test_strategy;
+    use rstest::rstest;
+    use sea_orm::PaginatorTrait;
 
     #[rstest]
     #[case::mgmt_mcp(TaskSource::MgmtMcp, "mgmt-mcp")]
@@ -443,9 +441,10 @@ mod tests {
         assert_eq!(source.as_str(), expected);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_task_rejects_missing_purpose_before_inserting_task_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn submit_task_rejects_missing_purpose_before_inserting_task_row(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 

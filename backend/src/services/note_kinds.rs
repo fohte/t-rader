@@ -2,15 +2,16 @@
 
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, QueryOrder, SqlErr, TransactionSession, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, IntoActiveModel,
+    QueryFilter, QueryOrder, QuerySelect, SqlErr, TransactionSession,
 };
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::entities::{note, note_kind};
+use crate::entities::{note, note_kind, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
+use crate::services::note_versions;
 
 #[derive(Debug, Clone)]
 pub struct CreateNoteKind {
@@ -68,7 +69,7 @@ fn map_insert_error(error: DbErr, key: &str) -> AppError {
     AppError::Database(error)
 }
 
-pub async fn list(db: &DatabaseConnection) -> Result<Vec<note_kind::Model>, AppError> {
+pub async fn list(db: &impl sea_orm::ConnectionTrait) -> Result<Vec<note_kind::Model>, AppError> {
     Ok(note_kind::Entity::find()
         .order_by_asc(note_kind::Column::SortOrder)
         .order_by_asc(note_kind::Column::Key)
@@ -76,14 +77,25 @@ pub async fn list(db: &DatabaseConnection) -> Result<Vec<note_kind::Model>, AppE
         .await?)
 }
 
-pub async fn create<C>(
-    db: &C,
+pub async fn ensure_reference<C: ConnectionTrait>(db: &C, key: &str) -> Result<(), AppError> {
+    if key.trim().is_empty() {
+        return Err(AppError::Validation("kind must not be empty".into()));
+    }
+    if note_kind::Entity::find_by_id(key.to_string())
+        .one(db)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::Validation(format!("unknown note kind: {key}")));
+    }
+    Ok(())
+}
+
+pub async fn create(
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     actor: Actor,
     input: CreateNoteKind,
-) -> Result<note_kind::Model, AppError>
-where
-    C: TransactionTrait,
-{
+) -> Result<note_kind::Model, AppError> {
     let key = validate_key(&input.key)?;
     let display_name = validate_display_name(&input.display_name)?;
     let txn = db.begin().await?;
@@ -120,7 +132,7 @@ where
 }
 
 pub async fn update(
-    db: &DatabaseConnection,
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
     actor: Actor,
     key: &str,
     patch: UpdateNoteKind,
@@ -167,6 +179,45 @@ pub async fn update(
     }
 
     let updated = active.update(&txn).await?;
+    if current.requires_approval && !updated.requires_approval {
+        let note_ids = note::Entity::find()
+            .select_only()
+            .column(note::Column::Id)
+            .filter(note::Column::Kind.eq(&key))
+            .into_tuple::<Uuid>()
+            .all(&txn)
+            .await?;
+        let reviewed_at = chrono::Utc::now().fixed_offset();
+        for note_id in note_ids {
+            let latest_pending = note_version::Entity::find()
+                .filter(note_version::Column::NoteId.eq(note_id))
+                .filter(note_version::Column::Status.eq("unread"))
+                .order_by_desc(note_version::Column::VersionNo)
+                .one(&txn)
+                .await?;
+            let Some(pending) = latest_pending else {
+                continue;
+            };
+            let (approved, previous_current_id) =
+                note_versions::approve_pending_version(&txn, note_id, pending, reviewed_at).await?;
+            change_history::record_as(
+                &txn,
+                actor,
+                TargetKind::Note,
+                note_id,
+                Op::StatusChange,
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": approved.id,
+                    "previous_current_version_id": previous_current_id,
+                    "label": null,
+                }),
+                None,
+            )
+            .await?;
+        }
+    }
     change_history::record_as(
         &txn,
         actor,
@@ -182,13 +233,17 @@ pub async fn update(
     Ok(updated)
 }
 
-pub async fn delete(db: &DatabaseConnection, actor: Actor, key: &str) -> Result<(), AppError> {
+pub async fn delete(
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    actor: Actor,
+    key: &str,
+) -> Result<(), AppError> {
     let key = validate_key(key)?;
     let txn = db.begin().await?;
     let _current = find_by_key(&txn, &key).await?;
 
     if note::Entity::find()
-        .filter(note::Column::TypeTag.eq(&key))
+        .filter(note::Column::Kind.eq(&key))
         .one(&txn)
         .await?
         .is_some()
@@ -216,65 +271,4 @@ pub async fn delete(db: &DatabaseConnection, actor: Actor, key: &str) -> Result<
     .await?;
     txn.commit().await?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use sea_orm::{EntityTrait, QueryFilter};
-
-    use super::*;
-    use crate::entities::change_history;
-    use crate::testing::connect_with_application_name;
-
-    #[tokio::test]
-    #[ignore = "一時的な nested transaction の計測 PoC"]
-    // 削除条件: nested transaction の挙動計測が完了したら削除する。
-    async fn nested_create_commit_is_rolled_back_by_outer_transaction_refactoring() {
-        let db = connect_with_application_name("h8-nested-primary").await;
-        let outer = db.begin().await.expect("begin outer transaction");
-        let key = "h8-transaction-probe";
-        let expected = note_kind::Model {
-            key: key.to_string(),
-            display_name: "Transaction probe".to_string(),
-            requires_approval: true,
-            description: Some("Nested commit rollback probe".to_string()),
-            sort_order: 41,
-        };
-
-        let created = create(
-            &outer,
-            Actor::Human,
-            CreateNoteKind {
-                key: key.to_string(),
-                display_name: "Transaction probe".to_string(),
-                requires_approval: true,
-                description: Some("Nested commit rollback probe".to_string()),
-                sort_order: Some(41),
-            },
-        )
-        .await
-        .expect("create note kind");
-        let visible = note_kind::Entity::find_by_id(key.to_string())
-            .one(&outer)
-            .await
-            .expect("find note kind in outer transaction");
-        assert_eq!((created, visible), (expected.clone(), Some(expected)));
-
-        outer.rollback().await.expect("rollback outer transaction");
-        db.close().await.expect("close primary connection");
-
-        let verifier = connect_with_application_name("h8-nested-verify").await;
-        let remaining_note_kind = note_kind::Entity::find_by_id(key.to_string())
-            .one(&verifier)
-            .await
-            .expect("verify note kind rollback");
-        let remaining_history = change_history::Entity::find()
-            .filter(change_history::Column::TargetKind.eq("note_kind"))
-            .filter(change_history::Column::TargetId.eq(history_target_id(key)))
-            .all(&verifier)
-            .await
-            .expect("verify change history rollback");
-        assert_eq!((remaining_note_kind, remaining_history), (None, Vec::new()));
-        verifier.close().await.expect("close verifier connection");
-    }
 }

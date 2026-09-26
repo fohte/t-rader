@@ -100,20 +100,18 @@ mod tests {
 
     use rmcp::handler::server::wrapper::{Json, Parameters};
     use sea_orm::EntityTrait;
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
     use crate::entities::trigger;
     use crate::mcp::mgmt::dto::TriggerKindParam;
-    use crate::testing::{create_test_db, insert_test_cron_trigger, insert_test_hook_trigger};
+    use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
-    #[sqlx::test(migrations = false)]
-    async fn create_strategy_trigger_inserts_cron_trigger(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_strategy_trigger_inserts_cron_trigger(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
@@ -167,9 +165,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_strategy_trigger_rejects_cron_without_schedule(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_strategy_trigger_rejects_cron_without_schedule(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
@@ -194,9 +193,8 @@ mod tests {
         assert!(rows.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_strategy_trigger_rejects_unknown_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_strategy_trigger_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -215,9 +213,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_strategy_trigger_applies_fields(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_strategy_trigger_applies_fields(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
             insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "old prompt").await;
@@ -252,9 +249,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_strategy_trigger_rejects_hook_slug_on_cron_trigger(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_strategy_trigger_rejects_hook_slug_on_cron_trigger(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
             insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "prompt").await;
@@ -274,9 +272,8 @@ mod tests {
         assert_eq!((result.ok, result.errors.len()), (false, 1));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_strategy_trigger_rejects_unknown_trigger(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_strategy_trigger_rejects_unknown_trigger(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -294,9 +291,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_strategy_trigger_removes_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_strategy_trigger_removes_row(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
             insert_test_hook_trigger(&db, strategy_id, "earnings", "prompt", None, true).await;
@@ -314,9 +310,8 @@ mod tests {
         assert!(trigger_crud::get_trigger(&db, trigger_id).await.is_err());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_strategy_trigger_rejects_unknown_trigger(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_strategy_trigger_rejects_unknown_trigger(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server

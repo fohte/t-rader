@@ -1,5 +1,8 @@
 mod daily_bars;
+mod earnings_schedule;
+mod edinet_holdings;
 mod equities_master;
+mod fin_summary;
 mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
@@ -8,11 +11,12 @@ mod response;
 mod short_selling;
 #[cfg(test)]
 mod tests;
+mod valuation;
 
+use crate::database::DatabaseHandle;
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
-use sea_orm::DatabaseConnection;
 
 use rate_limiter::RateLimiter;
 
@@ -20,7 +24,6 @@ use crate::data_provider::{DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-pub(crate) use response::{EarningsDateRecord, ValuationRecord};
 use response::{
     EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
     FinSummaryResponse, Paginated, ValuationResponse,
@@ -92,7 +95,7 @@ pub struct JQuantsClient {
     api_key: String,
     rate_limiter: RateLimiter,
     detected_range: std::sync::Mutex<Option<DetectedRange>>,
-    db: Option<DatabaseConnection>,
+    db: Option<DatabaseHandle>,
     /// 設定ページから手動設定された契約プラン。`None` の間は自動検出
     /// (`detected_range`) を使う。
     manual_plan: std::sync::Mutex<Option<JQuantsPlan>>,
@@ -138,8 +141,8 @@ impl JQuantsClient {
 
     /// 検出した契約範囲をプラン設定として永続化する DB を設定する。
     /// 未設定の場合も範囲の検出と取得は行うが、プラン設定は保存しない。
-    pub fn with_db(mut self, db: DatabaseConnection) -> Self {
-        self.db = Some(db);
+    pub fn with_db(mut self, db: impl Into<DatabaseHandle>) -> Self {
+        self.db = Some(db.into());
         self
     }
 
@@ -166,6 +169,35 @@ impl JQuantsClient {
         Some(DateRange { from, to })
     }
 
+    pub(crate) fn known_fetchable_date_range(&self, today: NaiveDate) -> Option<DateRange> {
+        if let Some(range) = self.manual_plan_date_range(today) {
+            return Some(range);
+        }
+        let (from, to) = self.detected_range_on(today)?;
+        Some(DateRange { from, to })
+    }
+
+    /// Standard 以上で利用できるデータの取得範囲を返す。
+    pub(crate) fn standard_plan_date_range(
+        &self,
+        today: NaiveDate,
+        data_name: &str,
+    ) -> Option<DateRange> {
+        match self.manual_plan() {
+            Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
+                self.manual_plan_date_range(today)
+            }
+            plan => {
+                tracing::debug!(
+                    ?plan,
+                    data_name,
+                    "Standard 以上の契約プランが必要なため取得できません"
+                );
+                None
+            }
+        }
+    }
+
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
     ///
     /// 契約プランが設定されていれば、その公称値に `RATE_LIMIT_SAFETY_FACTOR` による
@@ -179,11 +211,15 @@ impl JQuantsClient {
     }
 
     fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        self.detected_range_on(Utc::now().date_naive())
+    }
+
+    fn detected_range_on(&self, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
         let guard = self
             .detected_range
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        effective_range(guard.as_ref(), Utc::now().date_naive())
+        effective_range(guard.as_ref(), today)
     }
 
     /// crate 内テスト (`services::edinet_holdings` 等) から 400 検出フローを経由せず
@@ -374,7 +410,7 @@ impl JQuantsClient {
     pub(crate) async fn fetch_valuation_by_date(
         &self,
         date: NaiveDate,
-    ) -> Result<Vec<ValuationRecord>, DataProviderError> {
+    ) -> Result<Vec<response::ValuationRecord>, DataProviderError> {
         let date_str = date.format("%Y-%m-%d").to_string();
         let params = [("date", date_str.as_str())];
         self.fetch_all_pages::<ValuationResponse>(

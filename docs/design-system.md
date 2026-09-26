@@ -168,7 +168,6 @@ transition-property のように `@theme` namespace を持たないプロパテ�
 | `--grid-cols-skills-sidebar`    | `240px minmax(0, 1fr)` | skills タブのサイドバー + 詳細ペイン                                         |
 | `--grid-cols-triggers-sidebar`  | `280px minmax(0, 1fr)` | triggers タブのサイドバー + 詳細ペイン                                       |
 | `--grid-cols-indicators-list`   | `260px 1fr`            | indicators ページの indicator 一覧幅                                         |
-| `--grid-cols-hypothesis-detail` | `minmax(0, 1fr) 280px` | hypothesis 詳細ページの status aside 幅                                      |
 | `--grid-cols-annotation-fields` | `120px minmax(0, 1fr)` | 戦略アノテーション詳細ページのフィールド一覧 (dl) のラベル列 + 値列          |
 | `--grid-cols-note-detail`       | `minmax(0, 1fr) 340px` | ノート詳細ページの本文 + サイドパネルの 2 カラムレイアウト                   |
 | `--grid-cols-strategy-home`     | `minmax(0, 1fr) 320px` | 戦略ホームページのチャート + サイドパネルの 2 カラムレイアウト               |

@@ -239,11 +239,9 @@ pub async fn delete_comment(
 
 #[cfg(test)]
 mod tests {
+    use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
-    use sqlx::PgPool;
-
-    use crate::testing::create_test_server;
 
     fn normalize(mut value: Value) -> Value {
         for key in ["id", "target_id", "created_at"] {
@@ -269,9 +267,9 @@ mod tests {
             .json()
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_comment_sets_resolved(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_comment_sets_resolved(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let created = create_note_comment(&server).await;
         let id = created["id"].as_str().expect("id");
 
@@ -324,9 +322,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_comment_missing_id_is_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_comment_missing_id_is_404(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .patch(&format!("/api/comments/{}", uuid::Uuid::new_v4()))
             .json(&json!({ "resolved": true }))
@@ -381,107 +379,111 @@ mod tests {
             .to_string()
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_comment_with_line_anchor_stores_explicit_lines(pool: PgPool) {
-        let server = create_test_server(pool).await;
-        let strategy_id = crate::testing::create_strategy(&server, "s").await;
-        let note_id = create_note(
-            &server,
-            &strategy_id,
-            indoc::indoc! {"
-                line one
-                line two
-                line three"},
-        )
-        .await;
-        let version_id = first_note_version_id(&server, &note_id).await;
-
-        let res = server
-            .post("/api/comments")
-            .json(&json!({
-                "target_kind": "note_version",
-                "target_id": version_id,
-                "body": "fix this line",
-                "anchor_text": "line two",
-                "anchor_side": "new",
-                "start_line": 2,
-                "end_line": 2,
-            }))
-            .await;
-        res.assert_status(StatusCode::CREATED);
-        assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "target_kind": "note_version",
-                "target_id": "<target_id>",
-                "parent_id": null,
-                "body": "fix this line",
-                "author_kind": "human",
-                "author_label": "user",
-                "resolved": false,
-                "created_at": "<created_at>",
-                "anchor_text": "line two",
-                "anchor_side": "new",
-                "start_line": 2,
-                "end_line": 2,
-            }),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn create_comment_keeps_quote_with_explicit_line_anchor(pool: PgPool) {
-        let server = create_test_server(pool).await;
-        let strategy_id = crate::testing::create_strategy(&server, "s").await;
-        let note_id = create_note(
-            &server,
-            &strategy_id,
-            indoc::indoc! {"
-                line one
-                line two
-                line three"},
-        )
-        .await;
-        let version_id = first_note_version_id(&server, &note_id).await;
-
-        let res = server
-            .post("/api/comments")
-            .json(&json!({
-                "target_kind": "note_version",
-                "target_id": version_id,
-                "body": "fix this line",
-                "anchor_text": "line that no longer exists",
-                "anchor_side": "new",
-                "start_line": 3,
-                "end_line": 3,
-            }))
-            .await;
-        res.assert_status(StatusCode::CREATED);
-        assert_eq!(
-            normalize(res.json()),
-            json!({
-                "id": "<id>",
-                "target_kind": "note_version",
-                "target_id": "<target_id>",
-                "parent_id": null,
-                "body": "fix this line",
-                "author_kind": "human",
-                "author_label": "user",
-                "resolved": false,
-                "created_at": "<created_at>",
-                "anchor_text": "line that no longer exists",
-                "anchor_side": "new",
-                "start_line": 3,
-                "end_line": 3,
-            }),
-        );
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn create_comment_on_annotation_with_anchor_text_saves_text_without_line_numbers(
-        pool: PgPool,
+    #[backend_test_macros::database_test]
+    async fn create_comment_with_line_anchor_stores_explicit_lines(
+        db: crate::database::DatabaseHandle,
     ) {
-        let server = create_test_server(pool).await;
+        let server = create_test_server(db).await;
+        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let note_id = create_note(
+            &server,
+            &strategy_id,
+            indoc::indoc! {"
+                line one
+                line two
+                line three"},
+        )
+        .await;
+        let version_id = first_note_version_id(&server, &note_id).await;
+
+        let res = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "note_version",
+                "target_id": version_id,
+                "body": "fix this line",
+                "anchor_text": "line two",
+                "anchor_side": "new",
+                "start_line": 2,
+                "end_line": 2,
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "target_kind": "note_version",
+                "target_id": "<target_id>",
+                "parent_id": null,
+                "body": "fix this line",
+                "author_kind": "human",
+                "author_label": "user",
+                "resolved": false,
+                "created_at": "<created_at>",
+                "anchor_text": "line two",
+                "anchor_side": "new",
+                "start_line": 2,
+                "end_line": 2,
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_comment_keeps_quote_with_explicit_line_anchor(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let strategy_id = crate::testing::create_strategy(&server, "s").await;
+        let note_id = create_note(
+            &server,
+            &strategy_id,
+            indoc::indoc! {"
+                line one
+                line two
+                line three"},
+        )
+        .await;
+        let version_id = first_note_version_id(&server, &note_id).await;
+
+        let res = server
+            .post("/api/comments")
+            .json(&json!({
+                "target_kind": "note_version",
+                "target_id": version_id,
+                "body": "fix this line",
+                "anchor_text": "line that no longer exists",
+                "anchor_side": "new",
+                "start_line": 3,
+                "end_line": 3,
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "target_kind": "note_version",
+                "target_id": "<target_id>",
+                "parent_id": null,
+                "body": "fix this line",
+                "author_kind": "human",
+                "author_label": "user",
+                "resolved": false,
+                "created_at": "<created_at>",
+                "anchor_text": "line that no longer exists",
+                "anchor_side": "new",
+                "start_line": 3,
+                "end_line": 3,
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_comment_on_annotation_with_anchor_text_saves_text_without_line_numbers(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
         let annotation_id = create_annotation(&server, &strategy_id).await;
 

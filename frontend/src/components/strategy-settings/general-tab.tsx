@@ -30,7 +30,7 @@ export function GeneralTab({ strategyId }: GeneralTabProps) {
   // レンダー中に GET 由来の初期値の変化を検知し、未編集のフィールドだけ同期する。
   // name/description をまとめて 1 つの ref で追従させると、一方を編集中にもう一方が
   // refetch で更新された場合に同期が丸ごとスキップされ、保存時に古い値で上書きして
-  // しまうため、hypothesis-editor.tsx と同じくフィールドごとに独立した ref で追従する
+  // しまうため、フィールドごとに独立した ref で追従する
   const prevInitialNameRef = useRef(initialName)
   const prevInitialDescriptionRef = useRef(initialDescription)
   if (prevInitialNameRef.current !== initialName) {
@@ -154,7 +154,7 @@ export function GeneralTab({ strategyId }: GeneralTabProps) {
           危険な操作
         </h2>
         <p className="text-sm text-muted-foreground-strong">
-          戦略を削除すると、紐づくノート・アノテーション・トレード・仮説・トリガー・カスタムインジケーター・戦略タスクなどもすべて削除されます。この操作は取り消せません。
+          戦略を削除すると、紐づくノート・アノテーション・トレード・トリガー・カスタムインジケーター・戦略タスクなどもすべて削除されます。この操作は取り消せません。
         </p>
         <Button
           type="button"

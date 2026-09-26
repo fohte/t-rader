@@ -48,7 +48,7 @@ fn compute_return(base: Decimal, due: Decimal) -> Option<Decimal> {
 /// 1 件の予測を採点する。終値がまだ揃っていない場合は `Ok(None)` を返し、次回サイクルに
 /// 持ち越す。
 async fn try_grade(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     p: &prediction::Model,
 ) -> Result<Option<GradedOutcome>, AppError> {
     let due_bday = crate::date_utils::latest_business_day(p.due_date);
@@ -144,7 +144,9 @@ async fn try_grade(
 
 /// 期限到来済みかつ未採点の予測をまとめて採点する。全戦略横断で対象を取得する
 /// (個人利用規模のため全件取得で問題ない)。
-pub async fn run_grading_cycle(db: &DatabaseConnection) -> Result<GradingStats, AppError> {
+pub async fn run_grading_cycle(
+    db: &impl sea_orm::ConnectionTrait,
+) -> Result<GradingStats, AppError> {
     let today = chrono::Utc::now().date_naive();
 
     let due_predictions = prediction::Entity::find()
@@ -230,17 +232,15 @@ pub fn spawn_poll(db: DatabaseConnection, interval: Duration) -> tokio::task::Jo
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
-    use rstest::rstest;
-    use sea_orm::ActiveValue::NotSet;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::entities::instruments;
     use crate::models::Bar;
     use crate::models::bar::Timeframe;
     use crate::repositories::bars::upsert_bars;
-    use crate::testing::{create_test_db, insert_test_stock, insert_test_strategy};
+    use crate::testing::{insert_test_stock, insert_test_strategy};
+    use chrono::NaiveDate;
+    use rstest::rstest;
+    use sea_orm::ActiveValue::NotSet;
 
     #[rstest]
     #[case::positive_return(Decimal::new(100, 0), Decimal::new(110, 0), Some(Decimal::new(10, 2)))]
@@ -260,7 +260,7 @@ mod tests {
 
     /// `stock` (prediction の FK 先) と `instruments` (bars の FK 先) は別テーブルなので、
     /// 同じ id で両方に行を作る。
-    async fn insert_test_target(db: &DatabaseConnection, id: &str, name: &str) {
+    async fn insert_test_target(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
         insert_test_stock(db, id, name).await;
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
@@ -292,7 +292,7 @@ mod tests {
 
     /// テスト用の予測を 1 件挿入する。`base_date`/`due_date` 以外は固定値。
     async fn insert_prediction(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         strategy_id: Uuid,
         target_stock_id: &str,
         benchmark_stock_id: &str,
@@ -320,7 +320,7 @@ mod tests {
     }
 
     async fn find_grade(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         prediction_id: Uuid,
     ) -> Option<prediction_grade::Model> {
         prediction_grade::Entity::find_by_id(prediction_id)
@@ -332,7 +332,7 @@ mod tests {
     /// 2026-06-15 (月・平日) を base、2026-06-22 (月・平日) を due とする共通シナリオ。
     /// target/benchmark ともに base/due の日足が揃っている前提を作る。
     async fn seed_scenario(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         target_base: i64,
         target_due: i64,
         benchmark_base: i64,
@@ -353,9 +353,8 @@ mod tests {
         .expect("seed bars");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn grades_outperform_prediction_as_correct(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn grades_outperform_prediction_as_correct(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let prediction_id = insert_prediction(
@@ -391,9 +390,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn grades_underperform_prediction_as_incorrect(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn grades_underperform_prediction_as_incorrect(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         // target が benchmark を上回っているので underperform の予測は外れる。
         seed_scenario(&db, 100, 120, 100, 110).await;
@@ -430,9 +428,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_when_due_date_bar_is_stale(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_when_due_date_bar_is_stale(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         insert_test_target(&db, "1000", "target").await;
         insert_test_target(&db, "2000", "benchmark").await;
@@ -466,9 +463,8 @@ mod tests {
         assert_eq!(find_grade(&db, prediction_id).await, None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_when_base_date_bar_is_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_when_base_date_bar_is_missing(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         insert_test_target(&db, "1000", "target").await;
         insert_test_target(&db, "2000", "benchmark").await;
@@ -499,9 +495,8 @@ mod tests {
         assert_eq!(find_grade(&db, prediction_id).await, None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn already_graded_prediction_is_not_regraded(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn already_graded_prediction_is_not_regraded(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let prediction_id = insert_prediction(
@@ -529,9 +524,10 @@ mod tests {
         assert_eq!(grade_after_first, grade_after_second);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn one_skipped_prediction_does_not_block_others_in_same_cycle(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn one_skipped_prediction_does_not_block_others_in_same_cycle(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let gradable_id = insert_prediction(

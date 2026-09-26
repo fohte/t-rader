@@ -2,8 +2,8 @@
 //! 行が存在しない間は「未設定 (自動検出を使う)」を表し、初回保存時に作成する。
 
 use sea_orm::ActiveValue::Set;
+use sea_orm::EntityTrait;
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{DatabaseConnection, EntityTrait};
 
 use crate::entities::jquants_plan_setting;
 use crate::error::AppError;
@@ -11,7 +11,7 @@ use crate::error::AppError;
 const SINGLETON_ID: i16 = 1;
 
 pub async fn find_current(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
 ) -> Result<Option<jquants_plan_setting::Model>, AppError> {
     let row = jquants_plan_setting::Entity::find_by_id(SINGLETON_ID)
         .one(db)
@@ -20,7 +20,7 @@ pub async fn find_current(
 }
 
 pub async fn save(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     plan_setting: serde_json::Value,
 ) -> Result<jquants_plan_setting::Model, AppError> {
     let prev = find_current(db).await?;
@@ -56,7 +56,7 @@ pub async fn save(
 ///
 /// 戻り値は実際に保存できたかどうか。
 pub async fn save_if_unset(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     plan_setting: serde_json::Value,
 ) -> Result<bool, AppError> {
     let model = jquants_plan_setting::ActiveModel {
@@ -83,23 +83,15 @@ pub async fn save_if_unset(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use super::*;
-    use crate::testing::create_test_db;
-
-    #[sqlx::test(migrations = false)]
-    async fn find_current_returns_none_when_row_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn find_current_returns_none_when_row_missing(db: crate::database::DatabaseHandle) {
         let current = find_current(&db).await.expect("query");
         assert_eq!(current, None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn save_creates_row_when_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn save_creates_row_when_missing(db: crate::database::DatabaseHandle) {
         let saved = save(&db, serde_json::json!({ "plan": "standard" }))
             .await
             .expect("save");
@@ -117,10 +109,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn save_twice_keeps_single_row_and_updates_value(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn save_twice_keeps_single_row_and_updates_value(db: crate::database::DatabaseHandle) {
         save(&db, serde_json::json!({ "plan": "standard" }))
             .await
             .expect("save first");

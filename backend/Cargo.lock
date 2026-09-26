@@ -463,6 +463,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-test",
+ "backend-test-macros",
  "chrono",
  "clap",
  "core-application",
@@ -470,6 +471,7 @@ dependencies = [
  "cron",
  "csv",
  "encoding_rs",
+ "futures-util",
  "gateway-fred",
  "gateway-ibkr",
  "gateway-kata-exec",
@@ -500,6 +502,14 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "wiremock",
+]
+
+[[package]]
+name = "backend-test-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

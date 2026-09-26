@@ -1,6 +1,6 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 
 use crate::entities::bars;
 use crate::error::AppError;
@@ -42,7 +42,10 @@ impl From<bars::Model> for Bar {
 ///
 /// 複合 PK (instrument_id, timeframe, timestamp) で重複排除し、
 /// 既存行は OHLCV カラムを更新する。
-pub async fn upsert_bars(db: &DatabaseConnection, bars_data: Vec<Bar>) -> Result<(), AppError> {
+pub async fn upsert_bars(
+    db: &impl sea_orm::ConnectionTrait,
+    bars_data: Vec<Bar>,
+) -> Result<(), AppError> {
     if bars_data.is_empty() {
         return Ok(());
     }
@@ -81,7 +84,7 @@ pub struct BarsQuery {
 
 /// 条件に一致するバーデータを取得する
 pub async fn find_bars(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     query: BarsQuery,
 ) -> Result<Vec<bars::Model>, AppError> {
     let mut select = bars::Entity::find()
@@ -104,7 +107,7 @@ pub async fn find_bars(
 /// 複数銘柄に一致するバーデータをまとめて取得する。日付範囲は全銘柄共通の条件として扱う。
 /// 結果は instrument_id 昇順 → timestamp 昇順。
 pub async fn find_bars_by_instruments(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     instrument_ids: &[String],
     timeframe: &str,
     from: Option<DateTime<FixedOffset>>,
@@ -133,7 +136,7 @@ pub async fn find_bars_by_instruments(
 
 /// 銘柄の最新の日足バーを 1 件返す。無ければ `None`。
 pub async fn find_latest_bar(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     instrument_id: &str,
     timeframe: &str,
 ) -> Result<Option<bars::Model>, AppError> {
@@ -149,7 +152,7 @@ pub async fn find_latest_bar(
 /// 指定日以前で最新の日足バーを 1 件返す。無ければ `None`。
 /// 期限日・基準日が非営業日の場合に直近の営業日の終値へフォールバックする用途を想定する。
 pub async fn find_latest_bar_on_or_before(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     instrument_id: &str,
     timeframe: &str,
     on_or_before: NaiveDate,
@@ -174,19 +177,15 @@ pub async fn find_latest_bar_on_or_before(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::entities::instruments;
+    use crate::models::bar::Timeframe;
     use chrono::{NaiveDate, TimeZone, Utc};
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
     use sea_orm::{EntityTrait, Set};
-    use sqlx::PgPool;
-
-    use super::*;
-    use crate::entities::instruments;
-    use crate::models::bar::Timeframe;
-    use crate::testing::create_test_db;
-
     /// テスト用の instrument を DB に挿入する
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
             name: Set(format!("Test {id}")),
@@ -221,9 +220,8 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upsert_bars_inserts_new_records(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upsert_bars_inserts_new_records(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -251,9 +249,8 @@ mod tests {
         assert_eq!(result.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upsert_bars_updates_existing_records(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upsert_bars_updates_existing_records(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date");
@@ -279,17 +276,14 @@ mod tests {
         assert_eq!(result[0].close, Decimal::new(200, 0));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upsert_bars_with_empty_vec_is_noop(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn upsert_bars_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
         let result = upsert_bars(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_bars_filters_by_date_range(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn find_bars_filters_by_date_range(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -329,9 +323,10 @@ mod tests {
         assert_eq!(result[0].close, Decimal::new(105, 0));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_bars_by_instruments_filters_to_requested_instruments(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn find_bars_by_instruments_filters_to_requested_instruments(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
         insert_test_instrument(&db, "9984").await;
         insert_test_instrument(&db, "6758").await;
@@ -367,9 +362,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_latest_bar_returns_most_recent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn find_latest_bar_returns_most_recent(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -397,19 +391,18 @@ mod tests {
         assert_eq!(result.map(|b| b.close), Some(Decimal::new(103, 0)));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_latest_bar_returns_none_when_no_bars(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn find_latest_bar_returns_none_when_no_bars(db: crate::database::DatabaseHandle) {
         let result = find_latest_bar(&db, "7203", "1d")
             .await
             .expect("find failed");
         assert_eq!(result, None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_latest_bar_on_or_before_returns_latest_bar_at_or_before_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn find_latest_bar_on_or_before_returns_latest_bar_at_or_before_date(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -438,9 +431,10 @@ mod tests {
         assert_eq!(result.map(|b| b.close), Some(Decimal::new(100, 0)));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_latest_bar_on_or_before_returns_none_when_no_bar_before_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn find_latest_bar_on_or_before_returns_none_when_no_bar_before_date(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         upsert_bars(

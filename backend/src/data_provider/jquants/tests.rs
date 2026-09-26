@@ -716,13 +716,9 @@ mod rate_limiter {
 mod subscription_range_detection {
     use super::*;
 
-    use chrono::Duration;
-    use sqlx::PgPool;
-
     use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
     use crate::services::jquants_plan_setting;
-    use crate::testing::create_test_db;
-
+    use chrono::Duration;
     #[rstest]
     #[tokio::test]
     async fn test_detects_range_from_400_and_retries_successfully() -> Result<(), DataProviderError>
@@ -796,9 +792,10 @@ mod subscription_range_detection {
         Ok(())
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn persists_inferred_plan_after_fetching_detected_range(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn persists_inferred_plan_after_fetching_detected_range(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
         let from = date(2010, 1, 1);
         let to = from + Duration::days(3650);
@@ -919,25 +916,18 @@ mod manual_plan_priority {
 // === 検出範囲からの初回プラン推定・永続化 (`persist_inferred_range_if_needed`) ===
 
 mod persist_inferred_range_if_needed {
-    use chrono::Duration;
-    use sqlx::PgPool;
-
-    use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
-    use crate::services::jquants_plan_setting;
-    use crate::testing::create_test_db;
-
     use super::super::JQuantsClient;
     use super::date;
+    use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
+    use crate::services::jquants_plan_setting;
+    use chrono::Duration;
 
-    // rstest の #[fixture] は #[sqlx::test] と組み合わせられないため、プレーンな
-    // ヘルパー関数として抽出する
     fn test_client() -> JQuantsClient {
         JQuantsClient::with_base_url("http://localhost", "key").expect("client")
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn does_nothing_when_manual_plan_already_set(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn does_nothing_when_manual_plan_already_set(db: crate::database::DatabaseHandle) {
         let client = test_client().with_db(db.clone());
         client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
         client.set_manual_plan(Some(JQuantsPlan::Premium));
@@ -954,9 +944,8 @@ mod persist_inferred_range_if_needed {
         assert_eq!(client.manual_plan(), Some(JQuantsPlan::Premium));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn does_nothing_when_no_range_detected(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn does_nothing_when_no_range_detected(db: crate::database::DatabaseHandle) {
         let client = test_client().with_db(db.clone());
 
         client
@@ -971,9 +960,10 @@ mod persist_inferred_range_if_needed {
         assert_eq!(client.manual_plan(), None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn infers_and_persists_plan_from_detected_range_once(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn infers_and_persists_plan_from_detected_range_once(
+        db: crate::database::DatabaseHandle,
+    ) {
         let client = test_client().with_db(db.clone());
         // Standard の提供期間 (3650 日) ちょうどの範囲を検出させる
         let from = date(2010, 1, 1);
@@ -995,9 +985,8 @@ mod persist_inferred_range_if_needed {
         assert_eq!(data.plan, Some(JQuantsPlan::Standard));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn does_not_overwrite_when_already_persisted_in_db(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn does_not_overwrite_when_already_persisted_in_db(db: crate::database::DatabaseHandle) {
         let client = test_client().with_db(db.clone());
         let from = date(2010, 1, 1);
         let to = from + Duration::days(3650);

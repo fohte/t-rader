@@ -2,17 +2,15 @@
 
 use chrono::{DateTime, FixedOffset};
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::DatabaseConnection;
-use sea_orm::TransactionTrait;
-use sea_orm::{ActiveModelTrait, EntityTrait};
+use sea_orm::{ActiveModelTrait, EntityTrait, TransactionSession};
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment, hypothesis, note, note_version, strategy};
+use crate::entities::{annotation, comment, note, note_kind, note_version, strategy};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
 
-pub(super) async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid {
+pub(super) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
     strategy::ActiveModel {
         id: Set(id),
@@ -28,7 +26,24 @@ pub(super) async fn insert_strategy(db: &DatabaseConnection, name: &str) -> Uuid
     id
 }
 
-pub(super) fn build_server(db: DatabaseConnection) -> StrategyServer {
+pub(super) async fn insert_note_kind(
+    db: &impl sea_orm::ConnectionTrait,
+    key: &str,
+    requires_approval: bool,
+) {
+    note_kind::ActiveModel {
+        key: Set(key.to_string()),
+        display_name: Set(key.to_string()),
+        requires_approval: Set(requires_approval),
+        description: Set(None),
+        sort_order: Set(0),
+    }
+    .insert(db)
+    .await
+    .expect("insert note kind");
+}
+
+pub(super) fn build_server(db: impl Into<crate::database::DatabaseHandle>) -> StrategyServer {
     StrategyServer::new(db, None)
 }
 
@@ -51,7 +66,11 @@ pub(super) fn normalize_annotation(mut a: AnnotationDto) -> AnnotationDto {
 }
 
 /// 現行バージョンの status を直接書き換える (レビュー確定状態からの遷移をテストするため)
-pub(super) async fn set_note_status(db: &DatabaseConnection, note_id: Uuid, status: &str) {
+pub(super) async fn set_note_status(
+    db: &impl sea_orm::ConnectionTrait,
+    note_id: Uuid,
+    status: &str,
+) {
     let version = crate::services::note_versions::find_current_version(db, note_id)
         .await
         .expect("find current note version")
@@ -68,7 +87,7 @@ pub(super) async fn set_note_status(db: &DatabaseConnection, note_id: Uuid, stat
 
 /// note の updated_at を直接書き換える (`updated_after` フィルタの境界値テスト用)
 pub(super) async fn set_note_updated_at(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,
     updated_at: DateTime<FixedOffset>,
 ) {
@@ -92,7 +111,10 @@ pub(super) fn normalize_comment_model(mut c: comment::Model) -> comment::Model {
     c
 }
 
-pub(super) async fn current_note_version_id(db: &DatabaseConnection, note_id: Uuid) -> Uuid {
+pub(super) async fn current_note_version_id(
+    db: &impl sea_orm::ConnectionTrait,
+    note_id: Uuid,
+) -> Uuid {
     crate::services::note_versions::find_current_version(db, note_id)
         .await
         .expect("find current note version")
@@ -101,13 +123,17 @@ pub(super) async fn current_note_version_id(db: &DatabaseConnection, note_id: Uu
 }
 
 /// 指定戦略の所有として固定タイトルの note を seed する (cross-strategy violation 用)
-pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, title: &str) -> Uuid {
+pub(super) async fn seed_foreign_note(
+    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    owner: Uuid,
+    title: &str,
+) -> Uuid {
     let id = Uuid::new_v4();
     let txn = db.begin().await.expect("begin note transaction");
     note::Entity::insert(note::ActiveModel {
         id: Set(id),
         strategy_id: Set(Some(owner)),
-        type_tag: Set(None),
+        kind: Set(None),
         trigger: Set(None),
         trigger_label: Set(None),
         created_at: NotSet,
@@ -141,7 +167,10 @@ pub(super) async fn seed_foreign_note(db: &DatabaseConnection, owner: Uuid, titl
 }
 
 /// 指定戦略の所有として固定パラメータの annotation を seed する (cross-strategy violation 用)
-pub(super) async fn seed_foreign_annotation(db: &DatabaseConnection, owner: Uuid) -> Uuid {
+pub(super) async fn seed_foreign_annotation(
+    db: &impl sea_orm::ConnectionTrait,
+    owner: Uuid,
+) -> Uuid {
     let id = Uuid::new_v4();
     annotation::ActiveModel {
         id: Set(id),
@@ -167,7 +196,7 @@ pub(super) async fn seed_foreign_annotation(db: &DatabaseConnection, owner: Uuid
 
 /// note / annotation にコメントを直接 seed する (MCP に comment 作成 tool は無いため)
 pub(super) async fn seed_comment(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     target_kind: &str,
     target_id: Uuid,
     parent_id: Option<Uuid>,
@@ -195,35 +224,9 @@ pub(super) async fn seed_comment(
     id
 }
 
-/// 指定 strategy_id (`None` なら global) の仮説を seed する
-pub(super) async fn seed_hypothesis(
-    db: &DatabaseConnection,
-    strategy_id: Option<Uuid>,
-    title: &str,
-    body: &str,
-    status: &str,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    hypothesis::ActiveModel {
-        hypothesis_id: Set(id),
-        strategy_id: Set(strategy_id),
-        title: Set(title.to_string()),
-        body: Set(body.to_string()),
-        status: Set(status.to_string()),
-        related_note_ids: Set(vec![]),
-        related_interest_ids: Set(vec![]),
-        created_at: NotSet,
-        updated_at: NotSet,
-    }
-    .insert(db)
-    .await
-    .expect("seed hypothesis");
-    id
-}
-
 /// note_version にトップレベルの行コメントを seed する。
 pub(super) async fn seed_note_version_comment_with_anchor(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     version_id: Uuid,
     anchor_text: &str,
 ) -> Uuid {

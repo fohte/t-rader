@@ -74,7 +74,10 @@ pub struct IngestStats {
 }
 
 /// `indicator` 行が無ければ作る。既存行は上書きしない。
-async fn ensure_indicator(db: &DatabaseConnection, def: &SeriesDef) -> Result<(), AppError> {
+async fn ensure_indicator(
+    db: &impl sea_orm::ConnectionTrait,
+    def: &SeriesDef,
+) -> Result<(), AppError> {
     indicator::Entity::insert(indicator::ActiveModel {
         id: Set(def.indicator_id.to_string()),
         name: Set(def.indicator_name.to_string()),
@@ -92,7 +95,7 @@ async fn ensure_indicator(db: &DatabaseConnection, def: &SeriesDef) -> Result<()
 
 /// 格納済みの最新観測日を返す。1 件も無ければ `None`。
 async fn find_latest_observation_date(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     indicator_id: &str,
 ) -> Result<Option<NaiveDate>, AppError> {
     let latest = indicator_observation::Entity::find()
@@ -106,7 +109,7 @@ async fn find_latest_observation_date(
 /// 観測値を `(indicator_id, date)` で upsert する。既存行は値を上書きする (FRED の確定値
 /// 反映を取りこぼさないため)。
 async fn upsert_observations(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     indicator_id: &str,
     observations: Vec<IndicatorObservation>,
 ) -> Result<usize, AppError> {
@@ -140,7 +143,7 @@ async fn upsert_observations(
 
 /// 1 系列を 1 サイクル分取り込む。初回 (格納済みデータが無い) は全履歴を取得する。
 async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn IndicatorObservationSource,
     def: &SeriesDef,
 ) -> Result<IngestStats, FredIngestError> {
@@ -190,13 +193,10 @@ pub fn spawn_poll(
 mod tests {
     use gateway_fred::FredClient;
     use sea_orm::{ActiveModelTrait, EntityTrait};
-    use sqlx::PgPool;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
-    use crate::testing::create_test_db;
-
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
     }
@@ -237,9 +237,10 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn creates_indicator_and_ingests_full_history_when_table_is_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn creates_indicator_and_ingests_full_history_when_table_is_empty(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = MockServer::start().await;
         mount_series(
             &server,
@@ -280,9 +281,10 @@ mod tests {
         assert_eq!(obs.value, rust_decimal::Decimal::new(14750, 2));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resumes_from_latest_date_minus_lookback_and_updates_existing_value(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resumes_from_latest_date_minus_lookback_and_updates_existing_value(
+        db: crate::database::DatabaseHandle,
+    ) {
         let def = series_def();
 
         indicator::ActiveModel {
@@ -332,9 +334,8 @@ mod tests {
         assert_eq!(obs.value, rust_decimal::Decimal::new(14750, 2));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn does_not_overwrite_existing_indicator_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn does_not_overwrite_existing_indicator_row(db: crate::database::DatabaseHandle) {
         let def = series_def();
         indicator::ActiveModel {
             id: Set(def.indicator_id.to_string()),

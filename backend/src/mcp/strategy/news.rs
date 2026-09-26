@@ -82,15 +82,11 @@ mod tests {
     use chrono::{DateTime, FixedOffset, NaiveDate};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sea_orm::DatabaseConnection;
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::news_item;
-    use crate::testing::create_test_db;
 
     use super::super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
     use super::super::tests_common::build_server;
+    use crate::entities::news_item;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -104,7 +100,7 @@ mod tests {
     }
 
     async fn insert_news_item_with(
-        db: &DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         url: &str,
         title: &str,
         body_snippet: Option<&str>,
@@ -130,9 +126,8 @@ mod tests {
         result.items.iter().map(|i| i.url.clone()).collect()
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn search_news_returns_full_item_shape(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn search_news_returns_full_item_shape(db: crate::database::DatabaseHandle) {
         let server = build_server(db.clone());
 
         let published_at = at_noon(ymd(2026, 6, 1));
@@ -173,9 +168,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn search_news_matches_keyword_case_insensitively_in_title_or_body(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn search_news_matches_keyword_case_insensitively_in_title_or_body(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         insert_news_item_with(
@@ -219,9 +215,10 @@ mod tests {
         assert_eq!(result_urls(&result), vec!["https://ex.com/1".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn search_news_does_not_treat_underscore_as_single_char_wildcard(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn search_news_does_not_treat_underscore_as_single_char_wildcard(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         insert_news_item_with(
@@ -249,9 +246,10 @@ mod tests {
         assert_eq!(result_urls(&result), Vec::<String>::new());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn search_news_filters_by_published_at_range_inclusive(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn search_news_filters_by_published_at_range_inclusive(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         insert_news_item_with(
@@ -295,9 +293,10 @@ mod tests {
         assert_eq!(result_urls(&result), vec!["https://ex.com/2".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn search_news_orders_newest_first_and_respects_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn search_news_orders_newest_first_and_respects_limit(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         insert_news_item_with(

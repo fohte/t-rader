@@ -10,18 +10,17 @@ pub mod watcher;
 
 use std::time::Duration;
 
-use axum::Router;
-use rmcp::transport::streamable_http_server::StreamableHttpService;
-use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
-use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
-use sea_orm::DatabaseConnection;
-
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::SharedDailyBarSource;
+use crate::database::DatabaseHandle;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
 use crate::services::strategy_tasks::DEADLINE_DURATION;
+use axum::Router;
 pub use mgmt::MgmtServer;
+use rmcp::transport::streamable_http_server::StreamableHttpService;
+use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::streamable_http_server::tower::StreamableHttpServerConfig;
 pub use strategy::StrategyServer;
 
 /// MCP ルータを構築する。
@@ -29,13 +28,14 @@ pub use strategy::StrategyServer;
 /// session はプロセス内メモリ (`LocalSessionManager`) でのみ管理する。バックエンド再起動を
 /// 跨いだ `mcp-session-id` は未知の session として扱われ、クライアントは initialize からやり直す。
 pub fn router(
-    db: DatabaseConnection,
+    db: impl Into<DatabaseHandle>,
     agent_client: SharedAgentTaskClient,
     daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
     litellm_client: Option<SharedLlmClient>,
     extra_allowed_hosts: Vec<String>,
 ) -> Router {
+    let db = db.into();
     let mgmt_db = db.clone();
     let mgmt = StreamableHttpService::new(
         move || Ok(MgmtServer::new(mgmt_db.clone(), agent_client.clone())),

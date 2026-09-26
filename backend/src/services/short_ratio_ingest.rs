@@ -35,11 +35,13 @@ impl DailyJQuantsIngest for ShortRatio {
         source.fetch_short_ratios(day).await
     }
 
-    async fn upsert(db: &DatabaseConnection, items: Vec<Self>) -> Result<(), AppError> {
+    async fn upsert(db: &impl sea_orm::ConnectionTrait, items: Vec<Self>) -> Result<(), AppError> {
         upsert_short_ratios(db, items).await
     }
 
-    async fn find_latest_date(db: &DatabaseConnection) -> Result<Option<NaiveDate>, AppError> {
+    async fn find_latest_date(
+        db: &impl sea_orm::ConnectionTrait,
+    ) -> Result<Option<NaiveDate>, AppError> {
         find_latest_date(db).await
     }
 }
@@ -47,7 +49,7 @@ impl DailyJQuantsIngest for ShortRatio {
 /// 業種別空売り比率を DB 上の最新対象日から訂正分を遡った日付から当日まで、
 /// 日ごとに 1 リクエストずつ取得して upsert する。
 pub async fn run_ingest_cycle(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     source: &dyn ShortSellingSource,
 ) -> Result<DailyIngestStats, AppError> {
     jquants_daily_ingest::run_ingest_cycle::<ShortRatio>(db, source).await
@@ -64,18 +66,14 @@ pub fn spawn_poll(
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
-    use rstest::rstest;
-    use rust_decimal::Decimal;
-    use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};
-    use sqlx::PgPool;
-
     use super::*;
     use crate::data_provider::jquants::mock::{JQuantsMockServer, MockShortRatio};
     use crate::entities::short_ratio;
     use crate::models::jquants_plan::JQuantsPlan;
-    use crate::testing::create_test_db;
-
+    use chrono::Utc;
+    use rstest::rstest;
+    use rust_decimal::Decimal;
+    use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};
     fn sample_ratio(value: f64) -> MockShortRatio {
         MockShortRatio {
             sector33_code: "0050",
@@ -105,9 +103,10 @@ mod tests {
         mock.error().forbidden("/markets/short-ratio").await;
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn backfills_from_endpoint_start_date_when_db_is_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn backfills_from_endpoint_start_date_when_db_is_empty(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&mock, SHORT_RATIO_START_DATE, 100.0).await;
         let client = mock.client().expect("client");
@@ -126,9 +125,8 @@ mod tests {
         assert_eq!(latest, Some(SHORT_RATIO_START_DATE));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resumes_from_latest_date_minus_lookback(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resumes_from_latest_date_minus_lookback(db: crate::database::DatabaseHandle) {
         let latest = Utc::now().date_naive() - chrono::Duration::days(365);
         upsert_short_ratios(&db, vec![make_ratio(latest, 100.0)])
             .await
@@ -160,9 +158,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resume_date_is_clamped_to_endpoint_start_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resume_date_is_clamped_to_endpoint_start_date(db: crate::database::DatabaseHandle) {
         // latest - lookback がエンドポイント開始日より前になるケース
         let latest = SHORT_RATIO_START_DATE + chrono::Duration::days(1);
         upsert_short_ratios(&db, vec![make_ratio(latest, 100.0)])
@@ -185,9 +182,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn standard_plan_is_also_accepted_by_the_plan_gate(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn standard_plan_is_also_accepted_by_the_plan_gate(db: crate::database::DatabaseHandle) {
         let today = Utc::now().date_naive();
         let floor = JQuantsPlan::Standard
             .range(today)
@@ -229,9 +225,8 @@ mod tests {
         assert_eq!(stats, DailyIngestStats::default());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn overwrites_existing_row_on_correction(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn overwrites_existing_row_on_correction(db: crate::database::DatabaseHandle) {
         let target_date = SHORT_RATIO_START_DATE;
 
         let first_mock = JQuantsMockServer::start().await;

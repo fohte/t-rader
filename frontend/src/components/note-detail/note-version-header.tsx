@@ -13,7 +13,7 @@ export function NoteVersionHeader({ version }: NoteVersionHeaderProps) {
         {version.title}
       </h1>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-2xs text-muted-foreground">
-        <span>版 {String(version.version_no)}</span>
+        <span>バージョン {String(version.version_no)}</span>
         <StatusPill status={version.status} />
         {version.is_current && (
           <span className="border border-primary px-1.5 py-px text-primary">

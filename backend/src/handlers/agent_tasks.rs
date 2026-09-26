@@ -62,16 +62,14 @@ pub async fn receive_agent_task_notification(
 mod tests {
     use std::time::Duration;
 
-    use serde_json::json;
-    use sqlx::PgPool;
-
     use crate::testing::create_test_server_with_state;
+    use serde_json::json;
 
     use super::*;
 
-    #[sqlx::test(migrations = false)]
-    async fn valid_token_returns_204_and_notifies_watcher(pool: PgPool) {
-        let (state, server) = create_test_server_with_state(pool).await;
+    #[backend_test_macros::database_test]
+    async fn valid_token_returns_204_and_notifies_watcher(db: crate::database::DatabaseHandle) {
+        let (state, server) = create_test_server_with_state(db).await;
         let notified = state.agent_task_notify.notified();
 
         let res = server
@@ -89,9 +87,9 @@ mod tests {
             .expect("watcher should have been notified");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn mismatched_token_returns_401(pool: PgPool) {
-        let (_state, server) = create_test_server_with_state(pool).await;
+    #[backend_test_macros::database_test]
+    async fn mismatched_token_returns_401(db: crate::database::DatabaseHandle) {
+        let (_state, server) = create_test_server_with_state(db).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")
@@ -101,9 +99,9 @@ mod tests {
         res.assert_status(axum::http::StatusCode::UNAUTHORIZED);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn missing_token_header_returns_401(pool: PgPool) {
-        let (_state, server) = create_test_server_with_state(pool).await;
+    #[backend_test_macros::database_test]
+    async fn missing_token_header_returns_401(db: crate::database::DatabaseHandle) {
+        let (_state, server) = create_test_server_with_state(db).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")

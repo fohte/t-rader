@@ -78,19 +78,22 @@ impl StrategyServer {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
+    use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ActiveModelTrait, DatabaseConnection};
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::entities::{prediction, prediction_grade};
-    use crate::testing::{create_test_db, insert_test_stock};
+    use crate::testing::insert_test_stock;
 
     use super::super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
     use super::super::tests_common::{build_server, insert_strategy};
 
     /// prediction を 1 件 seed する (MCP tool を経由せず ActiveModel で直接 insert)。
-    async fn seed_prediction(db: &DatabaseConnection, strategy_id: Uuid, probability: f64) -> Uuid {
+    async fn seed_prediction(
+        db: &impl sea_orm::ConnectionTrait,
+        strategy_id: Uuid,
+        probability: f64,
+    ) -> Uuid {
         let id = Uuid::new_v4();
         prediction::ActiveModel {
             prediction_id: Set(id),
@@ -111,7 +114,7 @@ mod tests {
     }
 
     /// 指定 prediction の採点結果を seed する。
-    async fn seed_grade(db: &DatabaseConnection, prediction_id: Uuid, correct: bool) {
+    async fn seed_grade(db: &impl sea_orm::ConnectionTrait, prediction_id: Uuid, correct: bool) {
         prediction_grade::ActiveModel {
             prediction_id: Set(prediction_id),
             target_base_close: Set(rust_decimal::Decimal::new(1000, 0)),
@@ -139,9 +142,10 @@ mod tests {
             .collect()
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn read_prediction_stats_returns_empty_when_no_graded_predictions(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn read_prediction_stats_returns_empty_when_no_graded_predictions(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -160,9 +164,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn read_prediction_stats_excludes_ungraded_predictions(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn read_prediction_stats_excludes_ungraded_predictions(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
@@ -184,9 +189,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn read_prediction_stats_excludes_other_strategy_predictions(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn read_prediction_stats_excludes_other_strategy_predictions(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -210,9 +216,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn read_prediction_stats_aggregates_buckets_and_brier_score(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn read_prediction_stats_aggregates_buckets_and_brier_score(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;

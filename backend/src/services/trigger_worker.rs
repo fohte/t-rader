@@ -5,14 +5,12 @@
 //! を呼ぶ。発火失敗は次回 tick に持ち越し (`last_fired_at` 更新は `fire_trigger` 内で行われる)。
 
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use cron::Schedule;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::json;
-use tokio::sync::Semaphore;
 
 use crate::agent_client::SharedAgentTaskClient;
 use crate::entities::trigger;
@@ -137,7 +135,7 @@ fn should_fire(
 ///
 /// 戻り値は発火を試みた件数 (成功 / 失敗を問わない)。`interval` には worker の tick 間隔を渡す。
 pub async fn run_once(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     agent_client: &SharedAgentTaskClient,
     interval: Duration,
 ) -> usize {
@@ -182,19 +180,13 @@ pub async fn run_once(
         })
         .collect();
 
-    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_FIRES));
     let target_count = targets.len();
-    let mut handles = Vec::with_capacity(target_count);
-    for row in targets {
+    let trigger_ids = targets.iter().map(|row| row.trigger_id).collect::<Vec<_>>();
+    let results = crate::concurrent::map_concurrent(targets, MAX_CONCURRENT_FIRES, |row| {
         let agent_client = agent_client.clone();
-        let db = db.clone();
-        let sem = semaphore.clone();
-        let trigger_id = row.trigger_id;
-        handles.push(tokio::spawn(async move {
-            let Ok(_permit) = sem.acquire_owned().await else {
-                return;
-            };
-            match fire_trigger(&db, &agent_client, trigger_id, json!({}), TaskSource::Cron).await {
+        async move {
+            let trigger_id = row.trigger_id;
+            match fire_trigger(db, &agent_client, trigger_id, json!({}), TaskSource::Cron).await {
                 Ok(_) => {}
                 // 取得 → 発火の間に disable された race。
                 Err(FireTriggerError::Disabled(_)) => {}
@@ -202,13 +194,12 @@ pub async fn run_once(
                     tracing::warn!(error = %err, trigger_id = %trigger_id, "cron trigger fire failed");
                 }
             }
-        }));
-    }
-    for handle in handles {
-        if let Err(err) = handle.await {
-            // JoinError は子タスク panic / cancel。watcher と同じく log するに留め、
-            // 他 trigger の処理を継続する。
-            tracing::error!(error = %err, "cron trigger worker task panicked");
+        }
+    })
+    .await;
+    for (trigger_id, result) in trigger_ids.into_iter().zip(results) {
+        if let Err(error) = result {
+            tracing::error!(error = %error, trigger_id = %trigger_id, "cron trigger worker task panicked");
         }
     }
     target_count
@@ -351,7 +342,6 @@ mod run_once_tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{EntityTrait, QueryOrder};
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
@@ -359,11 +349,11 @@ mod run_once_tests {
     use crate::entities::{strategy, strategy_task};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
-    use crate::testing::{create_test_db, insert_test_cron_trigger};
+    use crate::testing::insert_test_cron_trigger;
 
     use super::*;
 
-    async fn seed_strategy(db: &DatabaseConnection) -> Uuid {
+    async fn seed_strategy(db: &impl sea_orm::ConnectionTrait) -> Uuid {
         let id = Uuid::new_v4();
         strategy::ActiveModel {
             id: Set(id),
@@ -399,9 +389,8 @@ mod run_once_tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fires_due_cron_and_writes_strategy_task(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn fires_due_cron_and_writes_strategy_task(db: crate::database::DatabaseHandle) {
         let sid = seed_strategy(&db).await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -449,9 +438,8 @@ mod run_once_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_disabled_cron(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_disabled_cron(db: crate::database::DatabaseHandle) {
         let sid = seed_strategy(&db).await;
         let past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
         let _ = insert_test_cron_trigger(&db, sid, "* * * * *", false, Some(past), "x").await;
@@ -464,11 +452,10 @@ mod run_once_tests {
         assert!(tasks.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_when_no_slot_after_last_fire(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn skips_when_no_slot_after_last_fire(db: crate::database::DatabaseHandle) {
         // 9:00 だけ発火する schedule で「直前に発火済み + 次回 9:00 はまだ先」のケース。
         // last_fired_at を「現時刻直前」に置いて、現 tick では発火対象にならないことを確認する。
-        let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
         let just_fired = Utc::now() - chrono::Duration::seconds(1);
         let _ = insert_test_cron_trigger(&db, sid, "0 9 * * *", true, Some(just_fired), "x").await;
@@ -480,10 +467,9 @@ mod run_once_tests {
         assert!(tasks.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn ignores_hook_kind(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn ignores_hook_kind(db: crate::database::DatabaseHandle) {
         // hook 種別の trigger は cron worker の対象外。
-        let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
         let id = Uuid::new_v4();
         trigger::ActiveModel {

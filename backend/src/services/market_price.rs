@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, Set};
+use sea_orm::{EntityTrait, Set};
 
 use crate::data_provider::DailyBarSource;
 use crate::date_utils::latest_business_day;
@@ -28,7 +28,7 @@ pub struct LatestPrices {
 /// 日足データ取得元から再取得を試みる。全銘柄中の最新観測日 (`priced_at`) に満たない
 /// 銘柄は結果から省かれる。
 pub async fn fetch_latest_prices(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     provider: Option<&dyn DailyBarSource>,
     symbols: &[String],
 ) -> LatestPrices {
@@ -98,7 +98,7 @@ fn select_common_priced_at(
 /// 価格取得の前提として `instruments` 行を保証する (`bars` の FK 制約のため)。
 /// 銘柄情報が未登録なら symbol を name として仮登録する。
 async fn ensure_instrument_exists(
-    db: &DatabaseConnection,
+    db: &impl sea_orm::ConnectionTrait,
     symbol: &str,
 ) -> Result<(), sea_orm::DbErr> {
     let model = instruments::ActiveModel {
@@ -120,16 +120,14 @@ async fn ensure_instrument_exists(
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Duration, NaiveDate, TimeZone, Utc};
-    use rust_decimal::Decimal;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
     use crate::repositories::bars::upsert_bars;
     use crate::services::backfill::latest_fetchable_date;
-    use crate::testing::{MockProvider, create_test_db};
+    use crate::testing::MockProvider;
+    use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use rust_decimal::Decimal;
 
     fn sample_instrument(id: &str) -> Instrument {
         Instrument {
@@ -174,7 +172,7 @@ mod tests {
         assert_eq!(provider.calls.lock().expect("lock").as_slice(), expected);
     }
 
-    async fn insert_test_instrument(db: &DatabaseConnection, id: &str) {
+    async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
             id: Set(id.to_string()),
             name: Set(format!("Test {id}")),
@@ -211,9 +209,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_provider_when_bar_already_reaches_the_fetchable_ceiling(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_provider_when_bar_already_reaches_the_fetchable_ceiling(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
         let bar = ceiling_bar("7203", 100);
         let date = bar.timestamp.date_naive();
@@ -232,9 +231,10 @@ mod tests {
         assert_provider_calls(&provider, &[]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn stops_calling_provider_once_bar_reaches_the_fetchable_ceiling(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn stops_calling_provider_once_bar_reaches_the_fetchable_ceiling(
+        db: crate::database::DatabaseHandle,
+    ) {
         let provider = MockProvider::new()
             .with_instruments(vec![sample_instrument("7203")])
             .with_bars(vec![ceiling_bar("7203", 200)]);
@@ -246,9 +246,8 @@ mod tests {
         assert_provider_calls(&provider, &["7203"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn refetches_stale_bar_even_when_one_already_exists(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn refetches_stale_bar_even_when_one_already_exists(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
         let stale_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
         upsert_bars(&db, vec![make_bar("7203", stale_date, 100)])
@@ -273,9 +272,8 @@ mod tests {
         assert_provider_calls(&provider, &["7203"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn backfills_missing_bar_and_creates_instrument(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn backfills_missing_bar_and_creates_instrument(db: crate::database::DatabaseHandle) {
         let bar = backfillable_bar("7203", 200);
         let expected_date = bar.timestamp.date_naive();
         let provider = MockProvider::new()
@@ -294,9 +292,10 @@ mod tests {
         assert_provider_calls(&provider, &["7203"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn stale_symbols_that_cannot_catch_up_are_excluded_from_prices(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn stale_symbols_that_cannot_catch_up_are_excluded_from_prices(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
         insert_test_instrument(&db, "6758").await;
         let stale_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
@@ -329,10 +328,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn missing_bar_is_omitted_when_provider_is_none(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn missing_bar_is_omitted_when_provider_is_none(db: crate::database::DatabaseHandle) {
         let result = fetch_latest_prices(&db, None, &["7203".to_string()]).await;
 
         assert_eq!(
@@ -344,9 +341,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn provider_error_is_skipped_and_other_symbols_still_processed(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn provider_error_is_skipped_and_other_symbols_still_processed(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "6758").await;
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
         upsert_bars(&db, vec![make_bar("6758", date, 300)])

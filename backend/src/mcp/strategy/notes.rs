@@ -3,27 +3,24 @@
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
 use rmcp::ErrorData as McpError;
-use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
-use sea_orm::{
-    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect,
-    TransactionTrait,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
 use uuid::Uuid;
 
 use crate::entities::{note, note_version};
 use crate::services::change_history::Actor;
 use crate::services::graph::{GraphDef, validate_graphs};
+use crate::services::note_kinds;
 use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
-    self, AppendVersion, current_note_ids_with_status, find_current_version, find_current_versions,
+    self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_versions,
     find_initial_created_by_kind, find_version_of_note,
 };
 
 use super::dto::{
-    ListNotesParams, ListNotesResult, NoteDto, NoteLinkDto, ReadNoteParams, WriteNoteParams,
-    WriteNoteResult,
+    ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, NoteKindDto, NoteLinkDto,
+    ReadNoteParams, WriteNoteParams, WriteNoteResult,
 };
 use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, clamp_limit, db_error,
@@ -36,7 +33,7 @@ fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> 
         .map_err(|e| internal_error(format!("failed to serialize graphs: {e}")))
 }
 
-/// insert 済みの note に初版を追加し、同一トランザクションを commit する。
+/// insert 済みの note に初回バージョンを追加し、同一トランザクションを commit する。
 async fn commit_new_note(
     txn: sea_orm::DatabaseTransaction,
     id: Uuid,
@@ -52,7 +49,7 @@ async fn commit_new_note(
     })
 }
 
-/// 新規ノートのメタデータと初版を組み立てる。
+/// 新規ノートのメタデータと初回バージョンを組み立てる。
 fn build_new_note_model(
     session_strategy_id: Uuid,
     execution_id: Option<String>,
@@ -74,7 +71,7 @@ fn build_new_note_model(
         note::ActiveModel {
             id: Set(id),
             strategy_id: Set(Some(session_strategy_id)),
-            type_tag: Set(params.type_tag.flatten()),
+            kind: Set(params.kind.flatten()),
             trigger: Set(None),
             trigger_label: Set(None),
             created_at: NotSet,
@@ -88,7 +85,7 @@ fn build_new_note_model(
             graphs_json,
             created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
             execution_id,
-            change_reason: None,
+            change_reason: params.change_reason,
             change_diff: None,
             actor: Actor::Llm {
                 label: STRATEGY_AGENT_ACTOR,
@@ -133,7 +130,7 @@ fn note_to_dto(
         title: version.title,
         body_md: include_body.then_some(version.body_md),
         frontmatter_json,
-        type_tag: m.type_tag,
+        kind: m.kind,
         status: version.status,
         created_by_kind,
         created_at: m.created_at,
@@ -144,6 +141,22 @@ fn note_to_dto(
 }
 
 impl StrategyServer {
+    pub(crate) async fn list_note_kinds_inner(&self) -> Result<ListNoteKindsResult, McpError> {
+        let note_kinds = note_kinds::list(&self.db)
+            .await
+            .map_err(app_error_to_mcp)?
+            .into_iter()
+            .map(|kind| NoteKindDto {
+                key: kind.key,
+                display_name: kind.display_name,
+                requires_approval: kind.requires_approval,
+                description: kind.description,
+                sort_order: kind.sort_order,
+            })
+            .collect();
+        Ok(ListNoteKindsResult { note_kinds })
+    }
+
     pub(crate) async fn write_note_inner(
         &self,
         session_strategy_id: Uuid,
@@ -172,6 +185,11 @@ impl StrategyServer {
         }
 
         ensure_strategy_exists(&self.db, session_strategy_id).await?;
+        if let Some(Some(kind)) = params.kind.as_ref() {
+            note_kinds::ensure_reference(&self.db, kind)
+                .await
+                .map_err(app_error_to_mcp)?;
+        }
 
         let Some(exec_id) = execution_id else {
             return self.insert_note(session_strategy_id, None, params).await;
@@ -229,11 +247,10 @@ impl StrategyServer {
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
         let current = fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
-        let current_version = find_current_version(&self.db, note_id)
+        let current_version = note_versions::find_latest_version(&self.db, note_id)
             .await
             .map_err(db_error)?
-            .ok_or_else(|| internal_error(format!("note {note_id} has no current version")))?;
-        let mut active = current.clone().into_active_model();
+            .ok_or_else(|| internal_error(format!("note {note_id} has no version")))?;
         let mut touched = false;
         let mut version_changed = false;
         let mut title = current_version.title.clone();
@@ -254,9 +271,12 @@ impl StrategyServer {
             touched = true;
             version_changed = true;
         }
-        if let Some(tag) = params.type_tag {
-            active.type_tag = Set(tag);
-            touched = true;
+        if let Some(kind) = params.kind
+            && kind != current.kind
+        {
+            return Err(invalid_params(
+                "kind can only be set when creating a new note",
+            ));
         }
         if let Some(fm) = params.frontmatter_json {
             frontmatter_json = fm.into();
@@ -270,16 +290,21 @@ impl StrategyServer {
         }
         if !touched {
             return Err(invalid_params(
-                "at least one of title / body_md / type_tag / frontmatter_json / graphs must be provided",
+                "at least one of title / body_md / frontmatter_json / graphs must be provided",
             ));
         }
-        active.updated_at = if version_changed {
-            NotSet
-        } else {
-            Set(chrono::Utc::now().fixed_offset())
-        };
+        if version_changed
+            && title == current_version.title
+            && body_md == current_version.body_md
+            && frontmatter_json == current_version.frontmatter_json
+            && graphs_json == current_version.graphs_json
+        {
+            return Ok(WriteNoteResult {
+                note_id,
+                created: false,
+            });
+        }
         let txn = self.db.begin().await.map_err(db_error)?;
-        active.update(&txn).await.map_err(db_error)?;
         if version_changed {
             note_versions::append_version(
                 &txn,
@@ -291,7 +316,7 @@ impl StrategyServer {
                     graphs_json,
                     created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
                     execution_id,
-                    change_reason: None,
+                    change_reason: params.change_reason,
                     change_diff: None,
                     actor: Actor::Llm {
                         label: STRATEGY_AGENT_ACTOR,
@@ -365,16 +390,21 @@ impl StrategyServer {
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
-        let version = find_version_of_note(&self.db, params.note_id, params.version_id)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| match params.version_id {
-                Some(version_id) => invalid_params(format!(
-                    "version_id {version_id} does not belong to note {}",
-                    params.note_id
-                )),
-                None => internal_error(format!("note {} has no current version", params.note_id)),
-            })?;
+        let version = match params.version_id {
+            Some(version_id) => find_version_of_note(&self.db, params.note_id, Some(version_id))
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| {
+                    invalid_params(format!(
+                        "version_id {version_id} does not belong to note {}",
+                        params.note_id
+                    ))
+                })?,
+            None => note_versions::find_current_or_latest_version(&self.db, params.note_id)
+                .await
+                .map_err(db_error)?
+                .ok_or_else(|| internal_error(format!("note {} has no version", params.note_id)))?,
+        };
         let created_by_kind = find_initial_created_by_kind(&self.db, &[params.note_id])
             .await
             .map_err(db_error)?
@@ -410,8 +440,9 @@ impl StrategyServer {
         }
         let include_body = params.include_body.unwrap_or(true);
 
-        let mut query =
-            note::Entity::find().filter(note::Column::StrategyId.eq(session_strategy_id));
+        let mut query = note::Entity::find()
+            .filter(note::Column::StrategyId.eq(session_strategy_id))
+            .filter(note::Column::Id.in_subquery(current_note_ids()));
         if let Some(status) = params.status {
             query =
                 query.filter(note::Column::Id.in_subquery(current_note_ids_with_status(&status)));
@@ -453,27 +484,24 @@ impl StrategyServer {
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-    use crate::entities::{comment, note_ref, note_version};
-    use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
-    use crate::services::note_versions::find_current_version;
-    use crate::testing::create_test_db;
-
     use super::super::STRATEGY_AGENT_ACTOR;
     use super::super::dto::{
         ListNotesParams, NoteDto, ReadNoteParams, WriteNoteParams, WriteNoteResult,
     };
     use super::super::tests_common::{
-        build_server, current_note_version_id, insert_strategy, normalize_comment_model,
-        normalize_note, seed_foreign_note, seed_note_version_comment_with_anchor, set_note_status,
-        set_note_updated_at, ts_sentinel,
+        build_server, current_note_version_id, insert_note_kind, insert_strategy,
+        normalize_comment_model, normalize_note, seed_foreign_note,
+        seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
+    use crate::entities::{comment, note_ref, note_version};
+    use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
+    use crate::services::note_versions::find_current_version;
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
@@ -537,10 +565,10 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_creates_then_read_note_returns_it(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_creates_then_read_note_returns_it(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
+        insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db);
 
         let written = server
@@ -551,8 +579,9 @@ mod tests {
                     note_id: None,
                     title: Some("first note".into()),
                     body_md: Some("body".into()),
-                    type_tag: Some(Some("observation".into())),
+                    kind: Some(Some("sample-kind".into())),
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -581,7 +610,7 @@ mod tests {
                 title: "first note".into(),
                 body_md: Some("body".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: Some("observation".into()),
+                kind: Some("sample-kind".into()),
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -593,7 +622,7 @@ mod tests {
     }
 
     async fn note_refs_of(
-        db: &sea_orm::DatabaseConnection,
+        db: &impl sea_orm::ConnectionTrait,
         note_id: Uuid,
     ) -> Vec<(String, String)> {
         let mut refs = note_ref::Entity::find()
@@ -605,9 +634,8 @@ mod tests {
         refs.into_iter().map(|r| (r.ref_kind, r.ref_id)).collect()
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_creates_note_ref_from_body_and_graphs(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_creates_note_ref_from_body_and_graphs(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -622,8 +650,9 @@ mod tests {
                     note_id: None,
                     title: Some("note with refs".into()),
                     body_md: Some("mentions [[theme:weak-jpy]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph]),
                 },
             )
@@ -639,9 +668,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_update_resyncs_note_refs(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_update_resyncs_note_refs(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -653,8 +681,9 @@ mod tests {
                     note_id: None,
                     title: Some("note".into()),
                     body_md: Some("mentions [[stock:7203]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -673,8 +702,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("now mentions [[indicator:USDJPY]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -688,10 +718,11 @@ mod tests {
     }
 
     // 更新前の status (unread / rejected) ごとにケースを列挙する。
-    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する (backend/src/handlers/hypotheses.rs:450 と同様)。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_updates_existing_and_resets_status_to_unread(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    // database_test は rstest の case 引数を扱わないため、for ループで列挙する。
+    #[backend_test_macros::database_test]
+    async fn write_note_updates_existing_and_resets_status_to_unread(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
 
@@ -704,8 +735,9 @@ mod tests {
                         note_id: None,
                         title: Some("original".into()),
                         body_md: Some("v1".into()),
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -723,8 +755,9 @@ mod tests {
                         note_id: Some(created.note_id),
                         title: None,
                         body_md: Some("v2".into()),
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -759,7 +792,7 @@ mod tests {
                     title: "original".into(),
                     body_md: Some("v2".into()),
                     frontmatter_json: serde_json::Map::new(),
-                    type_tag: None,
+                    kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
@@ -772,81 +805,26 @@ mod tests {
         }
     }
 
-    /// `type_tag: Some(None)` (JSON で `"type_tag": null`) は既存タグの NULL クリアとして扱う
-    #[sqlx::test(migrations = false)]
-    async fn write_note_clears_type_tag_with_explicit_null(pool: PgPool) {
-        let db = create_test_db(pool).await;
-        let strategy_id = insert_strategy(&db, "x").await;
-        let server = build_server(db);
-
-        let created = server
-            .write_note_inner(
-                strategy_id,
-                None,
-                WriteNoteParams {
-                    note_id: None,
-                    title: Some("t".into()),
-                    body_md: None,
-                    type_tag: Some(Some("observation".into())),
-                    frontmatter_json: None,
-                    graphs: None,
-                },
-            )
-            .await
-            .expect("create");
-
-        // タグを明示的に null へ更新
-        server
-            .write_note_inner(
-                strategy_id,
-                None,
-                WriteNoteParams {
-                    note_id: Some(created.note_id),
-                    title: None,
-                    body_md: None,
-                    type_tag: Some(None),
-                    frontmatter_json: None,
-                    graphs: None,
-                },
-            )
-            .await
-            .expect("clear");
-
-        let read = server
-            .read_note_inner(
-                strategy_id,
-                ReadNoteParams {
-                    note_id: created.note_id,
-                    version_id: None,
-                },
-            )
-            .await
-            .expect("read");
-        assert_eq!(read.type_tag, None);
-    }
-
-    /// `Option<Option<String>>` のシリアライズ意味論を pin する。
-    /// フィールド省略 → `None` (touch しない)、`null` 明示 → `Some(None)` (NULL クリア)、値あり → `Some(Some(v))`。
+    /// `Option<Option<String>>` は省略と新規作成時の null を区別する。
     #[test]
-    fn write_note_params_type_tag_deserialization() {
+    fn write_note_params_kind_deserialization() {
         fn parse(json: &str) -> Option<Option<String>> {
             serde_json::from_str::<WriteNoteParams>(json)
                 .expect("parse")
-                .type_tag
+                .kind
         }
         assert_eq!(
             (
                 parse("{}"),
-                parse(r#"{"type_tag":null}"#),
-                parse(r#"{"type_tag":"observation"}"#),
+                parse(r#"{"kind":null}"#),
+                parse(r#"{"kind":"sample-kind"}"#),
             ),
-            (None, Some(None), Some(Some("observation".into()))),
+            (None, Some(None), Some(Some("sample-kind".into()))),
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_cross_strategy_update(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_cross_strategy_update(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -860,8 +838,9 @@ mod tests {
                     note_id: Some(note_id),
                     title: None,
                     body_md: Some("hijack".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -870,9 +849,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn read_note_rejects_cross_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn read_note_rejects_cross_strategy(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -891,9 +869,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_filters_by_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_strategy(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db);
@@ -907,8 +884,9 @@ mod tests {
                         note_id: None,
                         title: Some(title.into()),
                         body_md: None,
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -929,9 +907,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_filters_by_status(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_status(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db.clone());
 
@@ -948,8 +925,9 @@ mod tests {
                         note_id: None,
                         title: Some(title.into()),
                         body_md: None,
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: None,
                     },
                 )
@@ -974,9 +952,8 @@ mod tests {
         assert_eq!(titles, vec!["a"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_rejects_invalid_status(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_rejects_invalid_status(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -993,9 +970,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_filters_by_updated_after(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_updated_after(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db.clone());
 
@@ -1007,8 +983,9 @@ mod tests {
                     note_id: None,
                     title: Some("old".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1022,8 +999,9 @@ mod tests {
                     note_id: None,
                     title: Some("new".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1048,9 +1026,8 @@ mod tests {
         assert_eq!(titles, vec!["new"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_include_body_false_omits_body(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_include_body_false_omits_body(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -1062,8 +1039,9 @@ mod tests {
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("secret".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1084,9 +1062,10 @@ mod tests {
         assert_eq!(bodies, vec![None]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_creates_with_graphs_then_read_note_returns_them(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_creates_with_graphs_then_read_note_returns_them(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1099,8 +1078,9 @@ mod tests {
                     note_id: None,
                     title: Some("note with graph".into()),
                     body_md: Some("[[graph:g1]]".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph.clone()]),
                 },
             )
@@ -1128,7 +1108,7 @@ mod tests {
                 title: "note with graph".into(),
                 body_md: Some("[[graph:g1]]".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: None,
+                kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -1139,9 +1119,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_invalid_graph_and_does_not_create_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_invalid_graph_and_does_not_create_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1153,8 +1134,9 @@ mod tests {
                     note_id: None,
                     title: Some("broken".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![invalid_graph("g1")]),
                 },
             )
@@ -1169,9 +1151,10 @@ mod tests {
         assert_eq!(result.notes, vec![]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_invalid_body_tokens_without_creating_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_invalid_body_tokens_without_creating_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
         let mut graph = sample_graph("g1");
@@ -1185,8 +1168,9 @@ mod tests {
                     note_id: None,
                     title: Some("token validation".into()),
                     body_md: Some(INVALID_NOTE_BODY.into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph]),
                 },
             )
@@ -1207,11 +1191,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn write_note_rejects_invalid_body_tokens_and_keeps_existing_note_unchanged(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
         let created = server
@@ -1222,8 +1205,9 @@ mod tests {
                     note_id: None,
                     title: Some("token validation".into()),
                     body_md: Some("original".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1238,8 +1222,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some(INVALID_NOTE_BODY.into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1267,9 +1252,10 @@ mod tests {
     }
 
     // body_md と graphs は独立に部分更新できる: 片方だけ送るともう片方は無傷。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_update_graphs_and_body_are_independent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_update_graphs_and_body_are_independent(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1297,8 +1283,9 @@ mod tests {
                         note_id: None,
                         title: Some("t".into()),
                         body_md: Some("orig".into()),
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: Some(vec![sample_graph("g1")]),
                     },
                 )
@@ -1313,8 +1300,9 @@ mod tests {
                         note_id: Some(created.note_id),
                         title: None,
                         body_md: update_body,
-                        type_tag: None,
+                        kind: None,
                         frontmatter_json: None,
+                        change_reason: None,
                         graphs: update_graphs,
                     },
                 )
@@ -1341,7 +1329,7 @@ mod tests {
                     title: "t".into(),
                     body_md: Some(expected_body),
                     frontmatter_json: serde_json::Map::new(),
-                    type_tag: None,
+                    kind: None,
                     status: "unread".into(),
                     created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                     created_at: ts_sentinel(),
@@ -1354,9 +1342,10 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_graphs_only_update_keeps_legacy_body_tokens(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_graphs_only_update_keeps_legacy_body_tokens(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let created = server
@@ -1367,8 +1356,9 @@ mod tests {
                     note_id: None,
                     title: Some("token validation".into()),
                     body_md: Some("original".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g1")]),
                 },
             )
@@ -1396,8 +1386,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g2")]),
                 },
             )
@@ -1434,9 +1425,10 @@ mod tests {
     }
 
     /// 図のみを更新した場合も、他フィールド更新と同様に status が unread へ戻る。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_update_with_graphs_only_resets_status_to_unread(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_update_with_graphs_only_resets_status_to_unread(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -1448,8 +1440,9 @@ mod tests {
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("orig".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g1")]),
                 },
             )
@@ -1465,8 +1458,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![sample_graph("g2")]),
                 },
             )
@@ -1486,9 +1480,10 @@ mod tests {
         assert_eq!(read.status, "unread");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_invalid_graph_on_update_and_leaves_note_unchanged(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_invalid_graph_on_update_and_leaves_note_unchanged(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1501,8 +1496,9 @@ mod tests {
                     note_id: None,
                     title: Some("t".into()),
                     body_md: Some("orig".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![graph.clone()]),
                 },
             )
@@ -1517,8 +1513,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("hijacked".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: Some(vec![invalid_graph("g2")]),
                 },
             )
@@ -1546,7 +1543,7 @@ mod tests {
                 title: "t".into(),
                 body_md: Some("orig".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: None,
+                kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -1557,9 +1554,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_updating_body_md_keeps_comment_on_original_version(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_updating_body_md_keeps_comment_on_original_version(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -1577,8 +1575,9 @@ mod tests {
                         line three"}
                         .into(),
                     ),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1602,8 +1601,9 @@ mod tests {
                         line three"}
                         .into(),
                     ),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1635,9 +1635,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_updating_body_md_keeps_comment_position_on_original_version(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_updating_body_md_keeps_comment_position_on_original_version(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -1655,8 +1656,9 @@ mod tests {
                         line three"}
                         .into(),
                     ),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1673,8 +1675,9 @@ mod tests {
                     note_id: Some(created.note_id),
                     title: None,
                     body_md: Some("completely rewritten".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1708,9 +1711,10 @@ mod tests {
 
     /// 同一 execution_id での 2 回目の create 呼び出し (note_id 省略) は 1 回目のノートを
     /// 更新する (agent 側のリトライによる重複作成を防ぐ)。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_with_same_execution_id_collapses_onto_single_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_with_same_execution_id_collapses_onto_single_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1722,8 +1726,9 @@ mod tests {
                     note_id: None,
                     title: Some("first".into()),
                     body_md: Some("v1".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1739,8 +1744,9 @@ mod tests {
                     note_id: None,
                     title: Some("second".into()),
                     body_md: Some("v2".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1774,7 +1780,7 @@ mod tests {
                 title: "second".into(),
                 body_md: Some("v2".into()),
                 frontmatter_json: serde_json::Map::new(),
-                type_tag: None,
+                kind: None,
                 status: "unread".into(),
                 created_by_kind: STRATEGY_AGENT_ACTOR.into(),
                 created_at: ts_sentinel(),
@@ -1786,9 +1792,10 @@ mod tests {
     }
 
     /// execution_id が異なれば別ノートとして作成される。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_with_different_execution_ids_creates_distinct_notes(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_with_different_execution_ids_creates_distinct_notes(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1800,8 +1807,9 @@ mod tests {
                     note_id: None,
                     title: Some("a".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1815,8 +1823,9 @@ mod tests {
                     note_id: None,
                     title: Some("b".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1841,9 +1850,10 @@ mod tests {
     }
 
     /// execution_id を省略した場合 (ヘッダ非対応クライアント互換) は従来通り毎回別ノートを作成する。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_without_execution_id_creates_distinct_notes(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_without_execution_id_creates_distinct_notes(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1855,8 +1865,9 @@ mod tests {
                     note_id: None,
                     title: Some("a".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1870,8 +1881,9 @@ mod tests {
                     note_id: None,
                     title: Some("b".into()),
                     body_md: None,
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1896,9 +1908,10 @@ mod tests {
     }
 
     /// 明示的な note_id は execution_id によるノート解決より常に優先される。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_explicit_note_id_wins_over_execution_id_lookup(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_explicit_note_id_wins_over_execution_id_lookup(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1911,8 +1924,9 @@ mod tests {
                     note_id: None,
                     title: Some("note b".into()),
                     body_md: Some("b body".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1928,8 +1942,9 @@ mod tests {
                     note_id: None,
                     title: Some("note a".into()),
                     body_md: Some("a body".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1946,8 +1961,9 @@ mod tests {
                     note_id: Some(note_a.note_id),
                     title: None,
                     body_md: Some("a body updated".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
@@ -1996,9 +2012,10 @@ mod tests {
     /// `insert_note_or_conflict` は同一 (strategy_id, execution_id) の行が既に存在するとき、
     /// パーシャルユニークインデックスへの生の制約違反エラーを投げず `Ok(None)` を返す。
     /// 作成経路を通さず実行 ID 付きの既存ノートを用意し、並行作成の先勝ちを模している。
-    #[sqlx::test(migrations = false)]
-    async fn insert_note_or_conflict_returns_none_when_execution_id_already_taken(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn insert_note_or_conflict_returns_none_when_execution_id_already_taken(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -2019,8 +2036,9 @@ mod tests {
                     note_id: None,
                     title: Some("loser".into()),
                     body_md: Some("loser body".into()),
-                    type_tag: None,
+                    kind: None,
                     frontmatter_json: None,
+                    change_reason: None,
                     graphs: None,
                 },
             )
