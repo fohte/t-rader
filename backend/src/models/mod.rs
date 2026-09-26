@@ -5,14 +5,11 @@ pub mod bar;
 pub mod comment;
 pub mod config;
 pub mod custom_indicator;
-pub mod hypothesis;
-pub mod hypothesis_proposal;
 pub mod import;
 pub mod instrument;
 pub mod jquants_plan;
 pub mod margin;
 pub mod note;
-pub mod note_hypothesis;
 pub mod refs;
 pub mod risk_policy;
 pub mod short_ratio;
@@ -35,8 +32,6 @@ pub use custom_indicator::{
     CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
     UpdateCustomIndicatorRequest,
 };
-pub use hypothesis::{CreateHypothesisRequest, UpdateHypothesisRequest};
-pub use hypothesis_proposal::{ApproveHypothesisProposalResponse, ReviewHypothesisProposalRequest};
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
     SbiPreviewRow,
@@ -48,7 +43,6 @@ pub use jquants_plan::{
 };
 pub use margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
-pub use note_hypothesis::CreateNoteHypothesisRequest;
 pub use refs::RefResolution;
 pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,

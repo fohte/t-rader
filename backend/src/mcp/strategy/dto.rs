@@ -484,9 +484,8 @@ pub struct ReadFinSummaryParams {
     pub limit: Option<u32>,
 }
 
-/// `jquants_fin_summary.raw` の 1 開示分を意味の分かるフィールド名に変換したもの。
-/// 記載の無い項目 (raw 側では空文字 `""`) は null。IFRS/米国基準では ordinary_profit
-/// (経常利益) が概念自体存在せず null になる。
+/// 財務情報テーブルの 1 開示分。記載の無い項目は null。
+/// IFRS/米国基準では ordinary_profit (経常利益) が概念自体存在せず null になる。
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct FinSummaryDto {
     /// 開示日
@@ -562,50 +561,6 @@ pub struct FinSummaryDto {
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
 pub struct ReadFinSummaryResult {
     pub items: Vec<FinSummaryDto>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ListHypothesesParams {
-    pub limit: Option<u32>,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct HypothesisDto {
-    pub hypothesis_id: Uuid,
-    pub strategy_id: Option<Uuid>,
-    pub title: String,
-    pub body: String,
-    pub status: String,
-    pub related_note_ids: Vec<Uuid>,
-    pub related_interest_ids: Vec<Uuid>,
-    pub created_at: DateTime<FixedOffset>,
-    pub updated_at: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq)]
-pub struct ListHypothesesResult {
-    pub hypotheses: Vec<HypothesisDto>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ReadHypothesisParams {
-    pub hypothesis_id: Uuid,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct ProposeHypothesisChangeParams {
-    pub hypothesis_id: Uuid,
-    pub proposed_title: Option<String>,
-    pub proposed_body: Option<String>,
-    pub proposed_status: Option<String>,
-    /// なぜこの変更を提案するかの根拠。人間のレビュー時に必須で参照される
-    pub rationale: String,
-}
-
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
-pub struct ProposeHypothesisChangeResult {
-    pub proposal_id: Uuid,
-    pub status: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

@@ -27,8 +27,6 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(has_many = "super::annotation::Entity")]
     Annotation,
-    #[sea_orm(has_many = "super::note_hypothesis::Entity")]
-    NoteHypothesis,
     #[sea_orm(
         belongs_to = "super::note_kind::Entity",
         from = "Column::Kind",
@@ -60,12 +58,6 @@ pub enum Relation {
 impl Related<super::annotation::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Annotation.def()
-    }
-}
-
-impl Related<super::note_hypothesis::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::NoteHypothesis.def()
     }
 }
 
@@ -108,15 +100,6 @@ impl Related<super::strategy::Entity> for Entity {
 impl Related<super::trade_note::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::TradeNote.def()
-    }
-}
-
-impl Related<super::hypothesis::Entity> for Entity {
-    fn to() -> RelationDef {
-        super::note_hypothesis::Relation::Hypothesis.def()
-    }
-    fn via() -> Option<RelationDef> {
-        Some(super::note_hypothesis::Relation::Note.def().rev())
     }
 }
 

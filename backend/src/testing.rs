@@ -1,10 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use axum_test::TestServer;
-use chrono::{DateTime, FixedOffset, TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionSession};
+use sea_orm::{
+    ConnectionTrait, DatabaseConnection, EntityTrait, SqlxPostgresConnector, TransactionSession,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -13,9 +15,7 @@ mod template_db;
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange, SharedDailyBarSource};
 use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::{
-    hypothesis, hypothesis_proposal, note, note_version, stock, strategy, strategy_task, trigger,
-};
+use crate::entities::{note, note_version, stock, strategy, strategy_task, trigger};
 use crate::kata_exec::SharedKataExecutor;
 use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
@@ -69,7 +69,7 @@ pub async fn create_strategy(server: &TestServer, name: &str) -> String {
 }
 
 /// テストで戦略レコードを 1 件 seed する。
-pub async fn insert_test_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
+pub async fn insert_test_strategy(db: &impl ConnectionTrait, name: &str) -> Uuid {
     let id = Uuid::new_v4();
     strategy::ActiveModel {
         id: Set(id),
@@ -87,7 +87,7 @@ pub async fn insert_test_strategy(db: &impl sea_orm::ConnectionTrait, name: &str
 
 /// テストで note を 1 件 seed する。
 pub async fn insert_test_note(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -96,7 +96,7 @@ pub async fn insert_test_note(
 }
 
 pub async fn insert_test_note_in_scope(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -105,7 +105,7 @@ pub async fn insert_test_note_in_scope(
 }
 
 pub async fn insert_test_note_with_status(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -116,7 +116,7 @@ pub async fn insert_test_note_with_status(
 }
 
 pub async fn insert_test_note_with_execution_id(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Uuid,
     title: &str,
     body_md: &str,
@@ -135,7 +135,7 @@ pub async fn insert_test_note_with_execution_id(
 }
 
 async fn insert_test_note_with_options(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+    db: &(impl ConnectionTrait + sea_orm::TransactionTrait),
     strategy_id: Option<Uuid>,
     title: &str,
     body_md: &str,
@@ -192,7 +192,7 @@ async fn insert_test_note_with_options(
 /// テストで strategy_task を 1 件 seed する。`created_at`/`updated_at` を明示指定できる
 /// ため、一覧の並び順を検証するテストで使う。
 pub async fn insert_test_strategy_task(
-    db: &impl sea_orm::ConnectionTrait,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     prompt: &str,
     purpose: Option<&str>,
@@ -223,7 +223,7 @@ pub async fn insert_test_strategy_task(
 
 /// テストで cron trigger を 1 件 seed する。
 pub async fn insert_test_cron_trigger(
-    db: &impl sea_orm::ConnectionTrait,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     schedule: &str,
     enabled: bool,
@@ -252,7 +252,7 @@ pub async fn insert_test_cron_trigger(
 
 /// テストで hook trigger を 1 件 seed する。
 pub async fn insert_test_hook_trigger(
-    db: &impl sea_orm::ConnectionTrait,
+    db: &impl ConnectionTrait,
     strategy_id: Uuid,
     slug: &str,
     prompt_template: &str,
@@ -280,7 +280,7 @@ pub async fn insert_test_hook_trigger(
 }
 
 /// テストで stock を 1 件 seed する。
-pub async fn insert_test_stock(db: &impl sea_orm::ConnectionTrait, id: &str, name: &str) {
+pub async fn insert_test_stock(db: &impl ConnectionTrait, id: &str, name: &str) {
     stock::ActiveModel {
         id: Set(id.to_string()),
         name: Set(name.to_string()),
@@ -293,67 +293,6 @@ pub async fn insert_test_stock(db: &impl sea_orm::ConnectionTrait, id: &str, nam
     .insert(db)
     .await
     .expect("insert test stock");
-}
-
-/// テストで hypothesis を 1 件 seed する。`strategy_id = None` で global 仮説を表現できる。
-pub async fn insert_test_hypothesis(
-    db: &impl sea_orm::ConnectionTrait,
-    strategy_id: Option<Uuid>,
-    title: &str,
-    body: &str,
-    status: &str,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    hypothesis::ActiveModel {
-        hypothesis_id: Set(id),
-        strategy_id: Set(strategy_id),
-        title: Set(title.to_string()),
-        body: Set(body.to_string()),
-        status: Set(status.to_string()),
-        related_note_ids: Set(vec![]),
-        related_interest_ids: Set(vec![]),
-        created_at: NotSet,
-        updated_at: NotSet,
-    }
-    .insert(db)
-    .await
-    .expect("insert test hypothesis");
-    id
-}
-
-/// テストで hypothesis_proposal を 1 件 seed する。`created_at` を明示指定できるため、
-/// 一覧の並び順を検証するテストで使う。
-#[expect(
-    clippy::too_many_arguments,
-    reason = "hypothesis_proposal の各フィールドをテスト用に並べる関数"
-)]
-pub async fn insert_test_hypothesis_proposal(
-    db: &impl sea_orm::ConnectionTrait,
-    hypothesis_id: Uuid,
-    proposed_title: Option<&str>,
-    proposed_body: Option<&str>,
-    proposed_status: Option<&str>,
-    rationale: &str,
-    status: &str,
-    created_at: DateTime<FixedOffset>,
-) -> Uuid {
-    let id = Uuid::new_v4();
-    hypothesis_proposal::ActiveModel {
-        id: Set(id),
-        hypothesis_id: Set(hypothesis_id),
-        proposed_title: Set(proposed_title.map(str::to_string)),
-        proposed_body: Set(proposed_body.map(str::to_string)),
-        proposed_status: Set(proposed_status.map(str::to_string)),
-        rationale: Set(rationale.to_string()),
-        status: Set(status.to_string()),
-        review_note: Set(None),
-        created_at: Set(created_at),
-        reviewed_at: Set(None),
-    }
-    .insert(db)
-    .await
-    .expect("insert test hypothesis_proposal");
-    id
 }
 
 /// `create_test_server` の `(db, server)` ペア版。agent_task_client は disabled。

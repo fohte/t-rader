@@ -40,9 +40,9 @@ use crate::data_provider::jquants::JQuantsClient;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, history, hooks, hypotheses, hypothesis_proposals, imports,
-    jquants_plan_setting, note_hypotheses, note_kinds, note_links, note_predictions, note_versions,
-    notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades, triggers,
+    custom_indicators, history, hooks, imports, jquants_plan_setting, note_kinds, note_links,
+    note_predictions, note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks,
+    trade_notes, trades, triggers,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
@@ -109,8 +109,6 @@ impl AppState {
         (name = "trades", description = "取引履歴と損益サマリ"),
         (name = "tasks", description = "戦略タスクの実行履歴 (口座横断)"),
         (name = "triggers", description = "戦略 trigger (cron / hook)"),
-        (name = "hypotheses", description = "仮説 (global 作成・戦略の有無を問わない generic エンドポイント)"),
-        (name = "hypothesis_proposals", description = "仮説への変更提案 (エージェントが作成し、人間が承認/却下する)"),
         (name = "imports", description = "外部ソースからの取込 (SBI CSV 等)"),
         (name = "custom_indicators", description = "カスタムインジケーター (Python 定義)"),
         (name = "rss_feeds", description = "ニュース集約対象の RSS フィード定義"),
@@ -194,31 +192,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             strategies::update_strategy,
             strategies::delete_strategy
         ))
-        // hypotheses
-        .routes(routes!(
-            hypotheses::list_strategy_hypotheses,
-            hypotheses::create_strategy_hypothesis
-        ))
-        .routes(routes!(
-            hypotheses::get_strategy_hypothesis,
-            hypotheses::update_strategy_hypothesis,
-            hypotheses::delete_strategy_hypothesis
-        ))
-        .routes(routes!(
-            hypotheses::list_hypotheses,
-            hypotheses::create_hypothesis
-        ))
-        .routes(routes!(
-            hypotheses::get_hypothesis,
-            hypotheses::update_hypothesis,
-            hypotheses::delete_hypothesis
-        ))
-        // hypothesis proposals
-        .routes(routes!(hypothesis_proposals::list_proposals_for_hypothesis))
-        .routes(routes!(hypothesis_proposals::list_hypothesis_proposals))
-        .routes(routes!(hypothesis_proposals::get_hypothesis_proposal))
-        .routes(routes!(hypothesis_proposals::approve_hypothesis_proposal))
-        .routes(routes!(hypothesis_proposals::reject_hypothesis_proposal))
         .routes(routes!(strategies::submit_strategy_chat))
         .routes(routes!(strategies::get_strategy_task))
         .routes(routes!(strategies::list_strategy_tasks))
@@ -272,12 +245,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(note_versions::make_note_version_current))
         .routes(routes!(note_versions::list_pending_note_versions))
         .routes(routes!(note_links::get_note_links))
-        // note hypotheses
-        .routes(routes!(
-            note_hypotheses::list_note_hypotheses,
-            note_hypotheses::create_note_hypothesis
-        ))
-        .routes(routes!(note_hypotheses::delete_note_hypothesis))
         // note predictions
         .routes(routes!(note_predictions::list_note_predictions))
         // annotations

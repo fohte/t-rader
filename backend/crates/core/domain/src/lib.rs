@@ -2,6 +2,7 @@ pub mod bar;
 pub mod business_day;
 pub mod earnings_schedule;
 pub mod equity_master;
+pub mod financial_summary;
 pub mod holdings;
 pub mod indicator_observation;
 pub mod instrument;
