@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
 )]
-#[sea_orm(table_name = "jquants_valuation")]
-#[schema(as = JQuantsValuation)]
+#[sea_orm(table_name = "valuation")]
+#[schema(as = Valuation)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub code: String,
