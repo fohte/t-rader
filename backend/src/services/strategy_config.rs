@@ -199,14 +199,11 @@ pub async fn delete_confirmed(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use super::*;
-    use crate::testing::{create_test_db, insert_test_strategy};
+    use crate::testing::insert_test_strategy;
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_records_change_history_with_given_actor(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_records_change_history_with_given_actor(db: crate::database::DatabaseHandle) {
         let id = insert_test_strategy(&db, "s").await;
 
         delete(&db, Actor::Llm { label: "mgmt-mcp" }, id)
@@ -238,18 +235,18 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_unknown_id_returns_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_unknown_id_returns_not_found(db: crate::database::DatabaseHandle) {
         let err = delete(&db, Actor::Human, Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
     }
 
     // 実際の並行リクエストは非決定的なため、confirm 済みの名前で呼ぶ delete_confirmed の
     // 直前に別経路で名前が変わることを、事前の rename で決定的に再現する。
-    #[sqlx::test(migrations = false)]
-    async fn delete_confirmed_rejects_when_name_changed_after_confirmation(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_confirmed_rejects_when_name_changed_after_confirmation(
+        db: crate::database::DatabaseHandle,
+    ) {
         let id = insert_test_strategy(&db, "original").await;
 
         update(

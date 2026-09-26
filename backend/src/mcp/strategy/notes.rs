@@ -484,17 +484,11 @@ impl StrategyServer {
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
-    use crate::entities::{comment, note_ref, note_version};
-    use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
-    use crate::services::note_versions::find_current_version;
-    use crate::testing::create_test_db;
 
     use super::super::STRATEGY_AGENT_ACTOR;
     use super::super::dto::{
@@ -505,6 +499,9 @@ mod tests {
         normalize_comment_model, normalize_note, seed_foreign_note,
         seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
+    use crate::entities::{comment, note_ref, note_version};
+    use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
+    use crate::services::note_versions::find_current_version;
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
@@ -568,9 +565,8 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_creates_then_read_note_returns_it(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_creates_then_read_note_returns_it(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db);
@@ -638,9 +634,8 @@ mod tests {
         refs.into_iter().map(|r| (r.ref_kind, r.ref_id)).collect()
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_creates_note_ref_from_body_and_graphs(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_creates_note_ref_from_body_and_graphs(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -673,9 +668,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_update_resyncs_note_refs(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_update_resyncs_note_refs(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -724,10 +718,11 @@ mod tests {
     }
 
     // 更新前の status (unread / rejected) ごとにケースを列挙する。
-    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_updates_existing_and_resets_status_to_unread(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    // database_test は rstest の case 引数を扱わないため、for ループで列挙する。
+    #[backend_test_macros::database_test]
+    async fn write_note_updates_existing_and_resets_status_to_unread(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
 
@@ -828,9 +823,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_cross_strategy_update(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_cross_strategy_update(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -855,9 +849,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn read_note_rejects_cross_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn read_note_rejects_cross_strategy(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -876,9 +869,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_filters_by_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_strategy(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db);
@@ -915,9 +907,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_filters_by_status(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_status(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db.clone());
 
@@ -961,9 +952,8 @@ mod tests {
         assert_eq!(titles, vec!["a"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_rejects_invalid_status(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_rejects_invalid_status(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -980,9 +970,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_filters_by_updated_after(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_updated_after(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db.clone());
 
@@ -1037,9 +1026,8 @@ mod tests {
         assert_eq!(titles, vec!["new"]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_notes_include_body_false_omits_body(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_notes_include_body_false_omits_body(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -1074,9 +1062,10 @@ mod tests {
         assert_eq!(bodies, vec![None]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_creates_with_graphs_then_read_note_returns_them(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_creates_with_graphs_then_read_note_returns_them(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1130,9 +1119,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_invalid_graph_and_does_not_create_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_invalid_graph_and_does_not_create_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1161,9 +1151,10 @@ mod tests {
         assert_eq!(result.notes, vec![]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_invalid_body_tokens_without_creating_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_invalid_body_tokens_without_creating_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
         let mut graph = sample_graph("g1");
@@ -1200,11 +1191,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn write_note_rejects_invalid_body_tokens_and_keeps_existing_note_unchanged(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
         let created = server
@@ -1262,9 +1252,10 @@ mod tests {
     }
 
     // body_md と graphs は独立に部分更新できる: 片方だけ送るともう片方は無傷。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_update_graphs_and_body_are_independent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_update_graphs_and_body_are_independent(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1351,9 +1342,10 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_graphs_only_update_keeps_legacy_body_tokens(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_graphs_only_update_keeps_legacy_body_tokens(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let created = server
@@ -1433,9 +1425,10 @@ mod tests {
     }
 
     /// 図のみを更新した場合も、他フィールド更新と同様に status が unread へ戻る。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_update_with_graphs_only_resets_status_to_unread(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_update_with_graphs_only_resets_status_to_unread(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -1487,9 +1480,10 @@ mod tests {
         assert_eq!(read.status, "unread");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_rejects_invalid_graph_on_update_and_leaves_note_unchanged(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_invalid_graph_on_update_and_leaves_note_unchanged(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1560,9 +1554,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_updating_body_md_keeps_comment_on_original_version(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_updating_body_md_keeps_comment_on_original_version(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -1640,9 +1635,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn write_note_updating_body_md_keeps_comment_position_on_original_version(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_updating_body_md_keeps_comment_position_on_original_version(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -1715,9 +1711,10 @@ mod tests {
 
     /// 同一 execution_id での 2 回目の create 呼び出し (note_id 省略) は 1 回目のノートを
     /// 更新する (agent 側のリトライによる重複作成を防ぐ)。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_with_same_execution_id_collapses_onto_single_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_with_same_execution_id_collapses_onto_single_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1795,9 +1792,10 @@ mod tests {
     }
 
     /// execution_id が異なれば別ノートとして作成される。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_with_different_execution_ids_creates_distinct_notes(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_with_different_execution_ids_creates_distinct_notes(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1852,9 +1850,10 @@ mod tests {
     }
 
     /// execution_id を省略した場合 (ヘッダ非対応クライアント互換) は従来通り毎回別ノートを作成する。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_without_execution_id_creates_distinct_notes(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_without_execution_id_creates_distinct_notes(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -1909,9 +1908,10 @@ mod tests {
     }
 
     /// 明示的な note_id は execution_id によるノート解決より常に優先される。
-    #[sqlx::test(migrations = false)]
-    async fn write_note_explicit_note_id_wins_over_execution_id_lookup(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn write_note_explicit_note_id_wins_over_execution_id_lookup(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
 
@@ -2012,9 +2012,10 @@ mod tests {
     /// `insert_note_or_conflict` は同一 (strategy_id, execution_id) の行が既に存在するとき、
     /// パーシャルユニークインデックスへの生の制約違反エラーを投げず `Ok(None)` を返す。
     /// 作成経路を通さず実行 ID 付きの既存ノートを用意し、並行作成の先勝ちを模している。
-    #[sqlx::test(migrations = false)]
-    async fn insert_note_or_conflict_returns_none_when_execution_id_already_taken(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn insert_note_or_conflict_returns_none_when_execution_id_already_taken(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 

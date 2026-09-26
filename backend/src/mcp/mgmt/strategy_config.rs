@@ -157,19 +157,19 @@ mod tests {
     use rmcp::handler::server::wrapper::{Json, Parameters};
     use sea_orm::EntityTrait;
     use serde_json::json;
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
     use crate::entities::strategy;
-    use crate::testing::{create_test_db, insert_test_cron_trigger};
+    use crate::testing::insert_test_cron_trigger;
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_config_returns_full_row_and_empty_triggers(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_strategy_config_returns_full_row_and_empty_triggers(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
@@ -189,9 +189,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_config_includes_triggers(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_strategy_config_includes_triggers(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
             insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "prompt").await;
@@ -211,9 +210,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_config_rejects_unknown_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_strategy_config_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -226,9 +224,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_strategy_persists_name_and_description(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_strategy_persists_name_and_description(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
@@ -259,9 +256,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_strategy_rejects_invalid_fields_without_writing_anything(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_strategy_rejects_invalid_fields_without_writing_anything(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
@@ -280,9 +278,10 @@ mod tests {
         assert!(rows.is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_strategy_config_applies_multiple_fields_in_one_call(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_strategy_config_applies_multiple_fields_in_one_call(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
@@ -311,9 +310,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_strategy_config_rejects_invalid_name_without_writing_anything(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_strategy_config_rejects_invalid_name_without_writing_anything(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "original").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
@@ -333,9 +333,10 @@ mod tests {
         assert_eq!((row.name, row.description), ("original".to_string(), None));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_strategy_requires_confirm_name_exact_match(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_strategy_requires_confirm_name_exact_match(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
@@ -351,9 +352,10 @@ mod tests {
         assert!(strategy_config::find_or_404(&db, strategy_id).await.is_ok());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_strategy_succeeds_with_matching_confirm_name(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_strategy_succeeds_with_matching_confirm_name(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
@@ -373,9 +375,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_strategy_rejects_unknown_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_strategy_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server

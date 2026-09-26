@@ -201,28 +201,25 @@ fn map_agent_task_error(err: &AgentTaskError) -> McpError {
 mod tests {
     use std::sync::Arc;
 
-    use rmcp::handler::server::wrapper::{Json, Parameters};
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
-    use sqlx::PgPool;
-
+    use super::super::tests_common::{build_server, insert_strategy};
     use crate::agent_client::FakeAgentTaskClient;
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
     use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
-    use crate::testing::create_test_db;
-
-    use super::super::tests_common::{build_server, insert_strategy};
+    use rmcp::handler::server::wrapper::{Json, Parameters};
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
 
     use super::*;
 
     /// 管理 MCP 経由で投入されたタスクの `strategy_task.source` 値。
     const MGMT_TASK_SOURCE: &str = "mgmt-mcp";
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_inserts_row_and_submits_to_agent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn submit_strategy_task_inserts_row_and_submits_to_agent(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long-term").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -276,9 +273,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_forwards_purpose_to_agent_client(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn submit_strategy_task_forwards_purpose_to_agent_client(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long-term").await;
         agent_config::create(&db, "explore".to_string())
             .await
@@ -346,9 +344,8 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_rejects_unknown_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn submit_strategy_task_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let server = build_server(db, fake);
 
@@ -364,9 +361,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_rejects_empty_prompt(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn submit_strategy_task_rejects_empty_prompt(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
@@ -381,9 +377,10 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn submit_strategy_task_persists_failure_on_agent_error(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn submit_strategy_task_persists_failure_on_agent_error(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -416,9 +413,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resume_strategy_task_resumes_a_failed_task_in_place(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resume_strategy_task_resumes_a_failed_task_in_place(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -466,9 +464,8 @@ mod tests {
         assert!(row.error_summary.is_none());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resume_strategy_task_rejects_when_not_failed(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resume_strategy_task_rejects_when_not_failed(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -493,9 +490,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resume_strategy_task_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resume_strategy_task_not_found(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -508,9 +504,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_status_returns_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_strategy_task_status_returns_row(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -540,9 +535,8 @@ mod tests {
         assert!(status.result_text.is_none());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn get_strategy_task_status_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_strategy_task_status_not_found(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
             .get_strategy_task_status(Parameters(GetStrategyTaskStatusParams {
@@ -554,9 +548,8 @@ mod tests {
         assert_eq!(err.code, rmcp::model::ErrorCode::RESOURCE_NOT_FOUND);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_strategies_counts_unread_cards(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_strategies_counts_unread_cards(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
 
         // unread ノート 2 件、approved ノート 1 件 → unread だけカウント

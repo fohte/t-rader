@@ -41,8 +41,6 @@ mod tests {
     use chrono::{DateTime, FixedOffset, NaiveDate};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::entities::prediction;
@@ -81,9 +79,11 @@ mod tests {
             .expect("parse timestamp")
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_returns_predictions_linked_to_note_in_creation_order(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_returns_predictions_linked_to_note_in_creation_order(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let nid = insert_test_note(&db, sid, "t", "b").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -126,9 +126,9 @@ mod tests {
         assert_eq!(res.json::<Vec<prediction::Model>>(), vec![first, second]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_returns_empty_for_note_without_predictions(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_returns_empty_for_note_without_predictions(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let nid = insert_test_note(&db, sid, "t", "b").await;
 
@@ -140,9 +140,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_for_unknown_note_returns_404(pool: PgPool) {
-        let (_db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_for_unknown_note_returns_404(db: crate::database::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
             .get(&format!("/api/notes/{}/predictions", Uuid::new_v4()))

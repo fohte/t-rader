@@ -2,6 +2,7 @@ pub mod agent_client;
 pub mod cli;
 pub(crate) mod concurrent;
 pub mod data_provider;
+pub mod database;
 pub(crate) mod date_utils;
 pub mod entities;
 pub mod error;
@@ -26,7 +27,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::{ConnectionTrait, DatabaseConnection};
+use sea_orm::ConnectionTrait;
 use serde::Serialize;
 use utoipa::OpenApi;
 use utoipa::ToSchema;
@@ -37,6 +38,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
 use crate::data_provider::SharedDailyBarSource;
 use crate::data_provider::jquants::JQuantsClient;
+use crate::database::DatabaseHandle;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
@@ -49,7 +51,7 @@ use crate::services::litellm_client::SharedLlmClient;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: DatabaseConnection,
+    pub db: DatabaseHandle,
     /// 日足データ取得元
     ///
     /// `DATA_PROVIDER=none` または client の未設定時は `None` で起動する。
@@ -141,7 +143,7 @@ mod app_state_tests {
         let client = crate::data_provider::jquants::JQuantsClient::new("test-key".into()).unwrap();
         let daily_bar_source: SharedDailyBarSource = Arc::new(client);
         let state = AppState {
-            db: mock_db(),
+            db: mock_db().into(),
             daily_bar_source: Some(daily_bar_source),
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
@@ -156,7 +158,7 @@ mod app_state_tests {
     #[rstest]
     fn test_daily_bar_source_returns_error_when_none() {
         let state = AppState {
-            db: mock_db(),
+            db: mock_db().into(),
             daily_bar_source: None,
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),

@@ -13,10 +13,10 @@ mod short_selling;
 mod tests;
 mod valuation;
 
+use crate::database::DatabaseHandle;
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
-use sea_orm::DatabaseConnection;
 
 use rate_limiter::RateLimiter;
 
@@ -95,7 +95,7 @@ pub struct JQuantsClient {
     api_key: String,
     rate_limiter: RateLimiter,
     detected_range: std::sync::Mutex<Option<DetectedRange>>,
-    db: Option<DatabaseConnection>,
+    db: Option<DatabaseHandle>,
     /// 設定ページから手動設定された契約プラン。`None` の間は自動検出
     /// (`detected_range`) を使う。
     manual_plan: std::sync::Mutex<Option<JQuantsPlan>>,
@@ -141,8 +141,8 @@ impl JQuantsClient {
 
     /// 検出した契約範囲をプラン設定として永続化する DB を設定する。
     /// 未設定の場合も範囲の検出と取得は行うが、プラン設定は保存しない。
-    pub fn with_db(mut self, db: DatabaseConnection) -> Self {
-        self.db = Some(db);
+    pub fn with_db(mut self, db: impl Into<DatabaseHandle>) -> Self {
+        self.db = Some(db.into());
         self
     }
 

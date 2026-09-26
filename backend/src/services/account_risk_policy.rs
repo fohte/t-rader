@@ -52,23 +52,15 @@ pub async fn save(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use super::*;
-    use crate::testing::create_test_db;
-
-    #[sqlx::test(migrations = false)]
-    async fn find_current_returns_none_when_row_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn find_current_returns_none_when_row_missing(db: crate::database::DatabaseHandle) {
         let current = find_current(&db).await.expect("query");
         assert_eq!(current, None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn save_creates_row_when_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn save_creates_row_when_missing(db: crate::database::DatabaseHandle) {
         let saved = save(&db, serde_json::json!({ "max_sector_ratio": "0.3" }))
             .await
             .expect("save");
@@ -86,10 +78,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn save_twice_keeps_single_row_and_updates_value(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn save_twice_keeps_single_row_and_updates_value(db: crate::database::DatabaseHandle) {
         save(&db, serde_json::json!({ "max_sector_ratio": "0.3" }))
             .await
             .expect("save first");

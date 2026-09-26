@@ -81,17 +81,14 @@ pub async fn put_jquants_plan_setting(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use sqlx::PgPool;
-
     use crate::data_provider::jquants::JQuantsClient;
     use crate::models::JQuantsPlan;
     use crate::testing::{create_test_server, create_test_server_with_jquants_client};
+    use std::sync::Arc;
 
-    #[sqlx::test(migrations = false)]
-    async fn get_returns_null_when_unset(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn get_returns_null_when_unset(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let res = server.get("/api/jquants/plan-setting").await;
         res.assert_status_ok();
@@ -101,9 +98,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_then_get_round_trips(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_then_get_round_trips(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let expected = serde_json::json!({ "plan": "standard", "effective_range": null });
         let put = server
@@ -118,9 +115,9 @@ mod tests {
         assert_eq!(get.json::<serde_json::Value>(), expected);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_multiple_times_updates_to_latest_value(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_multiple_times_updates_to_latest_value(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         server
             .put("/api/jquants/plan-setting")
@@ -140,9 +137,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_null_clears_manual_plan(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_null_clears_manual_plan(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         server
             .put("/api/jquants/plan-setting")
@@ -160,9 +157,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_422_for_unknown_plan_value(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_422_for_unknown_plan_value(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let res = server
             .put("/api/jquants/plan-setting")
@@ -171,10 +168,10 @@ mod tests {
         res.assert_status(axum::http::StatusCode::UNPROCESSABLE_ENTITY);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_updates_running_jquants_client_in_memory(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn put_updates_running_jquants_client_in_memory(db: crate::database::DatabaseHandle) {
         let client = Arc::new(JQuantsClient::new("test-key".into()).expect("build client"));
-        let server = create_test_server_with_jquants_client(pool, client.clone()).await;
+        let server = create_test_server_with_jquants_client(db, client.clone()).await;
 
         let put = server
             .put("/api/jquants/plan-setting")

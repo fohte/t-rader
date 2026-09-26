@@ -465,17 +465,14 @@ mod integration_tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
-    use sqlx::PgPool;
     use uuid::Uuid;
 
+    use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
+    use super::super::tests_common::{build_server, insert_strategy};
     use crate::entities::{instruments, sector, stock, trade};
     use crate::models::{Bar, Timeframe};
     use crate::repositories::bars::upsert_bars;
     use crate::services::{account_risk_policy, investable_amount};
-    use crate::testing::create_test_db;
-
-    use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
-    use super::super::tests_common::{build_server, insert_strategy};
 
     async fn seed_trade(
         db: &impl sea_orm::ConnectionTrait,
@@ -587,9 +584,10 @@ mod integration_tests {
         .expect("record investable amount");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn defaults_to_cash_constraint_when_no_risk_policy_is_configured(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn defaults_to_cash_constraint_when_no_risk_policy_is_configured(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
         seed_bar(&db, "7203", 1000).await;
@@ -625,9 +623,8 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn sector_ratio_binds_across_strategies(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn sector_ratio_binds_across_strategies(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         insert_stock(&db, "7203", Some("transport")).await;
@@ -675,9 +672,10 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn all_constraints_become_unavailable_when_target_price_is_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn all_constraints_become_unavailable_when_target_price_is_missing(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         set_max_sector_ratio(&db, "0.2").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
@@ -716,9 +714,10 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn sector_ratio_is_unavailable_when_target_has_no_sector(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn sector_ratio_is_unavailable_when_target_has_no_sector(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         set_max_sector_ratio(&db, "0.2").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
@@ -758,9 +757,10 @@ mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn sector_ratio_is_unavailable_when_a_held_position_price_is_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn sector_ratio_is_unavailable_when_a_held_position_price_is_missing(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_stock(&db, "7203", Some("transport")).await;
         insert_stock(&db, "9999", Some("tech")).await;

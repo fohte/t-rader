@@ -11,6 +11,7 @@ use backend::create_router;
 use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::rss::RssNewsAggregator;
+use backend::database::DatabaseHandle;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
@@ -344,7 +345,7 @@ async fn main() -> Result<(), AppError> {
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
     let state = AppState {
-        db,
+        db: DatabaseHandle::from(db),
         daily_bar_source,
         jquants_client,
         agent_task_client,

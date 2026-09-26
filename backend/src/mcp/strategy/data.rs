@@ -126,19 +126,16 @@ mod tests {
         ColumnTrait, DatabaseBackend, DatabaseConnection, EntityTrait, MockDatabase, QueryFilter,
         Set,
     };
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::{instruments, strategy_task_step_evidence};
-    use crate::models::Bar;
-    use crate::models::bar::Timeframe;
-    use crate::repositories::bars::upsert_bars;
-    use crate::testing::create_test_db;
 
     use super::super::StrategyServer;
     use super::super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
     use super::super::tests_common::insert_strategy;
     use super::MAX_QUERY_DATA_INSTRUMENTS;
+    use crate::entities::{instruments, strategy_task_step_evidence};
+    use crate::models::Bar;
+    use crate::models::bar::Timeframe;
+    use crate::repositories::bars::upsert_bars;
 
     fn mock_db() -> DatabaseConnection {
         MockDatabase::new(DatabaseBackend::Postgres).into_connection()
@@ -194,8 +191,9 @@ mod tests {
         }
     }
 
-    async fn setup_server_with_bars(pool: PgPool) -> (DatabaseConnection, StrategyServer, Uuid) {
-        let db = create_test_db(pool).await;
+    async fn setup_server_with_bars(
+        db: crate::database::DatabaseHandle,
+    ) -> (crate::database::DatabaseHandle, StrategyServer, Uuid) {
         let strategy_id = insert_strategy(&db, "x").await;
 
         insert_test_instrument(&db, "7203").await;
@@ -241,9 +239,11 @@ mod tests {
         rows
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn query_data_returns_bars_for_each_requested_instrument(pool: PgPool) {
-        let (_db, server, strategy_id) = setup_server_with_bars(pool).await;
+    #[backend_test_macros::database_test]
+    async fn query_data_returns_bars_for_each_requested_instrument(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
         let result = server
             .query_data_inner(
@@ -281,9 +281,11 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn query_data_returns_empty_bars_for_instrument_with_no_data(pool: PgPool) {
-        let (_db, server, strategy_id) = setup_server_with_bars(pool).await;
+    #[backend_test_macros::database_test]
+    async fn query_data_returns_empty_bars_for_instrument_with_no_data(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
         let result = server
             .query_data_inner(
@@ -318,11 +320,11 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn query_data_records_evidence_per_instrument_when_execution_step_id_present(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let (db, server, strategy_id) = setup_server_with_bars(pool).await;
+        let (db, server, strategy_id) = setup_server_with_bars(db).await;
         let execution_step_id = Uuid::new_v4();
 
         server
@@ -343,9 +345,11 @@ mod tests {
         assert_eq!(source_refs, vec!["7203".to_string(), "9984".to_string()]);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn query_data_records_no_evidence_when_execution_step_id_absent(pool: PgPool) {
-        let (db, server, strategy_id) = setup_server_with_bars(pool).await;
+    #[backend_test_macros::database_test]
+    async fn query_data_records_no_evidence_when_execution_step_id_absent(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server, strategy_id) = setup_server_with_bars(db).await;
 
         server
             .query_data_inner(

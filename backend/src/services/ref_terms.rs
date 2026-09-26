@@ -176,16 +176,11 @@ pub async fn resolve_refs(
 mod tests {
     use std::collections::{BTreeMap, HashMap};
 
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::{NotSet, Set};
-
-    use sqlx::PgPool;
-
+    use super::{resolve_many_by_term, resolve_refs};
     use crate::entities::{indicator, ref_term, stock};
     use crate::models::RefResolution;
-    use crate::testing::create_test_db;
-
-    use super::{resolve_many_by_term, resolve_refs};
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
 
     fn sort_matches(matches: HashMap<String, Vec<String>>) -> BTreeMap<String, Vec<String>> {
         matches
@@ -241,9 +236,8 @@ mod tests {
         .expect("seed indicator");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resolve_many_by_term_returns_multiple_candidates(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resolve_many_by_term_returns_multiple_candidates(db: crate::database::DatabaseHandle) {
         seed_term(&db, "stock", "SAMPLE-STOCK-A", "サンプル語").await;
         seed_term(&db, "stock", "SAMPLE-STOCK-B", "サンプル語").await;
         seed_term(&db, "indicator", "SAMPLE-INDEX", "サンプル語").await;
@@ -261,10 +255,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resolve_many_by_term_returns_empty_when_no_match(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn resolve_many_by_term_returns_empty_when_no_match(db: crate::database::DatabaseHandle) {
         let matches = resolve_many_by_term(&db, "stock", &["存在しない".to_string()])
             .await
             .expect("resolve_many_by_term");
@@ -275,9 +267,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resolve_many_by_term_matches_normalized_variants(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resolve_many_by_term_matches_normalized_variants(db: crate::database::DatabaseHandle) {
         seed_term(&db, "indicator", "SAMPLE-INDICATOR", "DemoKey").await;
 
         let inputs = ["ＤＥＭＯＫＥＹ".to_string(), "demokey".to_string()];
@@ -297,11 +288,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
+    #[backend_test_macros::database_test]
     async fn resolve_many_by_term_dedups_candidates_from_normalized_variant_aliases_on_same_ref_id(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         // 表記違いの別名 (大文字/小文字) が同じ ref_id に 2 件登録されていても、
         // 候補は 1 件に集約される
         seed_term(&db, "stock", "SAMPLE-STOCK", "DemoTerm").await;
@@ -317,9 +307,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resolve_refs_resolves_exact_id_alias_and_unresolved_in_input_order(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resolve_refs_resolves_exact_id_alias_and_unresolved_in_input_order(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed_stock(&db, "SAMPLE-STOCK", "サンプル銘柄").await;
         seed_indicator(&db, "SAMPLE-INDICATOR", "サンプル指標").await;
         seed_term(&db, "indicator", "SAMPLE-INDICATOR", "ＳＡＭＰＬＥＫＥＹ").await;
@@ -357,9 +348,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resolve_refs_leaves_ambiguous_alias_unresolved(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resolve_refs_leaves_ambiguous_alias_unresolved(db: crate::database::DatabaseHandle) {
         seed_stock(&db, "SAMPLE-STOCK-A", "サンプル銘柄 A").await;
         seed_stock(&db, "SAMPLE-STOCK-B", "サンプル銘柄 B").await;
         seed_term(&db, "stock", "SAMPLE-STOCK-A", "サンプル語").await;
@@ -379,9 +369,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resolve_refs_leaves_dangling_alias_unresolved(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resolve_refs_leaves_dangling_alias_unresolved(db: crate::database::DatabaseHandle) {
         // master に存在しない ref_id を指す dangling な別名
         seed_term(&db, "stock", "MISSING-STOCK", "サンプル語").await;
 

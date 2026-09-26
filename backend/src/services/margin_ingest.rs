@@ -165,14 +165,10 @@ pub fn spawn_poll(
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::data_provider::jquants::mock::{JQuantsMockServer, MockMarginInterestRow};
     use crate::models::jquants_plan::JQuantsPlan;
-    use crate::testing::create_test_db;
-
+    use rstest::rstest;
     #[rstest]
     #[case::empty_table_uses_earliest(
         None,
@@ -197,9 +193,8 @@ mod tests {
         assert_eq!(resolve_start_date(latest_stored, earliest), expected);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn run_ingest_cycle_skips_when_no_manual_plan(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn run_ingest_cycle_skips_when_no_manual_plan(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         let today = NaiveDate::from_ymd_opt(2024, 6, 1).expect("date");
@@ -214,9 +209,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn ingest_daily_fetches_past_the_former_per_cycle_cap(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn ingest_daily_fetches_past_the_former_per_cycle_cap(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         client.set_manual_plan(Some(JQuantsPlan::Standard));

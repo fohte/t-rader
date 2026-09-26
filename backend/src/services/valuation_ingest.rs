@@ -214,18 +214,14 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::Mutex;
 
+    use super::*;
+    use crate::data_provider::jquants::mock::JQuantsMockServer;
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_application::{DateRange, ValuationSource, ValuationSourceError};
     use core_domain::valuation::Valuation;
     use rust_decimal::Decimal;
     use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};
-    use sqlx::PgPool;
-
-    use super::*;
-    use crate::data_provider::jquants::mock::JQuantsMockServer;
-    use crate::testing::create_test_db;
-
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
@@ -312,9 +308,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn ingests_valuations_and_marks_non_empty_dates(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn ingests_valuations_and_marks_non_empty_dates(db: crate::database::DatabaseHandle) {
         let to = latest_business_day(Utc::now().date_naive());
         let expected_valuation = sample_valuation(to);
         let source = TestValuationSource {
@@ -361,9 +356,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn does_not_mark_empty_valuation_dates_as_ingested(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn does_not_mark_empty_valuation_dates_as_ingested(db: crate::database::DatabaseHandle) {
         let to = latest_business_day(Utc::now().date_naive());
         let source = TestValuationSource {
             range: Some(DateRange { from: to, to }),

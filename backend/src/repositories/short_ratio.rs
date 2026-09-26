@@ -61,12 +61,8 @@ pub async fn find_latest_date(
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal::Decimal;
-    use sqlx::PgPool;
-
     use super::*;
-    use crate::testing::create_test_db;
-
+    use rust_decimal::Decimal;
     /// テスト用の業種別空売り比率を生成する
     fn make_ratio(date: NaiveDate, sector33_code: &str, value: i64) -> ShortRatio {
         ShortRatio {
@@ -78,9 +74,8 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upsert_inserts_new_records(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upsert_inserts_new_records(db: crate::database::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         let ratios = vec![make_ratio(date, "0050", 100), make_ratio(date, "3050", 200)];
@@ -95,9 +90,8 @@ mod tests {
         assert_eq!(rows.len(), 2);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upsert_updates_existing_record_on_correction(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upsert_updates_existing_record_on_correction(db: crate::database::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         upsert_short_ratios(&db, vec![make_ratio(date, "0050", 100)])
@@ -119,17 +113,14 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upsert_with_empty_vec_is_noop(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
         let result = upsert_short_ratios(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_latest_date_returns_most_recent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn find_latest_date_returns_most_recent(db: crate::database::DatabaseHandle) {
         let d1 = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
         let d2 = NaiveDate::from_ymd_opt(2025, 1, 8).expect("date");
         let d3 = NaiveDate::from_ymd_opt(2025, 1, 7).expect("date");
@@ -149,10 +140,8 @@ mod tests {
         assert_eq!(result, Some(d2));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_latest_date_returns_none_when_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    #[backend_test_macros::database_test]
+    async fn find_latest_date_returns_none_when_empty(db: crate::database::DatabaseHandle) {
         let result = find_latest_date(&db).await.expect("find failed");
         assert_eq!(result, None);
     }

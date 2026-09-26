@@ -193,13 +193,10 @@ pub fn spawn_poll(
 mod tests {
     use gateway_fred::FredClient;
     use sea_orm::{ActiveModelTrait, EntityTrait};
-    use sqlx::PgPool;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
-    use crate::testing::create_test_db;
-
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
     }
@@ -240,9 +237,10 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn creates_indicator_and_ingests_full_history_when_table_is_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn creates_indicator_and_ingests_full_history_when_table_is_empty(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = MockServer::start().await;
         mount_series(
             &server,
@@ -283,9 +281,10 @@ mod tests {
         assert_eq!(obs.value, rust_decimal::Decimal::new(14750, 2));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn resumes_from_latest_date_minus_lookback_and_updates_existing_value(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn resumes_from_latest_date_minus_lookback_and_updates_existing_value(
+        db: crate::database::DatabaseHandle,
+    ) {
         let def = series_def();
 
         indicator::ActiveModel {
@@ -335,9 +334,8 @@ mod tests {
         assert_eq!(obs.value, rust_decimal::Decimal::new(14750, 2));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn does_not_overwrite_existing_indicator_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn does_not_overwrite_existing_indicator_row(db: crate::database::DatabaseHandle) {
         let def = series_def();
         indicator::ActiveModel {
             id: Set(def.indicator_id.to_string()),

@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
-use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
@@ -28,6 +27,9 @@ pub(super) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &s
     id
 }
 
-pub(super) fn build_server(db: DatabaseConnection, fake: Arc<FakeAgentTaskClient>) -> MgmtServer {
+pub(super) fn build_server(
+    db: impl Into<crate::database::DatabaseHandle>,
+    fake: Arc<FakeAgentTaskClient>,
+) -> MgmtServer {
     MgmtServer::new(db, fake as SharedAgentTaskClient)
 }

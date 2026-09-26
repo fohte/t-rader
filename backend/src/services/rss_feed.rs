@@ -171,13 +171,9 @@ pub async fn delete(db: &impl sea_orm::ConnectionTrait, id: Uuid) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entities::rss_feed;
     use rstest::rstest;
     use serde_json::{Value, json};
-    use sqlx::PgPool;
-
-    use crate::entities::rss_feed;
-    use crate::testing::create_test_db;
-
     /// Model 全体を JSON 化して dynamic フィールド (id/created_at/updated_at) を
     /// placeholder に潰す。CLAUDE.md の「全体を 1 度の equality で検証」を満たすため
     fn normalize(model: rss_feed::Model) -> Value {
@@ -237,9 +233,8 @@ mod tests {
         ));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_and_list_roundtrip(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_and_list_roundtrip(db: crate::database::DatabaseHandle) {
         let created = create(
             &db,
             input("bloomberg", "Bloomberg", "https://example.com/a"),
@@ -263,9 +258,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_filters_by_enabled(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_filters_by_enabled(db: crate::database::DatabaseHandle) {
         create(&db, input("a", "A", "https://example.com/a"))
             .await
             .unwrap();
@@ -297,9 +291,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_rejects_duplicate_source(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_rejects_duplicate_source(db: crate::database::DatabaseHandle) {
         create(&db, input("dup", "Dup", "https://example.com/a"))
             .await
             .unwrap();
@@ -309,27 +302,24 @@ mod tests {
         assert!(matches!(err, RssFeedError::DuplicateSource(s) if s == "dup"));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_rejects_invalid_source_slug(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_rejects_invalid_source_slug(db: crate::database::DatabaseHandle) {
         let err = create(&db, input("Bad Source", "x", "https://example.com/a"))
             .await
             .unwrap_err();
         assert!(matches!(err, RssFeedError::InvalidSource(_)));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_rejects_invalid_url(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_rejects_invalid_url(db: crate::database::DatabaseHandle) {
         let err = create(&db, input("ok", "x", "not-a-url"))
             .await
             .unwrap_err();
         assert!(matches!(err, RssFeedError::InvalidUrl(_)));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn update_partial_patches_only_provided_fields(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn update_partial_patches_only_provided_fields(db: crate::database::DatabaseHandle) {
         let created = create(&db, input("src", "Old", "https://example.com/old"))
             .await
             .unwrap();
@@ -357,9 +347,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_removes_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_removes_row(db: crate::database::DatabaseHandle) {
         let created = create(&db, input("src", "x", "https://example.com/a"))
             .await
             .unwrap();
@@ -367,9 +356,8 @@ mod tests {
         assert!(list(&db, false).await.unwrap().is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_missing_returns_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_missing_returns_not_found(db: crate::database::DatabaseHandle) {
         let err = delete(&db, Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, RssFeedError::NotFound(_)));
     }

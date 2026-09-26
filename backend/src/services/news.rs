@@ -122,15 +122,11 @@ pub fn spawn_poll(
 
 #[cfg(test)]
 mod tests {
-    use core_application::{FakeNewsAggregator, NewsAggregatorError, NewsFeed};
-    use sea_orm::{EntityTrait, PaginatorTrait};
-    use sqlx::PgPool;
-
     use super::*;
     use crate::entities::news_item;
     use crate::services::rss_feed::{self, CreateInput};
-    use crate::testing::create_test_db;
-
+    use core_application::{FakeNewsAggregator, NewsAggregatorError, NewsFeed};
+    use sea_orm::{EntityTrait, PaginatorTrait};
     async fn create_feed(
         db: &impl sea_orm::ConnectionTrait,
         source: &str,
@@ -150,9 +146,10 @@ mod tests {
         .expect("feed creates");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn run_aggregation_cycle_passes_enabled_feeds_by_display_name(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn run_aggregation_cycle_passes_enabled_feeds_by_display_name(
+        db: crate::database::DatabaseHandle,
+    ) {
         create_feed(&db, "feed_zulu", "Zulu publication", true).await;
         create_feed(&db, "feed_alpha", "Alpha publication", true).await;
         create_feed(&db, "feed_disabled", "Disabled publication", false).await;
@@ -181,9 +178,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn run_aggregation_cycle_stops_before_upsert_when_aggregator_fails(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn run_aggregation_cycle_stops_before_upsert_when_aggregator_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let aggregator = FakeNewsAggregator::new();
         *aggregator.fetch_error.lock().await =
             Some(NewsAggregatorError::Network("test failure".to_string()));

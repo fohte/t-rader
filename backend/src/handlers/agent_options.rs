@@ -56,13 +56,13 @@ pub async fn get_agent_tools() -> Json<AgentToolsResponse> {
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use crate::testing::{create_test_server, create_test_server_with_llm_gateway};
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_models_returns_empty_list_when_llm_gateway_unconfigured(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn agent_models_returns_empty_list_when_llm_gateway_unconfigured(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
         let response = server.get("/api/agent-models").await;
         response.assert_status_ok();
         assert_eq!(
@@ -71,8 +71,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_models_proxies_llm_gateway_response(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn agent_models_proxies_llm_gateway_response(db: crate::database::DatabaseHandle) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/model_group/info"))
@@ -92,7 +92,7 @@ mod tests {
             .mount(&llm_gateway)
             .await;
 
-        let server = create_test_server_with_llm_gateway(pool, &llm_gateway.uri()).await;
+        let server = create_test_server_with_llm_gateway(db, &llm_gateway.uri()).await;
         let response = server.get("/api/agent-models").await;
         response.assert_status_ok();
         assert_eq!(
@@ -111,8 +111,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_models_returns_empty_list_when_llm_gateway_unreachable(pool: PgPool) {
+    #[backend_test_macros::database_test]
+    async fn agent_models_returns_empty_list_when_llm_gateway_unreachable(
+        db: crate::database::DatabaseHandle,
+    ) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/model_group/info"))
@@ -120,7 +122,7 @@ mod tests {
             .mount(&llm_gateway)
             .await;
 
-        let server = create_test_server_with_llm_gateway(pool, &llm_gateway.uri()).await;
+        let server = create_test_server_with_llm_gateway(db, &llm_gateway.uri()).await;
         let response = server.get("/api/agent-models").await;
         response.assert_status_ok();
         assert_eq!(
@@ -129,9 +131,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn agent_tools_lists_known_strategy_mcp_tools(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn agent_tools_lists_known_strategy_mcp_tools(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let response = server.get("/api/agent-tools").await;
         response.assert_status_ok();
         // ToolRouter::list_all() は name の昇順でソートして返す

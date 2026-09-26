@@ -96,18 +96,15 @@ impl MgmtServer {
 mod tests {
     use std::sync::Arc;
 
-    use rmcp::handler::server::wrapper::{Json, Parameters};
-    use sqlx::PgPool;
-
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::testing::{create_test_db, insert_test_note};
+    use crate::testing::insert_test_note;
+    use rmcp::handler::server::wrapper::{Json, Parameters};
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
-    #[sqlx::test(migrations = false)]
-    async fn list_recent_notes_caps_by_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_recent_notes_caps_by_limit(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         for i in 0..5 {
             insert_test_note(&db, strategy_id, &format!("note-{i}"), "body").await;

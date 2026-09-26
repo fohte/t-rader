@@ -232,17 +232,15 @@ pub fn spawn_poll(db: DatabaseConnection, interval: Duration) -> tokio::task::Jo
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDate;
-    use rstest::rstest;
-    use sea_orm::ActiveValue::NotSet;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::entities::instruments;
     use crate::models::Bar;
     use crate::models::bar::Timeframe;
     use crate::repositories::bars::upsert_bars;
-    use crate::testing::{create_test_db, insert_test_stock, insert_test_strategy};
+    use crate::testing::{insert_test_stock, insert_test_strategy};
+    use chrono::NaiveDate;
+    use rstest::rstest;
+    use sea_orm::ActiveValue::NotSet;
 
     #[rstest]
     #[case::positive_return(Decimal::new(100, 0), Decimal::new(110, 0), Some(Decimal::new(10, 2)))]
@@ -355,9 +353,8 @@ mod tests {
         .expect("seed bars");
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn grades_outperform_prediction_as_correct(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn grades_outperform_prediction_as_correct(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let prediction_id = insert_prediction(
@@ -393,9 +390,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn grades_underperform_prediction_as_incorrect(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn grades_underperform_prediction_as_incorrect(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         // target が benchmark を上回っているので underperform の予測は外れる。
         seed_scenario(&db, 100, 120, 100, 110).await;
@@ -432,9 +428,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_when_due_date_bar_is_stale(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_when_due_date_bar_is_stale(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         insert_test_target(&db, "1000", "target").await;
         insert_test_target(&db, "2000", "benchmark").await;
@@ -468,9 +463,8 @@ mod tests {
         assert_eq!(find_grade(&db, prediction_id).await, None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_when_base_date_bar_is_missing(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_when_base_date_bar_is_missing(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         insert_test_target(&db, "1000", "target").await;
         insert_test_target(&db, "2000", "benchmark").await;
@@ -501,9 +495,8 @@ mod tests {
         assert_eq!(find_grade(&db, prediction_id).await, None);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn already_graded_prediction_is_not_regraded(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn already_graded_prediction_is_not_regraded(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let prediction_id = insert_prediction(
@@ -531,9 +524,10 @@ mod tests {
         assert_eq!(grade_after_first, grade_after_second);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn one_skipped_prediction_does_not_block_others_in_same_cycle(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn one_skipped_prediction_does_not_block_others_in_same_cycle(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let gradable_id = insert_prediction(

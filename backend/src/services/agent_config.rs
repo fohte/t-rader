@@ -320,13 +320,9 @@ pub(crate) fn build_agent_config_response(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use indoc::indoc;
     use rstest::rstest;
-    use sqlx::PgPool;
-
-    use super::*;
-    use crate::testing::create_test_db;
-
     fn normalize(model: agent_config::Model) -> serde_json::Value {
         let mut v = serde_json::to_value(model).expect("model serializes");
         for key in ["id", "created_at", "updated_at"] {
@@ -370,9 +366,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_and_list_roundtrip(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_and_list_roundtrip(db: crate::database::DatabaseHandle) {
         let created = create(&db, "explore".to_string()).await.unwrap();
         let expected = serde_json::json!({
             "id": "<id>",
@@ -391,46 +386,40 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_rejects_duplicate_purpose(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_rejects_duplicate_purpose(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = create(&db, "explore".to_string()).await.unwrap_err();
         assert!(matches!(err, AgentConfigError::DuplicatePurpose(p) if p == "explore"));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn create_rejects_invalid_purpose_slug(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn create_rejects_invalid_purpose_slug(db: crate::database::DatabaseHandle) {
         let err = create(&db, "Bad Purpose".to_string()).await.unwrap_err();
         assert!(matches!(err, AgentConfigError::InvalidPurpose(_)));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn find_or_404_rejects_unknown_purpose(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn find_or_404_rejects_unknown_purpose(db: crate::database::DatabaseHandle) {
         let err = find_or_404(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(p) if p == "missing"));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_removes_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_removes_row(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         delete(&db, "explore").await.unwrap();
         assert!(list(&db).await.unwrap().is_empty());
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_missing_returns_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_missing_returns_not_found(db: crate::database::DatabaseHandle) {
         let err = delete(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(_)));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn save_then_get_agents_md_round_trips(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn save_then_get_agents_md_round_trips(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let content = "# 方針\n慎重に運用する";
         let saved = save_agents_md(&db, "explore", content.to_string())
@@ -443,9 +432,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_skills_replaces_whole_map(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_skills_replaces_whole_map(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
 
         let mut skills = std::collections::BTreeMap::new();
@@ -465,9 +453,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_skills_rejects_invalid_name(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_skills_rejects_invalid_name(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let mut skills = std::collections::BTreeMap::new();
         skills.insert("Bad Name".to_string(), "x".to_string());
@@ -475,9 +462,8 @@ mod tests {
         assert!(matches!(err, AgentConfigError::InvalidSkillName(_)));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn put_skill_add_update_delete_lifecycle(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn put_skill_add_update_delete_lifecycle(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
 
         put_skill(&db, "explore", "scout", "first".to_string())
@@ -504,17 +490,15 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn delete_skill_rejects_unknown_skill(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn delete_skill_rejects_unknown_skill(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = delete_skill(&db, "explore", "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::SkillNotFound(name) if name == "missing"));
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn save_then_get_agent_graph_round_trips(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn save_then_get_agent_graph_round_trips(db: crate::database::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let yaml = indoc! {"
             phases:
@@ -528,9 +512,10 @@ mod tests {
         assert_eq!(find_or_404(&db, "explore").await.unwrap().agent_graph, yaml);
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn save_agent_graph_rejects_invalid_yaml_and_leaves_row_unchanged(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn save_agent_graph_rejects_invalid_yaml_and_leaves_row_unchanged(
+        db: crate::database::DatabaseHandle,
+    ) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = save_agent_graph(&db, "explore", "phases: [")
             .await

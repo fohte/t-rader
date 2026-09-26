@@ -215,7 +215,6 @@ mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
     use sea_orm::EntityTrait;
     use serde_json::json;
-    use sqlx::PgPool;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, ResponseTemplate};
 
@@ -225,7 +224,6 @@ mod tests {
         cross_shareholding_documents, large_volume_shareholding_documents,
         major_shareholder_documents,
     };
-    use crate::testing::create_test_db;
     use core_domain::holdings::{
         CrossShareholding, CrossShareholdingCategory, CrossShareholdingContent,
         CrossShareholdingDocument, LargeVolumeReportType, LargeVolumeShareholdingContent,
@@ -311,9 +309,8 @@ mod tests {
             .expect("find documents")
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn fetches_from_available_from_when_table_is_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn fetches_from_available_from_when_table_is_empty(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let from = large_volume_shareholdings::Endpoint::available_from();
         let to = from + ChronoDuration::days(2);
@@ -403,9 +400,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn refetches_from_latest_submitted_on_minus_window(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn refetches_from_latest_submitted_on_minus_window(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let from = large_volume_shareholdings::Endpoint::available_from();
         let latest = from + ChronoDuration::days(60);
@@ -446,9 +442,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn skips_when_fetchable_range_is_unknown(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn skips_when_fetchable_range_is_unknown(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
@@ -461,9 +456,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upserts_the_document_with_the_same_id(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upserts_the_document_with_the_same_id(db: crate::database::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
         let saved = large_volume_shareholdings::Endpoint::upsert(
             &db,
@@ -517,9 +511,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upserts_major_shareholder_documents(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upserts_major_shareholder_documents(db: crate::database::DatabaseHandle) {
         let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
         let period_end = NaiveDate::from_ymd_opt(2024, 12, 31).expect("valid date");
         let saved = major_shareholders::Endpoint::upsert(
@@ -579,9 +572,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn upserts_cross_shareholding_documents(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn upserts_cross_shareholding_documents(db: crate::database::DatabaseHandle) {
         let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
         let period_end = NaiveDate::from_ymd_opt(2024, 12, 31).expect("valid date");
         let saved = cross_shareholdings::Endpoint::upsert(
@@ -647,9 +639,10 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn retries_a_failed_date_within_the_same_cycle_and_recovers(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn retries_a_failed_date_within_the_same_cycle_and_recovers(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
         let from = large_volume_shareholdings::Endpoint::available_from();
         let to = from + ChronoDuration::days(1);
@@ -712,9 +705,8 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn counts_a_date_when_its_retry_fails(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn counts_a_date_when_its_retry_fails(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let from = large_volume_shareholdings::Endpoint::available_from();
         let to = from + ChronoDuration::days(1);

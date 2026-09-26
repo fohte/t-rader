@@ -43,13 +43,11 @@ pub async fn list_tasks(
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-    use sqlx::PgPool;
-
     use crate::testing::{
         create_test_server, create_test_server_with_db, insert_test_strategy,
         insert_test_strategy_task,
     };
+    use serde_json::json;
 
     /// JSON body から動的フィールド (created_at/updated_at/as_of) を除去し、
     /// 単一の assert_eq! で残りのフィールドを比較できるようにする。
@@ -61,9 +59,9 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_tasks_returns_all_strategies_newest_first(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_tasks_returns_all_strategies_newest_first(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;
 
@@ -107,9 +105,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_tasks_filters_by_strategy_id(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_tasks_filters_by_strategy_id(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;
 
@@ -137,9 +135,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_tasks_filters_by_purpose(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_tasks_filters_by_purpose(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
         let base = chrono::Utc::now().fixed_offset();
@@ -173,9 +171,9 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrations = false)]
-    async fn list_tasks_returns_empty_for_unknown_strategy_id(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    #[backend_test_macros::database_test]
+    async fn list_tasks_returns_empty_for_unknown_strategy_id(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let res = server
             .get("/api/tasks?strategy_id=00000000-0000-0000-0000-000000000000")
