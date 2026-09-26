@@ -13,8 +13,7 @@ mod short_selling;
 mod tests;
 mod valuation;
 
-use crate::database::DatabaseHandle;
-use chrono::{Duration, NaiveDate, TimeZone, Utc};
+use chrono::{NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 
@@ -35,11 +34,6 @@ const INITIAL_BACKOFF_MS: u64 = 500;
 /// API サーバーのバグで同じ pagination_key が返り続けた場合の安全策
 const MAX_PAGES: u32 = 100;
 
-/// 契約プラン未設定時のウィンドウ内最大リクエスト数 (J-Quants 無料プラン相当)。
-/// 上限を実際の契約より高く見積もると 429 のリトライでは済まない大幅な超過に
-/// つながるため、未設定時は最も低い Free プランの値に倒す。
-const RATE_LIMIT_MAX_REQUESTS: usize = 5;
-
 /// `/fins/summary` (財務情報) 固有のレート制限 (契約プランと別枠、公式ページ記載の値)。
 /// 大幅に超過すると 5 分程度アクセスが完全に遮断されるため、契約プラン上限より低い方を使う。
 const FIN_SUMMARY_RATE_LIMIT_PER_MINUTE: usize = 60;
@@ -58,35 +52,12 @@ const RATE_LIMIT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(
 /// 429 の cooldown 待ちを何回まで繰り返すか。これを超えてなお 429 が続く場合はエラーを返す。
 const MAX_RATE_LIMIT_RETRIES: u32 = 3;
 
-/// 400 エラーメッセージから検出した契約範囲。プラン変更や日々のローリング
-/// ウィンドウにより実際の範囲は動きうるため、`DETECTED_RANGE_TTL_DAYS` を
-/// 超えたら期限切れとして扱い、再検出を促す。
-struct DetectedRange {
-    from: NaiveDate,
-    to: NaiveDate,
-    detected_at: NaiveDate,
-}
-
-/// 検出済みの契約範囲を再検出なしで使い回せる期間 (日数)
-const DETECTED_RANGE_TTL_DAYS: i64 = 1;
-
-/// `detected` が `today` 時点でまだ有効かどうかを判定し、有効なら範囲を返す。
-/// TTL を超えていれば `None` を返し、呼び出し側に再検出を促す。
-fn effective_range(
-    detected: Option<&DetectedRange>,
-    today: NaiveDate,
-) -> Option<(NaiveDate, NaiveDate)> {
-    let d = detected?;
-    (today - d.detected_at < Duration::days(DETECTED_RANGE_TTL_DAYS)).then_some((d.from, d.to))
-}
-
 /// J-Quants API V2 クライアント
 ///
 /// API Key 認証方式で J-Quants API V2 にアクセスする。
 /// アプリケーションレベルのレートリミッターを内蔵する。5xx には指数バックオフで
 /// リトライし、429 を受けた場合は全呼び出しの送信を `RATE_LIMIT_COOLDOWN` の間止めて
-/// 待つ (cooldown)。レートリミッターの上限は契約プラン (`manual_plan`) に安全マージンを
-/// 適用して追従し、未設定時は Free プラン相当 (`RATE_LIMIT_MAX_REQUESTS`) をそのまま使う。
+/// 待つ (cooldown)。レートリミッターの上限は契約プランに安全マージンを適用する。
 ///
 /// Debug は意図的に derive しない (api_key の漏洩防止)
 pub struct JQuantsClient {
@@ -94,15 +65,11 @@ pub struct JQuantsClient {
     base_url: String,
     api_key: String,
     rate_limiter: RateLimiter,
-    detected_range: std::sync::Mutex<Option<DetectedRange>>,
-    db: Option<DatabaseHandle>,
-    /// 設定ページから手動設定された契約プラン。`None` の間は自動検出
-    /// (`detected_range`) を使う。
-    manual_plan: std::sync::Mutex<Option<JQuantsPlan>>,
+    plan: JQuantsPlan,
 }
 
 impl JQuantsClient {
-    pub fn new(api_key: String) -> Result<Self, DataProviderError> {
+    pub fn new(api_key: String, plan: JQuantsPlan) -> Result<Self, DataProviderError> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -113,15 +80,17 @@ impl JQuantsClient {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key,
             rate_limiter: RateLimiter::new(RATE_LIMIT_COOLDOWN),
-            detected_range: std::sync::Mutex::new(None),
-            db: None,
-            manual_plan: std::sync::Mutex::new(None),
+            plan,
         })
     }
 
     /// テスト用: ベース URL を差し替え可能にする
     #[cfg(test)]
-    pub fn with_base_url(base_url: &str, api_key: &str) -> Result<Self, DataProviderError> {
+    pub fn with_base_url(
+        base_url: &str,
+        api_key: &str,
+        plan: JQuantsPlan,
+    ) -> Result<Self, DataProviderError> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
@@ -133,48 +102,18 @@ impl JQuantsClient {
             api_key: api_key.to_string(),
             // 429 cooldown を短縮し、window 枠超過では待たずに失敗させる
             rate_limiter: RateLimiter::new_fail_fast(std::time::Duration::from_millis(50)),
-            detected_range: std::sync::Mutex::new(None),
-            db: None,
-            manual_plan: std::sync::Mutex::new(None),
+            plan,
         })
     }
 
-    /// 検出した契約範囲をプラン設定として永続化する DB を設定する。
-    /// 未設定の場合も範囲の検出と取得は行うが、プラン設定は保存しない。
-    pub fn with_db(mut self, db: impl Into<DatabaseHandle>) -> Self {
-        self.db = Some(db.into());
-        self
+    /// 契約プランで取得できる範囲を返す。
+    fn plan_date_range(&self, today: NaiveDate) -> DateRange {
+        let (from, to) = self.plan.range(today);
+        DateRange { from, to }
     }
 
-    /// 設定ページからの手動プラン設定を反映する。プロセス再起動なしで即座に
-    /// `known_fetchable_range()` の結果へ反映される。
-    pub fn set_manual_plan(&self, plan: Option<JQuantsPlan>) {
-        let mut guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
-        *guard = plan;
-    }
-
-    /// 契約プラン未設定の間は取り込みをスキップする判定に使う。
-    pub(crate) fn manual_plan(&self) -> Option<JQuantsPlan> {
-        let guard = self.manual_plan.lock().unwrap_or_else(|e| e.into_inner());
-        *guard
-    }
-
-    /// 手動設定された契約プランで取得できる範囲。自動検出した範囲は使わない。
-    fn manual_plan_date_range(&self, today: NaiveDate) -> Option<DateRange> {
-        let Some(plan) = self.manual_plan() else {
-            tracing::debug!("J-Quants 契約プランが未設定のため取得できません");
-            return None;
-        };
-        let (from, to) = plan.range(today);
-        Some(DateRange { from, to })
-    }
-
-    pub(crate) fn known_fetchable_date_range(&self, today: NaiveDate) -> Option<DateRange> {
-        if let Some(range) = self.manual_plan_date_range(today) {
-            return Some(range);
-        }
-        let (from, to) = self.detected_range_on(today)?;
-        Some(DateRange { from, to })
+    pub(crate) fn known_fetchable_date_range(&self, today: NaiveDate) -> DateRange {
+        self.plan_date_range(today)
     }
 
     /// Standard 以上で利用できるデータの取得範囲を返す。
@@ -183,10 +122,8 @@ impl JQuantsClient {
         today: NaiveDate,
         data_name: &str,
     ) -> Option<DateRange> {
-        match self.manual_plan() {
-            Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
-                self.manual_plan_date_range(today)
-            }
+        match self.plan {
+            JQuantsPlan::Standard | JQuantsPlan::Premium => Some(self.plan_date_range(today)),
             plan => {
                 tracing::debug!(
                     ?plan,
@@ -200,40 +137,9 @@ impl JQuantsClient {
 
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
     ///
-    /// 契約プランが設定されていれば、その公称値に `RATE_LIMIT_SAFETY_FACTOR` による
-    /// 安全マージンを適用した値を返す。未設定 (プラン検出前のブートストラップ期間) なら
-    /// `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) をそのまま返す。
+    /// 契約プランの公称値に `RATE_LIMIT_SAFETY_FACTOR` による安全マージンを適用した値を返す。
     fn current_rate_limit(&self) -> usize {
-        match self.manual_plan() {
-            Some(plan) => apply_safety_margin(plan.rate_limit_per_minute()),
-            None => RATE_LIMIT_MAX_REQUESTS,
-        }
-    }
-
-    fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
-        self.detected_range_on(Utc::now().date_naive())
-    }
-
-    fn detected_range_on(&self, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
-        let guard = self
-            .detected_range
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        effective_range(guard.as_ref(), today)
-    }
-
-    /// crate 内テスト (`services::edinet_holdings` 等) から 400 検出フローを経由せず
-    /// 狭い範囲を直接設定できるように、crate 内に可視性を広げている。
-    pub(crate) fn set_detected_range(&self, range: (NaiveDate, NaiveDate)) {
-        let mut guard = self
-            .detected_range
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        *guard = Some(DetectedRange {
-            from: range.0,
-            to: range.1,
-            detected_at: Utc::now().date_naive(),
-        });
+        apply_safety_margin(self.plan.rate_limit_per_minute())
     }
 
     /// 指数バックオフ付き GET リクエスト

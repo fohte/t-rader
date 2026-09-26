@@ -14,7 +14,6 @@ pub mod graph;
 pub mod import;
 pub mod investable_amount;
 pub mod jquants_daily_ingest;
-pub mod jquants_plan_setting;
 pub mod litellm_client;
 pub mod margin_ingest;
 pub mod market_price;

@@ -110,20 +110,18 @@ mod tests {
     }
 
     #[rstest::rstest]
-    #[case::unset(None, None)]
-    #[case::free(Some(JQuantsPlan::Free), None)]
-    #[case::light(Some(JQuantsPlan::Light), None)]
-    #[case::standard(Some(JQuantsPlan::Standard), Some(JQuantsPlan::Standard))]
-    #[case::premium(Some(JQuantsPlan::Premium), Some(JQuantsPlan::Premium))]
+    #[case::free(JQuantsPlan::Free, false)]
+    #[case::light(JQuantsPlan::Light, false)]
+    #[case::standard(JQuantsPlan::Standard, true)]
+    #[case::premium(JQuantsPlan::Premium, true)]
     fn fetchable_range_requires_standard_or_higher(
-        #[case] plan: Option<JQuantsPlan>,
-        #[case] fetchable_plan: Option<JQuantsPlan>,
+        #[case] plan: JQuantsPlan,
+        #[case] is_fetchable: bool,
     ) {
-        let client =
-            JQuantsClient::with_base_url("http://localhost:1", "test-api-key").expect("client");
+        let client = JQuantsClient::with_base_url("http://localhost:1", "test-api-key", plan)
+            .expect("client");
         let today = date(2099, 1, 5);
-        client.set_manual_plan(plan);
-        let expected = fetchable_plan.map(|plan| {
+        let expected = is_fetchable.then(|| {
             let (from, to) = plan.range(today);
             DateRange { from, to }
         });

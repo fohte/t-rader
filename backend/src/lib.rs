@@ -42,9 +42,9 @@ use crate::database::DatabaseHandle;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
-    custom_indicators, history, hooks, imports, jquants_plan_setting, note_kinds, note_links,
-    note_predictions, note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks,
-    trade_notes, trades, triggers,
+    custom_indicators, history, hooks, imports, note_kinds, note_links, note_predictions,
+    note_versions, notes, refs, risk_policy, rss_feeds, strategies, tasks, trade_notes, trades,
+    triggers,
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
@@ -117,7 +117,6 @@ impl AppState {
         (name = "agent_options", description = "戦略 Agent 設定フォームの選択肢 (モデル一覧・tool 一覧)"),
         (name = "config", description = "frontend 向けランタイム設定値"),
         (name = "account", description = "口座全体の設定"),
-        (name = "jquants", description = "J-Quants API の契約プラン設定"),
     ),
     info(
         title = "T-Rader API",
@@ -140,7 +139,11 @@ mod app_state_tests {
 
     #[rstest]
     fn test_daily_bar_source_returns_source_when_set() {
-        let client = crate::data_provider::jquants::JQuantsClient::new("test-key".into()).unwrap();
+        let client = crate::data_provider::jquants::JQuantsClient::new(
+            "test-key".into(),
+            crate::models::JQuantsPlan::Standard,
+        )
+        .unwrap();
         let daily_bar_source: SharedDailyBarSource = Arc::new(client);
         let state = AppState {
             db: mock_db().into(),
@@ -341,11 +344,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(
             risk_policy::get_account_risk_policy,
             risk_policy::put_account_risk_policy
-        ))
-        // jquants (J-Quants API の契約プラン設定)
-        .routes(routes!(
-            jquants_plan_setting::get_jquants_plan_setting,
-            jquants_plan_setting::put_jquants_plan_setting
         ))
 }
 

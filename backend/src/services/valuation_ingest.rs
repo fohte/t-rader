@@ -216,6 +216,7 @@ mod tests {
 
     use super::*;
     use crate::data_provider::jquants::mock::JQuantsMockServer;
+    use crate::models::jquants_plan::JQuantsPlan;
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_application::{DateRange, ValuationSource, ValuationSourceError};
@@ -270,7 +271,7 @@ mod tests {
     async fn skips_when_source_has_no_fetchable_range() {
         let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
+        let client = mock.client_with_plan(JQuantsPlan::Free).expect("client");
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
         let requests = mock

@@ -9,7 +9,6 @@ pub mod custom_indicators;
 pub mod history;
 pub mod hooks;
 pub mod imports;
-pub mod jquants_plan_setting;
 pub mod note_kinds;
 pub mod note_links;
 pub mod note_predictions;

@@ -125,8 +125,7 @@ mod tests {
     ) {
         let mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&mock, SHORT_SALE_REPORT_START_DATE, 0.05).await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Premium));
+        let client = mock.client_with_plan(JQuantsPlan::Premium).expect("client");
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
@@ -152,8 +151,7 @@ mod tests {
             latest - chrono::Duration::days(jquants_daily_ingest::CATCH_UP_LOOKBACK_DAYS);
         let mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&mock, expected_from, 0.06).await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Premium));
+        let client = mock.client_with_plan(JQuantsPlan::Premium).expect("client");
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
@@ -193,8 +191,7 @@ mod tests {
 
         let mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&mock, SHORT_SALE_REPORT_START_DATE, 0.07).await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Premium));
+        let client = mock.client_with_plan(JQuantsPlan::Premium).expect("client");
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
@@ -216,8 +213,9 @@ mod tests {
             .max(SHORT_SALE_REPORT_START_DATE);
         let mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&mock, floor, 0.05).await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
@@ -231,19 +229,14 @@ mod tests {
     }
 
     #[rstest]
-    #[case::unset(None)]
-    #[case::free(Some(JQuantsPlan::Free))]
-    #[case::light(Some(JQuantsPlan::Light))]
+    #[case::free(JQuantsPlan::Free)]
+    #[case::light(JQuantsPlan::Light)]
     #[tokio::test]
-    async fn skips_fetching_when_plan_is_not_standard_or_above(#[case] plan: Option<JQuantsPlan>) {
-        // DB へのクエリが実際に発行されたら (ガードが機能していなければ) 未設定の
-        // クエリ結果を求めてエラーになる想定で、DB に触れないことを間接的に検証する
+    async fn skips_fetching_when_plan_is_not_standard_or_above(#[case] plan: JQuantsPlan) {
+        // DB モックにはクエリ結果を登録していないため、取得対象外なら DB に触れないことを検証する
         let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        if let Some(plan) = plan {
-            client.set_manual_plan(Some(plan));
-        }
+        let client = mock.client_with_plan(plan).expect("client");
 
         let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
 
@@ -256,8 +249,9 @@ mod tests {
 
         let first_mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&first_mock, target_date, 0.05).await;
-        let first_client = first_mock.client().expect("client");
-        first_client.set_manual_plan(Some(JQuantsPlan::Premium));
+        let first_client = first_mock
+            .client_with_plan(JQuantsPlan::Premium)
+            .expect("client");
         run_ingest_cycle(&db, &first_client)
             .await
             .expect("first cycle ok");
@@ -265,8 +259,9 @@ mod tests {
         // 同じ disc_date への 2 回目の取得。訂正 (割合の変化) を模す
         let second_mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&second_mock, target_date, 0.09).await;
-        let second_client = second_mock.client().expect("client");
-        second_client.set_manual_plan(Some(JQuantsPlan::Premium));
+        let second_client = second_mock
+            .client_with_plan(JQuantsPlan::Premium)
+            .expect("client");
         run_ingest_cycle(&db, &second_client)
             .await
             .expect("second cycle ok");

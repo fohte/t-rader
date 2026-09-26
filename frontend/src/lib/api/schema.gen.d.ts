@@ -513,28 +513,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  '/api/jquants/plan-setting': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** J-Quants の契約プラン設定を取得。未設定なら null (自動検出) を返す */
-    get: operations['get_jquants_plan_setting']
-    /**
-     * J-Quants の契約プラン設定を更新 (upsert)。`null` で自動検出に戻す。
-     *     保存後、稼働中の `JQuantsClient` があれば即座にインメモリ側も更新する
-     *     (プロセス再起動なしで反映するため)。
-     */
-    put: operations['put_jquants_plan_setting']
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   '/api/note-kinds': {
     parameters: {
       query?: never
@@ -1615,24 +1593,6 @@ export interface components {
       /** Format: date-time */
       effective_at?: string | null
     }
-    JQuantsFetchableRange: {
-      /** Format: date */
-      from: string
-      /** Format: date */
-      to: string
-    }
-    /**
-     * @description J-Quants の契約プラン
-     *
-     *     各プランの配信遅延・提供期間は公式ドキュメント
-     *     (<https://jpx.gitbook.io/j-quants-ja/outline/data-spec>) のデータ提供期間に基づく。
-     * @enum {string}
-     */
-    JQuantsPlan: 'free' | 'light' | 'standard' | 'premium'
-    JQuantsPlanSettingResponse: {
-      effective_range?: null | components['schemas']['JQuantsFetchableRange']
-      plan?: null | components['schemas']['JQuantsPlan']
-    }
     /** @enum {string} */
     Layout: 'flow' | 'tree' | 'chain' | 'scatter'
     Note: {
@@ -1812,9 +1772,6 @@ export interface components {
        * @description 省略時はサーバー側で現在時刻を使う
        */
       effective_at?: string | null
-    }
-    PutJQuantsPlanSettingRequest: {
-      plan?: null | components['schemas']['JQuantsPlan']
     }
     /** @description `[[kind:id]]` のリンクテキストを解決した結果 */
     RefResolution: {
@@ -4226,89 +4183,6 @@ export interface operations {
         }
       }
       404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  get_jquants_plan_setting: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['JQuantsPlanSettingResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  put_jquants_plan_setting: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PutJQuantsPlanSettingRequest']
-      }
-    }
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['JQuantsPlanSettingResponse']
-        }
-      }
-      400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      /** @description Content-Type ヘッダが application/json ではない */
-      415: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      422: {
         headers: {
           [name: string]: unknown
         }

@@ -21,9 +21,8 @@ impl FinancialSummarySource for JQuantsClient {
             .map_err(Into::into)
     }
 
-    /// 契約プランが手動設定されている間だけ取得できる。
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        self.manual_plan_date_range(today)
+        Some(self.plan_date_range(today))
     }
 }
 

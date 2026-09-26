@@ -21,9 +21,8 @@ impl EarningsScheduleSource for JQuantsClient {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// 手動設定された契約プランがある場合のみ取得できる。未設定時の 5 req/分制限では日ごとのバックフィルに時間がかかるため対象外とする。
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        self.manual_plan_date_range(today)
+        Some(self.plan_date_range(today))
     }
 }
 

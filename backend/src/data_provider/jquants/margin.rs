@@ -25,9 +25,8 @@ impl MarginSource for JQuantsClient {
         Ok(JQuantsClient::fetch_margin_alert(self, date).await?)
     }
 
-    /// 契約プランが手動設定されている間だけ取得できる (未設定時のレート制限は 5 req/min のため)。
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        self.manual_plan_date_range(today)
+        Some(self.plan_date_range(today))
     }
 }
 

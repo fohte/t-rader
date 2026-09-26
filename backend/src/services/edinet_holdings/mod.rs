@@ -224,6 +224,7 @@ mod tests {
         cross_shareholding_documents, large_volume_shareholding_documents,
         major_shareholder_documents,
     };
+    use crate::models::jquants_plan::JQuantsPlan;
     use core_domain::holdings::{
         CrossShareholding, CrossShareholdingCategory, CrossShareholdingContent,
         CrossShareholdingDocument, LargeVolumeReportType, LargeVolumeShareholdingContent,
@@ -272,6 +273,41 @@ mod tests {
         }
     }
 
+    fn plan_refetch_window(plan: JQuantsPlan) -> (NaiveDate, NaiveDate) {
+        let (_, to) = plan.range(Utc::now().date_naive());
+        (to - ChronoDuration::days(REFETCH_WINDOW_DAYS), to)
+    }
+
+    async fn seed_latest_large_volume_document(
+        db: &impl sea_orm::ConnectionTrait,
+        document_id: &str,
+        submitted_on: NaiveDate,
+    ) {
+        large_volume_shareholdings::Endpoint::upsert(
+            db,
+            vec![stored_document(document_id, "99990", submitted_on)],
+        )
+        .await
+        .expect("seed document");
+    }
+
+    async fn mock_large_volume_range(
+        mock: &JQuantsMockServer,
+        from: NaiveDate,
+        to: NaiveDate,
+        mut documents_for: impl FnMut(NaiveDate) -> Vec<serde_json::Value>,
+    ) {
+        let mut date = from;
+        while date <= to {
+            mock.edinet_documents("/edinet/large-volume-shareholders")
+                .date(&date.format("%Y%m%d").to_string())
+                .docs(documents_for(date))
+                .ok()
+                .await;
+            date += ChronoDuration::days(1);
+        }
+    }
+
     fn stable_timestamp() -> DateTime<chrono::FixedOffset> {
         DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
     }
@@ -310,26 +346,25 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fetches_from_available_from_when_table_is_empty(db: crate::database::DatabaseHandle) {
+    async fn fetches_within_the_configured_plan_range(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let to = from + ChronoDuration::days(2);
-
-        for offset in 0..=2 {
-            let date = from + ChronoDuration::days(offset);
-            mock.edinet_documents("/edinet/large-volume-shareholders")
-                .date(&date.format("%Y%m%d").to_string())
-                .docs(vec![document(
-                    &format!("SAMPLE-DOC-{offset}"),
-                    "99990",
-                    date,
-                )])
-                .ok()
-                .await;
-        }
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC-0", to).await;
+        mock_large_volume_range(&mock, from, to, |date| {
+            if date == from {
+                vec![document("SAMPLE-DOC-0", "99990", date)]
+            } else if date == from + ChronoDuration::days(1) {
+                vec![document("SAMPLE-DOC-1", "99990", date)]
+            } else if date == from + ChronoDuration::days(2) {
+                vec![document("SAMPLE-DOC-2", "99990", date)]
+            } else {
+                vec![]
+            }
+        })
+        .await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
@@ -345,7 +380,7 @@ mod tests {
             (stats, rows),
             (
                 IngestStats {
-                    days_processed: 3,
+                    days_processed: REFETCH_WINDOW_DAYS as usize + 1,
                     documents_saved: 3,
                     failed_dates: 0,
                 },
@@ -403,30 +438,16 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn refetches_from_latest_submitted_on_minus_window(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let latest = from + ChronoDuration::days(60);
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        let (_, range_to) = JQuantsPlan::Standard.range(Utc::now().date_naive());
+        let latest = range_to - ChronoDuration::days(2);
         let expected_start = latest - ChronoDuration::days(REFETCH_WINDOW_DAYS);
-        let to = expected_start + ChronoDuration::days(1);
+        let to = range_to;
 
-        large_volume_shareholdings::Endpoint::upsert(
-            &db,
-            vec![stored_document("SAMPLE-DOC", "99990", latest)],
-        )
-        .await
-        .expect("seed document");
-
-        let mut date = expected_start;
-        while date <= to {
-            mock.edinet_documents("/edinet/large-volume-shareholders")
-                .date(&date.format("%Y%m%d").to_string())
-                .docs(vec![])
-                .ok()
-                .await;
-            date += ChronoDuration::days(1);
-        }
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC", latest).await;
+        mock_large_volume_range(&mock, expected_start, to, |_| vec![]).await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
@@ -439,20 +460,6 @@ mod tests {
                 documents_saved: 0,
                 failed_dates: 0,
             }
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn skips_when_fetchable_range_is_unknown(db: crate::database::DatabaseHandle) {
-        let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
-            .await
-            .expect("cycle succeeds");
-
-        assert_eq!(
-            (stats, find_all(&db).await),
-            (IngestStats::default(), vec![])
         );
     }
 
@@ -644,8 +651,11 @@ mod tests {
         db: crate::database::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let to = from + ChronoDuration::days(1);
+        let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC", to).await;
 
         Mock::given(method("GET"))
             .and(path("/edinet/large-volume-shareholders"))
@@ -656,19 +666,14 @@ mod tests {
             .up_to_n_times(1)
             .mount(mock.server_ref())
             .await;
-        mock.edinet_documents("/edinet/large-volume-shareholders")
-            .date(&from.format("%Y%m%d").to_string())
-            .docs(vec![document("SAMPLE-DOC", "99990", from)])
-            .ok()
-            .await;
-        mock.edinet_documents("/edinet/large-volume-shareholders")
-            .date(&to.format("%Y%m%d").to_string())
-            .docs(vec![])
-            .ok()
-            .await;
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        mock_large_volume_range(&mock, from, to, |date| {
+            if date == from {
+                vec![document("SAMPLE-DOC", "99990", date)]
+            } else {
+                vec![]
+            }
+        })
+        .await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
@@ -682,7 +687,7 @@ mod tests {
             (stats, rows),
             (
                 IngestStats {
-                    days_processed: 2,
+                    days_processed: REFETCH_WINDOW_DAYS as usize + 1,
                     documents_saved: 1,
                     failed_dates: 0,
                 },
@@ -708,8 +713,11 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn counts_a_date_when_its_retry_fails(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let to = from + ChronoDuration::days(1);
+        let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC", to).await;
 
         Mock::given(method("GET"))
             .and(path("/edinet/large-volume-shareholders"))
@@ -719,27 +727,39 @@ mod tests {
             )
             .mount(mock.server_ref())
             .await;
-        mock.edinet_documents("/edinet/large-volume-shareholders")
-            .date(&to.format("%Y%m%d").to_string())
-            .docs(vec![])
-            .ok()
-            .await;
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        mock_large_volume_range(&mock, from + ChronoDuration::days(1), to, |_| vec![]).await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
 
+        let rows = find_all(&db)
+            .await
+            .into_iter()
+            .map(normalize_large_volume_timestamps)
+            .collect::<Vec<_>>();
         assert_eq!(
-            (stats, find_all(&db).await),
+            (stats, rows),
             (
                 IngestStats {
-                    days_processed: 2,
+                    days_processed: REFETCH_WINDOW_DAYS as usize + 1,
                     documents_saved: 0,
                     failed_dates: 1,
                 },
-                vec![],
+                vec![large_volume_shareholding_documents::Model {
+                    document_id: "SAMPLE-DOC".to_string(),
+                    stock_code: Some("99990".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on: to,
+                    details: json!({
+                        "report_type": "unknown",
+                        "change_reason": null,
+                        "total_shares_ratio": null,
+                        "previous_total_shares_ratio": null,
+                        "holders": [],
+                    }),
+                    created_at: stable_timestamp(),
+                    updated_at: stable_timestamp(),
+                }],
             )
         );
     }

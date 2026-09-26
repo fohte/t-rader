@@ -6,7 +6,7 @@ use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
 use crate::data_provider::jquants::mock::{JQuantsMockServer, MockBar};
-use crate::data_provider::{DataProviderError, DateRange};
+use crate::data_provider::{DailyBarSource, DailyBarSourceError, DataProviderError, DateRange};
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap_or_default()
@@ -42,7 +42,7 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[tokio::test]
-    async fn test_parses_single_bar() -> Result<(), DataProviderError> {
+    async fn test_parses_single_bar() -> Result<(), DailyBarSourceError> {
         let mock = JQuantsMockServer::start().await;
         // API クエリには引数の instrument_id (4 桁) を送り、
         // レスポンスの Code は 5 桁で返る
@@ -53,9 +53,7 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client
-            .fetch_daily_bars_with_range_detection("8697", &default_range())
-            .await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 1);
         // レスポンスの Code (5 桁 "86970") ではなく引数の instrument_id (4 桁 "8697") が使われること
@@ -90,7 +88,7 @@ mod fetch_daily_bars {
     #[tokio::test]
     async fn test_skips_bars_with_null_prices(
         #[case] null_bar: MockBar,
-    ) -> Result<(), DataProviderError> {
+    ) -> Result<(), DailyBarSourceError> {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars()
             .code("8697")
@@ -99,9 +97,7 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client
-            .fetch_daily_bars_with_range_detection("8697", &default_range())
-            .await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 1);
         assert_eq!(bars[0].close, dec(105.0));
@@ -110,14 +106,12 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[tokio::test]
-    async fn test_returns_empty_vec_when_no_data() -> Result<(), DataProviderError> {
+    async fn test_returns_empty_vec_when_no_data() -> Result<(), DailyBarSourceError> {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars().code("8697").bars(vec![]).ok().await;
 
         let client = mock.client()?;
-        let bars = client
-            .fetch_daily_bars_with_range_detection("8697", &default_range())
-            .await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert!(bars.is_empty());
         Ok(())
@@ -125,7 +119,7 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[tokio::test]
-    async fn test_bars_sorted_by_timestamp() -> Result<(), DataProviderError> {
+    async fn test_bars_sorted_by_timestamp() -> Result<(), DailyBarSourceError> {
         let mock = JQuantsMockServer::start().await;
         mock.daily_bars()
             .code("8697")
@@ -138,9 +132,7 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client
-            .fetch_daily_bars_with_range_detection("8697", &default_range())
-            .await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 3);
         for pair in bars.windows(2) {
@@ -151,7 +143,7 @@ mod fetch_daily_bars {
 
     #[rstest]
     #[tokio::test]
-    async fn test_pagination_fetches_all_pages() -> Result<(), DataProviderError> {
+    async fn test_pagination_fetches_all_pages() -> Result<(), DailyBarSourceError> {
         let mock = JQuantsMockServer::start().await;
 
         // 1 ページ目: pagination_key を含むレスポンス (1 回のみマッチ)
@@ -172,13 +164,35 @@ mod fetch_daily_bars {
             .await;
 
         let client = mock.client()?;
-        let bars = client
-            .fetch_daily_bars_with_range_detection("8697", &default_range())
-            .await?;
+        let bars = client.fetch_daily_bars("8697", &default_range()).await?;
 
         assert_eq!(bars.len(), 2);
         assert_eq!(bars[0].close, dec(100.0));
         assert_eq!(bars[1].close, dec(102.0));
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_returns_bad_request_as_source_error() -> Result<(), DailyBarSourceError> {
+        let mock = JQuantsMockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/equities/bars/daily"))
+            .and(query_param("code", "8697"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "message": "Bad Request",
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        let client = mock.client()?;
+
+        assert_eq!(
+            client.fetch_daily_bars("8697", &default_range()).await,
+            Err(DailyBarSourceError::Failed(
+                "api error (status 400): Bad Request".to_string(),
+            )),
+        );
         Ok(())
     }
 }
@@ -468,7 +482,7 @@ mod fetch_instrument {
 
 mod error_handling {
     use super::*;
-    use crate::data_provider::jquants::RATE_LIMIT_MAX_REQUESTS;
+    use crate::models::JQuantsPlan;
 
     #[rstest]
     #[tokio::test]
@@ -542,8 +556,9 @@ mod error_handling {
         let mock = JQuantsMockServer::start().await;
         mock.instrument().code("00001").ok().await;
 
-        let client = mock.client().expect("client");
-        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+        let client = mock.client_with_plan(JQuantsPlan::Free).expect("client");
+        let max_requests = client.current_rate_limit();
+        for _ in 0..max_requests {
             client
                 .fetch_instrument("00001")
                 .await
@@ -559,9 +574,7 @@ mod error_handling {
 
         assert_eq!(
             result.map(|_| ()),
-            Err(DataProviderError::RateLimitWindowFull {
-                max_requests: RATE_LIMIT_MAX_REQUESTS,
-            }),
+            Err(DataProviderError::RateLimitWindowFull { max_requests }),
         );
     }
 }
@@ -611,8 +624,7 @@ mod fetch_fin_summary_by_date {
         #[case] plan: JQuantsPlan,
         #[case] expected: usize,
     ) {
-        let client = JQuantsClient::new("test-api-key".to_string()).expect("client");
-        client.set_manual_plan(Some(plan));
+        let client = JQuantsClient::new("test-api-key".to_string(), plan).expect("client");
 
         let capped = client
             .current_rate_limit()
@@ -625,10 +637,12 @@ mod fetch_fin_summary_by_date {
 // === レートリミッター ===
 
 mod rate_limiter {
+    use super::super::RATE_LIMIT_COOLDOWN;
     use super::super::rate_limiter::{RATE_LIMIT_WINDOW, RateLimiter};
-    use super::super::{RATE_LIMIT_COOLDOWN, RATE_LIMIT_MAX_REQUESTS};
     use crate::data_provider::DataProviderError;
     use rstest::rstest;
+
+    const TEST_LIMIT: usize = 3;
 
     async fn fill_window(limiter: &RateLimiter, limit: usize) {
         for _ in 0..limit {
@@ -640,8 +654,8 @@ mod rate_limiter {
     }
 
     #[rstest]
-    #[case::default_limit(RATE_LIMIT_MAX_REQUESTS)]
-    #[case::higher_limit(RATE_LIMIT_MAX_REQUESTS * 2)]
+    #[case::base_limit(TEST_LIMIT)]
+    #[case::higher_limit(TEST_LIMIT * 2)]
     #[tokio::test]
     async fn test_allows_requests_within_limit(#[case] limit: usize) {
         let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
@@ -656,17 +670,17 @@ mod rate_limiter {
         let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
 
         // 上限まで消費
-        fill_window(&limiter, RATE_LIMIT_MAX_REQUESTS).await;
+        fill_window(&limiter, TEST_LIMIT).await;
 
         // 次の acquire は待機するはず
-        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
+        let acquire_future = limiter.acquire(TEST_LIMIT);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert!(result.is_err(), "上限超過時に acquire がブロックされるべき");
 
         // ウィンドウを経過させると通過する
         tokio::time::advance(RATE_LIMIT_WINDOW).await;
-        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
+        let acquire_future = limiter.acquire(TEST_LIMIT);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert_eq!(result.expect("window should expire"), Ok(()),);
@@ -679,7 +693,7 @@ mod rate_limiter {
 
         // ウィンドウの空きがあっても、cooldown 中は acquire がブロックされる
         limiter.note_rate_limited().await;
-        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
+        let acquire_future = limiter.acquire(TEST_LIMIT);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert!(
@@ -689,7 +703,7 @@ mod rate_limiter {
 
         // cooldown を経過させると通過する
         tokio::time::advance(RATE_LIMIT_COOLDOWN).await;
-        let acquire_future = limiter.acquire(RATE_LIMIT_MAX_REQUESTS);
+        let acquire_future = limiter.acquire(TEST_LIMIT);
         let result =
             tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
         assert_eq!(result.expect("cooldown should expire"), Ok(()),);
@@ -700,358 +714,44 @@ mod rate_limiter {
     async fn test_fails_immediately_when_limit_exceeded_with_fail_fast_behavior() {
         let limiter = RateLimiter::new_fail_fast(RATE_LIMIT_COOLDOWN);
 
-        fill_window(&limiter, RATE_LIMIT_MAX_REQUESTS).await;
+        fill_window(&limiter, TEST_LIMIT).await;
 
         assert_eq!(
-            limiter.acquire(RATE_LIMIT_MAX_REQUESTS).await,
+            limiter.acquire(TEST_LIMIT).await,
             Err(DataProviderError::RateLimitWindowFull {
-                max_requests: RATE_LIMIT_MAX_REQUESTS,
+                max_requests: TEST_LIMIT,
             }),
         );
     }
 }
 
-// === 契約範囲の自己検出 (400 エラーメッセージからの検出) ===
-
-mod subscription_range_detection {
-    use super::*;
-
-    use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
-    use crate::services::jquants_plan_setting;
-    use chrono::Duration;
-    #[rstest]
-    #[tokio::test]
-    async fn test_detects_range_from_400_and_retries_successfully() -> Result<(), DataProviderError>
-    {
-        let mock = JQuantsMockServer::start().await;
-
-        // 検出後の再取得リクエスト。先に mount することで、from/to が一致するリクエストは
-        // こちらが優先される (wiremock は同一 priority ならマウント順を優先する)
-        Mock::given(method("GET"))
-            .and(path("/equities/bars/daily"))
-            .and(query_param("code", "0000"))
-            .and(query_param("from", "20200401"))
-            .and(query_param("to", "20220401"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "data": [{
-                    "Date": "2025-01-06",
-                    "Code": "00000",
-                    "AdjO": 100.0,
-                    "AdjH": 110.0,
-                    "AdjL": 95.0,
-                    "AdjC": 105.0,
-                    "AdjVo": 1000.0,
-                }],
-                "pagination_key": null,
-            })))
-            .mount(mock.server_ref())
-            .await;
-
-        // 契約範囲外を指定した初回リクエストへの応答。このメッセージから契約範囲を検出する
-        mock.error()
-            .subscription_range("/equities/bars/daily", "2020-04-01", "2022-04-01")
-            .await;
-
-        let client = mock.client()?;
-        let bars = client
-            .fetch_daily_bars_with_range_detection("0000", &default_range())
-            .await?;
-
-        assert_eq!(bars.len(), 1);
-        assert_eq!(bars[0].close, dec(105.0));
-        assert_eq!(
-            client.known_fetchable_range(),
-            Some((date(2020, 4, 1), date(2022, 4, 1)))
-        );
-        Ok(())
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn test_unparsable_400_message_is_returned_as_is() -> Result<(), DataProviderError> {
-        let mock = JQuantsMockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/equities/bars/daily"))
-            .and(query_param("code", "8697"))
-            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
-                "message": "Bad Request",
-            })))
-            .mount(mock.server_ref())
-            .await;
-
-        let client = mock.client()?;
-        let result = client
-            .fetch_daily_bars_with_range_detection("8697", &default_range())
-            .await;
-
-        assert!(matches!(
-            result,
-            Err(DataProviderError::Api { status: 400, .. })
-        ));
-        assert_eq!(client.known_fetchable_range(), None);
-        Ok(())
-    }
-
-    #[backend_test_macros::database_test]
-    async fn persists_inferred_plan_after_fetching_detected_range(
-        db: crate::database::DatabaseHandle,
-    ) {
-        let mock = JQuantsMockServer::start().await;
-        let from = date(2010, 1, 1);
-        let to = from + Duration::days(3650);
-
-        Mock::given(method("GET"))
-            .and(path("/equities/bars/daily"))
-            .and(query_param("code", "0000"))
-            .and(query_param("from", from.format("%Y%m%d").to_string()))
-            .and(query_param("to", to.format("%Y%m%d").to_string()))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "data": [{
-                    "Date": "2010-01-02",
-                    "Code": "00000",
-                    "AdjO": 100.0,
-                    "AdjH": 110.0,
-                    "AdjL": 95.0,
-                    "AdjC": 105.0,
-                    "AdjVo": 1000.0,
-                }],
-                "pagination_key": null,
-            })))
-            .mount(mock.server_ref())
-            .await;
-
-        mock.error()
-            .subscription_range(
-                "/equities/bars/daily",
-                &from.format("%Y-%m-%d").to_string(),
-                &to.format("%Y-%m-%d").to_string(),
-            )
-            .await;
-
-        let client = mock.client().expect("client").with_db(db.clone());
-        let bars = client
-            .fetch_daily_bars_with_range_detection("0000", &default_range())
-            .await
-            .expect("fetch daily bars");
-        let saved = jquants_plan_setting::find_current(&db)
-            .await
-            .expect("query")
-            .expect("row exists");
-        let data = parse_plan_setting::<JQuantsPlanSettingData>(saved.plan_setting).expect("parse");
-        assert_eq!(
-            (bars.len(), client.manual_plan(), data.plan),
-            (1, Some(JQuantsPlan::Standard), Some(JQuantsPlan::Standard)),
-        );
-    }
-}
-
-// === 手動設定プラン (`set_manual_plan`) の優先順位 ===
-
-mod manual_plan_priority {
-    use rstest::{fixture, rstest};
-
+mod configured_plan {
+    use super::super::JQuantsClient;
+    use super::date;
+    use crate::data_provider::DateRange;
     use crate::models::jquants_plan::JQuantsPlan;
-
-    use super::super::JQuantsClient;
-    use super::date;
-
-    #[fixture]
-    fn client() -> JQuantsClient {
-        JQuantsClient::with_base_url("http://localhost", "key").expect("client")
-    }
-
-    #[rstest]
-    fn falls_back_to_detected_range_when_manual_plan_is_unset(client: JQuantsClient) {
-        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
-
-        assert_eq!(
-            client.known_fetchable_range(),
-            Some((date(2020, 4, 1), date(2022, 4, 1)))
-        );
-    }
-
-    #[rstest]
-    fn manual_plan_overrides_already_detected_range(client: JQuantsClient) {
-        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
-
-        let today = chrono::Utc::now().date_naive();
-        assert_eq!(
-            client.known_fetchable_range(),
-            Some(JQuantsPlan::Standard.range(today))
-        );
-    }
-
-    #[rstest]
-    fn clearing_manual_plan_restores_detected_range(client: JQuantsClient) {
-        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
-        client.set_manual_plan(None);
-
-        assert_eq!(
-            client.known_fetchable_range(),
-            Some((date(2020, 4, 1), date(2022, 4, 1)))
-        );
-    }
-
-    /// プラン未検出のブートストラップ期間は安全マージンを適用せず
-    /// `RATE_LIMIT_MAX_REQUESTS` (Free プラン相当) をそのまま返すこと
-    #[rstest]
-    fn current_rate_limit_falls_back_to_free_plan_when_manual_plan_is_unset(client: JQuantsClient) {
-        assert_eq!(
-            client.current_rate_limit(),
-            JQuantsPlan::Free.rate_limit_per_minute()
-        );
-    }
-
-    /// 安全マージン (半分) 適用後の値になること (Standard: 120 → 60)
-    #[rstest]
-    fn current_rate_limit_follows_manual_plan(client: JQuantsClient) {
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
-
-        assert_eq!(client.current_rate_limit(), 60);
-    }
-}
-
-// === 検出範囲からの初回プラン推定・永続化 (`persist_inferred_range_if_needed`) ===
-
-mod persist_inferred_range_if_needed {
-    use super::super::JQuantsClient;
-    use super::date;
-    use crate::models::{JQuantsPlan, JQuantsPlanSettingData, parse_plan_setting};
-    use crate::services::jquants_plan_setting;
-    use chrono::Duration;
-
-    fn test_client() -> JQuantsClient {
-        JQuantsClient::with_base_url("http://localhost", "key").expect("client")
-    }
-
-    #[backend_test_macros::database_test]
-    async fn does_nothing_when_manual_plan_already_set(db: crate::database::DatabaseHandle) {
-        let client = test_client().with_db(db.clone());
-        client.set_detected_range((date(2020, 4, 1), date(2022, 4, 1)));
-        client.set_manual_plan(Some(JQuantsPlan::Premium));
-
-        client
-            .persist_inferred_range_if_needed()
-            .await
-            .expect("persist");
-
-        let current = jquants_plan_setting::find_current(&db)
-            .await
-            .expect("query");
-        assert_eq!(current, None, "手動設定がある間は DB に書き込まない");
-        assert_eq!(client.manual_plan(), Some(JQuantsPlan::Premium));
-    }
-
-    #[backend_test_macros::database_test]
-    async fn does_nothing_when_no_range_detected(db: crate::database::DatabaseHandle) {
-        let client = test_client().with_db(db.clone());
-
-        client
-            .persist_inferred_range_if_needed()
-            .await
-            .expect("persist");
-
-        let current = jquants_plan_setting::find_current(&db)
-            .await
-            .expect("query");
-        assert_eq!(current, None);
-        assert_eq!(client.manual_plan(), None);
-    }
-
-    #[backend_test_macros::database_test]
-    async fn infers_and_persists_plan_from_detected_range_once(
-        db: crate::database::DatabaseHandle,
-    ) {
-        let client = test_client().with_db(db.clone());
-        // Standard の提供期間 (3650 日) ちょうどの範囲を検出させる
-        let from = date(2010, 1, 1);
-        let to = from + Duration::days(3650);
-        client.set_detected_range((from, to));
-
-        client
-            .persist_inferred_range_if_needed()
-            .await
-            .expect("persist");
-
-        assert_eq!(client.manual_plan(), Some(JQuantsPlan::Standard));
-
-        let saved = jquants_plan_setting::find_current(&db)
-            .await
-            .expect("query")
-            .expect("row exists");
-        let data = parse_plan_setting::<JQuantsPlanSettingData>(saved.plan_setting).expect("parse");
-        assert_eq!(data.plan, Some(JQuantsPlan::Standard));
-    }
-
-    #[backend_test_macros::database_test]
-    async fn does_not_overwrite_when_already_persisted_in_db(db: crate::database::DatabaseHandle) {
-        let client = test_client().with_db(db.clone());
-        let from = date(2010, 1, 1);
-        let to = from + Duration::days(3650);
-        client.set_detected_range((from, to));
-        client
-            .persist_inferred_range_if_needed()
-            .await
-            .expect("first persist");
-
-        // 別プロセス/リクエストが先に推定・永続化した状態を模すため、in-memory の
-        // manual_plan だけをクリアし、別範囲を検出させる
-        client.set_manual_plan(None);
-        let other_from = date(2005, 1, 1);
-        let other_to = other_from + Duration::days(730);
-        client.set_detected_range((other_from, other_to));
-
-        client
-            .persist_inferred_range_if_needed()
-            .await
-            .expect("second persist");
-
-        let saved = jquants_plan_setting::find_current(&db)
-            .await
-            .expect("query")
-            .expect("row exists");
-        let data = parse_plan_setting::<JQuantsPlanSettingData>(saved.plan_setting).expect("parse");
-        assert_eq!(
-            data.plan,
-            Some(JQuantsPlan::Standard),
-            "初回の推定結果が保持され、2 回目の検出では上書きされないこと"
-        );
-    }
-}
-
-// === 検出済み契約範囲の TTL (`effective_range`) ===
-
-mod detected_range_ttl {
-    use chrono::Duration;
     use rstest::rstest;
 
-    use super::super::{DETECTED_RANGE_TTL_DAYS, DetectedRange, effective_range};
-    use super::date;
-
     #[rstest]
-    #[case::same_day_still_valid(0, Some((date(2020, 1, 1), date(2020, 4, 1))))]
-    #[case::at_ttl_boundary_expired(DETECTED_RANGE_TTL_DAYS, None)]
-    #[case::well_past_ttl_expired(DETECTED_RANGE_TTL_DAYS + 4, None)]
-    fn effective_range_expires_after_ttl(
-        #[case] days_elapsed: i64,
-        #[case] expected: Option<(chrono::NaiveDate, chrono::NaiveDate)>,
+    #[case::free(JQuantsPlan::Free, 2)]
+    #[case::light(JQuantsPlan::Light, 30)]
+    #[case::standard(JQuantsPlan::Standard, 60)]
+    #[case::premium(JQuantsPlan::Premium, 250)]
+    fn required_plan_controls_fetchable_range_and_rate_limit(
+        #[case] plan: JQuantsPlan,
+        #[case] max_requests: usize,
     ) {
-        let detected_at = date(2020, 4, 1);
-        let detected = DetectedRange {
-            from: date(2020, 1, 1),
-            to: date(2020, 4, 1),
-            detected_at,
-        };
+        let today = date(2025, 1, 10);
+        let (from, to) = plan.range(today);
+        let client = JQuantsClient::with_base_url("http://localhost", "key", plan).expect("client");
 
-        let today = detected_at + Duration::days(days_elapsed);
-        assert_eq!(effective_range(Some(&detected), today), expected);
-    }
-
-    #[test]
-    fn effective_range_returns_none_when_nothing_detected_yet() {
-        assert_eq!(effective_range(None, date(2020, 4, 1)), None);
+        assert_eq!(
+            (
+                client.known_fetchable_date_range(today),
+                client.current_rate_limit(),
+            ),
+            (DateRange { from, to }, max_requests),
+        );
     }
 }
 

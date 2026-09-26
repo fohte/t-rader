@@ -217,7 +217,6 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_provider::jquants::JQuantsClient;
     use crate::data_provider::jquants::mock::{JQuantsMockServer, MockBar};
     use crate::models::jquants_plan::JQuantsPlan;
     use crate::repositories::bars::{BarsQuery, find_bars};
@@ -301,21 +300,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_skips_when_plan_is_unset(db: crate::database::DatabaseHandle) {
-        let client = JQuantsClient::new("test-api-key".to_string()).expect("client");
-
-        let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
-
-        assert_eq!(stats, IngestStats::default());
-    }
-
-    #[backend_test_macros::database_test]
     async fn test_ingests_bars_and_creates_missing_instruments(
         db: crate::database::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let today = Utc::now().date_naive();
         let to = latest_business_day(today);
@@ -375,8 +366,9 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn test_does_not_mark_unpublished_day_as_ingested(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let today = Utc::now().date_naive();
         let to = latest_business_day(today);
@@ -408,8 +400,9 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn test_continues_past_days_that_fail_to_fetch(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let today = Utc::now().date_naive();
         let to = latest_business_day(today);

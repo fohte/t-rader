@@ -56,7 +56,7 @@ impl ShareholdingStructureSource for JQuantsClient {
     }
 
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        self.known_fetchable_date_range(today)
+        Some(self.known_fetchable_date_range(today))
     }
 }
 
@@ -563,15 +563,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetchable_range_prefers_manual_plan_over_detected_range() {
+    async fn fetchable_range_uses_configured_plan() {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
         let today = NaiveDate::from_ymd_opt(2025, 4, 1).expect("valid date");
-        client.set_detected_range((
-            NaiveDate::from_ymd_opt(2020, 4, 1).expect("valid date"),
-            NaiveDate::from_ymd_opt(2022, 4, 1).expect("valid date"),
-        ));
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
         let (from, to) = JQuantsPlan::Standard.range(today);
 
         assert_eq!(
