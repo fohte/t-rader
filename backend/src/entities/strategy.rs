@@ -29,8 +29,6 @@ pub enum Relation {
     Checkpoint,
     #[sea_orm(has_many = "super::custom_indicator::Entity")]
     CustomIndicator,
-    #[sea_orm(has_many = "super::hypothesis::Entity")]
-    Hypothesis,
     #[sea_orm(has_many = "super::note::Entity")]
     Note,
     #[sea_orm(has_many = "super::prediction::Entity")]
@@ -60,12 +58,6 @@ impl Related<super::checkpoint::Entity> for Entity {
 impl Related<super::custom_indicator::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::CustomIndicator.def()
-    }
-}
-
-impl Related<super::hypothesis::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Hypothesis.def()
     }
 }
 

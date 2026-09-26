@@ -13,7 +13,6 @@ pub(super) mod eval_indicator;
 pub(super) mod evidence;
 pub(super) mod fin_summary;
 pub(super) mod holdings;
-pub(super) mod hypotheses;
 pub(super) mod macro_indicator;
 pub(super) mod margin;
 pub(super) mod media;
