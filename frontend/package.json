@@ -33,7 +33,6 @@
     "@tanstack/react-router": "1.170.34",
     "@tanstack/react-router-devtools": "1.167.1",
     "@xyflow/react": "12.11.6",
-    "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "diff": "9.0.0",
     "lightweight-charts": "5.2.1",

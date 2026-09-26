@@ -78,14 +78,9 @@ function DialogContent({ initialFocus, ref, ...props }: DialogContentProps) {
 
 export {
   Dialog,
-  DialogClose,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogHeaderBar,
-  DialogOverlay,
-  DialogPopup,
-  DialogPortal,
   DialogTitle,
   DialogTrigger,
 } from '@fohte/ui/dialog'

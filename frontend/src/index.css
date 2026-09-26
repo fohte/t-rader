@@ -105,15 +105,6 @@
   z-index: 60;
 }
 
-/*
- * transition-property には --theme namespace がなく、単一プロパティであっても
- * bracket 構文 (transition-[width] 等) は no-arbitrary-value の対象になる。
- * input/select の focus 遷移で使う組み合わせを named utility にする。
- */
-@utility transition-colors-shadow {
-  transition-property: color, box-shadow;
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
