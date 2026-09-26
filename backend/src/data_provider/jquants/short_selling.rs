@@ -10,7 +10,6 @@ use super::response::{ShortRatioResponse, ShortSaleReportResponse};
 use crate::data_provider::{
     DataProviderError, DateRange, ShortSellingSource, ShortSellingSourceError,
 };
-use crate::models::jquants_plan::JQuantsPlan;
 use crate::models::{ShortRatio, ShortSaleReport};
 
 #[async_trait]
@@ -31,18 +30,7 @@ impl ShortSellingSource for JQuantsClient {
 
     /// Standard 以上のプランでのみ提供されるデータのため、それ未満や未設定の間は取得できない。
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
-        match self.manual_plan() {
-            Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
-                self.manual_plan_date_range(today)
-            }
-            plan => {
-                tracing::debug!(
-                    ?plan,
-                    "空売り関連データは Standard 以上の契約プランが必要なため取得できません"
-                );
-                None
-            }
-        }
+        self.standard_plan_date_range(today, "short selling")
     }
 }
 

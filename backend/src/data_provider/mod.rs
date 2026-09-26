@@ -8,8 +8,8 @@ pub use core_application::{
     EarningsScheduleSourceError, EquityMasterSource, EquityMasterSourceError, MarginSource,
     MarginSourceError, MarketDailyBarSource, MarketDailyBarSourceError, SharedDailyBarSource,
     SharedEarningsScheduleSource, SharedEquityMasterSource, SharedMarginSource,
-    SharedMarketDailyBarSource, SharedShortSellingSource, ShortSellingSource,
-    ShortSellingSourceError,
+    SharedMarketDailyBarSource, SharedShortSellingSource, SharedValuationSource,
+    ShortSellingSource, ShortSellingSourceError, ValuationSource, ValuationSourceError,
 };
 
 /// データプロバイダーで発生しうるエラー
@@ -84,6 +84,12 @@ impl From<DataProviderError> for ShortSellingSourceError {
 }
 
 impl From<DataProviderError> for MarketDailyBarSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+impl From<DataProviderError> for ValuationSourceError {
     fn from(error: DataProviderError) -> Self {
         Self::Failed(error.to_string())
     }

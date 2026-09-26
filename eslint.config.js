@@ -60,4 +60,8 @@ export default config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
     },
   },
+  {
+    files: ['**/*.stories.tsx'],
+    rules: { 'fohte/require-story-name': 'error' },
+  },
 )

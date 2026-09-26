@@ -7,5 +7,6 @@ pub mod instrument;
 pub mod margin;
 pub mod short_ratio;
 pub mod short_sale_report;
+pub mod valuation;
 
 pub use indicator_observation::IndicatorObservation;
