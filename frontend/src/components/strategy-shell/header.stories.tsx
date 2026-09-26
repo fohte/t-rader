@@ -15,7 +15,6 @@ function createHeaderRouter(initialPath: string) {
       '/trades',
       '/notes',
       '/annotations',
-      '/hypotheses',
       '/runs',
       '/indicators',
     ],

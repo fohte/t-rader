@@ -724,7 +724,7 @@ mod tests {
     }
 
     // 更新前の status (unread / rejected) ごとにケースを列挙する。
-    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する (backend/src/handlers/hypotheses.rs:450 と同様)。
+    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
     #[sqlx::test(migrations = false)]
     async fn write_note_updates_existing_and_resets_status_to_unread(pool: PgPool) {
         let db = create_test_db(pool).await;

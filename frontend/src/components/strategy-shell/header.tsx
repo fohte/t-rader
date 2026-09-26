@@ -44,7 +44,6 @@ export function Header() {
           <NavLink to="/trades" label="取引履歴" />
           <NavLink to="/notes" label="ノート" />
           <NavLink to="/annotations" label="アノテーション" />
-          <NavLink to="/hypotheses" label="仮説" />
           <NavLink to="/runs" label="実行履歴" />
           <NavLink to="/indicators" label="indicators" />
           <NavLink to="/strategies" label="戦略" />
