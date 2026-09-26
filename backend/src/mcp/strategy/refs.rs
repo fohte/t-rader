@@ -128,15 +128,11 @@ impl StrategyServer {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::{indicator, ref_term, sector, stock, theme};
-    use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
+    use crate::entities::{indicator, ref_term, sector, stock, theme};
 
     async fn seed_ref_term(
         db: &impl sea_orm::ConnectionTrait,
@@ -213,8 +209,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_matches_across_all_kinds_ordered_by_name(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_matches_across_all_kinds_ordered_by_name(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed_indicator(&db, "IND1", "Alpha Indicator").await;
         seed_sector(&db, "SEC1", "Alpha Sector").await;
         seed_stock(&db, "STK1", "Alpha Stock").await;
@@ -267,8 +264,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_matches_by_id_substring(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_matches_by_id_substring(db: crate::database::DatabaseHandle) {
         seed_stock(&db, "TOY7203", "Something").await;
         let server = build_server(db);
 
@@ -297,8 +293,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_is_case_insensitive(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_is_case_insensitive(db: crate::database::DatabaseHandle) {
         seed_sector(&db, "semi", "Semiconductors").await;
         let server = build_server(db);
 
@@ -327,8 +322,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_does_not_treat_underscore_as_single_char_wildcard(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_does_not_treat_underscore_as_single_char_wildcard(
+        db: crate::database::DatabaseHandle,
+    ) {
         // "_" は ILIKE の単一文字ワイルドカードなので、素通しすると "AXB" が
         // "A_B" にマッチしてしまう。sanitize_like で除去され、マッチしないことを確認する。
         seed_theme(&db, "u1", "AXB").await;
@@ -349,8 +345,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_respects_limit_after_ordering(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_respects_limit_after_ordering(db: crate::database::DatabaseHandle) {
         seed_theme(&db, "t1", "Match A").await;
         seed_theme(&db, "t2", "Match B").await;
         seed_theme(&db, "t3", "Match C").await;
@@ -389,8 +384,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_includes_stock_product_category(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_includes_stock_product_category(db: crate::database::DatabaseHandle) {
         seed_stock_with_product_category(&db, "ETF1", "Alpha ETF", Some("014")).await;
         seed_stock(&db, "STK1", "Alpha Stock").await;
         let server = build_server(db);
@@ -428,8 +422,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_rejects_empty_query(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_rejects_empty_query(db: crate::database::DatabaseHandle) {
         let server = build_server(db);
 
         let err = server
@@ -446,8 +439,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_matches_full_width_query_against_half_width_name(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_matches_full_width_query_against_half_width_name(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed_stock(&db, "STK1", "Alpha Motors").await;
         let server = build_server(db);
 
@@ -476,8 +470,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_matches_full_width_query_against_half_width_id(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_matches_full_width_query_against_half_width_id(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed_indicator(&db, "USDJPY", "US Dollar / Japanese Yen").await;
         let server = build_server(db);
 
@@ -506,8 +501,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_does_not_treat_full_width_underscore_as_wildcard(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_does_not_treat_full_width_underscore_as_wildcard(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed_theme(&db, "u1", "AXB").await;
         let server = build_server(db);
 
@@ -526,8 +522,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_matches_ref_term_alias(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_matches_ref_term_alias(db: crate::database::DatabaseHandle) {
         seed_stock(&db, "7203", "Alpha Motors").await;
         seed_ref_term(&db, "stock", "7203", "Ａｌｐｈａ Ｍｏｔｏｒｓ Ｇｒｏｕｐ").await;
         let server = build_server(db);
@@ -557,8 +552,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_returns_one_row_when_both_name_and_alias_match(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_returns_one_row_when_both_name_and_alias_match(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed_stock(&db, "7203", "Alpha Motors").await;
         seed_ref_term(&db, "stock", "7203", "Alpha Auto").await;
         let server = build_server(db);
@@ -588,8 +584,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_refs_ignores_dangling_alias_not_in_master(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn search_refs_ignores_dangling_alias_not_in_master(db: crate::database::DatabaseHandle) {
         seed_ref_term(&db, "stock", "9999", "Ghost Co").await;
         let server = build_server(db);
 

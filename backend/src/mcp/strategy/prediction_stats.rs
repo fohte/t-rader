@@ -80,11 +80,10 @@ mod tests {
     use chrono::NaiveDate;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::entities::{prediction, prediction_grade};
-    use crate::testing::{create_test_db, insert_test_stock};
+    use crate::testing::insert_test_stock;
 
     use super::super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
     use super::super::tests_common::{build_server, insert_strategy};
@@ -144,8 +143,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_prediction_stats_returns_empty_when_no_graded_predictions(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_prediction_stats_returns_empty_when_no_graded_predictions(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -165,8 +165,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_prediction_stats_excludes_ungraded_predictions(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_prediction_stats_excludes_ungraded_predictions(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
@@ -189,8 +190,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_prediction_stats_excludes_other_strategy_predictions(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_prediction_stats_excludes_other_strategy_predictions(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -215,8 +217,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_prediction_stats_aggregates_buckets_and_brier_score(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_prediction_stats_aggregates_buckets_and_brier_score(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;

@@ -185,13 +185,6 @@ impl StrategyServer {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
-    use sqlx::PgPool;
-
-    use crate::entities::comment;
-    use crate::testing::create_test_db;
-
     use super::super::dto::{
         CommentDto, ReadCommentsParams, ReplyCommentParams, ResolveCommentParams,
     };
@@ -199,10 +192,14 @@ mod tests {
         build_server, current_note_version_id, insert_strategy, normalize_comment, seed_comment,
         seed_foreign_annotation, seed_foreign_note, ts_sentinel,
     };
+    use crate::entities::comment;
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
 
     #[backend_test_macros::database_test]
-    async fn read_comments_returns_target_comments_in_thread_order(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_comments_returns_target_comments_in_thread_order(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -299,8 +296,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_supports_annotation_target(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_comments_supports_annotation_target(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
         let annotation_id = seed_foreign_annotation(&db, strategy_id).await;
@@ -343,8 +339,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_invalid_target_kind(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_comments_rejects_invalid_target_kind(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
 
@@ -363,8 +358,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_cross_strategy_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_comments_rejects_cross_strategy_note(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -386,8 +380,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_cross_strategy_annotation(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_comments_rejects_cross_strategy_annotation(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -408,8 +401,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_filters_by_resolved(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_comments_filters_by_resolved(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -497,8 +489,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_toggles_resolved(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn resolve_comment_toggles_resolved(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -565,8 +556,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_rejects_missing_comment(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn resolve_comment_rejects_missing_comment(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
 
@@ -584,8 +574,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_rejects_cross_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn resolve_comment_rejects_cross_strategy(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -607,8 +596,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_inherits_parent_target(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn reply_comment_inherits_parent_target(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -650,8 +638,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_empty_body(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn reply_comment_rejects_empty_body(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -673,8 +660,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_missing_parent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn reply_comment_rejects_missing_parent(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
 
@@ -692,8 +678,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_cross_strategy(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn reply_comment_rejects_cross_strategy(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -716,8 +701,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_reply_to_reply(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn reply_comment_rejects_reply_to_reply(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;

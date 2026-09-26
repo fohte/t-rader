@@ -118,7 +118,6 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{EntityTrait, QueryOrder};
     use serde_json::{Value, json};
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
@@ -165,9 +164,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fires_when_event_match_satisfied(pool: PgPool) {
+    async fn fires_when_event_match_satisfied(db: crate::database::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "長期").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -212,9 +211,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_when_event_match_not_satisfied(pool: PgPool) {
+    async fn skips_when_event_match_not_satisfied(db: crate::database::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "s").await;
         let _ = insert_test_hook_trigger(
             &db,
@@ -242,9 +241,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn disabled_trigger_is_404(pool: PgPool) {
+    async fn disabled_trigger_is_404(db: crate::database::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "s").await;
         let _ = insert_test_hook_trigger(&db, sid, "off", "x", None, false).await;
 
@@ -253,17 +252,17 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn unknown_slug_is_404(pool: PgPool) {
+    async fn unknown_slug_is_404(db: crate::database::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (_db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
+        let (_db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let res = server.post("/api/hooks/nope").json(&json!({})).await;
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[backend_test_macros::database_test]
-    async fn placeholders_expand_from_payload(pool: PgPool) {
+    async fn placeholders_expand_from_payload(db: crate::database::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, kube).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -301,11 +300,11 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn agent_not_configured_returns_503(pool: PgPool) {
+    async fn agent_not_configured_returns_503(db: crate::database::DatabaseHandle) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let sid = seed_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await

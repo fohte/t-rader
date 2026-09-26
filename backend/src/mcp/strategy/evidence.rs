@@ -67,13 +67,9 @@ pub(super) async fn record_query_data(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use chrono::NaiveDate;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-    use sqlx::PgPool;
-
-    use crate::testing::create_test_db;
-
-    use super::*;
 
     /// 基準日からの経過日数でタイムスタンプ昇順の `BarDto` を作る。
     fn bar_at(day_offset: i64) -> BarDto {
@@ -90,8 +86,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_query_data_truncates_to_most_recent_bars_when_exceeding_max(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn record_query_data_truncates_to_most_recent_bars_when_exceeding_max(
+        db: crate::database::DatabaseHandle,
+    ) {
         let execution_step_id = Uuid::new_v4();
         let total = MAX_SNAPSHOT_BARS + 1;
         let bars: Vec<BarDto> = (0..total as i64).map(bar_at).collect();
@@ -138,8 +135,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_query_data_with_no_bars_leaves_published_and_effective_at_unset(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn record_query_data_with_no_bars_leaves_published_and_effective_at_unset(
+        db: crate::database::DatabaseHandle,
+    ) {
         let execution_step_id = Uuid::new_v4();
         let bars: Vec<BarDto> = Vec::new();
         let from = NaiveDate::from_ymd_opt(2025, 1, 1).expect("from");

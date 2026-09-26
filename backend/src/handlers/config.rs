@@ -24,11 +24,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::testing::create_test_server;
+    use rstest::rstest;
 
     fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
         move |key: &str| {
@@ -56,8 +54,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_config_returns_null_when_env_unset(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn get_config_returns_null_when_env_unset(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let response = server.get("/api/config").await;
         response.assert_status_ok();
         assert_eq!(

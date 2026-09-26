@@ -415,10 +415,6 @@ pub async fn delete_annotation(
 mod tests {
     use std::sync::Arc;
 
-    use axum_test::TestServer;
-    use serde_json::Value;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
@@ -429,6 +425,8 @@ mod tests {
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
     };
+    use axum_test::TestServer;
+    use serde_json::Value;
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
@@ -467,8 +465,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_without_strategy_id_succeeds(pool: PgPool) {
-        let (_db, server) = create_test_server_with_db(pool).await;
+    async fn create_annotation_without_strategy_id_succeeds(db: crate::database::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
             .post("/api/annotations")
@@ -504,10 +502,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_annotation_without_strategy_id_does_not_submit_task(pool: PgPool) {
+    async fn reject_annotation_without_strategy_id_does_not_submit_task(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
 
         let res = server
             .post("/api/annotations")
@@ -554,10 +554,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_annotation_submits_single_review_task_referencing_annotation(pool: PgPool) {
+    async fn reject_annotation_submits_single_review_task_referencing_annotation(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -611,10 +613,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejecting_already_rejected_annotation_does_not_resubmit(pool: PgPool) {
+    async fn rejecting_already_rejected_annotation_does_not_resubmit(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -638,11 +642,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_annotation_leaves_status_unchanged_when_agent_submission_fails(pool: PgPool) {
+    async fn reject_annotation_leaves_status_unchanged_when_agent_submission_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await

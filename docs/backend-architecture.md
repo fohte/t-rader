@@ -20,15 +20,16 @@ backend/crates/
 │   ├── agent-mcp/
 │   ├── control-plane-mcp/
 │   └── scheduler/
-└── gateways/             # アプリから外部システムへの接続
-    ├── postgres/
-    ├── jquants/
-    ├── ibkr/
-    ├── fred/
-    ├── rss/
-    ├── litellm/
-    ├── kata-exec/
-    └── t-rader-agent/
+├── gateways/             # アプリから外部システムへの接続
+│   ├── postgres/
+│   ├── jquants/
+│   ├── ibkr/
+│   ├── fred/
+│   ├── rss/
+│   ├── litellm/
+│   ├── kata-exec/
+│   └── t-rader-agent/
+└── test-macros/          # app の DB test 用 attribute macro
 ```
 
 ## crate の責務
@@ -40,6 +41,7 @@ backend/crates/
 | `entrypoints/*`      | HTTP、MCP、webhook、定期実行などの入力を受け取り、application のユースケースを呼び出す。 |
 | `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                             |
 | `app`                | 各 crate を組み立てる composition root とする。                                          |
+| `test-macros`        | `app` のテスト専用 proc macro を提供する。                                               |
 | `backend/migration/` | SeaORM migration を管理する。                                                            |
 
 `app` は `rmcp` の session 管理、allowed hosts、access log など、複数の entrypoint に共通する MCP の配線も担う。複数 crate を組み合わせる結合テストも `app` に置く。
@@ -55,6 +57,7 @@ backend/crates/
 | `entrypoints/*`    | `core/application`, `core/domain`                            |
 | `gateways/*`       | `core/application`, `core/domain`                            |
 | `app`              | `backend/crates/` 内のすべての crate と `backend/migration/` |
+| `test-macros`      | なし                                                         |
 
 `entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror`, `jpholiday` (祝日の計算のみで I/O を持たない) と `serde` の derive に限る (テストでのみ使う dev-dependencies は対象外)。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
 

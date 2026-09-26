@@ -186,11 +186,7 @@ mod tests {
     use chrono::{DateTime, FixedOffset};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::annotation;
-    use crate::testing::create_test_db;
 
     use super::super::dto::{
         AnnotationDto, CreateAnnotationParams, ReadAnnotationsParams, ReadAnnotationsResult,
@@ -200,11 +196,11 @@ mod tests {
         ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
+    use crate::entities::annotation;
 
     // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
     #[backend_test_macros::database_test]
-    async fn create_annotation_then_read_annotations(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn create_annotation_then_read_annotations(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);
         let ts: DateTime<FixedOffset> = "2026-06-01T09:00:00+09:00".parse().expect("ts");
@@ -266,8 +262,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_rejects_empty_target_kind(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn create_annotation_rejects_empty_target_kind(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
         let err = server
@@ -290,8 +285,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_rejects_cross_strategy_linked_note(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn create_annotation_rejects_cross_strategy_linked_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -321,9 +317,8 @@ mod tests {
     /// 新しい試行のものだけが残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_replaces_unread_annotations_from_previous_attempt_of_same_step(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);
         let step_id = Uuid::new_v4();
@@ -385,8 +380,9 @@ mod tests {
     /// 前の試行が作ったアノテーションでも、既にレビュー済み (unread 以外) のものは
     /// 新しい試行が来ても削除されず残る。
     #[backend_test_macros::database_test]
-    async fn create_annotation_keeps_reviewed_annotations_from_previous_attempt(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn create_annotation_keeps_reviewed_annotations_from_previous_attempt(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
         let step_id = Uuid::new_v4();
@@ -462,9 +458,8 @@ mod tests {
     /// (comment.target_id が FK を持たないため) 削除すると孤児化してしまうので残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_keeps_unread_annotations_with_comments_from_previous_attempt(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
         let step_id = Uuid::new_v4();
@@ -539,8 +534,9 @@ mod tests {
     /// resume していない通常の実行 (同じ execution_task_id) で 1 ステップが複数件の
     /// アノテーションを作る動作はこれまでどおり全件残る。
     #[backend_test_macros::database_test]
-    async fn create_annotation_keeps_multiple_annotations_from_the_same_attempt(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn create_annotation_keeps_multiple_annotations_from_the_same_attempt(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);
         let step_id = Uuid::new_v4();

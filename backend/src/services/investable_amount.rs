@@ -54,11 +54,10 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
-    use crate::testing::{create_test_db, insert_test_strategy};
+    use crate::testing::insert_test_strategy;
 
     #[backend_test_macros::database_test]
-    async fn find_current_returns_none_when_no_history(pool: sqlx::PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_current_returns_none_when_no_history(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
 
         let current = find_current(&db, strategy_id).await.expect("query");
@@ -66,8 +65,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_current_ignores_future_effective_at(pool: sqlx::PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_current_ignores_future_effective_at(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let now = Utc::now().fixed_offset();
 
@@ -96,8 +94,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_current_returns_latest_of_multiple_past_rows(pool: sqlx::PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_current_returns_latest_of_multiple_past_rows(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let now = Utc::now().fixed_offset();
 

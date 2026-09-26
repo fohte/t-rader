@@ -234,14 +234,12 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use serde_json::{Value, json};
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::entities::{
         cross_shareholding_documents, large_volume_shareholding_documents,
         major_shareholder_documents,
     };
-    use crate::testing::create_test_db;
     use core_domain::holdings::{
         LargeVolumeReportType as DomainLargeVolumeReportType,
         MajorShareholderReportType as DomainMajorShareholderReportType,
@@ -402,9 +400,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn returns_empty_and_null_sections_when_nothing_ingested(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn returns_empty_and_null_sections_when_nothing_ingested(
+        db: crate::database::DatabaseHandle,
+    ) {
         let result = read(&db, "9999").await;
 
         assert_eq!(
@@ -419,9 +417,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_non_4_digit_symbol(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn rejects_non_4_digit_symbol(db: crate::database::DatabaseHandle) {
         let err = build_server(db)
             .read_shareholding_structure_inner(
                 Uuid::new_v4(),
@@ -437,9 +433,8 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn large_volume_reports_match_by_first_4_chars_newest_first_with_holder_details(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         insert_large_volume(
             &db,
             "EXAMPLE-OLD",
@@ -530,8 +525,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn large_volume_reports_respects_limit_after_ordering(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn large_volume_reports_respects_limit_after_ordering(
+        db: crate::database::DatabaseHandle,
+    ) {
         for (i, day) in [1u32, 2, 3].into_iter().enumerate() {
             insert_large_volume(
                 &db,
@@ -585,8 +581,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn major_shareholders_returns_only_the_latest_filing(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn major_shareholders_returns_only_the_latest_filing(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_major_shareholders(
             &db,
             "EXAMPLE-OLD",
@@ -648,8 +645,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn major_shareholders_skips_documents_without_decoded_content(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn major_shareholders_skips_documents_without_decoded_content(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_major_shareholders(
             &db,
             "EXAMPLE-VALID",
@@ -694,8 +692,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn cross_shareholdings_combines_spec_and_deem_with_mutual_holding(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn cross_shareholdings_combines_spec_and_deem_with_mutual_holding(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_cross_shareholdings(
             &db,
             "EXAMPLE-CROSS",

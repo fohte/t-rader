@@ -12,7 +12,6 @@ use chrono::{TimeZone, Utc};
 use rmcp::handler::server::wrapper::Parameters;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::{Value, json};
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::agent_client::{
@@ -31,11 +30,10 @@ use crate::testing::{
 };
 
 #[backend_test_macros::database_test]
-async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
+async fn all_five_submission_routes_converge_on_submit_task(db: crate::database::DatabaseHandle) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
-    let (db, server) =
-        create_test_server_with_db_and_agent_client(pool, agent_client.clone()).await;
+    let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client.clone()).await;
     let strategy_id = insert_test_strategy(&db, "s").await;
     agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await
@@ -169,11 +167,12 @@ async fn all_five_submission_routes_converge_on_submit_task(pool: PgPool) {
 }
 
 #[backend_test_macros::database_test]
-async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(pool: PgPool) {
+async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(
+    db: crate::database::DatabaseHandle,
+) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
-    let (db, server) =
-        create_test_server_with_db_and_agent_client(pool, agent_client.clone()).await;
+    let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client.clone()).await;
     let strategy_id = insert_test_strategy(&db, "s").await;
     agent_config::create(&db, DEFAULT_PURPOSE.to_string())
         .await

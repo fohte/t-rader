@@ -81,15 +81,13 @@ pub async fn backfill_daily_bars(
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Duration, NaiveDate, TimeZone, Utc};
-    use rstest::rstest;
-    use rust_decimal::Decimal;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
-    use crate::testing::{MockProvider, create_test_db};
+    use crate::testing::MockProvider;
+    use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use rstest::rstest;
+    use rust_decimal::Decimal;
 
     // --- テスト用ヘルパー ---
 
@@ -180,8 +178,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_saves_bars_to_db(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn backfill_saves_bars_to_db(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         // フォールバック範囲内に収まる日付を使う
@@ -203,8 +200,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_uses_known_fetchable_range_when_detected(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn backfill_uses_known_fetchable_range_when_detected(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         let known_from = NaiveDate::from_ymd_opt(2020, 4, 1).expect("date");
@@ -228,8 +226,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_uses_fallback_history_when_range_is_undetected(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn backfill_uses_fallback_history_when_range_is_undetected(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         // Free プランの範囲 (2 年) よりずっと古い日付
@@ -248,9 +247,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_handles_empty_response(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn backfill_handles_empty_response(db: crate::database::DatabaseHandle) {
         // 銘柄は存在するがバーデータなし
         let provider = MockProvider::new().with_instruments(vec![sample_instrument("9999")]);
 

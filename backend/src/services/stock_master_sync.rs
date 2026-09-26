@@ -134,14 +134,10 @@ pub fn spawn_poll(
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::NotSet;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::data_provider::jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
-    use crate::testing::create_test_db;
-
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::NotSet;
     async fn fetch_stock(db: &impl sea_orm::ConnectionTrait, id: &str) -> Option<stock::Model> {
         stock::Entity::find_by_id(id.to_string())
             .one(db)
@@ -150,8 +146,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn creates_new_stocks_with_sector_and_market(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn creates_new_stocks_with_sector_and_market(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 
@@ -194,8 +189,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn updates_existing_stock_fields(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn updates_existing_stock_fields(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         let previous_timestamp = (Utc::now() - chrono::Duration::days(1)).fixed_offset();
@@ -249,8 +243,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn leaves_stocks_not_present_in_master_untouched(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn leaves_stocks_not_present_in_master_untouched(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 
@@ -279,8 +272,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn shares_sector_across_multiple_stocks(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn shares_sector_across_multiple_stocks(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 
@@ -319,8 +311,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn leaves_sector_id_null_when_master_has_no_sector(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn leaves_sector_id_null_when_master_has_no_sector(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 

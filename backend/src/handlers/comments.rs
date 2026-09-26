@@ -239,11 +239,9 @@ pub async fn delete_comment(
 
 #[cfg(test)]
 mod tests {
+    use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
-    use sqlx::PgPool;
-
-    use crate::testing::create_test_server;
 
     fn normalize(mut value: Value) -> Value {
         for key in ["id", "target_id", "created_at"] {
@@ -270,8 +268,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_comment_sets_resolved(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn update_comment_sets_resolved(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let created = create_note_comment(&server).await;
         let id = created["id"].as_str().expect("id");
 
@@ -325,8 +323,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_comment_missing_id_is_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn update_comment_missing_id_is_404(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .patch(&format!("/api/comments/{}", uuid::Uuid::new_v4()))
             .json(&json!({ "resolved": true }))
@@ -382,8 +380,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_comment_with_line_anchor_stores_explicit_lines(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_comment_with_line_anchor_stores_explicit_lines(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
         let note_id = create_note(
             &server,
@@ -430,8 +430,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_comment_keeps_quote_with_explicit_line_anchor(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_comment_keeps_quote_with_explicit_line_anchor(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
         let note_id = create_note(
             &server,
@@ -479,9 +481,9 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_comment_on_annotation_with_anchor_text_saves_text_without_line_numbers(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let server = create_test_server(pool).await;
+        let server = create_test_server(db).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
         let annotation_id = create_annotation(&server, &strategy_id).await;
 

@@ -214,17 +214,13 @@ pub fn spawn_poll(
 
 #[cfg(test)]
 mod tests {
-    use rstest::rstest;
-    use sea_orm::{ActiveModelTrait, EntityTrait};
-    use serde_json::json;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::data_provider::jquants::{JQuantsClient, mock::JQuantsMockServer};
     use crate::entities::financial_summary;
     use crate::models::jquants_plan::JQuantsPlan;
-    use crate::testing::create_test_db;
-
+    use rstest::rstest;
+    use sea_orm::{ActiveModelTrait, EntityTrait};
+    use serde_json::json;
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
@@ -271,8 +267,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_skips_when_source_range_is_unavailable(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn test_skips_when_source_range_is_unavailable(db: crate::database::DatabaseHandle) {
         let client = JQuantsClient::new("test-api-key".to_string()).expect("client");
 
         let stats = run_ingest_cycle(&db, &client, Utc::now().date_naive())
@@ -283,8 +278,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_ingests_and_upserts_new_disclosures(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn test_ingests_and_upserts_new_disclosures(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         client.set_manual_plan(Some(JQuantsPlan::Standard));
@@ -380,8 +374,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_replaces_all_fields_for_corrected_disclosures(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn test_replaces_all_fields_for_corrected_disclosures(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         client.set_manual_plan(Some(JQuantsPlan::Standard));
@@ -489,8 +484,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_continues_past_days_that_fail_to_fetch(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn test_continues_past_days_that_fail_to_fetch(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         client.set_manual_plan(Some(JQuantsPlan::Standard));

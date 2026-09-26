@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{FnArg, ItemFn, Pat, parse_macro_input, parse_quote};
 
-/// PgPool を受け取る DB test を、shared database transaction を使う Tokio test にする。
+/// DatabaseHandle を受け取る DB テストを、共有 DB の transaction を使う Tokio test にする。
 #[proc_macro_attribute]
 pub fn database_test(attribute: TokenStream, item: TokenStream) -> TokenStream {
     if !attribute.is_empty() {
@@ -52,15 +52,7 @@ pub fn database_test(attribute: TokenStream, item: TokenStream) -> TokenStream {
     function.attrs.push(parse_quote!(#[tokio::test]));
     function.block.stmts.insert(
         0,
-        parse_quote!(
-            let _: ::std::marker::PhantomData<#argument_type> = ::std::marker::PhantomData;
-        ),
-    );
-    function.block.stmts.insert(
-        1,
-        parse_quote!(
-            let #argument_name = crate::testing::create_test_transaction().await;
-        ),
+        parse_quote!(let #argument_name: #argument_type = crate::testing::create_test_transaction().await;),
     );
 
     quote!(#function).into()

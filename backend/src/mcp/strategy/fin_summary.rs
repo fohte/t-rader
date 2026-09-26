@@ -191,14 +191,11 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
     use sea_orm::ConnectionTrait;
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::financial_summary;
-    use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
     use super::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
+    use crate::entities::financial_summary;
 
     fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -288,8 +285,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_fin_summary_returns_typed_fields_and_nulls_missing_values(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_fin_summary_returns_typed_fields_and_nulls_missing_values(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed(&db, "99990", "1", ymd(2026, 5, 1), |summary| {
@@ -380,8 +378,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_fin_summary_computes_progress_rates_only_for_quarterly_statements(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_fin_summary_computes_progress_rates_only_for_quarterly_statements(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed(&db, "ABCD0", "1", ymd(2001, 5, 1), |summary| {
@@ -515,8 +514,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_fin_summary_matches_5_digit_code_by_leading_4_chars(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_fin_summary_matches_5_digit_code_by_leading_4_chars(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed(&db, "99990", "1", ymd(2026, 5, 1), |_| {}).await;
@@ -542,8 +542,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_fin_summary_keeps_only_the_highest_disc_no_per_period_and_doc_type(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_fin_summary_keeps_only_the_highest_disc_no_per_period_and_doc_type(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed(&db, "99990", "1", ymd(2026, 5, 1), |summary| {
@@ -601,8 +602,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_fin_summary_keeps_missing_and_blank_group_values_separate(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_fin_summary_keeps_missing_and_blank_group_values_separate(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed_with_report_group_key(&db, "99990", "1", ymd(2026, 5, 1), "N;N;N;").await;
@@ -628,8 +630,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_fin_summary_orders_newest_first_and_respects_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_fin_summary_orders_newest_first_and_respects_limit(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         for (disc_no, date) in [

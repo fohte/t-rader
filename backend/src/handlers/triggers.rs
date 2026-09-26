@@ -131,11 +131,9 @@ pub async fn delete_trigger(
 
 #[cfg(test)]
 mod tests {
+    use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
-    use sqlx::PgPool;
-
-    use crate::testing::create_test_server;
 
     async fn create_strategy(server: &axum_test::TestServer, name: &str) -> String {
         let res = server
@@ -168,8 +166,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_cron_trigger_succeeds(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_cron_trigger_succeeds(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         let res = server
             .post(&format!("/api/strategies/{sid}/triggers"))
@@ -199,8 +197,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_hook_trigger_succeeds(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_hook_trigger_succeeds(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         let res = server
             .post(&format!("/api/strategies/{sid}/triggers"))
@@ -231,8 +229,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_cron_without_schedule_is_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_cron_without_schedule_is_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         let res = server
             .post(&format!("/api/strategies/{sid}/triggers"))
@@ -242,8 +240,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_hook_with_schedule_is_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_hook_with_schedule_is_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         let res = server
             .post(&format!("/api/strategies/{sid}/triggers"))
@@ -258,8 +256,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_for_missing_strategy_is_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_for_missing_strategy_is_404(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/strategies/00000000-0000-0000-0000-000000000000/triggers")
             .json(&json!({
@@ -272,8 +270,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn duplicate_hook_slug_is_409(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn duplicate_hook_slug_is_409(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         let body = json!({
             "kind": "hook",
@@ -293,8 +291,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_filters_by_kind(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn list_filters_by_kind(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         server
             .post(&format!("/api/strategies/{sid}/triggers"))
@@ -343,8 +341,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_scoped_to_owning_strategy(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn list_scoped_to_owning_strategy(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let s1 = create_strategy(&server, "a").await;
         let s2 = create_strategy(&server, "b").await;
         server
@@ -358,8 +356,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_update_delete_round_trip(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn get_update_delete_round_trip(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         let created: Value = server
             .post(&format!("/api/strategies/{sid}/triggers"))
@@ -407,8 +405,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_hook_slug_on_cron_trigger_is_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn update_hook_slug_on_cron_trigger_is_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
         let created: Value = server
             .post(&format!("/api/strategies/{sid}/triggers"))

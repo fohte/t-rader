@@ -342,7 +342,6 @@ mod run_once_tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{EntityTrait, QueryOrder};
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
@@ -350,7 +349,7 @@ mod run_once_tests {
     use crate::entities::{strategy, strategy_task};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
-    use crate::testing::{create_test_db, insert_test_cron_trigger};
+    use crate::testing::insert_test_cron_trigger;
 
     use super::*;
 
@@ -391,8 +390,7 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fires_due_cron_and_writes_strategy_task(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn fires_due_cron_and_writes_strategy_task(db: crate::database::DatabaseHandle) {
         let sid = seed_strategy(&db).await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -441,8 +439,7 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_disabled_cron(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn skips_disabled_cron(db: crate::database::DatabaseHandle) {
         let sid = seed_strategy(&db).await;
         let past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
         let _ = insert_test_cron_trigger(&db, sid, "* * * * *", false, Some(past), "x").await;
@@ -456,10 +453,9 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_when_no_slot_after_last_fire(pool: PgPool) {
+    async fn skips_when_no_slot_after_last_fire(db: crate::database::DatabaseHandle) {
         // 9:00 だけ発火する schedule で「直前に発火済み + 次回 9:00 はまだ先」のケース。
         // last_fired_at を「現時刻直前」に置いて、現 tick では発火対象にならないことを確認する。
-        let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
         let just_fired = Utc::now() - chrono::Duration::seconds(1);
         let _ = insert_test_cron_trigger(&db, sid, "0 9 * * *", true, Some(just_fired), "x").await;
@@ -472,9 +468,8 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn ignores_hook_kind(pool: PgPool) {
+    async fn ignores_hook_kind(db: crate::database::DatabaseHandle) {
         // hook 種別の trigger は cron worker の対象外。
-        let db = create_test_db(pool).await;
         let sid = seed_strategy(&db).await;
         let id = Uuid::new_v4();
         trigger::ActiveModel {

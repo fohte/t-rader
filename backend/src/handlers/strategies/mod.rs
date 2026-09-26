@@ -161,14 +161,12 @@ pub async fn delete_strategy(
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-    use sqlx::PgPool;
-
     use crate::testing::{create_strategy, create_test_server};
+    use serde_json::json;
 
     #[backend_test_macros::database_test]
-    async fn create_and_list_strategy(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_and_list_strategy(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/strategies")
             .json(&json!({ "name": "長期投資" }))
@@ -183,8 +181,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_nonexistent_strategy_returns_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn get_nonexistent_strategy_returns_404(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000")
             .await;
@@ -192,8 +190,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_strategy_removes_row(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn delete_strategy_removes_row(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let id = create_strategy(&server, "to-delete").await;
 
         let deleted = server.delete(&format!("/api/strategies/{id}")).await;

@@ -128,16 +128,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::testing::insert_test_strategy;
     use sea_orm::EntityTrait;
     use serde_json::json;
-    use sqlx::PgPool;
-
-    use super::*;
-    use crate::testing::{create_test_db, insert_test_strategy};
 
     #[backend_test_macros::database_test]
-    async fn record_as_persists_the_given_actor(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn record_as_persists_the_given_actor(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
 
         record_as(

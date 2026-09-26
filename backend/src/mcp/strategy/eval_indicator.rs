@@ -179,17 +179,14 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{DatabaseBackend, MockDatabase};
     use serde_json::json;
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::{custom_indicator, strategy};
-    use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
-    use crate::services::custom_indicators::{SCOPE_GLOBAL, SCOPE_STRATEGY};
-    use crate::testing::create_test_db;
 
     use super::super::StrategyServer;
     use super::super::dto::{EvalIndicatorParams, EvalIndicatorResult};
     use super::{EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_TIMEOUT_SECS};
+    use crate::entities::{custom_indicator, strategy};
+    use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
+    use crate::services::custom_indicators::{SCOPE_GLOBAL, SCOPE_STRATEGY};
 
     async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
         let id = Uuid::new_v4();
@@ -252,8 +249,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_resolves_and_runs(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_resolves_and_runs(db: crate::database::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         let ind = insert_indicator(
             &db,
@@ -305,8 +301,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_prefers_strategy_scope(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_prefers_strategy_scope(db: crate::database::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         let _global = insert_indicator(
             &db,
@@ -358,8 +353,7 @@ mod tests {
 
     /// 戦略 A の session から戦略 B 専用 indicator は見えない (resolve 段で not found)。
     #[backend_test_macros::database_test]
-    async fn eval_indicator_rejects_cross_strategy_scope(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_rejects_cross_strategy_scope(db: crate::database::DatabaseHandle) {
         let s_a = insert_strategy(&db, "a").await;
         let s_b = insert_strategy(&db, "b").await;
         insert_indicator(
@@ -391,8 +385,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_validates_input_args(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_validates_input_args(db: crate::database::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -430,8 +423,7 @@ mod tests {
     /// sandbox 拒否 (network / subprocess / fs write) は MCP エラーではなく
     /// `exit_code != 0` + `stderr` で透過する。
     #[backend_test_macros::database_test]
-    async fn eval_indicator_passes_through_sandbox_rejection(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_passes_through_sandbox_rejection(db: crate::database::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         let ind = insert_indicator(
             &db,
@@ -472,8 +464,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_rejects_invalid_output(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_rejects_invalid_output(db: crate::database::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -511,8 +502,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_rejects_output_schema_mismatch(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_rejects_output_schema_mismatch(db: crate::database::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -553,8 +543,9 @@ mod tests {
     /// 問題なので `invalid_params` ではなく `internal_error` を返す。caller (LLM) に
     /// 「args が悪い」と誤認させない。
     #[backend_test_macros::database_test]
-    async fn eval_indicator_reports_broken_input_schema_as_internal(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_reports_broken_input_schema_as_internal(
+        db: crate::database::DatabaseHandle,
+    ) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -587,8 +578,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_errors_when_executor_not_configured(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn eval_indicator_errors_when_executor_not_configured(
+        db: crate::database::DatabaseHandle,
+    ) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -615,7 +607,7 @@ mod tests {
         );
     }
 
-    /// `sqlx::test` は `#[rstest]` と共存できないため `MockDatabase` + `tokio::test`。
+    /// `database_test` は rstest の case 引数を扱わないため `MockDatabase` + `tokio::test`。
     #[rstest]
     #[case::empty_name("", None, None, "name must not be empty".to_string())]
     #[case::excessive_timeout(

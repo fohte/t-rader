@@ -82,16 +82,12 @@ mod tests {
     use rstest::rstest;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::short_sale_report;
-    use crate::testing::create_test_db;
 
     use super::super::dto::{ReadShortSaleReportsParams, ReadShortSaleReportsResult};
     use super::super::tests_common::build_server;
     use super::blank_to_none;
+    use crate::entities::short_sale_report;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -136,9 +132,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_non_4_digit_symbol(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn rejects_non_4_digit_symbol(db: crate::database::DatabaseHandle) {
         let err = build_server(db)
             .read_short_sale_reports_inner(
                 Uuid::new_v4(),
@@ -155,8 +149,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn matches_by_first_4_chars_newest_first_with_blank_fields_as_null(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn matches_by_first_4_chars_newest_first_with_blank_fields_as_null(
+        db: crate::database::DatabaseHandle,
+    ) {
         seed(
             &db,
             "72030",
@@ -242,8 +237,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn filters_by_disc_date_range(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn filters_by_disc_date_range(db: crate::database::DatabaseHandle) {
         for (day, name) in [(1u32, "Jan"), (15, "Mid"), (28, "Late")] {
             seed(
                 &db,
@@ -281,8 +275,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn respects_limit_after_ordering(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn respects_limit_after_ordering(db: crate::database::DatabaseHandle) {
         for (day, name) in [(1u32, "A"), (2, "B"), (3, "C")] {
             seed(
                 &db,

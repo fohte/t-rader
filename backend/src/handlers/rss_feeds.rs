@@ -172,11 +172,9 @@ pub async fn delete_rss_feed(
 
 #[cfg(test)]
 mod tests {
+    use crate::testing::create_test_server;
     use axum::http::StatusCode;
     use serde_json::{Value, json};
-    use sqlx::PgPool;
-
-    use crate::testing::create_test_server;
 
     fn normalize(mut value: Value) -> Value {
         for key in ["id", "created_at", "updated_at"] {
@@ -188,8 +186,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_returns_201_with_full_row(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn create_returns_201_with_full_row(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/rss-feeds")
             .json(&json!({
@@ -214,8 +212,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn duplicate_source_is_409(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn duplicate_source_is_409(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let body = json!({
             "source": "dup",
             "display_name": "Dup",
@@ -231,8 +229,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn invalid_source_slug_is_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn invalid_source_slug_is_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/rss-feeds")
             .json(&json!({
@@ -245,8 +243,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn invalid_url_is_400(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn invalid_url_is_400(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let res = server
             .post("/api/rss-feeds")
             .json(&json!({
@@ -259,8 +257,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_enabled_only_filters(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn list_enabled_only_filters(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let a: Value = server
             .post("/api/rss-feeds")
             .json(&json!({
@@ -300,8 +298,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn patch_updates_fields(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn patch_updates_fields(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let created: Value = server
             .post("/api/rss-feeds")
             .json(&json!({
@@ -330,8 +328,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_returns_204_then_404(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn delete_returns_204_then_404(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
         let created: Value = server
             .post("/api/rss-feeds")
             .json(&json!({

@@ -175,16 +175,13 @@ mod tests {
     use rstest::rstest;
     use sea_orm::{DatabaseBackend, MockDatabase};
     use serde_json::json;
-    use sqlx::PgPool;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    use crate::services::litellm_client::LiteLlmClient;
-    use crate::testing::create_test_db;
 
     use super::super::StrategyServer;
     use super::super::dto::{SearchWebParams, SearchWebResult};
     use super::*;
+    use crate::services::litellm_client::LiteLlmClient;
 
     fn mock_db() -> sea_orm::DatabaseConnection {
         MockDatabase::new(DatabaseBackend::Postgres).into_connection()
@@ -267,9 +264,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_web_inner_enforces_per_task_call_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn search_web_inner_enforces_per_task_call_limit(db: crate::database::DatabaseHandle) {
         let litellm = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
@@ -320,9 +315,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let litellm = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
@@ -352,8 +347,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn increment_task_tool_call_count_is_independent_per_task_and_tool(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn increment_task_tool_call_count_is_independent_per_task_and_tool(
+        db: crate::database::DatabaseHandle,
+    ) {
         let task_a = format!("task-{}", Uuid::new_v4());
         let task_b = format!("task-{}", Uuid::new_v4());
 

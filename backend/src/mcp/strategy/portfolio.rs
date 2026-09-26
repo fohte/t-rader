@@ -119,7 +119,6 @@ mod tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use crate::data_provider::SharedDailyBarSource;
@@ -127,7 +126,7 @@ mod tests {
     use crate::models::bar::{Bar, Timeframe};
     use crate::models::instrument::{Instrument, Market};
     use crate::services::investable_amount;
-    use crate::testing::{MockProvider, create_test_db};
+    use crate::testing::MockProvider;
 
     use super::super::StrategyServer;
     use super::super::dto::{
@@ -163,8 +162,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_portfolio_returns_account_and_strategy_scopes(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_portfolio_returns_account_and_strategy_scopes(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         seed_trade(&db, strategy_a, "7203", "buy", 100, 1000).await;
@@ -229,8 +229,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_portfolio_returns_empty_scopes_when_no_trades(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_portfolio_returns_empty_scopes_when_no_trades(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -262,8 +263,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_portfolio_backfills_prices_and_computes_investable_amount(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_portfolio_backfills_prices_and_computes_investable_amount(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000).await;
 

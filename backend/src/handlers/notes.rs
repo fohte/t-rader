@@ -470,10 +470,6 @@ pub async fn delete_note(
 mod tests {
     use std::sync::Arc;
 
-    use axum_test::TestServer;
-    use serde_json::Value;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::entities::comment;
@@ -485,6 +481,8 @@ mod tests {
         create_test_server_with_db, create_test_server_with_db_and_agent_client,
         insert_test_strategy,
     };
+    use axum_test::TestServer;
+    use serde_json::Value;
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
@@ -557,8 +555,8 @@ mod tests {
     /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
     /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
     #[backend_test_macros::database_test]
-    async fn note_without_strategy_id_rejects_execution_id(pool: PgPool) {
-        let (db, _server) = create_test_server_with_db(pool).await;
+    async fn note_without_strategy_id_rejects_execution_id(db: crate::database::DatabaseHandle) {
+        let (db, _server) = create_test_server_with_db(db).await;
 
         let result = note::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -577,8 +575,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_note_without_strategy_id_succeeds(pool: PgPool) {
-        let (_db, server) = create_test_server_with_db(pool).await;
+    async fn create_note_without_strategy_id_succeeds(db: crate::database::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
             .post("/api/notes")
@@ -616,8 +614,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_note_rejects_invalid_tokens_without_saving(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    async fn create_note_rejects_invalid_tokens_without_saving(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
 
         let res = server
             .post("/api/notes")
@@ -640,8 +640,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_note_rejects_invalid_tokens_and_keeps_original_body(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    async fn update_note_rejects_invalid_tokens_and_keeps_original_body(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "strategy").await;
         let note_id = create_test_note_with_body(&server, strategy_id, "title", "original").await;
 
@@ -666,10 +668,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_note_without_strategy_id_does_not_submit_task(pool: PgPool) {
+    async fn reject_note_without_strategy_id_does_not_submit_task(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
 
         let res = server
             .post("/api/notes")
@@ -723,10 +727,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_note_submits_single_review_task_referencing_note(pool: PgPool) {
+    async fn reject_note_submits_single_review_task_referencing_note(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -787,10 +793,12 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejecting_already_rejected_note_does_not_resubmit(pool: PgPool) {
+    async fn rejecting_already_rejected_note_does_not_resubmit(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -827,11 +835,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reject_note_leaves_status_unchanged_when_agent_submission_fails(pool: PgPool) {
+    async fn reject_note_leaves_status_unchanged_when_agent_submission_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
-        let (db, server) = create_test_server_with_db_and_agent_client(pool, agent_client).await;
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -859,8 +869,10 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_note_keeps_comment_anchored_to_original_version(pool: PgPool) {
-        let (db, server) = create_test_server_with_db(pool).await;
+    async fn update_note_keeps_comment_anchored_to_original_version(
+        db: crate::database::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         let note_id = create_test_note_with_body(
             &server,

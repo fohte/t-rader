@@ -67,13 +67,11 @@ pub async fn put_account_risk_policy(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use crate::testing::create_test_server;
 
     #[backend_test_macros::database_test]
-    async fn get_returns_null_when_unset(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn get_returns_null_when_unset(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let res = server.get("/api/account/risk-policy").await;
         res.assert_status_ok();
@@ -84,8 +82,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_then_get_round_trips(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn put_then_get_round_trips(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         let expected = serde_json::json!({ "max_sector_ratio": 0.3 });
         let put = server
@@ -101,8 +99,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_multiple_times_updates_to_latest_value(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn put_multiple_times_updates_to_latest_value(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         server
             .put("/api/account/risk-policy")
@@ -123,8 +121,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_null_clears_limit(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn put_null_clears_limit(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         server
             .put("/api/account/risk-policy")
@@ -143,8 +141,8 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_400_for_out_of_range_ratio(pool: PgPool) {
-        let server = create_test_server(pool).await;
+    async fn put_400_for_out_of_range_ratio(db: crate::database::DatabaseHandle) {
+        let server = create_test_server(db).await;
 
         for invalid in [serde_json::json!(0), serde_json::json!(1.5)] {
             let res = server

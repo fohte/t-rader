@@ -111,12 +111,8 @@ pub async fn find_latest_disc_date(
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal::Decimal;
-    use sqlx::PgPool;
-
     use super::*;
-    use crate::testing::create_test_db;
-
+    use rust_decimal::Decimal;
     /// テスト用の空売り残高報告を生成する
     fn make_report(disc_date: NaiveDate, code: &str, ss_name: &str, ratio: f64) -> ShortSaleReport {
         ShortSaleReport {
@@ -138,8 +134,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_inserts_new_records(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_inserts_new_records(db: crate::database::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         let reports = vec![
@@ -158,8 +153,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_updates_existing_record_on_correction(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_updates_existing_record_on_correction(db: crate::database::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         upsert_short_sale_reports(&db, vec![make_report(date, "7203", "報告者A", 0.05)])
@@ -183,8 +177,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_allows_same_disc_date_with_different_calc_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_allows_same_disc_date_with_different_calc_date(
+        db: crate::database::DatabaseHandle,
+    ) {
         let disc_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         // 同一 disc_date に、計算日違いの報告が同時に公表されるケース
@@ -205,8 +200,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_dedups_duplicate_pk_rows_in_same_batch_keeping_last(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_dedups_duplicate_pk_rows_in_same_batch_keeping_last(
+        db: crate::database::DatabaseHandle,
+    ) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         // 同一バッチ内に同一主キーの行が重複して含まれるケース (内容が異なる場合を含む)。
@@ -246,8 +242,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_keeps_rows_distinct_when_a_dedup_key_column_differs(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_keeps_rows_distinct_when_a_dedup_key_column_differs(
+        db: crate::database::DatabaseHandle,
+    ) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         // dedup 用のキーは OnConflict::columns と同じ列集合を別表現で持つため、
@@ -271,16 +268,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
         let result = upsert_short_sale_reports(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_disc_date_returns_most_recent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_latest_disc_date_returns_most_recent(db: crate::database::DatabaseHandle) {
         let d1 = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
         let d2 = NaiveDate::from_ymd_opt(2025, 1, 8).expect("date");
         let d3 = NaiveDate::from_ymd_opt(2025, 1, 7).expect("date");
@@ -301,9 +295,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_disc_date_returns_none_when_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn find_latest_disc_date_returns_none_when_empty(db: crate::database::DatabaseHandle) {
         let result = find_latest_disc_date(&db).await.expect("find failed");
         assert_eq!(result, None);
     }

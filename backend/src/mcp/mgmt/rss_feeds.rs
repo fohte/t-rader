@@ -89,18 +89,14 @@ mod tests {
     use std::sync::Arc;
 
     use rmcp::handler::server::wrapper::{Json, Parameters};
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::agent_client::FakeAgentTaskClient;
-    use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
     use super::*;
+    use crate::agent_client::FakeAgentTaskClient;
 
     #[backend_test_macros::database_test]
-    async fn create_rss_feed_inserts_and_lists(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn create_rss_feed_inserts_and_lists(db: crate::database::DatabaseHandle) {
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(created) = server
@@ -144,8 +140,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rss_feed_rejects_invalid_source(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn create_rss_feed_rejects_invalid_source(db: crate::database::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
             .create_rss_feed(Parameters(CreateRssFeedParams {

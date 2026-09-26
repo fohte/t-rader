@@ -62,15 +62,11 @@ mod tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
-
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::trade;
-    use crate::testing::create_test_db;
 
     use super::super::dto::{ReadTradesParams, ReadTradesResult, TradeDto};
     use super::super::tests_common::{build_server, insert_strategy};
+    use crate::entities::trade;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -107,8 +103,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_returns_full_shape_across_strategies(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_trades_returns_full_shape_across_strategies(db: crate::database::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let trade_a = seed_trade(&db, strategy_a, "7203", "buy", 100, 1000, ymd(2026, 6, 1)).await;
@@ -148,8 +143,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_filters_by_symbol(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_trades_filters_by_symbol(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000, ymd(2026, 6, 1)).await;
         seed_trade(&db, strategy_id, "6758", "buy", 50, 2000, ymd(2026, 6, 1)).await;
@@ -171,8 +165,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_filters_by_date_from_inclusive(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_trades_filters_by_date_from_inclusive(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000, ymd(2026, 6, 1)).await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000, ymd(2026, 6, 5)).await;
@@ -195,8 +188,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_respects_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_trades_respects_limit(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         for day in 1..=3 {
             seed_trade(

@@ -245,18 +245,14 @@ impl StrategyServer {
 mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-
-    use sqlx::PgPool;
     use uuid::Uuid;
-
-    use crate::entities::{margin_alert, margin_interest};
-    use crate::models::PubReason;
-    use crate::testing::create_test_db;
 
     use super::super::tests_common::build_server;
     use super::{
         MarginAlertDto, MarginInterestDto, MarginPubReasonDto, ReadMarginParams, ReadMarginResult,
     };
+    use crate::entities::{margin_alert, margin_interest};
+    use crate::models::PubReason;
 
     fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -341,9 +337,8 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_returns_interest_newest_first_matching_5_digit_code_by_prefix(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         let server = build_server(db.clone());
 
         seed_interest(&db, ymd(2026, 9, 1), "72030", 1, 100, 200).await;
@@ -408,8 +403,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_includes_distinct_iss_type_rows_for_the_same_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_margin_includes_distinct_iss_type_rows_for_the_same_date(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed_interest(&db, ymd(2026, 9, 8), "72030", 1, 100, 200).await;
@@ -433,8 +429,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_filters_interest_by_date_range_inclusive(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_margin_filters_interest_by_date_range_inclusive(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed_interest(&db, ymd(2026, 9, 1), "72030", 1, 1, 1).await;
@@ -459,9 +456,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_rejects_from_after_to(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn read_margin_rejects_from_after_to(db: crate::database::DatabaseHandle) {
         let err = build_server(db)
             .read_margin_inner(
                 Uuid::new_v4(),
@@ -478,8 +473,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_orders_interest_newest_first_and_respects_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_margin_orders_interest_newest_first_and_respects_limit(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         for (i, day) in [1u32, 8, 15].into_iter().enumerate() {
@@ -504,8 +500,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_keeps_only_latest_pub_date_per_app_date_for_alerts(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_margin_keeps_only_latest_pub_date_per_app_date_for_alerts(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed_alert(
@@ -575,8 +572,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_orders_alerts_newest_first_and_respects_limit(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_margin_orders_alerts_newest_first_and_respects_limit(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         for (i, day) in [1u32, 8, 15].into_iter().enumerate() {
@@ -610,8 +608,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_matches_alerts_5_digit_code_by_prefix(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_margin_matches_alerts_5_digit_code_by_prefix(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed_alert(
@@ -653,8 +652,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_filters_alerts_by_date_range_inclusive(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_margin_filters_alerts_by_date_range_inclusive(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
 
         seed_alert(

@@ -177,17 +177,13 @@ pub async fn find_latest_bar_on_or_before(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::entities::instruments;
+    use crate::models::bar::Timeframe;
     use chrono::{NaiveDate, TimeZone, Utc};
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
     use sea_orm::{EntityTrait, Set};
-    use sqlx::PgPool;
-
-    use super::*;
-    use crate::entities::instruments;
-    use crate::models::bar::Timeframe;
-    use crate::testing::create_test_db;
-
     /// テスト用の instrument を DB に挿入する
     async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
         instruments::Entity::insert(instruments::ActiveModel {
@@ -225,8 +221,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_bars_inserts_new_records(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_bars_inserts_new_records(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -255,8 +250,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_bars_updates_existing_records(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_bars_updates_existing_records(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date");
@@ -283,16 +277,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_bars_with_empty_vec_is_noop(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn upsert_bars_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
         let result = upsert_bars(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_bars_filters_by_date_range(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_bars_filters_by_date_range(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -333,8 +324,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_bars_by_instruments_filters_to_requested_instruments(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_bars_by_instruments_filters_to_requested_instruments(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
         insert_test_instrument(&db, "9984").await;
         insert_test_instrument(&db, "6758").await;
@@ -371,8 +363,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_bar_returns_most_recent(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_latest_bar_returns_most_recent(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -401,9 +392,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_bar_returns_none_when_no_bars(pool: PgPool) {
-        let db = create_test_db(pool).await;
-
+    async fn find_latest_bar_returns_none_when_no_bars(db: crate::database::DatabaseHandle) {
         let result = find_latest_bar(&db, "7203", "1d")
             .await
             .expect("find failed");
@@ -411,8 +400,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_bar_on_or_before_returns_latest_bar_at_or_before_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_latest_bar_on_or_before_returns_latest_bar_at_or_before_date(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -442,8 +432,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_bar_on_or_before_returns_none_when_no_bar_before_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_latest_bar_on_or_before_returns_none_when_no_bar_before_date(
+        db: crate::database::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
 
         upsert_bars(

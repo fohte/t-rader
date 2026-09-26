@@ -214,14 +214,12 @@ fn step_to_resume_wire_json(
 mod tests {
     use std::sync::Arc;
 
-    use sea_orm::ActiveValue::NotSet;
-    use sqlx::PgPool;
-
     use super::super::TaskSource;
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient};
     use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
-    use crate::testing::{create_test_db, insert_test_strategy};
+    use crate::testing::insert_test_strategy;
+    use sea_orm::ActiveValue::NotSet;
 
     /// resume 時の `now` と区別できるよう、投入時刻として十分に過去の固定値を使う。
     fn original_as_of() -> chrono::DateTime<chrono::FixedOffset> {
@@ -289,12 +287,11 @@ mod tests {
         .expect("insert test strategy_task_step");
     }
 
-    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
+    // database_test は rstest の case 引数を扱わないため、for ループで列挙する。
     #[backend_test_macros::database_test]
     async fn resume_task_rejects_a_task_that_is_neither_failed_nor_completed_with_a_failed_step(
-        pool: PgPool,
+        db: crate::database::DatabaseHandle,
     ) {
-        let db = create_test_db(pool).await;
         let strategy_id = insert_test_strategy(&db, "s").await;
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -342,8 +339,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_task_not_found(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn resume_task_not_found(db: crate::database::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let task_id = Uuid::new_v4();
 
@@ -353,11 +349,12 @@ mod tests {
         assert!(matches!(err, ResumeTaskError::NotFound(id) if id == task_id));
     }
 
-    // rstest #[case] は sqlx::test の pool 注入と組み合わせ難いため for ループで列挙する。
+    // database_test は rstest の case 引数を扱わないため、for ループで列挙する。
     // Completed は for_each の部分失敗で failed なステップを抱えたまま終わったタスク。
     #[backend_test_macros::database_test]
-    async fn resume_task_resubmits_all_steps_and_updates_the_row_in_place(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn resume_task_resubmits_all_steps_and_updates_the_row_in_place(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         for start_phase in [StrategyTaskPhase::Failed, StrategyTaskPhase::Completed] {
             let start_label = phase_str(&start_phase);
@@ -476,8 +473,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_task_rejects_a_second_call_after_the_first_claims_the_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn resume_task_rejects_a_second_call_after_the_first_claims_the_row(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
             insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
@@ -498,8 +496,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn auto_resume_task_resubmits_and_marks_auto_resumed(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn auto_resume_task_resubmits_and_marks_auto_resumed(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
             insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
@@ -542,8 +541,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn auto_resume_task_rejects_a_second_call_once_already_auto_resumed(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn auto_resume_task_rejects_a_second_call_once_already_auto_resumed(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
             insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
@@ -576,8 +576,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn auto_resume_task_marks_auto_resumed_at_even_when_submission_fails(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn auto_resume_task_marks_auto_resumed_at_even_when_submission_fails(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
             insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;
@@ -599,8 +600,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_task_does_not_touch_auto_resumed_at(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn resume_task_does_not_touch_auto_resumed_at(db: crate::database::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
             insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;

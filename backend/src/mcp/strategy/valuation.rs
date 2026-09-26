@@ -101,15 +101,11 @@ mod tests {
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
-
-    use sqlx::PgPool;
     use uuid::Uuid;
 
     use super::super::tests_common::build_server;
     use super::{ReadValuationParams, ReadValuationResult, ValuationDto};
     use crate::entities::valuation;
-    use crate::testing::create_test_db;
-
     fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
@@ -134,8 +130,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_valuation_matches_code_prefix_and_date_range(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn read_valuation_matches_code_prefix_and_date_range(
+        db: crate::database::DatabaseHandle,
+    ) {
         let server = build_server(db.clone());
         seed(&db, "ZZZZ0", ymd(2099, 1, 3), Decimal::new(125, 1)).await;
         seed(&db, "ZZZZ1", ymd(2099, 1, 8), Decimal::new(185, 1)).await;

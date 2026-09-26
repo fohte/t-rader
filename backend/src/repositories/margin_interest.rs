@@ -82,11 +82,7 @@ pub async fn find_latest_margin_interest_date(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::PgPool;
-
     use super::*;
-    use crate::testing::create_test_db;
-
     fn make_record(date: NaiveDate, code: &str, shrt_vol: i64) -> MarginInterestRecord {
         MarginInterestRecord {
             date,
@@ -108,8 +104,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_inserts_and_updates_on_conflict(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_inserts_and_updates_on_conflict(db: crate::database::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2024, 1, 5).expect("date");
 
         upsert_margin_interest(&db, vec![make_record(date, "7203", 100)])
@@ -126,15 +121,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
         let result = upsert_margin_interest(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_none_when_empty(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_latest_returns_none_when_empty(db: crate::database::DatabaseHandle) {
         let latest = find_latest_margin_interest_date(&db)
             .await
             .expect("query ok");
@@ -142,8 +135,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_max_date(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn find_latest_returns_max_date(db: crate::database::DatabaseHandle) {
         let older = NaiveDate::from_ymd_opt(2024, 1, 5).expect("date");
         let newer = NaiveDate::from_ymd_opt(2024, 1, 12).expect("date");
         upsert_margin_interest(

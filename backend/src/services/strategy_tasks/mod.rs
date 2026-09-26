@@ -427,13 +427,11 @@ fn step_to_wire_json(
 mod tests {
     use std::sync::Arc;
 
-    use rstest::rstest;
-    use sea_orm::PaginatorTrait;
-    use sqlx::PgPool;
-
     use super::*;
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::testing::{create_test_db, insert_test_strategy};
+    use crate::testing::insert_test_strategy;
+    use rstest::rstest;
+    use sea_orm::PaginatorTrait;
 
     #[rstest]
     #[case::mgmt_mcp(TaskSource::MgmtMcp, "mgmt-mcp")]
@@ -444,8 +442,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_task_rejects_missing_purpose_before_inserting_task_row(pool: PgPool) {
-        let db = create_test_db(pool).await;
+    async fn submit_task_rejects_missing_purpose_before_inserting_task_row(
+        db: crate::database::DatabaseHandle,
+    ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
