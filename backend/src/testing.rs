@@ -35,7 +35,7 @@ static TEST_DATABASE_INITIALIZED: tokio::sync::OnceCell<()> = tokio::sync::OnceC
 /// テストごとに独立した rollback transaction を作る。
 pub async fn create_test_transaction(test_name: &'static str) -> DatabaseHandle {
     TEST_DATABASE_INITIALIZED
-        .get_or_init(initialize_test_database)
+        .get_or_init(|| initialize_test_database(test_name))
         .await;
 
     let application_name = test_application_name(test_name);
@@ -48,10 +48,13 @@ pub async fn create_test_transaction(test_name: &'static str) -> DatabaseHandle 
     DatabaseHandle::from(db.begin().await.expect("begin test transaction"))
 }
 
-async fn initialize_test_database() {
+async fn initialize_test_database(test_name: &'static str) {
     let test_database = test_database_name();
+    let application_name = test_application_name(test_name);
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let base_options = PgConnectOptions::from_str(&database_url).expect("parse DATABASE_URL");
+    let base_options = PgConnectOptions::from_str(&database_url)
+        .expect("parse DATABASE_URL")
+        .application_name(&application_name);
     let mut admin = PgConnection::connect_with(&base_options.clone().database("postgres"))
         .await
         .expect("connect to PostgreSQL admin database");
@@ -112,10 +115,8 @@ const APPLICATION_NAME_MAX_BYTES: usize = 63;
 fn test_application_name(test_name: &str) -> String {
     // PostgreSQL は application_name を 63 byte で切るため、末尾にあるテスト名を残す。
     let max_suffix_bytes = APPLICATION_NAME_MAX_BYTES - APPLICATION_NAME_PREFIX.len();
-    let suffix_start = test_name
-        .char_indices()
-        .find_map(|(index, _)| (test_name.len() - index <= max_suffix_bytes).then_some(index))
-        .unwrap_or(0);
+    let suffix_start =
+        test_name.ceil_char_boundary(test_name.len().saturating_sub(max_suffix_bytes));
     format!("{APPLICATION_NAME_PREFIX}{}", &test_name[suffix_start..])
 }
 
