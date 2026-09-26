@@ -113,13 +113,17 @@ fn test_database_options() -> PgConnectOptions {
         .database(&test_database_name())
 }
 
+const APPLICATION_NAME_PREFIX: &str = "dbtest:";
+const APPLICATION_NAME_MAX_BYTES: usize = 63;
+
 fn test_application_name(test_name: &str) -> String {
     // PostgreSQL は application_name を 63 byte で切るため、末尾にあるテスト名を残す。
+    let max_suffix_bytes = APPLICATION_NAME_MAX_BYTES - APPLICATION_NAME_PREFIX.len();
     let suffix_start = test_name
         .char_indices()
-        .find_map(|(index, _)| (test_name.len() - index <= 56).then_some(index))
+        .find_map(|(index, _)| (test_name.len() - index <= max_suffix_bytes).then_some(index))
         .unwrap_or(0);
-    format!("dbtest:{}", &test_name[suffix_start..])
+    format!("{APPLICATION_NAME_PREFIX}{}", &test_name[suffix_start..])
 }
 
 // 別 worktree のテストが古い migration source の DB を使うことがあるため、異なる hash の DB を共存させる。
