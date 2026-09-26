@@ -1,20 +1,23 @@
 //! 戦略実行 MCP の `read_shareholding_structure` tool。
 //!
-//! J-Quants EDINET 保有構造データ (`backend/src/services/edinet_holdings/`) の 3 テーブル
-//! (`edinet_large_volume_shareholdings` / `edinet_major_shareholders` /
-//! `edinet_cross_shareholdings`) を読む。`code` は J-Quants の 5 桁コードで、
-//! 4 桁の銘柄コードとの対応関係は仕様に明記されていないため、先頭 4 文字が一致する行を
-//! 対象銘柄の書類として扱う。戦略に属さない市場データのため `search_refs` / `search_news`
+//! 保有構造データの 3 テーブルを読む。保存する銘柄コードは 5 桁で、
+//! 4 桁の銘柄コードと先頭 4 文字が一致する行を対象銘柄の書類として扱う。
+//! 戦略に属さない市場データのため `search_refs` / `search_news`
 //! 同様、`x-strategy-id` を検索条件には使わない。
 
-use chrono::NaiveDate;
+use core_domain::holdings::{
+    CrossShareholding as DomainCrossShareholding,
+    CrossShareholdingCategory as DomainCrossShareholdingCategory, CrossShareholdingContent,
+    LargeVolumeReportType, LargeVolumeShareholdingContent, MajorShareholderContent,
+    MajorShareholderReportType, MutualHolding as DomainMutualHolding,
+};
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use serde::Deserialize;
+use serde_json::from_value;
 use uuid::Uuid;
 
 use crate::entities::{
-    edinet_cross_shareholdings, edinet_large_volume_shareholdings, edinet_major_shareholders,
+    cross_shareholding_documents, large_volume_shareholding_documents, major_shareholder_documents,
 };
 
 use super::dto::{
@@ -25,135 +28,51 @@ use super::dto::{
 };
 use super::{StrategyServer, clamp_limit, code_range, db_error, internal_error, validate_symbol};
 
-#[derive(Debug, Deserialize)]
-struct RawHolder {
-    #[serde(rename = "HldrName")]
-    hldr_name: String,
-    #[serde(rename = "HldgPurp")]
-    hldg_purp: Option<String>,
-    #[serde(rename = "ShsHeld")]
-    shs_held: Option<i64>,
-    #[serde(rename = "ShsRatio")]
-    shs_ratio: Option<f64>,
-    #[serde(rename = "ShsRatioLast")]
-    shs_ratio_last: Option<f64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawLargeVolumeDocument {
-    #[serde(rename = "LargeHldgTypeCode")]
-    large_hldg_type_code: Option<String>,
-    #[serde(rename = "ChgRsn")]
-    chg_rsn: Option<String>,
-    #[serde(rename = "TotalShsRatio")]
-    total_shs_ratio: Option<f64>,
-    #[serde(rename = "TotalShsRatioLast")]
-    total_shs_ratio_last: Option<f64>,
-    #[serde(rename = "Hldrs", default)]
-    hldrs: Vec<RawHolder>,
-}
-
-fn large_volume_document_type(code: Option<&str>) -> LargeVolumeDocumentType {
-    match code {
-        Some("1") => LargeVolumeDocumentType::LargeVolumeReport,
-        Some("2") => LargeVolumeDocumentType::Amendment,
-        Some("3") => LargeVolumeDocumentType::AmendmentRapidTransfer,
-        Some("4") => LargeVolumeDocumentType::LargeVolumeReportSpecial,
-        Some("5") => LargeVolumeDocumentType::AmendmentSpecial,
-        _ => LargeVolumeDocumentType::Unknown,
+fn large_volume_document_type(report_type: LargeVolumeReportType) -> LargeVolumeDocumentType {
+    match report_type {
+        LargeVolumeReportType::Report => LargeVolumeDocumentType::LargeVolumeReport,
+        LargeVolumeReportType::Amendment => LargeVolumeDocumentType::Amendment,
+        LargeVolumeReportType::AmendmentRapidTransfer => {
+            LargeVolumeDocumentType::AmendmentRapidTransfer
+        }
+        LargeVolumeReportType::ReportSpecial => LargeVolumeDocumentType::LargeVolumeReportSpecial,
+        LargeVolumeReportType::AmendmentSpecial => LargeVolumeDocumentType::AmendmentSpecial,
+        LargeVolumeReportType::Unknown => LargeVolumeDocumentType::Unknown,
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct RawMajorShareholder {
-    #[serde(rename = "Rank")]
-    rank: Option<i32>,
-    #[serde(rename = "HldrName")]
-    hldr_name: String,
-    #[serde(rename = "ShsHeld")]
-    shs_held: Option<i64>,
-    #[serde(rename = "ShsRatio")]
-    shs_ratio: Option<f64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawMajorShareholdersDocument {
-    #[serde(rename = "PerEn")]
-    per_en: Option<NaiveDate>,
-    #[serde(rename = "DocTypeCode")]
-    doc_type_code: Option<String>,
-    #[serde(rename = "Hldrs", default)]
-    hldrs: Vec<RawMajorShareholder>,
-}
-
-fn major_shareholders_document_type(code: Option<&str>) -> MajorShareholdersDocumentType {
-    match code {
-        Some("120") => MajorShareholdersDocumentType::AnnualReport,
-        Some("140") => MajorShareholdersDocumentType::QuarterlyReport,
-        Some("160") => MajorShareholdersDocumentType::SemiAnnualReport,
-        _ => MajorShareholdersDocumentType::Unknown,
+fn major_shareholders_document_type(
+    report_type: MajorShareholderReportType,
+) -> MajorShareholdersDocumentType {
+    match report_type {
+        MajorShareholderReportType::Annual => MajorShareholdersDocumentType::AnnualReport,
+        MajorShareholderReportType::Quarterly => MajorShareholdersDocumentType::QuarterlyReport,
+        MajorShareholderReportType::SemiAnnual => MajorShareholdersDocumentType::SemiAnnualReport,
+        MajorShareholderReportType::Unknown => MajorShareholdersDocumentType::Unknown,
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct RawCrossShareholdingEntry {
-    #[serde(rename = "IsrName")]
-    isr_name: String,
-    #[serde(rename = "IsrCode")]
-    isr_code: Option<String>,
-    #[serde(rename = "CurShs")]
-    cur_shs: Option<i64>,
-    #[serde(rename = "PriShs")]
-    pri_shs: Option<i64>,
-    #[serde(rename = "CurBookVal")]
-    cur_book_val: Option<i64>,
-    #[serde(rename = "PriBookVal")]
-    pri_book_val: Option<i64>,
-    #[serde(rename = "IsrHoldsCode")]
-    isr_holds_code: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct RawCrossShareholdingReportBlock {
-    #[serde(rename = "Spec", default)]
-    spec: Vec<RawCrossShareholdingEntry>,
-    #[serde(rename = "Deem", default)]
-    deem: Vec<RawCrossShareholdingEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawCrossShareholdingsDocument {
-    #[serde(rename = "PerEn")]
-    per_en: Option<NaiveDate>,
-    #[serde(rename = "Report", default)]
-    report: RawCrossShareholdingReportBlock,
-}
-
-fn mutual_holding(code: Option<&str>) -> MutualHolding {
-    match code {
-        Some("1") => MutualHolding::Held,
-        Some("0") => MutualHolding::NotHeld,
-        _ => MutualHolding::Unknown,
-    }
-}
-
-fn cross_shareholding_dto(
-    entry: RawCrossShareholdingEntry,
-    category: CrossShareholdingCategory,
-) -> CrossShareholdingDto {
+fn cross_shareholding_dto(entry: DomainCrossShareholding) -> CrossShareholdingDto {
     CrossShareholdingDto {
-        issuer_name: entry.isr_name,
-        issuer_code: entry.isr_code,
-        category,
-        current_shares: entry.cur_shs,
-        previous_shares: entry.pri_shs,
-        current_book_value: entry.cur_book_val,
-        previous_book_value: entry.pri_book_val,
-        mutual_holding: mutual_holding(entry.isr_holds_code.as_deref()),
+        issuer_name: entry.issuer_name,
+        issuer_code: entry.issuer_stock_code,
+        category: match entry.category {
+            DomainCrossShareholdingCategory::Specified => CrossShareholdingCategory::Specified,
+            DomainCrossShareholdingCategory::Deemed => CrossShareholdingCategory::Deemed,
+        },
+        current_shares: entry.current_shares,
+        previous_shares: entry.previous_shares,
+        current_book_value: entry.current_book_value,
+        previous_book_value: entry.previous_book_value,
+        mutual_holding: match entry.mutual_holding {
+            DomainMutualHolding::Held => MutualHolding::Held,
+            DomainMutualHolding::NotHeld => MutualHolding::NotHeld,
+            DomainMutualHolding::Unknown => MutualHolding::Unknown,
+        },
     }
 }
 
-/// symbol の code range に一致する最新行 (sub_date 降順、doc_id で tie-break) を 1 件取得する。
+/// symbol の code range に一致する本文のある最新行 (提出日降順、書類 ID で tie-break) を 1 件取得する。
 /// major_shareholders / cross_shareholdings は「直近の書類のみ返す」という同じクエリ形を
 /// entity 違いで繰り返すため、ここに切り出す。
 async fn latest_matching_document<E>(
@@ -161,6 +80,7 @@ async fn latest_matching_document<E>(
     code_column: E::Column,
     sub_date_column: E::Column,
     doc_id_column: E::Column,
+    details_column: E::Column,
     symbol: &str,
 ) -> Result<Option<E::Model>, sea_orm::DbErr>
 where
@@ -169,6 +89,7 @@ where
     let (lower, upper) = code_range(symbol);
     E::find()
         .filter(code_column.between(lower, upper))
+        .filter(details_column.ne(serde_json::Value::Null))
         .order_by_desc(sub_date_column)
         .order_by_desc(doc_id_column)
         .one(db)
@@ -185,10 +106,10 @@ impl StrategyServer {
         let limit = clamp_limit(params.limit);
         let (lower, upper) = code_range(&params.symbol);
 
-        let large_volume_rows = edinet_large_volume_shareholdings::Entity::find()
-            .filter(edinet_large_volume_shareholdings::Column::Code.between(lower, upper))
-            .order_by_desc(edinet_large_volume_shareholdings::Column::SubDate)
-            .order_by_desc(edinet_large_volume_shareholdings::Column::DocId)
+        let large_volume_rows = large_volume_shareholding_documents::Entity::find()
+            .filter(large_volume_shareholding_documents::Column::StockCode.between(lower, upper))
+            .order_by_desc(large_volume_shareholding_documents::Column::SubmittedOn)
+            .order_by_desc(large_volume_shareholding_documents::Column::DocumentId)
             .limit(limit)
             .all(&self.db)
             .await
@@ -196,70 +117,69 @@ impl StrategyServer {
 
         let mut large_volume_reports = Vec::with_capacity(large_volume_rows.len());
         for row in large_volume_rows {
-            let doc_id = row.doc_id;
-            let doc: RawLargeVolumeDocument = match serde_json::from_value(row.document) {
+            let doc_id = row.document_id;
+            let doc: LargeVolumeShareholdingContent = match from_value(row.details) {
                 Ok(doc) => doc,
                 Err(e) => {
                     tracing::warn!(
                         doc_id,
                         error = %e,
-                        "malformed edinet_large_volume_shareholdings document, skipping"
+                        "malformed large volume shareholding details, skipping"
                     );
                     continue;
                 }
             };
             large_volume_reports.push(LargeVolumeReportDto {
                 doc_id,
-                submitted_on: row.sub_date,
-                document_type: large_volume_document_type(doc.large_hldg_type_code.as_deref()),
-                change_reason: doc.chg_rsn,
-                total_shares_ratio: doc.total_shs_ratio,
-                total_shares_ratio_last: doc.total_shs_ratio_last,
+                submitted_on: row.submitted_on,
+                document_type: large_volume_document_type(doc.report_type),
+                change_reason: doc.change_reason,
+                total_shares_ratio: doc.total_shares_ratio,
+                total_shares_ratio_last: doc.previous_total_shares_ratio,
                 holders: doc
-                    .hldrs
+                    .holders
                     .into_iter()
-                    .map(|h| LargeVolumeHolderDto {
-                        holder_name: h.hldr_name,
-                        holding_purpose: h.hldg_purp,
-                        shares_held: h.shs_held,
-                        shares_ratio: h.shs_ratio,
-                        shares_ratio_last: h.shs_ratio_last,
+                    .map(|holder| LargeVolumeHolderDto {
+                        holder_name: holder.name,
+                        holding_purpose: holder.holding_purpose,
+                        shares_held: holder.shares_held,
+                        shares_ratio: holder.shares_ratio,
+                        shares_ratio_last: holder.previous_shares_ratio,
                     })
                     .collect(),
             });
         }
 
-        let major_shareholders_row = latest_matching_document::<edinet_major_shareholders::Entity>(
-            &self.db,
-            edinet_major_shareholders::Column::Code,
-            edinet_major_shareholders::Column::SubDate,
-            edinet_major_shareholders::Column::DocId,
-            &params.symbol,
-        )
-        .await
-        .map_err(db_error)?;
+        let major_shareholders_row =
+            latest_matching_document::<major_shareholder_documents::Entity>(
+                &self.db,
+                major_shareholder_documents::Column::StockCode,
+                major_shareholder_documents::Column::SubmittedOn,
+                major_shareholder_documents::Column::DocumentId,
+                major_shareholder_documents::Column::Details,
+                &params.symbol,
+            )
+            .await
+            .map_err(db_error)?;
         let major_shareholders = major_shareholders_row
             .map(|row| -> Result<_, McpError> {
-                let doc_id = row.doc_id;
-                let doc: RawMajorShareholdersDocument = serde_json::from_value(row.document)
-                    .map_err(|e| {
-                        internal_error(format!(
-                            "malformed edinet_major_shareholders document {doc_id}: {e}"
-                        ))
-                    })?;
+                let doc_id = row.document_id;
+                let doc: MajorShareholderContent = from_value(row.details).map_err(|e| {
+                    internal_error(format!("malformed major shareholder details {doc_id}: {e}"))
+                })?;
                 Ok(MajorShareholdersReportDto {
                     doc_id,
-                    submitted_on: row.sub_date,
-                    period_end: doc.per_en,
-                    document_type: major_shareholders_document_type(doc.doc_type_code.as_deref()),
+                    submitted_on: row.submitted_on,
+                    period_end: doc.period_end,
+                    document_type: major_shareholders_document_type(doc.report_type),
                     holders: doc
-                        .hldrs
+                        .holders
                         .into_iter()
-                        .map(|h| MajorShareholderDto {
-                            rank: h.rank,
-                            holder_name: h.hldr_name,
-                            shares_held: h.shs_held,
-                            shares_ratio: h.shs_ratio,
+                        .map(|holder| MajorShareholderDto {
+                            rank: holder.rank,
+                            holder_name: holder.name,
+                            shares_held: holder.shares_held,
+                            shares_ratio: holder.shares_ratio,
                         })
                         .collect(),
                 })
@@ -267,43 +187,33 @@ impl StrategyServer {
             .transpose()?;
 
         let cross_shareholdings_row =
-            latest_matching_document::<edinet_cross_shareholdings::Entity>(
+            latest_matching_document::<cross_shareholding_documents::Entity>(
                 &self.db,
-                edinet_cross_shareholdings::Column::Code,
-                edinet_cross_shareholdings::Column::SubDate,
-                edinet_cross_shareholdings::Column::DocId,
+                cross_shareholding_documents::Column::StockCode,
+                cross_shareholding_documents::Column::SubmittedOn,
+                cross_shareholding_documents::Column::DocumentId,
+                cross_shareholding_documents::Column::Details,
                 &params.symbol,
             )
             .await
             .map_err(db_error)?;
         let cross_shareholdings = cross_shareholdings_row
             .map(|row| -> Result<_, McpError> {
-                let doc_id = row.doc_id;
-                let doc: RawCrossShareholdingsDocument = serde_json::from_value(row.document)
-                    .map_err(|e| {
-                        internal_error(format!(
-                            "malformed edinet_cross_shareholdings document {doc_id}: {e}"
-                        ))
-                    })?;
-                let mut holdings =
-                    Vec::with_capacity(doc.report.spec.len() + doc.report.deem.len());
-                holdings.extend(
-                    doc.report
-                        .spec
-                        .into_iter()
-                        .map(|e| cross_shareholding_dto(e, CrossShareholdingCategory::Specified)),
-                );
-                holdings.extend(
-                    doc.report
-                        .deem
-                        .into_iter()
-                        .map(|e| cross_shareholding_dto(e, CrossShareholdingCategory::Deemed)),
-                );
+                let doc_id = row.document_id;
+                let doc: CrossShareholdingContent = from_value(row.details).map_err(|e| {
+                    internal_error(format!(
+                        "malformed cross shareholding details {doc_id}: {e}"
+                    ))
+                })?;
                 Ok(CrossShareholdingsReportDto {
                     doc_id,
-                    submitted_on: row.sub_date,
-                    period_end: doc.per_en,
-                    holdings,
+                    submitted_on: row.submitted_on,
+                    period_end: doc.period_end,
+                    holdings: doc
+                        .holdings
+                        .into_iter()
+                        .map(cross_shareholding_dto)
+                        .collect(),
                 })
             })
             .transpose()?;
@@ -329,24 +239,27 @@ mod tests {
     use uuid::Uuid;
 
     use crate::entities::{
-        edinet_cross_shareholdings, edinet_large_volume_shareholdings, edinet_major_shareholders,
+        cross_shareholding_documents, large_volume_shareholding_documents,
+        major_shareholder_documents,
     };
     use crate::testing::create_test_db;
+    use core_domain::holdings::{
+        LargeVolumeReportType as DomainLargeVolumeReportType,
+        MajorShareholderReportType as DomainMajorShareholderReportType,
+    };
 
     use super::super::dto::{
-        CrossShareholdingCategory, LargeVolumeDocumentType, MajorShareholdersDocumentType,
-        MutualHolding, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
+        CrossShareholdingCategory, LargeVolumeDocumentType, LargeVolumeReportDto,
+        MajorShareholdersDocumentType, MutualHolding, ReadShareholdingStructureParams,
+        ReadShareholdingStructureResult,
     };
     use super::super::tests_common::build_server;
-    use super::{
-        large_volume_document_type, major_shareholders_document_type, mutual_holding,
-        validate_symbol,
-    };
+    use super::{large_volume_document_type, major_shareholders_document_type, validate_symbol};
 
     #[rstest]
-    #[case::valid("7203", true)]
+    #[case::valid("9999", true)]
     #[case::too_short("720", false)]
-    #[case::too_long("72030", false)]
+    #[case::too_long("99990", false)]
     #[case::non_digit("72a3", false)]
     #[case::empty("", false)]
     fn validate_symbol_cases(#[case] symbol: &str, #[case] expected_ok: bool) {
@@ -354,54 +267,71 @@ mod tests {
     }
 
     #[rstest]
-    #[case::report(Some("1"), LargeVolumeDocumentType::LargeVolumeReport)]
-    #[case::amendment(Some("2"), LargeVolumeDocumentType::Amendment)]
-    #[case::amendment_rapid_transfer(Some("3"), LargeVolumeDocumentType::AmendmentRapidTransfer)]
-    #[case::report_special(Some("4"), LargeVolumeDocumentType::LargeVolumeReportSpecial)]
-    #[case::amendment_special(Some("5"), LargeVolumeDocumentType::AmendmentSpecial)]
-    #[case::explicit_unknown(Some("0"), LargeVolumeDocumentType::Unknown)]
-    #[case::missing(None, LargeVolumeDocumentType::Unknown)]
+    #[case::report(
+        DomainLargeVolumeReportType::Report,
+        LargeVolumeDocumentType::LargeVolumeReport
+    )]
+    #[case::amendment(
+        DomainLargeVolumeReportType::Amendment,
+        LargeVolumeDocumentType::Amendment
+    )]
+    #[case::amendment_rapid_transfer(
+        DomainLargeVolumeReportType::AmendmentRapidTransfer,
+        LargeVolumeDocumentType::AmendmentRapidTransfer
+    )]
+    #[case::report_special(
+        DomainLargeVolumeReportType::ReportSpecial,
+        LargeVolumeDocumentType::LargeVolumeReportSpecial
+    )]
+    #[case::amendment_special(
+        DomainLargeVolumeReportType::AmendmentSpecial,
+        LargeVolumeDocumentType::AmendmentSpecial
+    )]
+    #[case::unknown(DomainLargeVolumeReportType::Unknown, LargeVolumeDocumentType::Unknown)]
     fn large_volume_document_type_cases(
-        #[case] code: Option<&str>,
+        #[case] report_type: DomainLargeVolumeReportType,
         #[case] expected: LargeVolumeDocumentType,
     ) {
-        assert_eq!(large_volume_document_type(code), expected);
+        assert_eq!(large_volume_document_type(report_type), expected);
     }
 
     #[rstest]
-    #[case::annual(Some("120"), MajorShareholdersDocumentType::AnnualReport)]
-    #[case::quarterly(Some("140"), MajorShareholdersDocumentType::QuarterlyReport)]
-    #[case::semi_annual(Some("160"), MajorShareholdersDocumentType::SemiAnnualReport)]
-    #[case::missing(None, MajorShareholdersDocumentType::Unknown)]
+    #[case::annual(
+        DomainMajorShareholderReportType::Annual,
+        MajorShareholdersDocumentType::AnnualReport
+    )]
+    #[case::quarterly(
+        DomainMajorShareholderReportType::Quarterly,
+        MajorShareholdersDocumentType::QuarterlyReport
+    )]
+    #[case::semi_annual(
+        DomainMajorShareholderReportType::SemiAnnual,
+        MajorShareholdersDocumentType::SemiAnnualReport
+    )]
+    #[case::unknown(
+        DomainMajorShareholderReportType::Unknown,
+        MajorShareholdersDocumentType::Unknown
+    )]
     fn major_shareholders_document_type_cases(
-        #[case] code: Option<&str>,
+        #[case] report_type: DomainMajorShareholderReportType,
         #[case] expected: MajorShareholdersDocumentType,
     ) {
-        assert_eq!(major_shareholders_document_type(code), expected);
-    }
-
-    #[rstest]
-    #[case::held(Some("1"), MutualHolding::Held)]
-    #[case::not_held(Some("0"), MutualHolding::NotHeld)]
-    #[case::undeterminable(Some("2"), MutualHolding::Unknown)]
-    #[case::missing(None, MutualHolding::Unknown)]
-    fn mutual_holding_cases(#[case] code: Option<&str>, #[case] expected: MutualHolding) {
-        assert_eq!(mutual_holding(code), expected);
+        assert_eq!(major_shareholders_document_type(report_type), expected);
     }
 
     async fn insert_large_volume(
         db: &DatabaseConnection,
-        doc_id: &str,
-        code: &str,
-        sub_date: NaiveDate,
-        document: Value,
+        document_id: &str,
+        stock_code: &str,
+        submitted_on: NaiveDate,
+        details: Value,
     ) {
-        edinet_large_volume_shareholdings::ActiveModel {
-            doc_id: Set(doc_id.to_string()),
-            code: Set(Some(code.to_string())),
-            edinet_code: Set("E00001".to_string()),
-            sub_date: Set(sub_date),
-            document: Set(document),
+        large_volume_shareholding_documents::ActiveModel {
+            document_id: Set(document_id.to_string()),
+            stock_code: Set(Some(stock_code.to_string())),
+            filer_code: Set("E99999".to_string()),
+            submitted_on: Set(submitted_on),
+            details: Set(details),
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -412,17 +342,17 @@ mod tests {
 
     async fn insert_major_shareholders(
         db: &DatabaseConnection,
-        doc_id: &str,
-        code: &str,
-        sub_date: NaiveDate,
-        document: Value,
+        document_id: &str,
+        stock_code: &str,
+        submitted_on: NaiveDate,
+        details: Value,
     ) {
-        edinet_major_shareholders::ActiveModel {
-            doc_id: Set(doc_id.to_string()),
-            code: Set(Some(code.to_string())),
-            edinet_code: Set("E00001".to_string()),
-            sub_date: Set(sub_date),
-            document: Set(document),
+        major_shareholder_documents::ActiveModel {
+            document_id: Set(document_id.to_string()),
+            stock_code: Set(Some(stock_code.to_string())),
+            filer_code: Set("E99999".to_string()),
+            submitted_on: Set(submitted_on),
+            details: Set(details),
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -433,17 +363,17 @@ mod tests {
 
     async fn insert_cross_shareholdings(
         db: &DatabaseConnection,
-        doc_id: &str,
-        code: &str,
-        sub_date: NaiveDate,
-        document: Value,
+        document_id: &str,
+        stock_code: &str,
+        submitted_on: NaiveDate,
+        details: Value,
     ) {
-        edinet_cross_shareholdings::ActiveModel {
-            doc_id: Set(doc_id.to_string()),
-            code: Set(Some(code.to_string())),
-            edinet_code: Set("E00001".to_string()),
-            sub_date: Set(sub_date),
-            document: Set(document),
+        cross_shareholding_documents::ActiveModel {
+            document_id: Set(document_id.to_string()),
+            stock_code: Set(Some(stock_code.to_string())),
+            filer_code: Set("E99999".to_string()),
+            submitted_on: Set(submitted_on),
+            details: Set(details),
             created_at: NotSet,
             updated_at: NotSet,
         }
@@ -473,12 +403,12 @@ mod tests {
     async fn returns_empty_and_null_sections_when_nothing_ingested(pool: PgPool) {
         let db = create_test_db(pool).await;
 
-        let result = read(&db, "7203").await;
+        let result = read(&db, "9999").await;
 
         assert_eq!(
             result,
             ReadShareholdingStructureResult {
-                symbol: "7203".to_string(),
+                symbol: "9999".to_string(),
                 large_volume_reports: vec![],
                 major_shareholders: None,
                 cross_shareholdings: None,
@@ -510,35 +440,35 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_large_volume(
             &db,
-            "S100OLD",
-            "72030",
+            "EXAMPLE-OLD",
+            "99990",
             ymd(2026, 1, 10),
             json!({
-                "LargeHldgTypeCode": "1",
-                "TotalShsRatio": 0.0621,
-                "Hldrs": [
-                    {"HldrName": "Alpha Capital", "HldgPurp": "純投資", "ShsHeld": 1000000, "ShsRatio": 0.0621},
+                "report_type": "report",
+                "total_shares_ratio": 0.0621,
+                "holders": [
+                    {"name": "Example Holder", "holding_purpose": "investment", "shares_held": 1000000, "shares_ratio": 0.0621},
                 ],
             }),
         )
         .await;
         insert_large_volume(
             &db,
-            "S100NEW",
-            "72031",
+            "EXAMPLE-NEW",
+            "99991",
             ymd(2026, 3, 1),
             json!({
-                "LargeHldgTypeCode": "2",
-                "ChgRsn": "株式の追加取得",
-                "TotalShsRatio": 0.0801,
-                "TotalShsRatioLast": 0.0621,
-                "Hldrs": [
+                "report_type": "amendment",
+                "change_reason": "additional purchase",
+                "total_shares_ratio": 0.0801,
+                "previous_total_shares_ratio": 0.0621,
+                "holders": [
                     {
-                        "HldrName": "Alpha Capital",
-                        "HldgPurp": "純投資",
-                        "ShsHeld": 1300000,
-                        "ShsRatio": 0.0801,
-                        "ShsRatioLast": 0.0621,
+                        "name": "Example Holder",
+                        "holding_purpose": "investment",
+                        "shares_held": 1300000,
+                        "shares_ratio": 0.0801,
+                        "previous_shares_ratio": 0.0621,
                     },
                 ],
             }),
@@ -546,49 +476,54 @@ mod tests {
         .await;
         insert_large_volume(
             &db,
-            "S100OTHER",
-            "99840",
+            "EXAMPLE-OTHER",
+            "88880",
             ymd(2026, 3, 2),
-            json!({"LargeHldgTypeCode": "1", "Hldrs": []}),
+            json!({"report_type": "report", "holders": []}),
         )
         .await;
 
-        let result = read(&db, "7203").await;
+        let result = read(&db, "9999").await;
 
         assert_eq!(
-            result.large_volume_reports,
-            vec![
-                super::super::dto::LargeVolumeReportDto {
-                    doc_id: "S100NEW".to_string(),
-                    submitted_on: ymd(2026, 3, 1),
-                    document_type: LargeVolumeDocumentType::Amendment,
-                    change_reason: Some("株式の追加取得".to_string()),
-                    total_shares_ratio: Some(0.0801),
-                    total_shares_ratio_last: Some(0.0621),
-                    holders: vec![super::super::dto::LargeVolumeHolderDto {
-                        holder_name: "Alpha Capital".to_string(),
-                        holding_purpose: Some("純投資".to_string()),
-                        shares_held: Some(1300000),
-                        shares_ratio: Some(0.0801),
-                        shares_ratio_last: Some(0.0621),
-                    }],
-                },
-                super::super::dto::LargeVolumeReportDto {
-                    doc_id: "S100OLD".to_string(),
-                    submitted_on: ymd(2026, 1, 10),
-                    document_type: LargeVolumeDocumentType::LargeVolumeReport,
-                    change_reason: None,
-                    total_shares_ratio: Some(0.0621),
-                    total_shares_ratio_last: None,
-                    holders: vec![super::super::dto::LargeVolumeHolderDto {
-                        holder_name: "Alpha Capital".to_string(),
-                        holding_purpose: Some("純投資".to_string()),
-                        shares_held: Some(1000000),
-                        shares_ratio: Some(0.0621),
-                        shares_ratio_last: None,
-                    }],
-                },
-            ],
+            result,
+            ReadShareholdingStructureResult {
+                symbol: "9999".to_string(),
+                large_volume_reports: vec![
+                    super::super::dto::LargeVolumeReportDto {
+                        doc_id: "EXAMPLE-NEW".to_string(),
+                        submitted_on: ymd(2026, 3, 1),
+                        document_type: LargeVolumeDocumentType::Amendment,
+                        change_reason: Some("additional purchase".to_string()),
+                        total_shares_ratio: Some(0.0801),
+                        total_shares_ratio_last: Some(0.0621),
+                        holders: vec![super::super::dto::LargeVolumeHolderDto {
+                            holder_name: "Example Holder".to_string(),
+                            holding_purpose: Some("investment".to_string()),
+                            shares_held: Some(1300000),
+                            shares_ratio: Some(0.0801),
+                            shares_ratio_last: Some(0.0621),
+                        }],
+                    },
+                    super::super::dto::LargeVolumeReportDto {
+                        doc_id: "EXAMPLE-OLD".to_string(),
+                        submitted_on: ymd(2026, 1, 10),
+                        document_type: LargeVolumeDocumentType::LargeVolumeReport,
+                        change_reason: None,
+                        total_shares_ratio: Some(0.0621),
+                        total_shares_ratio_last: None,
+                        holders: vec![super::super::dto::LargeVolumeHolderDto {
+                            holder_name: "Example Holder".to_string(),
+                            holding_purpose: Some("investment".to_string()),
+                            shares_held: Some(1000000),
+                            shares_ratio: Some(0.0621),
+                            shares_ratio_last: None,
+                        }],
+                    },
+                ],
+                major_shareholders: None,
+                cross_shareholdings: None,
+            },
         );
     }
 
@@ -598,10 +533,10 @@ mod tests {
         for (i, day) in [1u32, 2, 3].into_iter().enumerate() {
             insert_large_volume(
                 &db,
-                &format!("S100{i}"),
-                "72030",
+                &format!("EXAMPLE-{i}"),
+                "99990",
                 ymd(2026, 1, day),
-                json!({"LargeHldgTypeCode": "1", "Hldrs": []}),
+                json!({"report_type": "report", "holders": []}),
             )
             .await;
         }
@@ -610,7 +545,7 @@ mod tests {
             .read_shareholding_structure_inner(
                 Uuid::new_v4(),
                 ReadShareholdingStructureParams {
-                    symbol: "7203".to_string(),
+                    symbol: "9999".to_string(),
                     limit: Some(2),
                 },
             )
@@ -618,12 +553,32 @@ mod tests {
             .expect("read_shareholding_structure");
 
         assert_eq!(
-            result
-                .large_volume_reports
-                .iter()
-                .map(|r| r.doc_id.clone())
-                .collect::<Vec<_>>(),
-            vec!["S1002".to_string(), "S1001".to_string()],
+            result,
+            ReadShareholdingStructureResult {
+                symbol: "9999".to_string(),
+                large_volume_reports: vec![
+                    LargeVolumeReportDto {
+                        doc_id: "EXAMPLE-2".to_string(),
+                        submitted_on: ymd(2026, 1, 3),
+                        document_type: LargeVolumeDocumentType::LargeVolumeReport,
+                        change_reason: None,
+                        total_shares_ratio: None,
+                        total_shares_ratio_last: None,
+                        holders: vec![],
+                    },
+                    LargeVolumeReportDto {
+                        doc_id: "EXAMPLE-1".to_string(),
+                        submitted_on: ymd(2026, 1, 2),
+                        document_type: LargeVolumeDocumentType::LargeVolumeReport,
+                        change_reason: None,
+                        total_shares_ratio: None,
+                        total_shares_ratio_last: None,
+                        holders: vec![],
+                    },
+                ],
+                major_shareholders: None,
+                cross_shareholdings: None,
+            },
         );
     }
 
@@ -632,56 +587,107 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_major_shareholders(
             &db,
-            "S100OLD",
-            "72030",
+            "EXAMPLE-OLD",
+            "99990",
             ymd(2025, 6, 30),
             json!({
-                "PerEn": "2025-03-31",
-                "DocTypeCode": "120",
-                "Hldrs": [{"Rank": 1, "HldrName": "旧筆頭株主", "ShsHeld": 5000000, "ShsRatio": 0.15}],
+                "period_end": "2025-03-31",
+                "report_type": "annual",
+                "holders": [{"rank": 1, "name": "Example Holder A", "shares_held": 5000000, "shares_ratio": 0.15}],
             }),
         )
         .await;
         insert_major_shareholders(
             &db,
-            "S100NEW",
-            "72030",
+            "EXAMPLE-NEW",
+            "99990",
             ymd(2026, 6, 30),
             json!({
-                "PerEn": "2026-03-31",
-                "DocTypeCode": "120",
-                "Hldrs": [
-                    {"Rank": 1, "HldrName": "新筆頭株主", "ShsHeld": 6000000, "ShsRatio": 0.18},
-                    {"Rank": 2, "HldrName": "第二位株主", "ShsHeld": 3000000, "ShsRatio": 0.09},
+                "period_end": "2026-03-31",
+                "report_type": "annual",
+                "holders": [
+                    {"rank": 1, "name": "Example Holder A", "shares_held": 6000000, "shares_ratio": 0.18},
+                    {"rank": 2, "name": "Example Holder B", "shares_held": 3000000, "shares_ratio": 0.09},
                 ],
             }),
         )
         .await;
 
-        let result = read(&db, "7203").await;
+        let result = read(&db, "9999").await;
 
         assert_eq!(
-            result.major_shareholders,
-            Some(super::super::dto::MajorShareholdersReportDto {
-                doc_id: "S100NEW".to_string(),
-                submitted_on: ymd(2026, 6, 30),
-                period_end: Some(ymd(2026, 3, 31)),
-                document_type: MajorShareholdersDocumentType::AnnualReport,
-                holders: vec![
-                    super::super::dto::MajorShareholderDto {
-                        rank: Some(1),
-                        holder_name: "新筆頭株主".to_string(),
-                        shares_held: Some(6000000),
-                        shares_ratio: Some(0.18),
-                    },
-                    super::super::dto::MajorShareholderDto {
-                        rank: Some(2),
-                        holder_name: "第二位株主".to_string(),
-                        shares_held: Some(3000000),
-                        shares_ratio: Some(0.09),
-                    },
-                ],
+            result,
+            ReadShareholdingStructureResult {
+                symbol: "9999".to_string(),
+                large_volume_reports: vec![],
+                major_shareholders: Some(super::super::dto::MajorShareholdersReportDto {
+                    doc_id: "EXAMPLE-NEW".to_string(),
+                    submitted_on: ymd(2026, 6, 30),
+                    period_end: Some(ymd(2026, 3, 31)),
+                    document_type: MajorShareholdersDocumentType::AnnualReport,
+                    holders: vec![
+                        super::super::dto::MajorShareholderDto {
+                            rank: Some(1),
+                            holder_name: "Example Holder A".to_string(),
+                            shares_held: Some(6000000),
+                            shares_ratio: Some(0.18),
+                        },
+                        super::super::dto::MajorShareholderDto {
+                            rank: Some(2),
+                            holder_name: "Example Holder B".to_string(),
+                            shares_held: Some(3000000),
+                            shares_ratio: Some(0.09),
+                        },
+                    ],
+                }),
+                cross_shareholdings: None,
+            },
+        );
+    }
+
+    #[sqlx::test(migrations = false)]
+    async fn major_shareholders_skips_documents_without_decoded_content(pool: PgPool) {
+        let db = create_test_db(pool).await;
+        insert_major_shareholders(
+            &db,
+            "EXAMPLE-VALID",
+            "99990",
+            ymd(2025, 6, 30),
+            json!({
+                "period_end": "2025-03-31",
+                "report_type": "annual",
+                "holders": [{"rank": 1, "name": "Example Holder", "shares_held": 5000000, "shares_ratio": 0.15}],
             }),
+        )
+        .await;
+        insert_major_shareholders(
+            &db,
+            "EXAMPLE-UNPARSEABLE",
+            "99990",
+            ymd(2026, 6, 30),
+            Value::Null,
+        )
+        .await;
+
+        assert_eq!(
+            read(&db, "9999").await,
+            ReadShareholdingStructureResult {
+                symbol: "9999".to_string(),
+                large_volume_reports: vec![],
+                major_shareholders: Some(super::super::dto::MajorShareholdersReportDto {
+                    doc_id: "EXAMPLE-VALID".to_string(),
+                    submitted_on: ymd(2025, 6, 30),
+                    period_end: Some(ymd(2025, 3, 31)),
+                    document_type: MajorShareholdersDocumentType::AnnualReport,
+                    holders: vec![super::super::dto::MajorShareholderDto {
+                        rank: Some(1),
+                        holder_name: "Example Holder".to_string(),
+                        shares_held: Some(5000000),
+                        shares_ratio: Some(0.15),
+                    }],
+                }),
+                cross_shareholdings: None,
+            },
         );
     }
 
@@ -690,70 +696,73 @@ mod tests {
         let db = create_test_db(pool).await;
         insert_cross_shareholdings(
             &db,
-            "S100XYZ",
-            "72030",
+            "EXAMPLE-CROSS",
+            "99990",
             ymd(2026, 6, 30),
             json!({
-                "PerEn": "2026-03-31",
-                "Report": {
-                    "Spec": [
+                "period_end": "2026-03-31",
+                "holdings": [
                         {
-                            "IsrName": "取引先商事",
-                            "IsrCode": "13010",
-                            "CurShs": 200000,
-                            "PriShs": 180000,
-                            "CurBookVal": 500000000,
-                            "PriBookVal": 420000000,
-                            "IsrHoldsCode": "1",
+                            "issuer_name": "Example Issuer",
+                            "issuer_stock_code": "99991",
+                            "category": "specified",
+                            "current_shares": 200000,
+                            "previous_shares": 180000,
+                            "current_book_value": 500000000,
+                            "previous_book_value": 420000000,
+                            "mutual_holding": "held",
                         },
-                    ],
-                    "Deem": [
                         {
-                            "IsrName": "年金信託先",
-                            "IsrCode": null,
-                            "CurShs": 50000,
-                            "PriShs": null,
-                            "CurBookVal": 90000000,
-                            "PriBookVal": null,
-                            "IsrHoldsCode": "2",
+                            "issuer_name": "Example Custodian",
+                            "issuer_stock_code": null,
+                            "category": "deemed",
+                            "current_shares": 50000,
+                            "previous_shares": null,
+                            "current_book_value": 90000000,
+                            "previous_book_value": null,
+                            "mutual_holding": "unknown",
                         },
-                    ],
-                },
+                ],
             }),
         )
         .await;
 
-        let result = read(&db, "7203").await;
+        let result = read(&db, "9999").await;
 
         assert_eq!(
-            result.cross_shareholdings,
-            Some(super::super::dto::CrossShareholdingsReportDto {
-                doc_id: "S100XYZ".to_string(),
-                submitted_on: ymd(2026, 6, 30),
-                period_end: Some(ymd(2026, 3, 31)),
-                holdings: vec![
-                    super::super::dto::CrossShareholdingDto {
-                        issuer_name: "取引先商事".to_string(),
-                        issuer_code: Some("13010".to_string()),
-                        category: CrossShareholdingCategory::Specified,
-                        current_shares: Some(200000),
-                        previous_shares: Some(180000),
-                        current_book_value: Some(500000000),
-                        previous_book_value: Some(420000000),
-                        mutual_holding: MutualHolding::Held,
-                    },
-                    super::super::dto::CrossShareholdingDto {
-                        issuer_name: "年金信託先".to_string(),
-                        issuer_code: None,
-                        category: CrossShareholdingCategory::Deemed,
-                        current_shares: Some(50000),
-                        previous_shares: None,
-                        current_book_value: Some(90000000),
-                        previous_book_value: None,
-                        mutual_holding: MutualHolding::Unknown,
-                    },
-                ],
-            }),
+            result,
+            ReadShareholdingStructureResult {
+                symbol: "9999".to_string(),
+                large_volume_reports: vec![],
+                major_shareholders: None,
+                cross_shareholdings: Some(super::super::dto::CrossShareholdingsReportDto {
+                    doc_id: "EXAMPLE-CROSS".to_string(),
+                    submitted_on: ymd(2026, 6, 30),
+                    period_end: Some(ymd(2026, 3, 31)),
+                    holdings: vec![
+                        super::super::dto::CrossShareholdingDto {
+                            issuer_name: "Example Issuer".to_string(),
+                            issuer_code: Some("99991".to_string()),
+                            category: CrossShareholdingCategory::Specified,
+                            current_shares: Some(200000),
+                            previous_shares: Some(180000),
+                            current_book_value: Some(500000000),
+                            previous_book_value: Some(420000000),
+                            mutual_holding: MutualHolding::Held,
+                        },
+                        super::super::dto::CrossShareholdingDto {
+                            issuer_name: "Example Custodian".to_string(),
+                            issuer_code: None,
+                            category: CrossShareholdingCategory::Deemed,
+                            current_shares: Some(50000),
+                            previous_shares: None,
+                            current_book_value: Some(90000000),
+                            previous_book_value: None,
+                            mutual_holding: MutualHolding::Unknown,
+                        },
+                    ],
+                }),
+            },
         );
     }
 }

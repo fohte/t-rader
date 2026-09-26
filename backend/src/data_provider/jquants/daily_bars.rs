@@ -113,10 +113,8 @@ impl JQuantsClient {
 
     /// 手動設定 (設定ページ) が優先。未設定なら 400 エラーからの自動検出結果を使う。
     pub fn known_fetchable_range(&self) -> Option<(NaiveDate, NaiveDate)> {
-        match self.manual_plan() {
-            Some(plan) => Some(plan.range(Utc::now().date_naive())),
-            None => self.detected_range(),
-        }
+        self.known_fetchable_date_range(Utc::now().date_naive())
+            .map(|range| (range.from, range.to))
     }
 
     /// 手動設定 (推定して確定した後の値も含む) が既にあるなら何もしない。これが「初回だけ」
