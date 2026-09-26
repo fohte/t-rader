@@ -470,6 +470,7 @@ dependencies = [
  "cron",
  "csv",
  "encoding_rs",
+ "futures-util",
  "gateway-fred",
  "gateway-ibkr",
  "gateway-kata-exec",
