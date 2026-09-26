@@ -41,6 +41,7 @@ chrono = { version = "=0.4.45", default-features = false }
 clap = "=4.5.60"
 csv = "=1.3.1"
 encoding_rs = "=0.8.41"
+futures-util = "=0.3.34"
 jpholiday = "=0.2.0"
 jsonschema = { version = "=0.46.9", default-features = false }
 percent-encoding = "=2.3.2"
@@ -89,6 +90,7 @@ gateway-t-rader-agent = { workspace = true }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
+futures-util = { workspace = true }
 jsonschema = { workspace = true }
 migration = { path = "migration" }
 percent-encoding = { workspace = true }

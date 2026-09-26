@@ -181,6 +181,7 @@ pub async fn run_once(
         .collect();
 
     let target_count = targets.len();
+    let trigger_ids = targets.iter().map(|row| row.trigger_id).collect::<Vec<_>>();
     let results = crate::concurrent::map_concurrent(targets, MAX_CONCURRENT_FIRES, |row| {
         let agent_client = agent_client.clone();
         async move {
@@ -196,9 +197,9 @@ pub async fn run_once(
         }
     })
     .await;
-    for result in results {
-        if let Err(()) = result {
-            tracing::error!("cron trigger worker task panicked");
+    for (trigger_id, result) in trigger_ids.into_iter().zip(results) {
+        if let Err(error) = result {
+            tracing::error!(error = %error, trigger_id = %trigger_id, "cron trigger worker task panicked");
         }
     }
     target_count

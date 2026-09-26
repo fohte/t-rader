@@ -94,17 +94,22 @@ pub async fn run_once(
     };
 
     let now = Utc::now().fixed_offset();
+    let task_ids = rows.iter().map(|row| row.task_id).collect::<Vec<_>>();
     let results =
         crate::concurrent::map_concurrent(rows, MAX_CONCURRENT_STATUS_FETCHES, |row| async move {
             reconcile_one(db, agent_client, row, now).await
         })
         .await;
     let mut updated = 0usize;
-    for result in results {
+    for (task_id, result) in task_ids.into_iter().zip(results) {
         match result {
             Ok(true) => updated += 1,
             Ok(false) => {}
-            Err(()) => tracing::warn!("strategy_task reconcile task panicked"),
+            Err(error) => tracing::warn!(
+                error = %error,
+                strategy_task_id = %task_id,
+                "strategy_task reconcile task panicked"
+            ),
         }
     }
     updated
