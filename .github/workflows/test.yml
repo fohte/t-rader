@@ -587,7 +587,7 @@ jobs:
           STRATEGY_AGENT_MODEL: test-model
           WEB_SEARCH_MODEL: test-web-search-model
           GEMINI_MEDIA_MODEL: gemini-9-flash
-        run: cargo llvm-cov nextest --lcov --output-path lcov.info
+        run: cargo llvm-cov nextest --lcov --output-path lcov.info --success-output immediate
 
       - name: Report PostgreSQL lock waits and errors
         if: always()

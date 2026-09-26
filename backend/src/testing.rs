@@ -1,6 +1,7 @@
 use std::{
     str::FromStr,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use axum_test::TestServer;
@@ -49,6 +50,7 @@ pub async fn create_test_transaction(test_name: &'static str) -> DatabaseHandle 
 }
 
 async fn initialize_test_database(test_name: &'static str) {
+    let initialization_started_at = Instant::now();
     let test_database = test_database_name();
     let application_name = test_application_name(test_name);
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -59,12 +61,14 @@ async fn initialize_test_database(test_name: &'static str) {
         .await
         .expect("connect to PostgreSQL admin database");
 
+    let migration_lock_started_at = Instant::now();
     sqlx::query_scalar::<_, bool>(
         "SELECT pg_advisory_lock(hashtext('t-rader-test-database'), hashtext('migration')) IS NULL",
     )
     .fetch_one(&mut admin)
     .await
     .expect("lock shared test database migration");
+    let migration_lock_wait = migration_lock_started_at.elapsed();
 
     let database_exists = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)",
@@ -100,6 +104,12 @@ async fn initialize_test_database(test_name: &'static str) {
     .fetch_one(&mut admin)
     .await
     .expect("unlock shared test database migration");
+
+    eprintln!(
+        "TEST_DB_INITIALIZATION test={test_name} initialization_ms={:.3} migration_lock_wait_ms={:.3}",
+        initialization_started_at.elapsed().as_secs_f64() * 1000.0,
+        migration_lock_wait.as_secs_f64() * 1000.0,
+    );
 }
 
 fn test_database_options() -> PgConnectOptions {
