@@ -1,4 +1,6 @@
-import { Button } from '#components/ui/button'
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
+
 import {
   Dialog,
   DialogContent,
@@ -7,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '#components/ui/dialog'
-import { Input } from '#components/ui/input'
 import type { components } from '#lib/api/schema.gen'
 
 type NoteKind = components['schemas']['NoteKind']

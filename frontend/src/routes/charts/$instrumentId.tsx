@@ -1,3 +1,10 @@
+import { Button } from '@fohte/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@fohte/ui/tooltip'
 import { createFileRoute } from '@tanstack/react-router'
 import { Columns2Icon } from 'lucide-react'
 import { useState } from 'react'
@@ -8,14 +15,7 @@ import {
   type Timeframe,
   TimeframeSelector,
 } from '#components/timeframe-selector'
-import { Button } from '#components/ui/button'
 import { Skeleton } from '#components/ui/skeleton'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '#components/ui/tooltip'
 import { $api } from '#lib/api/client'
 
 export const Route = createFileRoute('/charts/$instrumentId')({

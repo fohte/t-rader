@@ -1,10 +1,10 @@
+import { Button } from '@fohte/ui/button'
 import { useEffect, useRef, useState } from 'react'
 
 import { CodeEditor } from '#components/indicators/code-editor'
 import { AgentGraphForm } from '#components/strategy-settings/agent-graph/agent-graph-form'
 import { parseAgentGraphPhases } from '#components/strategy-settings/agent-graph/document'
 import { extractPhaseKeyFromSaveError } from '#components/strategy-settings/agent-graph/save-error'
-import { Button } from '#components/ui/button'
 import { cn } from '#lib/utils'
 
 interface AgentGraphEditorProps {

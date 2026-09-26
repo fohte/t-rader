@@ -1,12 +1,12 @@
-import { Fragment } from 'react'
-
-import { Button } from '#components/ui/button'
+import { Button } from '@fohte/ui/button'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '#components/ui/tooltip'
+} from '@fohte/ui/tooltip'
+import { Fragment } from 'react'
+
 import { cn } from '#lib/utils'
 
 /** サポートするタイムフレームの定義 */

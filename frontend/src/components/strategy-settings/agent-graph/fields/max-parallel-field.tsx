@@ -1,4 +1,4 @@
-import { Input } from '#components/ui/input'
+import { Input } from '@fohte/ui/input'
 
 interface MaxParallelFieldProps {
   value: number | undefined

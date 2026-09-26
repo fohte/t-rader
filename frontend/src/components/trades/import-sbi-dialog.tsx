@@ -1,8 +1,8 @@
+import { Button } from '@fohte/ui/button'
 import { ResultAsync } from 'neverthrow'
 import { useState } from 'react'
 
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
-import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,

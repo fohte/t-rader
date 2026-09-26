@@ -1,9 +1,9 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
-import { Button } from '#components/ui/button'
-import { Input } from '#components/ui/input'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import { formatRatioPercent, parseRatioPercent } from '#lib/ratio-percent'

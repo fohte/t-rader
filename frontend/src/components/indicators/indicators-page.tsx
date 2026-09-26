@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { err, ok, Result, ResultAsync } from 'neverthrow'
@@ -9,7 +10,6 @@ import {
   type IndicatorScopeLabel,
   type PreviewState,
 } from '#components/indicators/indicator-editor'
-import { Button } from '#components/ui/button'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api, fetchClient } from '#lib/api/client'
 import { parseJson } from '#lib/json'

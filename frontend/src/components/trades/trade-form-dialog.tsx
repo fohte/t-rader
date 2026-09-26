@@ -1,8 +1,9 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import { useEffect, useRef, useState } from 'react'
 
 import { formatYen } from '#components/trades/format'
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
-import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -11,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '#components/ui/dialog'
-import { Input } from '#components/ui/input'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'
 

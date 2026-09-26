@@ -1,11 +1,12 @@
-import { Input } from '#components/ui/input'
+import { Input } from '@fohte/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#components/ui/select'
+} from '@fohte/ui/select'
+
 import type { components } from '#lib/api/schema.gen'
 
 type AgentModel = components['schemas']['AgentModel']

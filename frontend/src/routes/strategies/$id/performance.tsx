@@ -1,3 +1,4 @@
+import { Button } from '@fohte/ui/button'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Pencil } from 'lucide-react'
@@ -8,7 +9,6 @@ import { PositionsTable } from '#components/portfolio/positions-table'
 import { type StatItem, StatRow } from '#components/portfolio/stat-row'
 import { formatYen, pnlColorClass } from '#components/trades/format'
 import { TradesTable } from '#components/trades/trades-table'
-import { Button } from '#components/ui/button'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 

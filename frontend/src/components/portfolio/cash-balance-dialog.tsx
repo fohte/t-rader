@@ -1,6 +1,7 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import { useEffect, useState } from 'react'
 
-import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '#components/ui/dialog'
-import { Input } from '#components/ui/input'
 
 export function CashBalanceDialog({
   open,

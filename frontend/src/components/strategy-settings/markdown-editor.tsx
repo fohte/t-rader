@@ -1,7 +1,7 @@
+import { Button } from '@fohte/ui/button'
 import { useEffect, useRef, useState } from 'react'
 
 import { MarkdownBody } from '#components/note-detail/markdown-body'
-import { Button } from '#components/ui/button'
 
 interface MarkdownEditorProps {
   /** 永続化されている現在の内容 (保存ボタン押下時の diff 元) */
