@@ -3,14 +3,15 @@
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    IntoActiveModel, QueryFilter, QueryOrder, SqlErr, TransactionTrait,
+    IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, SqlErr, TransactionTrait,
 };
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::entities::{note, note_kind};
+use crate::entities::{note, note_kind, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
+use crate::services::note_versions;
 
 #[derive(Debug, Clone)]
 pub struct CreateNoteKind {
@@ -74,6 +75,20 @@ pub async fn list(db: &DatabaseConnection) -> Result<Vec<note_kind::Model>, AppE
         .order_by_asc(note_kind::Column::Key)
         .all(db)
         .await?)
+}
+
+pub async fn ensure_reference<C: ConnectionTrait>(db: &C, key: &str) -> Result<(), AppError> {
+    if key.trim().is_empty() {
+        return Err(AppError::Validation("kind must not be empty".into()));
+    }
+    if note_kind::Entity::find_by_id(key.to_string())
+        .one(db)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::Validation(format!("unknown note kind: {key}")));
+    }
+    Ok(())
 }
 
 pub async fn create(
@@ -164,6 +179,45 @@ pub async fn update(
     }
 
     let updated = active.update(&txn).await?;
+    if current.requires_approval && !updated.requires_approval {
+        let note_ids = note::Entity::find()
+            .select_only()
+            .column(note::Column::Id)
+            .filter(note::Column::Kind.eq(&key))
+            .into_tuple::<Uuid>()
+            .all(&txn)
+            .await?;
+        let reviewed_at = chrono::Utc::now().fixed_offset();
+        for note_id in note_ids {
+            let latest_pending = note_version::Entity::find()
+                .filter(note_version::Column::NoteId.eq(note_id))
+                .filter(note_version::Column::Status.eq("unread"))
+                .order_by_desc(note_version::Column::VersionNo)
+                .one(&txn)
+                .await?;
+            let Some(pending) = latest_pending else {
+                continue;
+            };
+            let (approved, previous_current_id) =
+                note_versions::approve_pending_version(&txn, note_id, pending, reviewed_at).await?;
+            change_history::record_as(
+                &txn,
+                actor,
+                TargetKind::Note,
+                note_id,
+                Op::StatusChange,
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": approved.id,
+                    "previous_current_version_id": previous_current_id,
+                    "label": null,
+                }),
+                None,
+            )
+            .await?;
+        }
+    }
     change_history::record_as(
         &txn,
         actor,
@@ -185,7 +239,7 @@ pub async fn delete(db: &DatabaseConnection, actor: Actor, key: &str) -> Result<
     let _current = find_by_key(&txn, &key).await?;
 
     if note::Entity::find()
-        .filter(note::Column::TypeTag.eq(&key))
+        .filter(note::Column::Kind.eq(&key))
         .one(&txn)
         .await?
         .is_some()

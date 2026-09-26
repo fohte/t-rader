@@ -1,4 +1,6 @@
 mod daily_bars;
+mod earnings_schedule;
+mod edinet_holdings;
 mod equities_master;
 mod fin_summary;
 mod margin;
@@ -9,6 +11,7 @@ mod response;
 mod short_selling;
 #[cfg(test)]
 mod tests;
+mod valuation;
 
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
@@ -21,7 +24,6 @@ use crate::data_provider::{DataProviderError, DateRange};
 use crate::models::bar::{Bar, Timeframe};
 use crate::models::instrument::{Instrument, Market};
 use crate::models::jquants_plan::JQuantsPlan;
-pub(crate) use response::{EarningsDateRecord, ValuationRecord};
 use response::{
     EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
     FinSummaryResponse, Paginated, ValuationResponse,
@@ -167,6 +169,35 @@ impl JQuantsClient {
         Some(DateRange { from, to })
     }
 
+    pub(crate) fn known_fetchable_date_range(&self, today: NaiveDate) -> Option<DateRange> {
+        if let Some(range) = self.manual_plan_date_range(today) {
+            return Some(range);
+        }
+        let (from, to) = self.detected_range_on(today)?;
+        Some(DateRange { from, to })
+    }
+
+    /// Standard 以上で利用できるデータの取得範囲を返す。
+    pub(crate) fn standard_plan_date_range(
+        &self,
+        today: NaiveDate,
+        data_name: &str,
+    ) -> Option<DateRange> {
+        match self.manual_plan() {
+            Some(JQuantsPlan::Standard | JQuantsPlan::Premium) => {
+                self.manual_plan_date_range(today)
+            }
+            plan => {
+                tracing::debug!(
+                    ?plan,
+                    data_name,
+                    "Standard 以上の契約プランが必要なため取得できません"
+                );
+                None
+            }
+        }
+    }
+
     /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
     ///
     /// 契約プランが設定されていれば、その公称値に `RATE_LIMIT_SAFETY_FACTOR` による
@@ -180,11 +211,15 @@ impl JQuantsClient {
     }
 
     fn detected_range(&self) -> Option<(NaiveDate, NaiveDate)> {
+        self.detected_range_on(Utc::now().date_naive())
+    }
+
+    fn detected_range_on(&self, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
         let guard = self
             .detected_range
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        effective_range(guard.as_ref(), Utc::now().date_naive())
+        effective_range(guard.as_ref(), today)
     }
 
     /// crate 内テスト (`services::edinet_holdings` 等) から 400 検出フローを経由せず
@@ -375,7 +410,7 @@ impl JQuantsClient {
     pub(crate) async fn fetch_valuation_by_date(
         &self,
         date: NaiveDate,
-    ) -> Result<Vec<ValuationRecord>, DataProviderError> {
+    ) -> Result<Vec<response::ValuationRecord>, DataProviderError> {
         let date_str = date.format("%Y-%m-%d").to_string();
         let params = [("date", date_str.as_str())];
         self.fetch_all_pages::<ValuationResponse>(

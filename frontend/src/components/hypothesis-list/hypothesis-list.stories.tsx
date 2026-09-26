@@ -37,11 +37,13 @@ function renderList(items: typeof hypotheses) {
 }
 
 export const WithHypotheses: Story = {
+  name: 'shows a populated list of hypotheses.',
   args: { hypotheses },
   render: (args) => renderList(args.hypotheses),
 }
 
 export const Empty: Story = {
+  name: "shows the list's empty state when there are no hypotheses.",
   args: { hypotheses: [] },
   render: (args) => renderList(args.hypotheses),
 }

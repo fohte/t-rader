@@ -15,18 +15,19 @@ use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use super::dto::{
     CheckBuyableQtyParams, CheckBuyableQtyResult, CreateAnnotationParams, CreateAnnotationResult,
     EvalIndicatorParams, EvalIndicatorResult, EvalPythonParams, EvalPythonResult, HypothesisDto,
-    ListHypothesesParams, ListHypothesesResult, ListNotesParams, ListNotesResult,
-    ListPredictionsParams, ListPredictionsResult, NoteDto, ProposeHypothesisChangeParams,
-    ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult, QueryMediaParams,
-    QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult, ReadCommentsParams,
-    ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult, ReadHypothesisParams,
-    ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams, ReadPortfolioResult,
-    ReadPredictionStatsResult, ReadSectorShortRatioParams, ReadSectorShortRatioResult,
-    ReadShareholdingStructureParams, ReadShareholdingStructureResult, ReadShortSaleReportsParams,
-    ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult, ReadValuationParams,
-    ReadValuationResult, RecordPredictionParams, RecordPredictionResult, ReplyCommentParams,
-    ReplyCommentResult, ResolveCommentParams, ResolveCommentResult, SearchNewsParams,
-    SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
+    ListHypothesesParams, ListHypothesesResult, ListNoteKindsResult, ListNotesParams,
+    ListNotesResult, ListPredictionsParams, ListPredictionsResult, NoteDto,
+    ProposeHypothesisChangeParams, ProposeHypothesisChangeResult, QueryDataParams, QueryDataResult,
+    QueryMediaParams, QueryMediaResult, ReadAnnotationsParams, ReadAnnotationsResult,
+    ReadCommentsParams, ReadCommentsResult, ReadFinSummaryParams, ReadFinSummaryResult,
+    ReadHypothesisParams, ReadMacroIndicatorParams, ReadMacroIndicatorResult, ReadNoteParams,
+    ReadPortfolioResult, ReadPredictionStatsResult, ReadSectorShortRatioParams,
+    ReadSectorShortRatioResult, ReadShareholdingStructureParams, ReadShareholdingStructureResult,
+    ReadShortSaleReportsParams, ReadShortSaleReportsResult, ReadTradesParams, ReadTradesResult,
+    ReadValuationParams, ReadValuationResult, RecordPredictionParams, RecordPredictionResult,
+    ReplyCommentParams, ReplyCommentResult, ResolveCommentParams, ResolveCommentResult,
+    SearchNewsParams, SearchNewsResult, SearchWebParams, SearchWebResult, WriteNoteParams,
+    WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
 use super::ref_terms::{
@@ -39,6 +40,19 @@ use super::{
 
 #[tool_router]
 impl StrategyServer {
+    /// 利用できるノート種別を返す
+    #[tool(
+        name = "list_note_kinds",
+        description = "List the available note kinds and whether each kind requires human approval.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_note_kinds(
+        &self,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<Json<ListNoteKindsResult>, McpError> {
+        self.list_note_kinds_inner().await.map(Json)
+    }
+
     /// 複数銘柄 + 期間で日足バーデータをまとめて取得する
     #[tool(
         name = "query_data",
@@ -60,7 +74,7 @@ impl StrategyServer {
     /// ノートを作成または更新する
     #[tool(
         name = "write_note",
-        description = "Create a new note or update an existing note owned by the strategy. Supply note_id to update; omit it to create. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
+        description = "Create a new note or append a version to an existing note owned by the strategy. Supply note_id to update; omit it to create. Set kind only when creating a note. For kinds that require approval, provide change_reason for every version after the first; the new version remains pending until a human approves it. Optionally attach diagrams via graphs (replaces the array wholesale). Idempotent within an execution step, even across a resume: repeated create calls (omitting note_id) for the same step collapse onto a single note instead of creating duplicates."
     )]
     async fn write_note(
         &self,
@@ -600,6 +614,7 @@ mod tests {
                 ("eval_indicator", None),
                 ("eval_python", None),
                 ("list_hypotheses", Some(true)),
+                ("list_note_kinds", Some(true)),
                 ("list_notes", Some(true)),
                 ("list_predictions", Some(true)),
                 ("propose_hypothesis_change", None),

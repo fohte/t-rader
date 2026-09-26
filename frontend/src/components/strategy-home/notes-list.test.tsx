@@ -24,7 +24,7 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     body_md: overrides.body_md ?? 'body',
     frontmatter_json: overrides.frontmatter_json ?? {},
     graphs_json: overrides.graphs_json ?? [],
-    type_tag: overrides.type_tag ?? null,
+    kind: overrides.kind ?? null,
     status: overrides.status ?? 'unread',
     trigger: overrides.trigger ?? null,
     trigger_label: overrides.trigger_label ?? null,

@@ -61,15 +61,20 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Linked: Story = {
+  name: 'shows notes linked from and to the current note.',
   args: { outgoing, incoming },
 }
 
-export const Empty: Story = {}
+export const Empty: Story = {
+  name: 'shows the empty state when the current note has no links.',
+}
 
 export const Loading: Story = {
+  name: 'shows loading placeholders while linked notes are fetched.',
   args: { isPending: true },
 }
 
 export const Error: Story = {
+  name: 'shows an error when linked notes cannot be loaded.',
   args: { isError: true },
 }

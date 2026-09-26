@@ -230,7 +230,9 @@ export function NoteVersionReviewView({
             onClick={onMakeCurrent}
             className="border border-border px-2.5 py-1 text-muted-foreground-strong hover:border-primary hover:text-primary disabled:opacity-50"
           >
-            {isMakingCurrent ? '現行に戻しています…' : 'この版を現行に戻す'}
+            {isMakingCurrent
+              ? '現行に戻しています…'
+              : 'このバージョンを現行に戻す'}
           </button>
         )}
         {hasError && (

@@ -10,6 +10,15 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Approved: Story = { args: { status: 'approved' } }
-export const Unread: Story = { args: { status: 'unread' } }
-export const Rejected: Story = { args: { status: 'rejected' } }
+export const Approved: Story = {
+  name: 'shows an approved status.',
+  args: { status: 'approved' },
+}
+export const Unread: Story = {
+  name: 'shows an unread status.',
+  args: { status: 'unread' },
+}
+export const Rejected: Story = {
+  name: 'shows a rejected status.',
+  args: { status: 'rejected' },
+}

@@ -10,7 +10,19 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Unverified: Story = { args: { status: 'unverified' } }
-export const Supported: Story = { args: { status: 'supported' } }
-export const Refuted: Story = { args: { status: 'refuted' } }
-export const Obsolete: Story = { args: { status: 'obsolete' } }
+export const Unverified: Story = {
+  name: 'marks a hypothesis as unverified.',
+  args: { status: 'unverified' },
+}
+export const Supported: Story = {
+  name: 'marks a hypothesis as supported.',
+  args: { status: 'supported' },
+}
+export const Refuted: Story = {
+  name: 'marks a hypothesis as refuted.',
+  args: { status: 'refuted' },
+}
+export const Obsolete: Story = {
+  name: 'marks a hypothesis as obsolete.',
+  args: { status: 'obsolete' },
+}

@@ -6,18 +6,18 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
 )]
-#[sea_orm(table_name = "edinet_cross_shareholdings")]
-#[schema(as = EdinetCrossShareholdings)]
+#[sea_orm(table_name = "large_volume_shareholding_documents")]
+#[schema(as = LargeVolumeShareholdingDocuments)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
-    pub doc_id: String,
+    pub document_id: String,
     #[sea_orm(column_type = "Text", nullable)]
-    pub code: Option<String>,
+    pub stock_code: Option<String>,
     #[sea_orm(column_type = "Text")]
-    pub edinet_code: String,
-    pub sub_date: Date,
+    pub filer_code: String,
+    pub submitted_on: Date,
     #[sea_orm(column_type = "JsonBinary")]
-    pub document: Json,
+    pub details: Json,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]

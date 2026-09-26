@@ -72,6 +72,7 @@ const FLOW_DEF: GraphDef = {
 }
 
 export const Flow: Story = {
+  name: 'shows an industry flow from suppliers to downstream companies.',
   args: { def: FLOW_DEF },
 }
 
@@ -95,6 +96,7 @@ const TREE_DEF: GraphDef = {
 }
 
 export const Tree: Story = {
+  name: 'shows how revenue breaks down into business drivers.',
   args: { def: TREE_DEF },
 }
 
@@ -116,6 +118,7 @@ const CHAIN_DEF: GraphDef = {
 }
 
 export const Chain: Story = {
+  name: 'shows a value chain from sourcing through aftercare.',
   args: { def: CHAIN_DEF },
 }
 
@@ -133,5 +136,6 @@ const SCATTER_DEF: GraphDef = {
 }
 
 export const Scatter: Story = {
+  name: 'maps companies by their competitive position.',
   args: { def: SCATTER_DEF },
 }

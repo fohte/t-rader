@@ -27,6 +27,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Open: Story = {
+  name: 'opens the dialog for creating a hypothesis.',
   args: {
     open: true,
     onOpenChange: () => {},
