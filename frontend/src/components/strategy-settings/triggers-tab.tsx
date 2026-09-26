@@ -1,8 +1,8 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Button } from '#components/ui/button'
-import { Input } from '#components/ui/input'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 import type { components } from '#lib/api/schema.gen'

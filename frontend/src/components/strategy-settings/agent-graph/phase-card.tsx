@@ -1,7 +1,7 @@
+import { Input } from '@fohte/ui/input'
 import type { ReactNode } from 'react'
 
 import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
-import { Input } from '#components/ui/input'
 import { cn } from '#lib/utils'
 
 interface PhaseCardProps {

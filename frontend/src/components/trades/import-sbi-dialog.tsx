@@ -1,8 +1,8 @@
+import { Button } from '@fohte/ui/button'
 import { ResultAsync } from 'neverthrow'
 import { useState } from 'react'
 
 import { useInvalidateTrades } from '#components/trades/use-invalidate-trades'
-import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -160,7 +160,7 @@ export function ImportSbiDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>SBI CSV 取込</DialogTitle>
           <DialogDescription>

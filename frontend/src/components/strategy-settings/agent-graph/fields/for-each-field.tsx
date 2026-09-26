@@ -1,12 +1,13 @@
-import { getForEachOptions } from '#components/strategy-settings/agent-graph/output-fields'
-import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#components/ui/select'
+} from '@fohte/ui/select'
+
+import { getForEachOptions } from '#components/strategy-settings/agent-graph/output-fields'
+import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 
 // for_each 未設定 (1 実行につき 1 回) を表す sentinel。このセレクトが書き込む値は必ず
 // "<phase_key>.<field>" の形でドットを含むため衝突しないが、YAML ビューで直接

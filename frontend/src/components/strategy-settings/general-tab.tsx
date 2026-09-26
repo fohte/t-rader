@@ -1,9 +1,9 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 
 import { DeleteStrategyDialog } from '#components/strategy-settings/delete-strategy-dialog'
-import { Button } from '#components/ui/button'
-import { Input } from '#components/ui/input'
 import { Skeleton } from '#components/ui/skeleton'
 import { $api } from '#lib/api/client'
 

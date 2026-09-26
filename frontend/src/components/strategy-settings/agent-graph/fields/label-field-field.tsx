@@ -1,12 +1,13 @@
-import { getLabelFieldOptions } from '#components/strategy-settings/agent-graph/output-fields'
-import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '#components/ui/select'
+} from '@fohte/ui/select'
+
+import { getLabelFieldOptions } from '#components/strategy-settings/agent-graph/output-fields'
+import type { AgentGraphPhaseForm } from '#components/strategy-settings/agent-graph/types'
 
 interface LabelFieldFieldProps {
   phases: readonly AgentGraphPhaseForm[]

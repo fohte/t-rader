@@ -1,6 +1,7 @@
+import { Button } from '@fohte/ui/button'
+import { Input } from '@fohte/ui/input'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 
-import { Button } from '#components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '#components/ui/dialog'
-import { Input } from '#components/ui/input'
 
 const meta = {
   title: 'UI/Dialog',
