@@ -3904,7 +3904,7 @@
             }
           },
           {
-            "name": "type_tag",
+            "name": "kind",
             "in": "query",
             "required": false,
             "schema": {
@@ -8999,12 +8999,18 @@
               "type": "string"
             }
           },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "type": [
               "string",
               "null"
             ],
-            "description": "任意。デフォルトは \"unread\""
+            "description": "人間の作成では省略時に \"approved\"。指定する場合も \"approved\" のみ許可する。\nエージェントの作成では省略時に \"unread\"。承認必須種別では \"unread\" のみ許可する。"
           },
           "strategy_id": {
             "type": [
@@ -9030,12 +9036,6 @@
             ]
           },
           "trigger_label": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "type_tag": {
             "type": [
               "string",
               "null"
@@ -9711,6 +9711,12 @@
           "is_current": {
             "type": "boolean"
           },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "type": "string"
           },
@@ -9731,12 +9737,6 @@
             ]
           },
           "trigger_label": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "type_tag": {
             "type": [
               "string",
               "null"
@@ -11155,6 +11155,12 @@
               "type": "string"
             }
           },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": [
               "string",
@@ -11174,12 +11180,6 @@
             ]
           },
           "trigger_label": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "type_tag": {
             "type": [
               "string",
               "null"

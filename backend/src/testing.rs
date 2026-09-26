@@ -148,7 +148,7 @@ async fn insert_test_note_with_options(
     note::Entity::insert(note::ActiveModel {
         id: Set(id),
         strategy_id: Set(strategy_id),
-        type_tag: Set(None),
+        kind: Set(None),
         trigger: Set(None),
         trigger_label: Set(None),
         created_at: NotSet,
@@ -175,7 +175,7 @@ async fn insert_test_note_with_options(
     )
     .await
     .expect("append test note version");
-    if status != "unread" {
+    if status != version.status {
         note_version::ActiveModel {
             id: Set(version.id),
             status: Set(status.to_string()),

@@ -171,6 +171,7 @@ pub struct CheckBuyableQtyResult {
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WriteNoteParams {
     /// 与えられたら既存ノートを更新する。省略時は新規作成する。
     pub note_id: Option<Uuid>,
@@ -178,12 +179,14 @@ pub struct WriteNoteParams {
     /// `[[note:<uuid>]]` はリンク元バージョンを作成した時点の現行バージョンに固定する。
     /// `@current` を付けると以降の現行バージョンに追従する。
     pub body_md: Option<String>,
-    /// `null` を明示すると既存タグを NULL に更新する。フィールド省略時は変更しない。
+    /// 新規作成時の種別。既存ノートの種別は変更できない。
     #[serde(
         default,
         deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
     )]
-    pub type_tag: Option<Option<String>>,
+    pub kind: Option<Option<String>>,
+    /// 承認必須種別の 2 件目以降で必須となる変更理由。
+    pub change_reason: Option<String>,
     pub frontmatter_json: Option<serde_json::Map<String, serde_json::Value>>,
     /// ノートに埋め込む図の定義。指定すると既存の図を配列ごと置き換える
     /// (id 単位の部分更新はできない)。省略時は既存の図を変更しない。
@@ -227,7 +230,7 @@ pub struct NoteDto {
     /// `read_note` の結果では常に値を含む
     pub body_md: Option<String>,
     pub frontmatter_json: serde_json::Map<String, serde_json::Value>,
-    pub type_tag: Option<String>,
+    pub kind: Option<String>,
     pub status: String,
     pub created_by_kind: String,
     pub created_at: DateTime<FixedOffset>,
@@ -236,6 +239,20 @@ pub struct NoteDto {
     /// `read_note` の結果でのみ含まれる、このバージョンから出るリンク。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<NoteLinkDto>>,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct NoteKindDto {
+    pub key: String,
+    pub display_name: String,
+    pub requires_approval: bool,
+    pub description: Option<String>,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
+pub struct ListNoteKindsResult {
+    pub note_kinds: Vec<NoteKindDto>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]

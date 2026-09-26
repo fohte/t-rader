@@ -12,7 +12,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub strategy_id: Option<Uuid>,
-    pub type_tag: Option<String>,
+    pub kind: Option<String>,
     pub trigger: Option<String>,
     pub trigger_label: Option<String>,
     #[schema(value_type = chrono::DateTime<chrono::Utc>)]
@@ -29,6 +29,14 @@ pub enum Relation {
     Annotation,
     #[sea_orm(has_many = "super::note_hypothesis::Entity")]
     NoteHypothesis,
+    #[sea_orm(
+        belongs_to = "super::note_kind::Entity",
+        from = "Column::Kind",
+        to = "super::note_kind::Column::Key",
+        on_update = "NoAction",
+        on_delete = "Restrict"
+    )]
+    NoteKind,
     #[sea_orm(has_many = "super::note_link::Entity")]
     NoteLink,
     #[sea_orm(has_many = "super::note_ref::Entity")]
@@ -58,6 +66,12 @@ impl Related<super::annotation::Entity> for Entity {
 impl Related<super::note_hypothesis::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::NoteHypothesis.def()
+    }
+}
+
+impl Related<super::note_kind::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::NoteKind.def()
     }
 }
 
