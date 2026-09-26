@@ -114,15 +114,12 @@ fn test_database_options() -> PgConnectOptions {
 }
 
 fn test_application_name(test_name: &str) -> String {
-    // PostgreSQL の識別子長に収めつつ、短縮後もテストを区別できるよう full path の hash を付ける。
-    let hash = test_name
-        .as_bytes()
-        .iter()
-        .fold(0xcbf29ce484222325_u64, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(0x00000100000001b3)
-        });
-    let short_name = test_name.rsplit("::").next().unwrap_or(test_name);
-    format!("dbtest:{hash:016x}:{short_name:.39}")
+    // PostgreSQL は application_name を 63 byte で切るため、末尾にあるテスト名を残す。
+    let suffix_start = test_name
+        .char_indices()
+        .find_map(|(index, _)| (test_name.len() - index <= 56).then_some(index))
+        .unwrap_or(0);
+    format!("dbtest:{}", &test_name[suffix_start..])
 }
 
 // 別 worktree のテストが古い migration source の DB を使うことがあるため、異なる hash の DB を共存させる。
