@@ -45,14 +45,7 @@ pub async fn create_test_transaction(test_name: &'static str) -> DatabaseHandle 
         .await
         .expect("connect to shared test database");
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
-    let transaction = DatabaseHandle::from(db.begin().await.expect("begin test transaction"));
-    transaction
-        .execute_unprepared(
-            "SELECT pg_advisory_xact_lock(hashtext('t-rader-test-database'), hashtext('test-execution'))",
-        )
-        .await
-        .expect("serialize shared database tests");
-    transaction
+    DatabaseHandle::from(db.begin().await.expect("begin test transaction"))
 }
 
 async fn initialize_test_database() {
