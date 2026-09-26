@@ -5,12 +5,13 @@ pub mod news;
 
 pub use core_application::{
     DailyBarSource, DailyBarSourceError, DateRange, EarningsScheduleSource,
-    EarningsScheduleSourceError, EquityMasterSource, EquityMasterSourceError, MarginSource,
-    MarginSourceError, MarketDailyBarSource, MarketDailyBarSourceError, SharedDailyBarSource,
-    SharedEarningsScheduleSource, SharedEquityMasterSource, SharedMarginSource,
-    SharedMarketDailyBarSource, SharedShortSellingSource, SharedValuationSource,
-    ShareholdingStructureSource, ShareholdingStructureSourceError, ShortSellingSource,
-    ShortSellingSourceError, ValuationSource, ValuationSourceError,
+    EarningsScheduleSourceError, EquityMasterSource, EquityMasterSourceError,
+    FinancialSummarySource, FinancialSummarySourceError, MarginSource, MarginSourceError,
+    MarketDailyBarSource, MarketDailyBarSourceError, SharedDailyBarSource,
+    SharedEarningsScheduleSource, SharedEquityMasterSource, SharedFinancialSummarySource,
+    SharedMarginSource, SharedMarketDailyBarSource, SharedShortSellingSource,
+    SharedValuationSource, ShareholdingStructureSource, ShareholdingStructureSourceError,
+    ShortSellingSource, ShortSellingSourceError, ValuationSource, ValuationSourceError,
 };
 
 /// データプロバイダーで発生しうるエラー
@@ -97,6 +98,12 @@ impl From<DataProviderError> for ShareholdingStructureSourceError {
 }
 
 impl From<DataProviderError> for ValuationSourceError {
+    fn from(error: DataProviderError) -> Self {
+        Self::Failed(error.to_string())
+    }
+}
+
+impl From<DataProviderError> for FinancialSummarySourceError {
     fn from(error: DataProviderError) -> Self {
         Self::Failed(error.to_string())
     }

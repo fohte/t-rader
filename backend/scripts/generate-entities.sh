@@ -50,7 +50,6 @@ for file in "$ENTITIES_DIR"/*.rs; do
     bars) name=Bar ;;
     instruments) name=Instrument ;;
     jquants_plan_setting) name=JQuantsPlanSetting ;;
-    jquants_fin_summary) name=JQuantsFinSummary ;;
     valuation) name=Valuation ;;
     valuation_ingested_date) name=ValuationIngestedDate ;;
     jquants_earnings_date) name=JQuantsEarningsDate ;;

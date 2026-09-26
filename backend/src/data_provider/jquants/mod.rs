@@ -2,6 +2,7 @@ mod daily_bars;
 mod earnings_schedule;
 mod edinet_holdings;
 mod equities_master;
+mod fin_summary;
 mod margin;
 #[cfg(test)]
 pub(crate) mod mock;
