@@ -1,6 +1,7 @@
 use std::{
     str::FromStr,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use axum_test::TestServer;
@@ -33,41 +34,41 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 static TEST_DATABASE_INITIALIZED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
 
 /// テストごとに独立した rollback transaction を作る。
-pub async fn create_test_transaction() -> DatabaseHandle {
+pub async fn create_test_transaction(test_name: &'static str) -> DatabaseHandle {
     TEST_DATABASE_INITIALIZED
-        .get_or_init(initialize_test_database)
+        .get_or_init(|| initialize_test_database(test_name))
         .await;
 
+    let application_name = test_application_name(test_name);
     let pool = PgPoolOptions::new()
         .max_connections(1)
-        .connect_with(test_database_options())
+        .connect_with(test_database_options().application_name(&application_name))
         .await
         .expect("connect to shared test database");
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
-    let transaction = DatabaseHandle::from(db.begin().await.expect("begin test transaction"));
-    transaction
-        .execute_unprepared(
-            "SELECT pg_advisory_xact_lock(hashtext('t-rader-test-database'), hashtext('test-execution'))",
-        )
-        .await
-        .expect("serialize shared database tests");
-    transaction
+    DatabaseHandle::from(db.begin().await.expect("begin test transaction"))
 }
 
-async fn initialize_test_database() {
+async fn initialize_test_database(test_name: &'static str) {
+    let initialization_started_at = Instant::now();
     let test_database = test_database_name();
+    let application_name = test_application_name(test_name);
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let base_options = PgConnectOptions::from_str(&database_url).expect("parse DATABASE_URL");
+    let base_options = PgConnectOptions::from_str(&database_url)
+        .expect("parse DATABASE_URL")
+        .application_name(&application_name);
     let mut admin = PgConnection::connect_with(&base_options.clone().database("postgres"))
         .await
         .expect("connect to PostgreSQL admin database");
 
+    let migration_lock_started_at = Instant::now();
     sqlx::query_scalar::<_, bool>(
         "SELECT pg_advisory_lock(hashtext('t-rader-test-database'), hashtext('migration')) IS NULL",
     )
     .fetch_one(&mut admin)
     .await
     .expect("lock shared test database migration");
+    let migration_lock_wait = migration_lock_started_at.elapsed();
 
     let database_exists = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)",
@@ -103,6 +104,12 @@ async fn initialize_test_database() {
     .fetch_one(&mut admin)
     .await
     .expect("unlock shared test database migration");
+
+    eprintln!(
+        "TEST_DB_INITIALIZATION test={test_name} initialization_ms={:.3} migration_lock_wait_ms={:.3}",
+        initialization_started_at.elapsed().as_secs_f64() * 1000.0,
+        migration_lock_wait.as_secs_f64() * 1000.0,
+    );
 }
 
 fn test_database_options() -> PgConnectOptions {
@@ -110,6 +117,17 @@ fn test_database_options() -> PgConnectOptions {
     PgConnectOptions::from_str(&database_url)
         .expect("parse DATABASE_URL")
         .database(&test_database_name())
+}
+
+const APPLICATION_NAME_PREFIX: &str = "dbtest:";
+const APPLICATION_NAME_MAX_BYTES: usize = 63;
+
+fn test_application_name(test_name: &str) -> String {
+    // PostgreSQL は application_name を 63 byte で切るため、末尾にあるテスト名を残す。
+    let max_suffix_bytes = APPLICATION_NAME_MAX_BYTES - APPLICATION_NAME_PREFIX.len();
+    let suffix_start =
+        test_name.ceil_char_boundary(test_name.len().saturating_sub(max_suffix_bytes));
+    format!("{APPLICATION_NAME_PREFIX}{}", &test_name[suffix_start..])
 }
 
 // 別 worktree のテストが古い migration source の DB を使うことがあるため、異なる hash の DB を共存させる。

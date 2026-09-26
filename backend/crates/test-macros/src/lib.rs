@@ -41,6 +41,7 @@ pub fn database_test(attribute: TokenStream, item: TokenStream) -> TokenStream {
     };
     let argument_name = argument_name.ident.clone();
     let argument_type = argument.ty.clone();
+    let test_name = function.sig.ident.clone();
 
     if function.sig.asyncness.is_none() {
         return syn::Error::new_spanned(&function.sig, "database_test expects an async function")
@@ -52,7 +53,12 @@ pub fn database_test(attribute: TokenStream, item: TokenStream) -> TokenStream {
     function.attrs.push(parse_quote!(#[tokio::test]));
     function.block.stmts.insert(
         0,
-        parse_quote!(let #argument_name: #argument_type = crate::testing::create_test_transaction().await;),
+        parse_quote!(
+            let #argument_name: #argument_type = crate::testing::create_test_transaction(
+                concat!(module_path!(), "::", stringify!(#test_name))
+            )
+            .await;
+        ),
     );
 
     quote!(#function).into()
