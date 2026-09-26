@@ -33,14 +33,15 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 static TEST_DATABASE_INITIALIZED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
 
 /// テストごとに独立した rollback transaction を作る。
-pub async fn create_test_transaction() -> DatabaseHandle {
+pub async fn create_test_transaction(test_name: &'static str) -> DatabaseHandle {
     TEST_DATABASE_INITIALIZED
         .get_or_init(initialize_test_database)
         .await;
 
+    let application_name = test_application_name(test_name);
     let pool = PgPoolOptions::new()
         .max_connections(1)
-        .connect_with(test_database_options())
+        .connect_with(test_database_options().application_name(&application_name))
         .await
         .expect("connect to shared test database");
     let db = SqlxPostgresConnector::from_sqlx_postgres_pool(pool);
@@ -110,6 +111,18 @@ fn test_database_options() -> PgConnectOptions {
     PgConnectOptions::from_str(&database_url)
         .expect("parse DATABASE_URL")
         .database(&test_database_name())
+}
+
+fn test_application_name(test_name: &str) -> String {
+    // PostgreSQL の識別子長に収めつつ、短縮後もテストを区別できるよう full path の hash を付ける。
+    let hash = test_name
+        .as_bytes()
+        .iter()
+        .fold(0xcbf29ce484222325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x00000100000001b3)
+        });
+    let short_name = test_name.rsplit("::").next().unwrap_or(test_name);
+    format!("dbtest:{hash:016x}:{short_name:.39}")
 }
 
 // 別 worktree のテストが古い migration source の DB を使うことがあるため、異なる hash の DB を共存させる。
