@@ -11,5 +11,4 @@ pub mod short_ratio;
 pub mod short_sale_report;
 pub mod valuation;
 
-pub use financial_summary::FinancialSummary;
 pub use indicator_observation::IndicatorObservation;

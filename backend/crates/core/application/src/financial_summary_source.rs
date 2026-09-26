@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_domain::FinancialSummary;
+use core_domain::financial_summary::FinancialSummary;
 
 use crate::DateRange;
 

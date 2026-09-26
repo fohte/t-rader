@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_domain::FinancialSummary;
+use core_domain::financial_summary::FinancialSummary;
 
 use super::JQuantsClient;
 use crate::data_provider::{
@@ -43,9 +43,41 @@ fn financial_summary_from_api(
             .filter(|value| !value.is_empty())
     };
     let date_field = |key: &str| {
-        string_field(key).and_then(|value| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+        string_field(key).and_then(|value| {
+            NaiveDate::parse_from_str(value, "%Y-%m-%d")
+                .map_err(|error| {
+                    tracing::warn!(
+                        code = raw.get("Code").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                        disclosure_no = raw
+                            .get("DiscNo")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default(),
+                        field = key,
+                        value,
+                        %error,
+                        "財務情報の項目を parse できず欠損値として扱います",
+                    );
+                })
+                .ok()
+        })
     };
-    let number_field = |key: &str| string_field(key).and_then(|value| value.parse::<f64>().ok());
+    let number_field = |key: &str| {
+        string_field(key).and_then(|value| {
+            value.parse::<f64>().map_err(|error| {
+                tracing::warn!(
+                    code = raw.get("Code").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                    disclosure_no = raw
+                        .get("DiscNo")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default(),
+                    field = key,
+                    value,
+                    %error,
+                    "財務情報の項目を parse できず欠損値として扱います",
+                );
+            }).ok()
+        })
+    };
 
     let disclosure_date = NaiveDate::parse_from_str(required_string("DiscDate")?, "%Y-%m-%d")
         .map_err(|error| DataProviderError::Parse(format!("invalid DiscDate: {error}")))?;
@@ -112,7 +144,7 @@ fn report_group_key(raw: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use core_domain::FinancialSummary;
+    use core_domain::financial_summary::FinancialSummary;
     use serde_json::json;
 
     use super::{FinancialSummarySource, report_group_key};

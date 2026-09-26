@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use chrono::{NaiveDate, Utc};
-use core_domain::FinancialSummary;
+use core_domain::financial_summary::FinancialSummary;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{DatabaseConnection, EntityTrait, Iterable, QueryOrder, Set, TransactionTrait};
 use tokio::task::JoinHandle;
@@ -184,7 +184,6 @@ pub async fn run_ingest_cycle(
 }
 
 /// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-/// J-Quants client が設定された場合に起動する。
 pub fn spawn_poll(
     db: DatabaseConnection,
     source: SharedFinancialSummarySource,

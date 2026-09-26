@@ -9,10 +9,9 @@ pub use core_application::{
     FinancialSummarySource, FinancialSummarySourceError, MarginSource, MarginSourceError,
     MarketDailyBarSource, MarketDailyBarSourceError, SharedDailyBarSource,
     SharedEarningsScheduleSource, SharedEquityMasterSource, SharedFinancialSummarySource,
-    SharedMarginSource, SharedMarketDailyBarSource, SharedShareholdingStructureSource,
-    SharedShortSellingSource, SharedValuationSource, ShareholdingStructureSource,
-    ShareholdingStructureSourceError, ShortSellingSource, ShortSellingSourceError, ValuationSource,
-    ValuationSourceError,
+    SharedMarginSource, SharedMarketDailyBarSource, SharedShortSellingSource,
+    SharedValuationSource, ShareholdingStructureSource, ShareholdingStructureSourceError,
+    ShortSellingSource, ShortSellingSourceError, ValuationSource, ValuationSourceError,
 };
 
 /// データプロバイダーで発生しうるエラー
