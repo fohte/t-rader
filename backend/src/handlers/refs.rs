@@ -10,7 +10,9 @@ use crate::AppState;
 use crate::entities::{indicator, sector, stock, theme};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
-use crate::models::RefResolution;
+use crate::models::{
+    IndicatorResponse, RefResolution, SectorResponse, StockResponse, ThemeResponse,
+};
 use crate::services::note_refs::ALLOWED_REF_KINDS;
 use crate::services::ref_terms;
 
@@ -39,14 +41,14 @@ pub struct SearchQuery {
     tag = "refs",
     params(SearchQuery),
     responses(
-        (status = 200, body = Vec<stock::Model>),
+        (status = 200, body = Vec<StockResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_stocks(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
-) -> Result<Json<Vec<stock::Model>>, AppError> {
+) -> Result<Json<Vec<StockResponse>>, AppError> {
     let mut q = stock::Entity::find().order_by_asc(stock::Column::Id);
     if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
         let like = format!("%{}%", sanitize_like(text));
@@ -57,6 +59,7 @@ pub async fn list_stocks(
         );
     }
     let items = q.limit(50).all(&state.db).await?;
+    let items = items.into_iter().map(StockResponse::from).collect();
     Ok(Json(items))
 }
 
@@ -67,7 +70,7 @@ pub async fn list_stocks(
     tag = "refs",
     params(("id" = String, Path, description = "銘柄コード")),
     responses(
-        (status = 200, body = stock::Model),
+        (status = 200, body = StockResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -75,12 +78,12 @@ pub async fn list_stocks(
 pub async fn get_stock(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
-) -> Result<Json<stock::Model>, AppError> {
+) -> Result<Json<StockResponse>, AppError> {
     let m = stock::Entity::find_by_id(id.clone())
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("stock {id} not found")))?;
-    Ok(Json(m))
+    Ok(Json(StockResponse::from(m)))
 }
 
 /// indicator 検索
@@ -90,14 +93,14 @@ pub async fn get_stock(
     tag = "refs",
     params(SearchQuery),
     responses(
-        (status = 200, body = Vec<indicator::Model>),
+        (status = 200, body = Vec<IndicatorResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_indicators(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
-) -> Result<Json<Vec<indicator::Model>>, AppError> {
+) -> Result<Json<Vec<IndicatorResponse>>, AppError> {
     let mut q = indicator::Entity::find().order_by_asc(indicator::Column::Id);
     if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
         let like = format!("%{}%", sanitize_like(text));
@@ -108,6 +111,7 @@ pub async fn list_indicators(
         );
     }
     let items = q.limit(50).all(&state.db).await?;
+    let items = items.into_iter().map(IndicatorResponse::from).collect();
     Ok(Json(items))
 }
 
@@ -118,7 +122,7 @@ pub async fn list_indicators(
     tag = "refs",
     params(("id" = String, Path, description = "指標 ID")),
     responses(
-        (status = 200, body = indicator::Model),
+        (status = 200, body = IndicatorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -126,12 +130,12 @@ pub async fn list_indicators(
 pub async fn get_indicator(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
-) -> Result<Json<indicator::Model>, AppError> {
+) -> Result<Json<IndicatorResponse>, AppError> {
     let m = indicator::Entity::find_by_id(id.clone())
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("indicator {id} not found")))?;
-    Ok(Json(m))
+    Ok(Json(IndicatorResponse::from(m)))
 }
 
 /// sector 検索
@@ -141,14 +145,14 @@ pub async fn get_indicator(
     tag = "refs",
     params(SearchQuery),
     responses(
-        (status = 200, body = Vec<sector::Model>),
+        (status = 200, body = Vec<SectorResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_sectors(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
-) -> Result<Json<Vec<sector::Model>>, AppError> {
+) -> Result<Json<Vec<SectorResponse>>, AppError> {
     let mut q = sector::Entity::find().order_by_asc(sector::Column::Id);
     if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
         let like = format!("%{}%", sanitize_like(text));
@@ -159,6 +163,7 @@ pub async fn list_sectors(
         );
     }
     let items = q.limit(50).all(&state.db).await?;
+    let items = items.into_iter().map(SectorResponse::from).collect();
     Ok(Json(items))
 }
 
@@ -169,7 +174,7 @@ pub async fn list_sectors(
     tag = "refs",
     params(("id" = String, Path, description = "セクター ID")),
     responses(
-        (status = 200, body = sector::Model),
+        (status = 200, body = SectorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -177,12 +182,12 @@ pub async fn list_sectors(
 pub async fn get_sector(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
-) -> Result<Json<sector::Model>, AppError> {
+) -> Result<Json<SectorResponse>, AppError> {
     let m = sector::Entity::find_by_id(id.clone())
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("sector {id} not found")))?;
-    Ok(Json(m))
+    Ok(Json(SectorResponse::from(m)))
 }
 
 /// theme 検索
@@ -192,14 +197,14 @@ pub async fn get_sector(
     tag = "refs",
     params(SearchQuery),
     responses(
-        (status = 200, body = Vec<theme::Model>),
+        (status = 200, body = Vec<ThemeResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_themes(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
-) -> Result<Json<Vec<theme::Model>>, AppError> {
+) -> Result<Json<Vec<ThemeResponse>>, AppError> {
     let mut q = theme::Entity::find().order_by_asc(theme::Column::Id);
     if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
         let like = format!("%{}%", sanitize_like(text));
@@ -210,6 +215,7 @@ pub async fn list_themes(
         );
     }
     let items = q.limit(50).all(&state.db).await?;
+    let items = items.into_iter().map(ThemeResponse::from).collect();
     Ok(Json(items))
 }
 
@@ -220,7 +226,7 @@ pub async fn list_themes(
     tag = "refs",
     params(("id" = String, Path, description = "テーマ ID")),
     responses(
-        (status = 200, body = theme::Model),
+        (status = 200, body = ThemeResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -228,12 +234,12 @@ pub async fn list_themes(
 pub async fn get_theme(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
-) -> Result<Json<theme::Model>, AppError> {
+) -> Result<Json<ThemeResponse>, AppError> {
     let m = theme::Entity::find_by_id(id.clone())
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("theme {id} not found")))?;
-    Ok(Json(m))
+    Ok(Json(ThemeResponse::from(m)))
 }
 
 #[derive(Debug, Deserialize, IntoParams)]

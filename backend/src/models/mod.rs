@@ -38,7 +38,7 @@ pub use import::{
 pub use instrument::Instrument;
 pub use margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
-pub use refs::RefResolution;
+pub use refs::{IndicatorResponse, RefResolution, SectorResponse, StockResponse, ThemeResponse};
 pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
     parse_risk_policy, serialize_risk_policy, validate_ratio,
