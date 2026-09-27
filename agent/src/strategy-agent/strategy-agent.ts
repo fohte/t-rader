@@ -39,7 +39,6 @@ import {
 } from '#strategy-agent/final-turn-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
 import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
-import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import {
   createToolCallCapMiddleware,
   MAX_TOOL_CALLS_PER_MODEL_CALL,
@@ -55,8 +54,6 @@ const EXECUTION_ID_HEADER = 'x-execution-id'
 const DEFAULT_PURPOSE = 'default'
 
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
-const MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
-  'strategy-agent.mcp-client-close-failed'
 const RESUME_STEPS_PARSE_FAILED_FINGERPRINT =
   'strategy-agent.resume-steps-parse-failed'
 
@@ -339,15 +336,6 @@ export const runStrategyAgent = async (
   } = input
   const promptText = withAsOf(extractMessageText(userMessage), asOf)
   const previousSteps = parseResumeSteps(resumeSteps, strategyId)
-  const mcpClient = deps.createMcpClient(strategyId, taskId)
-
-  const closeMcpClient = (): Promise<void> =>
-    mcpClient.close().catch((closeError: unknown) => {
-      logger.error({ err: closeError }, 'failed to close MCP client')
-      captureWithFingerprint(closeError, MCP_CLIENT_CLOSE_FAILED_FINGERPRINT, {
-        extras: { strategyId },
-      })
-    })
 
   const toErrorResult = (error: unknown): StrategyAgentResult => {
     logger.error({ err: error }, 'strategy agent execution failed')
@@ -368,100 +356,46 @@ export const runStrategyAgent = async (
     }
   }
 
-  // Ensures mcpClient is closed in .finally() even if setup throws synchronously.
   return Promise.resolve()
-    .then(() => {
-      // Started before fetchAgentConfig is awaited below so it's already in
-      // flight rather than sequenced after it. Only the legacy (non
-      // agent_graph) branch below consumes this — the agent_graph branch
-      // fetches step-scoped tools of its own via createStepMcpClient.
-      const toolsResult = ResultAsync.fromPromise(
-        mcpClient.getTools(),
-        (error) => error,
-      )
-
-      return deps
+    .then(() =>
+      deps
         .fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
         .andThen((agentConfig) => {
           const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
           if (parsedGraph.isErr()) {
             return errAsync(parsedGraph.error)
           }
-          // agent_graph が設定されている場合は多段フェーズのオーケストレー
-          // ターに委譲する。これは既に StrategyAgentResult に resolve
-          // される (reject はしないが、fromPromise を通すことで想定外の
-          // throw も下の toErrorResult と同じ経路に流す)。
-          if (parsedGraph.value !== undefined) {
-            return ResultAsync.fromPromise(
-              runAgentGraph(deps, parsedGraph.value, {
-                agentsMd: agentConfig.agentsMd,
-                skills: agentConfig.skills,
-                createStepMcpClient: (executionStepId) =>
-                  deps.createMcpClient(
-                    strategyId,
-                    `${taskId}:${executionStepId}`,
-                  ),
-                originalPromptText: promptText,
-                ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
-                ...(previousSteps !== undefined ? { previousSteps } : {}),
-                ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
-              }).then((result) => {
-                if (result.status === 'failed') {
-                  logger.error(
-                    { error: result.message },
-                    'strategy agent execution failed',
-                  )
-                  captureWithFingerprint(
-                    new Error(result.message),
-                    EXECUTION_FAILED_FINGERPRINT,
-                    { extras: { strategyId } },
-                  )
-                }
-                return result
-              }),
-              (error) => error,
-            )
-          }
-
-          return toolsResult
-            .andThen((tools) =>
-              ResultAsync.fromPromise(
-                deps
-                  .buildAgent({
-                    model: deps.createChatModel(agentConfig.model),
-                    tools,
-                    systemPrompt: buildSystemPrompt(agentConfig),
-                    ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
-                  })
-                  .invoke({
-                    messages: [new HumanMessage(promptText)],
-                  }),
-                (error) => error,
-              ),
-            )
-            .map((invokeResult): StrategyAgentResult => {
-              if (invokeResult.structuredResponse === undefined) {
-                return {
-                  status: 'failed',
-                  message: 'agent did not return a structured response',
-                  errorKind: 'agent_error',
-                }
+          return ResultAsync.fromPromise(
+            runAgentGraph(deps, parsedGraph.value, {
+              agentsMd: agentConfig.agentsMd,
+              skills: agentConfig.skills,
+              createStepMcpClient: (executionStepId) =>
+                deps.createMcpClient(
+                  strategyId,
+                  `${taskId}:${executionStepId}`,
+                ),
+              originalPromptText: promptText,
+              ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
+              ...(previousSteps !== undefined ? { previousSteps } : {}),
+              ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
+            }).then((result) => {
+              if (result.status === 'failed') {
+                logger.error(
+                  { error: result.message },
+                  'strategy agent execution failed',
+                )
+                captureWithFingerprint(
+                  new Error(result.message),
+                  EXECUTION_FAILED_FINGERPRINT,
+                  { extras: { strategyId } },
+                )
               }
-              if (invokeResult.structuredResponse.status === 'completed') {
-                return {
-                  status: 'completed',
-                  message: invokeResult.structuredResponse.message,
-                }
-              }
-              return {
-                status: 'failed',
-                message: invokeResult.structuredResponse.message,
-                errorKind: 'agent_error',
-              }
-            })
+              return result
+            }),
+            (error) => error,
+          )
         })
-        .match((r) => r, toErrorResult)
-    })
+        .match((r) => r, toErrorResult),
+    )
     .catch((error: unknown) => toErrorResult(error))
-    .finally(() => closeMcpClient())
 }
