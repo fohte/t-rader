@@ -6,6 +6,7 @@ members = [
     "crates/core/application",
     "crates/gateways/fred",
     "crates/gateways/ibkr",
+    "crates/gateways/jquants",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
     "crates/gateways/rss",
@@ -18,6 +19,7 @@ default-members = [
     "crates/core/application",
     "crates/gateways/fred",
     "crates/gateways/ibkr",
+    "crates/gateways/jquants",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
     "crates/gateways/rss",
@@ -32,6 +34,7 @@ core-domain = { path = "crates/core/domain" }
 core-application = { path = "crates/core/application" }
 gateway-fred = { path = "crates/gateways/fred" }
 gateway-ibkr = { path = "crates/gateways/ibkr" }
+gateway-jquants = { path = "crates/gateways/jquants" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }
 gateway-litellm = { path = "crates/gateways/litellm" }
 gateway-rss = { path = "crates/gateways/rss" }
@@ -85,6 +88,7 @@ core-domain = { workspace = true }
 core-application = { workspace = true }
 gateway-fred = { workspace = true }
 gateway-ibkr = { workspace = true }
+gateway-jquants = { workspace = true }
 gateway-litellm = { workspace = true }
 gateway-kata-exec = { workspace = true }
 gateway-rss = { workspace = true }
@@ -136,6 +140,7 @@ uuid = { workspace = true, features = ["serde", "v4", "v5"] }
 backend-test-macros = { path = "crates/test-macros" }
 axum-test = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
+gateway-jquants = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
 sqlx = { workspace = true, features = [

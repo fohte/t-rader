@@ -5,7 +5,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::data_provider::{
-    DailyBarSourceError, DataProviderError, EquityMasterSourceError, MarketDailyBarSourceError,
+    DailyBarSourceError, EquityMasterSourceError, MarketDailyBarSourceError,
 };
 
 // SeaORM の `SqlErr` で拾えない PostgreSQL SQLSTATE を補完する。
@@ -69,9 +69,6 @@ pub enum AppError {
     #[error("conflict: {0}")]
     Conflict(String),
 
-    #[error("data provider error: {0}")]
-    DataProvider(#[from] DataProviderError),
-
     #[error("daily bar source error: {0}")]
     DailyBarSource(#[from] DailyBarSourceError),
 
@@ -126,24 +123,6 @@ impl IntoResponse for AppError {
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
-            AppError::DataProvider(e) => match e {
-                DataProviderError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
-                DataProviderError::RateLimited { .. }
-                | DataProviderError::RateLimitWindowFull { .. } => {
-                    tracing::error!("{self}");
-                    (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        "service temporarily unavailable".to_string(),
-                    )
-                }
-                _ => {
-                    tracing::error!("{self}");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "internal server error".to_string(),
-                    )
-                }
-            },
             AppError::DailyBarSource(DailyBarSourceError::NotFound(msg)) => {
                 (StatusCode::NOT_FOUND, msg.clone())
             }

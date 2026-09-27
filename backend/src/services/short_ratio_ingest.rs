@@ -67,10 +67,10 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_provider::jquants::mock::{JQuantsMockServer, MockShortRatio};
     use crate::entities::short_ratio;
-    use crate::models::jquants_plan::JQuantsPlan;
     use chrono::Utc;
+    use gateway_jquants::JQuantsPlan;
+    use gateway_jquants::mock::{JQuantsMockServer, MockShortRatio};
     use rstest::rstest;
     use rust_decimal::Decimal;
     use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};

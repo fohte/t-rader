@@ -11,9 +11,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::JQuantsClient;
-use crate::data_provider::{
-    DateRange, ShareholdingStructureSource, ShareholdingStructureSourceError,
-};
+use core_application::{DateRange, ShareholdingStructureSource, ShareholdingStructureSourceError};
 
 const LARGE_VOLUME_PATH: &str = "/edinet/large-volume-shareholders";
 const CROSS_SHAREHOLDING_PATH: &str = "/edinet/cross-shareholdings";
@@ -317,8 +315,9 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
 
-    use crate::data_provider::{ShareholdingStructureSource, jquants::mock::JQuantsMockServer};
-    use crate::models::jquants_plan::JQuantsPlan;
+    use crate::JQuantsPlan;
+    use crate::jquants::mock::JQuantsMockServer;
+    use core_application::{DateRange, ShareholdingStructureSource};
 
     use super::{
         CROSS_SHAREHOLDING_PATH, LARGE_VOLUME_PATH, MAJOR_SHAREHOLDER_PATH,
@@ -571,9 +570,6 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2025, 4, 1).expect("valid date");
         let (from, to) = JQuantsPlan::Standard.range(today);
 
-        assert_eq!(
-            client.fetchable_range(today),
-            Some(crate::data_provider::DateRange { from, to })
-        );
+        assert_eq!(client.fetchable_range(today), Some(DateRange { from, to }));
     }
 }

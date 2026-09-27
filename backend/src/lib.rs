@@ -37,7 +37,6 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
 use crate::data_provider::SharedDailyBarSource;
-use crate::data_provider::jquants::JQuantsClient;
 use crate::database::DatabaseHandle;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
@@ -48,6 +47,7 @@ use crate::handlers::{
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
+use gateway_jquants::JQuantsClient;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -139,9 +139,9 @@ mod app_state_tests {
 
     #[rstest]
     fn test_daily_bar_source_returns_source_when_set() {
-        let client = crate::data_provider::jquants::JQuantsClient::new(
+        let client = gateway_jquants::JQuantsClient::new(
             "test-key".into(),
-            crate::models::JQuantsPlan::Standard,
+            gateway_jquants::JQuantsPlan::Standard,
         )
         .unwrap();
         let daily_bar_source: SharedDailyBarSource = Arc::new(client);

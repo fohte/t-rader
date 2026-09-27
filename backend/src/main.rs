@@ -9,17 +9,16 @@ use backend::agent_client::{
 use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::SharedDailyBarSource;
-use backend::data_provider::jquants::JQuantsClient;
 use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::database::DatabaseHandle;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
-use backend::models::JQuantsPlan;
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
 use core_application::{IndicatorObservationSource, SharedNewsAggregator};
 use gateway_fred::FredClient;
 use gateway_ibkr::IbkrClient;
+use gateway_jquants::{JQuantsClient, JQuantsPlan};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
 
@@ -136,7 +135,9 @@ async fn main() -> Result<(), AppError> {
         }
         "jquants" => match jquants_config {
             Some((api_key, plan)) => {
-                let client = Arc::new(JQuantsClient::new(api_key, plan)?);
+                let client = Arc::new(JQuantsClient::new(api_key, plan).map_err(|error| {
+                    AppError::Config(format!("failed to initialize J-Quants client: {error}"))
+                })?);
                 tracing::info!("J-Quants 日足データ取得元を初期化しました");
                 let source: SharedDailyBarSource = client.clone();
                 (Some(source), Some(client))

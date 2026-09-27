@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use tokio::sync::Mutex;
 
-use crate::data_provider::DataProviderError;
+use crate::DataProviderError;
 
 /// レートリミットのウィンドウ幅 (60 秒)
 pub(super) const RATE_LIMIT_WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
@@ -20,7 +20,7 @@ pub(super) struct RateLimiter {
     /// 429 を受けてから送信を止める時間
     cooldown: std::time::Duration,
     /// window 枠が空くまで待つか、枠超過をエラーとして返すか
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fail_fast_on_window_limit: bool,
 }
 
@@ -30,13 +30,13 @@ impl RateLimiter {
             timestamps: Mutex::new(VecDeque::new()),
             cooldown_until: Mutex::new(None),
             cooldown,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             fail_fast_on_window_limit: false,
         }
     }
 
     /// テスト用: window 枠が満杯になった時点で待機せずエラーを返す。
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(super) fn new_fail_fast(cooldown: std::time::Duration) -> Self {
         Self {
             fail_fast_on_window_limit: true,
@@ -88,7 +88,7 @@ impl RateLimiter {
                 return Ok(());
             }
 
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             if self.fail_fast_on_window_limit {
                 return Err(DataProviderError::RateLimitWindowFull { max_requests });
             }

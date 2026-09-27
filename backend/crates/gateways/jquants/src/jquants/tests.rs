@@ -5,8 +5,9 @@ use serde_json::json;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
-use crate::data_provider::jquants::mock::{JQuantsMockServer, MockBar};
-use crate::data_provider::{DailyBarSource, DailyBarSourceError, DataProviderError, DateRange};
+use crate::DataProviderError;
+use crate::jquants::mock::{JQuantsMockServer, MockBar};
+use core_application::{DailyBarSource, DailyBarSourceError, DateRange};
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap_or_default()
@@ -482,7 +483,7 @@ mod fetch_instrument {
 
 mod error_handling {
     use super::*;
-    use crate::models::JQuantsPlan;
+    use crate::JQuantsPlan;
 
     #[rstest]
     #[tokio::test]
@@ -583,10 +584,10 @@ mod error_handling {
 
 mod fetch_fin_summary_by_date {
     use super::*;
-    use crate::data_provider::jquants::FIN_SUMMARY_RATE_LIMIT_PER_MINUTE;
-    use crate::data_provider::jquants::JQuantsClient;
-    use crate::data_provider::jquants::apply_safety_margin;
-    use crate::models::jquants_plan::JQuantsPlan;
+    use crate::JQuantsPlan;
+    use crate::jquants::FIN_SUMMARY_RATE_LIMIT_PER_MINUTE;
+    use crate::jquants::JQuantsClient;
+    use crate::jquants::apply_safety_margin;
 
     #[rstest]
     #[tokio::test]
@@ -639,7 +640,7 @@ mod fetch_fin_summary_by_date {
 mod rate_limiter {
     use super::super::RATE_LIMIT_COOLDOWN;
     use super::super::rate_limiter::{RATE_LIMIT_WINDOW, RateLimiter};
-    use crate::data_provider::DataProviderError;
+    use crate::DataProviderError;
     use rstest::rstest;
 
     const TEST_LIMIT: usize = 3;
@@ -728,8 +729,8 @@ mod rate_limiter {
 mod configured_plan {
     use super::super::JQuantsClient;
     use super::date;
-    use crate::data_provider::DateRange;
-    use crate::models::jquants_plan::JQuantsPlan;
+    use crate::JQuantsPlan;
+    use core_application::DateRange;
     use rstest::rstest;
 
     #[rstest]
@@ -776,7 +777,7 @@ mod daily_bar_source {
     use super::*;
     use std::sync::Arc;
 
-    use crate::data_provider::SharedDailyBarSource;
+    use core_application::SharedDailyBarSource;
 
     #[rstest]
     #[tokio::test]

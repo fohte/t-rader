@@ -4,8 +4,8 @@ mod edinet_holdings;
 mod equities_master;
 mod fin_summary;
 mod margin;
-#[cfg(test)]
-pub(crate) mod mock;
+#[cfg(any(test, feature = "test-support"))]
+pub mod mock;
 mod rate_limiter;
 mod response;
 mod short_selling;
@@ -19,10 +19,10 @@ use rust_decimal::Decimal;
 
 use rate_limiter::RateLimiter;
 
-use crate::data_provider::{DataProviderError, DateRange};
-use crate::models::bar::{Bar, Timeframe};
-use crate::models::instrument::{Instrument, Market};
-use crate::models::jquants_plan::JQuantsPlan;
+use crate::{DataProviderError, JQuantsPlan};
+use core_application::DateRange;
+use core_domain::bar::{Bar, Timeframe};
+use core_domain::instrument::{Instrument, Market};
 use response::{
     EarningsDateResponse, EdinetDocumentsResponse, EquitiesMasterResponse, ErrorResponse,
     FinSummaryResponse, Paginated, ValuationResponse,
@@ -89,7 +89,7 @@ impl JQuantsClient {
     }
 
     /// テスト用: ベース URL を差し替え可能にする
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn with_base_url(
         base_url: &str,
         api_key: &str,

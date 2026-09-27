@@ -7,10 +7,10 @@ use chrono::NaiveDate;
 
 use super::JQuantsClient;
 use super::response::{ShortRatioResponse, ShortSaleReportResponse};
-use crate::data_provider::{
-    DataProviderError, DateRange, ShortSellingSource, ShortSellingSourceError,
-};
-use crate::models::{ShortRatio, ShortSaleReport};
+use crate::DataProviderError;
+use core_application::{DateRange, ShortSellingSource, ShortSellingSourceError};
+use core_domain::short_ratio::ShortRatio;
+use core_domain::short_sale_report::ShortSaleReport;
 
 #[async_trait]
 impl ShortSellingSource for JQuantsClient {
@@ -141,7 +141,7 @@ mod tests {
     use rust_decimal::Decimal;
 
     use super::*;
-    use crate::data_provider::jquants::mock::{JQuantsMockServer, MockShortSaleReport};
+    use crate::jquants::mock::{JQuantsMockServer, MockShortSaleReport};
 
     #[tokio::test]
     async fn fetch_short_sale_reports_treats_hyphen_prev_report_date_as_none() {

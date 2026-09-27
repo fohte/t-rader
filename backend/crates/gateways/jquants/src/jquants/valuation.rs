@@ -4,7 +4,8 @@ use core_domain::valuation::Valuation;
 
 use super::JQuantsClient;
 use super::response::ValuationRecord;
-use crate::data_provider::{DataProviderError, DateRange, ValuationSource, ValuationSourceError};
+use crate::DataProviderError;
+use core_application::{DateRange, ValuationSource, ValuationSourceError};
 
 #[async_trait]
 impl ValuationSource for JQuantsClient {
@@ -53,8 +54,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::data_provider::jquants::mock::JQuantsMockServer;
-    use crate::models::jquants_plan::JQuantsPlan;
+    use crate::JQuantsPlan;
+    use crate::jquants::mock::JQuantsMockServer;
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
