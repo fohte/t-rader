@@ -3,11 +3,8 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "note_version")]
-#[schema(as = NoteVersion)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
@@ -22,7 +19,6 @@ pub struct Model {
     #[sea_orm(column_type = "JsonBinary")]
     pub frontmatter_json: Json,
     #[sea_orm(column_type = "JsonBinary")]
-    #[schema(value_type = Vec<crate::services::graph::GraphDef>)]
     pub graphs_json: Json,
     #[sea_orm(column_type = "Text")]
     pub status: String,
@@ -33,9 +29,7 @@ pub struct Model {
     pub created_by_kind: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub execution_id: Option<String>,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
-    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
     pub reviewed_at: Option<DateTimeWithTimeZone>,
 }
 

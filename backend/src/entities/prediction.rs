@@ -3,11 +3,8 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "prediction")]
-#[schema(as = Prediction)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub prediction_id: Uuid,
@@ -20,7 +17,6 @@ pub struct Model {
     pub probability: Decimal,
     pub base_date: Date,
     pub due_date: Date,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
 }
 

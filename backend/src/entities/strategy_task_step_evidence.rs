@@ -3,11 +3,8 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "strategy_task_step_evidence")]
-#[schema(as = StrategyTaskStepEvidence)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
@@ -16,11 +13,8 @@ pub struct Model {
     pub source: String,
     #[sea_orm(column_type = "Text")]
     pub source_ref: String,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub observed_at: DateTimeWithTimeZone,
-    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
     pub published_at: Option<DateTimeWithTimeZone>,
-    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
     pub effective_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(column_type = "JsonBinary")]
     pub snapshot: Json,

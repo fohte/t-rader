@@ -4,11 +4,8 @@ use super::sea_orm_active_enums::StrategyTaskStepStatus;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "strategy_task_step")]
-#[schema(as = StrategyTaskStep)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub execution_step_id: Uuid,
@@ -26,9 +23,7 @@ pub struct Model {
     pub item_label: Option<String>,
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub output: Option<Json>,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub started_at: DateTimeWithTimeZone,
-    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
     pub finished_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(column_type = "Text")]
     pub trace_id: String,

@@ -3,17 +3,13 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "trade_note")]
-#[schema(as = TradeNote)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub trade_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub note_id: Uuid,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub created_at: DateTimeWithTimeZone,
     pub note_version_id: Uuid,
 }

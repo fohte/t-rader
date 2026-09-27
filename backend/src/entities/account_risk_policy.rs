@@ -3,17 +3,13 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "account_risk_policy")]
-#[schema(as = AccountRiskPolicy)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: i16,
     #[sea_orm(column_type = "JsonBinary")]
     pub risk_policy: Json,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub updated_at: DateTimeWithTimeZone,
 }
 
