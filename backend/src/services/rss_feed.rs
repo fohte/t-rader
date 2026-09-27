@@ -115,7 +115,7 @@ pub async fn list(
     Ok(rows)
 }
 
-pub async fn get(
+async fn find_rss_feed_or_404(
     db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<rss_feed::Model, RssFeedError> {
@@ -123,6 +123,13 @@ pub async fn get(
         .one(db)
         .await?
         .ok_or(RssFeedError::NotFound(id))
+}
+
+pub async fn get(
+    db: &impl sea_orm::ConnectionTrait,
+    id: Uuid,
+) -> Result<rss_feed::Model, RssFeedError> {
+    find_rss_feed_or_404(db, id).await
 }
 
 pub async fn create(
@@ -152,10 +159,7 @@ pub async fn update(
     id: Uuid,
     patch: UpdatePatch,
 ) -> Result<rss_feed::Model, RssFeedError> {
-    let current = rss_feed::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or(RssFeedError::NotFound(id))?;
+    let current = find_rss_feed_or_404(db, id).await?;
     let mut active = current.into_active_model();
     if let Some(name) = patch.display_name {
         active.display_name = Set(validate_display_name(&name)?);
