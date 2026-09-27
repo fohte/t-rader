@@ -11,14 +11,6 @@ use crate::models::{
 };
 use crate::services::trigger_crud as trigger_crud_svc;
 
-fn into_trigger_response(
-    model: crate::entities::trigger::Model,
-) -> Result<TriggerResponse, AppError> {
-    TriggerResponse::try_from(model).map_err(|error| {
-        AppError::Config(format!("failed to convert trigger event_match: {error}"))
-    })
-}
-
 /// 戦略の trigger 一覧
 #[utoipa::path(
     get,
@@ -41,10 +33,7 @@ pub async fn list_strategy_triggers(
     JsonQuery(query): JsonQuery<ListTriggersQuery>,
 ) -> Result<Json<Vec<TriggerResponse>>, AppError> {
     let items = trigger_crud_svc::list_triggers(&state.db, id, query.kind).await?;
-    let items = items
-        .into_iter()
-        .map(into_trigger_response)
-        .collect::<Result<Vec<_>, _>>()?;
+    let items = items.into_iter().map(TriggerResponse::from).collect();
     Ok(Json(items))
 }
 
@@ -71,7 +60,7 @@ pub async fn create_strategy_trigger(
     JsonBody(payload): JsonBody<CreateTriggerRequest>,
 ) -> Result<(StatusCode, Json<TriggerResponse>), AppError> {
     let created = trigger_crud_svc::create_trigger(&state.db, strategy_id, payload).await?;
-    Ok((StatusCode::CREATED, Json(into_trigger_response(created)?)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// trigger 詳細
@@ -92,7 +81,7 @@ pub async fn get_trigger(
     JsonPath(trigger_id): JsonPath<Uuid>,
 ) -> Result<Json<TriggerResponse>, AppError> {
     let model = trigger_crud_svc::get_trigger(&state.db, trigger_id).await?;
-    Ok(Json(into_trigger_response(model)?))
+    Ok(Json(model.into()))
 }
 
 /// trigger 更新 (kind / strategy_id は不変)
@@ -118,7 +107,7 @@ pub async fn update_trigger(
     JsonBody(payload): JsonBody<UpdateTriggerRequest>,
 ) -> Result<Json<TriggerResponse>, AppError> {
     let updated = trigger_crud_svc::update_trigger(&state.db, trigger_id, payload).await?;
-    Ok(Json(into_trigger_response(updated)?))
+    Ok(Json(updated.into()))
 }
 
 /// trigger 削除

@@ -26,17 +26,14 @@ pub struct TriggerResponse {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-impl TryFrom<trigger::Model> for TriggerResponse {
-    type Error = serde_json::Error;
-
-    fn try_from(model: trigger::Model) -> Result<Self, Self::Error> {
+impl From<trigger::Model> for TriggerResponse {
+    fn from(model: trigger::Model) -> Self {
         let event_match = model
             .event_match
-            .filter(|value| !value.is_null())
-            .map(serde_json::from_value)
-            .transpose()?;
+            .and_then(|value| value.as_object().cloned())
+            .map(|object| object.into_iter().collect());
 
-        Ok(Self {
+        Self {
             trigger_id: model.trigger_id,
             strategy_id: model.strategy_id,
             kind: model.kind,
@@ -48,7 +45,7 @@ impl TryFrom<trigger::Model> for TriggerResponse {
             last_fired_at: model.last_fired_at,
             created_at: model.created_at,
             updated_at: model.updated_at,
-        })
+        }
     }
 }
 
