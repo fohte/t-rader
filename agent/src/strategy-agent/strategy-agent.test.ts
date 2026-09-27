@@ -14,11 +14,13 @@ import type {
   AgentConfigKey,
 } from '#strategy-agent/agent-config-client'
 import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
-import type { CompiledPhaseAgent } from '#strategy-agent/agent-graph/run-agent-graph'
+import type {
+  BuildPhaseAgentOptions,
+  CompiledPhaseAgent,
+} from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
 import type {
-  CompiledStrategyAgent,
   McpToolsClient,
   RunStrategyAgentInput,
   StrategyAgentDeps,
@@ -101,7 +103,6 @@ const AGENT_CONFIG: AgentConfig = {
 }
 
 interface BuildDepsOptions {
-  readonly agentInvoke?: CompiledStrategyAgent['invoke']
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
   readonly buildPhaseAgentInvoke?: (
@@ -154,12 +155,6 @@ const buildDeps = (
       }
     },
     createChatModel: () => chatModel,
-    buildAgent: (buildOptions) => {
-      calls.capturedDeadlineSignal = buildOptions.deadlineSignal
-      return {
-        invoke: (input) => options.agentInvoke?.(input) ?? Promise.resolve({}),
-      }
-    },
     buildPhaseAgent: (buildOptions) => {
       calls.capturedDeadlineSignal = buildOptions.deadlineSignal
       return {
@@ -174,14 +169,28 @@ const buildDeps = (
   return { deps, calls }
 }
 
+const buildPhaseAgentUnderTest = (
+  deps: StrategyAgentDeps,
+  options: Omit<BuildPhaseAgentOptions, 'responseSchema'>,
+): CompiledPhaseAgent =>
+  deps.buildPhaseAgent({
+    ...options,
+    responseSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string' },
+        message: { type: 'string' },
+      },
+      required: ['status', 'message'],
+    },
+  })
+
 describe('runStrategyAgent', () => {
   it('passes the as_of time to the phase agent when agent_graph is configured', async () => {
     let invokedMessages: unknown
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: (input) => {
         invokedMessages = input.messages
         return Promise.resolve({ structuredResponse: {} })
@@ -209,11 +218,7 @@ describe('runStrategyAgent', () => {
 
   it('fetches the agent config and runs the configured graph', async () => {
     const mcpTools = [buildFakeTool('query_data'), buildFakeTool('write_note')]
-    const { deps } = buildDeps({
-      tools: mcpTools,
-      agentInvoke: () =>
-        Promise.reject(new Error('legacy path should not run')),
-    })
+    const { deps } = buildDeps({ tools: mcpTools })
 
     const result = await runStrategyAgent(deps, buildRunInput())
 
@@ -224,12 +229,7 @@ describe('runStrategyAgent', () => {
   })
 
   it('passes the given purpose straight through to fetchAgentConfig instead of the default', async () => {
-    const { deps, calls } = buildDeps({
-      agentInvoke: () =>
-        Promise.resolve({
-          structuredResponse: { status: 'completed', message: 'done' },
-        }),
-    })
+    const { deps, calls } = buildDeps({})
 
     await runStrategyAgent(deps, buildRunInput({ purpose: 'purpose-a' }))
 
@@ -252,8 +252,6 @@ describe('runStrategyAgent', () => {
 
   it('maps a thrown usage-limit error from a phase to error_kind usage_limit', async () => {
     const { deps } = buildDeps({
-      agentInvoke: () =>
-        Promise.reject(new Error('legacy path should not run')),
       buildPhaseAgentInvoke: () =>
         Promise.reject(
           Object.assign(new Error('rate limited'), {
@@ -273,7 +271,6 @@ describe('runStrategyAgent', () => {
 
   it('maps a generic thrown phase error to error_kind agent_error', async () => {
     const { deps } = buildDeps({
-      agentInvoke: () => Promise.reject(new Error('mcp tool blew up')),
       buildPhaseAgentInvoke: () =>
         Promise.reject(new Error('mcp tool blew up')),
     })
@@ -288,9 +285,7 @@ describe('runStrategyAgent', () => {
   })
 
   it('maps a fetchAgentConfig error', async () => {
-    const { deps } = buildDeps({
-      agentInvoke: () => Promise.reject(new Error('should not be invoked')),
-    })
+    const { deps } = buildDeps({})
     const fetchError = new AgentConfigFetchError(
       'failed to fetch agent config for strategy strategy-1: 500',
     )
@@ -311,8 +306,6 @@ describe('runStrategyAgent', () => {
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
     })
 
     const result = await runStrategyAgent(deps, buildRunInput())
@@ -327,8 +320,6 @@ describe('runStrategyAgent', () => {
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
     })
     const notifications: (readonly StrategyTaskStep[])[] = []
 
@@ -376,8 +367,6 @@ describe('runStrategyAgent', () => {
     const { deps, calls } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
     })
 
     const result = await runStrategyAgent(
@@ -397,8 +386,6 @@ describe('runStrategyAgent', () => {
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: () => {
         buildPhaseAgentInvokeCalls++
         return Promise.resolve({ structuredResponse: {} })
@@ -433,8 +420,6 @@ describe('runStrategyAgent', () => {
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: () => {
         buildPhaseAgentInvokeCalls++
         return Promise.resolve({ structuredResponse: {} })
@@ -469,8 +454,6 @@ describe('runStrategyAgent', () => {
         '    max_parallel: 1',
         '',
       ].join('\n'),
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: (_input, currentCalls) => {
         snapshots.push(currentCalls.mcpClients.map((c) => ({ ...c })))
         return Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
@@ -524,7 +507,6 @@ describe('runStrategyAgent', () => {
   it('fails fast on malformed agent_graph without invoking any agent', async () => {
     const { deps } = buildDeps({
       agentGraph: 'phases: [',
-      agentInvoke: () => Promise.reject(new Error('should not be invoked')),
       buildPhaseAgentInvoke: () =>
         Promise.reject(new Error('should not be invoked')),
     })
@@ -637,7 +619,7 @@ describe('createStrategyAgentDeps', () => {
   const buildStubModel = (fetch: ChatOpenAIFetch): ChatOpenAI =>
     new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       configuration: { baseURL: 'http://localhost', fetch },
     })
@@ -658,7 +640,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [],
       systemPrompt: 'you are a helpful bot',
@@ -688,7 +670,7 @@ describe('createStrategyAgentDeps', () => {
     new Response(
       JSON.stringify({
         id: callId,
-        model: 'chatgpt/gpt-5',
+        model: 'example-model-test-stream',
         choices: [
           {
             index: 0,
@@ -746,7 +728,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -770,7 +752,7 @@ describe('createStrategyAgentDeps', () => {
         new Response(
           JSON.stringify({
             id: 'call-1',
-            model: 'chatgpt/gpt-5',
+            model: 'example-model-test-stream',
             choices: [
               {
                 index: 0,
@@ -785,7 +767,7 @@ describe('createStrategyAgentDeps', () => {
     )
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -836,7 +818,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -919,7 +901,7 @@ describe('createStrategyAgentDeps', () => {
       })
       const deps = createStrategyAgentDeps(baseConfig)
 
-      const agent = deps.buildAgent({
+      const agent = buildPhaseAgentUnderTest(deps, {
         model,
         tools: [buildFakeTool('search')],
         systemPrompt: 'you are a helpful bot',
@@ -951,7 +933,7 @@ describe('createStrategyAgentDeps', () => {
       llmCallTimeoutMs: 10,
     })
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [],
       systemPrompt: 'you are a helpful bot',
@@ -982,7 +964,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [],
       systemPrompt: 'you are a helpful bot',
@@ -1016,7 +998,7 @@ describe('createStrategyAgentDeps', () => {
       encoder.encode(
         `data: ${JSON.stringify({
           id: 'call-1',
-          model: 'chatgpt/gpt-5',
+          model: 'example-model-test-stream',
           choices: [
             {
               index: 0,
@@ -1039,7 +1021,7 @@ describe('createStrategyAgentDeps', () => {
 
     const model = new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       streaming: true,
       configuration: {
@@ -1077,7 +1059,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -1111,7 +1093,7 @@ describe('createStrategyAgentDeps', () => {
       encoder.encode(
         `data: ${JSON.stringify({
           id: 'call-1',
-          model: 'chatgpt/gpt-5',
+          model: 'example-model-test-stream',
           choices: [
             {
               index: 0,
@@ -1137,7 +1119,7 @@ describe('createStrategyAgentDeps', () => {
 
     const model = new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       streaming: true,
       configuration: {
@@ -1173,7 +1155,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search'), buildFakeTool('notes')],
       systemPrompt: 'you are a helpful bot',
@@ -1215,7 +1197,7 @@ describe('createStrategyAgentDeps', () => {
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: 'call-1',
-                  model: 'chatgpt/gpt-5',
+                  model: 'example-model-test-stream',
                   choices: [
                     {
                       index: 0,
@@ -1246,7 +1228,7 @@ describe('createStrategyAgentDeps', () => {
             encoder.encode(
               `data: ${JSON.stringify({
                 id: 'call-1',
-                model: 'chatgpt/gpt-5',
+                model: 'example-model-test-stream',
                 choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }],
               })}\n\n`,
             ),
@@ -1259,7 +1241,7 @@ describe('createStrategyAgentDeps', () => {
     let callCount = 0
     const model = new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       streaming: true,
       configuration: {
@@ -1312,7 +1294,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',

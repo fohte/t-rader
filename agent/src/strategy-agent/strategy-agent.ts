@@ -2,7 +2,7 @@ import type { Message } from '@a2a-js/sdk'
 import { createGenAiTracingMiddleware } from '@fohte/service-kit/langchain-genai'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { HumanMessage, SystemMessage } from '@langchain/core/messages'
+import { SystemMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
@@ -13,7 +13,6 @@ import {
   toolStrategy,
 } from 'langchain'
 import { errAsync, ResultAsync } from 'neverthrow'
-import { z } from 'zod'
 
 import { extractMessageText } from '#a2a/message-text'
 import { logger } from '#logger'
@@ -57,11 +56,6 @@ const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
 const RESUME_STEPS_PARSE_FAILED_FINGERPRINT =
   'strategy-agent.resume-steps-parse-failed'
 
-const structuredResponseSchema = z.object({
-  status: z.enum(['completed', 'error']),
-  message: z.string(),
-})
-
 export interface StrategyAgentResult {
   readonly status: 'completed' | 'failed'
   readonly message: string
@@ -71,19 +65,6 @@ export interface StrategyAgentResult {
 export interface McpToolsClient {
   getTools(): Promise<DynamicStructuredTool[]>
   close(): Promise<void>
-}
-
-export interface CompiledStrategyAgent {
-  invoke(input: { messages: readonly HumanMessage[] }): Promise<{
-    structuredResponse?: z.infer<typeof structuredResponseSchema>
-  }>
-}
-
-export interface BuildStrategyAgentOptions {
-  readonly model: BaseChatModel
-  readonly tools: readonly DynamicStructuredTool[]
-  readonly systemPrompt: string
-  readonly deadlineSignal?: AbortSignal
 }
 
 export interface StrategyAgentDeps {
@@ -96,9 +77,6 @@ export interface StrategyAgentDeps {
     model: string,
     options?: { reasoningEffort?: string },
   ) => BaseChatModel
-  readonly buildAgent: (
-    options: BuildStrategyAgentOptions,
-  ) => CompiledStrategyAgent
   readonly buildPhaseAgent: (
     options: BuildPhaseAgentOptions,
   ) => CompiledPhaseAgent
@@ -113,12 +91,8 @@ export interface StrategyAgentConfig {
   readonly llmCallTimeoutMs: number
 }
 
-// createDefaultBuildAgent/createDefaultBuildPhaseAgent (後述) の共通処理。
-// 両者は渡す response schema が異なるだけ。createAgent 自体の型推論は
-// `responseFormat: ReturnType<typeof toolStrategy>` を呼び出し側のスキーマに
-// 関わらず `Record<string, unknown>` に collapse するため、この関数は常に
-// その erase された形を返す。createDefaultBuildAgent 側で自身の固定スキーマに
-// narrowing し直す。
+// createAgent の型推論は response schema に関わらず
+// `Record<string, unknown>` に collapse するため、その形で返す。
 const buildCompiledAgent = (
   genAiProviderName: string,
   llmCallTimeoutMs: number,
@@ -134,7 +108,7 @@ const buildCompiledAgent = (
     model: options.model,
     tools: [...options.tools],
     // createAgent は string の systemPrompt を content parts 配列に変換するが、
-    // chatgpt/* は system ロールの配列 content を拒否するため文字列のまま渡す。
+    // 上流 API の一部は system ロールの配列 content を拒否するため文字列のまま渡す。
     systemPrompt: new SystemMessage(options.systemPrompt),
     responseFormat: options.responseFormat,
     middleware: [
@@ -192,32 +166,7 @@ const buildCompiledAgent = (
   }
 }
 
-const createDefaultBuildAgent =
-  (genAiProviderName: string, llmCallTimeoutMs: number) =>
-  (options: BuildStrategyAgentOptions): CompiledStrategyAgent => {
-    const compiled = buildCompiledAgent(genAiProviderName, llmCallTimeoutMs, {
-      ...options,
-      responseFormat: toolStrategy(structuredResponseSchema),
-    })
-    return {
-      invoke: async (input) => {
-        const result = await compiled.invoke(input)
-        if (result.structuredResponse === undefined) return {}
-        return {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- buildCompiledAgent は erase された Record<string, unknown> 形しか知らない (doc comment 参照) ため、上で toolStrategy に渡したスキーマへここで narrowing し直す。
-          structuredResponse: result.structuredResponse as z.infer<
-            typeof structuredResponseSchema
-          >,
-        }
-      },
-    }
-  }
-
-// createDefaultBuildAgent と同じ形だが、response schema は固定の
-// {status, message} zod スキーマではなく、agent_graph の `output` 設定から
-// フェーズごとに組み立てた生の JSON Schema — toolStrategy はどちらも
-// 受け付ける。CompiledPhaseAgent 自身の structuredResponse 型は既に erase
-// された Record<string, unknown> 形のため、narrowing は不要。
+// response schema は agent_graph の `output` 設定からフェーズごとに組み立てる。
 const createDefaultBuildPhaseAgent =
   (genAiProviderName: string, llmCallTimeoutMs: number) =>
   (options: BuildPhaseAgentOptions): CompiledPhaseAgent =>
@@ -272,10 +221,6 @@ export const createStrategyAgentDeps = (
           }
         : {}),
     }),
-  buildAgent: createDefaultBuildAgent(
-    config.genAiProviderName,
-    config.llmCallTimeoutMs,
-  ),
   buildPhaseAgent: createDefaultBuildPhaseAgent(
     config.genAiProviderName,
     config.llmCallTimeoutMs,
