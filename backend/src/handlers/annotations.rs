@@ -16,7 +16,9 @@ use crate::entities::annotation;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::handlers::strategies::map_submit_error;
-use crate::models::{ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest};
+use crate::models::{
+    AnnotationResponse, ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest,
+};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
@@ -38,7 +40,7 @@ pub struct ListAnnotationsQuery {
     tag = "annotations",
     params(ListAnnotationsQuery),
     responses(
-        (status = 200, body = Vec<annotation::Model>),
+        (status = 200, body = Vec<AnnotationResponse>),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -46,7 +48,7 @@ pub struct ListAnnotationsQuery {
 pub async fn list_annotations(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<ListAnnotationsQuery>,
-) -> Result<Json<Vec<annotation::Model>>, AppError> {
+) -> Result<Json<Vec<AnnotationResponse>>, AppError> {
     let mut q = annotation::Entity::find().order_by_desc(annotation::Column::Timestamp);
     if let Some(sid) = params.strategy_id {
         q = q.filter(annotation::Column::StrategyId.eq(sid));
@@ -54,7 +56,13 @@ pub async fn list_annotations(
     if let Some(sym) = params.target_symbol.as_deref().filter(|s| !s.is_empty()) {
         q = q.filter(annotation::Column::TargetSymbol.eq(sym));
     }
-    Ok(Json(q.all(&state.db).await?))
+    Ok(Json(
+        q.all(&state.db)
+            .await?
+            .into_iter()
+            .map(AnnotationResponse::from)
+            .collect(),
+    ))
 }
 
 /// アノテーション取得
@@ -64,7 +72,7 @@ pub async fn list_annotations(
     tag = "annotations",
     params(("id" = Uuid, Path, description = "アノテーション ID")),
     responses(
-        (status = 200, body = annotation::Model),
+        (status = 200, body = AnnotationResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -73,12 +81,12 @@ pub async fn list_annotations(
 pub async fn get_annotation(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
-) -> Result<Json<annotation::Model>, AppError> {
+) -> Result<Json<AnnotationResponse>, AppError> {
     let m = annotation::Entity::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
-    Ok(Json(m))
+    Ok(Json(m.into()))
 }
 
 /// アノテーション作成
@@ -88,7 +96,7 @@ pub async fn get_annotation(
     tag = "annotations",
     request_body = CreateAnnotationRequest,
     responses(
-        (status = 201, body = annotation::Model),
+        (status = 201, body = AnnotationResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -98,7 +106,7 @@ pub async fn get_annotation(
 pub async fn create_annotation(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateAnnotationRequest>,
-) -> Result<(StatusCode, Json<annotation::Model>), AppError> {
+) -> Result<(StatusCode, Json<AnnotationResponse>), AppError> {
     let target_symbol = p.target_symbol.trim().to_string();
     if target_symbol.is_empty() {
         return Err(AppError::Validation(
@@ -156,7 +164,7 @@ pub async fn create_annotation(
     .await?;
     txn.commit().await?;
 
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// アノテーション更新
@@ -167,7 +175,7 @@ pub async fn create_annotation(
     params(("id" = Uuid, Path, description = "アノテーション ID")),
     request_body = UpdateAnnotationRequest,
     responses(
-        (status = 200, body = annotation::Model),
+        (status = 200, body = AnnotationResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -179,7 +187,7 @@ pub async fn update_annotation(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<UpdateAnnotationRequest>,
-) -> Result<Json<annotation::Model>, AppError> {
+) -> Result<Json<AnnotationResponse>, AppError> {
     let current = annotation::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -252,7 +260,7 @@ pub async fn update_annotation(
         .await?;
     }
     txn.commit().await?;
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 async fn change_annotation_status_from(
@@ -304,7 +312,7 @@ async fn change_annotation_status(
     params(("id" = Uuid, Path, description = "アノテーション ID")),
     request_body = ChangeStatusRequest,
     responses(
-        (status = 200, body = annotation::Model),
+        (status = 200, body = AnnotationResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -316,9 +324,11 @@ pub async fn approve_annotation(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
-) -> Result<Json<annotation::Model>, AppError> {
+) -> Result<Json<AnnotationResponse>, AppError> {
     Ok(Json(
-        change_annotation_status(&state, id, "approved", payload.label).await?,
+        change_annotation_status(&state, id, "approved", payload.label)
+            .await?
+            .into(),
     ))
 }
 
@@ -330,7 +340,7 @@ pub async fn approve_annotation(
     params(("id" = Uuid, Path, description = "アノテーション ID")),
     request_body = ChangeStatusRequest,
     responses(
-        (status = 200, body = annotation::Model),
+        (status = 200, body = AnnotationResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -343,7 +353,7 @@ pub async fn reject_annotation(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
-) -> Result<Json<annotation::Model>, AppError> {
+) -> Result<Json<AnnotationResponse>, AppError> {
     let current = annotation::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -351,7 +361,7 @@ pub async fn reject_annotation(
     // 却下確定前の check-then-act。ほぼ同時に reject が 2 回届くと両方通過し得るが、
     // frontend は mutation pending 中ボタンを disable するため実運用では起きない。
     if current.status == "rejected" {
-        return Ok(Json(current));
+        return Ok(Json(current.into()));
     }
 
     if let Some(strategy_id) = current.strategy_id {
@@ -372,7 +382,9 @@ pub async fn reject_annotation(
     }
 
     Ok(Json(
-        change_annotation_status_from(&state, current, "rejected", payload.label).await?,
+        change_annotation_status_from(&state, current, "rejected", payload.label)
+            .await?
+            .into(),
     ))
 }
 
