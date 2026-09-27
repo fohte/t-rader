@@ -6,7 +6,7 @@ use crate::repositories::bars::upsert_bars;
 
 const FALLBACK_FETCH_HISTORY_DAYS: i64 = 365 * 20;
 
-/// 価格データを取得可能な最新日 (未検出時は today、検出済み時は契約上限日) を返す。
+/// 価格データを取得可能な最新日を返す。取得範囲を公開しない取得元では today を使う。
 /// 保有時価の評価上限 (`market_price::fetch_latest_prices`) もこの関数を経由するため、
 /// 取得側と評価側で上限がずれることはない。
 pub(crate) fn latest_fetchable_date(
@@ -15,7 +15,7 @@ pub(crate) fn latest_fetchable_date(
 ) -> NaiveDate {
     known_range.map_or_else(
         || {
-            tracing::warn!("契約範囲が未検出のため、上限を today として扱い取得を試みます");
+            tracing::warn!("取得範囲を公開しないため、上限を today として扱い取得を試みます");
             today
         },
         |(_, to)| to,
@@ -24,7 +24,7 @@ pub(crate) fn latest_fetchable_date(
 
 /// 指定銘柄の日足データをバックフィルする。
 ///
-/// 契約範囲が検出済みならその範囲を、未検出ならフォールバック範囲を取得する。
+/// 取得元が範囲を公開する場合はその範囲を、公開しない場合はフォールバック範囲を取得する。
 /// バックグラウンドタスクとして呼ばれるため、エラー時はログ出力のみで呼び出し元には返さない。
 pub async fn backfill_daily_bars(
     db: &impl sea_orm::ConnectionTrait,
@@ -158,11 +158,11 @@ mod tests {
     // --- テスト ---
 
     #[rstest]
-    #[case::undetected_treats_today_as_the_upper_bound(
+    #[case::source_without_range_uses_today_as_the_upper_bound(
         None,
         NaiveDate::from_ymd_opt(2025, 6, 1).expect("date")
     )]
-    #[case::detected_uses_the_detected_upper_bound(
+    #[case::source_range_sets_the_upper_bound(
         Some((
             NaiveDate::from_ymd_opt(2020, 4, 1).expect("date"),
             NaiveDate::from_ymd_opt(2022, 4, 1).expect("date"),
@@ -200,9 +200,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_uses_known_fetchable_range_when_detected(
-        db: crate::database::DatabaseHandle,
-    ) {
+    async fn backfill_uses_source_range_when_available(db: crate::database::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let known_from = NaiveDate::from_ymd_opt(2020, 4, 1).expect("date");
@@ -220,18 +218,18 @@ mod tests {
 
         let result = find_all_bars(&db, "7203").await;
 
-        // 検出済み範囲外の bar はリクエストされないため保存されない
+        // 取得範囲外の bar は保存されない
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].close, Decimal::new(100, 0));
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_uses_fallback_history_when_range_is_undetected(
+    async fn backfill_uses_fallback_history_when_source_has_no_range(
         db: crate::database::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
 
-        // Free プランの範囲 (2 年) よりずっと古い日付
+        // フォールバック範囲 (20 年) に含まれる古い日付
         let old_date = Utc::now().date_naive() - Duration::days(365 * 15);
         let bar = make_bar("7203", old_date, 100);
 

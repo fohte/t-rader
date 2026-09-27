@@ -194,28 +194,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn run_ingest_cycle_skips_when_no_manual_plan(db: crate::database::DatabaseHandle) {
-        let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        let today = NaiveDate::from_ymd_opt(2024, 6, 1).expect("date");
-
-        let (interest_stats, alert_stats) = run_ingest_cycle(&db, &client, today)
-            .await
-            .expect("cycle ok");
-
-        assert_eq!(
-            (interest_stats, alert_stats),
-            (IngestStats::default(), IngestStats::default())
-        );
-    }
-
-    #[backend_test_macros::database_test]
     async fn ingest_daily_fetches_past_the_former_per_cycle_cap(
         db: crate::database::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let start = NaiveDate::from_ymd_opt(2024, 1, 1).expect("date");
         let end = NaiveDate::from_ymd_opt(2024, 2, 10).expect("date"); // start から 40 日

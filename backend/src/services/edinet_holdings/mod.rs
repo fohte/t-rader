@@ -22,6 +22,17 @@ pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 /// 既存データの最新日からこの日数分遡って再取得する。
 const REFETCH_WINDOW_DAYS: i64 = 30;
 
+fn ingest_start_date(
+    fetchable_from: NaiveDate,
+    available_from: NaiveDate,
+    latest_submitted_on: Option<NaiveDate>,
+) -> NaiveDate {
+    let earliest = fetchable_from.max(available_from);
+    latest_submitted_on
+        .map(|latest| (latest - ChronoDuration::days(REFETCH_WINDOW_DAYS)).max(earliest))
+        .unwrap_or(earliest)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IngestStats {
     pub days_processed: usize,
@@ -77,16 +88,16 @@ async fn run_ingest_cycle<T: EdinetEndpoint>(
     let Some(fetchable_range) = source.fetchable_range(Utc::now().date_naive()) else {
         tracing::info!(
             endpoint = T::NAME,
-            "取得可能範囲が未検出のため取り込みをスキップします"
+            "取得元が取得可能範囲を公開しないため取り込みをスキップします"
         );
         return Ok(IngestStats::default());
     };
 
-    let earliest = fetchable_range.from.max(T::available_from());
-    let start = match T::latest_submitted_on(db).await? {
-        Some(latest) => (latest - ChronoDuration::days(REFETCH_WINDOW_DAYS)).max(earliest),
-        None => earliest,
-    };
+    let start = ingest_start_date(
+        fetchable_range.from,
+        T::available_from(),
+        T::latest_submitted_on(db).await?,
+    );
 
     let mut stats = IngestStats::default();
     let mut retry_dates = Vec::new();
@@ -213,6 +224,7 @@ async fn run_all(db: &impl sea_orm::ConnectionTrait, source: &dyn ShareholdingSt
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate, Utc};
+    use rstest::rstest;
     use sea_orm::EntityTrait;
     use serde_json::json;
     use wiremock::matchers::{method, path, query_param};
@@ -224,6 +236,7 @@ mod tests {
         cross_shareholding_documents, large_volume_shareholding_documents,
         major_shareholder_documents,
     };
+    use crate::models::jquants_plan::JQuantsPlan;
     use core_domain::holdings::{
         CrossShareholding, CrossShareholdingCategory, CrossShareholdingContent,
         CrossShareholdingDocument, LargeVolumeReportType, LargeVolumeShareholdingContent,
@@ -231,6 +244,37 @@ mod tests {
         MajorShareholderDocument, MajorShareholderReportType, MutualHolding,
         ShareholdingDocumentMetadata,
     };
+
+    #[rstest]
+    #[case::plan_range_starts_after_endpoint_availability(
+        NaiveDate::from_ymd_opt(2024, 1, 1).expect("date"),
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+        None,
+        NaiveDate::from_ymd_opt(2024, 1, 1).expect("date"),
+    )]
+    #[case::endpoint_availability_starts_after_plan_range(
+        NaiveDate::from_ymd_opt(2010, 1, 1).expect("date"),
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+        None,
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+    )]
+    #[case::latest_refetch_window_is_clamped_to_earliest(
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+        NaiveDate::from_ymd_opt(2010, 1, 1).expect("date"),
+        Some(NaiveDate::from_ymd_opt(2020, 1, 10).expect("date")),
+        NaiveDate::from_ymd_opt(2020, 1, 1).expect("date"),
+    )]
+    fn ingest_start_date_cases(
+        #[case] fetchable_from: NaiveDate,
+        #[case] available_from: NaiveDate,
+        #[case] latest_submitted_on: Option<NaiveDate>,
+        #[case] expected: NaiveDate,
+    ) {
+        assert_eq!(
+            ingest_start_date(fetchable_from, available_from, latest_submitted_on),
+            expected,
+        );
+    }
 
     fn document(document_id: &str, stock_code: &str, date: NaiveDate) -> serde_json::Value {
         json!({
@@ -272,6 +316,41 @@ mod tests {
         }
     }
 
+    fn plan_refetch_window(plan: JQuantsPlan) -> (NaiveDate, NaiveDate) {
+        let (_, to) = plan.range(Utc::now().date_naive());
+        (to - ChronoDuration::days(REFETCH_WINDOW_DAYS), to)
+    }
+
+    async fn seed_latest_large_volume_document(
+        db: &impl sea_orm::ConnectionTrait,
+        document_id: &str,
+        submitted_on: NaiveDate,
+    ) {
+        large_volume_shareholdings::Endpoint::upsert(
+            db,
+            vec![stored_document(document_id, "99990", submitted_on)],
+        )
+        .await
+        .expect("seed document");
+    }
+
+    async fn mock_large_volume_range(
+        mock: &JQuantsMockServer,
+        from: NaiveDate,
+        to: NaiveDate,
+        mut documents_for: impl FnMut(NaiveDate) -> Vec<serde_json::Value>,
+    ) {
+        let mut date = from;
+        while date <= to {
+            mock.edinet_documents("/edinet/large-volume-shareholders")
+                .date(&date.format("%Y%m%d").to_string())
+                .docs(documents_for(date))
+                .ok()
+                .await;
+            date += ChronoDuration::days(1);
+        }
+    }
+
     fn stable_timestamp() -> DateTime<chrono::FixedOffset> {
         DateTime::<Utc>::UNIX_EPOCH.fixed_offset()
     }
@@ -310,26 +389,28 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fetches_from_available_from_when_table_is_empty(db: crate::database::DatabaseHandle) {
+    async fn saves_documents_returned_within_the_refetch_window(
+        db: crate::database::DatabaseHandle,
+    ) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let to = from + ChronoDuration::days(2);
-
-        for offset in 0..=2 {
-            let date = from + ChronoDuration::days(offset);
-            mock.edinet_documents("/edinet/large-volume-shareholders")
-                .date(&date.format("%Y%m%d").to_string())
-                .docs(vec![document(
-                    &format!("SAMPLE-DOC-{offset}"),
-                    "99990",
-                    date,
-                )])
-                .ok()
-                .await;
-        }
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC-0", to).await;
+        let document_offsets = [
+            (0, "SAMPLE-DOC-0"),
+            (1, "SAMPLE-DOC-1"),
+            (2, "SAMPLE-DOC-2"),
+        ];
+        mock_large_volume_range(&mock, from, to, |date| {
+            document_offsets
+                .iter()
+                .filter(|(offset, _)| date == from + ChronoDuration::days(*offset))
+                .map(|(_, document_id)| document(document_id, "99990", date))
+                .collect()
+        })
+        .await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
@@ -342,13 +423,9 @@ mod tests {
         rows.sort_by(|left, right| left.document_id.cmp(&right.document_id));
 
         assert_eq!(
-            (stats, rows),
+            (stats.documents_saved, rows),
             (
-                IngestStats {
-                    days_processed: 3,
-                    documents_saved: 3,
-                    failed_dates: 0,
-                },
+                3,
                 vec![
                     large_volume_shareholding_documents::Model {
                         document_id: "SAMPLE-DOC-0".to_string(),
@@ -403,30 +480,16 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn refetches_from_latest_submitted_on_minus_window(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let latest = from + ChronoDuration::days(60);
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        let (_, range_to) = JQuantsPlan::Standard.range(Utc::now().date_naive());
+        let latest = range_to - ChronoDuration::days(2);
         let expected_start = latest - ChronoDuration::days(REFETCH_WINDOW_DAYS);
-        let to = expected_start + ChronoDuration::days(1);
+        let to = range_to;
 
-        large_volume_shareholdings::Endpoint::upsert(
-            &db,
-            vec![stored_document("SAMPLE-DOC", "99990", latest)],
-        )
-        .await
-        .expect("seed document");
-
-        let mut date = expected_start;
-        while date <= to {
-            mock.edinet_documents("/edinet/large-volume-shareholders")
-                .date(&date.format("%Y%m%d").to_string())
-                .docs(vec![])
-                .ok()
-                .await;
-            date += ChronoDuration::days(1);
-        }
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC", latest).await;
+        mock_large_volume_range(&mock, expected_start, to, |_| vec![]).await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
@@ -439,20 +502,6 @@ mod tests {
                 documents_saved: 0,
                 failed_dates: 0,
             }
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn skips_when_fetchable_range_is_unknown(db: crate::database::DatabaseHandle) {
-        let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
-            .await
-            .expect("cycle succeeds");
-
-        assert_eq!(
-            (stats, find_all(&db).await),
-            (IngestStats::default(), vec![])
         );
     }
 
@@ -644,8 +693,11 @@ mod tests {
         db: crate::database::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let to = from + ChronoDuration::days(1);
+        let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC", to).await;
 
         Mock::given(method("GET"))
             .and(path("/edinet/large-volume-shareholders"))
@@ -656,19 +708,14 @@ mod tests {
             .up_to_n_times(1)
             .mount(mock.server_ref())
             .await;
-        mock.edinet_documents("/edinet/large-volume-shareholders")
-            .date(&from.format("%Y%m%d").to_string())
-            .docs(vec![document("SAMPLE-DOC", "99990", from)])
-            .ok()
-            .await;
-        mock.edinet_documents("/edinet/large-volume-shareholders")
-            .date(&to.format("%Y%m%d").to_string())
-            .docs(vec![])
-            .ok()
-            .await;
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        mock_large_volume_range(&mock, from, to, |date| {
+            if date == from {
+                vec![document("SAMPLE-DOC", "99990", date)]
+            } else {
+                vec![]
+            }
+        })
+        .await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
@@ -682,7 +729,7 @@ mod tests {
             (stats, rows),
             (
                 IngestStats {
-                    days_processed: 2,
+                    days_processed: REFETCH_WINDOW_DAYS as usize + 1,
                     documents_saved: 1,
                     failed_dates: 0,
                 },
@@ -708,8 +755,11 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn counts_a_date_when_its_retry_fails(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let from = large_volume_shareholdings::Endpoint::available_from();
-        let to = from + ChronoDuration::days(1);
+        let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
+        seed_latest_large_volume_document(&db, "SAMPLE-DOC", to).await;
 
         Mock::given(method("GET"))
             .and(path("/edinet/large-volume-shareholders"))
@@ -719,27 +769,39 @@ mod tests {
             )
             .mount(mock.server_ref())
             .await;
-        mock.edinet_documents("/edinet/large-volume-shareholders")
-            .date(&to.format("%Y%m%d").to_string())
-            .docs(vec![])
-            .ok()
-            .await;
-
-        let client = mock.client().expect("client");
-        client.set_detected_range((from, to));
+        mock_large_volume_range(&mock, from + ChronoDuration::days(1), to, |_| vec![]).await;
         let stats = run_ingest_cycle::<large_volume_shareholdings::Endpoint>(&db, &client)
             .await
             .expect("cycle succeeds");
 
+        let rows = find_all(&db)
+            .await
+            .into_iter()
+            .map(normalize_large_volume_timestamps)
+            .collect::<Vec<_>>();
         assert_eq!(
-            (stats, find_all(&db).await),
+            (stats, rows),
             (
                 IngestStats {
-                    days_processed: 2,
+                    days_processed: REFETCH_WINDOW_DAYS as usize + 1,
                     documents_saved: 0,
                     failed_dates: 1,
                 },
-                vec![],
+                vec![large_volume_shareholding_documents::Model {
+                    document_id: "SAMPLE-DOC".to_string(),
+                    stock_code: Some("99990".to_string()),
+                    filer_code: "E99999".to_string(),
+                    submitted_on: to,
+                    details: json!({
+                        "report_type": "unknown",
+                        "change_reason": null,
+                        "total_shares_ratio": null,
+                        "previous_total_shares_ratio": null,
+                        "holders": [],
+                    }),
+                    created_at: stable_timestamp(),
+                    updated_at: stable_timestamp(),
+                }],
             )
         );
     }

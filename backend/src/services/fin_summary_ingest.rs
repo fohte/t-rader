@@ -215,7 +215,7 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_provider::jquants::{JQuantsClient, mock::JQuantsMockServer};
+    use crate::data_provider::jquants::mock::JQuantsMockServer;
     use crate::entities::financial_summary;
     use crate::models::jquants_plan::JQuantsPlan;
     use rstest::rstest;
@@ -267,21 +267,11 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_skips_when_source_range_is_unavailable(db: crate::database::DatabaseHandle) {
-        let client = JQuantsClient::new("test-api-key".to_string()).expect("client");
-
-        let stats = run_ingest_cycle(&db, &client, Utc::now().date_naive())
-            .await
-            .expect("cycle ok");
-
-        assert_eq!(stats, IngestStats::default());
-    }
-
-    #[backend_test_macros::database_test]
     async fn test_ingests_and_upserts_new_disclosures(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let today = Utc::now().date_naive();
         let to = crate::date_utils::latest_business_day(today);
@@ -378,8 +368,9 @@ mod tests {
         db: crate::database::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let today = Utc::now().date_naive();
         let to = crate::date_utils::latest_business_day(today);
@@ -486,8 +477,9 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn test_continues_past_days_that_fail_to_fetch(db: crate::database::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
-        let client = mock.client().expect("client");
-        client.set_manual_plan(Some(JQuantsPlan::Standard));
+        let client = mock
+            .client_with_plan(JQuantsPlan::Standard)
+            .expect("client");
 
         let today = Utc::now().date_naive();
         let to = crate::date_utils::latest_business_day(today);

@@ -28,7 +28,7 @@ impl ShortSellingSource for JQuantsClient {
         Ok(JQuantsClient::fetch_short_ratios(self, date).await?)
     }
 
-    /// Standard 以上のプランでのみ提供されるデータのため、それ未満や未設定の間は取得できない。
+    /// Free / Light では提供されず、Standard 以上で取得できる。
     fn fetchable_range(&self, today: NaiveDate) -> Option<DateRange> {
         self.standard_plan_date_range(today, "short selling")
     }

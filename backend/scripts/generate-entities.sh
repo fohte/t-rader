@@ -49,7 +49,6 @@ for file in "$ENTITIES_DIR"/*.rs; do
   case "$base" in
     bars) name=Bar ;;
     instruments) name=Instrument ;;
-    jquants_plan_setting) name=JQuantsPlanSetting ;;
     valuation) name=Valuation ;;
     valuation_ingested_date) name=ValuationIngestedDate ;;
     jquants_earnings_date) name=JQuantsEarningsDate ;;

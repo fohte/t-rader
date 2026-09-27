@@ -15,7 +15,6 @@ pub use super::indicator_observation::Entity as IndicatorObservation;
 pub use super::instruments::Entity as Instruments;
 pub use super::jquants_daily_bars_ingested_date::Entity as JquantsDailyBarsIngestedDate;
 pub use super::jquants_earnings_date::Entity as JquantsEarningsDate;
-pub use super::jquants_plan_setting::Entity as JquantsPlanSetting;
 pub use super::large_volume_shareholding_documents::Entity as LargeVolumeShareholdingDocuments;
 pub use super::major_shareholder_documents::Entity as MajorShareholderDocuments;
 pub use super::margin_alert::Entity as MarginAlert;

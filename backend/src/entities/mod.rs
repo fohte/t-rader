@@ -17,7 +17,6 @@ pub mod indicator_observation;
 pub mod instruments;
 pub mod jquants_daily_bars_ingested_date;
 pub mod jquants_earnings_date;
-pub mod jquants_plan_setting;
 pub mod large_volume_shareholding_documents;
 pub mod major_shareholder_documents;
 pub mod margin_alert;

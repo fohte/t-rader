@@ -278,7 +278,7 @@ mod tests {
         .await
         .expect("record investable amount");
 
-        // 取得可能範囲が未検出なら today が取得の上限になり、それより古い日付なら fresh 判定される
+        // 取得元が範囲を公開しない場合は today が上限になり、それより古い日付なら fresh 判定される
         let bar_date = Utc::now().date_naive() - Duration::weeks(12) - Duration::days(1);
         let provider: SharedDailyBarSource = Arc::new(
             MockProvider::new()

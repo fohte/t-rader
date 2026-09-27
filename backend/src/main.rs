@@ -14,6 +14,7 @@ use backend::data_provider::news::rss::RssNewsAggregator;
 use backend::database::DatabaseHandle;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
+use backend::models::JQuantsPlan;
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
 use core_application::{IndicatorObservationSource, SharedNewsAggregator};
@@ -21,6 +22,32 @@ use gateway_fred::FredClient;
 use gateway_ibkr::IbkrClient;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
+
+fn parse_jquants_plan(value: Option<String>) -> Result<JQuantsPlan, AppError> {
+    let value = value.filter(|value| !value.is_empty()).ok_or_else(|| {
+        AppError::Config("JQUANTS_PLAN is required when JQUANTS_API_KEY is configured".to_string())
+    })?;
+    value
+        .parse()
+        .map_err(|error| AppError::Config(format!("invalid JQUANTS_PLAN value '{value}': {error}")))
+}
+
+fn jquants_config(
+    api_key: Option<String>,
+    plan: Option<String>,
+) -> Result<Option<(String, JQuantsPlan)>, AppError> {
+    match api_key.filter(|api_key| !api_key.is_empty()) {
+        Some(api_key) => Ok(Some((api_key, parse_jquants_plan(plan)?))),
+        None => Ok(None),
+    }
+}
+
+fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>, AppError> {
+    jquants_config(
+        std::env::var("JQUANTS_API_KEY").ok(),
+        std::env::var("JQUANTS_PLAN").ok(),
+    )
+}
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
@@ -42,6 +69,12 @@ async fn main() -> Result<(), AppError> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+
+    let jquants_config = if cli.migrate_only {
+        None
+    } else {
+        jquants_config_from_env()?
+    };
 
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
         AppError::Config("DATABASE_URL environment variable is not set".to_string())
@@ -101,20 +134,9 @@ async fn main() -> Result<(), AppError> {
             let source: SharedDailyBarSource = client;
             (Some(source), None)
         }
-        "jquants" => match std::env::var("JQUANTS_API_KEY") {
-            Ok(api_key) if !api_key.is_empty() => {
-                let client = Arc::new(JQuantsClient::new(api_key)?.with_db(db.clone()));
-                let manual_plan =
-                    backend::services::jquants_plan_setting::find_current(&db)
-                        .await?
-                        .map(|row| {
-                            backend::models::parse_plan_setting::<
-                                backend::models::JQuantsPlanSettingData,
-                            >(row.plan_setting)
-                        })
-                        .transpose()?
-                        .and_then(|data| data.plan);
-                client.set_manual_plan(manual_plan);
+        "jquants" => match jquants_config {
+            Some((api_key, plan)) => {
+                let client = Arc::new(JQuantsClient::new(api_key, plan)?);
                 tracing::info!("J-Quants 日足データ取得元を初期化しました");
                 let source: SharedDailyBarSource = client.clone();
                 (Some(source), Some(client))
@@ -376,4 +398,34 @@ async fn main() -> Result<(), AppError> {
     .map_err(|e| AppError::Config(format!("server error: {e}")))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case::api_key_missing(None, Some("invalid".to_string()), Ok(None))]
+    #[case::api_key_empty(Some(String::new()), Some("invalid".to_string()), Ok(None))]
+    #[case::plan_missing(Some("test-api-key".to_string()), None, Err(()))]
+    #[case::plan_empty(Some("test-api-key".to_string()), Some(String::new()), Err(()))]
+    #[case::plan_invalid(
+        Some("test-api-key".to_string()),
+        Some("enterprise".to_string()),
+        Err(()),
+    )]
+    #[case::plan_valid(
+        Some("test-api-key".to_string()),
+        Some("standard".to_string()),
+        Ok(Some(("test-api-key".to_string(), JQuantsPlan::Standard))),
+    )]
+    fn test_jquants_config(
+        #[case] api_key: Option<String>,
+        #[case] plan: Option<String>,
+        #[case] expected: Result<Option<(String, JQuantsPlan)>, ()>,
+    ) {
+        assert_eq!(jquants_config(api_key, plan).map_err(|_| ()), expected);
+    }
 }
