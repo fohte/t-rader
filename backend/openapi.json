@@ -9429,7 +9429,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "省略時は変更せず、`null` 指定時は説明を削除する。"
           },
           "name": {
             "type": [
@@ -9523,7 +9524,9 @@
               "null"
             ]
           },
-          "event_match": {},
+          "event_match": {
+            "description": "省略時は変更せず、`null` 指定時は条件を解除する。"
+          },
           "hook_slug": {
             "type": [
               "string",

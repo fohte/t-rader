@@ -82,7 +82,7 @@ pub async fn create(
 #[derive(Default)]
 pub struct StrategyUpdate {
     pub name: Option<String>,
-    pub description: Option<String>,
+    pub description: Option<Option<String>>,
     pub sort_order: Option<i32>,
 }
 
@@ -106,7 +106,7 @@ pub async fn update(
             "description".into(),
             json!({ "from": current.description, "to": description }),
         );
-        active.description = Set(Some(description));
+        active.description = Set(description);
     }
     if let Some(sort_order) = payload.sort_order {
         diff.insert(
