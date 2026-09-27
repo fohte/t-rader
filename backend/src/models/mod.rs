@@ -10,6 +10,9 @@ pub mod import;
 pub mod instrument;
 pub mod margin;
 pub mod note;
+pub mod note_kind;
+pub mod note_version;
+pub mod prediction;
 pub mod refs;
 pub mod risk_policy;
 pub mod short_ratio;
@@ -40,6 +43,9 @@ pub use import::{
 pub use instrument::Instrument;
 pub use margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
+pub use note_kind::NoteKindResponse;
+pub use note_version::NoteVersionResponse;
+pub use prediction::PredictionResponse;
 pub use refs::RefResolution;
 pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
