@@ -115,6 +115,16 @@ pub async fn list(
     Ok(rows)
 }
 
+pub async fn get(
+    db: &impl sea_orm::ConnectionTrait,
+    id: Uuid,
+) -> Result<rss_feed::Model, RssFeedError> {
+    rss_feed::Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or(RssFeedError::NotFound(id))
+}
+
 pub async fn create(
     db: &impl sea_orm::ConnectionTrait,
     input: CreateInput,

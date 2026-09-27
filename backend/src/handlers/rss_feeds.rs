@@ -51,6 +51,27 @@ pub async fn list_rss_feeds(
     Ok(Json(rows.into_iter().map(RssFeedResponse::from).collect()))
 }
 
+/// RSS フィードを取得
+#[utoipa::path(
+    get,
+    path = "/api/rss-feeds/{id}",
+    tag = "rss_feeds",
+    params(("id" = Uuid, Path, description = "rss_feed ID")),
+    responses(
+        (status = 200, body = RssFeedResponse),
+        (status = 400, description = "パスパラメータが不正", body = ErrorResponse),
+        (status = 404, body = ErrorResponse),
+        (status = 500, body = ErrorResponse),
+    )
+)]
+pub async fn get_rss_feed(
+    State(state): State<AppState>,
+    JsonPath(id): JsonPath<Uuid>,
+) -> Result<Json<RssFeedResponse>, AppError> {
+    let feed = svc::get(&state.db, id).await.map_err(map_err)?;
+    Ok(Json(feed.into()))
+}
+
 /// RSS フィードを作成
 #[utoipa::path(
     post,
