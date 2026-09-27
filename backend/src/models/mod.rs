@@ -50,6 +50,9 @@ pub use strategy::{
     StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,
     UpdateStrategyRequest,
 };
-pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
-pub use trade_note::CreateTradeNoteRequest;
+pub use trade::{
+    CreateTradeRequest, PerformanceSummary, PositionSummary, TradeListItem, TradeResponse,
+    UpdateTradeRequest,
+};
+pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};
 pub use trigger::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};

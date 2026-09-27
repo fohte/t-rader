@@ -4,6 +4,53 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::entities::trade;
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = Trade)]
+pub struct TradeResponse {
+    pub id: Uuid,
+    pub strategy_id: Uuid,
+    pub symbol: String,
+    pub side: String,
+    pub qty: Decimal,
+    pub price: Decimal,
+    pub fee: Decimal,
+    pub date: NaiveDate,
+    pub source: String,
+    pub note: Option<String>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub updated_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+impl From<trade::Model> for TradeResponse {
+    fn from(model: trade::Model) -> Self {
+        Self {
+            id: model.id,
+            strategy_id: model.strategy_id,
+            symbol: model.symbol,
+            side: model.side,
+            qty: model.qty,
+            price: model.price,
+            fee: model.fee,
+            date: model.date,
+            source: model.source,
+            note: model.note,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TradeListItem {
+    #[serde(flatten)]
+    pub trade: TradeResponse,
+    pub note_count: i64,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateTradeRequest {
