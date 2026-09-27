@@ -8,6 +8,7 @@ use crate::entities::prediction;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonPath;
 use crate::handlers::notes::find_note_or_404;
+use crate::models::PredictionResponse;
 
 /// ノートに紐づく予測一覧 (記録順)。
 #[utoipa::path(
@@ -16,7 +17,7 @@ use crate::handlers::notes::find_note_or_404;
     tag = "notes",
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
-        (status = 200, body = Vec<prediction::Model>),
+        (status = 200, body = Vec<PredictionResponse>),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -25,7 +26,7 @@ use crate::handlers::notes::find_note_or_404;
 pub async fn list_note_predictions(
     State(state): State<AppState>,
     JsonPath(note_id): JsonPath<Uuid>,
-) -> Result<Json<Vec<prediction::Model>>, AppError> {
+) -> Result<Json<Vec<PredictionResponse>>, AppError> {
     find_note_or_404(&state.db, note_id).await?;
 
     let rows = prediction::Entity::find()
@@ -33,7 +34,7 @@ pub async fn list_note_predictions(
         .order_by_asc(prediction::Column::CreatedAt)
         .all(&state.db)
         .await?;
-    Ok(Json(rows))
+    Ok(Json(rows.into_iter().map(Into::into).collect()))
 }
 
 #[cfg(test)]
@@ -43,6 +44,7 @@ mod tests {
     use sea_orm::ActiveValue::Set;
     use uuid::Uuid;
 
+    use super::PredictionResponse;
     use crate::entities::prediction;
     use crate::testing::{
         create_test_server_with_db, insert_test_note, insert_test_stock, insert_test_strategy,
@@ -123,7 +125,14 @@ mod tests {
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
         res.assert_status_ok();
-        assert_eq!(res.json::<Vec<prediction::Model>>(), vec![first, second]);
+        assert_eq!(
+            res.json::<serde_json::Value>(),
+            serde_json::to_value(vec![
+                PredictionResponse::from(first),
+                PredictionResponse::from(second),
+            ])
+            .expect("serialize predictions"),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -134,10 +143,7 @@ mod tests {
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
         res.assert_status_ok();
-        assert_eq!(
-            res.json::<Vec<prediction::Model>>(),
-            Vec::<prediction::Model>::new()
-        );
+        assert_eq!(res.json::<serde_json::Value>(), serde_json::json!([]));
     }
 
     #[backend_test_macros::database_test]

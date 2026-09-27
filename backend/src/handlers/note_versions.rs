@@ -13,7 +13,7 @@ use crate::entities::{comment, note, note_version};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::strategies::map_submit_error;
-use crate::models::ChangeStatusRequest;
+use crate::models::{ChangeStatusRequest, NoteVersionResponse};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::note_versions::{self, INITIAL_NOTE_STATUS};
 use crate::services::strategy_tasks::{self, TaskSource};
@@ -38,7 +38,7 @@ async fn find_note_version<C: sea_orm::ConnectionTrait>(
     tag = "notes",
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
-        (status = 200, body = Vec<note_version::Model>),
+        (status = 200, body = Vec<NoteVersionResponse>),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -47,7 +47,7 @@ async fn find_note_version<C: sea_orm::ConnectionTrait>(
 pub async fn list_note_versions(
     State(state): State<AppState>,
     JsonPath(note_id): JsonPath<Uuid>,
-) -> Result<Json<Vec<note_version::Model>>, AppError> {
+) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
     if note::Entity::find_by_id(note_id)
         .one(&state.db)
         .await?
@@ -60,7 +60,7 @@ pub async fn list_note_versions(
         .order_by_asc(note_version::Column::VersionNo)
         .all(&state.db)
         .await?;
-    Ok(Json(versions))
+    Ok(Json(versions.into_iter().map(Into::into).collect()))
 }
 
 /// ノートの指定バージョンを返す。
@@ -73,7 +73,7 @@ pub async fn list_note_versions(
         ("n" = i32, Path, description = "バージョン番号"),
     ),
     responses(
-        (status = 200, body = note_version::Model),
+        (status = 200, body = NoteVersionResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -82,9 +82,11 @@ pub async fn list_note_versions(
 pub async fn get_note_version(
     State(state): State<AppState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
-) -> Result<Json<note_version::Model>, AppError> {
+) -> Result<Json<NoteVersionResponse>, AppError> {
     Ok(Json(
-        find_note_version(&state.db, note_id, version_no).await?,
+        find_note_version(&state.db, note_id, version_no)
+            .await?
+            .into(),
     ))
 }
 
@@ -94,13 +96,13 @@ pub async fn get_note_version(
     path = "/api/note-versions/pending",
     tag = "notes",
     responses(
-        (status = 200, body = Vec<note_version::Model>),
+        (status = 200, body = Vec<NoteVersionResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_pending_note_versions(
     State(state): State<AppState>,
-) -> Result<Json<Vec<note_version::Model>>, AppError> {
+) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
     let versions = note_version::Entity::find()
         .filter(note_version::Column::Status.eq(INITIAL_NOTE_STATUS))
         .order_by_asc(note_version::Column::CreatedAt)
@@ -108,7 +110,7 @@ pub async fn list_pending_note_versions(
         .order_by_asc(note_version::Column::VersionNo)
         .all(&state.db)
         .await?;
-    Ok(Json(versions))
+    Ok(Json(versions.into_iter().map(Into::into).collect()))
 }
 
 fn ensure_pending_version(version: &note_version::Model) -> Result<(), AppError> {
@@ -132,7 +134,7 @@ fn ensure_pending_version(version: &note_version::Model) -> Result<(), AppError>
     ),
     request_body = ChangeStatusRequest,
     responses(
-        (status = 200, body = note_version::Model),
+        (status = 200, body = NoteVersionResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, description = "バージョンが承認待ちではない", body = ErrorResponse),
@@ -145,7 +147,7 @@ pub async fn approve_note_version(
     State(state): State<AppState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
-) -> Result<Json<note_version::Model>, AppError> {
+) -> Result<Json<NoteVersionResponse>, AppError> {
     let txn = state.db.begin().await?;
     let version = find_note_version(&txn, note_id, version_no).await?;
     ensure_pending_version(&version)?;
@@ -169,7 +171,7 @@ pub async fn approve_note_version(
     )
     .await?;
     txn.commit().await?;
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 /// 承認待ちバージョンを却下する。
@@ -183,7 +185,7 @@ pub async fn approve_note_version(
     ),
     request_body = ChangeStatusRequest,
     responses(
-        (status = 200, body = note_version::Model),
+        (status = 200, body = NoteVersionResponse),
         (status = 400, description = "リクエストパラメータが不正、または却下理由が必要", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, description = "バージョンが承認待ちではない", body = ErrorResponse),
@@ -197,7 +199,7 @@ pub async fn reject_note_version(
     State(state): State<AppState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
-) -> Result<Json<note_version::Model>, AppError> {
+) -> Result<Json<NoteVersionResponse>, AppError> {
     let version = find_note_version(&state.db, note_id, version_no).await?;
     ensure_pending_version(&version)?;
 
@@ -279,7 +281,7 @@ pub async fn reject_note_version(
     )
     .await?;
     txn.commit().await?;
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 /// 承認済みの過去バージョンを現行にする。
@@ -292,7 +294,7 @@ pub async fn reject_note_version(
         ("n" = i32, Path, description = "バージョン番号"),
     ),
     responses(
-        (status = 200, body = note_version::Model),
+        (status = 200, body = NoteVersionResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
@@ -302,7 +304,7 @@ pub async fn reject_note_version(
 pub async fn make_note_version_current(
     State(state): State<AppState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
-) -> Result<Json<note_version::Model>, AppError> {
+) -> Result<Json<NoteVersionResponse>, AppError> {
     let txn = state.db.begin().await?;
     let version = find_note_version(&txn, note_id, version_no).await?;
     if version.status != "approved" {
@@ -316,7 +318,7 @@ pub async fn make_note_version_current(
         .is_some_and(|current| current.id == version.id)
     {
         txn.commit().await?;
-        return Ok(Json(version));
+        return Ok(Json(version.into()));
     }
 
     let (updated, previous_current_id) =
@@ -335,5 +337,5 @@ pub async fn make_note_version_current(
     )
     .await?;
     txn.commit().await?;
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
