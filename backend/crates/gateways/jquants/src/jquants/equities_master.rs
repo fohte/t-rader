@@ -3,7 +3,8 @@ use core_domain::equity_master::EquityMasterEntry;
 
 use super::JQuantsClient;
 use super::response::EquitiesMasterResponse;
-use crate::data_provider::{DataProviderError, EquityMasterSource, EquityMasterSourceError};
+use crate::DataProviderError;
+use core_application::{EquityMasterSource, EquityMasterSourceError};
 
 #[async_trait]
 impl EquityMasterSource for JQuantsClient {

@@ -7,7 +7,6 @@ pub mod config;
 pub mod custom_indicator;
 pub mod import;
 pub mod instrument;
-pub mod jquants_plan;
 pub mod margin;
 pub mod note;
 pub mod refs;
@@ -37,7 +36,6 @@ pub use import::{
     SbiPreviewRow,
 };
 pub use instrument::Instrument;
-pub use jquants_plan::JQuantsPlan;
 pub use margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 pub use note::{ChangeStatusRequest, CreateNoteRequest, NoteResponse, UpdateNoteRequest};
 pub use refs::RefResolution;

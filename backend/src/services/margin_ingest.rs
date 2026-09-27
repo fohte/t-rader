@@ -166,8 +166,8 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_provider::jquants::mock::{JQuantsMockServer, MockMarginInterestRow};
-    use crate::models::jquants_plan::JQuantsPlan;
+    use gateway_jquants::JQuantsPlan;
+    use gateway_jquants::mock::{JQuantsMockServer, MockMarginInterestRow};
     use rstest::rstest;
     #[rstest]
     #[case::empty_table_uses_earliest(

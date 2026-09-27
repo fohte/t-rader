@@ -231,12 +231,10 @@ mod tests {
     use wiremock::{Mock, ResponseTemplate};
 
     use super::*;
-    use crate::data_provider::jquants::mock::JQuantsMockServer;
     use crate::entities::{
         cross_shareholding_documents, large_volume_shareholding_documents,
         major_shareholder_documents,
     };
-    use crate::models::jquants_plan::JQuantsPlan;
     use core_domain::holdings::{
         CrossShareholding, CrossShareholdingCategory, CrossShareholdingContent,
         CrossShareholdingDocument, LargeVolumeReportType, LargeVolumeShareholdingContent,
@@ -244,6 +242,8 @@ mod tests {
         MajorShareholderDocument, MajorShareholderReportType, MutualHolding,
         ShareholdingDocumentMetadata,
     };
+    use gateway_jquants::JQuantsPlan;
+    use gateway_jquants::mock::JQuantsMockServer;
 
     #[rstest]
     #[case::plan_range_starts_after_endpoint_availability(

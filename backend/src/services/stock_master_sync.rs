@@ -135,7 +135,7 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_provider::jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
+    use gateway_jquants::mock::{JQuantsMockServer, MockEquitiesMasterEntry};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::NotSet;
     async fn fetch_stock(db: &impl sea_orm::ConnectionTrait, id: &str) -> Option<stock::Model> {

@@ -4,9 +4,8 @@ use core_domain::earnings_schedule::EarningsSchedule;
 
 use super::JQuantsClient;
 use super::response::EarningsDateRecord;
-use crate::data_provider::{
-    DataProviderError, DateRange, EarningsScheduleSource, EarningsScheduleSourceError,
-};
+use crate::DataProviderError;
+use core_application::{DateRange, EarningsScheduleSource, EarningsScheduleSourceError};
 
 #[async_trait]
 impl EarningsScheduleSource for JQuantsClient {
@@ -58,8 +57,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::data_provider::EarningsScheduleSource;
-    use crate::data_provider::jquants::mock::JQuantsMockServer;
+    use crate::jquants::mock::JQuantsMockServer;
+    use core_application::EarningsScheduleSource;
 
     #[tokio::test]
     async fn test_fetch_earnings_schedules_converts_scheduled_and_undecided_dates() {

@@ -3,14 +3,13 @@ use wiremock::matchers::{header, method, path, query_param, query_param_is_missi
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::JQuantsClient;
-use crate::data_provider::DataProviderError;
-use crate::models::JQuantsPlan;
+use crate::{DataProviderError, JQuantsPlan};
 
 /// J-Quants API のテスト用モックサーバー
 ///
 /// wiremock の MockServer をラップし、Builder pattern で
 /// J-Quants API のレスポンスをセットアップする。
-pub(crate) struct JQuantsMockServer {
+pub struct JQuantsMockServer {
     server: MockServer,
 }
 
@@ -149,7 +148,7 @@ impl JQuantsMockServer {
 }
 
 /// テスト用の日足データ
-pub(crate) struct MockBar {
+pub struct MockBar {
     pub date: String,
     pub code: String,
     pub adj_open: Option<f64>,
@@ -159,7 +158,7 @@ pub(crate) struct MockBar {
     pub adj_volume: Option<f64>,
 }
 
-pub(crate) struct MockDailyBarsBuilder<'a> {
+pub struct MockDailyBarsBuilder<'a> {
     server: &'a MockServer,
     code: &'a str,
     bars: Vec<MockBar>,
@@ -238,7 +237,7 @@ impl<'a> MockDailyBarsBuilder<'a> {
     }
 }
 
-pub(crate) struct MockDailyBarsByDateBuilder<'a> {
+pub struct MockDailyBarsByDateBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     bars: Vec<MockBar>,
@@ -285,7 +284,7 @@ impl<'a> MockDailyBarsByDateBuilder<'a> {
     }
 }
 
-pub(crate) struct MockFinSummaryBuilder<'a> {
+pub struct MockFinSummaryBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     items: Vec<serde_json::Value>,
@@ -316,7 +315,7 @@ impl<'a> MockFinSummaryBuilder<'a> {
     }
 }
 
-pub(crate) struct MockEarningsDateBuilder<'a> {
+pub struct MockEarningsDateBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     items: Vec<serde_json::Value>,
@@ -347,7 +346,7 @@ impl<'a> MockEarningsDateBuilder<'a> {
     }
 }
 
-pub(crate) struct MockValuationBuilder<'a> {
+pub struct MockValuationBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     items: Vec<serde_json::Value>,
@@ -378,7 +377,7 @@ impl<'a> MockValuationBuilder<'a> {
     }
 }
 
-pub(crate) struct MockEdinetDocumentsBuilder<'a> {
+pub struct MockEdinetDocumentsBuilder<'a> {
     server: &'a MockServer,
     path: &'a str,
     date: &'a str,
@@ -442,7 +441,7 @@ impl<'a> MockEdinetDocumentsBuilder<'a> {
     }
 }
 
-pub(crate) struct MockInstrumentBuilder<'a> {
+pub struct MockInstrumentBuilder<'a> {
     server: &'a MockServer,
     code: &'a str,
     company_name: &'a str,
@@ -504,7 +503,7 @@ impl<'a> MockInstrumentBuilder<'a> {
 }
 
 /// テスト用の全銘柄マスタ 1 行
-pub(crate) struct MockEquitiesMasterEntry {
+pub struct MockEquitiesMasterEntry {
     pub code: &'static str,
     pub company_name: &'static str,
     pub market_name: Option<&'static str>,
@@ -512,7 +511,7 @@ pub(crate) struct MockEquitiesMasterEntry {
     pub product_category: Option<&'static str>,
 }
 
-pub(crate) struct MockEquitiesMasterBuilder<'a> {
+pub struct MockEquitiesMasterBuilder<'a> {
     server: &'a MockServer,
     entries: Vec<MockEquitiesMasterEntry>,
 }
@@ -552,14 +551,14 @@ impl<'a> MockEquitiesMasterBuilder<'a> {
 }
 
 /// テスト用の空売り残高報告レコード
-pub(crate) struct MockShortSaleReport {
+pub struct MockShortSaleReport {
     pub code: &'static str,
     pub ss_name: &'static str,
     pub short_position_ratio: f64,
     pub prev_report_date: &'static str,
 }
 
-pub(crate) struct MockShortSaleReportBuilder<'a> {
+pub struct MockShortSaleReportBuilder<'a> {
     server: &'a MockServer,
     disc_date: &'a str,
     reports: Vec<MockShortSaleReport>,
@@ -615,12 +614,12 @@ impl<'a> MockShortSaleReportBuilder<'a> {
 }
 
 /// テスト用の業種別空売り比率レコード
-pub(crate) struct MockShortRatio {
+pub struct MockShortRatio {
     pub sector33_code: &'static str,
     pub sell_excluding_short_value: Option<f64>,
 }
 
-pub(crate) struct MockShortRatioBuilder<'a> {
+pub struct MockShortRatioBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     ratios: Vec<MockShortRatio>,
@@ -666,7 +665,7 @@ impl<'a> MockShortRatioBuilder<'a> {
     }
 }
 
-pub(crate) struct MockErrorBuilder<'a> {
+pub struct MockErrorBuilder<'a> {
     server: &'a MockServer,
 }
 
@@ -693,7 +692,7 @@ impl<'a> MockErrorBuilder<'a> {
 }
 
 /// テスト用の信用取引週末残高 1 行
-pub(crate) struct MockMarginInterestRow {
+pub struct MockMarginInterestRow {
     pub date: &'static str,
     pub code: &'static str,
     pub iss_type: &'static str,
@@ -711,7 +710,7 @@ pub(crate) struct MockMarginInterestRow {
     pub long_std_val: Option<f64>,
 }
 
-pub(crate) struct MockMarginInterestBuilder<'a> {
+pub struct MockMarginInterestBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     rows: Vec<MockMarginInterestRow>,
@@ -768,7 +767,7 @@ impl<'a> MockMarginInterestBuilder<'a> {
 
 /// テスト用の日々公表信用取引残高 1 行。文字列/数値どちらも入りうるフィールドは
 /// serde_json::Value で渡すことで "-"/"*" のテストケースも表現できるようにする。
-pub(crate) struct MockMarginAlertRow {
+pub struct MockMarginAlertRow {
     pub pub_date: &'static str,
     pub code: &'static str,
     pub app_date: &'static str,
@@ -786,7 +785,7 @@ pub(crate) struct MockMarginAlertRow {
     pub tse_mrgn_reg_cls: &'static str,
 }
 
-pub(crate) struct MockMarginAlertBuilder<'a> {
+pub struct MockMarginAlertBuilder<'a> {
     server: &'a MockServer,
     date: &'a str,
     rows: Vec<MockMarginAlertRow>,

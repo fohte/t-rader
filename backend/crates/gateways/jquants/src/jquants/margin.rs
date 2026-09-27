@@ -6,8 +6,9 @@ use super::response::{
     MarginAlertApi, MarginAlertResponse, MarginInterestApi, MarginInterestResponse,
     flexible_decimal, flexible_i64,
 };
-use crate::data_provider::{DataProviderError, DateRange, MarginSource, MarginSourceError};
-use crate::models::margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
+use crate::DataProviderError;
+use core_application::{DateRange, MarginSource, MarginSourceError};
+use core_domain::margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 
 #[async_trait]
 impl MarginSource for JQuantsClient {
@@ -128,9 +129,7 @@ fn margin_alert_from_api(api: MarginAlertApi) -> Result<MarginAlertRecord, DataP
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_provider::jquants::mock::{
-        JQuantsMockServer, MockMarginAlertRow, MockMarginInterestRow,
-    };
+    use crate::jquants::mock::{JQuantsMockServer, MockMarginAlertRow, MockMarginInterestRow};
 
     #[tokio::test]
     async fn fetch_margin_interest_parses_response_including_new_value_fields() {

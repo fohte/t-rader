@@ -3,9 +3,8 @@ use chrono::NaiveDate;
 use core_domain::financial_summary::FinancialSummary;
 
 use super::JQuantsClient;
-use crate::data_provider::{
-    DataProviderError, DateRange, FinancialSummarySource, FinancialSummarySourceError,
-};
+use crate::DataProviderError;
+use core_application::{DateRange, FinancialSummarySource, FinancialSummarySourceError};
 
 #[async_trait]
 impl FinancialSummarySource for JQuantsClient {
@@ -147,7 +146,7 @@ mod tests {
     use serde_json::json;
 
     use super::{FinancialSummarySource, report_group_key};
-    use crate::data_provider::jquants::mock::JQuantsMockServer;
+    use crate::jquants::mock::JQuantsMockServer;
 
     #[tokio::test]
     async fn fetches_typed_financial_summaries() {

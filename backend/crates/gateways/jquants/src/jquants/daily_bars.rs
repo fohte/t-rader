@@ -3,11 +3,11 @@ use chrono::{NaiveDate, Utc};
 
 use super::response::DailyBarsResponse;
 use super::{JQuantsClient, normalize_local_code, parse_daily_bar};
-use crate::data_provider::{
-    DailyBarSource, DailyBarSourceError, DataProviderError, DateRange, MarketDailyBarSource,
-    MarketDailyBarSourceError,
+use crate::DataProviderError;
+use core_application::{
+    DailyBarSource, DailyBarSourceError, DateRange, MarketDailyBarSource, MarketDailyBarSourceError,
 };
-use crate::models::bar::Bar;
+use core_domain::bar::Bar;
 
 impl JQuantsClient {
     /// `/equities/bars/daily` を呼び出す。

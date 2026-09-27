@@ -217,9 +217,9 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_provider::jquants::mock::{JQuantsMockServer, MockBar};
-    use crate::models::jquants_plan::JQuantsPlan;
     use crate::repositories::bars::{BarsQuery, find_bars};
+    use gateway_jquants::JQuantsPlan;
+    use gateway_jquants::mock::{JQuantsMockServer, MockBar};
     use rstest::rstest;
     use sea_orm::{ActiveModelTrait, EntityTrait};
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {

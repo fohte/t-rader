@@ -215,12 +215,12 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::data_provider::jquants::mock::JQuantsMockServer;
-    use crate::models::jquants_plan::JQuantsPlan;
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_application::{DateRange, ValuationSource, ValuationSourceError};
     use core_domain::valuation::Valuation;
+    use gateway_jquants::JQuantsPlan;
+    use gateway_jquants::mock::JQuantsMockServer;
     use rust_decimal::Decimal;
     use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
