@@ -350,3 +350,75 @@ pub async fn trades_summary(
         trades_svc::fetch_summary(&state.db, p.strategy_id).await?,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    use crate::entities::trade;
+    use crate::testing::{create_test_server_with_db, insert_test_strategy};
+
+    fn normalize_trade(mut value: Value) -> Value {
+        value["id"] = json!("<dyn>");
+        value["strategy_id"] = json!("<dyn>");
+        value["created_at"] = json!("<dyn>");
+        value["updated_at"] = json!("<dyn>");
+        value
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_returns_flattened_trade_with_note_count(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        let trade_id = Uuid::new_v4();
+        trade::ActiveModel {
+            id: Set(trade_id),
+            strategy_id: Set(strategy_id),
+            symbol: Set("fictional-symbol-123".into()),
+            side: Set("buy".into()),
+            qty: Set(Decimal::from(1200)),
+            price: Set(Decimal::from(275)),
+            fee: Set(Decimal::from(1)),
+            date: Set(chrono::NaiveDate::from_ymd_opt(2026, 2, 3).expect("valid date")),
+            source: Set("manual".into()),
+            note: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert trade");
+
+        let response = server
+            .get(&format!("/api/trades?strategy_id={strategy_id}"))
+            .await;
+        response.assert_status_ok();
+        let actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_trade)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![json!({
+                "id": "<dyn>",
+                "strategy_id": "<dyn>",
+                "symbol": "fictional-symbol-123",
+                "side": "buy",
+                "qty": 1200,
+                "price": 275,
+                "fee": 1,
+                "date": "2026-02-03",
+                "source": "manual",
+                "note": null,
+                "created_at": "<dyn>",
+                "updated_at": "<dyn>",
+                "note_count": 0,
+            })],
+        );
+    }
+}
