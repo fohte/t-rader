@@ -11,7 +11,7 @@ use crate::AppState;
 use crate::entities::{note, note_version, trade, trade_note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::models::{CreateTradeNoteRequest, NoteResponse};
+use crate::models::{CreateTradeNoteRequest, NoteResponse, TradeNoteResponse};
 use crate::services::note_versions::find_initial_created_by_kind;
 
 async fn find_trade_or_404(
@@ -102,7 +102,7 @@ pub async fn list_trade_notes(
     params(("id" = Uuid, Path, description = "取引 ID")),
     request_body = CreateTradeNoteRequest,
     responses(
-        (status = 201, body = trade_note::Model),
+        (status = 201, body = TradeNoteResponse),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, description = "既にリンク済み", body = ErrorResponse),
@@ -115,7 +115,7 @@ pub async fn create_trade_note(
     State(state): State<AppState>,
     JsonPath(trade_id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<CreateTradeNoteRequest>,
-) -> Result<(StatusCode, Json<trade_note::Model>), AppError> {
+) -> Result<(StatusCode, Json<TradeNoteResponse>), AppError> {
     let trade = find_trade_or_404(&state.db, trade_id).await?;
 
     let note = note::Entity::find_by_id(p.note_id).one(&state.db).await?;
@@ -145,7 +145,7 @@ pub async fn create_trade_note(
         .exec_with_returning(&txn)
         .await?;
     txn.commit().await?;
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// 取引と判断ノートの紐付けを解除する
