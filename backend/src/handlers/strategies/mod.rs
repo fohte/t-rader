@@ -8,7 +8,7 @@ use crate::AppState;
 use crate::entities::strategy;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::models::{CreateStrategyRequest, UpdateStrategyRequest};
+use crate::models::{CreateStrategyRequest, StrategyResponse, UpdateStrategyRequest};
 use crate::services::change_history::Actor;
 use crate::services::strategy_config;
 
@@ -33,19 +33,21 @@ pub(super) use strategy_config::find_or_404 as find_strategy_or_404;
     path = "/api/strategies",
     tag = "strategies",
     responses(
-        (status = 200, description = "戦略一覧", body = Vec<strategy::Model>),
+        (status = 200, description = "戦略一覧", body = Vec<StrategyResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_strategies(
     State(state): State<AppState>,
-) -> Result<Json<Vec<strategy::Model>>, AppError> {
+) -> Result<Json<Vec<StrategyResponse>>, AppError> {
     let items = strategy::Entity::find()
         .order_by_asc(strategy::Column::SortOrder)
         .order_by_asc(strategy::Column::CreatedAt)
         .all(&state.db)
         .await?;
-    Ok(Json(items))
+    Ok(Json(
+        items.into_iter().map(StrategyResponse::from).collect(),
+    ))
 }
 
 /// 戦略取得
@@ -55,7 +57,7 @@ pub async fn list_strategies(
     tag = "strategies",
     params(("id" = Uuid, Path, description = "戦略 ID")),
     responses(
-        (status = 200, body = strategy::Model),
+        (status = 200, body = StrategyResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -64,9 +66,9 @@ pub async fn list_strategies(
 pub async fn get_strategy(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
-) -> Result<Json<strategy::Model>, AppError> {
+) -> Result<Json<StrategyResponse>, AppError> {
     let model = find_strategy_or_404(&state.db, id).await?;
-    Ok(Json(model))
+    Ok(Json(model.into()))
 }
 
 /// 戦略作成
@@ -76,7 +78,7 @@ pub async fn get_strategy(
     tag = "strategies",
     request_body = CreateStrategyRequest,
     responses(
-        (status = 201, body = strategy::Model),
+        (status = 201, body = StrategyResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -86,7 +88,7 @@ pub async fn get_strategy(
 pub async fn create_strategy(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateStrategyRequest>,
-) -> Result<(StatusCode, Json<strategy::Model>), AppError> {
+) -> Result<(StatusCode, Json<StrategyResponse>), AppError> {
     let created = strategy_config::create(
         &state.db,
         Actor::Human,
@@ -98,7 +100,7 @@ pub async fn create_strategy(
     )
     .await?;
 
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// 戦略更新
@@ -109,7 +111,7 @@ pub async fn create_strategy(
     params(("id" = Uuid, Path, description = "戦略 ID")),
     request_body = UpdateStrategyRequest,
     responses(
-        (status = 200, body = strategy::Model),
+        (status = 200, body = StrategyResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -121,7 +123,7 @@ pub async fn update_strategy(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateStrategyRequest>,
-) -> Result<Json<strategy::Model>, AppError> {
+) -> Result<Json<StrategyResponse>, AppError> {
     let updated = strategy_config::update(
         &state.db,
         Actor::Human,
@@ -134,7 +136,7 @@ pub async fn update_strategy(
     )
     .await?;
 
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 /// 戦略削除

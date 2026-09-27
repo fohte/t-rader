@@ -4,11 +4,20 @@ use axum::http::StatusCode;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::trigger;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
-use crate::models::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};
+use crate::models::{
+    CreateTriggerRequest, ListTriggersQuery, TriggerKind, TriggerResponse, UpdateTriggerRequest,
+};
 use crate::services::trigger_crud as trigger_crud_svc;
+
+fn into_trigger_response(
+    model: crate::entities::trigger::Model,
+) -> Result<TriggerResponse, AppError> {
+    TriggerResponse::try_from(model).map_err(|error| {
+        AppError::Config(format!("failed to convert trigger event_match: {error}"))
+    })
+}
 
 /// 戦略の trigger 一覧
 #[utoipa::path(
@@ -20,7 +29,7 @@ use crate::services::trigger_crud as trigger_crud_svc;
         ("kind" = Option<TriggerKind>, Query, description = "kind フィルタ"),
     ),
     responses(
-        (status = 200, body = Vec<trigger::Model>),
+        (status = 200, body = Vec<TriggerResponse>),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -30,8 +39,12 @@ pub async fn list_strategy_triggers(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonQuery(query): JsonQuery<ListTriggersQuery>,
-) -> Result<Json<Vec<trigger::Model>>, AppError> {
+) -> Result<Json<Vec<TriggerResponse>>, AppError> {
     let items = trigger_crud_svc::list_triggers(&state.db, id, query.kind).await?;
+    let items = items
+        .into_iter()
+        .map(into_trigger_response)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(items))
 }
 
@@ -43,7 +56,7 @@ pub async fn list_strategy_triggers(
     params(("id" = Uuid, Path, description = "戦略 ID")),
     request_body = CreateTriggerRequest,
     responses(
-        (status = 201, body = trigger::Model),
+        (status = 201, body = TriggerResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, description = "hook_slug が他 trigger と衝突", body = ErrorResponse),
@@ -56,9 +69,9 @@ pub async fn create_strategy_trigger(
     State(state): State<AppState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateTriggerRequest>,
-) -> Result<(StatusCode, Json<trigger::Model>), AppError> {
+) -> Result<(StatusCode, Json<TriggerResponse>), AppError> {
     let created = trigger_crud_svc::create_trigger(&state.db, strategy_id, payload).await?;
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(into_trigger_response(created)?)))
 }
 
 /// trigger 詳細
@@ -68,7 +81,7 @@ pub async fn create_strategy_trigger(
     tag = "triggers",
     params(("trigger_id" = Uuid, Path, description = "trigger ID")),
     responses(
-        (status = 200, body = trigger::Model),
+        (status = 200, body = TriggerResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -77,9 +90,9 @@ pub async fn create_strategy_trigger(
 pub async fn get_trigger(
     State(state): State<AppState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
-) -> Result<Json<trigger::Model>, AppError> {
+) -> Result<Json<TriggerResponse>, AppError> {
     let model = trigger_crud_svc::get_trigger(&state.db, trigger_id).await?;
-    Ok(Json(model))
+    Ok(Json(into_trigger_response(model)?))
 }
 
 /// trigger 更新 (kind / strategy_id は不変)
@@ -90,7 +103,7 @@ pub async fn get_trigger(
     params(("trigger_id" = Uuid, Path, description = "trigger ID")),
     request_body = UpdateTriggerRequest,
     responses(
-        (status = 200, body = trigger::Model),
+        (status = 200, body = TriggerResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, description = "hook_slug が他 trigger と衝突", body = ErrorResponse),
@@ -103,9 +116,9 @@ pub async fn update_trigger(
     State(state): State<AppState>,
     JsonPath(trigger_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateTriggerRequest>,
-) -> Result<Json<trigger::Model>, AppError> {
+) -> Result<Json<TriggerResponse>, AppError> {
     let updated = trigger_crud_svc::update_trigger(&state.db, trigger_id, payload).await?;
-    Ok(Json(updated))
+    Ok(Json(into_trigger_response(updated)?))
 }
 
 /// trigger 削除

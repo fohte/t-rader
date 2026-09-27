@@ -1,5 +1,56 @@
-use serde::Deserialize;
+use chrono::{DateTime, FixedOffset};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use utoipa::ToSchema;
+use uuid::Uuid;
+
+use crate::entities::trigger;
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = Trigger)]
+pub struct TriggerResponse {
+    pub trigger_id: Uuid,
+    pub strategy_id: Option<Uuid>,
+    pub kind: String,
+    pub schedule: Option<String>,
+    pub hook_slug: Option<String>,
+    #[schema(value_type = Option<HashMap<String, serde_json::Value>>)]
+    pub event_match: Option<HashMap<String, serde_json::Value>>,
+    pub prompt_template: String,
+    pub enabled: bool,
+    #[schema(value_type = Option<chrono::DateTime<chrono::Utc>>)]
+    pub last_fired_at: Option<DateTime<FixedOffset>>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub created_at: DateTime<FixedOffset>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl TryFrom<trigger::Model> for TriggerResponse {
+    type Error = serde_json::Error;
+
+    fn try_from(model: trigger::Model) -> Result<Self, Self::Error> {
+        let event_match = model
+            .event_match
+            .filter(|value| !value.is_null())
+            .map(serde_json::from_value)
+            .transpose()?;
+
+        Ok(Self {
+            trigger_id: model.trigger_id,
+            strategy_id: model.strategy_id,
+            kind: model.kind,
+            schedule: model.schedule,
+            hook_slug: model.hook_slug,
+            event_match,
+            prompt_template: model.prompt_template,
+            enabled: model.enabled,
+            last_fired_at: model.last_fired_at,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]

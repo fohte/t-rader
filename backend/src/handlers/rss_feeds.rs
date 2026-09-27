@@ -5,45 +5,15 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use serde::Deserialize;
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::rss_feed;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
+use crate::models::{
+    CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
+};
 use crate::services::rss_feed as svc;
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateRssFeedRequest {
-    /// machine key (slug, `^[a-z0-9_-]+$`). 内部処理・MCP の参照用
-    pub source: String,
-    /// UI 表示用名前
-    pub display_name: String,
-    /// RSS フィード URL (http / https のみ)
-    pub url: String,
-    /// 省略時は true
-    #[serde(default)]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateRssFeedRequest {
-    #[serde(default)]
-    pub display_name: Option<String>,
-    #[serde(default)]
-    pub url: Option<String>,
-    #[serde(default)]
-    pub enabled: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, Default, ToSchema)]
-pub struct ListRssFeedsQuery {
-    /// true なら enabled=true のフィードだけ返す
-    #[serde(default)]
-    pub enabled_only: Option<bool>,
-}
 
 /// service レイヤのエラーを AppError にマップする
 fn map_err(err: svc::RssFeedError) -> AppError {
@@ -66,7 +36,7 @@ fn map_err(err: svc::RssFeedError) -> AppError {
         ("enabled_only" = Option<bool>, Query, description = "true なら enabled=true のみ返す"),
     ),
     responses(
-        (status = 200, body = Vec<rss_feed::Model>),
+        (status = 200, body = Vec<RssFeedResponse>),
         (status = 400, description = "クエリパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -74,11 +44,11 @@ fn map_err(err: svc::RssFeedError) -> AppError {
 pub async fn list_rss_feeds(
     State(state): State<AppState>,
     JsonQuery(query): JsonQuery<ListRssFeedsQuery>,
-) -> Result<Json<Vec<rss_feed::Model>>, AppError> {
+) -> Result<Json<Vec<RssFeedResponse>>, AppError> {
     let rows = svc::list(&state.db, query.enabled_only.unwrap_or(false))
         .await
         .map_err(map_err)?;
-    Ok(Json(rows))
+    Ok(Json(rows.into_iter().map(RssFeedResponse::from).collect()))
 }
 
 /// RSS フィードを作成
@@ -88,7 +58,7 @@ pub async fn list_rss_feeds(
     tag = "rss_feeds",
     request_body = CreateRssFeedRequest,
     responses(
-        (status = 201, body = rss_feed::Model),
+        (status = 201, body = RssFeedResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 409, description = "source が既存と衝突", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -99,7 +69,7 @@ pub async fn list_rss_feeds(
 pub async fn create_rss_feed(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateRssFeedRequest>,
-) -> Result<(StatusCode, Json<rss_feed::Model>), AppError> {
+) -> Result<(StatusCode, Json<RssFeedResponse>), AppError> {
     let created = svc::create(
         &state.db,
         svc::CreateInput {
@@ -111,7 +81,7 @@ pub async fn create_rss_feed(
     )
     .await
     .map_err(map_err)?;
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// RSS フィードを部分更新する (`source` は変更不可)
@@ -122,7 +92,7 @@ pub async fn create_rss_feed(
     params(("id" = Uuid, Path, description = "rss_feed ID")),
     request_body = UpdateRssFeedRequest,
     responses(
-        (status = 200, body = rss_feed::Model),
+        (status = 200, body = RssFeedResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -134,7 +104,7 @@ pub async fn update_rss_feed(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateRssFeedRequest>,
-) -> Result<Json<rss_feed::Model>, AppError> {
+) -> Result<Json<RssFeedResponse>, AppError> {
     let updated = svc::update(
         &state.db,
         id,
@@ -146,7 +116,7 @@ pub async fn update_rss_feed(
     )
     .await
     .map_err(map_err)?;
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 /// RSS フィードを削除する。news_item 行は残す (履歴互換性)。
