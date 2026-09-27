@@ -15,6 +15,7 @@ pub mod note_version;
 pub mod prediction;
 pub mod refs;
 pub mod risk_policy;
+pub mod rss_feed;
 pub mod short_ratio;
 pub mod short_sale_report;
 pub mod strategy;
@@ -23,8 +24,8 @@ pub mod trade_note;
 pub mod trigger;
 
 pub use agent_config::{
-    AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateAgentConfigRequest, SkillBody,
-    SkillsBody,
+    AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentsMdBody,
+    CreateAgentConfigRequest, SkillBody, SkillsBody,
 };
 pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 pub use annotation::{AnnotationResponse, CreateAnnotationRequest, UpdateAnnotationRequest};
@@ -51,16 +52,21 @@ pub use risk_policy::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
     parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
+pub use rss_feed::{
+    CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
+};
 pub use short_ratio::ShortRatio;
 pub use short_sale_report::ShortSaleReport;
 pub use strategy::{
     CreateStrategyRequest, InvestableAmountResponse, PutInvestableAmountRequest,
-    StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,
-    UpdateStrategyRequest,
+    StrategyChatRequest, StrategyChatResponse, StrategyResponse, StrategyTaskStatusResponse,
+    StrategyTaskSummary, UpdateStrategyRequest,
 };
 pub use trade::{
     CreateTradeRequest, PerformanceSummary, PositionSummary, TradeListItem, TradeResponse,
     UpdateTradeRequest,
 };
 pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};
-pub use trigger::{CreateTriggerRequest, ListTriggersQuery, TriggerKind, UpdateTriggerRequest};
+pub use trigger::{
+    CreateTriggerRequest, ListTriggersQuery, TriggerKind, TriggerResponse, UpdateTriggerRequest,
+};
