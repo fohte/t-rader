@@ -15,8 +15,8 @@ use crate::entities::custom_indicator;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
-    CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
-    UpdateCustomIndicatorRequest,
+    CreateCustomIndicatorRequest, CustomIndicatorResponse, PreviewIndicatorRequest,
+    PreviewIndicatorResponse, UpdateCustomIndicatorRequest,
 };
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::custom_indicators::{PreviewInput, SCOPE_GLOBAL, SCOPE_STRATEGY, run_preview};
@@ -70,19 +70,19 @@ async fn find_strategy_scoped_or_404(
     path = "/api/indicators",
     tag = "custom_indicators",
     responses(
-        (status = 200, body = Vec<custom_indicator::Model>),
+        (status = 200, body = Vec<CustomIndicatorResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_global_indicators(
     State(state): State<AppState>,
-) -> Result<Json<Vec<custom_indicator::Model>>, AppError> {
+) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     let items = custom_indicator::Entity::find()
         .filter(custom_indicator::Column::Scope.eq(SCOPE_GLOBAL))
         .order_by_asc(custom_indicator::Column::Name)
         .all(&state.db)
         .await?;
-    Ok(Json(items))
+    Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
 /// 戦略 scope indicator 一覧
@@ -92,7 +92,7 @@ pub async fn list_global_indicators(
     tag = "custom_indicators",
     params(("id" = Uuid, Path, description = "戦略 ID")),
     responses(
-        (status = 200, body = Vec<custom_indicator::Model>),
+        (status = 200, body = Vec<CustomIndicatorResponse>),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -101,7 +101,7 @@ pub async fn list_global_indicators(
 pub async fn list_strategy_indicators(
     State(state): State<AppState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
-) -> Result<Json<Vec<custom_indicator::Model>>, AppError> {
+) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
     ensure_strategy_exists(&state.db, strategy_id).await?;
     let items = custom_indicator::Entity::find()
         .filter(custom_indicator::Column::Scope.eq(SCOPE_STRATEGY))
@@ -109,7 +109,7 @@ pub async fn list_strategy_indicators(
         .order_by_asc(custom_indicator::Column::Name)
         .all(&state.db)
         .await?;
-    Ok(Json(items))
+    Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
 /// indicator 詳細
@@ -119,7 +119,7 @@ pub async fn list_strategy_indicators(
     tag = "custom_indicators",
     params(("indicator_id" = Uuid, Path, description = "indicator ID")),
     responses(
-        (status = 200, body = custom_indicator::Model),
+        (status = 200, body = CustomIndicatorResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -128,8 +128,10 @@ pub async fn list_strategy_indicators(
 pub async fn get_indicator(
     State(state): State<AppState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
-) -> Result<Json<custom_indicator::Model>, AppError> {
-    Ok(Json(find_indicator_or_404(&state.db, indicator_id).await?))
+) -> Result<Json<CustomIndicatorResponse>, AppError> {
+    Ok(Json(
+        find_indicator_or_404(&state.db, indicator_id).await?.into(),
+    ))
 }
 
 /// グローバル indicator 作成
@@ -139,7 +141,7 @@ pub async fn get_indicator(
     tag = "custom_indicators",
     request_body = CreateCustomIndicatorRequest,
     responses(
-        (status = 201, body = custom_indicator::Model),
+        (status = 201, body = CustomIndicatorResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 409, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -150,11 +152,11 @@ pub async fn get_indicator(
 pub async fn create_global_indicator(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
-) -> Result<(StatusCode, Json<custom_indicator::Model>), AppError> {
+) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
     let txn = state.db.begin().await?;
     let model = insert_indicator(&txn, payload, None).await?;
     txn.commit().await?;
-    Ok((StatusCode::CREATED, Json(model)))
+    Ok((StatusCode::CREATED, Json(model.into())))
 }
 
 /// 戦略 scope indicator 作成
@@ -165,7 +167,7 @@ pub async fn create_global_indicator(
     params(("id" = Uuid, Path, description = "戦略 ID")),
     request_body = CreateCustomIndicatorRequest,
     responses(
-        (status = 201, body = custom_indicator::Model),
+        (status = 201, body = CustomIndicatorResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
@@ -178,12 +180,12 @@ pub async fn create_strategy_indicator(
     State(state): State<AppState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
-) -> Result<(StatusCode, Json<custom_indicator::Model>), AppError> {
+) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
     let txn = state.db.begin().await?;
     ensure_strategy_exists(&txn, strategy_id).await?;
     let model = insert_indicator(&txn, payload, Some(strategy_id)).await?;
     txn.commit().await?;
-    Ok((StatusCode::CREATED, Json(model)))
+    Ok((StatusCode::CREATED, Json(model.into())))
 }
 
 async fn insert_indicator<C: ConnectionTrait>(
@@ -239,7 +241,7 @@ async fn insert_indicator<C: ConnectionTrait>(
     params(("indicator_id" = Uuid, Path, description = "indicator ID")),
     request_body = UpdateCustomIndicatorRequest,
     responses(
-        (status = 200, body = custom_indicator::Model),
+        (status = 200, body = CustomIndicatorResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 409, body = ErrorResponse),
@@ -252,7 +254,7 @@ pub async fn update_indicator(
     State(state): State<AppState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateCustomIndicatorRequest>,
-) -> Result<Json<custom_indicator::Model>, AppError> {
+) -> Result<Json<CustomIndicatorResponse>, AppError> {
     let current = find_indicator_or_404(&state.db, indicator_id).await?;
     let mut active = current.clone().into_active_model();
     let mut diff = serde_json::Map::new();
@@ -311,7 +313,7 @@ pub async fn update_indicator(
         .await?;
     }
     txn.commit().await?;
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 /// indicator 削除
@@ -363,7 +365,7 @@ pub async fn delete_indicator(
         ("indicator_id" = Uuid, Path, description = "indicator ID"),
     ),
     responses(
-        (status = 200, body = custom_indicator::Model),
+        (status = 200, body = CustomIndicatorResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -372,10 +374,12 @@ pub async fn delete_indicator(
 pub async fn get_strategy_indicator(
     State(state): State<AppState>,
     JsonPath((strategy_id, indicator_id)): JsonPath<(Uuid, Uuid)>,
-) -> Result<Json<custom_indicator::Model>, AppError> {
+) -> Result<Json<CustomIndicatorResponse>, AppError> {
     ensure_strategy_exists(&state.db, strategy_id).await?;
     Ok(Json(
-        find_strategy_scoped_or_404(&state.db, strategy_id, indicator_id).await?,
+        find_strategy_scoped_or_404(&state.db, strategy_id, indicator_id)
+            .await?
+            .into(),
     ))
 }
 

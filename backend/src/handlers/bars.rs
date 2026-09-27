@@ -5,9 +5,9 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 
 use crate::AppState;
-use crate::entities::bars;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
+use crate::models::BarResponse;
 use crate::repositories;
 
 /// バーデータ取得のクエリパラメータ
@@ -36,7 +36,7 @@ fn default_timeframe() -> String {
     tag = "bars",
     params(BarsQueryParams),
     responses(
-        (status = 200, description = "バーデータ一覧", body = Vec<bars::Model>),
+        (status = 200, description = "バーデータ一覧", body = Vec<BarResponse>),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
@@ -44,14 +44,14 @@ fn default_timeframe() -> String {
 pub async fn list_bars(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<BarsQueryParams>,
-) -> Result<Json<Vec<bars::Model>>, AppError> {
+) -> Result<Json<Vec<BarResponse>>, AppError> {
     if params.instrument_id.trim().is_empty() {
         return Err(AppError::Validation(
             "instrument_id must not be empty".to_string(),
         ));
     }
 
-    // Bar.timeframe の OpenAPI スキーマは entity の String 型から導出されるため許容値を含まない。
+    // Bar.timeframe の OpenAPI スキーマは DTO の String 型から導出されるため許容値を含まない。
     // 実際の許容値はこの配列と bars テーブルの CHECK 制約が正とする。
     let valid_timeframes = ["1d"];
     if !valid_timeframes.contains(&params.timeframe.as_str()) {
@@ -83,7 +83,7 @@ pub async fn list_bars(
 
     let bars = repositories::bars::find_bars(&state.db, query).await?;
 
-    Ok(Json(bars))
+    Ok(Json(bars.into_iter().map(BarResponse::from).collect()))
 }
 
 #[cfg(test)]
