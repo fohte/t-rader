@@ -151,10 +151,20 @@ mod tests {
         let response = server.get("/api/bars?instrument_id=7203").await;
         response.assert_status_ok();
 
-        let body: Vec<serde_json::Value> = response.json();
-        assert_eq!(body.len(), 1);
-        assert_eq!(body[0]["instrument_id"], "7203");
-        assert_eq!(body[0]["timeframe"], "1d");
+        let body: serde_json::Value = response.json();
+        assert_eq!(
+            body,
+            serde_json::json!([{
+                "instrument_id": "7203",
+                "timeframe": "1d",
+                "timestamp": "2025-01-06T00:00:00Z",
+                "open": 100,
+                "high": 110,
+                "low": 90,
+                "close": 100,
+                "volume": 1000,
+            }]),
+        );
     }
 
     #[backend_test_macros::database_test]
