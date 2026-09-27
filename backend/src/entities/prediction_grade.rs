@@ -3,11 +3,8 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "prediction_grade")]
-#[schema(as = PredictionGrade)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub prediction_id: Uuid,
@@ -18,7 +15,6 @@ pub struct Model {
     pub target_return: Decimal,
     pub benchmark_return: Decimal,
     pub correct: bool,
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
     pub graded_at: DateTimeWithTimeZone,
 }
 

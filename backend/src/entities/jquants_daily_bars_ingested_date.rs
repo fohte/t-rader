@@ -3,11 +3,8 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize, utoipa :: ToSchema,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "jquants_daily_bars_ingested_date")]
-#[schema(as = JQuantsDailyBarsIngestedDate)]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub date: Date,
