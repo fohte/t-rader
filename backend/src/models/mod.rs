@@ -2,6 +2,7 @@ pub mod agent_config;
 pub mod agent_options;
 pub mod annotation;
 pub mod bar;
+pub mod change_history;
 pub mod comment;
 pub mod config;
 pub mod custom_indicator;
@@ -24,9 +25,10 @@ pub use agent_config::{
     CreateAgentConfigRequest, SkillBody, SkillsBody,
 };
 pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
-pub use annotation::{CreateAnnotationRequest, UpdateAnnotationRequest};
+pub use annotation::{AnnotationResponse, CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar::{Bar, Timeframe};
-pub use comment::{CreateCommentRequest, UpdateCommentRequest};
+pub use change_history::ChangeHistoryResponse;
+pub use comment::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
 pub use config::ConfigResponse;
 pub use custom_indicator::{
     CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
@@ -54,8 +56,11 @@ pub use strategy::{
     StrategyChatRequest, StrategyChatResponse, StrategyResponse, StrategyTaskStatusResponse,
     StrategyTaskSummary, UpdateStrategyRequest,
 };
-pub use trade::{CreateTradeRequest, PerformanceSummary, PositionSummary, UpdateTradeRequest};
-pub use trade_note::CreateTradeNoteRequest;
+pub use trade::{
+    CreateTradeRequest, PerformanceSummary, PositionSummary, TradeListItem, TradeResponse,
+    UpdateTradeRequest,
+};
+pub use trade_note::{CreateTradeNoteRequest, TradeNoteResponse};
 pub use trigger::{
     CreateTriggerRequest, ListTriggersQuery, TriggerKind, TriggerResponse, UpdateTriggerRequest,
 };
