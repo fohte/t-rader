@@ -15,7 +15,7 @@ use crate::AppState;
 use crate::entities::comment;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
-use crate::models::{CreateCommentRequest, UpdateCommentRequest};
+use crate::models::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::comment_anchor;
 
@@ -36,7 +36,7 @@ pub struct ListCommentsQuery {
     tag = "comments",
     params(ListCommentsQuery),
     responses(
-        (status = 200, body = Vec<comment::Model>),
+        (status = 200, body = Vec<CommentResponse>),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -44,7 +44,7 @@ pub struct ListCommentsQuery {
 pub async fn list_comments(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<ListCommentsQuery>,
-) -> Result<Json<Vec<comment::Model>>, AppError> {
+) -> Result<Json<Vec<CommentResponse>>, AppError> {
     if !ALLOWED_TARGET_KIND.contains(&p.target_kind.as_str()) {
         return Err(AppError::Validation(format!(
             "invalid target_kind: {}",
@@ -57,7 +57,7 @@ pub async fn list_comments(
         .order_by_asc(comment::Column::CreatedAt)
         .all(&state.db)
         .await?;
-    Ok(Json(items))
+    Ok(Json(items.into_iter().map(CommentResponse::from).collect()))
 }
 
 /// コメント投稿
@@ -67,7 +67,7 @@ pub async fn list_comments(
     tag = "comments",
     request_body = CreateCommentRequest,
     responses(
-        (status = 201, body = comment::Model),
+        (status = 201, body = CommentResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -77,7 +77,7 @@ pub async fn list_comments(
 pub async fn create_comment(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateCommentRequest>,
-) -> Result<(StatusCode, Json<comment::Model>), AppError> {
+) -> Result<(StatusCode, Json<CommentResponse>), AppError> {
     if !ALLOWED_TARGET_KIND.contains(&p.target_kind.as_str()) {
         return Err(AppError::Validation(format!(
             "invalid target_kind: {}",
@@ -159,7 +159,7 @@ pub async fn create_comment(
     .await?;
     txn.commit().await?;
 
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// コメントの resolved を更新する
@@ -170,7 +170,7 @@ pub async fn create_comment(
     params(("id" = Uuid, Path, description = "コメント ID")),
     request_body = UpdateCommentRequest,
     responses(
-        (status = 200, body = comment::Model),
+        (status = 200, body = CommentResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -182,13 +182,13 @@ pub async fn update_comment(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateCommentRequest>,
-) -> Result<Json<comment::Model>, AppError> {
+) -> Result<Json<CommentResponse>, AppError> {
     let current = comment::Entity::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("comment {id} not found")))?;
     if current.resolved == payload.resolved {
-        return Ok(Json(current));
+        return Ok(Json(current.into()));
     }
     let from = current.resolved;
     let mut active = current.into_active_model();
@@ -207,7 +207,7 @@ pub async fn update_comment(
     .await?;
     txn.commit().await?;
 
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 /// コメント削除
