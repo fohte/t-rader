@@ -8,6 +8,7 @@ use crate::entities::prediction;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonPath;
 use crate::handlers::notes::find_note_or_404;
+use crate::models::PredictionResponse;
 
 /// ノートに紐づく予測一覧 (記録順)。
 #[utoipa::path(
@@ -16,7 +17,7 @@ use crate::handlers::notes::find_note_or_404;
     tag = "notes",
     params(("id" = Uuid, Path, description = "ノート ID")),
     responses(
-        (status = 200, body = Vec<prediction::Model>),
+        (status = 200, body = Vec<PredictionResponse>),
         (status = 400, body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -25,7 +26,7 @@ use crate::handlers::notes::find_note_or_404;
 pub async fn list_note_predictions(
     State(state): State<AppState>,
     JsonPath(note_id): JsonPath<Uuid>,
-) -> Result<Json<Vec<prediction::Model>>, AppError> {
+) -> Result<Json<Vec<PredictionResponse>>, AppError> {
     find_note_or_404(&state.db, note_id).await?;
 
     let rows = prediction::Entity::find()
@@ -33,7 +34,7 @@ pub async fn list_note_predictions(
         .order_by_asc(prediction::Column::CreatedAt)
         .all(&state.db)
         .await?;
-    Ok(Json(rows))
+    Ok(Json(rows.into_iter().map(Into::into).collect()))
 }
 
 #[cfg(test)]
@@ -65,7 +66,7 @@ mod tests {
             benchmark_stock_id: Set(benchmark_stock_id.into()),
             direction: Set("outperform".into()),
             probability: Set(rust_decimal::Decimal::new(65, 2)),
-            base_date: Set(NaiveDate::from_ymd_opt(2026, 6, 1).expect("date")),
+            base_date: Set(NaiveDate::from_ymd_opt(2099, 1, 2).expect("date")),
             due_date: Set(due_date),
             created_at: Set(created_at),
         }
@@ -75,7 +76,7 @@ mod tests {
     }
 
     fn ts(minute: u32) -> DateTime<FixedOffset> {
-        DateTime::parse_from_rfc3339(&format!("2026-06-01T00:{minute:02}:00+00:00"))
+        DateTime::parse_from_rfc3339(&format!("2099-01-02T00:{minute:02}:00+00:00"))
             .expect("parse timestamp")
     }
 
@@ -86,17 +87,17 @@ mod tests {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let nid = insert_test_note(&db, sid, "t", "b").await;
-        insert_test_stock(&db, "TGT1", "Target").await;
-        insert_test_stock(&db, "BM1", "Benchmark").await;
+        insert_test_stock(&db, "TEST_TARGET", "Test Target").await;
+        insert_test_stock(&db, "TEST_BENCHMARK", "Test Benchmark").await;
         let other_note = insert_test_note(&db, sid, "other", "b").await;
 
         let first = seed_prediction(
             &db,
             sid,
             Some(nid),
-            "TGT1",
-            "BM1",
-            NaiveDate::from_ymd_opt(2026, 7, 1).expect("date"),
+            "TEST_TARGET",
+            "TEST_BENCHMARK",
+            NaiveDate::from_ymd_opt(2099, 2, 1).expect("date"),
             ts(0),
         )
         .await;
@@ -104,9 +105,9 @@ mod tests {
             &db,
             sid,
             Some(nid),
-            "TGT1",
-            "BM1",
-            NaiveDate::from_ymd_opt(2026, 8, 1).expect("date"),
+            "TEST_TARGET",
+            "TEST_BENCHMARK",
+            NaiveDate::from_ymd_opt(2099, 3, 1).expect("date"),
             ts(1),
         )
         .await;
@@ -114,16 +115,44 @@ mod tests {
             &db,
             sid,
             Some(other_note),
-            "TGT1",
-            "BM1",
-            NaiveDate::from_ymd_opt(2026, 8, 1).expect("date"),
+            "TEST_TARGET",
+            "TEST_BENCHMARK",
+            NaiveDate::from_ymd_opt(2099, 3, 1).expect("date"),
             ts(2),
         )
         .await;
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
         res.assert_status_ok();
-        assert_eq!(res.json::<Vec<prediction::Model>>(), vec![first, second]);
+        assert_eq!(
+            res.json::<serde_json::Value>(),
+            serde_json::json!([
+                {
+                    "prediction_id": first.prediction_id,
+                    "strategy_id": sid,
+                    "note_id": nid,
+                    "target_stock_id": "TEST_TARGET",
+                    "benchmark_stock_id": "TEST_BENCHMARK",
+                    "direction": "outperform",
+                    "probability": 0.65,
+                    "base_date": "2099-01-02",
+                    "due_date": "2099-02-01",
+                    "created_at": first.created_at,
+                },
+                {
+                    "prediction_id": second.prediction_id,
+                    "strategy_id": sid,
+                    "note_id": nid,
+                    "target_stock_id": "TEST_TARGET",
+                    "benchmark_stock_id": "TEST_BENCHMARK",
+                    "direction": "outperform",
+                    "probability": 0.65,
+                    "base_date": "2099-01-02",
+                    "due_date": "2099-03-01",
+                    "created_at": second.created_at,
+                },
+            ]),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -134,10 +163,7 @@ mod tests {
 
         let res = server.get(&format!("/api/notes/{nid}/predictions")).await;
         res.assert_status_ok();
-        assert_eq!(
-            res.json::<Vec<prediction::Model>>(),
-            Vec::<prediction::Model>::new()
-        );
+        assert_eq!(res.json::<serde_json::Value>(), serde_json::json!([]));
     }
 
     #[backend_test_macros::database_test]

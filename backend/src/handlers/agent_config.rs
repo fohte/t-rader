@@ -8,12 +8,11 @@ use axum::extract::State;
 use axum::http::StatusCode;
 
 use crate::AppState;
-use crate::entities::agent_config;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
-    AgentConfigResponse, AgentGraphBody, AgentsMdBody, CreateAgentConfigRequest, SkillBody,
-    SkillsBody,
+    AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentsMdBody,
+    CreateAgentConfigRequest, SkillBody, SkillsBody,
 };
 use crate::services::agent_config as svc;
 
@@ -37,15 +36,20 @@ fn map_err(err: svc::AgentConfigError) -> AppError {
     path = "/api/agent-configs",
     tag = "agent_config",
     responses(
-        (status = 200, body = Vec<agent_config::Model>),
+        (status = 200, body = Vec<AgentConfigItemResponse>),
         (status = 500, body = ErrorResponse),
     )
 )]
 pub async fn list_agent_configs(
     State(state): State<AppState>,
-) -> Result<Json<Vec<agent_config::Model>>, AppError> {
+) -> Result<Json<Vec<AgentConfigItemResponse>>, AppError> {
     let items = svc::list(&state.db).await.map_err(map_err)?;
-    Ok(Json(items))
+    Ok(Json(
+        items
+            .into_iter()
+            .map(AgentConfigItemResponse::from)
+            .collect(),
+    ))
 }
 
 /// 目的別 agent 設定を作成 (purpose のみ必須、内容は空で作成し後続の PUT で設定する)
@@ -55,7 +59,7 @@ pub async fn list_agent_configs(
     tag = "agent_config",
     request_body = CreateAgentConfigRequest,
     responses(
-        (status = 201, body = agent_config::Model),
+        (status = 201, body = AgentConfigItemResponse),
         (status = 400, description = "purpose が不正", body = ErrorResponse),
         (status = 409, description = "purpose が既存と衝突", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -66,11 +70,11 @@ pub async fn list_agent_configs(
 pub async fn create_agent_config(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateAgentConfigRequest>,
-) -> Result<(StatusCode, Json<agent_config::Model>), AppError> {
+) -> Result<(StatusCode, Json<AgentConfigItemResponse>), AppError> {
     let created = svc::create(&state.db, payload.purpose)
         .await
         .map_err(map_err)?;
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// 目的別 agent 設定を取得。purpose キーで `agent_config` テーブルの行をそのまま返す。
@@ -81,7 +85,7 @@ pub async fn create_agent_config(
     tag = "agent_config",
     params(("purpose" = String, Path, description = "目的キー")),
     responses(
-        (status = 200, body = agent_config::Model),
+        (status = 200, body = AgentConfigItemResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
     )
@@ -89,11 +93,11 @@ pub async fn create_agent_config(
 pub async fn get_agent_config(
     State(state): State<AppState>,
     JsonPath(purpose): JsonPath<String>,
-) -> Result<Json<agent_config::Model>, AppError> {
+) -> Result<Json<AgentConfigItemResponse>, AppError> {
     let model = svc::find_or_404(&state.db, &purpose)
         .await
         .map_err(map_err)?;
-    Ok(Json(model))
+    Ok(Json(model.into()))
 }
 
 /// 目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。

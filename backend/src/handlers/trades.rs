@@ -8,17 +8,19 @@ use sea_orm::QuerySelect;
 use sea_orm::{
     ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
-use utoipa::{IntoParams, ToSchema};
+use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::entities::{trade, trade_note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
-use crate::models::{CreateTradeRequest, PerformanceSummary, UpdateTradeRequest};
+use crate::models::{
+    CreateTradeRequest, PerformanceSummary, TradeListItem, TradeResponse, UpdateTradeRequest,
+};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::trades as trades_svc;
@@ -31,13 +33,6 @@ const ALLOWED_SOURCE: [&str; 3] = ["manual", "csv", "api"];
 pub struct ListTradesQuery {
     pub strategy_id: Option<Uuid>,
     pub symbol: Option<String>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct TradeListItem {
-    #[serde(flatten)]
-    pub trade: trade::Model,
-    pub note_count: i64,
 }
 
 /// 取引履歴一覧
@@ -88,7 +83,7 @@ pub async fn list_trades(
             .into_iter()
             .map(|trade| TradeListItem {
                 note_count: note_counts.get(&trade.id).copied().unwrap_or_default(),
-                trade,
+                trade: trade.into(),
             })
             .collect(),
     ))
@@ -101,7 +96,7 @@ pub async fn list_trades(
     tag = "trades",
     params(("id" = Uuid, Path, description = "取引 ID")),
     responses(
-        (status = 200, body = trade::Model),
+        (status = 200, body = TradeResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 500, body = ErrorResponse),
@@ -110,12 +105,12 @@ pub async fn list_trades(
 pub async fn get_trade(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
-) -> Result<Json<trade::Model>, AppError> {
+) -> Result<Json<TradeResponse>, AppError> {
     let m = trade::Entity::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("trade {id} not found")))?;
-    Ok(Json(m))
+    Ok(Json(m.into()))
 }
 
 /// 取引作成
@@ -125,7 +120,7 @@ pub async fn get_trade(
     tag = "trades",
     request_body = CreateTradeRequest,
     responses(
-        (status = 201, body = trade::Model),
+        (status = 201, body = TradeResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
@@ -135,7 +130,7 @@ pub async fn get_trade(
 pub async fn create_trade(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateTradeRequest>,
-) -> Result<(StatusCode, Json<trade::Model>), AppError> {
+) -> Result<(StatusCode, Json<TradeResponse>), AppError> {
     let symbol = p.symbol.trim().to_string();
     if symbol.is_empty() {
         return Err(AppError::Validation("symbol must not be empty".into()));
@@ -195,7 +190,7 @@ pub async fn create_trade(
     .await?;
     txn.commit().await?;
 
-    Ok((StatusCode::CREATED, Json(created)))
+    Ok((StatusCode::CREATED, Json(created.into())))
 }
 
 /// 取引更新
@@ -206,7 +201,7 @@ pub async fn create_trade(
     params(("id" = Uuid, Path, description = "取引 ID")),
     request_body = UpdateTradeRequest,
     responses(
-        (status = 200, body = trade::Model),
+        (status = 200, body = TradeResponse),
         (status = 400, description = "リクエストパラメータが不正", body = ErrorResponse),
         (status = 404, body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
@@ -218,7 +213,7 @@ pub async fn update_trade(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<UpdateTradeRequest>,
-) -> Result<Json<trade::Model>, AppError> {
+) -> Result<Json<TradeResponse>, AppError> {
     let current = trade::Entity::find_by_id(id)
         .one(&state.db)
         .await?
@@ -298,7 +293,7 @@ pub async fn update_trade(
         .await?;
     }
     txn.commit().await?;
-    Ok(Json(updated))
+    Ok(Json(updated.into()))
 }
 
 /// 取引削除
@@ -354,4 +349,76 @@ pub async fn trades_summary(
     Ok(Json(
         trades_svc::fetch_summary(&state.db, p.strategy_id).await?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    use crate::entities::trade;
+    use crate::testing::{create_test_server_with_db, insert_test_strategy};
+
+    fn normalize_trade(mut value: Value) -> Value {
+        value["id"] = json!("<dyn>");
+        value["strategy_id"] = json!("<dyn>");
+        value["created_at"] = json!("<dyn>");
+        value["updated_at"] = json!("<dyn>");
+        value
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_returns_flattened_trade_with_note_count(db: crate::database::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        let trade_id = Uuid::new_v4();
+        trade::ActiveModel {
+            id: Set(trade_id),
+            strategy_id: Set(strategy_id),
+            symbol: Set("fictional-symbol-123".into()),
+            side: Set("buy".into()),
+            qty: Set(Decimal::from(1200)),
+            price: Set(Decimal::from(275)),
+            fee: Set(Decimal::from(1)),
+            date: Set(chrono::NaiveDate::from_ymd_opt(2026, 2, 3).expect("valid date")),
+            source: Set("manual".into()),
+            note: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert trade");
+
+        let response = server
+            .get(&format!("/api/trades?strategy_id={strategy_id}"))
+            .await;
+        response.assert_status_ok();
+        let actual = response
+            .json::<Vec<Value>>()
+            .into_iter()
+            .map(normalize_trade)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual,
+            vec![json!({
+                "id": "<dyn>",
+                "strategy_id": "<dyn>",
+                "symbol": "fictional-symbol-123",
+                "side": "buy",
+                "qty": 1200,
+                "price": 275,
+                "fee": 1,
+                "date": "2026-02-03",
+                "source": "manual",
+                "note": null,
+                "created_at": "<dyn>",
+                "updated_at": "<dyn>",
+                "note_count": 0,
+            })],
+        );
+    }
 }

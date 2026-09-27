@@ -4,6 +4,34 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::entities::strategy;
+
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = Strategy)]
+pub struct StrategyResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub description: Option<String>,
+    pub sort_order: i32,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub created_at: DateTime<FixedOffset>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl From<strategy::Model> for StrategyResponse {
+    fn from(model: strategy::Model) -> Self {
+        Self {
+            id: model.id,
+            name: model.name,
+            description: model.description,
+            sort_order: model.sort_order,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateStrategyRequest {
