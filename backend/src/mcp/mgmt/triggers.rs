@@ -111,7 +111,7 @@ mod tests {
     use super::*;
 
     #[backend_test_macros::database_test]
-    async fn create_strategy_trigger_inserts_cron_trigger(db: crate::database::DatabaseHandle) {
+    async fn create_strategy_trigger_inserts_cron_trigger(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
@@ -167,7 +167,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_strategy_trigger_rejects_cron_without_schedule(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -194,7 +194,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_strategy_trigger_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
+    async fn create_strategy_trigger_rejects_unknown_strategy(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -214,7 +216,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_strategy_trigger_applies_fields(db: crate::database::DatabaseHandle) {
+    async fn update_strategy_trigger_applies_fields(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
             insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "old prompt").await;
@@ -251,7 +253,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn update_strategy_trigger_rejects_hook_slug_on_cron_trigger(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
@@ -273,7 +275,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_strategy_trigger_rejects_unknown_trigger(db: crate::database::DatabaseHandle) {
+    async fn update_strategy_trigger_rejects_unknown_trigger(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -292,7 +294,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_strategy_trigger_removes_row(db: crate::database::DatabaseHandle) {
+    async fn delete_strategy_trigger_removes_row(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
             insert_test_hook_trigger(&db, strategy_id, "earnings", "prompt", None, true).await;
@@ -311,7 +313,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_strategy_trigger_rejects_unknown_trigger(db: crate::database::DatabaseHandle) {
+    async fn delete_strategy_trigger_rejects_unknown_trigger(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server

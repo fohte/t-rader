@@ -54,13 +54,13 @@ pub async fn save(
 mod tests {
     use super::*;
     #[backend_test_macros::database_test]
-    async fn find_current_returns_none_when_row_missing(db: crate::database::DatabaseHandle) {
+    async fn find_current_returns_none_when_row_missing(db: gateway_postgres::DatabaseHandle) {
         let current = find_current(&db).await.expect("query");
         assert_eq!(current, None);
     }
 
     #[backend_test_macros::database_test]
-    async fn save_creates_row_when_missing(db: crate::database::DatabaseHandle) {
+    async fn save_creates_row_when_missing(db: gateway_postgres::DatabaseHandle) {
         let saved = save(&db, serde_json::json!({ "max_sector_ratio": "0.3" }))
             .await
             .expect("save");
@@ -79,7 +79,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn save_twice_keeps_single_row_and_updates_value(db: crate::database::DatabaseHandle) {
+    async fn save_twice_keeps_single_row_and_updates_value(db: gateway_postgres::DatabaseHandle) {
         save(&db, serde_json::json!({ "max_sector_ratio": "0.3" }))
             .await
             .expect("save first");

@@ -177,7 +177,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn submit_chat_creates_task_row_and_submits_to_agent(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_next_task_id("agent-task-1").await;
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_unknown_strategy_returns_404(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_unknown_strategy_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/strategies/00000000-0000-0000-0000-000000000000/chat")
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_empty_prompt_returns_400(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_empty_prompt_returns_400(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_agent_not_configured_returns_503(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_agent_not_configured_returns_503(db: gateway_postgres::DatabaseHandle) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_missing_agent_config_returns_503(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_missing_agent_config_returns_503(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_returns_phase(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_returns_phase(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_unknown_returns_404(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_unknown_returns_404(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_strategy_mismatch_returns_404(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_strategy_mismatch_returns_404(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategy_tasks_returns_tasks_newest_first(db: crate::database::DatabaseHandle) {
+    async fn list_strategy_tasks_returns_tasks_newest_first(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
@@ -455,7 +455,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategy_tasks_unknown_strategy_returns_404(db: crate::database::DatabaseHandle) {
+    async fn list_strategy_tasks_unknown_strategy_returns_404(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let server = create_test_server(db).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/tasks")
@@ -464,7 +466,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategy_tasks_scoped_to_strategy(db: crate::database::DatabaseHandle) {
+    async fn list_strategy_tasks_scoped_to_strategy(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;

@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_bars_inserts_new_records(db: crate::database::DatabaseHandle) {
+    async fn upsert_bars_inserts_new_records(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_bars_updates_existing_records(db: crate::database::DatabaseHandle) {
+    async fn upsert_bars_updates_existing_records(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date");
@@ -277,13 +277,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_bars_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
+    async fn upsert_bars_with_empty_vec_is_noop(db: gateway_postgres::DatabaseHandle) {
         let result = upsert_bars(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_bars_filters_by_date_range(db: crate::database::DatabaseHandle) {
+    async fn find_bars_filters_by_date_range(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -325,7 +325,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn find_bars_by_instruments_filters_to_requested_instruments(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
         insert_test_instrument(&db, "9984").await;
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_bar_returns_most_recent(db: crate::database::DatabaseHandle) {
+    async fn find_latest_bar_returns_most_recent(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let bars = vec![
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_bar_returns_none_when_no_bars(db: crate::database::DatabaseHandle) {
+    async fn find_latest_bar_returns_none_when_no_bars(db: gateway_postgres::DatabaseHandle) {
         let result = find_latest_bar(&db, "7203", "1d")
             .await
             .expect("find failed");
@@ -401,7 +401,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn find_latest_bar_on_or_before_returns_latest_bar_at_or_before_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
 
@@ -433,7 +433,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn find_latest_bar_on_or_before_returns_none_when_no_bar_before_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
 

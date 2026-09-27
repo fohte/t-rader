@@ -28,7 +28,7 @@ pub(super) async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &s
 }
 
 pub(super) fn build_server(
-    db: impl Into<crate::database::DatabaseHandle>,
+    db: impl Into<gateway_postgres::DatabaseHandle>,
     fake: Arc<FakeAgentTaskClient>,
 ) -> MgmtServer {
     MgmtServer::new(db, fake as SharedAgentTaskClient)

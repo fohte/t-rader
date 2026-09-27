@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_and_list_roundtrip(db: crate::database::DatabaseHandle) {
+    async fn create_and_list_roundtrip(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let created = server
             .post("/api/agent-configs")
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn duplicate_purpose_is_409(db: crate::database::DatabaseHandle) {
+    async fn duplicate_purpose_is_409(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let body = json!({ "purpose": "explore" });
         server
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn invalid_purpose_is_400(db: crate::database::DatabaseHandle) {
+    async fn invalid_purpose_is_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/agent-configs")
@@ -445,14 +445,14 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_nonexistent_agent_config_returns_404(db: crate::database::DatabaseHandle) {
+    async fn get_nonexistent_agent_config_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server.get("/api/agent-configs/missing").await;
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_agent_config_removes_row(db: crate::database::DatabaseHandle) {
+    async fn delete_agent_config_removes_row(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         server
             .post("/api/agent-configs")
@@ -471,7 +471,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_then_get_agents_md_round_trips(db: crate::database::DatabaseHandle) {
+    async fn put_then_get_agents_md_round_trips(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         server
             .post("/api/agent-configs")
@@ -493,14 +493,14 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn agents_md_get_404_for_unknown_purpose(db: crate::database::DatabaseHandle) {
+    async fn agents_md_get_404_for_unknown_purpose(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server.get("/api/agent-configs/missing/agents-md").await;
         res.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[backend_test_macros::database_test]
-    async fn single_skill_add_update_delete_lifecycle(db: crate::database::DatabaseHandle) {
+    async fn single_skill_add_update_delete_lifecycle(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         server
             .post("/api/agent-configs")
@@ -543,7 +543,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_unknown_skill_returns_404(db: crate::database::DatabaseHandle) {
+    async fn delete_unknown_skill_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         server
             .post("/api/agent-configs")
@@ -557,7 +557,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_then_get_agent_graph_round_trips(db: crate::database::DatabaseHandle) {
+    async fn put_then_get_agent_graph_round_trips(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         server
             .post("/api/agent-configs")
@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_agent_graph_rejects_invalid_yaml(db: crate::database::DatabaseHandle) {
+    async fn put_agent_graph_rejects_invalid_yaml(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         server
             .post("/api/agent-configs")
@@ -602,7 +602,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn get_agent_config_bundle_returns_agents_md_skills_and_model(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let model = std::env::var("STRATEGY_AGENT_MODEL")
             .expect("STRATEGY_AGENT_MODEL must be set to run this test (see .github/workflows/test.yml, or set it in .env.local)");
@@ -642,7 +642,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_agent_config_bundle_404_for_unknown_purpose(db: crate::database::DatabaseHandle) {
+    async fn get_agent_config_bundle_404_for_unknown_purpose(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server.get("/api/agent-configs/missing/agent-config").await;
         res.assert_status(StatusCode::NOT_FOUND);

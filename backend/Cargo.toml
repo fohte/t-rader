@@ -9,6 +9,7 @@ members = [
     "crates/gateways/jquants",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
+    "crates/gateways/postgres",
     "crates/gateways/rss",
     "crates/gateways/t-rader-agent",
     "crates/test-macros",
@@ -22,6 +23,7 @@ default-members = [
     "crates/gateways/jquants",
     "crates/gateways/kata-exec",
     "crates/gateways/litellm",
+    "crates/gateways/postgres",
     "crates/gateways/rss",
     "crates/gateways/t-rader-agent",
     "crates/test-macros",
@@ -37,6 +39,7 @@ gateway-ibkr = { path = "crates/gateways/ibkr" }
 gateway-jquants = { path = "crates/gateways/jquants" }
 gateway-kata-exec = { path = "crates/gateways/kata-exec" }
 gateway-litellm = { path = "crates/gateways/litellm" }
+gateway-postgres = { path = "crates/gateways/postgres" }
 gateway-rss = { path = "crates/gateways/rss" }
 gateway-t-rader-agent = { path = "crates/gateways/t-rader-agent" }
 cron = "=0.17.0"
@@ -93,6 +96,7 @@ gateway-litellm = { workspace = true }
 gateway-kata-exec = { workspace = true }
 gateway-rss = { workspace = true }
 gateway-t-rader-agent = { workspace = true }
+gateway-postgres = { workspace = true }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
@@ -141,14 +145,9 @@ backend-test-macros = { path = "crates/test-macros" }
 axum-test = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
 gateway-jquants = { workspace = true, features = ["test-support"] }
+gateway-postgres = { workspace = true, features = ["test-support"] }
 rstest = { workspace = true }
 sea-orm = { workspace = true, features = ["mock"] }
-sqlx = { workspace = true, features = [
-    "runtime-tokio",
-    "tls-native-tls",
-    "postgres",
-    "migrate",
-] }
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = { workspace = true }
 

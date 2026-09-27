@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_and_list_roundtrip(db: crate::database::DatabaseHandle) {
+    async fn create_and_list_roundtrip(db: gateway_postgres::DatabaseHandle) {
         let created = create(&db, "explore".to_string()).await.unwrap();
         let expected = serde_json::json!({
             "id": "<id>",
@@ -387,39 +387,39 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_duplicate_purpose(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_duplicate_purpose(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = create(&db, "explore".to_string()).await.unwrap_err();
         assert!(matches!(err, AgentConfigError::DuplicatePurpose(p) if p == "explore"));
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_invalid_purpose_slug(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_invalid_purpose_slug(db: gateway_postgres::DatabaseHandle) {
         let err = create(&db, "Bad Purpose".to_string()).await.unwrap_err();
         assert!(matches!(err, AgentConfigError::InvalidPurpose(_)));
     }
 
     #[backend_test_macros::database_test]
-    async fn find_or_404_rejects_unknown_purpose(db: crate::database::DatabaseHandle) {
+    async fn find_or_404_rejects_unknown_purpose(db: gateway_postgres::DatabaseHandle) {
         let err = find_or_404(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(p) if p == "missing"));
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_removes_row(db: crate::database::DatabaseHandle) {
+    async fn delete_removes_row(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         delete(&db, "explore").await.unwrap();
         assert!(list(&db).await.unwrap().is_empty());
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_missing_returns_not_found(db: crate::database::DatabaseHandle) {
+    async fn delete_missing_returns_not_found(db: gateway_postgres::DatabaseHandle) {
         let err = delete(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(_)));
     }
 
     #[backend_test_macros::database_test]
-    async fn save_then_get_agents_md_round_trips(db: crate::database::DatabaseHandle) {
+    async fn save_then_get_agents_md_round_trips(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let content = "# 方針\n慎重に運用する";
         let saved = save_agents_md(&db, "explore", content.to_string())
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_skills_replaces_whole_map(db: crate::database::DatabaseHandle) {
+    async fn put_skills_replaces_whole_map(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
 
         let mut skills = std::collections::BTreeMap::new();
@@ -454,7 +454,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_skills_rejects_invalid_name(db: crate::database::DatabaseHandle) {
+    async fn put_skills_rejects_invalid_name(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let mut skills = std::collections::BTreeMap::new();
         skills.insert("Bad Name".to_string(), "x".to_string());
@@ -463,7 +463,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_skill_add_update_delete_lifecycle(db: crate::database::DatabaseHandle) {
+    async fn put_skill_add_update_delete_lifecycle(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
 
         put_skill(&db, "explore", "scout", "first".to_string())
@@ -491,14 +491,14 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_skill_rejects_unknown_skill(db: crate::database::DatabaseHandle) {
+    async fn delete_skill_rejects_unknown_skill(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = delete_skill(&db, "explore", "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::SkillNotFound(name) if name == "missing"));
     }
 
     #[backend_test_macros::database_test]
-    async fn save_then_get_agent_graph_round_trips(db: crate::database::DatabaseHandle) {
+    async fn save_then_get_agent_graph_round_trips(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let yaml = indoc! {"
             phases:
@@ -514,7 +514,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn save_agent_graph_rejects_invalid_yaml_and_leaves_row_unchanged(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = save_agent_graph(&db, "explore", "phases: [")

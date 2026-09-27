@@ -290,7 +290,7 @@ mod tests {
     // database_test は rstest の case 引数を扱わないため、for ループで列挙する。
     #[backend_test_macros::database_test]
     async fn resume_task_rejects_a_task_that_is_neither_failed_nor_completed_with_a_failed_step(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let fake = Arc::new(FakeAgentTaskClient::new());
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_task_not_found(db: crate::database::DatabaseHandle) {
+    async fn resume_task_not_found(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let task_id = Uuid::new_v4();
 
@@ -353,7 +353,7 @@ mod tests {
     // Completed は for_each の部分失敗で failed なステップを抱えたまま終わったタスク。
     #[backend_test_macros::database_test]
     async fn resume_task_resubmits_all_steps_and_updates_the_row_in_place(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         for start_phase in [StrategyTaskPhase::Failed, StrategyTaskPhase::Completed] {
@@ -474,7 +474,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn resume_task_rejects_a_second_call_after_the_first_claims_the_row(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
@@ -497,7 +497,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn auto_resume_task_resubmits_and_marks_auto_resumed(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
@@ -542,7 +542,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn auto_resume_task_rejects_a_second_call_once_already_auto_resumed(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
@@ -577,7 +577,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn auto_resume_task_marks_auto_resumed_at_even_when_submission_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_task_does_not_touch_auto_resumed_at(db: crate::database::DatabaseHandle) {
+    async fn resume_task_does_not_touch_auto_resumed_at(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let task_id =
             insert_task_with_phase(&db, strategy_id, StrategyTaskPhase::Failed, "p", None).await;

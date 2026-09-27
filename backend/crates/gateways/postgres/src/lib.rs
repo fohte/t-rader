@@ -5,6 +5,11 @@ use sea_orm::{
     IsolationLevel, QueryResult, Statement, TransactionError, TransactionOptions, TransactionTrait,
 };
 
+extern crate self as gateway_postgres;
+
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
 #[derive(Clone)]
 enum DatabaseHandleInner {
     Connection(DatabaseConnection),

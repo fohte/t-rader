@@ -82,7 +82,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn list_returns_predictions_linked_to_note_in_creation_order(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_returns_empty_for_note_without_predictions(db: crate::database::DatabaseHandle) {
+    async fn list_returns_empty_for_note_without_predictions(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let nid = insert_test_note(&db, sid, "t", "b").await;
@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_for_unknown_note_returns_404(db: crate::database::DatabaseHandle) {
+    async fn list_for_unknown_note_returns_404(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server

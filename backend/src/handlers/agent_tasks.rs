@@ -68,7 +68,7 @@ mod tests {
     use super::*;
 
     #[backend_test_macros::database_test]
-    async fn valid_token_returns_204_and_notifies_watcher(db: crate::database::DatabaseHandle) {
+    async fn valid_token_returns_204_and_notifies_watcher(db: gateway_postgres::DatabaseHandle) {
         let (state, server) = create_test_server_with_state(db).await;
         let notified = state.agent_task_notify.notified();
 
@@ -88,7 +88,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn mismatched_token_returns_401(db: crate::database::DatabaseHandle) {
+    async fn mismatched_token_returns_401(db: gateway_postgres::DatabaseHandle) {
         let (_state, server) = create_test_server_with_state(db).await;
 
         let res = server
@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn missing_token_header_returns_401(db: crate::database::DatabaseHandle) {
+    async fn missing_token_header_returns_401(db: gateway_postgres::DatabaseHandle) {
         let (_state, server) = create_test_server_with_state(db).await;
 
         let res = server

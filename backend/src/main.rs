@@ -10,7 +10,6 @@ use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::news::rss::RssNewsAggregator;
-use backend::database::DatabaseHandle;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
@@ -19,6 +18,7 @@ use core_application::{IndicatorObservationSource, SharedNewsAggregator};
 use gateway_fred::FredClient;
 use gateway_ibkr::IbkrClient;
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
+use gateway_postgres::DatabaseHandle;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
 

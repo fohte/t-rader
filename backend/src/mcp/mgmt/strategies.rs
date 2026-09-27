@@ -218,7 +218,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn submit_strategy_task_inserts_row_and_submits_to_agent(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long-term").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
@@ -275,7 +275,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn submit_strategy_task_forwards_purpose_to_agent_client(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long-term").await;
         agent_config::create(&db, "explore".to_string())
@@ -345,7 +345,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_strategy_task_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
+    async fn submit_strategy_task_rejects_unknown_strategy(db: gateway_postgres::DatabaseHandle) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let server = build_server(db, fake);
 
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_strategy_task_rejects_empty_prompt(db: crate::database::DatabaseHandle) {
+    async fn submit_strategy_task_rejects_empty_prompt(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
@@ -379,7 +379,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn submit_strategy_task_persists_failure_on_agent_error(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
@@ -415,7 +415,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn resume_strategy_task_resumes_a_failed_task_in_place(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_strategy_task_rejects_when_not_failed(db: crate::database::DatabaseHandle) {
+    async fn resume_strategy_task_rejects_when_not_failed(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -491,7 +491,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_strategy_task_not_found(db: crate::database::DatabaseHandle) {
+    async fn resume_strategy_task_not_found(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -505,7 +505,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_status_returns_row(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_status_returns_row(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_status_not_found(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_status_not_found(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
             .get_strategy_task_status(Parameters(GetStrategyTaskStatusParams {
@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategies_counts_unread_cards(db: crate::database::DatabaseHandle) {
+    async fn list_strategies_counts_unread_cards(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
 
         // unread ノート 2 件、approved ノート 1 件 → unread だけカウント

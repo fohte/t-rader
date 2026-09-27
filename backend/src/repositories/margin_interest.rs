@@ -104,7 +104,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_inserts_and_updates_on_conflict(db: crate::database::DatabaseHandle) {
+    async fn upsert_inserts_and_updates_on_conflict(db: gateway_postgres::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2024, 1, 5).expect("date");
 
         upsert_margin_interest(&db, vec![make_record(date, "7203", 100)])
@@ -121,13 +121,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
+    async fn upsert_with_empty_vec_is_noop(db: gateway_postgres::DatabaseHandle) {
         let result = upsert_margin_interest(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_none_when_empty(db: crate::database::DatabaseHandle) {
+    async fn find_latest_returns_none_when_empty(db: gateway_postgres::DatabaseHandle) {
         let latest = find_latest_margin_interest_date(&db)
             .await
             .expect("query ok");
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_max_date(db: crate::database::DatabaseHandle) {
+    async fn find_latest_returns_max_date(db: gateway_postgres::DatabaseHandle) {
         let older = NaiveDate::from_ymd_opt(2024, 1, 5).expect("date");
         let newer = NaiveDate::from_ymd_opt(2024, 1, 12).expect("date");
         upsert_margin_interest(

@@ -720,7 +720,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn sync_note_refs_indexes_refs_from_body_and_graphs_without_duplication(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = crate::testing::insert_test_strategy(&db, "s").await;
         let note_id = crate::testing::insert_test_note(&db, strategy_id, "t", "orig").await;

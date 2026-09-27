@@ -60,7 +60,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn agent_models_returns_empty_list_when_llm_gateway_unconfigured(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
         let response = server.get("/api/agent-models").await;
@@ -72,7 +72,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn agent_models_proxies_llm_gateway_response(db: crate::database::DatabaseHandle) {
+    async fn agent_models_proxies_llm_gateway_response(db: gateway_postgres::DatabaseHandle) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/model_group/info"))
@@ -113,7 +113,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn agent_models_returns_empty_list_when_llm_gateway_unreachable(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let llm_gateway = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn agent_tools_lists_known_strategy_mcp_tools(db: crate::database::DatabaseHandle) {
+    async fn agent_tools_lists_known_strategy_mcp_tools(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let response = server.get("/api/agent-tools").await;
         response.assert_status_ok();

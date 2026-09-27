@@ -87,7 +87,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_query_data_truncates_to_most_recent_bars_when_exceeding_max(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let execution_step_id = Uuid::new_v4();
         let total = MAX_SNAPSHOT_BARS + 1;
@@ -136,7 +136,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_query_data_with_no_bars_leaves_published_and_effective_at_unset(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let execution_step_id = Uuid::new_v4();
         let bars: Vec<BarDto> = Vec::new();

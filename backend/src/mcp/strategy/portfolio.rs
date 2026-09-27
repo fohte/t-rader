@@ -163,7 +163,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_portfolio_returns_account_and_strategy_scopes(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -230,7 +230,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_portfolio_returns_empty_scopes_when_no_trades(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
@@ -264,7 +264,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_portfolio_backfills_prices_and_computes_investable_amount(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000).await;

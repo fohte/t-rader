@@ -225,7 +225,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn test_ingests_and_upserts_new_disclosures_including_undecided_schedule(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
@@ -296,7 +296,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_continues_past_days_that_fail_to_fetch(db: crate::database::DatabaseHandle) {
+    async fn test_continues_past_days_that_fail_to_fetch(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)
