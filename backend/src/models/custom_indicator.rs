@@ -1,5 +1,43 @@
+use sea_orm::entity::prelude::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
+
+use crate::entities::custom_indicator;
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = CustomIndicator)]
+pub struct CustomIndicatorResponse {
+    pub indicator_id: Uuid,
+    pub name: String,
+    pub scope: String,
+    pub strategy_id: Option<Uuid>,
+    pub code: String,
+    pub input_schema: Json,
+    pub output_schema: Json,
+    pub description: Option<String>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
+    pub updated_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+impl From<custom_indicator::Model> for CustomIndicatorResponse {
+    fn from(model: custom_indicator::Model) -> Self {
+        Self {
+            indicator_id: model.indicator_id,
+            name: model.name,
+            scope: model.scope,
+            strategy_id: model.strategy_id,
+            code: model.code,
+            input_schema: model.input_schema,
+            output_schema: model.output_schema,
+            description: model.description,
+            created_at: model.created_at,
+            updated_at: model.updated_at,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]

@@ -5,9 +5,9 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 
 use crate::AppState;
-use crate::entities::bars;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
+use crate::models::BarResponse;
 use crate::repositories;
 
 /// バーデータ取得のクエリパラメータ
@@ -36,7 +36,7 @@ fn default_timeframe() -> String {
     tag = "bars",
     params(BarsQueryParams),
     responses(
-        (status = 200, description = "バーデータ一覧", body = Vec<bars::Model>),
+        (status = 200, description = "バーデータ一覧", body = Vec<BarResponse>),
         (status = 400, description = "バリデーションエラー", body = ErrorResponse),
         (status = 500, description = "内部サーバーエラー", body = ErrorResponse),
     )
@@ -44,14 +44,14 @@ fn default_timeframe() -> String {
 pub async fn list_bars(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<BarsQueryParams>,
-) -> Result<Json<Vec<bars::Model>>, AppError> {
+) -> Result<Json<Vec<BarResponse>>, AppError> {
     if params.instrument_id.trim().is_empty() {
         return Err(AppError::Validation(
             "instrument_id must not be empty".to_string(),
         ));
     }
 
-    // Bar.timeframe の OpenAPI スキーマは entity の String 型から導出されるため許容値を含まない。
+    // Bar.timeframe の OpenAPI スキーマは DTO の String 型から導出されるため許容値を含まない。
     // 実際の許容値はこの配列と bars テーブルの CHECK 制約が正とする。
     let valid_timeframes = ["1d"];
     if !valid_timeframes.contains(&params.timeframe.as_str()) {
@@ -83,7 +83,7 @@ pub async fn list_bars(
 
     let bars = repositories::bars::find_bars(&state.db, query).await?;
 
-    Ok(Json(bars))
+    Ok(Json(bars.into_iter().map(BarResponse::from).collect()))
 }
 
 #[cfg(test)]
@@ -137,10 +137,10 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn list_bars_returns_200_with_data(db: crate::database::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        insert_test_instrument(&db, "7203").await;
+        insert_test_instrument(&db, "TEST-INSTRUMENT").await;
 
         let bars = vec![make_test_bar(
-            "7203",
+            "TEST-INSTRUMENT",
             NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date"),
             100,
         )];
@@ -148,13 +148,23 @@ mod tests {
             .await
             .expect("upsert failed");
 
-        let response = server.get("/api/bars?instrument_id=7203").await;
+        let response = server.get("/api/bars?instrument_id=TEST-INSTRUMENT").await;
         response.assert_status_ok();
 
-        let body: Vec<serde_json::Value> = response.json();
-        assert_eq!(body.len(), 1);
-        assert_eq!(body[0]["instrument_id"], "7203");
-        assert_eq!(body[0]["timeframe"], "1d");
+        let body: serde_json::Value = response.json();
+        assert_eq!(
+            body,
+            serde_json::json!([{
+                "instrument_id": "TEST-INSTRUMENT",
+                "timeframe": "1d",
+                "timestamp": "2025-01-06T00:00:00Z",
+                "open": 100,
+                "high": 110,
+                "low": 90,
+                "close": 100,
+                "volume": 1000,
+            }]),
+        );
     }
 
     #[backend_test_macros::database_test]

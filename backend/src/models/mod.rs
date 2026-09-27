@@ -2,6 +2,7 @@ pub mod agent_config;
 pub mod agent_options;
 pub mod annotation;
 pub mod bar;
+pub mod bar_response;
 pub mod change_history;
 pub mod comment;
 pub mod config;
@@ -30,12 +31,13 @@ pub use agent_config::{
 pub use agent_options::{AgentModel, AgentModelsResponse, AgentTool, AgentToolsResponse};
 pub use annotation::{AnnotationResponse, CreateAnnotationRequest, UpdateAnnotationRequest};
 pub use bar::{Bar, Timeframe};
+pub use bar_response::BarResponse;
 pub use change_history::ChangeHistoryResponse;
 pub use comment::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
 pub use config::ConfigResponse;
 pub use custom_indicator::{
-    CreateCustomIndicatorRequest, PreviewIndicatorRequest, PreviewIndicatorResponse,
-    UpdateCustomIndicatorRequest,
+    CreateCustomIndicatorRequest, CustomIndicatorResponse, PreviewIndicatorRequest,
+    PreviewIndicatorResponse, UpdateCustomIndicatorRequest,
 };
 pub use import::{
     SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
