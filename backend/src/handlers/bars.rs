@@ -137,10 +137,10 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn list_bars_returns_200_with_data(db: crate::database::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        insert_test_instrument(&db, "7203").await;
+        insert_test_instrument(&db, "TEST-INSTRUMENT").await;
 
         let bars = vec![make_test_bar(
-            "7203",
+            "TEST-INSTRUMENT",
             NaiveDate::from_ymd_opt(2025, 1, 6).expect("invalid date"),
             100,
         )];
@@ -148,14 +148,14 @@ mod tests {
             .await
             .expect("upsert failed");
 
-        let response = server.get("/api/bars?instrument_id=7203").await;
+        let response = server.get("/api/bars?instrument_id=TEST-INSTRUMENT").await;
         response.assert_status_ok();
 
         let body: serde_json::Value = response.json();
         assert_eq!(
             body,
             serde_json::json!([{
-                "instrument_id": "7203",
+                "instrument_id": "TEST-INSTRUMENT",
                 "timeframe": "1d",
                 "timestamp": "2025-01-06T00:00:00Z",
                 "open": 100,
