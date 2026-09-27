@@ -169,7 +169,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_creates_prediction_with_given_values(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -198,7 +198,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_same_target_and_benchmark(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_rejects_invalid_direction(db: crate::database::DatabaseHandle) {
+    async fn record_prediction_rejects_invalid_direction(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
@@ -228,7 +228,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_rejects_invalid_probability(db: crate::database::DatabaseHandle) {
+    async fn record_prediction_rejects_invalid_probability(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
@@ -245,7 +245,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_due_date_not_after_base_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_rejects_missing_target_stock(db: crate::database::DatabaseHandle) {
+    async fn record_prediction_rejects_missing_target_stock(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
@@ -276,7 +276,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_missing_benchmark_stock(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -291,7 +291,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_cross_strategy_linked_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -311,7 +311,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn list_predictions_returns_only_own_strategy_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_predictions_filters_by_due_date_range(db: crate::database::DatabaseHandle) {
+    async fn list_predictions_filters_by_due_date_range(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;

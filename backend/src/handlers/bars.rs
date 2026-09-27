@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_bars_returns_200_with_data(db: crate::database::DatabaseHandle) {
+    async fn list_bars_returns_200_with_data(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         insert_test_instrument(&db, "TEST-INSTRUMENT").await;
 
@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_bars_with_invalid_params_returns_400(db: crate::database::DatabaseHandle) {
+    async fn list_bars_with_invalid_params_returns_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
 
         let cases = [
@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_bars_returns_empty_when_no_data(db: crate::database::DatabaseHandle) {
+    async fn list_bars_returns_empty_when_no_data(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
 
         let response = server.get("/api/bars?instrument_id=9999").await;
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_bars_with_date_range_filters_correctly(db: crate::database::DatabaseHandle) {
+    async fn list_bars_with_date_range_filters_correctly(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         insert_test_instrument(&db, "7203").await;
 

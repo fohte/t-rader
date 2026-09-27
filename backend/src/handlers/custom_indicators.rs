@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_global_indicator_returns_201(db: crate::database::DatabaseHandle) {
+    async fn create_global_indicator_returns_201(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/indicators")
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_strategy_indicator_returns_201(db: crate::database::DatabaseHandle) {
+    async fn create_strategy_indicator_returns_201(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let strategy_id = create_strategy(&server, "s1").await;
 
@@ -565,7 +565,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_records_change_history(db: crate::database::DatabaseHandle) {
+    async fn create_records_change_history(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/indicators")
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn empty_name_returns_400(db: crate::database::DatabaseHandle) {
+    async fn empty_name_returns_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/indicators")
@@ -603,7 +603,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn input_schema_non_object_returns_400(db: crate::database::DatabaseHandle) {
+    async fn input_schema_non_object_returns_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let mut payload = create_payload("rsi", "print('{}')");
         payload["input_schema"] = json!([1, 2, 3]);
@@ -612,7 +612,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn output_schema_non_object_returns_400(db: crate::database::DatabaseHandle) {
+    async fn output_schema_non_object_returns_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let mut payload = create_payload("rsi", "print('{}')");
         payload["output_schema"] = json!("not-object");
@@ -621,7 +621,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn duplicate_global_name_returns_409(db: crate::database::DatabaseHandle) {
+    async fn duplicate_global_name_returns_409(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let payload = create_payload("rsi", "print('{}')");
         server.post("/api/indicators").json(&payload).await;
@@ -630,7 +630,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn duplicate_strategy_name_returns_409(db: crate::database::DatabaseHandle) {
+    async fn duplicate_strategy_name_returns_409(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let strategy_id = create_strategy(&server, "s1").await;
         let payload = create_payload("rsi", "print('{}')");
@@ -646,7 +646,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn global_and_strategy_can_share_name(db: crate::database::DatabaseHandle) {
+    async fn global_and_strategy_can_share_name(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let strategy_id = create_strategy(&server, "s1").await;
         let payload = create_payload("rsi", "print('{}')");
@@ -662,7 +662,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_isolates_strategy_scopes(db: crate::database::DatabaseHandle) {
+    async fn list_isolates_strategy_scopes(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let s_a = create_strategy(&server, "a").await;
         let s_b = create_strategy(&server, "b").await;
@@ -696,7 +696,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn get_strategy_indicator_from_other_strategy_returns_404(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
         let s_a = create_strategy(&server, "a").await;
@@ -717,7 +717,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_changes_fields(db: crate::database::DatabaseHandle) {
+    async fn update_changes_fields(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let created = server
             .post("/api/indicators")
@@ -753,7 +753,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_records_change_history_diff(db: crate::database::DatabaseHandle) {
+    async fn update_records_change_history_diff(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let created = server
             .post("/api/indicators")
@@ -791,7 +791,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_removes_indicator(db: crate::database::DatabaseHandle) {
+    async fn delete_removes_indicator(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let created = server
             .post("/api/indicators")
@@ -809,7 +809,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_records_change_history(db: crate::database::DatabaseHandle) {
+    async fn delete_records_change_history(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let created = server
             .post("/api/indicators")
@@ -843,7 +843,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_indicator_prefers_strategy_scope(db: crate::database::DatabaseHandle) {
+    async fn resolve_indicator_prefers_strategy_scope(db: gateway_postgres::DatabaseHandle) {
         use crate::services::custom_indicators::resolve_indicator;
 
         let strategy_id = Uuid::new_v4();
@@ -927,7 +927,7 @@ mod tests {
         }
 
         #[backend_test_macros::database_test]
-        async fn preview_returns_validated_output(db: crate::database::DatabaseHandle) {
+        async fn preview_returns_validated_output(db: gateway_postgres::DatabaseHandle) {
             let executor = Arc::new(FakeKataExecutor::new());
             executor
                 .set_response(Ok(ExecResult {
@@ -973,7 +973,7 @@ mod tests {
 
         #[backend_test_macros::database_test]
         async fn preview_returns_400_for_input_schema_mismatch(
-            db: crate::database::DatabaseHandle,
+            db: gateway_postgres::DatabaseHandle,
         ) {
             let executor = Arc::new(FakeKataExecutor::new());
             let shared: SharedKataExecutor = executor.clone();
@@ -997,7 +997,7 @@ mod tests {
         }
 
         #[backend_test_macros::database_test]
-        async fn preview_passes_through_sandbox_rejection(db: crate::database::DatabaseHandle) {
+        async fn preview_passes_through_sandbox_rejection(db: gateway_postgres::DatabaseHandle) {
             let executor = Arc::new(FakeKataExecutor::new());
             executor
                 .set_response(Ok(ExecResult {
@@ -1028,7 +1028,7 @@ mod tests {
         }
 
         #[backend_test_macros::database_test]
-        async fn preview_returns_503_when_executor_disabled(db: crate::database::DatabaseHandle) {
+        async fn preview_returns_503_when_executor_disabled(db: gateway_postgres::DatabaseHandle) {
             let server = create_test_server(db).await;
             let res = server
                 .post("/api/indicators/preview")
@@ -1039,7 +1039,7 @@ mod tests {
 
         #[backend_test_macros::database_test]
         async fn preview_returns_200_with_validation_error_in_stderr_for_invalid_output(
-            db: crate::database::DatabaseHandle,
+            db: gateway_postgres::DatabaseHandle,
         ) {
             let executor = Arc::new(FakeKataExecutor::new());
             executor

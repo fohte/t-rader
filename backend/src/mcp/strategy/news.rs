@@ -127,7 +127,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_news_returns_full_item_shape(db: crate::database::DatabaseHandle) {
+    async fn search_news_returns_full_item_shape(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db.clone());
 
         let published_at = at_noon(ymd(2026, 6, 1));
@@ -170,7 +170,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_matches_keyword_case_insensitively_in_title_or_body(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -217,7 +217,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_does_not_treat_underscore_as_single_char_wildcard(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -248,7 +248,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_filters_by_published_at_range_inclusive(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -295,7 +295,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_orders_newest_first_and_respects_limit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 

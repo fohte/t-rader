@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_non_4_digit_symbol(db: crate::database::DatabaseHandle) {
+    async fn rejects_non_4_digit_symbol(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_short_sale_reports_inner(
                 Uuid::new_v4(),
@@ -150,7 +150,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn matches_by_first_4_chars_newest_first_with_blank_fields_as_null(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         seed(
             &db,
@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn filters_by_disc_date_range(db: crate::database::DatabaseHandle) {
+    async fn filters_by_disc_date_range(db: gateway_postgres::DatabaseHandle) {
         for (day, name) in [(1u32, "Jan"), (15, "Mid"), (28, "Late")] {
             seed(
                 &db,
@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn respects_limit_after_ordering(db: crate::database::DatabaseHandle) {
+    async fn respects_limit_after_ordering(db: gateway_postgres::DatabaseHandle) {
         for (day, name) in [(1u32, "A"), (2, "B"), (3, "C")] {
             seed(
                 &db,

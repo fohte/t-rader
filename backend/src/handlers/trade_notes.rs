@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_then_list_round_trips(db: crate::database::DatabaseHandle) {
+    async fn create_then_list_round_trips(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_preserves_link_creation_order(db: crate::database::DatabaseHandle) {
+    async fn list_preserves_link_creation_order(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_cross_strategy_note(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_cross_strategy_note(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let a = insert_test_strategy(&db, "a").await;
         let b = insert_test_strategy(&db, "b").await;
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_for_unknown_trade_returns_404(db: crate::database::DatabaseHandle) {
+    async fn create_for_unknown_trade_returns_404(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let nid = seed_note(&db, Some(sid)).await;
@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_for_unknown_note_returns_400(db: crate::database::DatabaseHandle) {
+    async fn create_for_unknown_note_returns_400(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
@@ -382,7 +382,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn duplicate_create_returns_409(db: crate::database::DatabaseHandle) {
+    async fn duplicate_create_returns_409(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;
@@ -402,7 +402,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_unlinks_and_unknown_pair_returns_404(db: crate::database::DatabaseHandle) {
+    async fn delete_unlinks_and_unknown_pair_returns_404(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let sid = insert_test_strategy(&db, "s").await;
         let tid = seed_trade(&db, sid).await;

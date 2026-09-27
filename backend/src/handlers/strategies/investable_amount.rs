@@ -84,7 +84,7 @@ mod tests {
     use crate::testing::{create_strategy, create_test_server};
 
     #[backend_test_macros::database_test]
-    async fn get_returns_null_when_unset(db: crate::database::DatabaseHandle) {
+    async fn get_returns_null_when_unset(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_then_get_round_trips(db: crate::database::DatabaseHandle) {
+    async fn put_then_get_round_trips(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_without_effective_at_defaults_to_now(db: crate::database::DatabaseHandle) {
+    async fn put_without_effective_at_defaults_to_now(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
         let before = chrono::Utc::now();
@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_keeps_previous_history_row(db: crate::database::DatabaseHandle) {
+    async fn put_keeps_previous_history_row(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 
@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_404_for_unknown_strategy(db: crate::database::DatabaseHandle) {
+    async fn get_404_for_unknown_strategy(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/investable-amount")
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_404_for_unknown_strategy(db: crate::database::DatabaseHandle) {
+    async fn put_404_for_unknown_strategy(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .put("/api/strategies/00000000-0000-0000-0000-000000000000/investable-amount")
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_400_for_negative_amount(db: crate::database::DatabaseHandle) {
+    async fn put_400_for_negative_amount(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "s").await;
 

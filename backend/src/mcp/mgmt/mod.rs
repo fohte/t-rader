@@ -58,8 +58,8 @@ mod triggers;
 mod tests_common;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::database::DatabaseHandle;
 use crate::error::AppError;
+use gateway_postgres::DatabaseHandle;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};

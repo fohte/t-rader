@@ -203,7 +203,7 @@ mod tests {
     use crate::testing::insert_test_strategy;
 
     #[backend_test_macros::database_test]
-    async fn delete_records_change_history_with_given_actor(db: crate::database::DatabaseHandle) {
+    async fn delete_records_change_history_with_given_actor(db: gateway_postgres::DatabaseHandle) {
         let id = insert_test_strategy(&db, "s").await;
 
         delete(&db, Actor::Llm { label: "mgmt-mcp" }, id)
@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_unknown_id_returns_not_found(db: crate::database::DatabaseHandle) {
+    async fn delete_unknown_id_returns_not_found(db: gateway_postgres::DatabaseHandle) {
         let err = delete(&db, Actor::Human, Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
     }
@@ -245,7 +245,7 @@ mod tests {
     // 直前に別経路で名前が変わることを、事前の rename で決定的に再現する。
     #[backend_test_macros::database_test]
     async fn delete_confirmed_rejects_when_name_changed_after_confirmation(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let id = insert_test_strategy(&db, "original").await;
 

@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_returns_201_with_full_row(db: crate::database::DatabaseHandle) {
+    async fn create_returns_201_with_full_row(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/rss-feeds")
@@ -182,7 +182,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn duplicate_source_is_409(db: crate::database::DatabaseHandle) {
+    async fn duplicate_source_is_409(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let body = json!({
             "source": "dup",
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn invalid_source_slug_is_400(db: crate::database::DatabaseHandle) {
+    async fn invalid_source_slug_is_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/rss-feeds")
@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn invalid_url_is_400(db: crate::database::DatabaseHandle) {
+    async fn invalid_url_is_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/rss-feeds")
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_enabled_only_filters(db: crate::database::DatabaseHandle) {
+    async fn list_enabled_only_filters(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let a: Value = server
             .post("/api/rss-feeds")
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn patch_updates_fields(db: crate::database::DatabaseHandle) {
+    async fn patch_updates_fields(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let created: Value = server
             .post("/api/rss-feeds")
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_returns_204_then_404(db: crate::database::DatabaseHandle) {
+    async fn delete_returns_204_then_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let created: Value = server
             .post("/api/rss-feeds")

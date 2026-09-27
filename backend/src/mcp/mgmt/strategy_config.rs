@@ -168,7 +168,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn get_strategy_config_returns_full_row_and_empty_triggers(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_config_includes_triggers(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_config_includes_triggers(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
             insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "prompt").await;
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_config_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_config_rejects_unknown_strategy(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server
@@ -225,7 +225,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_strategy_persists_name_and_description(db: crate::database::DatabaseHandle) {
+    async fn create_strategy_persists_name_and_description(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
@@ -258,7 +258,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_strategy_rejects_invalid_fields_without_writing_anything(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
@@ -280,7 +280,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn update_strategy_config_applies_multiple_fields_in_one_call(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
@@ -312,7 +312,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn update_strategy_config_rejects_invalid_name_without_writing_anything(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "original").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -335,7 +335,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn delete_strategy_requires_confirm_name_exact_match(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -354,7 +354,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn delete_strategy_succeeds_with_matching_confirm_name(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_strategy_rejects_unknown_strategy(db: crate::database::DatabaseHandle) {
+    async fn delete_strategy_rejects_unknown_strategy(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
 
         let err = server

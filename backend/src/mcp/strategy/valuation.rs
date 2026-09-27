@@ -131,7 +131,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_valuation_matches_code_prefix_and_date_range(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
         seed(&db, "ZZZZ0", ymd(2099, 1, 3), Decimal::new(125, 1)).await;

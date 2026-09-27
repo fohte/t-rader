@@ -105,7 +105,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn backfills_from_endpoint_start_date_when_db_is_empty(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         mock_succeeds_once_then_fails(&mock, SHORT_RATIO_START_DATE, 100.0).await;
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resumes_from_latest_date_minus_lookback(db: crate::database::DatabaseHandle) {
+    async fn resumes_from_latest_date_minus_lookback(db: gateway_postgres::DatabaseHandle) {
         let latest = Utc::now().date_naive() - chrono::Duration::days(365);
         upsert_short_ratios(&db, vec![make_ratio(latest, 100.0)])
             .await
@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resume_date_is_clamped_to_endpoint_start_date(db: crate::database::DatabaseHandle) {
+    async fn resume_date_is_clamped_to_endpoint_start_date(db: gateway_postgres::DatabaseHandle) {
         // latest - lookback がエンドポイント開始日より前になるケース
         let latest = SHORT_RATIO_START_DATE + chrono::Duration::days(1);
         upsert_short_ratios(&db, vec![make_ratio(latest, 100.0)])
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn standard_plan_is_also_accepted_by_the_plan_gate(db: crate::database::DatabaseHandle) {
+    async fn standard_plan_is_also_accepted_by_the_plan_gate(db: gateway_postgres::DatabaseHandle) {
         let today = Utc::now().date_naive();
         let floor = JQuantsPlan::Standard
             .range(today)
@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn overwrites_existing_row_on_correction(db: crate::database::DatabaseHandle) {
+    async fn overwrites_existing_row_on_correction(db: gateway_postgres::DatabaseHandle) {
         let target_date = SHORT_RATIO_START_DATE;
 
         let first_mock = JQuantsMockServer::start().await;

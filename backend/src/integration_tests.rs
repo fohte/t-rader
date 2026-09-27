@@ -30,7 +30,7 @@ use crate::testing::{
 };
 
 #[backend_test_macros::database_test]
-async fn all_five_submission_routes_converge_on_submit_task(db: crate::database::DatabaseHandle) {
+async fn all_five_submission_routes_converge_on_submit_task(db: gateway_postgres::DatabaseHandle) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
     let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client.clone()).await;
@@ -168,7 +168,7 @@ async fn all_five_submission_routes_converge_on_submit_task(db: crate::database:
 
 #[backend_test_macros::database_test]
 async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(
-    db: crate::database::DatabaseHandle,
+    db: gateway_postgres::DatabaseHandle,
 ) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();

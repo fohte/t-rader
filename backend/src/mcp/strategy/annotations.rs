@@ -200,7 +200,7 @@ mod tests {
 
     // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
     #[backend_test_macros::database_test]
-    async fn create_annotation_then_read_annotations(db: crate::database::DatabaseHandle) {
+    async fn create_annotation_then_read_annotations(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);
         let ts: DateTime<FixedOffset> = "2026-06-01T09:00:00+09:00".parse().expect("ts");
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_rejects_empty_target_kind(db: crate::database::DatabaseHandle) {
+    async fn create_annotation_rejects_empty_target_kind(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
         let err = server
@@ -286,7 +286,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_annotation_rejects_cross_strategy_linked_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -317,7 +317,7 @@ mod tests {
     /// 新しい試行のものだけが残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_replaces_unread_annotations_from_previous_attempt_of_same_step(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);
@@ -381,7 +381,7 @@ mod tests {
     /// 新しい試行が来ても削除されず残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_keeps_reviewed_annotations_from_previous_attempt(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
@@ -458,7 +458,7 @@ mod tests {
     /// (comment.target_id が FK を持たないため) 削除すると孤児化してしまうので残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_keeps_unread_annotations_with_comments_from_previous_attempt(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
@@ -535,7 +535,7 @@ mod tests {
     /// アノテーションを作る動作はこれまでどおり全件残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_keeps_multiple_annotations_from_the_same_attempt(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);

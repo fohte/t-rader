@@ -192,8 +192,8 @@ mod tests {
     }
 
     async fn setup_server_with_bars(
-        db: crate::database::DatabaseHandle,
-    ) -> (crate::database::DatabaseHandle, StrategyServer, Uuid) {
+        db: gateway_postgres::DatabaseHandle,
+    ) -> (gateway_postgres::DatabaseHandle, StrategyServer, Uuid) {
         let strategy_id = insert_strategy(&db, "x").await;
 
         insert_test_instrument(&db, "7203").await;
@@ -241,7 +241,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_returns_bars_for_each_requested_instrument(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
@@ -283,7 +283,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_returns_empty_bars_for_instrument_with_no_data(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
@@ -322,7 +322,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_records_evidence_per_instrument_when_execution_step_id_present(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server, strategy_id) = setup_server_with_bars(db).await;
         let execution_step_id = Uuid::new_v4();
@@ -347,7 +347,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_records_no_evidence_when_execution_step_id_absent(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server, strategy_id) = setup_server_with_bars(db).await;
 

@@ -384,7 +384,7 @@ mod tests {
     }
 
     async fn read(
-        db: &crate::database::DatabaseHandle,
+        db: &gateway_postgres::DatabaseHandle,
         symbol: &str,
     ) -> ReadShareholdingStructureResult {
         build_server(db.clone())
@@ -401,7 +401,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn returns_empty_and_null_sections_when_nothing_ingested(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let result = read(&db, "9999").await;
 
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_non_4_digit_symbol(db: crate::database::DatabaseHandle) {
+    async fn rejects_non_4_digit_symbol(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_shareholding_structure_inner(
                 Uuid::new_v4(),
@@ -433,7 +433,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn large_volume_reports_match_by_first_4_chars_newest_first_with_holder_details(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_large_volume(
             &db,
@@ -526,7 +526,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn large_volume_reports_respects_limit_after_ordering(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         for (i, day) in [1u32, 2, 3].into_iter().enumerate() {
             insert_large_volume(
@@ -582,7 +582,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn major_shareholders_returns_only_the_latest_filing(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_major_shareholders(
             &db,
@@ -646,7 +646,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn major_shareholders_skips_documents_without_decoded_content(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_major_shareholders(
             &db,
@@ -693,7 +693,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn cross_shareholdings_combines_spec_and_deem_with_mutual_holding(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_cross_shareholdings(
             &db,

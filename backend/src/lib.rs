@@ -2,7 +2,6 @@ pub mod agent_client;
 pub mod cli;
 pub(crate) mod concurrent;
 pub mod data_provider;
-pub mod database;
 pub(crate) mod date_utils;
 pub mod entities;
 pub mod error;
@@ -37,7 +36,6 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
 use crate::data_provider::SharedDailyBarSource;
-use crate::database::DatabaseHandle;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
@@ -48,6 +46,7 @@ use crate::handlers::{
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
 use gateway_jquants::JQuantsClient;
+use gateway_postgres::DatabaseHandle;
 
 #[derive(Clone)]
 pub struct AppState {

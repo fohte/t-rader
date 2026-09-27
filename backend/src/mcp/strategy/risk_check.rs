@@ -586,7 +586,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn defaults_to_cash_constraint_when_no_risk_policy_is_configured(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
@@ -624,7 +624,7 @@ mod integration_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn sector_ratio_binds_across_strategies(db: crate::database::DatabaseHandle) {
+    async fn sector_ratio_binds_across_strategies(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         insert_stock(&db, "7203", Some("transport")).await;
@@ -674,7 +674,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn all_constraints_become_unavailable_when_target_price_is_missing(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         set_max_sector_ratio(&db, "0.2").await;
@@ -716,7 +716,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn sector_ratio_is_unavailable_when_target_has_no_sector(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         set_max_sector_ratio(&db, "0.2").await;
@@ -759,7 +759,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn sector_ratio_is_unavailable_when_a_held_position_price_is_missing(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_stock(&db, "7203", Some("transport")).await;

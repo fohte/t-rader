@@ -264,7 +264,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_web_inner_enforces_per_task_call_limit(db: crate::database::DatabaseHandle) {
+    async fn search_web_inner_enforces_per_task_call_limit(db: gateway_postgres::DatabaseHandle) {
         let litellm = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
@@ -316,7 +316,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_web_inner_releases_call_count_reservation_when_llm_request_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let litellm = MockServer::start().await;
         Mock::given(method("POST"))
@@ -348,7 +348,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn increment_task_tool_call_count_is_independent_per_task_and_tool(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let task_a = format!("task-{}", Uuid::new_v4());
         let task_b = format!("task-{}", Uuid::new_v4());

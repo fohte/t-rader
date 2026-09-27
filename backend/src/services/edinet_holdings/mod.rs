@@ -390,7 +390,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn saves_documents_returned_within_the_refetch_window(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn refetches_from_latest_submitted_on_minus_window(db: crate::database::DatabaseHandle) {
+    async fn refetches_from_latest_submitted_on_minus_window(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)
@@ -506,7 +506,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upserts_the_document_with_the_same_id(db: crate::database::DatabaseHandle) {
+    async fn upserts_the_document_with_the_same_id(db: gateway_postgres::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
         let saved = large_volume_shareholdings::Endpoint::upsert(
             &db,
@@ -561,7 +561,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upserts_major_shareholder_documents(db: crate::database::DatabaseHandle) {
+    async fn upserts_major_shareholder_documents(db: gateway_postgres::DatabaseHandle) {
         let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
         let period_end = NaiveDate::from_ymd_opt(2024, 12, 31).expect("valid date");
         let saved = major_shareholders::Endpoint::upsert(
@@ -622,7 +622,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upserts_cross_shareholding_documents(db: crate::database::DatabaseHandle) {
+    async fn upserts_cross_shareholding_documents(db: gateway_postgres::DatabaseHandle) {
         let submitted_on = NaiveDate::from_ymd_opt(2025, 1, 6).expect("valid date");
         let period_end = NaiveDate::from_ymd_opt(2024, 12, 31).expect("valid date");
         let saved = cross_shareholdings::Endpoint::upsert(
@@ -690,7 +690,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn retries_a_failed_date_within_the_same_cycle_and_recovers(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
@@ -753,7 +753,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn counts_a_date_when_its_retry_fails(db: crate::database::DatabaseHandle) {
+    async fn counts_a_date_when_its_retry_fails(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let (from, to) = plan_refetch_window(JQuantsPlan::Standard);
         let client = mock

@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_saves_bars_to_db(db: crate::database::DatabaseHandle) {
+    async fn backfill_saves_bars_to_db(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         // フォールバック範囲内に収まる日付を使う
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_uses_source_range_when_available(db: crate::database::DatabaseHandle) {
+    async fn backfill_uses_source_range_when_available(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let known_from = NaiveDate::from_ymd_opt(2020, 4, 1).expect("date");
@@ -225,7 +225,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn backfill_uses_fallback_history_when_source_has_no_range(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
 
@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_handles_empty_response(db: crate::database::DatabaseHandle) {
+    async fn backfill_handles_empty_response(db: gateway_postgres::DatabaseHandle) {
         // 銘柄は存在するがバーデータなし
         let provider = MockProvider::new().with_instruments(vec![sample_instrument("9999")]);
 
