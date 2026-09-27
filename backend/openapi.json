@@ -4582,6 +4582,67 @@
       }
     },
     "/api/rss-feeds/{id}": {
+      "get": {
+        "tags": [
+          "rss_feeds"
+        ],
+        "summary": "RSS フィードを取得",
+        "operationId": "get_rss_feed",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "rss_feed ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RssFeed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "rss_feeds"
@@ -7561,7 +7622,8 @@
             "type": "string",
             "description": "RSS フィード URL (http / https のみ)"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateStrategyRequest": {
         "type": "object",
@@ -9420,7 +9482,8 @@
               "null"
             ]
           }
-        }
+        },
+        "additionalProperties": false
       },
       "UpdateStrategyRequest": {
         "type": "object",

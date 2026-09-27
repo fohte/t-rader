@@ -322,6 +322,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             rss_feeds::create_rss_feed
         ))
         .routes(routes!(
+            rss_feeds::get_rss_feed,
             rss_feeds::update_rss_feed,
             rss_feeds::delete_rss_feed
         ))
