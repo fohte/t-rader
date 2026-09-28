@@ -5,7 +5,6 @@ import type { components } from '#lib/api/schema.gen'
 export interface AgentConfig {
   readonly agentsMd: string
   readonly skills: Readonly<Record<string, string>>
-  readonly model: string
   readonly agentGraph: string
 }
 
@@ -35,7 +34,6 @@ const isAgentConfigResponseBody = (
   const record = value as Record<string, unknown>
   return (
     typeof record['agents_md'] === 'string' &&
-    typeof record['model'] === 'string' &&
     typeof record['agent_graph'] === 'string' &&
     isRecordOfStrings(record['skills'])
   )
@@ -92,14 +90,13 @@ export const createAgentConfigFetcher = (
         if (!isAgentConfigResponseBody(body)) {
           return errAsync(
             new AgentConfigFetchError(
-              `malformed agent-config response for ${target}: expected agents_md/model/agent_graph strings and a skills map of strings`,
+              `malformed agent-config response for ${target}: expected agents_md/agent_graph strings and a skills map of strings`,
             ),
           )
         }
         return okAsync({
           agentsMd: body.agents_md,
           skills: body.skills,
-          model: body.model,
           agentGraph: body.agent_graph,
         })
       })

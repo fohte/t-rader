@@ -39,9 +39,6 @@ pub enum AgentConfigError {
     #[error(transparent)]
     InvalidAgentGraph(#[from] AgentGraphError),
 
-    #[error("environment variable '{0}' is not set")]
-    MissingEnvVar(String),
-
     #[error("database error: {0}")]
     Database(#[from] DbErr),
 }
@@ -289,33 +286,17 @@ pub fn skills_as_btree(model: &agent_config::Model) -> std::collections::BTreeMa
     skills_to_btree(&model.skills)
 }
 
-/// モデル設定は DB ではなく env 由来。
-pub(crate) fn agent_model_settings() -> Result<String, AgentConfigError> {
-    agent_model_settings_with(|key| std::env::var(key).ok())
-}
-
-fn agent_model_settings_with<F>(get: F) -> Result<String, AgentConfigError>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    get("STRATEGY_AGENT_MODEL")
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| AgentConfigError::MissingEnvVar("STRATEGY_AGENT_MODEL".to_string()))
-}
-
 /// `AgentConfigResponse` を組み立てる。
 pub(crate) fn build_agent_config_response(
     agents_md: String,
     skills: std::collections::BTreeMap<String, String>,
     agent_graph: String,
-) -> Result<crate::models::AgentConfigResponse, AgentConfigError> {
-    let model = agent_model_settings()?;
-    Ok(crate::models::AgentConfigResponse {
+) -> crate::models::AgentConfigResponse {
+    crate::models::AgentConfigResponse {
         agents_md,
         skills,
-        model,
         agent_graph,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -522,34 +503,5 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, AgentConfigError::InvalidAgentGraph(_)));
         assert_eq!(find_or_404(&db, "explore").await.unwrap().agent_graph, "");
-    }
-
-    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |key: &str| {
-            pairs
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| (*v).to_string())
-        }
-    }
-
-    #[rstest]
-    #[case::unset(&[])]
-    #[case::empty(&[("STRATEGY_AGENT_MODEL", "")])]
-    fn agent_model_settings_with_errors_when_missing(#[case] env: &[(&str, &str)]) {
-        let err = agent_model_settings_with(env_get(env)).expect_err("expected missing env error");
-        assert_eq!(
-            err.to_string(),
-            "environment variable 'STRATEGY_AGENT_MODEL' is not set"
-        );
-    }
-
-    #[test]
-    fn agent_model_settings_with_resolves_overridden_env() {
-        assert_eq!(
-            agent_model_settings_with(env_get(&[("STRATEGY_AGENT_MODEL", "m-x")]))
-                .expect("configured"),
-            "m-x"
-        );
     }
 }

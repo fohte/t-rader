@@ -66,7 +66,7 @@ export interface paths {
       cookie?: never
     }
     /**
-     * 目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
+     * 目的別 agent 設定一式 (AGENTS.md / skills / agent_graph) の統合取得。
      *     t-rader-agent がタスク実行のたびに呼び出す。
      */
     get: operations['agent_config_get_agent_config_bundle']
@@ -1230,7 +1230,6 @@ export interface components {
       /** @description 多段フェーズ実行設定 (YAML)。未設定なら空文字列。 */
       agent_graph: string
       agents_md: string
-      model: string
       skills: {
         [key: string]: string
       }

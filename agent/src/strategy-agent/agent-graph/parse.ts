@@ -14,10 +14,6 @@ export class AgentGraphParseError extends Error {
   }
 }
 
-// undefined は agent_graph が未設定 (空文字列) であることを表す。backend の
-// parse_agent_graph がその場合に Ok(None) を返すのと対応させている。
-export type ParsedAgentGraph = AgentGraphConfig | undefined
-
 const agentGraphPhaseSchema = z.object({
   key: z.string(),
   label: z.string(),
@@ -63,8 +59,10 @@ const parseYaml = Result.fromThrowable(
 
 export const parseAgentGraph = (
   yamlText: string,
-): Result<ParsedAgentGraph, AgentGraphParseError> => {
-  if (yamlText.trim() === '') return ok(undefined)
+): Result<AgentGraphConfig, AgentGraphParseError> => {
+  if (yamlText.trim() === '') {
+    return err(new AgentGraphParseError('agent_graph is not configured'))
+  }
 
   return parseYaml(yamlText).andThen((parsed) => {
     const validated = agentGraphConfigSchema.safeParse(parsed)

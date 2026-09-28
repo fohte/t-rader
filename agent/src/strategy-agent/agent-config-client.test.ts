@@ -20,7 +20,6 @@ describe('createAgentConfigFetcher', () => {
           JSON.stringify({
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
-            model: 'test-model',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -36,7 +35,6 @@ describe('createAgentConfigFetcher', () => {
       ok({
         agentsMd: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
-        model: 'test-model',
         agentGraph: 'phases: []',
       }),
     )
@@ -54,7 +52,6 @@ describe('createAgentConfigFetcher', () => {
           JSON.stringify({
             agents_md: '# AGENTS',
             skills: { 'ja-stock': 'skill body' },
-            model: 'test-model',
             agent_graph: 'phases: []',
           }),
           { status: 200 },
@@ -135,7 +132,6 @@ describe('createAgentConfigFetcher', () => {
       body: {
         agents_md: '# AGENTS',
         skills: ['ja-stock'],
-        model: 'test-model',
         agent_graph: '',
       },
     },
@@ -144,7 +140,6 @@ describe('createAgentConfigFetcher', () => {
       body: {
         agents_md: '# AGENTS',
         skills: { 'ja-stock': 'skill body' },
-        model: 'test-model',
       },
     },
   ])('returns an error when $name', async ({ body }) => {
@@ -161,7 +156,7 @@ describe('createAgentConfigFetcher', () => {
     expect(result).toEqual(
       err(
         new AgentConfigFetchError(
-          'malformed agent-config response for purpose purpose-a: expected agents_md/model/agent_graph strings and a skills map of strings',
+          'malformed agent-config response for purpose purpose-a: expected agents_md/agent_graph strings and a skills map of strings',
         ),
       ),
     )

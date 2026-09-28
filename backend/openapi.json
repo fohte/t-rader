@@ -322,7 +322,7 @@
         "tags": [
           "agent_config"
         ],
-        "summary": "目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出す。",
+        "summary": "目的別 agent 設定一式 (AGENTS.md / skills / agent_graph) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出す。",
         "operationId": "agent_config_get_agent_config_bundle",
         "parameters": [
           {
@@ -6878,7 +6878,6 @@
         "required": [
           "agents_md",
           "skills",
-          "model",
           "agent_graph"
         ],
         "properties": {
@@ -6887,9 +6886,6 @@
             "description": "多段フェーズ実行設定 (YAML)。未設定なら空文字列。"
           },
           "agents_md": {
-            "type": "string"
-          },
-          "model": {
             "type": "string"
           },
           "skills": {
