@@ -10,7 +10,7 @@ extern crate self as gateway_postgres;
 pub mod entities;
 pub mod repositories;
 
-#[cfg(feature = "test-support")]
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 
 #[derive(Clone)]

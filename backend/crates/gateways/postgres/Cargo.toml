@@ -31,7 +31,9 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 backend-test-macros = { path = "../../test-macros" }
+migration = { path = "../../../migration" }
 rust_decimal = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-native-tls", "postgres", "migrate"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]

@@ -14,7 +14,7 @@ use uuid::Uuid;
 use gateway_postgres::repositories::bars::find_bars_by_instruments;
 
 use super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
-use super::{StrategyServer, app_error_to_mcp, decimal_to_f64, invalid_params};
+use super::{StrategyServer, db_error, decimal_to_f64, invalid_params};
 
 /// 1 回の呼び出しで指定できる銘柄数の上限
 const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
@@ -66,8 +66,7 @@ impl StrategyServer {
 
         let rows = find_bars_by_instruments(&self.db, &instrument_ids, "1d", from, to)
             .await
-            .map_err(crate::error::AppError::from)
-            .map_err(app_error_to_mcp)?;
+            .map_err(db_error)?;
 
         let mut bars_by_instrument: HashMap<String, Vec<BarDto>> = HashMap::new();
         for row in rows {

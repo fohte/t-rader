@@ -2,12 +2,11 @@
 //!
 //! 取得元が取得できる範囲を返さない間は取り込まない。
 
-use std::fmt::Display;
 use std::future::Future;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DbErr};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{MarginSource, MarginSourceError, SharedMarginSource};
@@ -51,7 +50,7 @@ pub struct IngestStats {
 
 /// `start` から `end` (両端含む) まで日付を 1 日ずつ進め、`fetch`/`upsert` で取得・保存する。
 /// 1 日分の取得・保存に失敗しても残りの日付は続行する。
-async fn ingest_daily<'c, C, T, F, FetchFut, G, UpsertFut, UpsertErr>(
+async fn ingest_daily<'c, C, T, F, FetchFut, G, UpsertFut>(
     db: &'c C,
     source: &'c dyn MarginSource,
     start: NaiveDate,
@@ -65,8 +64,7 @@ where
     F: Fn(&'c dyn MarginSource, NaiveDate) -> FetchFut,
     FetchFut: Future<Output = Result<Vec<T>, MarginSourceError>>,
     G: Fn(&'c C, Vec<T>) -> UpsertFut,
-    UpsertFut: Future<Output = Result<(), UpsertErr>>,
-    UpsertErr: Display,
+    UpsertFut: Future<Output = Result<(), DbErr>>,
 {
     let mut stats = IngestStats::default();
     let mut date = start;
