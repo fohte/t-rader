@@ -16,7 +16,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::from_value;
 use uuid::Uuid;
 
-use crate::entities::{
+use gateway_postgres::entities::{
     cross_shareholding_documents, large_volume_shareholding_documents, major_shareholder_documents,
 };
 
@@ -236,13 +236,13 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    use crate::entities::{
-        cross_shareholding_documents, large_volume_shareholding_documents,
-        major_shareholder_documents,
-    };
     use core_domain::holdings::{
         LargeVolumeReportType as DomainLargeVolumeReportType,
         MajorShareholderReportType as DomainMajorShareholderReportType,
+    };
+    use gateway_postgres::entities::{
+        cross_shareholding_documents, large_volume_shareholding_documents,
+        major_shareholder_documents,
     };
 
     use super::super::dto::{

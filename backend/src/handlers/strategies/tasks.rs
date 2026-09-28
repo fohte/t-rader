@@ -156,7 +156,6 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
@@ -164,6 +163,7 @@ mod tests {
         create_test_server_with_db_and_agent_client, insert_test_strategy,
         insert_test_strategy_task,
     };
+    use gateway_postgres::entities::strategy_task;
 
     /// JSON body から動的フィールド (created_at/updated_at/as_of) を除去し、
     /// 単一の assert_eq! で残りのフィールドを比較できるようにする。
@@ -227,7 +227,7 @@ mod tests {
                 Some("agent-task-1".to_string()),
                 "frontend".to_string(),
                 "inspect 7203".to_string(),
-                crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
+                gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
                 None,
             ),
         );

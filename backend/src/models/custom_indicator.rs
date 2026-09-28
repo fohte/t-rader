@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::custom_indicator;
+use gateway_postgres::entities::custom_indicator;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = CustomIndicator)]

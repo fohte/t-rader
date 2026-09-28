@@ -11,7 +11,7 @@ use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::mcp_tool_call_count;
+use gateway_postgres::entities::mcp_tool_call_count;
 
 use super::dto::{SearchWebParams, SearchWebResult};
 use super::{StrategyServer, db_error, internal_error, invalid_params, litellm_error_to_mcp};

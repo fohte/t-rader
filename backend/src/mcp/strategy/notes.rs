@@ -8,7 +8,6 @@ use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
 use uuid::Uuid;
 
-use crate::entities::{note, note_version};
 use crate::services::change_history::Actor;
 use crate::services::graph::{GraphDef, validate_graphs};
 use crate::services::note_kinds;
@@ -17,6 +16,7 @@ use crate::services::note_versions::{
     self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_versions,
     find_initial_created_by_kind, find_version_of_note,
 };
+use gateway_postgres::entities::{note, note_version};
 
 use super::dto::{
     ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, NoteKindDto, NoteLinkDto,
@@ -499,9 +499,9 @@ mod tests {
         normalize_comment_model, normalize_note, seed_foreign_note,
         seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
-    use crate::entities::{comment, note_ref, note_version};
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::services::note_versions::find_current_version;
+    use gateway_postgres::entities::{comment, note_ref, note_version};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(

@@ -12,8 +12,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::entities::{strategy, trigger};
 use crate::services::strategy_tasks::{SubmitTaskError, SubmittedTask, TaskSource, submit_task};
+use gateway_postgres::entities::{strategy, trigger};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FireTriggerError {
@@ -316,9 +316,9 @@ mod fire_tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::{strategy, strategy_task, trigger};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
+    use gateway_postgres::entities::{strategy, strategy_task, trigger};
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::json;
@@ -371,7 +371,7 @@ mod fire_tests {
         strategy_id: Uuid,
         source: String,
         prompt: String,
-        phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase,
+        phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase,
     }
 
     impl TaskShape {
@@ -435,7 +435,8 @@ mod fire_tests {
                     strategy_id: sid,
                     source: "hook".to_string(),
                     prompt: "alert 7203".to_string(),
-                    phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
+                    phase:
+                        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
                 },
                 TriggerFireShape {
                     trigger_id: tid,
@@ -487,7 +488,7 @@ mod fire_tests {
                 strategy_id: sid,
                 source: "cron".to_string(),
                 prompt: "morning s".to_string(),
-                phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
+                phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
             }],
         );
     }

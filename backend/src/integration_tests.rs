@@ -17,8 +17,6 @@ use uuid::Uuid;
 use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::strategy_task;
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
 use crate::mcp::watcher;
 use crate::services::agent_config;
@@ -28,6 +26,8 @@ use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy,
 };
+use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+use gateway_postgres::entities::strategy_task;
 
 #[backend_test_macros::database_test]
 async fn all_five_submission_routes_converge_on_submit_task(db: gateway_postgres::DatabaseHandle) {

@@ -8,10 +8,10 @@ use sea_orm::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::entities::{note, note_kind, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
 use crate::services::note_versions;
+use gateway_postgres::entities::{note, note_kind, note_version};
 
 #[derive(Debug, Clone)]
 pub struct CreateNoteKind {

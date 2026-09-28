@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::trigger;
+use gateway_postgres::entities::trigger;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trigger)]

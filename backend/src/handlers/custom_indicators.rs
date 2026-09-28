@@ -11,7 +11,6 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::custom_indicator;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
@@ -21,6 +20,7 @@ use crate::models::{
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::custom_indicators::{PreviewInput, SCOPE_GLOBAL, SCOPE_STRATEGY, run_preview};
 use crate::services::strategies::ensure_strategy_exists;
+use gateway_postgres::entities::custom_indicator;
 
 fn validate_name(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
@@ -435,8 +435,8 @@ mod tests {
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter};
 
     use super::*;
-    use crate::entities::change_history;
     use crate::testing::{create_test_server, create_test_server_with_db};
+    use gateway_postgres::entities::change_history;
     use serde_json::json;
     async fn create_strategy(server: &axum_test::TestServer, name: &str) -> Uuid {
         let res = server
@@ -848,7 +848,7 @@ mod tests {
 
         let strategy_id = Uuid::new_v4();
         let now = chrono::Utc::now().fixed_offset();
-        crate::entities::strategy::ActiveModel {
+        gateway_postgres::entities::strategy::ActiveModel {
             id: Set(strategy_id),
             name: Set("s".into()),
             description: Set(None),

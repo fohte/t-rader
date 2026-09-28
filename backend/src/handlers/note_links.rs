@@ -8,11 +8,11 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{note, note_version};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::services::note_links::{find_current_links_to_note, find_links_from_version};
 use crate::services::note_versions::{find_current_versions, find_version_of_note};
+use gateway_postgres::entities::{note, note_version};
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

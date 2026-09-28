@@ -13,7 +13,7 @@ use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::short_ratio;
+use gateway_postgres::entities::short_ratio;
 
 use super::dto::{ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto};
 use super::{StrategyServer, clamp_limit, db_error, decimal_to_f64, invalid_params};
@@ -144,7 +144,7 @@ mod tests {
     };
     use super::super::tests_common::build_server;
     use super::{compute_short_ratio, sector33_code_for_name};
-    use crate::entities::short_ratio;
+    use gateway_postgres::entities::short_ratio;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")

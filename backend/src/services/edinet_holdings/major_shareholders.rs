@@ -4,7 +4,7 @@ use core_domain::holdings::MajorShareholderDocument;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
 
-use crate::entities::major_shareholder_documents::{ActiveModel, Column, Entity};
+use gateway_postgres::entities::major_shareholder_documents::{ActiveModel, Column, Entity};
 
 pub(crate) struct Endpoint;
 

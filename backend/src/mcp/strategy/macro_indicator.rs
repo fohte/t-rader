@@ -9,7 +9,7 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
-use crate::entities::indicator_observation;
+use gateway_postgres::entities::indicator_observation;
 
 use super::dto::{IndicatorObservationDto, ReadMacroIndicatorParams, ReadMacroIndicatorResult};
 use super::{StrategyServer, db_error, decimal_to_f64, invalid_params};
@@ -60,7 +60,7 @@ mod tests {
 
     use super::super::dto::{IndicatorObservationDto, ReadMacroIndicatorParams};
     use super::super::tests_common::build_server;
-    use crate::entities::{indicator, indicator_observation};
+    use gateway_postgres::entities::{indicator, indicator_observation};
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")

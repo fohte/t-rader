@@ -13,7 +13,7 @@ use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::Set;
 use uuid::Uuid;
 
-use crate::entities::strategy_task_step_evidence;
+use gateway_postgres::entities::strategy_task_step_evidence;
 
 use super::dto::BarDto;
 

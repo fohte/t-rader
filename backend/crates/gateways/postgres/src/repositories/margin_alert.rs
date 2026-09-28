@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_alert;
-use crate::error::AppError;
-use crate::models::margin::MarginAlertRecord;
+use core_domain::margin::MarginAlertRecord;
 
 impl From<MarginAlertRecord> for margin_alert::ActiveModel {
     fn from(r: MarginAlertRecord) -> Self {
@@ -35,7 +34,7 @@ impl From<MarginAlertRecord> for margin_alert::ActiveModel {
 pub async fn upsert_margin_alert(
     db: &impl sea_orm::ConnectionTrait,
     records: Vec<MarginAlertRecord>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if records.is_empty() {
         return Ok(());
     }
@@ -72,7 +71,7 @@ pub async fn upsert_margin_alert(
 
 pub async fn find_latest_margin_alert_pub_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let latest = margin_alert::Entity::find()
         .order_by_desc(margin_alert::Column::PubDate)
         .one(db)
@@ -83,7 +82,7 @@ pub async fn find_latest_margin_alert_pub_date(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::margin::PubReason;
+    use core_domain::margin::PubReason;
     use sea_orm::EntityTrait;
     fn make_record(pub_date: NaiveDate, code: &str, app_date: NaiveDate) -> MarginAlertRecord {
         MarginAlertRecord {

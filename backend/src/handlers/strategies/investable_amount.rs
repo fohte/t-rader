@@ -13,7 +13,7 @@ use crate::services::investable_amount;
 use super::find_strategy_or_404;
 
 fn to_response(
-    current: Option<crate::entities::strategy_investable_amount::Model>,
+    current: Option<gateway_postgres::entities::strategy_investable_amount::Model>,
 ) -> InvestableAmountResponse {
     InvestableAmountResponse {
         amount_jpy: current.as_ref().map(|m| m.amount_jpy),

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::strategy;
+use gateway_postgres::entities::strategy;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Strategy)]

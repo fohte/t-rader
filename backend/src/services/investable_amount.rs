@@ -7,8 +7,8 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
-use crate::entities::strategy_investable_amount;
 use crate::error::AppError;
+use gateway_postgres::entities::strategy_investable_amount;
 
 /// `effective_at` が現在時刻以下の最新行を返す。1 行も無ければ `None`。
 /// `effective_at` が同値の行が複数あった場合は `created_at` が新しい方を優先する。

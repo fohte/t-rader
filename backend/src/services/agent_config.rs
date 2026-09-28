@@ -14,8 +14,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::agent_config;
 use crate::services::agent_graph::{self as agent_graph_svc, AgentGraphError};
+use gateway_postgres::entities::agent_config;
 
 const SLUG_PATTERN_DESC: &str = "^[a-z0-9][a-z0-9_-]*$";
 

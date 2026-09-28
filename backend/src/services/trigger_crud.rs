@@ -9,9 +9,9 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
-use crate::entities::trigger;
 use crate::error::AppError;
 use crate::models::{CreateTriggerRequest, TriggerKind, UpdateTriggerRequest};
+use gateway_postgres::entities::trigger;
 
 fn validate_template(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
@@ -79,7 +79,7 @@ async fn find_strategy_or_404(
     db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<(), AppError> {
-    let exists = crate::entities::strategy::Entity::find_by_id(id)
+    let exists = gateway_postgres::entities::strategy::Entity::find_by_id(id)
         .one(db)
         .await?
         .is_some();

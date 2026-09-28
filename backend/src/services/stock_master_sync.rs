@@ -14,8 +14,8 @@ use sea_orm::{DatabaseConnection, EntityTrait};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{EquityMasterSource, SharedEquityMasterSource};
-use crate::entities::{sector, stock};
 use crate::error::AppError;
+use gateway_postgres::entities::{sector, stock};
 
 /// poll task のデフォルト実行間隔。全銘柄マスタの更新頻度 (日次) に合わせて 1 日とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);

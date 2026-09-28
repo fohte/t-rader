@@ -4,11 +4,11 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::prediction;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonPath;
 use crate::handlers::notes::find_note_or_404;
 use crate::models::PredictionResponse;
+use gateway_postgres::entities::prediction;
 
 /// ノートに紐づく予測一覧 (記録順)。
 #[utoipa::path(
@@ -44,10 +44,10 @@ mod tests {
     use sea_orm::ActiveValue::Set;
     use uuid::Uuid;
 
-    use crate::entities::prediction;
     use crate::testing::{
         create_test_server_with_db, insert_test_note, insert_test_stock, insert_test_strategy,
     };
+    use gateway_postgres::entities::prediction;
 
     async fn seed_prediction(
         db: &impl sea_orm::ConnectionTrait,

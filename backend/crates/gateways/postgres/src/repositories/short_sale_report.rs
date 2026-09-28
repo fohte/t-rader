@@ -2,11 +2,10 @@ use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_sale_report;
-use crate::error::AppError;
-use crate::models::ShortSaleReport;
+use core_domain::short_sale_report::ShortSaleReport;
 
 impl From<ShortSaleReport> for short_sale_report::ActiveModel {
     fn from(report: ShortSaleReport) -> Self {
@@ -39,7 +38,7 @@ impl From<ShortSaleReport> for short_sale_report::ActiveModel {
 pub async fn upsert_short_sale_reports(
     db: &impl sea_orm::ConnectionTrait,
     reports: Vec<ShortSaleReport>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if reports.is_empty() {
         return Ok(());
     }
@@ -101,7 +100,7 @@ pub async fn upsert_short_sale_reports(
 /// DB 上の最新の公表日を返す。1 件も無ければ `None`。
 pub async fn find_latest_disc_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let result = short_sale_report::Entity::find()
         .order_by_desc(short_sale_report::Column::DiscDate)
         .one(db)

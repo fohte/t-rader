@@ -6,12 +6,12 @@ use std::future::Future;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DbErr};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{MarginSource, MarginSourceError, SharedMarginSource};
 use crate::error::AppError;
-use crate::repositories::{margin_alert, margin_interest};
+use gateway_postgres::repositories::{margin_alert, margin_interest};
 
 /// poll task のデフォルト実行間隔 (1 日)。日次更新の J-Quants データに対して十分な頻度。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -64,7 +64,7 @@ where
     F: Fn(&'c dyn MarginSource, NaiveDate) -> FetchFut,
     FetchFut: Future<Output = Result<Vec<T>, MarginSourceError>>,
     G: Fn(&'c C, Vec<T>) -> UpsertFut,
-    UpsertFut: Future<Output = Result<(), AppError>>,
+    UpsertFut: Future<Output = Result<(), DbErr>>,
 {
     let mut stats = IngestStats::default();
     let mut date = start;

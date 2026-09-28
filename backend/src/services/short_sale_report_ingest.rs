@@ -12,8 +12,10 @@ use tokio::task::JoinHandle;
 use crate::data_provider::{SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError};
 use crate::error::AppError;
 use crate::models::ShortSaleReport;
-use crate::repositories::short_sale_report::{find_latest_disc_date, upsert_short_sale_reports};
 use crate::services::jquants_daily_ingest::{self, DailyIngestStats, DailyJQuantsIngest};
+use gateway_postgres::repositories::short_sale_report::{
+    find_latest_disc_date, upsert_short_sale_reports,
+};
 
 /// エンドポイントのデータ提供開始日 (公式ドキュメント記載)
 const SHORT_SALE_REPORT_START_DATE: NaiveDate = match NaiveDate::from_ymd_opt(2013, 11, 7) {
@@ -36,13 +38,15 @@ impl DailyJQuantsIngest for ShortSaleReport {
     }
 
     async fn upsert(db: &impl sea_orm::ConnectionTrait, items: Vec<Self>) -> Result<(), AppError> {
-        upsert_short_sale_reports(db, items).await
+        upsert_short_sale_reports(db, items)
+            .await
+            .map_err(AppError::from)
     }
 
     async fn find_latest_date(
         db: &impl sea_orm::ConnectionTrait,
     ) -> Result<Option<NaiveDate>, AppError> {
-        find_latest_disc_date(db).await
+        find_latest_disc_date(db).await.map_err(AppError::from)
     }
 }
 
@@ -72,10 +76,10 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::short_sale_report;
     use chrono::Utc;
     use gateway_jquants::JQuantsPlan;
     use gateway_jquants::mock::{JQuantsMockServer, MockShortSaleReport};
+    use gateway_postgres::entities::short_sale_report;
     use rstest::rstest;
     use rust_decimal::Decimal;
     use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};

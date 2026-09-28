@@ -20,8 +20,8 @@ use sea_orm::{
 use tokio::sync::Notify;
 
 use crate::agent_client::{AgentTaskError, AgentTaskState, AgentTaskStatus, SharedAgentTaskClient};
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::strategy_task;
+use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+use gateway_postgres::entities::strategy_task;
 
 mod auto_resume;
 mod steps;
@@ -318,8 +318,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::agent_client::{AgentTaskError, EXECUTION_LOST_ERROR_KIND, FakeAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
-    use crate::entities::{strategy, strategy_task_step};
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskStepStatus;
+    use gateway_postgres::entities::{strategy, strategy_task_step};
     use rstest::rstest;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set};
     use uuid::Uuid;

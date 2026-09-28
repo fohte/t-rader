@@ -12,7 +12,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::rss_feed;
+use gateway_postgres::entities::rss_feed;
 
 /// `source` slug の許容文字集合の説明。machine key 用途 (`Bloomberg JP` 等の
 /// display 文字列は display_name に入れる)。エラーメッセージで参照する
@@ -185,7 +185,7 @@ pub async fn delete(db: &impl sea_orm::ConnectionTrait, id: Uuid) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::rss_feed;
+    use gateway_postgres::entities::rss_feed;
     use rstest::rstest;
     use serde_json::{Value, json};
     /// Model 全体を JSON 化して dynamic フィールド (id/created_at/updated_at) を

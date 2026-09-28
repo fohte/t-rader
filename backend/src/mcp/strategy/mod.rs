@@ -42,10 +42,10 @@ use sea_orm::EntityTrait;
 use uuid::Uuid;
 
 use crate::data_provider::SharedDailyBarSource;
-use crate::entities::{annotation, note, strategy};
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 use gateway_postgres::DatabaseHandle;
+use gateway_postgres::entities::{annotation, note, strategy};
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;

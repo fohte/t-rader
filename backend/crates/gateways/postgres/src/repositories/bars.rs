@@ -1,10 +1,9 @@
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder, Set};
 
 use crate::entities::bars;
-use crate::error::AppError;
-use crate::models::{Bar, Timeframe};
+use core_domain::bar::{Bar, Timeframe};
 
 impl From<Bar> for bars::ActiveModel {
     fn from(bar: Bar) -> Self {
@@ -45,7 +44,7 @@ impl From<bars::Model> for Bar {
 pub async fn upsert_bars(
     db: &impl sea_orm::ConnectionTrait,
     bars_data: Vec<Bar>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if bars_data.is_empty() {
         return Ok(());
     }
@@ -86,7 +85,7 @@ pub struct BarsQuery {
 pub async fn find_bars(
     db: &impl sea_orm::ConnectionTrait,
     query: BarsQuery,
-) -> Result<Vec<bars::Model>, AppError> {
+) -> Result<Vec<bars::Model>, DbErr> {
     let mut select = bars::Entity::find()
         .filter(bars::Column::InstrumentId.eq(&query.instrument_id))
         .filter(bars::Column::Timeframe.eq(&query.timeframe));
@@ -112,7 +111,7 @@ pub async fn find_bars_by_instruments(
     timeframe: &str,
     from: Option<DateTime<FixedOffset>>,
     to: Option<DateTime<FixedOffset>>,
-) -> Result<Vec<bars::Model>, AppError> {
+) -> Result<Vec<bars::Model>, DbErr> {
     let mut select = bars::Entity::find()
         .filter(bars::Column::InstrumentId.is_in(instrument_ids.to_vec()))
         .filter(bars::Column::Timeframe.eq(timeframe));
@@ -139,7 +138,7 @@ pub async fn find_latest_bar(
     db: &impl sea_orm::ConnectionTrait,
     instrument_id: &str,
     timeframe: &str,
-) -> Result<Option<bars::Model>, AppError> {
+) -> Result<Option<bars::Model>, DbErr> {
     let result = bars::Entity::find()
         .filter(bars::Column::InstrumentId.eq(instrument_id))
         .filter(bars::Column::Timeframe.eq(timeframe))
@@ -156,7 +155,7 @@ pub async fn find_latest_bar_on_or_before(
     instrument_id: &str,
     timeframe: &str,
     on_or_before: NaiveDate,
-) -> Result<Option<bars::Model>, AppError> {
+) -> Result<Option<bars::Model>, DbErr> {
     let upper = on_or_before
         .and_hms_opt(0, 0, 0)
         .map(|dt| dt.and_utc().fixed_offset());
@@ -179,8 +178,8 @@ pub async fn find_latest_bar_on_or_before(
 mod tests {
     use super::*;
     use crate::entities::instruments;
-    use crate::models::bar::Timeframe;
     use chrono::{NaiveDate, TimeZone, Utc};
+    use core_domain::bar::Timeframe;
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
     use sea_orm::{EntityTrait, Set};

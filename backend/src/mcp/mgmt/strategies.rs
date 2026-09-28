@@ -7,11 +7,11 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::agent_client::AgentTaskError;
-use crate::entities::{annotation, note, strategy};
 use crate::services::note_versions::{INITIAL_NOTE_STATUS, current_note_ids_with_status};
 use crate::services::strategy_tasks::{
     self, ResumeTaskError, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
 };
+use gateway_postgres::entities::{annotation, note, strategy};
 
 use super::dto::{
     GetStrategyTaskStatusParams, GetStrategyTaskStatusResult, ListStrategiesResult,
@@ -203,10 +203,10 @@ mod tests {
 
     use super::super::tests_common::{build_server, insert_strategy};
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use gateway_postgres::entities::strategy_task;
     use rmcp::handler::server::wrapper::{Json, Parameters};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;

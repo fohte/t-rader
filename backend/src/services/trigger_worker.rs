@@ -13,9 +13,9 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::json;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::entities::trigger;
 use crate::services::strategy_tasks::TaskSource;
 use crate::services::triggers::{FireTriggerError, fire_trigger};
+use gateway_postgres::entities::trigger;
 
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -345,11 +345,11 @@ mod run_once_tests {
     use uuid::Uuid;
 
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::{strategy, strategy_task};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::insert_test_cron_trigger;
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use gateway_postgres::entities::{strategy, strategy_task};
 
     use super::*;
 

@@ -5,8 +5,8 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::news_item;
 use crate::handlers::refs::sanitize_like;
+use gateway_postgres::entities::news_item;
 
 use super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
 use super::{StrategyServer, clamp_limit, db_error};
@@ -86,7 +86,7 @@ mod tests {
 
     use super::super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
     use super::super::tests_common::build_server;
-    use crate::entities::news_item;
+    use gateway_postgres::entities::news_item;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")

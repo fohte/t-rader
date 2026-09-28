@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::{note, note_version};
 use crate::services::graph::GraphDef;
+use gateway_postgres::entities::{note, note_version};
 
 /// ノートが生成された契機。DB の note_trigger_check CHECK 制約と一致させる
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ToSchema)]

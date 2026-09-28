@@ -10,8 +10,8 @@ use sea_orm::{DatabaseConnection, EntityTrait, Set};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use crate::entities::news_item;
 use crate::services::rss_feed::{self, RssFeedError};
+use gateway_postgres::entities::news_item;
 
 #[derive(Debug, thiserror::Error)]
 pub enum NewsAggregationError {
@@ -123,9 +123,9 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::news_item;
     use crate::services::rss_feed::{self, CreateInput};
     use core_application::{FakeNewsAggregator, NewsAggregatorError, NewsFeed};
+    use gateway_postgres::entities::news_item;
     use sea_orm::{EntityTrait, PaginatorTrait};
     async fn create_feed(
         db: &impl sea_orm::ConnectionTrait,

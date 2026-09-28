@@ -9,7 +9,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Tr
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment};
+use gateway_postgres::entities::{annotation, comment};
 
 use super::dto::{
     AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
@@ -196,7 +196,7 @@ mod tests {
         ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
-    use crate::entities::annotation;
+    use gateway_postgres::entities::annotation;
 
     // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
     #[backend_test_macros::database_test]

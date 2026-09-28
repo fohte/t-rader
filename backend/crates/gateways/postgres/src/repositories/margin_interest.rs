@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_interest;
-use crate::error::AppError;
-use crate::models::margin::MarginInterestRecord;
+use core_domain::margin::MarginInterestRecord;
 
 impl From<MarginInterestRecord> for margin_interest::ActiveModel {
     fn from(r: MarginInterestRecord) -> Self {
@@ -33,7 +32,7 @@ impl From<MarginInterestRecord> for margin_interest::ActiveModel {
 pub async fn upsert_margin_interest(
     db: &impl sea_orm::ConnectionTrait,
     records: Vec<MarginInterestRecord>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if records.is_empty() {
         return Ok(());
     }
@@ -72,7 +71,7 @@ pub async fn upsert_margin_interest(
 
 pub async fn find_latest_margin_interest_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let latest = margin_interest::Entity::find()
         .order_by_desc(margin_interest::Column::Date)
         .one(db)

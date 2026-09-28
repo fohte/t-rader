@@ -12,9 +12,9 @@ use sea_orm::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::entities::strategy;
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
+use gateway_postgres::entities::strategy;
 
 pub async fn find_or_404(
     db: &impl sea_orm::ConnectionTrait,
@@ -212,7 +212,7 @@ mod tests {
 
         assert!(find_or_404(&db, id).await.is_err());
 
-        let row = crate::entities::change_history::Entity::find()
+        let row = gateway_postgres::entities::change_history::Entity::find()
             .one(&db)
             .await
             .expect("query")

@@ -2,7 +2,7 @@ use chrono::{Duration, NaiveDate, Utc};
 
 use crate::data_provider::{DailyBarSource, DateRange};
 use crate::models::Timeframe;
-use crate::repositories::bars::upsert_bars;
+use gateway_postgres::repositories::bars::upsert_bars;
 
 const FALLBACK_FETCH_HISTORY_DAYS: i64 = 365 * 20;
 
@@ -118,8 +118,8 @@ mod tests {
     async fn find_all_bars(
         db: &impl sea_orm::ConnectionTrait,
         instrument_id: &str,
-    ) -> Vec<crate::entities::bars::Model> {
-        use crate::repositories::bars::{BarsQuery, find_bars};
+    ) -> Vec<gateway_postgres::entities::bars::Model> {
+        use gateway_postgres::repositories::bars::{BarsQuery, find_bars};
         find_bars(
             db,
             BarsQuery {
@@ -135,7 +135,7 @@ mod tests {
 
     /// テスト用 instrument を DB に挿入する
     async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
-        use crate::entities::instruments;
+        use gateway_postgres::entities::instruments;
         use sea_orm::sea_query::OnConflict;
         use sea_orm::{EntityTrait, Set};
 

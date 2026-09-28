@@ -8,7 +8,7 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
 use crate::models::BarResponse;
-use crate::repositories;
+use gateway_postgres::repositories;
 
 /// バーデータ取得のクエリパラメータ
 #[derive(Debug, Deserialize, IntoParams)]
@@ -88,12 +88,12 @@ pub async fn list_bars(
 
 #[cfg(test)]
 mod tests {
-    use crate::entities::instruments;
     use crate::models::bar::{Bar, Timeframe};
-    use crate::repositories;
     use crate::testing::{create_test_server, create_test_server_with_db};
     use axum::http::StatusCode;
     use chrono::{NaiveDate, TimeZone, Utc};
+    use gateway_postgres::entities::instruments;
+    use gateway_postgres::repositories;
     use rust_decimal::Decimal;
     use sea_orm::sea_query::OnConflict;
     use sea_orm::{EntityTrait, Set};

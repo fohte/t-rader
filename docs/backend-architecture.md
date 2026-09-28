@@ -59,7 +59,7 @@ backend/crates/
 | `app`              | `backend/crates/` 内のすべての crate と `backend/migration/` |
 | `test-macros`      | なし                                                         |
 
-`gateways/postgres` は `DatabaseHandle` を提供する低レベルの接続 wrapper であり、application port を実装しないため `core/application` と `core/domain` のいずれにも依存しない。通常の外部依存は `async-trait` と `sea-orm`。`test-support` feature だけが共有テスト DB の準備に必要な `migration` と `sqlx` を有効にする。`gateways/postgres` は `test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
+`gateways/postgres` は `DatabaseHandle`、SeaORM entity 定義、repository 関数を提供する。repository が domain の値型を使うため `core/domain` に依存するが、application port は実装しない。`test-support` feature だけが共有テスト DB の準備に必要な `migration` と `sqlx` を有効にする。`gateways/postgres` は `test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
 
 `entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror`, `jpholiday` (祝日の計算のみで I/O を持たない) と `serde` の derive に限る (テストでのみ使う dev-dependencies は対象外)。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
 

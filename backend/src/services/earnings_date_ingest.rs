@@ -15,8 +15,8 @@ use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{DateRange, EarningsScheduleSource, SharedEarningsScheduleSource};
-use crate::entities::jquants_earnings_date;
 use crate::error::AppError;
+use gateway_postgres::entities::jquants_earnings_date;
 
 /// poll task のデフォルト実行間隔。決算発表予定日の更新頻度 (日次) に合わせて 1 日とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);

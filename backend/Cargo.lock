@@ -1622,10 +1622,16 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "backend-test-macros",
+ "chrono",
+ "core-domain",
  "migration",
+ "rust_decimal",
  "sea-orm",
+ "serde",
+ "serde_json",
  "sqlx",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

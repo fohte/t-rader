@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{StrategyServer, db_error, invalid_params};
-use crate::entities::ref_term;
 use crate::services::note_refs::ALLOWED_REF_KINDS;
+use gateway_postgres::entities::ref_term;
 
 /// 戦略 Agent が追加する別名の固定 origin。
 const AGENT_TERM_ORIGIN: &str = "llm";
@@ -147,7 +147,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{AddRefTermsParams, RemoveRefTermsParams};
-    use crate::entities::ref_term;
+    use gateway_postgres::entities::ref_term;
 
     async fn seed_term(
         db: &impl sea_orm::ConnectionTrait,

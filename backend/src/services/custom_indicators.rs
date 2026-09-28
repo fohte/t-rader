@@ -4,9 +4,9 @@ use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::entities::custom_indicator;
 use crate::error::AppError;
 use crate::kata_exec::{ExecRequest, KataExecError, SharedKataExecutor};
+use gateway_postgres::entities::custom_indicator;
 
 pub const SCOPE_GLOBAL: &str = "global";
 pub const SCOPE_STRATEGY: &str = "strategy";

@@ -13,8 +13,8 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
 use tokio::task::JoinHandle;
 
-use crate::entities::{indicator, indicator_observation};
 use crate::error::AppError;
+use gateway_postgres::entities::{indicator, indicator_observation};
 
 #[derive(Debug, thiserror::Error)]
 enum FredIngestError {

@@ -4,8 +4,8 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::{prediction, prediction_grade};
 use crate::services::predictions::probability_steps;
+use gateway_postgres::entities::{prediction, prediction_grade};
 
 use super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
 use super::{StrategyServer, db_error, decimal_to_f64};
@@ -82,8 +82,8 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
     use uuid::Uuid;
 
-    use crate::entities::{prediction, prediction_grade};
     use crate::testing::insert_test_stock;
+    use gateway_postgres::entities::{prediction, prediction_grade};
 
     use super::super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
     use super::super::tests_common::{build_server, insert_strategy};
