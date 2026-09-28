@@ -96,7 +96,7 @@ impl MgmtServer {
             params.strategy_id,
             strategy_config::StrategyUpdate {
                 name: params.name,
-                description: params.description,
+                description: params.description.map(Some),
                 sort_order: None,
             },
         )

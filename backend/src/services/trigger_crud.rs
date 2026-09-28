@@ -188,8 +188,8 @@ pub async fn update_trigger(
         active.hook_slug = Set(Some(trimmed));
     }
     if let Some(event_match) = payload.event_match {
-        validate_event_match(Some(&event_match))?;
-        active.event_match = Set(Some(event_match));
+        validate_event_match(event_match.as_ref())?;
+        active.event_match = Set(event_match);
     }
     if let Some(prompt_template) = payload.prompt_template {
         active.prompt_template = Set(validate_template(&prompt_template)?);

@@ -2070,6 +2070,7 @@ export interface components {
       url?: string | null
     }
     UpdateStrategyRequest: {
+      /** @description 省略時は変更せず、`null` 指定時は説明を削除する。 */
       description?: string | null
       name?: string | null
       /** Format: int32 */
@@ -2093,6 +2094,7 @@ export interface components {
     }
     UpdateTriggerRequest: {
       enabled?: boolean | null
+      /** @description 省略時は変更せず、`null` 指定時は条件を解除する。 */
       event_match?: unknown
       hook_slug?: string | null
       prompt_template?: string | null
