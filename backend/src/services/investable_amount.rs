@@ -57,7 +57,7 @@ mod tests {
     use crate::testing::insert_test_strategy;
 
     #[backend_test_macros::database_test]
-    async fn find_current_returns_none_when_no_history(db: crate::database::DatabaseHandle) {
+    async fn find_current_returns_none_when_no_history(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
 
         let current = find_current(&db, strategy_id).await.expect("query");
@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_current_ignores_future_effective_at(db: crate::database::DatabaseHandle) {
+    async fn find_current_ignores_future_effective_at(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let now = Utc::now().fixed_offset();
 
@@ -95,7 +95,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn find_current_returns_latest_of_multiple_past_rows(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let now = Utc::now().fixed_offset();

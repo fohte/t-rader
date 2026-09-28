@@ -421,7 +421,7 @@ mod tests {
     const PAST: chrono::Duration = chrono::Duration::seconds(-1);
 
     #[backend_test_macros::database_test]
-    async fn reconciles_completed_running_and_failed_states(db: crate::database::DatabaseHandle) {
+    async fn reconciles_completed_running_and_failed_states(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let completed_id = insert_task(
             &db,
@@ -519,7 +519,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn input_required_maps_to_failed(db: crate::database::DatabaseHandle) {
+    async fn input_required_maps_to_failed(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -559,7 +559,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn failed_error_summary_is_agent_error_message_over_error_kind(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
@@ -609,7 +609,7 @@ mod tests {
     // for ループで列挙する。
     #[backend_test_macros::database_test]
     async fn agent_response_after_deadline_marks_failed_regardless_of_state(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
 
@@ -669,7 +669,9 @@ mod tests {
 
     // database_test は rstest の case 引数を扱わないため、for ループで列挙する。
     #[backend_test_macros::database_test]
-    async fn deadline_exceeded_includes_agent_reported_reason(db: crate::database::DatabaseHandle) {
+    async fn deadline_exceeded_includes_agent_reported_reason(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db).await;
 
         for (label, a2a_task_id, error_message, error_kind, expected_error_summary) in [
@@ -728,7 +730,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn deadline_exceeded_still_upserts_steps_reported_by_agent(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
@@ -798,7 +800,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn not_found_after_deadline_marks_failed(db: crate::database::DatabaseHandle) {
+    async fn not_found_after_deadline_marks_failed(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -822,7 +824,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn not_found_before_deadline_is_skipped(db: crate::database::DatabaseHandle) {
+    async fn not_found_before_deadline_is_skipped(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -844,7 +846,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn orphaned_row_without_a2a_task_id_failed_after_deadline(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(&db, strategy_id, None, StrategyTaskPhase::Pending, PAST).await;
@@ -863,7 +865,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn orphaned_row_without_a2a_task_id_skipped_before_deadline(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
@@ -884,7 +886,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn transient_error_after_deadline_marks_failed(db: crate::database::DatabaseHandle) {
+    async fn transient_error_after_deadline_marks_failed(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -907,7 +909,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn transient_error_before_deadline_is_skipped(db: crate::database::DatabaseHandle) {
+    async fn transient_error_before_deadline_is_skipped(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -930,7 +932,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn apply_phase_upserts_steps_and_skips_unchanged(db: crate::database::DatabaseHandle) {
+    async fn apply_phase_upserts_steps_and_skips_unchanged(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1060,7 +1062,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn apply_phase_rolls_back_row_update_when_step_upsert_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
@@ -1109,7 +1111,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn execution_lost_failure_triggers_auto_resume(db: crate::database::DatabaseHandle) {
+    async fn execution_lost_failure_triggers_auto_resume(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1163,7 +1165,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn execution_lost_failure_is_not_auto_resumed_twice(db: crate::database::DatabaseHandle) {
+    async fn execution_lost_failure_is_not_auto_resumed_twice(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1205,7 +1209,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn non_execution_lost_failure_is_not_auto_resumed(db: crate::database::DatabaseHandle) {
+    async fn non_execution_lost_failure_is_not_auto_resumed(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(
             &db,
@@ -1238,7 +1242,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn execution_lost_failure_past_deadline_is_not_auto_resumed(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db).await;
         let task_id = insert_task(

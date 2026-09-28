@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_unknown_sector_name(db: crate::database::DatabaseHandle) {
+    async fn rejects_unknown_sector_name(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_sector_short_ratio_inner(
                 Uuid::new_v4(),
@@ -222,7 +222,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn returns_matching_sector_newest_first_with_computed_ratio(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         seed(&db, "3700", ymd(2026, 1, 5), Some(("700", "200", "100"))).await;
         seed(&db, "3700", ymd(2026, 1, 6), None).await;
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn filters_by_date_range_and_respects_limit(db: crate::database::DatabaseHandle) {
+    async fn filters_by_date_range_and_respects_limit(db: gateway_postgres::DatabaseHandle) {
         for day in [1u32, 2, 3, 4] {
             seed(&db, "3700", ymd(2026, 1, day), Some(("100", "10", "10"))).await;
         }

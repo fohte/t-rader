@@ -146,7 +146,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn creates_new_stocks_with_sector_and_market(db: crate::database::DatabaseHandle) {
+    async fn creates_new_stocks_with_sector_and_market(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 
@@ -189,7 +189,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn updates_existing_stock_fields(db: crate::database::DatabaseHandle) {
+    async fn updates_existing_stock_fields(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
         let previous_timestamp = (Utc::now() - chrono::Duration::days(1)).fixed_offset();
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn leaves_stocks_not_present_in_master_untouched(db: crate::database::DatabaseHandle) {
+    async fn leaves_stocks_not_present_in_master_untouched(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 
@@ -272,7 +272,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn shares_sector_across_multiple_stocks(db: crate::database::DatabaseHandle) {
+    async fn shares_sector_across_multiple_stocks(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 
@@ -311,7 +311,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn leaves_sector_id_null_when_master_has_no_sector(db: crate::database::DatabaseHandle) {
+    async fn leaves_sector_id_null_when_master_has_no_sector(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock.client().expect("client");
 

@@ -115,7 +115,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn upsert_keeps_correction_rows_with_different_pub_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let app_date = NaiveDate::from_ymd_opt(2024, 2, 7).expect("date");
         let original_pub_date = NaiveDate::from_ymd_opt(2024, 2, 8).expect("date");
@@ -144,13 +144,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
+    async fn upsert_with_empty_vec_is_noop(db: gateway_postgres::DatabaseHandle) {
         let result = upsert_margin_alert(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_none_when_empty(db: crate::database::DatabaseHandle) {
+    async fn find_latest_returns_none_when_empty(db: gateway_postgres::DatabaseHandle) {
         let latest = find_latest_margin_alert_pub_date(&db)
             .await
             .expect("query ok");

@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn grades_outperform_prediction_as_correct(db: crate::database::DatabaseHandle) {
+    async fn grades_outperform_prediction_as_correct(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let prediction_id = insert_prediction(
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn grades_underperform_prediction_as_incorrect(db: crate::database::DatabaseHandle) {
+    async fn grades_underperform_prediction_as_incorrect(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         // target が benchmark を上回っているので underperform の予測は外れる。
         seed_scenario(&db, 100, 120, 100, 110).await;
@@ -429,7 +429,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_when_due_date_bar_is_stale(db: crate::database::DatabaseHandle) {
+    async fn skips_when_due_date_bar_is_stale(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         insert_test_target(&db, "1000", "target").await;
         insert_test_target(&db, "2000", "benchmark").await;
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_when_base_date_bar_is_missing(db: crate::database::DatabaseHandle) {
+    async fn skips_when_base_date_bar_is_missing(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         insert_test_target(&db, "1000", "target").await;
         insert_test_target(&db, "2000", "benchmark").await;
@@ -496,7 +496,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn already_graded_prediction_is_not_regraded(db: crate::database::DatabaseHandle) {
+    async fn already_graded_prediction_is_not_regraded(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;
         let prediction_id = insert_prediction(
@@ -526,7 +526,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn one_skipped_prediction_does_not_block_others_in_same_cycle(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "test").await;
         seed_scenario(&db, 100, 120, 100, 110).await;

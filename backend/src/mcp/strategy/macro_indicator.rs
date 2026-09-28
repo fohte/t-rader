@@ -94,7 +94,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn returns_observations_in_date_range_oldest_first(db: crate::database::DatabaseHandle) {
+    async fn returns_observations_in_date_range_oldest_first(db: gateway_postgres::DatabaseHandle) {
         seed_indicator(&db, "USDJPY").await;
         seed_observation(&db, "USDJPY", ymd(2026, 9, 1), "147.50").await;
         seed_observation(&db, "USDJPY", ymd(2026, 9, 3), "148.20").await;
@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn returns_empty_when_no_observation_in_range(db: crate::database::DatabaseHandle) {
+    async fn returns_empty_when_no_observation_in_range(db: gateway_postgres::DatabaseHandle) {
         seed_indicator(&db, "VIX").await;
         seed_observation(&db, "VIX", ymd(2026, 1, 1), "15.0").await;
 
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_empty_indicator_id(db: crate::database::DatabaseHandle) {
+    async fn rejects_empty_indicator_id(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),
@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_from_after_to(db: crate::database::DatabaseHandle) {
+    async fn rejects_from_after_to(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),

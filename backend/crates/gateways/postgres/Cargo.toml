@@ -1,0 +1,25 @@
+[package]
+name = "gateway-postgres"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+test-support = ["dep:migration", "dep:sqlx"]
+
+[dependencies]
+async-trait = { workspace = true }
+migration = { path = "../../../migration", optional = true }
+sea-orm = { workspace = true, features = ["runtime-tokio-native-tls", "sqlx-postgres"] }
+sqlx = { workspace = true, optional = true, features = [
+    "runtime-tokio",
+    "tls-native-tls",
+    "postgres",
+    "migrate",
+] }
+
+[dev-dependencies]
+backend-test-macros = { path = "../../test-macros" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

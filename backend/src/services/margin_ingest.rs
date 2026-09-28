@@ -195,7 +195,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn ingest_daily_fetches_past_the_former_per_cycle_cap(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock

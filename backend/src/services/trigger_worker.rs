@@ -390,7 +390,7 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fires_due_cron_and_writes_strategy_task(db: crate::database::DatabaseHandle) {
+    async fn fires_due_cron_and_writes_strategy_task(db: gateway_postgres::DatabaseHandle) {
         let sid = seed_strategy(&db).await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -439,7 +439,7 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_disabled_cron(db: crate::database::DatabaseHandle) {
+    async fn skips_disabled_cron(db: gateway_postgres::DatabaseHandle) {
         let sid = seed_strategy(&db).await;
         let past = Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
         let _ = insert_test_cron_trigger(&db, sid, "* * * * *", false, Some(past), "x").await;
@@ -453,7 +453,7 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_when_no_slot_after_last_fire(db: crate::database::DatabaseHandle) {
+    async fn skips_when_no_slot_after_last_fire(db: gateway_postgres::DatabaseHandle) {
         // 9:00 だけ発火する schedule で「直前に発火済み + 次回 9:00 はまだ先」のケース。
         // last_fired_at を「現時刻直前」に置いて、現 tick では発火対象にならないことを確認する。
         let sid = seed_strategy(&db).await;
@@ -468,7 +468,7 @@ mod run_once_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn ignores_hook_kind(db: crate::database::DatabaseHandle) {
+    async fn ignores_hook_kind(db: gateway_postgres::DatabaseHandle) {
         // hook 種別の trigger は cron worker の対象外。
         let sid = seed_strategy(&db).await;
         let id = Uuid::new_v4();

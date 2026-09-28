@@ -337,7 +337,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_returns_interest_newest_first_matching_5_digit_code_by_prefix(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -404,7 +404,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_includes_distinct_iss_type_rows_for_the_same_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -430,7 +430,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_filters_interest_by_date_range_inclusive(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -456,7 +456,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_margin_rejects_from_after_to(db: crate::database::DatabaseHandle) {
+    async fn read_margin_rejects_from_after_to(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_margin_inner(
                 Uuid::new_v4(),
@@ -474,7 +474,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_orders_interest_newest_first_and_respects_limit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -501,7 +501,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_keeps_only_latest_pub_date_per_app_date_for_alerts(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -573,7 +573,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_orders_alerts_newest_first_and_respects_limit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -609,7 +609,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_matches_alerts_5_digit_code_by_prefix(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -653,7 +653,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_margin_filters_alerts_by_date_range_inclusive(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 

@@ -144,7 +144,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_returns_empty_when_no_graded_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
@@ -166,7 +166,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_excludes_ungraded_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -191,7 +191,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_excludes_other_strategy_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -218,7 +218,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_aggregates_buckets_and_brier_score(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;

@@ -477,7 +477,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_without_strategy_id_succeeds(db: crate::database::DatabaseHandle) {
+    async fn create_annotation_without_strategy_id_succeeds(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
@@ -515,7 +515,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_annotation_without_strategy_id_does_not_submit_task(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -567,7 +567,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_annotation_submits_single_review_task_referencing_annotation(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -626,7 +626,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn rejecting_already_rejected_annotation_does_not_resubmit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -655,7 +655,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_annotation_leaves_status_unchanged_when_agent_submission_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;

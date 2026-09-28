@@ -371,7 +371,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_returns_flattened_trade_with_note_count(db: crate::database::DatabaseHandle) {
+    async fn list_returns_flattened_trade_with_note_count(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
         let trade_id = Uuid::new_v4();

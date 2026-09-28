@@ -134,7 +134,7 @@ mod tests {
     use serde_json::json;
 
     #[backend_test_macros::database_test]
-    async fn record_as_persists_the_given_actor(db: crate::database::DatabaseHandle) {
+    async fn record_as_persists_the_given_actor(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
 
         record_as(

@@ -115,6 +115,23 @@ pub async fn list(
     Ok(rows)
 }
 
+async fn find_rss_feed_or_404(
+    db: &impl sea_orm::ConnectionTrait,
+    id: Uuid,
+) -> Result<rss_feed::Model, RssFeedError> {
+    rss_feed::Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or(RssFeedError::NotFound(id))
+}
+
+pub async fn get(
+    db: &impl sea_orm::ConnectionTrait,
+    id: Uuid,
+) -> Result<rss_feed::Model, RssFeedError> {
+    find_rss_feed_or_404(db, id).await
+}
+
 pub async fn create(
     db: &impl sea_orm::ConnectionTrait,
     input: CreateInput,
@@ -142,10 +159,7 @@ pub async fn update(
     id: Uuid,
     patch: UpdatePatch,
 ) -> Result<rss_feed::Model, RssFeedError> {
-    let current = rss_feed::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or(RssFeedError::NotFound(id))?;
+    let current = find_rss_feed_or_404(db, id).await?;
     let mut active = current.into_active_model();
     if let Some(name) = patch.display_name {
         active.display_name = Set(validate_display_name(&name)?);
@@ -234,7 +248,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_and_list_roundtrip(db: crate::database::DatabaseHandle) {
+    async fn create_and_list_roundtrip(db: gateway_postgres::DatabaseHandle) {
         let created = create(
             &db,
             input("bloomberg", "Bloomberg", "https://example.com/a"),
@@ -259,7 +273,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_filters_by_enabled(db: crate::database::DatabaseHandle) {
+    async fn list_filters_by_enabled(db: gateway_postgres::DatabaseHandle) {
         create(&db, input("a", "A", "https://example.com/a"))
             .await
             .unwrap();
@@ -292,7 +306,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_duplicate_source(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_duplicate_source(db: gateway_postgres::DatabaseHandle) {
         create(&db, input("dup", "Dup", "https://example.com/a"))
             .await
             .unwrap();
@@ -303,7 +317,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_invalid_source_slug(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_invalid_source_slug(db: gateway_postgres::DatabaseHandle) {
         let err = create(&db, input("Bad Source", "x", "https://example.com/a"))
             .await
             .unwrap_err();
@@ -311,7 +325,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_invalid_url(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_invalid_url(db: gateway_postgres::DatabaseHandle) {
         let err = create(&db, input("ok", "x", "not-a-url"))
             .await
             .unwrap_err();
@@ -319,7 +333,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_partial_patches_only_provided_fields(db: crate::database::DatabaseHandle) {
+    async fn update_partial_patches_only_provided_fields(db: gateway_postgres::DatabaseHandle) {
         let created = create(&db, input("src", "Old", "https://example.com/old"))
             .await
             .unwrap();
@@ -348,7 +362,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_removes_row(db: crate::database::DatabaseHandle) {
+    async fn delete_removes_row(db: gateway_postgres::DatabaseHandle) {
         let created = create(&db, input("src", "x", "https://example.com/a"))
             .await
             .unwrap();
@@ -357,7 +371,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_missing_returns_not_found(db: crate::database::DatabaseHandle) {
+    async fn delete_missing_returns_not_found(db: gateway_postgres::DatabaseHandle) {
         let err = delete(&db, Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, RssFeedError::NotFound(_)));
     }

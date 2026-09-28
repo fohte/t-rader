@@ -198,7 +198,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_comments_returns_target_comments_in_thread_order(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
@@ -296,7 +296,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_supports_annotation_target(db: crate::database::DatabaseHandle) {
+    async fn read_comments_supports_annotation_target(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
         let annotation_id = seed_foreign_annotation(&db, strategy_id).await;
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_invalid_target_kind(db: crate::database::DatabaseHandle) {
+    async fn read_comments_rejects_invalid_target_kind(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
 
@@ -358,7 +358,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_cross_strategy_note(db: crate::database::DatabaseHandle) {
+    async fn read_comments_rejects_cross_strategy_note(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -380,7 +380,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_rejects_cross_strategy_annotation(db: crate::database::DatabaseHandle) {
+    async fn read_comments_rejects_cross_strategy_annotation(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_comments_filters_by_resolved(db: crate::database::DatabaseHandle) {
+    async fn read_comments_filters_by_resolved(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_toggles_resolved(db: crate::database::DatabaseHandle) {
+    async fn resolve_comment_toggles_resolved(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -556,7 +556,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_rejects_missing_comment(db: crate::database::DatabaseHandle) {
+    async fn resolve_comment_rejects_missing_comment(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
 
@@ -574,7 +574,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_comment_rejects_cross_strategy(db: crate::database::DatabaseHandle) {
+    async fn resolve_comment_rejects_cross_strategy(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -596,7 +596,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_inherits_parent_target(db: crate::database::DatabaseHandle) {
+    async fn reply_comment_inherits_parent_target(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -638,7 +638,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_empty_body(db: crate::database::DatabaseHandle) {
+    async fn reply_comment_rejects_empty_body(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;
@@ -660,7 +660,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_missing_parent(db: crate::database::DatabaseHandle) {
+    async fn reply_comment_rejects_missing_parent(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
 
@@ -678,7 +678,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_cross_strategy(db: crate::database::DatabaseHandle) {
+    async fn reply_comment_rejects_cross_strategy(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -701,7 +701,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn reply_comment_rejects_reply_to_reply(db: crate::database::DatabaseHandle) {
+    async fn reply_comment_rejects_reply_to_reply(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
         let note_id = seed_foreign_note(&db, strategy_id, "note").await;

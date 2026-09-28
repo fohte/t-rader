@@ -60,7 +60,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_tasks_returns_all_strategies_newest_first(db: crate::database::DatabaseHandle) {
+    async fn list_tasks_returns_all_strategies_newest_first(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;
@@ -106,7 +106,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_tasks_filters_by_strategy_id(db: crate::database::DatabaseHandle) {
+    async fn list_tasks_filters_by_strategy_id(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;
@@ -136,7 +136,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_tasks_filters_by_purpose(db: crate::database::DatabaseHandle) {
+    async fn list_tasks_filters_by_purpose(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
@@ -172,7 +172,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_tasks_returns_empty_for_unknown_strategy_id(db: crate::database::DatabaseHandle) {
+    async fn list_tasks_returns_empty_for_unknown_strategy_id(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let server = create_test_server(db).await;
 
         let res = server

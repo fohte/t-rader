@@ -52,7 +52,7 @@ pub fn database_test(attribute: TokenStream, item: TokenStream) -> TokenStream {
     function.attrs.push(parse_quote!(#[tokio::test]));
     function.block.stmts.insert(
         0,
-        parse_quote!(let #argument_name: #argument_type = crate::testing::create_test_transaction().await;),
+        parse_quote!(let #argument_name: #argument_type = ::gateway_postgres::test_support::create_test_transaction().await;),
     );
 
     quote!(#function).into()

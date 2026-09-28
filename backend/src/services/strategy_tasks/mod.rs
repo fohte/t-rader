@@ -443,7 +443,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn submit_task_rejects_missing_purpose_before_inserting_task_row(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_test_strategy(&db, "s").await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());

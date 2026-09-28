@@ -286,7 +286,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_returns_typed_fields_and_nulls_missing_values(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -379,7 +379,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_computes_progress_rates_only_for_quarterly_statements(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -515,7 +515,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_matches_5_digit_code_by_leading_4_chars(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -543,7 +543,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_keeps_only_the_highest_disc_no_per_period_and_doc_type(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -603,7 +603,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_keeps_missing_and_blank_group_values_separate(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -631,7 +631,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_orders_newest_first_and_respects_limit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 

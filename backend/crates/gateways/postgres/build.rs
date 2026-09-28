@@ -14,15 +14,15 @@ fn main() {
 }
 
 fn hash_migration_sources() -> String {
-    let root = Path::new("migration/src");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../migration/src");
     let mut files = Vec::new();
-    collect_migration_sources(root, &mut files);
+    collect_migration_sources(&root, &mut files);
     files.sort();
 
     let mut hash = 0x6c62272e07bb014262b821756295c58d_u128;
     for file in files {
         let relative_path = file
-            .strip_prefix(root)
+            .strip_prefix(&root)
             .expect("migration source must be under migration/src");
         let relative_path = relative_path
             .components()
