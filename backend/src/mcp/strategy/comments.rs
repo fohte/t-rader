@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::{comment, note_version};
+use gateway_postgres::entities::{comment, note_version};
 
 use super::dto::{
     CommentDto, ReadCommentsParams, ReadCommentsResult, ReplyCommentParams, ReplyCommentResult,
@@ -192,7 +192,7 @@ mod tests {
         build_server, current_note_version_id, insert_strategy, normalize_comment, seed_comment,
         seed_foreign_annotation, seed_foreign_note, ts_sentinel,
     };
-    use crate::entities::comment;
+    use gateway_postgres::entities::comment;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
 

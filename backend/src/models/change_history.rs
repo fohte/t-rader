@@ -4,7 +4,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::change_history;
+use gateway_postgres::entities::change_history;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = ChangeHistory)]

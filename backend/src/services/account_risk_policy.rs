@@ -5,8 +5,8 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::EntityTrait;
 use sea_orm::sea_query::OnConflict;
 
-use crate::entities::account_risk_policy;
 use crate::error::AppError;
+use gateway_postgres::entities::account_risk_policy;
 
 const SINGLETON_ID: i16 = 1;
 

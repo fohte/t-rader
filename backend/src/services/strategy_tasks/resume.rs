@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use super::{DEADLINE_DURATION, SubmittedTask, phase_str, step_to_wire_json};
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
-use crate::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
-use crate::entities::{strategy_task, strategy_task_step};
+use gateway_postgres::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
+use gateway_postgres::entities::{strategy_task, strategy_task_step};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ResumeTaskError {
@@ -217,8 +217,8 @@ mod tests {
     use super::super::TaskSource;
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
     use crate::testing::insert_test_strategy;
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskStepStatus;
     use sea_orm::ActiveValue::NotSet;
 
     /// resume 時の `now` と区別できるよう、投入時刻として十分に過去の固定値を使う。

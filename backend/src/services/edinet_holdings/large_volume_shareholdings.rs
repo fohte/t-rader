@@ -4,7 +4,9 @@ use core_domain::holdings::LargeVolumeShareholdingDocument;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
 
-use crate::entities::large_volume_shareholding_documents::{ActiveModel, Column, Entity};
+use gateway_postgres::entities::large_volume_shareholding_documents::{
+    ActiveModel, Column, Entity,
+};
 
 pub(crate) struct Endpoint;
 

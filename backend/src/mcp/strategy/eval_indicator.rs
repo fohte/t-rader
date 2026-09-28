@@ -13,9 +13,9 @@ use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::entities::custom_indicator;
 use crate::kata_exec::{ExecRequest, KataExecError};
 use crate::services::custom_indicators::resolve_indicator;
+use gateway_postgres::entities::custom_indicator;
 
 use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
 use super::{
@@ -184,9 +184,9 @@ mod tests {
     use super::super::StrategyServer;
     use super::super::dto::{EvalIndicatorParams, EvalIndicatorResult};
     use super::{EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_TIMEOUT_SECS};
-    use crate::entities::{custom_indicator, strategy};
     use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
     use crate::services::custom_indicators::{SCOPE_GLOBAL, SCOPE_STRATEGY};
+    use gateway_postgres::entities::{custom_indicator, strategy};
 
     async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
         let id = Uuid::new_v4();

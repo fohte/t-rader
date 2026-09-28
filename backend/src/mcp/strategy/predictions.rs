@@ -9,8 +9,8 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::{prediction, stock};
 use crate::services::predictions::{ensure_direction, ensure_probability};
+use gateway_postgres::entities::{prediction, stock};
 
 use super::dto::{
     ListPredictionsParams, ListPredictionsResult, PredictionDto, RecordPredictionParams,

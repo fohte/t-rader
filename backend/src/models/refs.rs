@@ -2,7 +2,7 @@ use chrono::{DateTime, FixedOffset};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::entities::{indicator, sector, stock, theme};
+use gateway_postgres::entities::{indicator, sector, stock, theme};
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = Stock)]

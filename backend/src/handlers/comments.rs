@@ -12,12 +12,12 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::comment;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::comment_anchor;
+use gateway_postgres::entities::comment;
 
 const ALLOWED_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
 const ALLOWED_AUTHOR_KIND: [&str; 2] = ["human", "llm"];

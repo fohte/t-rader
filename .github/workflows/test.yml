@@ -269,7 +269,7 @@ jobs:
       - name: Check entity files are in sync
         working-directory: backend
         run: |
-          if ! git diff --exit-code src/entities; then
+          if ! git diff --exit-code crates/gateways/postgres/src/entities; then
             echo "::error::Entity files are out of sync with database schema."
             echo "Run 'bash backend/scripts/generate-entities.sh' locally and commit the changes."
             exit 1

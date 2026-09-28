@@ -2,8 +2,8 @@
 
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 
-use crate::entities::note_version;
 use crate::error::AppError;
+use gateway_postgres::entities::note_version;
 
 /// `note_version` コメントの行範囲を本文と照合して検証する。
 pub async fn validate_version_anchor<C: ConnectionTrait>(

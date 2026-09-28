@@ -13,12 +13,12 @@ use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::stock;
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 use crate::services::account_risk_policy;
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
 use crate::services::trades::fetch_summary;
+use gateway_postgres::entities::stock;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
 use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, ensure_strategy_exists};
@@ -469,10 +469,10 @@ mod integration_tests {
 
     use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::entities::{instruments, sector, stock, trade};
     use crate::models::{Bar, Timeframe};
-    use crate::repositories::bars::upsert_bars;
     use crate::services::{account_risk_policy, investable_amount};
+    use gateway_postgres::entities::{instruments, sector, stock, trade};
+    use gateway_postgres::repositories::bars::upsert_bars;
 
     async fn seed_trade(
         db: &impl sea_orm::ConnectionTrait,

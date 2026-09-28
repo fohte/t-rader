@@ -12,7 +12,6 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::annotation;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::handlers::strategies::map_submit_error;
@@ -22,6 +21,7 @@ use crate::models::{
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
+use gateway_postgres::entities::annotation;
 
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
@@ -429,8 +429,6 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
@@ -438,6 +436,8 @@ mod tests {
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use gateway_postgres::entities::strategy_task;
     use serde_json::Value;
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。

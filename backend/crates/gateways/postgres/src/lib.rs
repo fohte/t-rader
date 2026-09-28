@@ -7,6 +7,9 @@ use sea_orm::{
 
 extern crate self as gateway_postgres;
 
+pub mod entities;
+pub mod repositories;
+
 #[cfg(feature = "test-support")]
 pub mod test_support;
 

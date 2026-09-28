@@ -9,8 +9,8 @@ use sea_orm::{ConnectionTrait, EntityTrait};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::entities::change_history;
 use crate::error::AppError;
+use gateway_postgres::entities::change_history;
 
 /// 記録する変更の actor。`change_history.actor_kind` の CHECK 制約 (`human`/`llm`) に対応する。
 #[derive(Debug, Clone, Copy)]

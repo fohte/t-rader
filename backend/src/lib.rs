@@ -3,7 +3,6 @@ pub mod cli;
 pub(crate) mod concurrent;
 pub mod data_provider;
 pub(crate) mod date_utils;
-pub mod entities;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
@@ -13,7 +12,6 @@ pub mod kata_exec;
 pub mod mcp;
 pub mod middleware;
 pub mod models;
-pub mod repositories;
 pub(crate) mod serde_helpers;
 pub mod services;
 #[cfg(test)]

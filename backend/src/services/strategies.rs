@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::strategy;
 use crate::error::AppError;
+use gateway_postgres::entities::strategy;
 
 pub async fn ensure_strategy_exists<C: ConnectionTrait>(
     conn: &C,

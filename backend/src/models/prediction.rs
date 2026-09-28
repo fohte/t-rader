@@ -4,7 +4,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::prediction;
+use gateway_postgres::entities::prediction;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = Prediction)]

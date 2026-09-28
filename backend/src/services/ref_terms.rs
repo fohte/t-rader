@@ -7,10 +7,10 @@ use std::collections::HashMap;
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-use crate::entities::{indicator, ref_term, sector, stock, theme};
 use crate::error::AppError;
 use crate::models::RefResolution;
 use crate::text_normalize::normalize;
+use gateway_postgres::entities::{indicator, ref_term, sector, stock, theme};
 
 /// 指定 ref_kind に属する term の集合をまとめて別名解決する。ref_kind ごとに
 /// 1 クエリで全別名をロードし、Rust 側で正規化 (NFKC -> lowercase) して比較する。
@@ -177,8 +177,8 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use super::{resolve_many_by_term, resolve_refs};
-    use crate::entities::{indicator, ref_term, stock};
     use crate::models::RefResolution;
+    use gateway_postgres::entities::{indicator, ref_term, stock};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
 

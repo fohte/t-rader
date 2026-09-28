@@ -7,7 +7,7 @@ use sea_orm::ActiveValue::Set;
 use uuid::Uuid;
 
 use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
-use crate::entities::strategy;
+use gateway_postgres::entities::strategy;
 
 use super::MgmtServer;
 

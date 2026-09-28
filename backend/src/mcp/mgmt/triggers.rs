@@ -103,9 +103,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::entities::trigger;
     use crate::mcp::mgmt::dto::TriggerKindParam;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
+    use gateway_postgres::entities::trigger;
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;

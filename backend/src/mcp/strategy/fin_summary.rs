@@ -195,7 +195,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
-    use crate::entities::financial_summary;
+    use gateway_postgres::entities::financial_summary;
 
     fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(y, m, d).expect("valid date")

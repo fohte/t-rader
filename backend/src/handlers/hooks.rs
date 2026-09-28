@@ -9,11 +9,11 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::AppState;
-use crate::entities::trigger;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::services::strategy_tasks::TaskSource;
 use crate::services::triggers::{FireTriggerError, evaluate_event_match, fire_trigger};
+use gateway_postgres::entities::trigger;
 
 /// hook 受信レスポンス。
 ///
@@ -121,11 +121,11 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::{strategy, strategy_task};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_hook_trigger};
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use gateway_postgres::entities::{strategy, strategy_task};
 
     /// strategy_task 行の動的フィールド (id / 時刻) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]

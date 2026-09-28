@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::trade;
+use gateway_postgres::entities::trade;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trade)]

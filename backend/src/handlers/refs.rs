@@ -7,7 +7,6 @@ use serde::Deserialize;
 use utoipa::IntoParams;
 
 use crate::AppState;
-use crate::entities::{indicator, sector, stock, theme};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::{
@@ -15,6 +14,7 @@ use crate::models::{
 };
 use crate::services::note_refs::ALLOWED_REF_KINDS;
 use crate::services::ref_terms;
+use gateway_postgres::entities::{indicator, sector, stock, theme};
 
 /// LIKE のメタ文字 (`%` `_` `\`) を入力から除去する。
 /// SeaORM の `like()` は ESCAPE 句を出さないため、エスケープではなく除去で対処する

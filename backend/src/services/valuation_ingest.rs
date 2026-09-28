@@ -11,8 +11,8 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use tokio::task::JoinHandle;
 
 use crate::date_utils::latest_business_day;
-use crate::entities::{valuation, valuation_ingested_date};
 use crate::error::AppError;
+use gateway_postgres::entities::{valuation, valuation_ingested_date};
 
 /// poll task のデフォルト実行間隔。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60 * 60);

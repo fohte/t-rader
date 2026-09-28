@@ -132,7 +132,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
-    use crate::entities::{indicator, ref_term, sector, stock, theme};
+    use gateway_postgres::entities::{indicator, ref_term, sector, stock, theme};
 
     async fn seed_ref_term(
         db: &impl sea_orm::ConnectionTrait,

@@ -15,7 +15,6 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{trade, trade_note};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
@@ -24,6 +23,7 @@ use crate::models::{
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::trades as trades_svc;
+use gateway_postgres::entities::{trade, trade_note};
 
 const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
 const ALLOWED_SOURCE: [&str; 3] = ["manual", "csv", "api"];
@@ -359,8 +359,8 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    use crate::entities::trade;
     use crate::testing::{create_test_server_with_db, insert_test_strategy};
+    use gateway_postgres::entities::trade;
 
     fn normalize_trade(mut value: Value) -> Value {
         value["id"] = json!("<dyn>");

@@ -14,9 +14,9 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::{prediction, prediction_grade};
 use crate::error::AppError;
-use crate::repositories::bars::find_latest_bar_on_or_before;
+use gateway_postgres::entities::{prediction, prediction_grade};
+use gateway_postgres::repositories::bars::find_latest_bar_on_or_before;
 
 /// poll task のデフォルト実行間隔。日足の確定を待つだけの処理で緊急性が無いため週次とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -233,12 +233,12 @@ pub fn spawn_poll(db: DatabaseConnection, interval: Duration) -> tokio::task::Jo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::instruments;
     use crate::models::Bar;
     use crate::models::bar::Timeframe;
-    use crate::repositories::bars::upsert_bars;
     use crate::testing::{insert_test_stock, insert_test_strategy};
     use chrono::NaiveDate;
+    use gateway_postgres::entities::instruments;
+    use gateway_postgres::repositories::bars::upsert_bars;
     use rstest::rstest;
     use sea_orm::ActiveValue::NotSet;
 

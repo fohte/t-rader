@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::entities::bars;
+use gateway_postgres::entities::bars;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = Bar)]

@@ -8,9 +8,9 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::note_ref;
 use crate::error::AppError;
 use crate::services::graph::GraphDef;
+use gateway_postgres::entities::note_ref;
 
 pub(crate) const ALLOWED_REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
 

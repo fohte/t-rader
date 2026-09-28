@@ -8,7 +8,7 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::trade;
+use gateway_postgres::entities::trade;
 
 use super::dto::{ReadTradesParams, ReadTradesResult, TradeDto};
 use super::{StrategyServer, clamp_limit, db_error, decimal_to_f64};
@@ -66,7 +66,7 @@ mod tests {
 
     use super::super::dto::{ReadTradesParams, ReadTradesResult, TradeDto};
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::entities::trade;
+    use gateway_postgres::entities::trade;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")

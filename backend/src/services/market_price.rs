@@ -10,10 +10,10 @@ use sea_orm::{EntityTrait, Set};
 
 use crate::data_provider::DailyBarSource;
 use crate::date_utils::latest_business_day;
-use crate::entities::instruments;
 use crate::models::Timeframe;
-use crate::repositories::bars::find_latest_bar;
 use crate::services::backfill::{backfill_daily_bars, latest_fetchable_date};
+use gateway_postgres::entities::instruments;
+use gateway_postgres::repositories::bars::find_latest_bar;
 
 /// 銘柄ごとの直近終値と、その観測日。
 #[derive(Debug, PartialEq)]
@@ -123,10 +123,10 @@ mod tests {
     use super::*;
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
-    use crate::repositories::bars::upsert_bars;
     use crate::services::backfill::latest_fetchable_date;
     use crate::testing::MockProvider;
     use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use gateway_postgres::repositories::bars::upsert_bars;
     use rust_decimal::Decimal;
 
     fn sample_instrument(id: &str) -> Instrument {

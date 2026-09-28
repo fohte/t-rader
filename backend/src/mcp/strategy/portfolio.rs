@@ -122,11 +122,11 @@ mod tests {
     use uuid::Uuid;
 
     use crate::data_provider::SharedDailyBarSource;
-    use crate::entities::trade;
     use crate::models::bar::{Bar, Timeframe};
     use crate::models::instrument::{Instrument, Market};
     use crate::services::investable_amount;
     use crate::testing::MockProvider;
+    use gateway_postgres::entities::trade;
 
     use super::super::StrategyServer;
     use super::super::dto::{

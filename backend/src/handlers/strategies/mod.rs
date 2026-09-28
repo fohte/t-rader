@@ -5,12 +5,12 @@ use sea_orm::{EntityTrait, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::strategy;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, StrategyResponse, UpdateStrategyRequest};
 use crate::services::change_history::Actor;
 use crate::services::strategy_config;
+use gateway_postgres::entities::strategy;
 
 mod investable_amount;
 mod tasks;

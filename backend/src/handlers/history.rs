@@ -6,10 +6,10 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::change_history;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::ChangeHistoryResponse;
+use gateway_postgres::entities::change_history;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

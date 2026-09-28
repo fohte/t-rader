@@ -5,7 +5,7 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ActiveModelTrait, EntityTrait, TransactionSession};
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment, note, note_kind, note_version, strategy};
+use gateway_postgres::entities::{annotation, comment, note, note_kind, note_version, strategy};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};

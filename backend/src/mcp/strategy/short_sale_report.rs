@@ -10,7 +10,7 @@ use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::short_sale_report;
+use gateway_postgres::entities::short_sale_report;
 
 use super::dto::{ReadShortSaleReportsParams, ReadShortSaleReportsResult, ShortSaleReportDto};
 use super::{StrategyServer, clamp_limit, code_range, db_error, decimal_to_f64, validate_symbol};
@@ -87,7 +87,7 @@ mod tests {
     use super::super::dto::{ReadShortSaleReportsParams, ReadShortSaleReportsResult};
     use super::super::tests_common::build_server;
     use super::blank_to_none;
-    use crate::entities::short_sale_report;
+    use gateway_postgres::entities::short_sale_report;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")

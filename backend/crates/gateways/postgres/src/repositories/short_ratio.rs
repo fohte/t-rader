@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_ratio;
-use crate::error::AppError;
-use crate::models::ShortRatio;
+use core_domain::short_ratio::ShortRatio;
 
 impl From<ShortRatio> for short_ratio::ActiveModel {
     fn from(ratio: ShortRatio) -> Self {
@@ -25,7 +24,7 @@ impl From<ShortRatio> for short_ratio::ActiveModel {
 pub async fn upsert_short_ratios(
     db: &impl sea_orm::ConnectionTrait,
     ratios: Vec<ShortRatio>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if ratios.is_empty() {
         return Ok(());
     }
@@ -51,7 +50,7 @@ pub async fn upsert_short_ratios(
 /// DB 上の最新の対象日を返す。1 件も無ければ `None`。
 pub async fn find_latest_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let result = short_ratio::Entity::find()
         .order_by_desc(short_ratio::Column::Date)
         .one(db)

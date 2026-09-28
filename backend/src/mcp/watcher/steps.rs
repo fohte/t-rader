@@ -8,8 +8,8 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::entities::sea_orm_active_enums::StrategyTaskStepStatus;
-use crate::entities::strategy_task_step;
+use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskStepStatus;
+use gateway_postgres::entities::strategy_task_step;
 
 /// t-rader-agent から届いた実行ステップ配列を `strategy_task_step` へ upsert する。
 ///

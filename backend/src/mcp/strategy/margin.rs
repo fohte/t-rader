@@ -251,8 +251,8 @@ mod tests {
     use super::{
         MarginAlertDto, MarginInterestDto, MarginPubReasonDto, ReadMarginParams, ReadMarginResult,
     };
-    use crate::entities::{margin_alert, margin_interest};
     use crate::models::PubReason;
+    use gateway_postgres::entities::{margin_alert, margin_interest};
 
     fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(y, m, d).expect("valid date")

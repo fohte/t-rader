@@ -5,8 +5,8 @@ use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter, QueryOrder};
 use std::collections::HashMap;
 use std::collections::VecDeque;
 
-use crate::entities::trade;
 use crate::models::{PerformanceSummary, PositionSummary};
+use gateway_postgres::entities::trade;
 
 /// FIFO Lot
 #[derive(Debug, Clone)]

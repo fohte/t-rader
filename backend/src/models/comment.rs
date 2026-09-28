@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::comment;
+use gateway_postgres::entities::comment;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Comment)]

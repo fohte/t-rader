@@ -105,7 +105,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{ReadValuationParams, ReadValuationResult, ValuationDto};
-    use crate::entities::valuation;
+    use gateway_postgres::entities::valuation;
     fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }

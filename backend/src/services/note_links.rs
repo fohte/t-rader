@@ -4,10 +4,10 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, QueryTrait};
 use uuid::Uuid;
 
-use crate::entities::{note, note_link, note_version};
 use crate::error::AppError;
 use crate::services::note_refs::extract_note_link_tokens;
 use crate::services::note_versions::find_current_versions;
+use gateway_postgres::entities::{note, note_link, note_version};
 
 /// 新しいノートバージョンの作成時点でリンク先の現行バージョンを解決する。
 pub async fn sync_note_links<C: sea_orm::ConnectionTrait>(

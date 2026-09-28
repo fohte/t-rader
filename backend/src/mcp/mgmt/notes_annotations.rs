@@ -3,10 +3,10 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
-use crate::entities::{annotation, note};
 use crate::services::note_versions::{
     current_note_ids, find_current_versions, find_initial_created_by_kind,
 };
+use gateway_postgres::entities::{annotation, note};
 
 use super::MgmtServer;
 use super::dto::{

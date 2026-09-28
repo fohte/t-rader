@@ -160,8 +160,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::entities::strategy;
     use crate::testing::insert_test_cron_trigger;
+    use gateway_postgres::entities::strategy;
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;

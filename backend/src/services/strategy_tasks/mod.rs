@@ -11,10 +11,10 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
-use crate::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
-use crate::entities::{strategy, strategy_task, strategy_task_step};
 use crate::models::StrategyTaskSummary;
 use crate::services::agent_config;
+use gateway_postgres::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
+use gateway_postgres::entities::{strategy, strategy_task, strategy_task_step};
 
 mod resume;
 pub use resume::{ResumeTaskError, auto_resume_task, resume_task};
