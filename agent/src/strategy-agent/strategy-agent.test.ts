@@ -467,10 +467,9 @@ describe('runStrategyAgent', () => {
     const normalize = (clients: readonly McpClientCall[]): McpClientCall[] =>
       clients.map((client) => {
         const [prefix, stepId] = client.executionId.split(':')
-        if (stepId === undefined) return { ...client }
         expect(stepId).toMatch(UUID_PATTERN)
         return {
-          executionId: `${String(prefix)}:${label(stepId)}`,
+          executionId: `${String(prefix)}:${label(String(stepId))}`,
           closed: client.closed,
         }
       })
