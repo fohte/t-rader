@@ -480,24 +480,18 @@ describe('runStrategyAgent', () => {
       message: '2フェーズの実行が完了しました (Plan → Work)',
     })
     expect.soft(snapshots.map(normalize)).toEqual([
+      [{ executionId: 'task-1:<step-1>', closed: false }],
       [
-        { executionId: 'task-1', closed: false },
-        { executionId: 'task-1:<step-1>', closed: false },
-      ],
-      [
-        { executionId: 'task-1', closed: false },
         { executionId: 'task-1:<step-1>', closed: true },
         { executionId: 'task-1:<step-2>', closed: false },
       ],
       [
-        { executionId: 'task-1', closed: false },
         { executionId: 'task-1:<step-1>', closed: true },
         { executionId: 'task-1:<step-2>', closed: true },
         { executionId: 'task-1:<step-3>', closed: false },
       ],
     ])
     expect.soft(normalize(calls.mcpClients)).toEqual([
-      { executionId: 'task-1', closed: true },
       { executionId: 'task-1:<step-1>', closed: true },
       { executionId: 'task-1:<step-2>', closed: true },
       { executionId: 'task-1:<step-3>', closed: true },
