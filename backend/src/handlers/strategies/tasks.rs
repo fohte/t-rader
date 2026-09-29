@@ -1,9 +1,15 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use core_application::strategy_scope::{
+    StrategyScope, StrategyScopeError, StrategyScopeSourceError,
+};
+use core_application::strategy_task::{
+    GetTaskError, ListTasksError, StrategyTaskRepositoryError, SubmitTaskError, TaskSource,
+};
+use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
-use super::find_strategy_or_404;
 use crate::AppState;
 use crate::agent_client::AgentTaskError;
 use crate::error::{AppError, ErrorResponse};
@@ -11,8 +17,6 @@ use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{
     StrategyChatRequest, StrategyChatResponse, StrategyTaskStatusResponse, StrategyTaskSummary,
 };
-use crate::services::strategy_tasks::{self, GetTaskError, SubmitTaskError, TaskSource, phase_str};
-
 pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
     match err {
         SubmitTaskError::EmptyPrompt => AppError::Validation("prompt must not be empty".into()),
@@ -22,7 +26,13 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
         SubmitTaskError::PurposeNotFound(purpose) => {
             AppError::ServiceUnavailable(format!("agent_config for purpose '{purpose}' not found"))
         }
-        SubmitTaskError::Database(db_err) => AppError::Database(db_err),
+        SubmitTaskError::Repository(StrategyTaskRepositoryError::Database(error))
+        | SubmitTaskError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | SubmitTaskError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+        SubmitTaskError::Repository(StrategyTaskRepositoryError::InvalidTransaction)
+        | SubmitTaskError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => AppError::Database(
+            sea_orm::DbErr::Custom("invalid strategy task transaction".into()),
+        ),
         SubmitTaskError::AgentTask(AgentTaskError::NotConfigured) => {
             AppError::ServiceUnavailable("agent task client is not configured".into())
         }
@@ -30,6 +40,47 @@ pub(crate) fn map_submit_error(err: SubmitTaskError) -> AppError {
             AppError::Config(format!("agent task error: {agent_err}"))
         }
     }
+}
+
+pub(crate) fn map_list_task_error(error: ListTasksError) -> AppError {
+    match error {
+        ListTasksError::Repository(StrategyTaskRepositoryError::Database(error)) => error.into(),
+        ListTasksError::Repository(StrategyTaskRepositoryError::InvalidTransaction) => {
+            AppError::Database(sea_orm::DbErr::Custom(
+                "invalid strategy task transaction".into(),
+            ))
+        }
+    }
+}
+
+fn map_get_task_error(error: GetTaskError) -> AppError {
+    match error {
+        GetTaskError::NotFound(id) => AppError::NotFound(format!("strategy task {id} not found")),
+        GetTaskError::StrategyMismatch { task_id, .. } => {
+            AppError::NotFound(format!("strategy task {task_id} not found"))
+        }
+        GetTaskError::Repository(StrategyTaskRepositoryError::Database(error)) => error.into(),
+        GetTaskError::Repository(StrategyTaskRepositoryError::InvalidTransaction) => {
+            AppError::Database(sea_orm::DbErr::Custom(
+                "invalid strategy task transaction".into(),
+            ))
+        }
+    }
+}
+
+async fn verify_strategy_scope(
+    state: &AppState,
+    strategy_id: Uuid,
+    not_found_message: String,
+) -> Result<StrategyScope, AppError> {
+    crate::services::strategies::strategy_scope(&state.db, strategy_id)
+        .await
+        .map_err(|error| match error {
+            StrategyScopeError::NotFound(_) => AppError::NotFound(not_found_message),
+            StrategyScopeError::Source(StrategyScopeSourceError::QueryFailed(message)) => {
+                AppError::Database(sea_orm::DbErr::Custom(message))
+            }
+        })
 }
 
 /// フローティングチャットから戦略 Agent にタスクを投入する
@@ -54,16 +105,18 @@ pub async fn submit_strategy_chat(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<StrategyChatRequest>,
 ) -> Result<(StatusCode, Json<StrategyChatResponse>), AppError> {
-    let submitted = strategy_tasks::submit_task(
-        &state.db,
-        &state.agent_task_client,
-        id,
-        &payload.prompt,
-        TaskSource::Frontend,
-        None,
-    )
-    .await
-    .map_err(map_submit_error)?;
+    let submitted = state
+        .use_cases
+        .strategy_tasks
+        .submit_task(
+            state.agent_task_client.as_ref(),
+            id,
+            &payload.prompt,
+            TaskSource::Frontend,
+            None,
+        )
+        .await
+        .map_err(map_submit_error)?;
     Ok((
         StatusCode::ACCEPTED,
         Json(StrategyChatResponse {
@@ -93,24 +146,25 @@ pub async fn get_strategy_task(
     State(state): State<AppState>,
     JsonPath((strategy_id, task_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<Json<StrategyTaskStatusResponse>, AppError> {
-    let view = strategy_tasks::get_task_for_strategy(&state.db, strategy_id, task_id)
+    let scope = verify_strategy_scope(
+        &state,
+        strategy_id,
+        format!("strategy task {task_id} not found"),
+    )
+    .await?;
+    let view = state
+        .use_cases
+        .strategy_tasks
+        .get_for_strategy(scope, task_id)
         .await
-        .map_err(|err| match err {
-            GetTaskError::NotFound(id) => {
-                AppError::NotFound(format!("strategy task {id} not found"))
-            }
-            GetTaskError::StrategyMismatch { task_id, .. } => {
-                AppError::NotFound(format!("strategy task {task_id} not found"))
-            }
-            GetTaskError::Database(db_err) => AppError::Database(db_err),
-        })?;
+        .map_err(map_get_task_error)?;
     Ok(Json(StrategyTaskStatusResponse {
         task_id: view.task_id,
         strategy_id: view.strategy_id,
         a2a_task_id: view.a2a_task_id,
         source: view.source,
         prompt: view.prompt,
-        phase: phase_str(&view.phase).to_string(),
+        phase: view.phase.as_str().to_string(),
         error_summary: view.error_summary,
         result_text: view.result_text,
         created_at: view.created_at,
@@ -138,10 +192,18 @@ pub async fn list_strategy_tasks(
     State(state): State<AppState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
-    find_strategy_or_404(&state.db, strategy_id).await?;
-    let views = strategy_tasks::list_tasks(&state.db, Some(strategy_id), None)
+    let scope = verify_strategy_scope(
+        &state,
+        strategy_id,
+        format!("strategy {strategy_id} not found"),
+    )
+    .await?;
+    let views = state
+        .use_cases
+        .strategy_tasks
+        .list_for_strategy(scope, None)
         .await
-        .map_err(AppError::Database)?;
+        .map_err(map_list_task_error)?;
     Ok(Json(
         views.into_iter().map(StrategyTaskSummary::from).collect(),
     ))

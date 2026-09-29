@@ -1,225 +1,48 @@
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::Set;
-use sea_orm::sea_query::Expr;
-use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
-};
 use uuid::Uuid;
 
-use super::{DEADLINE_DURATION, SubmittedTask, phase_str, step_to_wire_json};
-use crate::agent_client::{AgentTaskError, SharedAgentTaskClient, SubmitAgentTask};
-use gateway_postgres::entities::sea_orm_active_enums::{StrategyTaskPhase, StrategyTaskStepStatus};
-use gateway_postgres::entities::{strategy_task, strategy_task_step};
+pub use core_application::strategy_task::ResumeTaskError;
+pub use core_application::strategy_task::SubmittedTask;
 
-#[derive(Debug, thiserror::Error)]
-pub enum ResumeTaskError {
-    #[error("strategy task {0} not found")]
-    NotFound(Uuid),
-    #[error("strategy task {0} is not resumable (current phase: {1})")]
-    NotResumable(Uuid, &'static str),
-    #[error(transparent)]
-    Database(#[from] sea_orm::DbErr),
-    #[error(transparent)]
-    AgentTask(#[from] AgentTaskError),
-}
-
-/// failed な戦略タスク、または for_each の部分失敗で failed なステップを抱えたまま
-/// completed になった戦略タスクを同じ行のまま再開する。
-///
-/// 新しい strategy_task 行は作らない (a2a_task_id だけ差し替え、phase を Running に戻す)。
-/// 全 strategy_task_step 行 (completed/failed/running 問わず) を `resume_steps` として
-/// agent に渡し、どのステップを再利用し、どのステップを再実行するかは agent 側の判断に
-/// 委ねる — backend は中身を解釈しない。
-pub async fn resume_task(
-    db: &impl sea_orm::ConnectionTrait,
-    agent_client: &SharedAgentTaskClient,
+pub async fn resume_task<C>(
+    db: &C,
+    agent_client: &crate::agent_client::SharedAgentTaskClient,
     task_id: Uuid,
-) -> Result<SubmittedTask, ResumeTaskError> {
-    resume_task_impl(db, agent_client, task_id, false).await
-}
-
-/// execution_lost で failed になった戦略タスクを、watcher が自動で 1 回だけ resume する。
-///
-/// claim 時点で `auto_resumed_at` を刻むため、投入 (agent への submit) 自体が失敗しても
-/// 次回以降は対象から外れる — 呼び出し元 (watcher) は再試行しない。
-pub async fn auto_resume_task(
-    db: &impl sea_orm::ConnectionTrait,
-    agent_client: &SharedAgentTaskClient,
-    task_id: Uuid,
-) -> Result<SubmittedTask, ResumeTaskError> {
-    resume_task_impl(db, agent_client, task_id, true).await
-}
-
-async fn resume_task_impl(
-    db: &impl sea_orm::ConnectionTrait,
-    agent_client: &SharedAgentTaskClient,
-    task_id: Uuid,
-    mark_auto_resumed: bool,
-) -> Result<SubmittedTask, ResumeTaskError> {
-    let row = strategy_task::Entity::find_by_id(task_id)
-        .one(db)
-        .await?
-        .ok_or(ResumeTaskError::NotFound(task_id))?;
-
-    // 「再開できる状態である」ことの確認と「Running に倒す」ことを 1 回の条件付き
-    // UPDATE で原子化する。事前に phase を読むだけでは、同じ task_id への並行呼び出しが
-    // 両方とも再開可能と判断して二重に agent へ投入されうる。
-    //
-    // Completed は failed ステップを持つ場合だけ再開できる (for_each は 1 件でも成功すれば
-    // フェーズ成功として返すため、部分失敗したタスクは Failed でなく Completed で終わる)。
-    // Running/Pending は失敗した要素を含んでいても実行中なので対象外。
-    let failed_step_task_ids = strategy_task_step::Entity::find()
-        .select_only()
-        .column(strategy_task_step::Column::TaskId)
-        .filter(strategy_task_step::Column::TaskId.eq(task_id))
-        .filter(strategy_task_step::Column::Status.eq(StrategyTaskStepStatus::Failed))
-        .into_query();
-    let resumable = Condition::any()
-        .add(strategy_task::Column::Phase.eq(StrategyTaskPhase::Failed))
-        .add(
-            Condition::all()
-                .add(strategy_task::Column::Phase.eq(StrategyTaskPhase::Completed))
-                .add(strategy_task::Column::TaskId.in_subquery(failed_step_task_ids)),
-        );
-    let claim_now = chrono::Utc::now().fixed_offset();
-    let mut update = strategy_task::Entity::update_many()
-        .col_expr(
-            strategy_task::Column::Phase,
-            Expr::value(StrategyTaskPhase::Running),
-        )
-        .col_expr(strategy_task::Column::UpdatedAt, Expr::value(claim_now));
-    let mut filter = Condition::all()
-        .add(strategy_task::Column::TaskId.eq(task_id))
-        .add(resumable);
-    if mark_auto_resumed {
-        // auto_resumed_at を claim と同じ UPDATE で刻むことで、「1 タスクにつき自動
-        // resume は 1 回まで」を後続の再試行と原子的に排他できる (2 回目の呼び出しは
-        // ここで claim に失敗する)。
-        update = update.col_expr(strategy_task::Column::AutoResumedAt, Expr::value(claim_now));
-        filter = filter.add(strategy_task::Column::AutoResumedAt.is_null());
-    }
-    let claimed = update.filter(filter).exec(db).await?;
-    if claimed.rows_affected == 0 {
-        return Err(ResumeTaskError::NotResumable(
-            task_id,
-            phase_str(&row.phase),
-        ));
-    }
-
-    let step_rows = strategy_task_step::Entity::find()
-        .filter(strategy_task_step::Column::TaskId.eq(task_id))
-        .order_by_asc(strategy_task_step::Column::Seq)
-        .all(db)
-        .await?;
-    let resume_steps = step_rows
-        .into_iter()
-        .map(step_to_resume_wire_json)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| {
-            ResumeTaskError::Database(sea_orm::DbErr::Custom(format!(
-                "failed to serialize strategy_task_step: {err}"
-            )))
-        })?;
-
-    let now = chrono::Utc::now().fixed_offset();
-    let deadline_at = now + DEADLINE_DURATION;
-
-    let agent_ref = match agent_client
-        .submit(SubmitAgentTask {
-            strategy_id: row.strategy_id,
-            prompt: row.prompt.clone(),
-            purpose: row.purpose.clone(),
-            resume_steps: (!resume_steps.is_empty()).then_some(resume_steps),
-            deadline_at,
-            // 「同じ実行の続き」なので基準時刻は投入時の値のまま渡す (`now` を使わない)。
-            as_of: row.as_of,
-        })
+) -> Result<SubmittedTask, ResumeTaskError>
+where
+    C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
+{
+    crate::services::use_cases::build_strategy_task_use_cases(db.clone())
+        .resume(agent_client.as_ref(), task_id)
         .await
-    {
-        Ok(agent_ref) => agent_ref,
-        Err(err) => {
-            tracing::warn!(
-                error = %err,
-                task_id = %task_id,
-                "agent task resume submission failed",
-            );
-            let failed = strategy_task::ActiveModel {
-                task_id: Set(task_id),
-                phase: Set(StrategyTaskPhase::Failed),
-                error_summary: Set(Some(format!("agent task resume submission failed: {err}"))),
-                updated_at: Set(chrono::Utc::now().fixed_offset()),
-                ..Default::default()
-            };
-            if let Err(update_err) = failed.update(db).await {
-                // 直前の claim で phase は既に Running へ進んでいるため、この
-                // 更新が失敗すると行は Failed に戻せないまま Running で宙に浮く。
-                tracing::error!(
-                    error = %update_err,
-                    task_id = %task_id,
-                    "failed to record resume submission failure on strategy_task",
-                );
-            }
-            return Err(ResumeTaskError::AgentTask(err));
-        }
-    };
-
-    let running = strategy_task::ActiveModel {
-        task_id: Set(task_id),
-        a2a_task_id: Set(Some(agent_ref.task_id.clone())),
-        error_summary: Set(None),
-        result_text: Set(None),
-        deadline_at: Set(deadline_at),
-        updated_at: Set(chrono::Utc::now().fixed_offset()),
-        ..Default::default()
-    };
-    if let Err(err) = running.update(db).await {
-        // claim で phase は既に Running へ進んでいるため、この行は a2a_task_id が
-        // 記録されないまま孤児化する。watcher が deadline 超過で failed 確定するが、
-        // 実際には agent 側でタスクが動いているので、追跡できるよう a2a_task_id を
-        // ログに残す。
-        tracing::error!(
-            error = %err,
-            task_id = %task_id,
-            a2a_task_id = %agent_ref.task_id,
-            "resumed strategy task submitted but failed to record a2a_task_id; row orphaned until deadline",
-        );
-        return Err(ResumeTaskError::Database(err));
-    }
-
-    Ok(SubmittedTask {
-        task_id,
-        a2a_task_id: agent_ref.task_id,
-    })
 }
 
-/// `POST /internal/tasks` の `resume_steps` 配列 1 要素分の wire JSON 形状。
-/// `step_to_wire_json` の出力に `execution_step_id` を足したもの: agent が再実行時に
-/// 同じ id を使い回すことで MCP tool 呼び出しの `x-execution-id` に含まれる step_id 部分が
-/// 安定し、ノート書き込み (execution_id で既存ノートを探して更新する) の重複を防ぐ契約のため。
-fn step_to_resume_wire_json(
-    row: strategy_task_step::Model,
-) -> Result<serde_json::Value, serde_json::Error> {
-    let execution_step_id = row.execution_step_id;
-    let mut value = step_to_wire_json(row)?;
-    if let serde_json::Value::Object(map) = &mut value {
-        map.insert(
-            "execution_step_id".into(),
-            serde_json::json!(execution_step_id),
-        );
-    }
-    Ok(value)
+pub async fn auto_resume_task<C>(
+    db: &C,
+    agent_client: &crate::agent_client::SharedAgentTaskClient,
+    task_id: Uuid,
+) -> Result<SubmittedTask, ResumeTaskError>
+where
+    C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
+{
+    crate::services::use_cases::build_strategy_task_use_cases(db.clone())
+        .auto_resume(agent_client.as_ref(), task_id)
+        .await
 }
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use super::super::TaskSource;
+    use super::super::{StrategyTaskPhase, TaskSource, phase_str};
     use super::*;
-    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient};
+    use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
     use crate::testing::insert_test_strategy;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskStepStatus;
-    use sea_orm::ActiveValue::NotSet;
+    use gateway_postgres::entities::{strategy_task, strategy_task_step};
+    use sea_orm::{
+        ActiveModelTrait,
+        ActiveValue::{NotSet, Set},
+        EntityTrait,
+    };
 
     /// resume 時の `now` と区別できるよう、投入時刻として十分に過去の固定値を使う。
     fn original_as_of() -> chrono::DateTime<chrono::FixedOffset> {
