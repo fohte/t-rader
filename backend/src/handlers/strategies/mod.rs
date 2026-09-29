@@ -249,6 +249,19 @@ mod tests {
         value
     }
 
+    async fn create_strategy_with_description(
+        db: gateway_postgres::DatabaseHandle,
+    ) -> (axum_test::TestServer, String) {
+        let server = create_test_server(db).await;
+        let created = server
+            .post("/api/strategies")
+            .json(&json!({ "name": "strategy", "description": "initial" }))
+            .await;
+        created.assert_status(axum::http::StatusCode::CREATED);
+        let id = created.json::<Value>()["id"].as_str().unwrap().to_string();
+        (server, id)
+    }
+
     #[backend_test_macros::database_test]
     async fn create_and_list_strategy(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
@@ -266,24 +279,15 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_description_distinguishes_omitted_null_and_value(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let server = create_test_server(db).await;
-        let created = server
-            .post("/api/strategies")
-            .json(&json!({ "name": "strategy", "description": "initial" }))
-            .await;
-        created.assert_status(axum::http::StatusCode::CREATED);
-        let id = created.json::<Value>()["id"].as_str().unwrap().to_string();
-
-        let unchanged = server
+    async fn update_description_omitted_keeps_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, id) = create_strategy_with_description(db).await;
+        let updated = server
             .patch(&format!("/api/strategies/{id}"))
             .json(&json!({}))
             .await;
-        unchanged.assert_status_ok();
+        updated.assert_status_ok();
         assert_eq!(
-            normalize_strategy(unchanged.json()),
+            normalize_strategy(updated.json()),
             json!({
                 "id": id,
                 "name": "strategy",
@@ -293,14 +297,18 @@ mod tests {
                 "updated_at": "<updated_at>",
             }),
         );
+    }
 
-        let cleared = server
+    #[backend_test_macros::database_test]
+    async fn update_description_null_clears_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, id) = create_strategy_with_description(db).await;
+        let updated = server
             .patch(&format!("/api/strategies/{id}"))
             .json(&json!({ "description": null }))
             .await;
-        cleared.assert_status_ok();
+        updated.assert_status_ok();
         assert_eq!(
-            normalize_strategy(cleared.json()),
+            normalize_strategy(updated.json()),
             json!({
                 "id": id,
                 "name": "strategy",
@@ -310,14 +318,20 @@ mod tests {
                 "updated_at": "<updated_at>",
             }),
         );
+    }
 
-        let replaced = server
+    #[backend_test_macros::database_test]
+    async fn update_description_value_replaces_existing_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (server, id) = create_strategy_with_description(db).await;
+        let updated = server
             .patch(&format!("/api/strategies/{id}"))
             .json(&json!({ "description": "replacement" }))
             .await;
-        replaced.assert_status_ok();
+        updated.assert_status_ok();
         assert_eq!(
-            normalize_strategy(replaced.json()),
+            normalize_strategy(updated.json()),
             json!({
                 "id": id,
                 "name": "strategy",

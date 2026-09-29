@@ -167,6 +167,28 @@ mod tests {
         value
     }
 
+    async fn create_hook_trigger_with_event_match(
+        db: gateway_postgres::DatabaseHandle,
+    ) -> (axum_test::TestServer, String, String) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let created = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "hook",
+                "hook_slug": "sample-hook",
+                "event_match": {"event": {"eq": "initial"}},
+                "prompt_template": "x",
+            }))
+            .await;
+        created.assert_status(StatusCode::CREATED);
+        let tid = created.json::<Value>()["trigger_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        (server, sid, tid)
+    }
+
     #[backend_test_macros::database_test]
     async fn create_cron_trigger_succeeds(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
@@ -407,30 +429,15 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_event_match_distinguishes_omitted_null_and_value(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        let server = create_test_server(db).await;
-        let sid = create_strategy(&server, "s").await;
-        let created: Value = server
-            .post(&format!("/api/strategies/{sid}/triggers"))
-            .json(&json!({
-                "kind": "hook",
-                "hook_slug": "sample-hook",
-                "event_match": {"event": {"eq": "initial"}},
-                "prompt_template": "x",
-            }))
-            .await
-            .json();
-        let tid = created["trigger_id"].as_str().unwrap().to_string();
-
-        let unchanged = server
+    async fn update_event_match_omitted_keeps_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
+        let updated = server
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({}))
             .await;
-        unchanged.assert_status_ok();
+        updated.assert_status_ok();
         assert_eq!(
-            normalize_trigger(unchanged.json(), true),
+            normalize_trigger(updated.json(), true),
             json!({
                 "trigger_id": tid,
                 "strategy_id": sid,
@@ -445,14 +452,18 @@ mod tests {
                 "updated_at": "<updated_at>",
             }),
         );
+    }
 
-        let cleared = server
+    #[backend_test_macros::database_test]
+    async fn update_event_match_null_clears_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
+        let updated = server
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({ "event_match": null }))
             .await;
-        cleared.assert_status_ok();
+        updated.assert_status_ok();
         assert_eq!(
-            normalize_trigger(cleared.json(), true),
+            normalize_trigger(updated.json(), true),
             json!({
                 "trigger_id": tid,
                 "strategy_id": sid,
@@ -467,14 +478,20 @@ mod tests {
                 "updated_at": "<updated_at>",
             }),
         );
+    }
 
-        let replaced = server
+    #[backend_test_macros::database_test]
+    async fn update_event_match_value_replaces_existing_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
+        let updated = server
             .put(&format!("/api/triggers/{tid}"))
             .json(&json!({ "event_match": {"source": {"eq": "replacement"}} }))
             .await;
-        replaced.assert_status_ok();
+        updated.assert_status_ok();
         assert_eq!(
-            normalize_trigger(replaced.json(), true),
+            normalize_trigger(updated.json(), true),
             json!({
                 "trigger_id": tid,
                 "strategy_id": sid,
