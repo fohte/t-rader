@@ -2,32 +2,12 @@
 members = [
     ".",
     "migration",
-    "crates/core/domain",
-    "crates/core/application",
-    "crates/gateways/fred",
-    "crates/gateways/ibkr",
-    "crates/gateways/jquants",
-    "crates/gateways/kata-exec",
-    "crates/gateways/litellm",
-    "crates/gateways/postgres",
-    "crates/gateways/rss",
-    "crates/gateways/t-rader-agent",
-    "crates/test-macros",
+    "crates/*/*",
 ]
 default-members = [
     ".",
     "migration",
-    "crates/core/domain",
-    "crates/core/application",
-    "crates/gateways/fred",
-    "crates/gateways/ibkr",
-    "crates/gateways/jquants",
-    "crates/gateways/kata-exec",
-    "crates/gateways/litellm",
-    "crates/gateways/postgres",
-    "crates/gateways/rss",
-    "crates/gateways/t-rader-agent",
-    "crates/test-macros",
+    "crates/*/*",
 ]
 
 [workspace.dependencies]
@@ -143,7 +123,7 @@ utoipa-swagger-ui = { workspace = true, features = ["axum"] }
 uuid = { workspace = true, features = ["serde", "v4", "v5"] }
 
 [dev-dependencies]
-backend-test-macros = { path = "crates/test-macros" }
+backend-test-macros = { path = "crates/libs/test-macros" }
 axum-test = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
 gateway-jquants = { workspace = true, features = ["test-support"] }
