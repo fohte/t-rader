@@ -1,4 +1,4 @@
-pub use core_application::{
+pub use core_application::agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus,
     DisabledAgentTaskClient, EXECUTION_LOST_ERROR_KIND, SharedAgentTaskClient, SubmitAgentTask,
 };
@@ -8,4 +8,4 @@ pub use gateway_t_rader_agent::{
 };
 
 #[cfg(test)]
-pub use core_application::FakeAgentTaskClient;
+pub use core_application::agent_task_client::FakeAgentTaskClient;

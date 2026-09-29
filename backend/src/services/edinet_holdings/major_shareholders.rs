@@ -1,5 +1,7 @@
 use chrono::NaiveDate;
-use core_application::{ShareholdingStructureSource, ShareholdingStructureSourceError};
+use core_application::shareholding_structure_source::{
+    ShareholdingStructureSource, ShareholdingStructureSourceError,
+};
 use core_domain::holdings::MajorShareholderDocument;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;

@@ -4,9 +4,8 @@ use chrono::{NaiveDate, Utc};
 use super::response::DailyBarsResponse;
 use super::{JQuantsClient, normalize_local_code, parse_daily_bar};
 use crate::DataProviderError;
-use core_application::{
-    DailyBarSource, DailyBarSourceError, DateRange, MarketDailyBarSource, MarketDailyBarSourceError,
-};
+use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
+use core_application::market_daily_bar_source::{MarketDailyBarSource, MarketDailyBarSourceError};
 use core_domain::bar::Bar;
 
 impl JQuantsClient {

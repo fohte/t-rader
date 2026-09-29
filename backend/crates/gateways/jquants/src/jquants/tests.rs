@@ -7,7 +7,7 @@ use wiremock::{Mock, ResponseTemplate};
 
 use crate::DataProviderError;
 use crate::jquants::mock::{JQuantsMockServer, MockBar};
-use core_application::{DailyBarSource, DailyBarSourceError, DateRange};
+use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, day).unwrap_or_default()
@@ -730,7 +730,7 @@ mod configured_plan {
     use super::super::JQuantsClient;
     use super::date;
     use crate::JQuantsPlan;
-    use core_application::DateRange;
+    use core_application::daily_bar_source::DateRange;
     use rstest::rstest;
 
     #[rstest]
@@ -777,7 +777,7 @@ mod daily_bar_source {
     use super::*;
     use std::sync::Arc;
 
-    use core_application::SharedDailyBarSource;
+    use core_application::daily_bar_source::SharedDailyBarSource;
 
     #[rstest]
     #[tokio::test]

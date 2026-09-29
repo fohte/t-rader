@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use core_application::{ExecRequest, ExecResult, KataExecError, KataExecutor};
+use core_application::kata_exec::{ExecRequest, ExecResult, KataExecError, KataExecutor};
 
 use super::config::KataExecutorConfig;
 use super::config::PodResourceLimits;

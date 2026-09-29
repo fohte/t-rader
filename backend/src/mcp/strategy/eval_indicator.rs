@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;

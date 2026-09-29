@@ -1,4 +1,4 @@
-use core_application::{
+use core_application::strategy_scope::{
     StrategyScope, StrategyScopeError, StrategyScopeSourceError, verify_strategy_ids,
 };
 use gateway_postgres::PostgresStrategyScopeSource;
@@ -44,7 +44,7 @@ where
 mod tests {
     use super::*;
     use crate::testing::insert_test_strategy;
-    use core_application::StrategyScopeSource;
+    use core_application::strategy_scope::StrategyScopeSource;
     use std::collections::HashSet;
 
     #[backend_test_macros::database_test]

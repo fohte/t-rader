@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
-use core_application::{
+use core_application::shareholding_structure_source::{
     SharedShareholdingStructureSource, ShareholdingStructureSource,
     ShareholdingStructureSourceError,
 };

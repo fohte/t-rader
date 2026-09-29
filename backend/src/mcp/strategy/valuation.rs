@@ -1,7 +1,7 @@
 //! 戦略実行 MCP の `read_valuation` tool。
 
 use chrono::NaiveDate;
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 

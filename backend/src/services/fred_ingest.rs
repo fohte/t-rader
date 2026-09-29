@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use core_application::{
+use core_application::indicator_observation_source::{
     IndicatorObservationSource, IndicatorObservationSourceError, SharedIndicatorObservationSource,
 };
 use core_domain::IndicatorObservation;

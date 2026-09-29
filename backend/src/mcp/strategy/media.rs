@@ -4,7 +4,7 @@
 //! 沿ったテキスト応答を返す。discover フェーズがテキストにしか無い材料にアクセス
 //! できるようにするための tool。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 
 use crate::services::litellm_client::{ChatMessage, ContentPart, FilePart};

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use chrono::Utc;
-use core_application::{
+use core_application::news_aggregator::{
     NewsAggregator, NewsAggregatorError, NewsFeed, NewsItem, SharedNewsAggregator,
 };
 use sea_orm::sea_query::OnConflict;
@@ -124,7 +124,7 @@ pub fn spawn_poll(
 mod tests {
     use super::*;
     use crate::services::rss_feed::{self, CreateInput};
-    use core_application::{FakeNewsAggregator, NewsAggregatorError, NewsFeed};
+    use core_application::news_aggregator::{FakeNewsAggregator, NewsAggregatorError, NewsFeed};
     use gateway_postgres::entities::news_item;
     use sea_orm::{EntityTrait, PaginatorTrait};
     async fn create_feed(

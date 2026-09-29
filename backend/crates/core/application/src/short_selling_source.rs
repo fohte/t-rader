@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use core_domain::short_ratio::ShortRatio;
 use core_domain::short_sale_report::ShortSaleReport;
 
-use crate::DateRange;
+use crate::daily_bar_source::DateRange;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ShortSellingSourceError {

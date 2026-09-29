@@ -6,7 +6,7 @@ use core_domain::holdings::{
     CrossShareholdingDocument, LargeVolumeShareholdingDocument, MajorShareholderDocument,
 };
 
-use crate::DateRange;
+use crate::daily_bar_source::DateRange;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ShareholdingStructureSourceError {

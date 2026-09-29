@@ -6,7 +6,9 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use core_application::{IndicatorObservationSource, IndicatorObservationSourceError};
+use core_application::indicator_observation_source::{
+    IndicatorObservationSource, IndicatorObservationSourceError,
+};
 use core_domain::IndicatorObservation;
 use reqwest::Url;
 use rust_decimal::Decimal;

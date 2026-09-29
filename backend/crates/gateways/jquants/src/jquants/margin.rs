@@ -7,7 +7,8 @@ use super::response::{
     flexible_decimal, flexible_i64,
 };
 use crate::DataProviderError;
-use core_application::{DateRange, MarginSource, MarginSourceError};
+use core_application::daily_bar_source::DateRange;
+use core_application::margin_source::{MarginSource, MarginSourceError};
 use core_domain::margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
 
 #[async_trait]
