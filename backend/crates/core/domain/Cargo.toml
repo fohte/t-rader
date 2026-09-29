@@ -8,6 +8,8 @@ chrono = { workspace = true, features = ["serde"] }
 jpholiday = { workspace = true }
 rust_decimal = { workspace = true, features = ["serde-float", "serde-arbitrary-precision"] }
 serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+uuid = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 rstest = { workspace = true }

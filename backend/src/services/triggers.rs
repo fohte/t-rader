@@ -33,13 +33,16 @@ pub enum FireTriggerError {
 ///
 /// 呼び出し側は重複発火を許容する前提で組むこと: submit 成功後に `last_fired_at` 更新が
 /// 失敗すると次回 worker 走査で再発火しうる。
-pub async fn fire_trigger(
-    db: &impl sea_orm::ConnectionTrait,
+pub async fn fire_trigger<C>(
+    db: &C,
     agent_client: &SharedAgentTaskClient,
     trigger_id: Uuid,
     payload: Value,
     source: TaskSource,
-) -> Result<SubmittedTask, FireTriggerError> {
+) -> Result<SubmittedTask, FireTriggerError>
+where
+    C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
+{
     let trigger_row = trigger::Entity::find_by_id(trigger_id)
         .one(db)
         .await?

@@ -1,5 +1,6 @@
 use axum::Json;
 use axum::extract::State;
+use core_application::strategy_task::TaskListQuery;
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -7,8 +8,8 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonQuery;
+use crate::handlers::strategies::map_list_task_error;
 use crate::models::StrategyTaskSummary;
-use crate::services::strategy_tasks;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -33,9 +34,15 @@ pub async fn list_tasks(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<ListTasksQuery>,
 ) -> Result<Json<Vec<StrategyTaskSummary>>, AppError> {
-    let views = strategy_tasks::list_tasks(&state.db, p.strategy_id, p.purpose)
+    let views = state
+        .use_cases
+        .strategy_tasks
+        .list(TaskListQuery {
+            strategy_id: p.strategy_id,
+            purpose: p.purpose,
+        })
         .await
-        .map_err(AppError::Database)?;
+        .map_err(map_list_task_error)?;
     Ok(Json(
         views.into_iter().map(StrategyTaskSummary::from).collect(),
     ))
