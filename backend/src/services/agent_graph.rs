@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -10,6 +10,8 @@ use serde_json::Value as JsonValue;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentGraphConfig {
+    #[serde(default)]
+    pub tool_models: BTreeMap<String, String>,
     pub phases: Vec<AgentGraphPhase>,
 }
 
@@ -146,6 +148,9 @@ mod tests {
     #[rstest]
     fn parse_valid_graph() {
         let yaml = indoc! {"
+            tool_models:
+              search_web: example-model-search
+              query_media: example-model-media
             phases:
               - key: plan
                 label: 調査計画
@@ -171,6 +176,10 @@ mod tests {
         assert_eq!(
             parse_agent_graph(yaml),
             Ok(Some(AgentGraphConfig {
+                tool_models: BTreeMap::from([
+                    ("search_web".to_string(), "example-model-search".to_string()),
+                    ("query_media".to_string(), "example-model-media".to_string()),
+                ]),
                 phases: vec![
                     AgentGraphPhase {
                         key: "plan".to_string(),
@@ -208,6 +217,37 @@ mod tests {
                         output: serde_json::Map::new(),
                     },
                 ],
+            })),
+        );
+    }
+
+    #[rstest]
+    fn parse_graph_defaults_tool_models_when_omitted() {
+        let yaml = indoc! {"
+            phases:
+              - key: plan
+                label: Plan
+                model: example-model-plan
+                prompt: Make a plan
+        "};
+
+        assert_eq!(
+            parse_agent_graph(yaml),
+            Ok(Some(AgentGraphConfig {
+                tool_models: BTreeMap::new(),
+                phases: vec![AgentGraphPhase {
+                    key: "plan".to_string(),
+                    label: "Plan".to_string(),
+                    model: "example-model-plan".to_string(),
+                    reasoning_effort: None,
+                    prompt: "Make a plan".to_string(),
+                    for_each: None,
+                    label_field: None,
+                    max_parallel: None,
+                    skills: vec![],
+                    tools: vec![],
+                    output: serde_json::Map::new(),
+                }],
             })),
         );
     }
