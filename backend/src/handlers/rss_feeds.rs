@@ -203,6 +203,60 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn get_returns_full_row(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let created: Value = server
+            .post("/api/rss-feeds")
+            .json(&json!({
+                "source": "example-feed",
+                "display_name": "Example Feed",
+                "url": "https://example.com/feed.xml",
+            }))
+            .await
+            .json();
+        let id = created["id"].as_str().unwrap();
+
+        let res = server.get(&format!("/api/rss-feeds/{id}")).await;
+        res.assert_status_ok();
+        assert_eq!(
+            normalize(res.json()),
+            json!({
+                "id": "<id>",
+                "source": "example-feed",
+                "display_name": "Example Feed",
+                "url": "https://example.com/feed.xml",
+                "enabled": true,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_nonexistent_feed_returns_404(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let res = server
+            .get("/api/rss-feeds/00000000-0000-4000-8000-000000000001")
+            .await;
+        res.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_rejects_unknown_field(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let res = server
+            .post("/api/rss-feeds")
+            .json(&json!({
+                "source": "example-feed",
+                "display_name": "Example Feed",
+                "url": "https://example.com/feed.xml",
+                "unexpected": true,
+            }))
+            .await;
+        res.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[backend_test_macros::database_test]
     async fn duplicate_source_is_409(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let body = json!({
@@ -316,6 +370,30 @@ mod tests {
                 "updated_at": "<updated_at>",
             }),
         );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn patch_rejects_unknown_field(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let created: Value = server
+            .post("/api/rss-feeds")
+            .json(&json!({
+                "source": "example-feed",
+                "display_name": "Example Feed",
+                "url": "https://example.com/feed.xml",
+            }))
+            .await
+            .json();
+        let id = created["id"].as_str().unwrap();
+
+        let res = server
+            .patch(&format!("/api/rss-feeds/{id}"))
+            .json(&json!({
+                "display_name": "Renamed Feed",
+                "unexpected": true,
+            }))
+            .await;
+        res.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     }
 
     #[backend_test_macros::database_test]
