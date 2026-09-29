@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("strategy not found")
+	ErrNotFound = errors.New("resource not found")
 	idPattern   = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 )
 
