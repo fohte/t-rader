@@ -260,29 +260,40 @@ mod tests {
     }
 
     #[rstest]
-    #[case::eligible(None, 0, true)]
-    #[case::already_resumed(Some("2025-12-31T00:00:00Z"), 0, false)]
-    #[case::past_deadline(None, 120, false)]
-    #[case::other_failure(None, 0, false)]
+    #[case::eligible(None, 0, AgentTaskState::Failed, Some(EXECUTION_LOST_ERROR_KIND), true)]
+    #[case::already_resumed(
+        Some("2025-12-31T00:00:00Z"),
+        0,
+        AgentTaskState::Failed,
+        Some(EXECUTION_LOST_ERROR_KIND),
+        false
+    )]
+    #[case::past_deadline(
+        None,
+        120,
+        AgentTaskState::Failed,
+        Some(EXECUTION_LOST_ERROR_KIND),
+        false
+    )]
+    #[case::other_failure(None, 0, AgentTaskState::Failed, Some("other_failure"), false)]
+    #[case::state_not_mapped_to_failed(
+        None,
+        0,
+        AgentTaskState::Working,
+        Some(EXECUTION_LOST_ERROR_KIND),
+        false
+    )]
     fn auto_resume_requires_unresumed_execution_loss_before_deadline(
         #[case] auto_resumed_at: Option<&str>,
         #[case] now_offset_seconds: i64,
+        #[case] state: AgentTaskState,
+        #[case] error_kind: Option<&str>,
         #[case] expected: bool,
     ) {
         let task = task(auto_resumed_at.map(|value| DateTime::parse_from_rfc3339(value).unwrap()));
         let now = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").unwrap()
             + chrono::Duration::seconds(now_offset_seconds);
-        let error_kind = (expected || auto_resumed_at.is_some() || now_offset_seconds > 0)
-            .then_some(EXECUTION_LOST_ERROR_KIND);
-        let status = status(
-            AgentTaskState::Failed,
-            None,
-            if error_kind.is_some() {
-                error_kind
-            } else {
-                Some("other_failure")
-            },
-        );
+        let status = status(state, None, error_kind);
         assert_eq!(is_auto_resume_eligible(&task, &status, now), expected);
     }
 

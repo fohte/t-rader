@@ -7,6 +7,9 @@ mod error;
 mod repository;
 mod types;
 
+#[cfg(all(test, feature = "test-support"))]
+mod tests;
+
 pub use error::{
     GetTaskError, ListTasksError, ReconcileTaskError, ResumeTaskError, SubmitTaskError,
 };
