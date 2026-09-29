@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -90,12 +89,9 @@ func (c *Client) DeleteCustomIndicator(ctx context.Context, id string) error {
 }
 
 func parseCustomIndicatorID(id string) (openapi_types.UUID, error) {
-	if !idPattern.MatchString(id) {
-		return uuid.Nil, errors.New("indicator id must be a UUID")
-	}
-	indicatorID, err := uuid.Parse(id)
+	indicatorID, err := parseStrategyID(id)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("parse indicator id: %w", err)
+		return openapi_types.UUID{}, errors.New("indicator id must be a UUID")
 	}
 	return indicatorID, nil
 }
