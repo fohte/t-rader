@@ -71,12 +71,5 @@ func (c *Client) DeleteRssFeed(ctx context.Context, id string) error {
 }
 
 func parseRssFeedID(id string) (uuid.UUID, error) {
-	if !idPattern.MatchString(id) {
-		return uuid.UUID{}, errors.New("RSS feed id must be a UUID")
-	}
-	feedID, err := uuid.Parse(id)
-	if err != nil {
-		return uuid.UUID{}, fmt.Errorf("parse RSS feed id: %w", err)
-	}
-	return feedID, nil
+	return parseResourceID("RSS feed", id)
 }

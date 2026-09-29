@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -76,7 +77,8 @@ func (r *rssFeedResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"enabled": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "取得対象にするかどうか。省略時は API の既定値を使用します。",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+				MarkdownDescription: "取得対象にするかどうか。作成時に省略すると API の既定値 (true) を使い、更新時に省略すると現在値を維持します。",
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
@@ -168,7 +170,7 @@ func (r *rssFeedResource) Update(ctx context.Context, req resource.UpdateRequest
 	updated, err := client.UpdateRssFeed(ctx, state.ID.ValueString(), traderapi.UpdateRssFeedRequest{
 		DisplayName: stringAttributeUpdateNullable(plan.DisplayName),
 		Url:         stringAttributeUpdateNullable(plan.URL),
-		Enabled:     boolAttributeUpdateNullable(plan.Enabled),
+		Enabled:     boolAttributeNullable(plan.Enabled),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating RSS feed", err.Error())
@@ -218,13 +220,6 @@ func modelFromRssFeed(feed traderapi.RssFeed) rssFeedModel {
 }
 
 func boolAttributeNullable(value types.Bool) nullable.Nullable[bool] {
-	if value.IsNull() || value.IsUnknown() {
-		return nullable.Nullable[bool]{}
-	}
-	return nullable.NewNullableWithValue(value.ValueBool())
-}
-
-func boolAttributeUpdateNullable(value types.Bool) nullable.Nullable[bool] {
 	if value.IsNull() || value.IsUnknown() {
 		return nullable.Nullable[bool]{}
 	}

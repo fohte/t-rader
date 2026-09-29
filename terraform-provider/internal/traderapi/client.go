@@ -129,14 +129,7 @@ func (c *Client) DeleteStrategy(ctx context.Context, id string) error {
 }
 
 func parseStrategyID(id string) (uuid.UUID, error) {
-	if !idPattern.MatchString(id) {
-		return uuid.UUID{}, errors.New("strategy id must be a UUID")
-	}
-	strategyID, err := uuid.Parse(id)
-	if err != nil {
-		return uuid.UUID{}, fmt.Errorf("parse strategy id: %w", err)
-	}
-	return strategyID, nil
+	return parseResourceID("strategy", id)
 }
 
 func responseError(response *http.Response, body []byte) error {
