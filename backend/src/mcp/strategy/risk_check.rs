@@ -17,11 +17,12 @@ use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 use crate::services::account_risk_policy;
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
-use crate::services::trades::fetch_summary;
 use gateway_postgres::entities::stock;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
-use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, ensure_strategy_exists};
+use super::{
+    StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, ensure_strategy_exists, trade_error,
+};
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
@@ -48,10 +49,16 @@ impl StrategyServer {
             None => None,
         };
 
-        let account_summary = fetch_summary(&self.db, None).await.map_err(db_error)?;
-        let strategy_summary = fetch_summary(&self.db, Some(strategy_id))
+        let account_summary = self
+            .trade_use_cases
+            .summary(None)
             .await
-            .map_err(db_error)?;
+            .map_err(trade_error)?;
+        let strategy_summary = self
+            .trade_use_cases
+            .summary(Some(strategy_id))
+            .await
+            .map_err(trade_error)?;
 
         let mut symbols: BTreeSet<String> = account_summary
             .positions

@@ -5,16 +5,21 @@ edition = "2024"
 
 [features]
 default = []
-test-support = ["dep:tokio"]
+test-support = ["dep:tokio", "tokio/macros", "tokio/rt"]
 
 [dependencies]
 async-trait = { workspace = true }
-chrono = { workspace = true, features = ["alloc"] }
+chrono = { workspace = true, features = ["alloc", "clock"] }
 core-domain = { workspace = true }
 serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+tracing = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["sync"] }
-uuid = { workspace = true, features = ["v4"] }
+uuid = { workspace = true, features = ["serde", "v4"] }
+
+[dev-dependencies]
+rstest = { workspace = true }
 
 [lints]
 workspace = true

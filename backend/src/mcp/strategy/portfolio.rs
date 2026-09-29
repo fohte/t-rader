@@ -10,25 +10,29 @@ use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 
-use crate::models::PositionSummary;
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
-use crate::services::trades::fetch_summary;
 
 use super::dto::{
     PortfolioPositionDto, PortfolioScopeDto, ReadPortfolioResult, StrategyPortfolioScopeDto,
 };
-use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64};
+use super::{StrategyServer, app_error_to_mcp, decimal_to_f64, trade_error};
 
 impl StrategyServer {
     pub(crate) async fn read_portfolio_inner(
         &self,
         strategy_id: Uuid,
     ) -> Result<ReadPortfolioResult, McpError> {
-        let account_summary = fetch_summary(&self.db, None).await.map_err(db_error)?;
-        let strategy_summary = fetch_summary(&self.db, Some(strategy_id))
+        let account_summary = self
+            .trade_use_cases
+            .summary(None)
             .await
-            .map_err(db_error)?;
+            .map_err(trade_error)?;
+        let strategy_summary = self
+            .trade_use_cases
+            .summary(Some(strategy_id))
+            .await
+            .map_err(trade_error)?;
 
         let mut symbols: BTreeSet<String> = BTreeSet::new();
         symbols.extend(account_summary.positions.iter().map(|p| p.symbol.clone()));
@@ -82,7 +86,7 @@ impl StrategyServer {
 }
 
 fn to_position_dtos(
-    positions: Vec<PositionSummary>,
+    positions: Vec<core_application::trade::PositionSummary>,
     prices: &HashMap<String, Decimal>,
 ) -> Vec<PortfolioPositionDto> {
     positions
@@ -91,7 +95,10 @@ fn to_position_dtos(
         .collect()
 }
 
-fn to_position_dto(p: PositionSummary, prices: &HashMap<String, Decimal>) -> PortfolioPositionDto {
+fn to_position_dto(
+    p: core_application::trade::PositionSummary,
+    prices: &HashMap<String, Decimal>,
+) -> PortfolioPositionDto {
     let current_price = prices.get(&p.symbol).copied();
     let market_value = current_price.map(|price| p.qty * price);
     let unrealized_pnl = market_value.map(|mv| mv - p.cost_basis);

@@ -4,16 +4,14 @@
 //! (`super` の doc comment にある例外参照)。戦略境界の検査は行わず、
 //! `TradeDto::strategy_id` でどの戦略の約定かを判別できるようにする。
 
+use core_application::trade::{Trade, TradeOrder, TradeQuery};
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use gateway_postgres::entities::trade;
-
 use super::dto::{ReadTradesParams, ReadTradesResult, TradeDto};
-use super::{StrategyServer, clamp_limit, db_error, decimal_to_f64};
+use super::{StrategyServer, clamp_limit, decimal_to_f64, trade_error};
 
-fn trade_to_dto(m: trade::Model) -> TradeDto {
+fn trade_to_dto(m: Trade) -> TradeDto {
     TradeDto {
         trade_id: m.id,
         strategy_id: m.strategy_id,
@@ -31,27 +29,29 @@ impl StrategyServer {
         _session_strategy_id: Uuid,
         params: ReadTradesParams,
     ) -> Result<ReadTradesResult, McpError> {
-        let mut query = trade::Entity::find();
-        if let Some(symbol) = params
+        let symbol = params
             .symbol
             .as_deref()
             .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            query = query.filter(trade::Column::Symbol.eq(symbol));
-        }
-        if let Some(date_from) = params.date_from {
-            query = query.filter(trade::Column::Date.gte(date_from));
-        }
-        let rows = query
-            .order_by_desc(trade::Column::Date)
-            .order_by_desc(trade::Column::CreatedAt)
-            .limit(clamp_limit(params.limit))
-            .all(&self.db)
+            .filter(|symbol| !symbol.is_empty())
+            .map(ToOwned::to_owned);
+        let rows = self
+            .trade_use_cases
+            .list(TradeQuery {
+                strategy_id: None,
+                symbol,
+                date_from: params.date_from,
+                limit: Some(clamp_limit(params.limit)),
+                order: TradeOrder::DateDescending,
+                include_note_count: false,
+            })
             .await
-            .map_err(db_error)?;
+            .map_err(trade_error)?;
         Ok(ReadTradesResult {
-            trades: rows.into_iter().map(trade_to_dto).collect(),
+            trades: rows
+                .into_iter()
+                .map(|row| trade_to_dto(row.trade))
+                .collect(),
         })
     }
 }

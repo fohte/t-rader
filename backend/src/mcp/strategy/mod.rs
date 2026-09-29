@@ -128,6 +128,7 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 #[derive(Clone)]
 pub struct StrategyServer {
     db: DatabaseHandle,
+    pub(super) trade_use_cases: core_application::trade::TradeUseCases,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
     pub(super) litellm_client: Option<SharedLlmClient>,
@@ -138,8 +139,10 @@ impl StrategyServer {
         db: impl Into<DatabaseHandle>,
         daily_bar_source: Option<SharedDailyBarSource>,
     ) -> Self {
+        let db = db.into();
         Self {
-            db: db.into(),
+            trade_use_cases: crate::services::trades::build_use_cases(db.clone()),
+            db,
             daily_bar_source,
             kata_executor: None,
             litellm_client: None,
@@ -177,6 +180,11 @@ pub(super) fn invalid_params(msg: impl Into<std::borrow::Cow<'static, str>>) -> 
 pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
     tracing::error!(error = %err, "strategy mcp db error");
     internal_error(format!("database error: {err}"))
+}
+
+pub(super) fn trade_error(error: core_application::trade::TradeUseCaseError) -> McpError {
+    tracing::error!(error = %error, "strategy mcp trade operation failed");
+    internal_error(format!("database error: {error}"))
 }
 
 pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
