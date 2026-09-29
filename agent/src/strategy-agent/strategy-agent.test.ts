@@ -532,6 +532,7 @@ describe('createStrategyAgentDeps', () => {
     createStrategyAgentDeps(baseConfig).createMcpClient(
       'strategy-1',
       'task-1:step-1',
+      { search_web: 'example-model-search' },
     )
 
     expect(capturedMcpClientConfig).toEqual({
@@ -541,6 +542,7 @@ describe('createStrategyAgentDeps', () => {
           headers: {
             'x-strategy-id': 'strategy-1',
             'x-execution-id': 'task-1:step-1',
+            'x-tool-models': '{"search_web":"example-model-search"}',
           },
         },
       },

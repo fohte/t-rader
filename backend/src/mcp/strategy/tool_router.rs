@@ -32,7 +32,9 @@ use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
-use super::{StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx};
+use super::{
+    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
+};
 
 #[tool_router]
 impl StrategyServer {
@@ -221,10 +223,10 @@ impl StrategyServer {
         self.eval_indicator_inner(scope, params).await.map(Json)
     }
 
-    /// 動画/音声 URL の内容を Gemini でテキスト化する
+    /// 動画/音声 URL の内容をテキスト化する
     #[tool(
         name = "query_media",
-        description = "Fetch a video or audio URL (YouTube links are well supported; other public https:// URLs are best-effort) and answer prompt about its content via Gemini, returning free-form text. Use for source material with no text equivalent, such as a YouTube video.",
+        description = "Fetch a video or audio URL (YouTube links are well supported; other public https:// URLs are best-effort) and answer prompt about its content using the model configured for this tool in agent_graph.tool_models, returning free-form text. Use for source material with no text equivalent, such as a YouTube video.",
         annotations(read_only_hint = true)
     )]
     async fn query_media(
@@ -233,13 +235,14 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<QueryMediaResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.query_media_inner(scope, params).await.map(Json)
+        let model = tool_model_from_ctx(&ctx, "query_media")?;
+        self.query_media_inner(scope, model, params).await.map(Json)
     }
 
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
     #[tool(
         name = "search_web",
-        description = "Search the web for a free-form query using an LLM with web search enabled (configured via the WEB_SEARCH_MODEL env var). Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
+        description = "Search the web for a free-form query using the model configured for this tool in agent_graph.tool_models with web search enabled. Returns free-form text plus deduplicated source URLs. Use this to look into stocks, terms, or themes beyond the available reference data / RSS feeds, or to read the actual content of a search_news item beyond its truncated body_snippet (query with the item's title and/or url). Calls are capped per strategy task execution; once the cap is hit, further calls within the same task execution fail with an error.",
         annotations(read_only_hint = true)
     )]
     async fn search_web(
@@ -248,8 +251,9 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        let model = tool_model_from_ctx(&ctx, "search_web")?;
         let task_execution_id = execution_task_id_from_ctx(&ctx);
-        self.search_web_inner(scope, task_execution_id, params)
+        self.search_web_inner(scope, task_execution_id, model, params)
             .await
             .map(Json)
     }
