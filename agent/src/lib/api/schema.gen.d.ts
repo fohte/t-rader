@@ -1883,6 +1883,7 @@ export interface components {
     /** @description フローティングチャットから戦略 Agent に投入する 1 メッセージ。 */
     StrategyChatRequest: {
       prompt: string
+      purpose?: string | null
     }
     /** @description `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。 */
     StrategyChatResponse: {
@@ -5962,7 +5963,7 @@ export interface operations {
           'application/json': components['schemas']['StrategyChatResponse']
         }
       }
-      /** @description prompt が空 (空白のみを含む) */
+      /** @description prompt が空 (空白のみを含む)、または指定された purpose の agent_config が存在しない */
       400: {
         headers: {
           [name: string]: unknown
@@ -6006,7 +6007,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse']
         }
       }
-      /** @description agent task client が未設定、または agent_config が見つからない */
+      /** @description agent task client が未設定、または既定の agent_config が見つからない */
       503: {
         headers: {
           [name: string]: unknown

@@ -24,11 +24,14 @@ export interface FloatingChatViewProps {
   input: string
   status: FloatingChatStatus
   notes: FloatingChatNote[]
+  purposes: string[]
+  selectedPurpose: string
   /** 直近に投入したタスクの ID。詳細画面への導線を出すために使う (未投入なら null) */
   currentTaskId: string | null
   onOpen: () => void
   onClose: () => void
   onInputChange: (value: string) => void
+  onPurposeChange: (value: string) => void
   onSubmit: () => void
 }
 
@@ -39,10 +42,13 @@ export function FloatingChatView({
   input,
   status,
   notes,
+  purposes,
+  selectedPurpose,
   currentTaskId,
   onOpen,
   onClose,
   onInputChange,
+  onPurposeChange,
   onSubmit,
 }: FloatingChatViewProps): React.ReactElement {
   if (!open) {
@@ -116,27 +122,48 @@ export function FloatingChatView({
           if (submitDisabled) return
           onSubmit()
         }}
-        className="flex items-center gap-2 border-t border-border px-3.5 py-3"
+        className="space-y-2 border-t border-border px-3.5 py-3"
       >
-        <span className="font-mono font-bold text-primary">&gt;</span>
-        <input
-          aria-label="メッセージ入力"
-          value={input}
-          onChange={(e) => {
-            onInputChange(e.target.value)
-          }}
-          disabled={inputDisabled}
-          placeholder={placeholder}
-          className="flex-1 border border-border bg-background px-2.5 py-2 font-mono text-sm text-foreground outline-none disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={submitDisabled}
-          aria-label="送信"
-          className="border border-primary bg-background px-3 py-2 font-mono text-xs font-bold text-primary hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background disabled:hover:text-primary"
-        >
-          send
-        </button>
+        <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+          <span>実行目的</span>
+          <select
+            aria-label="実行目的"
+            value={selectedPurpose}
+            onChange={(e) => {
+              onPurposeChange(e.target.value)
+            }}
+            disabled={inputDisabled}
+            className="min-w-0 flex-1 border border-border bg-background px-2 py-1.5 text-foreground outline-none disabled:opacity-60"
+          >
+            <option value="">既定の設定</option>
+            {purposes.map((purpose) => (
+              <option key={purpose} value={purpose}>
+                {purpose}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="font-mono font-bold text-primary">&gt;</span>
+          <input
+            aria-label="メッセージ入力"
+            value={input}
+            onChange={(e) => {
+              onInputChange(e.target.value)
+            }}
+            disabled={inputDisabled}
+            placeholder={placeholder}
+            className="flex-1 border border-border bg-background px-2.5 py-2 font-mono text-sm text-foreground outline-none disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={submitDisabled}
+            aria-label="送信"
+            className="border border-primary bg-background px-3 py-2 font-mono text-xs font-bold text-primary hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background disabled:hover:text-primary"
+          >
+            send
+          </button>
+        </div>
       </form>
     </div>
   )

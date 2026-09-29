@@ -63,6 +63,8 @@ pub struct UpdateStrategyRequest {
 pub struct StrategyChatRequest {
     #[schema(min_length = 1)]
     pub prompt: String,
+    #[serde(default)]
+    pub purpose: Option<String>,
 }
 
 /// `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。

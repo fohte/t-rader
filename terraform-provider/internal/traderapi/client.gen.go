@@ -232,7 +232,8 @@ type Strategy struct {
 
 // StrategyChatRequest フローティングチャットから戦略 Agent に投入する 1 メッセージ。
 type StrategyChatRequest struct {
-	Prompt string `json:"prompt"`
+	Prompt  string                    `json:"prompt"`
+	Purpose nullable.Nullable[string] `json:"purpose,omitempty"`
 }
 
 // StrategyChatResponse `POST /api/strategies/:id/chat` の戻り値。後続の polling 用 task 識別子を返す。

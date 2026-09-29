@@ -55,10 +55,13 @@ function makeProps(
     input: '',
     status: { kind: 'idle' },
     notes: [],
+    purposes: [],
+    selectedPurpose: '',
     currentTaskId: null,
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
+    onPurposeChange: NOOP,
     onSubmit: NOOP,
   }
   return { ...base, ...overrides }
@@ -89,6 +92,25 @@ describe('FloatingChatView', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '送信' }))
     expect(onSubmit).toHaveBeenCalledOnce()
+  })
+
+  it('実行目的を選ぶと onPurposeChange に値が伝わる', async () => {
+    const onPurposeChange = vi.fn()
+    await renderInRouter(
+      <FloatingChatView
+        {...makeProps({
+          purposes: ['example-purpose'],
+          onPurposeChange,
+        })}
+      />,
+    )
+
+    await userEvent.selectOptions(
+      screen.getByLabelText('実行目的'),
+      'example-purpose',
+    )
+
+    expect(onPurposeChange.mock.calls).toEqual([['example-purpose']])
   })
 
   it('入力するたびに onInputChange に値が伝わる', async () => {
