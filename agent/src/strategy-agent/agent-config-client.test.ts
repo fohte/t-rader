@@ -28,7 +28,7 @@ describe('createAgentConfigFetcher', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    const fetchAgentConfig = createAgentConfigFetcher('http://backend')
+    const fetchAgentConfig = createAgentConfigFetcher('http://backend/')
     const result = await fetchAgentConfig({ purpose: 'purpose-a' })
 
     expect(result).toEqual(
