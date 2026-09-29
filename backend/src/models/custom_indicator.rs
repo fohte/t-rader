@@ -1,9 +1,8 @@
+use core_application::custom_indicator::CustomIndicator;
 use sea_orm::entity::prelude::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
-
-use gateway_postgres::entities::custom_indicator;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = CustomIndicator)]
@@ -22,8 +21,8 @@ pub struct CustomIndicatorResponse {
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
-impl From<custom_indicator::Model> for CustomIndicatorResponse {
-    fn from(model: custom_indicator::Model) -> Self {
+impl From<CustomIndicator> for CustomIndicatorResponse {
+    fn from(model: CustomIndicator) -> Self {
         Self {
             indicator_id: model.indicator_id,
             name: model.name,

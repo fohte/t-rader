@@ -30,6 +30,7 @@ const agentGraphPhaseSchema = z.object({
 })
 
 const agentGraphConfigSchema = z.object({
+  tool_models: z.record(z.string(), z.string()).optional(),
   phases: z.array(agentGraphPhaseSchema),
 })
 
@@ -73,6 +74,11 @@ export const parseAgentGraph = (
         ),
       )
     }
-    return ok({ phases: validated.data.phases.map(toAgentGraphPhase) })
+    return ok({
+      ...(validated.data.tool_models !== undefined
+        ? { toolModels: validated.data.tool_models }
+        : {}),
+      phases: validated.data.phases.map(toAgentGraphPhase),
+    })
   })
 }

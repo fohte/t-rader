@@ -408,7 +408,7 @@ pub struct EvalIndicatorParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryMediaParams {
     /// 動画/音声の URL。YouTube の公開動画 URL を推奨。他の公開 https:// URL も試行できるが、
-    /// Gemini 側で取得できない場合はエラーになる。
+    /// モデル側で取得できない場合はエラーになる。
     pub media_url: String,
     /// 動画/音声から何を読み取りたいかを指示するプロンプト
     pub prompt: String,

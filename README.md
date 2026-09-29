@@ -164,8 +164,6 @@ pnpm run format   # ESLint + Prettier によるフォーマット
 | `API_BACKEND_URL`        | nginx リバースプロキシの転送先 URL (本番用、実行時に設定必須)                                                                                                                                                                              | -                            |
 | `NGINX_RESOLVER`         | nginx の DNS リゾルバ (Kubernetes: kube-dns アドレス、実行時に設定必須)                                                                                                                                                                    | -                            |
 | `MCP_ALLOWED_HOSTS`      | MCP server が受理する `Host` header の追加許可リスト (カンマ区切り)                                                                                                                                                                        | -                            |
-| `WEB_SEARCH_MODEL`       | `search_web` MCP tool が使う web 検索対応モデル名。実際に使用するモデル名をリポジトリで管理しないため `.env` にはデフォルト値を置かない。未設定/空文字だと `search_web` 呼び出しがエラーを返す。`.env.local` に設定すること                | -                            |
-| `GEMINI_MEDIA_MODEL`     | `query_media` MCP tool が使う動画/音声解析モデル名。実際に使用するモデル名をリポジトリで管理しないため `.env` にはデフォルト値を置かない。未設定/空文字だと `query_media` 呼び出しがエラーを返す。`.env.local` に設定すること              | -                            |
 
 ### DataProvider 切替
 
