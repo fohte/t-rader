@@ -15,16 +15,6 @@ export interface Env {
   LLM_BASE_URL: string | undefined
 }
 
-export const buildBackendUrls = (baseUrl: string) => {
-  const base = baseUrl.replace(/\/+$/, '')
-
-  return {
-    notifications: `${base}/api/agent-tasks/notifications`,
-    strategyMcp: `${base}/mcp/strategy`,
-    managementMcp: `${base}/mcp/mgmt`,
-  }
-}
-
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000
 const DEFAULT_RETENTION_DAYS = 30
 const DEFAULT_LLM_CALL_TIMEOUT_MS = 10 * 60 * 1000

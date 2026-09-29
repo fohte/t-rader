@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildBackendUrls, EnvError, loadEnv } from '#env'
+import { EnvError, loadEnv } from '#env'
 
 const fullSource = {
   DATABASE_URL: 'postgres://localhost/t_rader_agent',
@@ -161,16 +161,5 @@ describe('loadEnv', () => {
     expect(
       captureIssues(() => loadEnv({ ...fullSource, LLM_CALL_TIMEOUT_MS: '0' })),
     ).toEqual(['LLM_CALL_TIMEOUT_MS must be a positive integer (got: 0)'])
-  })
-})
-
-describe('buildBackendUrls', () => {
-  it('builds backend endpoints from the base URL', () => {
-    expect(buildBackendUrls('http://backend.example.test/')).toEqual({
-      notifications:
-        'http://backend.example.test/api/agent-tasks/notifications',
-      strategyMcp: 'http://backend.example.test/mcp/strategy',
-      managementMcp: 'http://backend.example.test/mcp/mgmt',
-    })
   })
 })
