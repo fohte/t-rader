@@ -222,6 +222,37 @@ mod tests {
     }
 
     #[rstest]
+    fn parse_graph_defaults_tool_models_when_omitted() {
+        let yaml = indoc! {"
+            phases:
+              - key: plan
+                label: Plan
+                model: example-model-plan
+                prompt: Make a plan
+        "};
+
+        assert_eq!(
+            parse_agent_graph(yaml),
+            Ok(Some(AgentGraphConfig {
+                tool_models: BTreeMap::new(),
+                phases: vec![AgentGraphPhase {
+                    key: "plan".to_string(),
+                    label: "Plan".to_string(),
+                    model: "example-model-plan".to_string(),
+                    reasoning_effort: None,
+                    prompt: "Make a plan".to_string(),
+                    for_each: None,
+                    label_field: None,
+                    max_parallel: None,
+                    skills: vec![],
+                    tools: vec![],
+                    output: serde_json::Map::new(),
+                }],
+            })),
+        );
+    }
+
+    #[rstest]
     fn parse_rejects_invalid_yaml() {
         let err = parse_agent_graph("phases: [").unwrap_err();
         assert!(matches!(err, AgentGraphError::InvalidYaml(_)));

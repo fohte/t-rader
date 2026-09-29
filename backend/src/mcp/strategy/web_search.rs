@@ -256,12 +256,29 @@ mod tests {
             )
             .await
             .expect("search_web");
+        let requests = litellm
+            .received_requests()
+            .await
+            .expect("recorded requests");
+        let body: serde_json::Value = requests[0].body_json().expect("parse request body");
         assert_eq!(
-            out,
-            SearchWebResult {
-                text: "半導体銘柄が上昇".into(),
-                citations: vec![],
-            }
+            (out, body),
+            (
+                SearchWebResult {
+                    text: "半導体銘柄が上昇".into(),
+                    citations: vec![],
+                },
+                json!({
+                    "model": "example-model-search",
+                    "messages": [{
+                        "role": "user",
+                        "content": [{"type": "text", "text": "半導体 関連ニュース"}],
+                    }],
+                    "stream": true,
+                    "web_search_options": {},
+                    "allowed_openai_params": ["web_search_options"],
+                }),
+            ),
         );
     }
 

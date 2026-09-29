@@ -121,6 +121,7 @@ interface Calls {
   mcpClientClosed: boolean
   // createMcpClient の呼び出しごとの 1 行。生成数と close タイミングの検証用。
   mcpClients: McpClientCall[]
+  mcpClientToolModels: Readonly<Record<string, string>>[]
   capturedDeadlineSignal: AbortSignal | undefined
 }
 
@@ -130,6 +131,7 @@ const buildDeps = (
   const calls: Calls = {
     mcpClientClosed: false,
     mcpClients: [],
+    mcpClientToolModels: [],
     capturedDeadlineSignal: undefined,
   }
   const chatModel = new FakeChatModel({})
@@ -142,7 +144,8 @@ const buildDeps = (
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
       })
     },
-    createMcpClient: (_strategyId, executionId): McpToolsClient => {
+    createMcpClient: (_strategyId, executionId, toolModels): McpToolsClient => {
+      calls.mcpClientToolModels.push(toolModels)
       const client: McpClientCall = { executionId, closed: false }
       calls.mcpClients.push(client)
       return {
@@ -227,6 +230,31 @@ describe('runStrategyAgent', () => {
       message: '1フェーズの実行が完了しました (Work)',
     })
   })
+
+  it.each([
+    {
+      name: 'configured tool_models',
+      agentGraph: `tool_models:\n  search_web: example-model-search\n  query_media: example-model-media\n${AGENT_GRAPH}`,
+      expectedToolModels: {
+        search_web: 'example-model-search',
+        query_media: 'example-model-media',
+      },
+    },
+    {
+      name: 'omitted tool_models',
+      agentGraph: AGENT_GRAPH,
+      expectedToolModels: {},
+    },
+  ])(
+    'passes $name to the MCP client',
+    async ({ agentGraph, expectedToolModels }) => {
+      const { deps, calls } = buildDeps({ agentGraph })
+
+      await runStrategyAgent(deps, buildRunInput())
+
+      expect(calls.mcpClientToolModels).toEqual([expectedToolModels])
+    },
+  )
 
   it('passes the given purpose straight through to fetchAgentConfig instead of the default', async () => {
     const { deps, calls } = buildDeps({})

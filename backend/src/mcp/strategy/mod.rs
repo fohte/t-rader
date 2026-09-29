@@ -450,33 +450,56 @@ mod tests {
         header_map_with(TOOL_MODELS_HEADER, value)
     }
 
-    #[test]
-    fn tool_model_from_headers_returns_the_value_for_the_requested_tool() {
+    #[rstest]
+    #[case::search_web("search_web", "example-model-search")]
+    #[case::query_media("query_media", "example-model-media")]
+    fn tool_model_from_headers_returns_the_value_for_the_requested_tool(
+        #[case] tool_name: &str,
+        #[case] expected: &str,
+    ) {
         assert_eq!(
             tool_model_from_headers(
                 &tool_models_headers_with(Some(
                     br#"{"search_web":"example-model-search","query_media":"example-model-media"}"#,
                 )),
-                "search_web",
+                tool_name,
             ),
-            Ok("example-model-search".to_string()),
+            Ok(expected.to_string()),
         );
     }
 
     #[rstest]
     #[case::missing_header(
         None,
+        "search_web",
         rmcp::model::ErrorCode::INTERNAL_ERROR,
         "missing x-tool-models header"
     )]
-    #[case::missing_tool(Some(br#"{"query_media":"example-model-media"}"#.as_slice()), rmcp::model::ErrorCode::INTERNAL_ERROR, "tool model for search_web is not configured")]
-    #[case::invalid_json(Some(b"not-json".as_slice()), rmcp::model::ErrorCode::INVALID_PARAMS, "x-tool-models header is not valid JSON")]
+    #[case::missing_search_web(
+        Some(br#"{"query_media":"example-model-media"}"#.as_slice()),
+        "search_web",
+        rmcp::model::ErrorCode::INTERNAL_ERROR,
+        "tool model for search_web is not configured"
+    )]
+    #[case::missing_query_media(
+        Some(br#"{"search_web":"example-model-search"}"#.as_slice()),
+        "query_media",
+        rmcp::model::ErrorCode::INTERNAL_ERROR,
+        "tool model for query_media is not configured"
+    )]
+    #[case::invalid_json(
+        Some(b"not-json".as_slice()),
+        "search_web",
+        rmcp::model::ErrorCode::INVALID_PARAMS,
+        "x-tool-models header is not valid JSON"
+    )]
     fn tool_model_from_headers_rejects_unavailable_configuration(
         #[case] header: Option<&[u8]>,
+        #[case] tool_name: &str,
         #[case] expected_code: rmcp::model::ErrorCode,
         #[case] expected_message: &str,
     ) {
-        let err = tool_model_from_headers(&tool_models_headers_with(header), "search_web")
+        let err = tool_model_from_headers(&tool_models_headers_with(header), tool_name)
             .expect_err("expected tool model configuration error");
         assert_eq!(
             (err.code, err.message.as_ref()),

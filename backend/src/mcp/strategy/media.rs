@@ -121,11 +121,28 @@ mod tests {
             )
             .await
             .expect("query_media");
+        let requests = litellm
+            .received_requests()
+            .await
+            .expect("recorded requests");
+        let body: serde_json::Value = requests[0].body_json().expect("parse request body");
         assert_eq!(
-            out,
-            QueryMediaResult {
-                text: "銘柄Aについて言及".into(),
-            }
+            (out, body),
+            (
+                QueryMediaResult {
+                    text: "銘柄Aについて言及".into(),
+                },
+                json!({
+                    "model": "example-model-media",
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "銘柄を列挙して"},
+                            {"type": "file", "file": {"file_id": "https://www.youtube.com/watch?v=abc"}},
+                        ],
+                    }],
+                }),
+            ),
         );
     }
 
