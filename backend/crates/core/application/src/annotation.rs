@@ -324,7 +324,7 @@ impl AnnotationUseCases {
         current_execution_task_id: &str,
         actor: Actor,
     ) -> Result<(), AnnotationUseCaseError> {
-        let mut stale = self
+        let mut stale_ids = self
             .repository
             .find_stale_unread_in_transaction(
                 transaction,
@@ -333,30 +333,20 @@ impl AnnotationUseCases {
                 current_execution_task_id,
             )
             .await?;
-        if stale.is_empty() {
+        if stale_ids.is_empty() {
             return Ok(());
         }
-        stale.sort_by_key(|annotation| annotation.id);
-        let stale_ids: Vec<Uuid> = stale.iter().map(|annotation| annotation.id).collect();
+        stale_ids.sort_unstable();
         let commented = self
             .repository
             .commented_annotation_ids_in_transaction(transaction, &stale_ids)
             .await?;
-        for annotation in stale {
-            if commented.contains(&annotation.id)
-                || !self.repository.delete(transaction, annotation.id).await?
-            {
+        for id in stale_ids {
+            if commented.contains(&id) || !self.repository.delete(transaction, id).await? {
                 continue;
             }
-            self.record(
-                transaction,
-                actor,
-                annotation.id,
-                Op::Delete,
-                json!({}),
-                None,
-            )
-            .await?;
+            self.record(transaction, actor, id, Op::Delete, json!({}), None)
+                .await?;
         }
         Ok(())
     }
@@ -571,7 +561,7 @@ mod tests {
             strategy_id: Uuid,
             execution_step_id: Uuid,
             current_execution_task_id: &str,
-        ) -> Result<Vec<Annotation>, AnnotationRepositoryError> {
+        ) -> Result<Vec<Uuid>, AnnotationRepositoryError> {
             self.record_transaction(transaction).await?;
             let mut stale: Vec<_> = self
                 .annotations
@@ -585,9 +575,9 @@ mod tests {
                         && annotation.execution_task_id.as_deref()
                             != Some(current_execution_task_id)
                 })
-                .cloned()
+                .map(|annotation| annotation.id)
                 .collect();
-            stale.sort_by_key(|annotation| annotation.id);
+            stale.sort_unstable();
             Ok(stale)
         }
 

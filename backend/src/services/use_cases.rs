@@ -31,8 +31,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let db = db.into();
     let unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
     let annotation_repository: SharedAnnotationRepository = Arc::new(PostgresAnnotationRepository);
-    let comment_repository: SharedCommentRepository =
-        Arc::new(PostgresCommentRepository::new(db.clone()));
+    let comment_repository: SharedCommentRepository = Arc::new(PostgresCommentRepository);
     let repository: SharedTradeRepository = Arc::new(PostgresTradeRepository::new(db.clone()));
     let custom_indicator_repository: SharedCustomIndicatorRepository =
         Arc::new(PostgresCustomIndicatorRepository::new(db.clone()));

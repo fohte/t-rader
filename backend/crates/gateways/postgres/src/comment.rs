@@ -8,21 +8,12 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use uuid::Uuid;
 
-use crate::DatabaseHandle;
 use crate::entities::{annotation, comment, note, note_version};
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref;
 
-#[derive(Clone)]
-pub struct PostgresCommentRepository {
-    _db: DatabaseHandle,
-}
-
-impl PostgresCommentRepository {
-    pub fn new(db: DatabaseHandle) -> Self {
-        Self { _db: db }
-    }
-}
+#[derive(Clone, Copy, Default)]
+pub struct PostgresCommentRepository;
 
 #[async_trait]
 impl CommentRepository for PostgresCommentRepository {
@@ -45,7 +36,7 @@ impl CommentRepository for PostgresCommentRepository {
         transaction: &UnitOfWorkTransaction,
         target_kind: CommentTargetKind,
         target_id: Uuid,
-    ) -> Result<Option<Uuid>, CommentRepositoryError> {
+    ) -> Result<Option<Option<Uuid>>, CommentRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(CommentRepositoryError::InvalidTransaction)?;
         match target_kind {
@@ -60,13 +51,13 @@ impl CommentRepository for PostgresCommentRepository {
                 note::Entity::find_by_id(version.note_id)
                     .one(transaction)
                     .await
-                    .map(|row| row.and_then(|note| note.strategy_id))
+                    .map(|row| row.map(|note| note.strategy_id))
                     .map_err(repository_error)
             }
             CommentTargetKind::Annotation => annotation::Entity::find_by_id(target_id)
                 .one(transaction)
                 .await
-                .map(|row| row.and_then(|annotation| annotation.strategy_id))
+                .map(|row| row.map(|annotation| annotation.strategy_id))
                 .map_err(repository_error),
         }
     }

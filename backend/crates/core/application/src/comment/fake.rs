@@ -1,3 +1,5 @@
+#![cfg(feature = "test-support")]
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -5,21 +7,16 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::unit_of_work::UnitOfWorkTransaction;
+use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::error::CommentRepositoryError;
 use super::repository::CommentRepository;
 use super::types::{Comment, CommentTargetKind, NewComment, NoteVersionAnchorBodies};
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FakeCommentTransaction {
-    pub id: Uuid,
-}
-
 #[derive(Default)]
 pub struct FakeCommentRepository {
     comments: Mutex<HashMap<Uuid, Comment>>,
-    target_strategy_ids: Mutex<HashMap<(CommentTargetKind, Uuid), Uuid>>,
+    target_strategy_ids: Mutex<HashMap<(CommentTargetKind, Uuid), Option<Uuid>>>,
     note_version_bodies: Mutex<HashMap<Uuid, NoteVersionAnchorBodies>>,
     transaction_ids: Mutex<Vec<Uuid>>,
     update_count: Mutex<usize>,
@@ -40,7 +37,11 @@ impl FakeCommentRepository {
         target_id: Uuid,
         strategy_id: Uuid,
     ) {
-        lock(&self.target_strategy_ids).insert((target_kind, target_id), strategy_id);
+        lock(&self.target_strategy_ids).insert((target_kind, target_id), Some(strategy_id));
+    }
+
+    pub fn set_target_without_strategy(&self, target_kind: CommentTargetKind, target_id: Uuid) {
+        lock(&self.target_strategy_ids).insert((target_kind, target_id), None);
     }
 
     pub fn set_note_version_anchor_bodies(
@@ -80,7 +81,7 @@ impl CommentRepository for FakeCommentRepository {
         transaction: &UnitOfWorkTransaction,
         target_kind: CommentTargetKind,
         target_id: Uuid,
-    ) -> Result<Option<Uuid>, CommentRepositoryError> {
+    ) -> Result<Option<Option<Uuid>>, CommentRepositoryError> {
         self.record_transaction(transaction)?;
         Ok(lock(&self.target_strategy_ids)
             .get(&(target_kind, target_id))
@@ -156,7 +157,7 @@ impl FakeCommentRepository {
         transaction: &UnitOfWorkTransaction,
     ) -> Result<(), CommentRepositoryError> {
         let transaction_id = transaction
-            .downcast_ref::<FakeCommentTransaction>()
+            .downcast_ref::<FakeTransaction>()
             .map(|transaction| transaction.id)
             .ok_or(CommentRepositoryError::InvalidTransaction)?;
         lock(&self.transaction_ids).push(transaction_id);

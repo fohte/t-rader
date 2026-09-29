@@ -132,7 +132,7 @@ pub trait AnnotationRepository: Send + Sync {
         strategy_id: Uuid,
         execution_step_id: Uuid,
         current_execution_task_id: &str,
-    ) -> Result<Vec<Annotation>, AnnotationRepositoryError>;
+    ) -> Result<Vec<Uuid>, AnnotationRepositoryError>;
 
     async fn commented_annotation_ids_in_transaction(
         &self,

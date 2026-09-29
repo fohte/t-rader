@@ -1,19 +1,19 @@
+#![cfg(feature = "test-support")]
+
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rstest::{fixture, rstest};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::change_history::{
-    Actor, ChangeHistoryError, ChangeHistoryPort, ChangeHistoryRecord, Op, TargetKind,
-};
+use crate::change_history::{Actor, ChangeHistoryRecord, FakeChangeHistory, Op, TargetKind};
 use crate::strategy_scope::{StrategyScope, StrategyScopeSource, StrategyScopeSourceError};
-use crate::unit_of_work::{UnitOfWork, UnitOfWorkError, UnitOfWorkTransaction};
+use crate::unit_of_work::FakeUnitOfWork;
 
 use super::error::CommentUseCaseError;
-use super::fake::{FakeCommentRepository, FakeCommentTransaction};
+use super::fake::FakeCommentRepository;
 use super::types::{
     Comment, CommentTargetKind, CreateCommentCommand, DeleteCommentCommand,
     NoteVersionAnchorBodies, ReplyCommentCommand, ResolveCommentCommand,
@@ -28,81 +28,27 @@ const STRATEGY_ID: Uuid = Uuid::from_u128(14);
 const OTHER_STRATEGY_ID: Uuid = Uuid::from_u128(15);
 const NORMALIZED_ID: Uuid = Uuid::from_u128(16);
 
-#[derive(Debug, Clone, PartialEq)]
-struct RecordedChange {
-    transaction_id: Uuid,
-    record: ChangeHistoryRecord,
-}
-
-#[derive(Default)]
-struct FakeChangeHistory {
-    records: Mutex<Vec<RecordedChange>>,
-}
-
-impl FakeChangeHistory {
-    fn records(&self) -> Vec<RecordedChange> {
-        lock(&self.records).clone()
-    }
-}
-
-#[async_trait]
-impl ChangeHistoryPort for FakeChangeHistory {
-    async fn record(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        record: ChangeHistoryRecord,
-    ) -> Result<(), ChangeHistoryError> {
-        let transaction_id = transaction
-            .downcast_ref::<FakeCommentTransaction>()
-            .map(|transaction| transaction.id)
-            .ok_or(ChangeHistoryError::InvalidTransaction)?;
-        lock(&self.records).push(RecordedChange {
-            transaction_id,
-            record,
-        });
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-struct FakeUnitOfWork {
-    started: Mutex<usize>,
-    committed: Mutex<Vec<Uuid>>,
-}
-
-impl FakeUnitOfWork {
-    fn started(&self) -> usize {
-        *lock(&self.started)
-    }
-
-    fn committed(&self) -> Vec<Uuid> {
-        lock(&self.committed).clone()
-    }
-}
-
-#[async_trait]
-impl UnitOfWork for FakeUnitOfWork {
-    async fn begin(&self) -> Result<UnitOfWorkTransaction, UnitOfWorkError> {
-        *lock(&self.started) += 1;
-        Ok(UnitOfWorkTransaction::new(FakeCommentTransaction {
-            id: Uuid::new_v4(),
-        }))
-    }
-
-    async fn commit(&self, transaction: UnitOfWorkTransaction) -> Result<(), UnitOfWorkError> {
-        let transaction = transaction
-            .downcast::<FakeCommentTransaction>()
-            .map_err(|_| UnitOfWorkError::InvalidTransaction)?;
-        lock(&self.committed).push(transaction.id);
-        Ok(())
-    }
-}
+type RecordedChange = crate::change_history::FakeChangeHistoryEntry;
 
 struct Fixture {
     use_cases: CommentUseCases,
     repository: Arc<FakeCommentRepository>,
     unit_of_work: Arc<FakeUnitOfWork>,
     history: Arc<FakeChangeHistory>,
+}
+
+impl Fixture {
+    async fn started(&self) -> usize {
+        self.unit_of_work.begun.lock().await.len()
+    }
+
+    async fn committed(&self) -> Vec<Uuid> {
+        self.unit_of_work.committed.lock().await.clone()
+    }
+
+    async fn history_records(&self) -> Vec<RecordedChange> {
+        self.history.entries.lock().await.clone()
+    }
 }
 
 #[rstest]
@@ -123,8 +69,8 @@ async fn create_rejects_invalid_input_before_opening_a_transaction(
     assert_eq!(
         (
             validation_error(result),
-            fixture.unit_of_work.started(),
-            fixture.history.records(),
+            fixture.started().await,
+            fixture.history_records().await,
         ),
         (Some(expected_error.to_string()), 0, Vec::new()),
     );
@@ -166,8 +112,8 @@ async fn create_rejects_a_reply_that_does_not_target_a_top_level_parent(
         (
             validation_error(result),
             fixture.repository.comments().len(),
-            fixture.history.records(),
-            fixture.unit_of_work.committed(),
+            fixture.history_records().await,
+            fixture.committed().await,
         ),
         (Some(expected_error.to_string()), 1, Vec::new(), Vec::new(),),
     );
@@ -237,7 +183,7 @@ async fn reply_rejects_a_reply_parent(fixture: Fixture) {
         (
             validation_error(result),
             fixture.repository.comments().len(),
-            fixture.history.records(),
+            fixture.history_records().await,
         ),
         (
             Some("cannot reply to a reply; parent_id must reference a top-level comment".into(),),
@@ -253,6 +199,7 @@ async fn reply_rejects_a_reply_parent(fixture: Fixture) {
     Some("new"),
     Some(1),
     Some(1),
+    2,
     "line anchors are only supported for note_version comments"
 )]
 #[case::incomplete_range(
@@ -260,6 +207,7 @@ async fn reply_rejects_a_reply_parent(fixture: Fixture) {
     Some("new"),
     Some(1),
     None,
+    2,
     "anchor_side, start_line, and end_line must be provided together"
 )]
 #[case::invalid_side(
@@ -267,7 +215,16 @@ async fn reply_rejects_a_reply_parent(fixture: Fixture) {
     Some("middle"),
     Some(1),
     Some(1),
+    2,
     "anchor_side must be either old or new"
+)]
+#[case::first_version_old_side(
+    "note_version",
+    Some("old"),
+    Some(1),
+    Some(1),
+    1,
+    "the first version has no old-side lines"
 )]
 #[tokio::test]
 async fn create_rejects_invalid_line_anchor_shapes(
@@ -276,12 +233,13 @@ async fn create_rejects_invalid_line_anchor_shapes(
     #[case] anchor_side: Option<&str>,
     #[case] start_line: Option<i32>,
     #[case] end_line: Option<i32>,
+    #[case] version_no: i32,
     #[case] expected_error: &str,
 ) {
     fixture.repository.set_note_version_anchor_bodies(
         TARGET_ID,
         NoteVersionAnchorBodies {
-            version_no: 2,
+            version_no,
             current_body: "line".into(),
             previous_body: Some("line".into()),
         },
@@ -294,7 +252,7 @@ async fn create_rejects_invalid_line_anchor_shapes(
     let result = fixture.use_cases.create(command).await;
 
     assert_eq!(
-        (validation_error(result), fixture.history.records()),
+        (validation_error(result), fixture.history_records().await),
         (Some(expected_error.into()), Vec::new()),
     );
 }
@@ -329,17 +287,19 @@ async fn create_persists_a_validated_note_version_anchor(
         .await
         .expect("comment is created");
     let normalized = normalize_comment(created);
+    let history_count = fixture.history_records().await.len();
+    let committed = fixture.committed().await;
 
     assert_eq!(
         (
             normalized,
-            fixture.history.records().len(),
-            fixture.unit_of_work.committed().len(),
+            history_count,
+            committed.len(),
             fixture
                 .repository
                 .transaction_ids()
                 .iter()
-                .all(|id| { fixture.unit_of_work.committed().contains(id) }),
+                .all(|id| committed.contains(id)),
         ),
         (
             Comment {
@@ -394,7 +354,7 @@ async fn create_rejects_a_line_range_past_the_selected_body(
         (
             validation_error(result),
             fixture.repository.comments(),
-            fixture.history.records(),
+            fixture.history_records().await,
         ),
         (
             Some("line anchor ends at 2, but the selected version has 1 lines".into(),),
@@ -424,12 +384,13 @@ async fn reply_inherits_parent_target_and_records_the_supplied_actor(fixture: Fi
         .await
         .expect("reply is created");
     let history = fixture
-        .history
-        .records()
+        .history_records()
+        .await
         .into_iter()
         .map(normalize_record)
         .collect::<Vec<_>>();
-    let transaction_id = fixture.unit_of_work.committed()[0];
+    let committed = fixture.committed().await;
+    let transaction_id = committed[0];
 
     assert_eq!(
         (
@@ -440,7 +401,7 @@ async fn reply_inherits_parent_target_and_records_the_supplied_actor(fixture: Fi
                 .transaction_ids()
                 .iter()
                 .all(|id| *id == transaction_id),
-            fixture.unit_of_work.committed(),
+            committed,
         ),
         (
             Comment {
@@ -500,8 +461,8 @@ async fn resolve_skips_update_and_history_when_status_is_unchanged(fixture: Fixt
         (
             resolved,
             fixture.repository.update_count(),
-            fixture.history.records(),
-            fixture.unit_of_work.committed().len(),
+            fixture.history_records().await,
+            fixture.committed().await.len(),
         ),
         (existing, 0, Vec::new(), 1),
     );
@@ -524,13 +485,13 @@ async fn resolve_records_a_status_change_in_the_write_transaction(fixture: Fixtu
         })
         .await
         .expect("comment is resolved");
-    let transaction_id = fixture.unit_of_work.committed()[0];
+    let transaction_id = fixture.committed().await[0];
 
     assert_eq!(
         (
             updated.resolved,
             fixture.repository.update_count(),
-            fixture.history.records(),
+            fixture.history_records().await,
             fixture
                 .repository
                 .transaction_ids()
@@ -572,12 +533,12 @@ async fn delete_records_history_with_the_supplied_actor(fixture: Fixture) {
         })
         .await
         .expect("comment is deleted");
-    let transaction_id = fixture.unit_of_work.committed()[0];
+    let transaction_id = fixture.committed().await[0];
 
     assert_eq!(
         (
             fixture.repository.comments(),
-            fixture.history.records(),
+            fixture.history_records().await,
             fixture
                 .repository
                 .transaction_ids()
@@ -603,13 +564,32 @@ async fn delete_records_history_with_the_supplied_actor(fixture: Fixture) {
 }
 
 #[rstest]
+#[case::different_strategy(
+    Some(Some(OTHER_STRATEGY_ID)),
+    ("forbidden", "comment target belongs to a different strategy")
+)]
+#[case::target_without_strategy(
+    Some(None),
+    ("forbidden", "comment target belongs to a different strategy")
+)]
+#[case::missing_target(None, ("not_found", "comment target not found"))]
 #[tokio::test]
-async fn scoped_creation_rejects_a_target_owned_by_another_strategy(fixture: Fixture) {
-    fixture.repository.set_target_strategy_id(
-        CommentTargetKind::NoteVersion,
-        TARGET_ID,
-        OTHER_STRATEGY_ID,
-    );
+async fn scoped_creation_rejects_targets_outside_the_strategy(
+    fixture: Fixture,
+    #[case] target_strategy_id: Option<Option<Uuid>>,
+    #[case] expected_error: (&'static str, &'static str),
+) {
+    match target_strategy_id {
+        Some(Some(strategy_id)) => fixture.repository.set_target_strategy_id(
+            CommentTargetKind::NoteVersion,
+            TARGET_ID,
+            strategy_id,
+        ),
+        Some(None) => fixture
+            .repository
+            .set_target_without_strategy(CommentTargetKind::NoteVersion, TARGET_ID),
+        None => {}
+    }
     let scope = verified_scope(STRATEGY_ID).await;
     let mut command = create_command("note_version", TARGET_ID, "comment");
     command.scope = Some(scope);
@@ -618,13 +598,13 @@ async fn scoped_creation_rejects_a_target_owned_by_another_strategy(fixture: Fix
 
     assert_eq!(
         (
-            forbidden_error(result),
+            scoped_target_error(result),
             fixture.repository.comments(),
-            fixture.history.records(),
-            fixture.unit_of_work.committed(),
+            fixture.history_records().await,
+            fixture.committed().await,
         ),
         (
-            Some("comment target belongs to a different strategy".into()),
+            Some((expected_error.0, expected_error.1.into())),
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -635,8 +615,8 @@ async fn scoped_creation_rejects_a_target_owned_by_another_strategy(fixture: Fix
 #[fixture]
 fn fixture() -> Fixture {
     let repository = Arc::new(FakeCommentRepository::new());
-    let unit_of_work = Arc::new(FakeUnitOfWork::default());
-    let history = Arc::new(FakeChangeHistory::default());
+    let unit_of_work = Arc::new(FakeUnitOfWork::new());
+    let history = Arc::new(FakeChangeHistory::new());
     let use_cases = CommentUseCases::new(unit_of_work.clone(), repository.clone(), history.clone());
     Fixture {
         use_cases,
@@ -727,15 +707,12 @@ fn not_found_error<T>(result: Result<T, CommentUseCaseError>) -> Option<String> 
     }
 }
 
-fn forbidden_error<T>(result: Result<T, CommentUseCaseError>) -> Option<String> {
+fn scoped_target_error<T>(
+    result: Result<T, CommentUseCaseError>,
+) -> Option<(&'static str, String)> {
     match result {
-        Err(CommentUseCaseError::Forbidden(message)) => Some(message),
+        Err(CommentUseCaseError::NotFound(message)) => Some(("not_found", message)),
+        Err(CommentUseCaseError::Forbidden(message)) => Some(("forbidden", message)),
         _ => None,
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }

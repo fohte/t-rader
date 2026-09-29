@@ -108,16 +108,18 @@ impl AnnotationRepository for PostgresAnnotationRepository {
         strategy_id: Uuid,
         execution_step_id: Uuid,
         current_execution_task_id: &str,
-    ) -> Result<Vec<Annotation>, AnnotationRepositoryError> {
+    ) -> Result<Vec<Uuid>, AnnotationRepositoryError> {
         let transaction = transaction_ref(transaction)?;
         annotation::Entity::find()
+            .select_only()
+            .column(annotation::Column::Id)
             .filter(annotation::Column::StrategyId.eq(strategy_id))
             .filter(annotation::Column::ExecutionStepId.eq(execution_step_id))
             .filter(annotation::Column::Status.eq("unread"))
             .filter(annotation::Column::ExecutionTaskId.ne(current_execution_task_id))
+            .into_tuple::<Uuid>()
             .all(transaction)
             .await
-            .map(|rows| rows.into_iter().map(to_domain).collect())
             .map_err(repository_error)
     }
 

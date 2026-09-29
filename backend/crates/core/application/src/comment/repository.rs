@@ -20,7 +20,7 @@ pub trait CommentRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         target_kind: CommentTargetKind,
         target_id: Uuid,
-    ) -> Result<Option<Uuid>, CommentRepositoryError>;
+    ) -> Result<Option<Option<Uuid>>, CommentRepositoryError>;
 
     async fn note_version_anchor_bodies(
         &self,

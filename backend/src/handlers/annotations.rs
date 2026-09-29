@@ -332,7 +332,7 @@ mod tests {
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
-        create_test_server_with_db, create_test_server_with_db_and_agent_client,
+        create_test_server_with_db, create_test_server_with_db_and_agent_client, insert_test_note,
         insert_test_strategy,
     };
     use axum_test::TestServer;
@@ -410,6 +410,76 @@ mod tests {
                 "execution_step_id": null,
                 "execution_task_id": null,
             }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_and_update_reject_cross_strategy_linked_notes(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "owner").await;
+        let foreign_strategy_id = insert_test_strategy(&db, "foreign").await;
+        let foreign_note_id =
+            insert_test_note(&db, foreign_strategy_id, "foreign note", "body").await;
+        let initial_annotation_res = server
+            .post("/api/annotations")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "target_symbol": "TEST-SYMBOL",
+                "target_kind": "sample_kind",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "text",
+            }))
+            .await;
+        initial_annotation_res.assert_status(StatusCode::CREATED);
+        let annotation_id = Uuid::parse_str(
+            initial_annotation_res.json::<Value>()["id"]
+                .as_str()
+                .expect("id"),
+        )
+        .expect("uuid");
+
+        let create_res = server
+            .post("/api/annotations")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "target_symbol": "TEST-SYMBOL",
+                "target_kind": "sample_kind",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "text",
+                "linked_note_id": foreign_note_id,
+            }))
+            .await;
+        let create_result = (create_res.status_code(), create_res.json::<Value>());
+
+        let update_res = server
+            .patch(&format!("/api/annotations/{annotation_id}"))
+            .json(&json!({ "linked_note_id": foreign_note_id }))
+            .await;
+        let update_result = (update_res.status_code(), update_res.json::<Value>());
+
+        let saved_annotations = annotation::Entity::find()
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|saved| (saved.id, saved.linked_note_id))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (create_result, update_result, saved_annotations),
+            (
+                (
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "linked note belongs to a different strategy" }),
+                ),
+                (
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "linked note belongs to a different strategy" }),
+                ),
+                vec![(annotation_id, None)],
+            ),
         );
     }
 

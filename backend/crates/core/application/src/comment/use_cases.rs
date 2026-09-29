@@ -242,12 +242,12 @@ impl CommentUseCases {
         let Some(scope) = scope else {
             return Ok(());
         };
-        let strategy_id = self
+        let target_strategy_id = self
             .repository
             .target_strategy_id(transaction, target_kind, target_id)
             .await?
             .ok_or_else(|| CommentUseCaseError::NotFound("comment target not found".into()))?;
-        if strategy_id != scope.id() {
+        if target_strategy_id != Some(scope.id()) {
             return Err(CommentUseCaseError::Forbidden(
                 "comment target belongs to a different strategy".into(),
             ));
