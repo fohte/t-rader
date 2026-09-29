@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "terraform-provider": {
+      "release-type": "simple",
+      "component": "terraform-provider"
+    }
+  }
+}
