@@ -12,16 +12,20 @@ pub mod entities;
 mod note;
 mod persistence;
 pub mod repositories;
+mod strategy;
 mod strategy_existence;
 mod strategy_scope;
+mod strategy_summary_query;
 mod trade;
 mod transaction;
 mod unit_of_work;
 
 pub use change_history::PostgresChangeHistory;
 pub use note::PostgresNoteRepository;
+pub use strategy::PostgresStrategyRepository;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;
+pub use strategy_summary_query::PostgresStrategySummaryQuery;
 pub use trade::PostgresTradeRepository;
 pub use unit_of_work::PostgresUnitOfWork;
 

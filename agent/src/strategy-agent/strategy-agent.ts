@@ -84,7 +84,6 @@ export interface StrategyAgentDeps {
 
 export interface StrategyAgentConfig {
   readonly backendApiBaseUrl: string
-  readonly strategyMcpUrl: string
   readonly llmApiKey: string
   readonly llmBaseUrl?: string | undefined
   readonly genAiProviderName: string
@@ -190,7 +189,7 @@ export const createStrategyAgentDeps = (
     new MultiServerMCPClient({
       mcpServers: {
         strategy: {
-          url: config.strategyMcpUrl,
+          url: `${config.backendApiBaseUrl.replace(/\/+$/, '')}/mcp/strategy`,
           headers: {
             [STRATEGY_ID_HEADER]: strategyId,
             [EXECUTION_ID_HEADER]: executionId,
