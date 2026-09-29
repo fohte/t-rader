@@ -213,6 +213,21 @@ mod tests {
         .update(&db)
         .await
         .expect("set note kind");
+        let pending_version = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .one(&db)
+            .await
+            .expect("find pending version")
+            .expect("pending version exists");
+        note_version::ActiveModel {
+            id: Unchanged(pending_version.id),
+            status: Set("unread".to_string()),
+            is_current: Set(false),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("set pending version state");
 
         let response = server
             .patch(&format!("/api/note-kinds/{kind_key}"))
@@ -239,24 +254,12 @@ mod tests {
             .into_iter()
             .filter(|record| record.op == "status_change" || record.op == "update")
             .map(|record| {
-                let diff: Value = record.diff_json;
-                let diff = if record.target_kind == "note" {
-                    json!({
-                        "from": diff["from"],
-                        "to": diff["to"],
-                        "version_id": "version-id",
-                        "previous_current_version_id": "version-id",
-                        "label": diff["label"],
-                    })
-                } else {
-                    diff
-                };
                 (
                     record.target_kind,
                     record.actor_kind,
                     record.actor_label,
                     record.op,
-                    diff,
+                    record.diff_json,
                     record.summary,
                 )
             })
@@ -284,8 +287,8 @@ mod tests {
                         json!({
                             "from": "unread",
                             "to": "approved",
-                            "version_id": "version-id",
-                            "previous_current_version_id": "version-id",
+                            "version_id": version.id,
+                            "previous_current_version_id": null,
                             "label": null,
                         }),
                         None,

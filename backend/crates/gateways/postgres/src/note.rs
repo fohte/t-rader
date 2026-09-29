@@ -486,13 +486,102 @@ fn to_version(model: note_version::Model) -> NoteVersion {
 
 #[cfg(test)]
 mod tests {
-    use core_application::note::{NewNote, NoteRepository};
-    use core_application::unit_of_work::UnitOfWork;
+    use core_application::note::{NewNote, NewNoteVersion, NoteRepository, NoteVersion};
+    use core_application::unit_of_work::{UnitOfWork, UnitOfWorkTransaction};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use uuid::Uuid;
 
     use super::PostgresNoteRepository;
+
+    #[backend_test_macros::database_test]
+    async fn find_latest_pending_versions_by_kind_returns_latest_unread_per_note(
+        db: crate::DatabaseHandle,
+    ) {
+        let strategy_id = Uuid::new_v4();
+        crate::entities::strategy::ActiveModel {
+            id: Set(strategy_id),
+            name: Set("sample strategy".to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test strategy");
+        for key in ["sample-kind", "other-kind"] {
+            crate::entities::note_kind::ActiveModel {
+                key: Set(key.to_string()),
+                display_name: Set("Sample Kind".to_string()),
+                requires_approval: Set(true),
+                description: Set(None),
+                sort_order: Set(0),
+            }
+            .insert(&db)
+            .await
+            .expect("insert test note kind");
+        }
+
+        let repository = PostgresNoteRepository::new();
+        let unit_of_work = crate::unit_of_work::PostgresUnitOfWork::new(db);
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        let first_note_id = Uuid::new_v4();
+        let second_note_id = Uuid::new_v4();
+        let other_note_id = Uuid::new_v4();
+        for (id, kind) in [
+            (first_note_id, "sample-kind"),
+            (second_note_id, "sample-kind"),
+            (other_note_id, "other-kind"),
+        ] {
+            insert_note(&repository, &transaction, id, strategy_id, kind).await;
+        }
+
+        insert_version(&repository, &transaction, first_note_id, 1, "unread", false).await;
+        let first_note_pending =
+            insert_version(&repository, &transaction, first_note_id, 2, "unread", false).await;
+        insert_version(
+            &repository,
+            &transaction,
+            first_note_id,
+            3,
+            "approved",
+            true,
+        )
+        .await;
+        insert_version(
+            &repository,
+            &transaction,
+            second_note_id,
+            1,
+            "unread",
+            false,
+        )
+        .await;
+        let second_note_pending = insert_version(
+            &repository,
+            &transaction,
+            second_note_id,
+            2,
+            "unread",
+            false,
+        )
+        .await;
+        insert_version(&repository, &transaction, other_note_id, 1, "unread", false).await;
+
+        let actual = repository
+            .find_latest_pending_versions_by_kind(&transaction, "sample-kind")
+            .await
+            .expect("find pending versions");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit transaction");
+
+        let mut expected = vec![first_note_pending, second_note_pending];
+        expected.sort_by_key(|version| version.note_id);
+        assert_eq!(actual, expected);
+    }
 
     #[backend_test_macros::database_test]
     async fn insert_note_returns_none_when_execution_id_conflicts(db: crate::DatabaseHandle) {
@@ -559,5 +648,59 @@ mod tests {
             (first, conflict, existing),
             (Some(existing_note_id), None, Some(existing_note_id),),
         );
+    }
+
+    async fn insert_note(
+        repository: &PostgresNoteRepository,
+        transaction: &UnitOfWorkTransaction,
+        id: Uuid,
+        strategy_id: Uuid,
+        kind: &str,
+    ) {
+        repository
+            .insert_note(
+                transaction,
+                NewNote {
+                    id,
+                    strategy_id: Some(strategy_id),
+                    kind: Some(kind.to_string()),
+                    trigger: None,
+                    trigger_label: None,
+                    execution_id: None,
+                },
+            )
+            .await
+            .expect("insert test note")
+            .expect("test note inserted");
+    }
+
+    async fn insert_version(
+        repository: &PostgresNoteRepository,
+        transaction: &UnitOfWorkTransaction,
+        note_id: Uuid,
+        version_no: i32,
+        status: &str,
+        is_current: bool,
+    ) -> NoteVersion {
+        repository
+            .insert_version(
+                transaction,
+                NewNoteVersion {
+                    id: Uuid::new_v4(),
+                    note_id,
+                    version_no,
+                    title: format!("Sample version {version_no}"),
+                    body_md: "Sample body".to_string(),
+                    frontmatter_json: serde_json::json!({}),
+                    graphs_json: serde_json::json!([]),
+                    status: status.to_string(),
+                    is_current,
+                    change_reason: None,
+                    created_by_kind: "human".to_string(),
+                    execution_id: None,
+                },
+            )
+            .await
+            .expect("insert test note version")
     }
 }
