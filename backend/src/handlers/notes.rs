@@ -419,6 +419,34 @@ mod tests {
         Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
     }
 
+    async fn insert_test_version(
+        db: &gateway_postgres::DatabaseHandle,
+        note_id: Uuid,
+        version_no: i32,
+        status: &str,
+        is_current: bool,
+    ) {
+        note_version::Entity::insert(note_version::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            note_id: Set(note_id),
+            version_no: Set(version_no),
+            title: Set(format!("version {version_no}")),
+            body_md: Set("body".into()),
+            frontmatter_json: Set(json!({})),
+            graphs_json: Set(json!([])),
+            status: Set(status.into()),
+            is_current: Set(is_current),
+            change_reason: Set(None),
+            created_by_kind: Set("llm".into()),
+            execution_id: Set(None),
+            created_at: NotSet,
+            reviewed_at: Set(None),
+        })
+        .exec_without_returning(db)
+        .await
+        .expect("insert test note version");
+    }
+
     /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
     /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
     #[backend_test_macros::database_test]
@@ -535,6 +563,108 @@ mod tests {
                     }),
                     None,
                 )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn approving_a_version_supersedes_only_older_pending_versions_of_its_note(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+
+        let normal_note =
+            create_test_note_with_creator(&server, strategy_id, "normal", "llm").await;
+        let normal_current = note_versions::find_current_version(&db, normal_note)
+            .await
+            .unwrap()
+            .unwrap();
+        note_version::ActiveModel {
+            id: Set(normal_current.id),
+            status: Set("approved".into()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("approve initial version");
+        insert_test_version(&db, normal_note, 2, "unread", false).await;
+        insert_test_version(&db, normal_note, 3, "rejected", false).await;
+        insert_test_version(&db, normal_note, 4, "unread", false).await;
+
+        let delayed_note =
+            create_test_note_with_creator(&server, strategy_id, "delayed", "llm").await;
+        let delayed_current = note_versions::find_current_version(&db, delayed_note)
+            .await
+            .unwrap()
+            .unwrap();
+        note_version::ActiveModel {
+            id: Set(delayed_current.id),
+            is_current: Set(false),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("clear initial current version");
+        insert_test_version(&db, delayed_note, 2, "unread", false).await;
+        insert_test_version(&db, delayed_note, 3, "approved", true).await;
+        insert_test_version(&db, delayed_note, 4, "unread", false).await;
+
+        let untouched_note =
+            create_test_note_with_creator(&server, strategy_id, "untouched", "llm").await;
+        insert_test_version(&db, untouched_note, 2, "unread", false).await;
+
+        let normal_response = server
+            .post(&format!("/api/notes/{normal_note}/versions/4/approve"))
+            .json(&json!({}))
+            .await;
+        let delayed_response = server
+            .post(&format!("/api/notes/{delayed_note}/versions/2/approve"))
+            .json(&json!({}))
+            .await;
+
+        let mut version_states = Vec::new();
+        for note_id in [normal_note, delayed_note, untouched_note] {
+            let rows = note_version::Entity::find()
+                .filter(note_version::Column::NoteId.eq(note_id))
+                .order_by_asc(note_version::Column::VersionNo)
+                .all(&db)
+                .await
+                .unwrap();
+            version_states.push(
+                rows.into_iter()
+                    .map(|row| (row.version_no, row.status, row.is_current))
+                    .collect::<Vec<_>>(),
+            );
+        }
+
+        assert_eq!(
+            (
+                normal_response.status_code(),
+                delayed_response.status_code(),
+                version_states,
+            ),
+            (
+                StatusCode::OK,
+                StatusCode::OK,
+                vec![
+                    vec![
+                        (1, "approved".to_string(), false),
+                        (2, "superseded".to_string(), false),
+                        (3, "rejected".to_string(), false),
+                        (4, "approved".to_string(), true),
+                    ],
+                    vec![
+                        (1, "superseded".to_string(), false),
+                        (2, "approved".to_string(), false),
+                        (3, "approved".to_string(), true),
+                        (4, "unread".to_string(), false),
+                    ],
+                    vec![
+                        (1, "unread".to_string(), true),
+                        (2, "unread".to_string(), false),
+                    ],
+                ],
             ),
         );
     }

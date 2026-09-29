@@ -4,12 +4,14 @@ const STATUS_LABEL: Record<string, string> = {
   approved: '承認済み',
   unread: '未レビュー',
   rejected: '却下',
+  superseded: '置き換え済み',
 }
 
 const STATUS_COLOR: Record<string, string> = {
   approved: 'var(--color-status-approved)',
   unread: 'var(--color-status-unread)',
   rejected: 'var(--color-status-rejected)',
+  superseded: 'var(--color-status-superseded)',
 }
 
 interface StatusPillProps {

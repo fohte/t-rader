@@ -272,3 +272,111 @@ pub async fn delete(
     txn.commit().await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::change_history::Actor;
+    use crate::services::note_versions::{self, AppendVersion};
+    use gateway_postgres::entities::{note, note_version};
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+    use serde_json::json;
+
+    #[backend_test_macros::database_test]
+    async fn disabling_note_kind_approval_supersedes_older_pending_versions(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let kind_key = "sample-kind";
+        create(
+            &db,
+            Actor::Human,
+            CreateNoteKind {
+                key: kind_key.into(),
+                display_name: "Sample kind".into(),
+                requires_approval: true,
+                description: None,
+                sort_order: None,
+            },
+        )
+        .await
+        .expect("create note kind");
+
+        let strategy_id = crate::testing::insert_test_strategy(&db, "sample").await;
+        let note_id = crate::testing::insert_test_note(&db, strategy_id, "sample", "body").await;
+        let initial = note_versions::find_current_version(&db, note_id)
+            .await
+            .expect("find initial version")
+            .expect("initial version exists");
+        note_version::ActiveModel {
+            id: Set(initial.id),
+            status: Set("approved".into()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("approve initial version");
+        note::ActiveModel {
+            id: Set(note_id),
+            kind: Set(Some(kind_key.into())),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("assign note kind");
+
+        for version_no in [2, 3] {
+            note_versions::append_version(
+                &db,
+                note_id,
+                AppendVersion {
+                    title: format!("version {version_no}"),
+                    body_md: "body".into(),
+                    frontmatter_json: json!({}),
+                    graphs_json: json!([]),
+                    created_by_kind: "llm".into(),
+                    execution_id: None,
+                    change_reason: Some("sample revision".into()),
+                    change_diff: None,
+                    actor: Actor::Human,
+                },
+            )
+            .await
+            .expect("append pending version");
+        }
+
+        let updated_kind = update(
+            &db,
+            Actor::Human,
+            kind_key,
+            UpdateNoteKind {
+                requires_approval: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("disable approval requirement");
+        let versions = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .order_by_asc(note_version::Column::VersionNo)
+            .all(&db)
+            .await
+            .expect("list note versions")
+            .into_iter()
+            .map(|version| (version.version_no, version.status, version.is_current))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (updated_kind.requires_approval, versions),
+            (
+                false,
+                vec![
+                    (1, "approved".into(), false),
+                    (2, "superseded".into(), false),
+                    (3, "approved".into(), true),
+                ],
+            ),
+        );
+    }
+}

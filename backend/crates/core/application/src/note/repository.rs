@@ -54,6 +54,12 @@ pub trait NoteRepository: Send + Sync {
         note_id: Uuid,
         version_no: i32,
     ) -> Result<Option<NoteVersion>, NoteRepositoryError>;
+    async fn supersede_pending_versions_before(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        note_id: Uuid,
+        version_no: i32,
+    ) -> Result<(), NoteRepositoryError>;
     async fn find_initial_created_by_kind(
         &self,
         transaction: &UnitOfWorkTransaction,

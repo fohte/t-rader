@@ -3,6 +3,7 @@
 #[cfg(test)]
 use sea_orm::ActiveValue::NotSet;
 use sea_orm::ActiveValue::Set;
+use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
@@ -38,6 +39,7 @@ pub struct AppendVersion {
 
 pub const INITIAL_NOTE_STATUS: &str = "unread";
 const APPROVED_NOTE_STATUS: &str = "approved";
+const SUPERSEDED_NOTE_STATUS: &str = "superseded";
 #[cfg(test)]
 const HUMAN_CREATED_BY_KIND: &str = "human";
 
@@ -254,6 +256,17 @@ pub async fn approve_pending_version(
     version: note_version::Model,
     reviewed_at: chrono::DateTime<chrono::FixedOffset>,
 ) -> Result<(note_version::Model, Option<Uuid>), AppError> {
+    note_version::Entity::update_many()
+        .col_expr(
+            note_version::Column::Status,
+            Expr::value(SUPERSEDED_NOTE_STATUS),
+        )
+        .filter(note_version::Column::NoteId.eq(note_id))
+        .filter(note_version::Column::VersionNo.lt(version.version_no))
+        .filter(note_version::Column::Status.eq(INITIAL_NOTE_STATUS))
+        .exec(txn)
+        .await?;
+
     let current = find_current_version(txn, note_id).await?;
     if current
         .as_ref()

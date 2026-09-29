@@ -23,6 +23,9 @@ impl NoteUseCases {
             .require_version(&transaction, note_id, version_no)
             .await?;
         self.ensure_pending_version(&version)?;
+        self.repository
+            .supersede_pending_versions_before(&transaction, note_id, version.version_no)
+            .await?;
         let now = Utc::now().fixed_offset();
         let current = self
             .repository

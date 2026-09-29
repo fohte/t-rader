@@ -118,6 +118,25 @@ impl NoteRepository for PostgresNoteRepository {
             .map_err(repository_error)
     }
 
+    async fn supersede_pending_versions_before(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        note_id: Uuid,
+        version_no: i32,
+    ) -> Result<(), NoteRepositoryError> {
+        let transaction =
+            transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
+        note_version::Entity::update_many()
+            .col_expr(note_version::Column::Status, Expr::value("superseded"))
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .filter(note_version::Column::VersionNo.lt(version_no))
+            .filter(note_version::Column::Status.eq("unread"))
+            .exec(transaction)
+            .await
+            .map(|_| ())
+            .map_err(repository_error)
+    }
+
     async fn find_initial_created_by_kind(
         &self,
         transaction: &UnitOfWorkTransaction,
