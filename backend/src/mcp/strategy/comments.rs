@@ -3,7 +3,7 @@
 //! 戦略境界の検査は、対象 (note_version / annotation) の所有権検査
 //! ([`super::fetch_note_owned_by`] / [`super::fetch_annotation_owned_by`]) が担う。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{

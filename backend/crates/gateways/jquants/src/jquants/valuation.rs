@@ -5,7 +5,8 @@ use core_domain::valuation::Valuation;
 use super::JQuantsClient;
 use super::response::ValuationRecord;
 use crate::DataProviderError;
-use core_application::{DateRange, ValuationSource, ValuationSourceError};
+use core_application::daily_bar_source::DateRange;
+use core_application::valuation_source::{ValuationSource, ValuationSourceError};
 
 #[async_trait]
 impl ValuationSource for JQuantsClient {

@@ -10,7 +10,7 @@ use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 
-use core_application::{DailyBarSource, DailyBarSourceError, DateRange};
+use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::business_day::latest_business_day;
 use core_domain::instrument::{Instrument, Market};

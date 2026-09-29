@@ -1,7 +1,7 @@
 //! 戦略実行 MCP の `read_fin_summary` tool。財務情報テーブルの型付き列を返却 DTO に変換する。
 
 use chrono::NaiveDate;
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 

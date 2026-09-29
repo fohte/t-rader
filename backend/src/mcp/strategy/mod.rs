@@ -34,7 +34,7 @@ pub(super) mod web_search;
 #[cfg(test)]
 mod tests_common;
 
-use core_application::{StrategyScope, StrategyScopeError};
+use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
 use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
@@ -194,7 +194,9 @@ impl StrategyServer {
                     invalid_params(format!("strategy {id} not found"))
                 }
                 StrategyScopeError::Source(
-                    core_application::StrategyScopeSourceError::QueryFailed(message),
+                    core_application::strategy_scope::StrategyScopeSourceError::QueryFailed(
+                        message,
+                    ),
                 ) => {
                     tracing::error!(error = %message, "strategy mcp db error");
                     internal_error(format!("database error: {message}"))

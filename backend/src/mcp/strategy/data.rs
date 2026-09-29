@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 

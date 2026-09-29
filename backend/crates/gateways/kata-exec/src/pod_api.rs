@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use core_application::KataExecError;
+use core_application::kata_exec::KataExecError;
 use reqwest::{Certificate, StatusCode, header::HeaderMap, header::HeaderValue};
 use serde::Deserialize;
 

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
-use core_application::{NewsAggregator, NewsAggregatorError, NewsFeed, NewsItem};
+use core_application::news_aggregator::{NewsAggregator, NewsAggregatorError, NewsFeed, NewsItem};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use reqwest::Url;

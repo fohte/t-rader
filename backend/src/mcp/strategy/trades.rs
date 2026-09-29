@@ -4,7 +4,7 @@
 //! (`super` の doc comment にある例外参照)。戦略境界の検査は行わず、
 //! `TradeDto::strategy_id` でどの戦略の約定かを判別できるようにする。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use core_application::trade::{Trade, TradeOrder, TradeQuery};
 use rmcp::ErrorData as McpError;
 

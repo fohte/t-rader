@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use core_application::{StrategyScopeSource, StrategyScopeSourceError};
+use core_application::strategy_scope::{StrategyScopeSource, StrategyScopeSourceError};
 use gateway_postgres::entities::strategy;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QuerySelect};
 use uuid::Uuid;

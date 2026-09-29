@@ -10,7 +10,7 @@
 //! `search_refs` と同様、戦略に属さないマスタデータのため `session_strategy_id` は
 //! 使わない。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
 use sea_orm::ActiveValue::{NotSet, Set};

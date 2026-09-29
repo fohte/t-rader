@@ -1,6 +1,6 @@
 //! 自戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する読み取り専用 tool。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 

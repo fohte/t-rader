@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_domain::earnings_schedule::EarningsSchedule;
 
-use crate::DateRange;
+use crate::daily_bar_source::DateRange;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum EarningsScheduleSourceError {

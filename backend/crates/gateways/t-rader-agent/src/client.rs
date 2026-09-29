@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use core_application::{
+use core_application::agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskState, AgentTaskStatus, SubmitAgentTask,
 };
 use reqwest::StatusCode;

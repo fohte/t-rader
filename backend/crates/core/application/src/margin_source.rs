@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::NaiveDate;
 use core_domain::margin::{MarginAlertRecord, MarginInterestRecord};
 
-use crate::DateRange;
+use crate::daily_bar_source::DateRange;
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum MarginSourceError {

@@ -4,7 +4,10 @@ use core_domain::financial_summary::FinancialSummary;
 
 use super::JQuantsClient;
 use crate::DataProviderError;
-use core_application::{DateRange, FinancialSummarySource, FinancialSummarySourceError};
+use core_application::daily_bar_source::DateRange;
+use core_application::financial_summary_source::{
+    FinancialSummarySource, FinancialSummarySourceError,
+};
 
 #[async_trait]
 impl FinancialSummarySource for JQuantsClient {
