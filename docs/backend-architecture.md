@@ -32,8 +32,8 @@ backend/crates/
 │   ├── litellm/
 │   ├── kata-exec/
 │   └── t-rader-agent/
-└── libs/                  # 外部 crate と同じ扱いの自前ライブラリ
-    └── test-macros/       # DB test 用 attribute macro
+└── libs/                 # 外部 crate と同じ扱いの自前ライブラリ
+    └── test-macros/      # DB test 用 attribute macro
 ```
 
 ## crate の責務
