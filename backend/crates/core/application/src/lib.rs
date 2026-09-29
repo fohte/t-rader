@@ -1,5 +1,7 @@
 pub mod agent_task_client;
+pub mod annotation;
 pub mod change_history;
+pub mod comment;
 pub mod daily_bar_source;
 pub mod earnings_schedule_source;
 pub mod equity_master_source;
