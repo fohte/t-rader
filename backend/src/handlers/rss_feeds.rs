@@ -165,7 +165,27 @@ pub async fn delete_rss_feed(
 mod tests {
     use crate::testing::create_test_server;
     use axum::http::StatusCode;
+    use axum_test::TestServer;
     use serde_json::{Value, json};
+
+    async fn create_feed(
+        server: &TestServer,
+        source: &str,
+        display_name: &str,
+        url: &str,
+    ) -> String {
+        let res = server
+            .post("/api/rss-feeds")
+            .json(&json!({
+                "source": source,
+                "display_name": display_name,
+                "url": url,
+            }))
+            .await;
+        res.assert_status(StatusCode::CREATED);
+        let created: Value = res.json();
+        created["id"].as_str().unwrap().to_owned()
+    }
 
     fn normalize(mut value: Value) -> Value {
         for key in ["id", "created_at", "updated_at"] {
@@ -205,16 +225,13 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn get_returns_full_row(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let created: Value = server
-            .post("/api/rss-feeds")
-            .json(&json!({
-                "source": "example-feed",
-                "display_name": "Example Feed",
-                "url": "https://example.com/feed.xml",
-            }))
-            .await
-            .json();
-        let id = created["id"].as_str().unwrap();
+        let id = create_feed(
+            &server,
+            "example-feed",
+            "Example Feed",
+            "https://example.com/feed.xml",
+        )
+        .await;
 
         let res = server.get(&format!("/api/rss-feeds/{id}")).await;
         res.assert_status_ok();
@@ -304,21 +321,8 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn list_enabled_only_filters(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let a: Value = server
-            .post("/api/rss-feeds")
-            .json(&json!({
-                "source": "a", "display_name": "A", "url": "https://example.com/a",
-            }))
-            .await
-            .json();
-        server
-            .post("/api/rss-feeds")
-            .json(&json!({
-                "source": "b", "display_name": "B", "url": "https://example.com/b",
-            }))
-            .await
-            .assert_status(StatusCode::CREATED);
-        let a_id = a["id"].as_str().unwrap();
+        let a_id = create_feed(&server, "a", "A", "https://example.com/a").await;
+        create_feed(&server, "b", "B", "https://example.com/b").await;
         server
             .patch(&format!("/api/rss-feeds/{a_id}"))
             .json(&json!({ "enabled": false }))
@@ -345,14 +349,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn patch_updates_fields(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let created: Value = server
-            .post("/api/rss-feeds")
-            .json(&json!({
-                "source": "x", "display_name": "Old", "url": "https://example.com/a",
-            }))
-            .await
-            .json();
-        let id = created["id"].as_str().unwrap();
+        let id = create_feed(&server, "x", "Old", "https://example.com/a").await;
         let res = server
             .patch(&format!("/api/rss-feeds/{id}"))
             .json(&json!({ "display_name": "New", "enabled": false }))
@@ -375,16 +372,13 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn patch_rejects_unknown_field(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let created: Value = server
-            .post("/api/rss-feeds")
-            .json(&json!({
-                "source": "example-feed",
-                "display_name": "Example Feed",
-                "url": "https://example.com/feed.xml",
-            }))
-            .await
-            .json();
-        let id = created["id"].as_str().unwrap();
+        let id = create_feed(
+            &server,
+            "example-feed",
+            "Example Feed",
+            "https://example.com/feed.xml",
+        )
+        .await;
 
         let res = server
             .patch(&format!("/api/rss-feeds/{id}"))
@@ -399,14 +393,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn delete_returns_204_then_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
-        let created: Value = server
-            .post("/api/rss-feeds")
-            .json(&json!({
-                "source": "x", "display_name": "x", "url": "https://example.com/a",
-            }))
-            .await
-            .json();
-        let id = created["id"].as_str().unwrap();
+        let id = create_feed(&server, "x", "x", "https://example.com/a").await;
         server
             .delete(&format!("/api/rss-feeds/{id}"))
             .await
