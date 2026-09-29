@@ -838,9 +838,12 @@ dependencies = [
  "async-trait",
  "chrono",
  "core-domain",
+ "rstest",
+ "rust_decimal",
  "serde_json",
  "thiserror",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -1623,6 +1626,7 @@ dependencies = [
  "async-trait",
  "backend-test-macros",
  "chrono",
+ "core-application",
  "core-domain",
  "migration",
  "rust_decimal",
@@ -1632,6 +1636,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

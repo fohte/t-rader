@@ -59,7 +59,7 @@ backend/crates/
 | `app`              | `backend/crates/` 内のすべての crate と `backend/migration/` |
 | `test-macros`      | なし                                                         |
 
-`gateways/postgres` は `DatabaseHandle`、SeaORM entity 定義、repository 関数を提供する。repository が domain の値型を使うため `core/domain` に依存するが、application port は実装しない。`test-support` feature だけが共有テスト DB の準備に必要な `migration` と `sqlx` を有効にする。`gateways/postgres` は `test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
+`gateways/postgres` は `DatabaseHandle`、SeaORM entity 定義、repository 関数を提供する。trade など一部の集約では `core/application` が定義する `UnitOfWork`、repository、`ChangeHistoryPort` port も実装する。`test-support` feature だけが共有テスト DB の準備に必要な `migration` と `sqlx` を有効にする。`gateways/postgres` は `test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
 
 `entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror`, `jpholiday` (祝日の計算のみで I/O を持たない) と `serde` の derive に限る (テストでのみ使う dev-dependencies は対象外)。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
 
@@ -84,6 +84,27 @@ HTTP path など外部との契約は crate 名と独立して管理する。た
 entrypoint はセッションなどから戦略スコープや管理者を表す権限型を組み立て、ユースケースへ渡す。権限は application のユースケースが検証する。
 
 トランザクション境界は application のユースケースが `UnitOfWork` port を通して管理する。entrypoint は transaction を開始しない。
+
+ユースケースは `UnitOfWork` から transaction を取得し、同じ transaction を repository と変更履歴の port に渡す。すべての書き込みが成功した後に commit し、途中で失敗した場合は commit せず transaction を破棄する。gateway は opaque な transaction handle を自身の transaction 型へ変換し、SeaORM などの実装詳細を core に公開しない。
+
+```rust
+let transaction = unit_of_work.begin().await?;
+let item = repository.update(&transaction, item).await?;
+change_history
+    .record(
+        &transaction,
+        ChangeHistoryRecord {
+            actor: Actor::Human,
+            target_kind: TargetKind::Trade,
+            target_id: item.id,
+            op: Op::Update,
+            diff,
+            summary: None,
+        },
+    )
+    .await?;
+unit_of_work.commit(transaction).await?;
+```
 
 ## エラーの境界
 
