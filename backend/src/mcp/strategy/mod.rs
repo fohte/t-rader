@@ -45,8 +45,9 @@ use uuid::Uuid;
 use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
-use crate::services::strategies::SeaOrmStrategyScopeSource;
+use crate::services::use_cases::UseCases;
 use gateway_postgres::DatabaseHandle;
+use gateway_postgres::PostgresStrategyScopeSource;
 use gateway_postgres::entities::{annotation, note};
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -130,7 +131,7 @@ pub(super) fn litellm_error_to_mcp(err: LiteLlmError) -> McpError {
 #[derive(Clone)]
 pub struct StrategyServer {
     db: DatabaseHandle,
-    pub(super) trade_use_cases: core_application::trade::TradeUseCases,
+    pub(super) use_cases: UseCases,
     daily_bar_source: Option<SharedDailyBarSource>,
     pub(super) kata_executor: Option<SharedKataExecutor>,
     pub(super) litellm_client: Option<SharedLlmClient>,
@@ -142,9 +143,21 @@ impl StrategyServer {
         daily_bar_source: Option<SharedDailyBarSource>,
     ) -> Self {
         let db = db.into();
+        Self::with_use_cases(
+            db.clone(),
+            crate::services::use_cases::build_use_cases(db),
+            daily_bar_source,
+        )
+    }
+
+    pub fn with_use_cases(
+        db: impl Into<DatabaseHandle>,
+        use_cases: UseCases,
+        daily_bar_source: Option<SharedDailyBarSource>,
+    ) -> Self {
         Self {
-            trade_use_cases: crate::services::trades::build_use_cases(db.clone()),
-            db,
+            db: db.into(),
+            use_cases,
             daily_bar_source,
             kata_executor: None,
             litellm_client: None,
@@ -173,7 +186,7 @@ impl StrategyServer {
         ctx: &RequestContext<RoleServer>,
     ) -> Result<StrategyScope, McpError> {
         let id = strategy_id_from_ctx(ctx)?;
-        let source = SeaOrmStrategyScopeSource::new(&self.db);
+        let source = PostgresStrategyScopeSource::new(&self.db);
         StrategyScope::verify(id, &source)
             .await
             .map_err(|error| match error {

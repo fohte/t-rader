@@ -6,6 +6,7 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, TargetKind};
+use crate::strategy_existence::SharedStrategyExistence;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
 use super::error::TradeUseCaseError;
@@ -22,6 +23,7 @@ const ALLOWED_SOURCE: [&str; 3] = ["manual", "csv", "api"];
 pub struct TradeUseCases {
     unit_of_work: SharedUnitOfWork,
     repository: SharedTradeRepository,
+    strategy_existence: SharedStrategyExistence,
     change_history: crate::change_history::SharedChangeHistoryPort,
 }
 
@@ -29,11 +31,13 @@ impl TradeUseCases {
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         repository: SharedTradeRepository,
+        strategy_existence: SharedStrategyExistence,
         change_history: crate::change_history::SharedChangeHistoryPort,
     ) -> Self {
         Self {
             unit_of_work,
             repository,
+            strategy_existence,
             change_history,
         }
     }
@@ -257,8 +261,8 @@ impl TradeUseCases {
         strategy_id: Uuid,
     ) -> Result<(), TradeUseCaseError> {
         if !self
-            .repository
-            .strategy_exists(transaction, strategy_id)
+            .strategy_existence
+            .exists(transaction, strategy_id)
             .await?
         {
             return Err(TradeUseCaseError::Validation(format!(
@@ -375,6 +379,7 @@ mod tests {
     use serde_json::json;
 
     use crate::change_history::{Actor, FakeChangeHistory, Op, TargetKind};
+    use crate::strategy_existence::FakeStrategyExistence;
     use crate::trade::FakeTradeRepository;
     use crate::trade::types::{PerformanceSummary, PositionSummary, Trade, TradeListItem};
     use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
@@ -456,16 +461,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_uses_one_transaction_for_repository_and_history() {
+    async fn create_uses_one_transaction_across_repository_strategy_existence_and_history() {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakeTradeRepository::new());
+        let strategy_existence = Arc::new(FakeStrategyExistence::new());
         let change_history = Arc::new(FakeChangeHistory::new());
         let strategy_id = uuid::Uuid::nil();
-        repository.insert_strategy(strategy_id).await;
+        strategy_existence.insert_strategy(strategy_id).await;
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
         let trade_use_cases = TradeUseCases::new(
             shared_unit_of_work,
             repository.clone(),
+            strategy_existence.clone(),
             change_history.clone(),
         );
 
@@ -486,6 +493,7 @@ mod tests {
         let begun = unit_of_work.begun.lock().await.clone();
         let committed = unit_of_work.committed.lock().await.clone();
         let repository_transactions = repository.transaction_ids.lock().await.clone();
+        let strategy_transactions = strategy_existence.transaction_ids().await;
         let history = change_history.entries.lock().await.clone();
         let transaction_id = begun.first().copied().unwrap_or_default();
 
@@ -494,6 +502,10 @@ mod tests {
                 begun.len(),
                 committed,
                 repository_transactions
+                    .iter()
+                    .map(|id| *id == transaction_id)
+                    .collect::<Vec<_>>(),
+                strategy_transactions
                     .iter()
                     .map(|id| *id == transaction_id)
                     .collect::<Vec<_>>(),
@@ -513,7 +525,8 @@ mod tests {
             (
                 1,
                 vec![transaction_id],
-                vec![true, true],
+                vec![true],
+                vec![true],
                 vec![(
                     true,
                     Actor::Human,

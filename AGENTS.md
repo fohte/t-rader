@@ -60,13 +60,12 @@ fohte 個人用の日本株投資プラットフォーム。
 mise run db-up
 
 # バックエンド (ローカル)
-cd backend && cargo run
+cd backend && cargo run -p backend --bin backend
 cd backend && cargo test
 cd backend && cargo clippy -- -D warnings
 
 # マイグレーション追加
 cd backend/migration && cargo run -- generate <name>
-# 生成後、lib.rs の Migrator::migrations() にも登録すること
 
 # エンティティ再生成 (マイグレーション変更後に実行)
 DATABASE_URL=... bash backend/scripts/generate-entities.sh
@@ -82,44 +81,11 @@ cd agent && pnpm dev  # tsx watch でローカル直接起動
 cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは TEST_DATABASE_URL 未設定時は自動 skip)
 ```
 
-## Core files
-
-- `backend/migration/` - SeaORM マイグレーション crate (MigrationTrait で Rust ファイル、起動時に自動実行)
-- `backend/crates/gateways/postgres/src/entities/` - SeaORM Entity 定義 (`sea-orm-cli generate entity` で自動生成、手動編集禁止)
-- `backend/scripts/generate-entities.sh` - エンティティ生成スクリプト (CLI オプション一元管理)
-- `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
-- `backend/src/error.rs` - AppError 型定義
-- `backend/crates/core/domain/` - application と gateway が共有する値型と東証の営業日判定
-- `backend/crates/core/application/` - agent task、indicator observation、kata-exec executor、LLM client、news aggregation、日足データソース (銘柄ごと / 全銘柄の日付指定)、銘柄マスタ、信用残、空売り、財務情報、保有構造、決算予定、バリュエーションの port と値型
-- `backend/crates/libs/test-macros/` - backend と gateway の DB test で使う proc macro
-- `backend/crates/gateways/fred/` - FRED API client の HTTP 実装
-- `backend/crates/gateways/ibkr/` - IBKR Client Portal Web API client の HTTP 実装
-- `backend/crates/gateways/jquants/` - J-Quants API client とデータソース port の実装
-- `backend/crates/gateways/kata-exec/` - Kata Containers exec Pod の HTTP 実装
-- `backend/crates/gateways/litellm/` - LiteLLM client の HTTP 実装
-- `backend/crates/gateways/postgres/` - PostgreSQL / TimescaleDB gateway、SeaORM entity と repositories、`DatabaseHandle`、`test-support` feature の共有テスト DB 準備
-- `backend/crates/gateways/rss/` - RSS news aggregation の HTTP 実装
-- `backend/src/kata_exec/` - application port と gateway 実装の互換 facade
-- `backend/src/services/litellm_client.rs` - application port と gateway 実装の互換 facade
-- `backend/crates/gateways/t-rader-agent/` - t-rader-agent 内部 API client の HTTP 実装
-- `backend/src/agent_client/` - application port と gateway 実装の互換 facade
-- `backend/src/testing.rs` - backend の AppState、TestServer、entity に依存するテスト fixture
-- `backend/src/services/strategy_tasks/` - 戦略タスク投入の共通 service (`submit_task`、5 経路から呼ばれる)
-- `backend/src/mcp/watcher.rs` - 戦略タスクの phase polling (pending/running 行の状態照会 + deadline 超過の失敗確定)
-- `backend/src/handlers/agent_tasks.rs` - t-rader-agent からのタスク決着 webhook 受信
-- `agent/src/main.ts` - A2A server のエントリポイント、Hono app の組み立て
-- `agent/src/a2a/executor.ts` - `TraderAgentExecutor` (`strategy_id` metadata があれば即実行、なければ `agent/src/strategy-resolution/` で名前解決した上で `agent/src/strategy-agent/` の `runStrategyAgent` に委譲)
-- `agent/src/strategy-agent/strategy-agent.ts` - agent-config 取得 + LangGraph agent 構成 + MCP tool 呼び出しの実行ロジック
-- `agent/src/strategy-resolution/resolve-strategy.ts` - 戦略候補一覧から自由文の対象戦略を決定的な文字列類似度で解決するロジック
-- `agent/src/internal-api/routes.ts` - backend 向け internal API (`POST /internal/tasks`, `GET /internal/tasks/{task_id}`)
-- `agent/drizzle/` - drizzle-orm マイグレーション (起動時に自動実行)
-- `frontend/.storybook/story-router.tsx` - TanStack Router に依存する component の story にルーターコンテキストを提供する `createStoryRouter` (`#storybook/story-router` としてエイリアス解決)
-
 ## Migrations
 
 - マイグレーションファイルは手動で作成しない。必ず `cd backend/migration && cargo run -- generate <name>` でファイルを生成してから up/down を実装すること
 - ファイル名のタイムスタンプは CLI が自動付与する。`DeriveMigrationName` でファイル名からマイグレーション名を自動導出する
-- 生成後、`backend/migration/src/lib.rs` の `Migrator::migrations()` に登録すること
+- `src/` 直下のマイグレーションファイルはファイル名順に自動登録されるため、追加時に `lib.rs` は編集しない
 - SeaQuery DSL でテーブル操作を記述するが、TimescaleDB 固有の SQL は `execute_unprepared` で raw SQL を使う
 - 初期スキーマなど論理的にまとまる変更は 1 ファイルにまとめる。不必要にファイルを分割しない
 
@@ -154,8 +120,6 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 ### Backend architecture
 
 backend の Rust crate を追加・変更するときは [`docs/backend-architecture.md`](./docs/backend-architecture.md) の crate 構成、依存規則、境界の責務に従うこと。
-
-crate は `backend/crates/<区分>/<crate>/` の 2 階層に配置する。`backend/crates/` 直下には区分ディレクトリだけを置く。
 
 ### Split files before they grow past ~500 lines of production code
 

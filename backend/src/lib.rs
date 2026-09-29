@@ -43,14 +43,13 @@ use crate::handlers::{
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
-use core_application::trade::TradeUseCases;
 use gateway_jquants::JQuantsClient;
 use gateway_postgres::DatabaseHandle;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseHandle,
-    pub trade_use_cases: TradeUseCases,
+    pub use_cases: crate::services::use_cases::UseCases,
     /// 日足データ取得元
     ///
     /// `DATA_PROVIDER=none` または client の未設定時は `None` で起動する。
@@ -147,7 +146,7 @@ mod app_state_tests {
         let db = DatabaseHandle::from(mock_db());
         let state = AppState {
             db: db.clone(),
-            trade_use_cases: crate::services::trades::build_use_cases(db),
+            use_cases: crate::services::use_cases::build_use_cases(db),
             daily_bar_source: Some(daily_bar_source),
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
@@ -164,7 +163,7 @@ mod app_state_tests {
         let db = DatabaseHandle::from(mock_db());
         let state = AppState {
             db: db.clone(),
-            trade_use_cases: crate::services::trades::build_use_cases(db),
+            use_cases: crate::services::use_cases::build_use_cases(db),
             daily_bar_source: None,
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
@@ -360,6 +359,7 @@ pub fn create_openapi_spec() -> utoipa::openapi::OpenApi {
 pub fn create_router(state: AppState) -> Router {
     let db = state.db.clone();
     let agent_task_client = state.agent_task_client.clone();
+    let use_cases = state.use_cases.clone();
     let daily_bar_source = state.daily_bar_source.clone();
     let kata_executor = state.kata_executor.clone();
     let llm_gateway_client = state.llm_gateway_client.clone();
@@ -370,6 +370,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(SwaggerUi::new("/api-docs").url("/api-docs/openapi.json", api))
         .merge(mcp::router(
             db,
+            use_cases,
             agent_task_client,
             daily_bar_source,
             kata_executor,

@@ -7,13 +7,21 @@ use sea_orm::{
 
 extern crate self as gateway_postgres;
 
+mod change_history;
 pub mod entities;
+mod persistence;
 pub mod repositories;
+mod strategy_existence;
+mod strategy_scope;
 mod trade;
+mod transaction;
+mod unit_of_work;
 
-pub use trade::{
-    PostgresChangeHistory, PostgresTradeRepository, PostgresUnitOfWork, postgres_trade_use_cases,
-};
+pub use change_history::PostgresChangeHistory;
+pub use strategy_existence::PostgresStrategyExistence;
+pub use strategy_scope::PostgresStrategyScopeSource;
+pub use trade::PostgresTradeRepository;
+pub use unit_of_work::PostgresUnitOfWork;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

@@ -59,6 +59,7 @@ mod tests_common;
 
 use crate::agent_client::SharedAgentTaskClient;
 use crate::error::AppError;
+use crate::services::use_cases::UseCases;
 use gateway_postgres::DatabaseHandle;
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
@@ -87,13 +88,28 @@ const MAX_LIST_LIMIT: u64 = 100;
 #[derive(Clone)]
 pub struct MgmtServer {
     db: DatabaseHandle,
+    _use_cases: UseCases,
     agent_client: SharedAgentTaskClient,
 }
 
 impl MgmtServer {
     pub fn new(db: impl Into<DatabaseHandle>, agent_client: SharedAgentTaskClient) -> Self {
+        let db = db.into();
+        Self::with_use_cases(
+            db.clone(),
+            crate::services::use_cases::build_use_cases(db),
+            agent_client,
+        )
+    }
+
+    pub fn with_use_cases(
+        db: impl Into<DatabaseHandle>,
+        use_cases: UseCases,
+        agent_client: SharedAgentTaskClient,
+    ) -> Self {
         Self {
             db: db.into(),
+            _use_cases: use_cases,
             agent_client,
         }
     }

@@ -24,11 +24,6 @@ pub trait TradeRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         id: Uuid,
     ) -> Result<Option<Trade>, TradeRepositoryError>;
-    async fn strategy_exists(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
-    ) -> Result<bool, TradeRepositoryError>;
     async fn insert(
         &self,
         transaction: &UnitOfWorkTransaction,

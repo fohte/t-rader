@@ -13,6 +13,7 @@ mod news_aggregator;
 pub mod persistence;
 mod shareholding_structure_source;
 mod short_selling_source;
+pub mod strategy_existence;
 mod strategy_scope;
 pub mod trade;
 pub mod unit_of_work;
@@ -57,6 +58,7 @@ pub use shareholding_structure_source::{
 pub use short_selling_source::{
     SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError,
 };
+pub use strategy_existence::{SharedStrategyExistence, StrategyExistence, StrategyExistenceError};
 pub use strategy_scope::{
     SharedStrategyScopeSource, StrategyScope, StrategyScopeError, StrategyScopeSource,
     StrategyScopeSourceError, verify_strategy_ids,

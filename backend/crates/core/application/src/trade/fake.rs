@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -13,17 +13,12 @@ use super::types::{TradeListItem, TradeOrder, TradeQuery};
 #[derive(Default)]
 pub struct FakeTradeRepository {
     pub trades: Mutex<HashMap<Uuid, Trade>>,
-    pub strategy_ids: Mutex<HashSet<Uuid>>,
     pub transaction_ids: Mutex<Vec<Uuid>>,
 }
 
 impl FakeTradeRepository {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    pub async fn insert_strategy(&self, strategy_id: Uuid) {
-        self.strategy_ids.lock().await.insert(strategy_id);
     }
 
     pub async fn insert_trade(&self, trade: Trade) {
@@ -80,15 +75,6 @@ impl TradeRepository for FakeTradeRepository {
     ) -> Result<Option<Trade>, TradeRepositoryError> {
         self.record_transaction(transaction).await?;
         self.find_by_id(id).await
-    }
-
-    async fn strategy_exists(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        strategy_id: Uuid,
-    ) -> Result<bool, TradeRepositoryError> {
-        self.record_transaction(transaction).await?;
-        Ok(self.strategy_ids.lock().await.contains(&strategy_id))
     }
 
     async fn insert(
