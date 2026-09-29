@@ -1,6 +1,6 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use core_application::{ExecRequest, ExecResult, KataExecError};
+use core_application::kata_exec::{ExecRequest, ExecResult, KataExecError};
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;

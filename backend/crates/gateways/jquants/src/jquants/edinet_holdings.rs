@@ -11,7 +11,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::JQuantsClient;
-use core_application::{DateRange, ShareholdingStructureSource, ShareholdingStructureSourceError};
+use core_application::daily_bar_source::DateRange;
+use core_application::shareholding_structure_source::{
+    ShareholdingStructureSource, ShareholdingStructureSourceError,
+};
 
 const LARGE_VOLUME_PATH: &str = "/edinet/large-volume-shareholders";
 const CROSS_SHAREHOLDING_PATH: &str = "/edinet/cross-shareholdings";
@@ -317,7 +320,8 @@ mod tests {
 
     use crate::JQuantsPlan;
     use crate::jquants::mock::JQuantsMockServer;
-    use core_application::{DateRange, ShareholdingStructureSource};
+    use core_application::daily_bar_source::DateRange;
+    use core_application::shareholding_structure_source::ShareholdingStructureSource;
 
     use super::{
         CROSS_SHAREHOLDING_PATH, LARGE_VOLUME_PATH, MAJOR_SHAREHOLDER_PATH,

@@ -2,7 +2,7 @@
 //! と日々公表信用取引残高 (`margin_alert`) を 4 桁銘柄コード + 期間で読み出す。
 
 use chrono::NaiveDate;
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use schemars::JsonSchema;

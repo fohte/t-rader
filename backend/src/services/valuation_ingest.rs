@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
-use core_application::{SharedValuationSource, ValuationSource};
+use core_application::valuation_source::{SharedValuationSource, ValuationSource};
 use core_domain::valuation::Valuation;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
@@ -217,7 +217,8 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::NaiveDate;
-    use core_application::{DateRange, ValuationSource, ValuationSourceError};
+    use core_application::daily_bar_source::DateRange;
+    use core_application::valuation_source::{ValuationSource, ValuationSourceError};
     use core_domain::valuation::Valuation;
     use gateway_jquants::JQuantsPlan;
     use gateway_jquants::mock::JQuantsMockServer;

@@ -2,7 +2,7 @@
 //!
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};

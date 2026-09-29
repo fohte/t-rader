@@ -5,7 +5,7 @@
 //! (agent 視点の 1 task = 複数 step からなる) あたりの呼び出し回数に上限を設け、
 //! 超えたら LiteLLM を呼ばずにエラーを返す。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, OnConflict};

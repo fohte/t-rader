@@ -5,7 +5,7 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, ResponseTemplate};
 
-use core_application::DateRange;
+use core_application::daily_bar_source::DateRange;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::Market;
 

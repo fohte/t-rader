@@ -6,7 +6,7 @@
 //! いずれかへの部分一致 (大文字小文字・全角半角を区別しない) で検索し、`ref_kind` / `ref_id`
 //! / `name` の組で返す。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use indoc::indoc;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;

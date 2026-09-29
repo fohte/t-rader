@@ -20,7 +20,7 @@ use rust_decimal::Decimal;
 use rate_limiter::RateLimiter;
 
 use crate::{DataProviderError, JQuantsPlan};
-use core_application::DateRange;
+use core_application::daily_bar_source::DateRange;
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::instrument::{Instrument, Market};
 use response::{

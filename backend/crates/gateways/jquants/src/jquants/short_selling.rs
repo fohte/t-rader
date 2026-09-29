@@ -8,7 +8,8 @@ use chrono::NaiveDate;
 use super::JQuantsClient;
 use super::response::{ShortRatioResponse, ShortSaleReportResponse};
 use crate::DataProviderError;
-use core_application::{DateRange, ShortSellingSource, ShortSellingSourceError};
+use core_application::daily_bar_source::DateRange;
+use core_application::short_selling_source::{ShortSellingSource, ShortSellingSourceError};
 use core_domain::short_ratio::ShortRatio;
 use core_domain::short_sale_report::ShortSaleReport;
 

@@ -6,7 +6,7 @@
 //! として扱う。空売り残高報告は会社単位の開示であり戦略に属さない市場データのため、
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 

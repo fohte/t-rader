@@ -3,7 +3,7 @@
 //! 記録後の確率・期限・対象の書き換えは採点を無意味にするため、更新・削除の tool は
 //! 意図的に用意しない。読み取りは自戦略の予測に限る。
 
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};

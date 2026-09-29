@@ -1,4 +1,4 @@
-use core_application::DailyBarSourceError;
+use core_application::daily_bar_source::DailyBarSourceError;
 
 /// IBKR Client Portal Web API の呼び出しで発生するエラー
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]

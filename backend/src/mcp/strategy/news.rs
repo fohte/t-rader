@@ -1,7 +1,7 @@
 //! 戦略実行 MCP のニュース検索 tool 実装。
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
-use core_application::StrategyScope;
+use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
