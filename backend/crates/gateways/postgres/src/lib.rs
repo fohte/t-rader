@@ -10,6 +10,7 @@ extern crate self as gateway_postgres;
 mod change_history;
 mod custom_indicator;
 pub mod entities;
+mod note;
 mod persistence;
 pub mod repositories;
 mod strategy;
@@ -23,6 +24,7 @@ mod unit_of_work;
 
 pub use change_history::PostgresChangeHistory;
 pub use custom_indicator::PostgresCustomIndicatorRepository;
+pub use note::PostgresNoteRepository;
 pub use strategy::PostgresStrategyRepository;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;

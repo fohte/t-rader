@@ -4,6 +4,7 @@ use core_application::change_history::SharedChangeHistoryPort;
 use core_application::custom_indicator::{
     CustomIndicatorUseCases, SharedCustomIndicatorRepository,
 };
+use core_application::note::{NoteUseCases, SharedNoteRepository};
 use core_application::strategy::{
     SharedStrategyRepository, SharedStrategySummaryQuery, StrategyUseCases,
 };
@@ -13,12 +14,14 @@ use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresCustomIndicatorRepository,
-    PostgresStrategyExistence, PostgresStrategyRepository, PostgresStrategySummaryQuery,
-    PostgresStrategyTaskRepository, PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresNoteRepository, PostgresStrategyExistence, PostgresStrategyRepository,
+    PostgresStrategySummaryQuery, PostgresStrategyTaskRepository, PostgresTradeRepository,
+    PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
 pub struct UseCases {
+    pub notes: NoteUseCases,
     pub strategies: StrategyUseCases,
     pub trades: TradeUseCases,
     pub strategy_tasks: StrategyTaskUseCases,
@@ -33,6 +36,13 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         Arc::new(PostgresCustomIndicatorRepository::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
     let change_history: SharedChangeHistoryPort = Arc::new(PostgresChangeHistory);
+    let note_repository: SharedNoteRepository = Arc::new(PostgresNoteRepository::new());
+    let notes = NoteUseCases::new(
+        unit_of_work.clone(),
+        note_repository,
+        strategy_existence.clone(),
+        change_history.clone(),
+    );
     let strategy_repository: SharedStrategyRepository =
         Arc::new(PostgresStrategyRepository::new(db.clone()));
     let strategy_summary_query: SharedStrategySummaryQuery =
@@ -60,6 +70,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let strategy_tasks = build_strategy_task_use_cases(db);
 
     UseCases {
+        notes,
         strategies,
         trades,
         strategy_tasks,
