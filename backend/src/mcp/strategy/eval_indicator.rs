@@ -9,14 +9,13 @@
 
 use std::time::Duration;
 
+use core_application::custom_indicator::CustomIndicator;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::kata_exec::{ExecRequest, KataExecError};
-use crate::services::custom_indicators::resolve_indicator;
-use gateway_postgres::entities::custom_indicator;
 
 use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
 use super::{
@@ -39,7 +38,8 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: EvalIndicatorParams,
     ) -> Result<EvalIndicatorResult, McpError> {
-        let session_strategy_id = scope.into().id();
+        let strategy_scope = scope.into();
+        let session_strategy_id = strategy_scope.id();
         let name = params.name.trim();
         if name.is_empty() {
             return Err(invalid_params("name must not be empty"));
@@ -51,7 +51,10 @@ impl StrategyServer {
             EXEC_MAX_OUTPUT_BYTES,
         )?;
 
-        let indicator = resolve_indicator(&self.db, session_strategy_id, name)
+        let indicator = self
+            .use_cases
+            .custom_indicators
+            .resolve(strategy_scope, name)
             .await
             .map_err(|e| internal_error(format!("failed to resolve indicator: {e}")))?
             .ok_or_else(|| {
@@ -130,7 +133,7 @@ fn validate_with_schema(schema: &JsonValue, instance: &JsonValue) -> Result<(), 
 
 fn parse_and_validate_output(
     stdout: &str,
-    indicator: &custom_indicator::Model,
+    indicator: &CustomIndicator,
 ) -> Result<JsonValue, McpError> {
     let last_line = stdout.lines().rfind(|l| !l.trim().is_empty());
     let Some(raw) = last_line else {
@@ -158,11 +161,7 @@ fn parse_and_validate_output(
     Ok(parsed)
 }
 
-fn kata_exec_error(
-    err: KataExecError,
-    strategy_id: Uuid,
-    indicator: &custom_indicator::Model,
-) -> McpError {
+fn kata_exec_error(err: KataExecError, strategy_id: Uuid, indicator: &CustomIndicator) -> McpError {
     tracing::warn!(
         strategy_id = %strategy_id,
         indicator_id = %indicator.indicator_id,
@@ -187,7 +186,7 @@ mod tests {
     use super::super::dto::{EvalIndicatorParams, EvalIndicatorResult};
     use super::{EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_TIMEOUT_SECS};
     use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
-    use crate::services::custom_indicators::{SCOPE_GLOBAL, SCOPE_STRATEGY};
+    use core_application::custom_indicator::{SCOPE_GLOBAL, SCOPE_STRATEGY};
     use gateway_postgres::entities::{custom_indicator, strategy};
 
     async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
