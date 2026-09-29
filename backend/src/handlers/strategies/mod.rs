@@ -164,7 +164,16 @@ pub async fn delete_strategy(
 #[cfg(test)]
 mod tests {
     use crate::testing::{create_strategy, create_test_server};
-    use serde_json::json;
+    use serde_json::{Value, json};
+
+    fn normalize_strategy(mut value: Value) -> Value {
+        for key in ["created_at", "updated_at"] {
+            if let Some(field) = value.get_mut(key) {
+                *field = Value::String(format!("<{key}>"));
+            }
+        }
+        value
+    }
 
     #[backend_test_macros::database_test]
     async fn create_and_list_strategy(db: gateway_postgres::DatabaseHandle) {
@@ -180,6 +189,70 @@ mod tests {
         let body: Vec<serde_json::Value> = list.json();
         assert_eq!(body.len(), 1);
         assert_eq!(body[0]["name"], "長期投資");
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_description_distinguishes_omitted_null_and_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let created = server
+            .post("/api/strategies")
+            .json(&json!({ "name": "strategy", "description": "initial" }))
+            .await;
+        created.assert_status(axum::http::StatusCode::CREATED);
+        let id = created.json::<Value>()["id"].as_str().unwrap().to_string();
+
+        let unchanged = server
+            .patch(&format!("/api/strategies/{id}"))
+            .json(&json!({}))
+            .await;
+        unchanged.assert_status_ok();
+        assert_eq!(
+            normalize_strategy(unchanged.json()),
+            json!({
+                "id": id,
+                "name": "strategy",
+                "description": "initial",
+                "sort_order": 0,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+
+        let cleared = server
+            .patch(&format!("/api/strategies/{id}"))
+            .json(&json!({ "description": null }))
+            .await;
+        cleared.assert_status_ok();
+        assert_eq!(
+            normalize_strategy(cleared.json()),
+            json!({
+                "id": id,
+                "name": "strategy",
+                "description": null,
+                "sort_order": 0,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+
+        let replaced = server
+            .patch(&format!("/api/strategies/{id}"))
+            .json(&json!({ "description": "replacement" }))
+            .await;
+        replaced.assert_status_ok();
+        assert_eq!(
+            normalize_strategy(replaced.json()),
+            json!({
+                "id": id,
+                "name": "strategy",
+                "description": "replacement",
+                "sort_order": 0,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
     }
 
     #[backend_test_macros::database_test]

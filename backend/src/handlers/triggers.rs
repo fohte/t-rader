@@ -407,6 +407,91 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn update_event_match_distinguishes_omitted_null_and_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let created: Value = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "hook",
+                "hook_slug": "sample-hook",
+                "event_match": {"event": {"eq": "initial"}},
+                "prompt_template": "x",
+            }))
+            .await
+            .json();
+        let tid = created["trigger_id"].as_str().unwrap().to_string();
+
+        let unchanged = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({}))
+            .await;
+        unchanged.assert_status_ok();
+        assert_eq!(
+            normalize_trigger(unchanged.json(), true),
+            json!({
+                "trigger_id": tid,
+                "strategy_id": sid,
+                "kind": "hook",
+                "schedule": null,
+                "hook_slug": "sample-hook",
+                "event_match": {"event": {"eq": "initial"}},
+                "prompt_template": "x",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+
+        let cleared = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({ "event_match": null }))
+            .await;
+        cleared.assert_status_ok();
+        assert_eq!(
+            normalize_trigger(cleared.json(), true),
+            json!({
+                "trigger_id": tid,
+                "strategy_id": sid,
+                "kind": "hook",
+                "schedule": null,
+                "hook_slug": "sample-hook",
+                "event_match": null,
+                "prompt_template": "x",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+
+        let replaced = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({ "event_match": {"source": {"eq": "replacement"}} }))
+            .await;
+        replaced.assert_status_ok();
+        assert_eq!(
+            normalize_trigger(replaced.json(), true),
+            json!({
+                "trigger_id": tid,
+                "strategy_id": sid,
+                "kind": "hook",
+                "schedule": null,
+                "hook_slug": "sample-hook",
+                "event_match": {"source": {"eq": "replacement"}},
+                "prompt_template": "x",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn update_hook_slug_on_cron_trigger_is_400(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
