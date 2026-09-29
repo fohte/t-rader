@@ -134,11 +134,10 @@ fn should_fire(
 /// 1 tick ぶんの発火判定 + 発火実行。
 ///
 /// 戻り値は発火を試みた件数 (成功 / 失敗を問わない)。`interval` には worker の tick 間隔を渡す。
-pub async fn run_once(
-    db: &impl sea_orm::ConnectionTrait,
-    agent_client: &SharedAgentTaskClient,
-    interval: Duration,
-) -> usize {
+pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient, interval: Duration) -> usize
+where
+    C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
+{
     let rows = match trigger::Entity::find()
         .filter(trigger::Column::Kind.eq("cron"))
         .filter(trigger::Column::Enabled.eq(true))

@@ -17,6 +17,7 @@ mod strategy;
 mod strategy_existence;
 mod strategy_scope;
 mod strategy_summary_query;
+mod strategy_task;
 mod trade;
 mod transaction;
 mod unit_of_work;
@@ -28,6 +29,7 @@ pub use strategy::PostgresStrategyRepository;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;
 pub use strategy_summary_query::PostgresStrategySummaryQuery;
+pub use strategy_task::PostgresStrategyTaskRepository;
 pub use trade::PostgresTradeRepository;
 pub use unit_of_work::PostgresUnitOfWork;
 

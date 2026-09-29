@@ -9,12 +9,14 @@ use core_application::strategy::{
     SharedStrategyRepository, SharedStrategySummaryQuery, StrategyUseCases,
 };
 use core_application::strategy_existence::SharedStrategyExistence;
+use core_application::strategy_task::{SharedStrategyTaskRepository, StrategyTaskUseCases};
 use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresCustomIndicatorRepository,
     PostgresNoteRepository, PostgresStrategyExistence, PostgresStrategyRepository,
-    PostgresStrategySummaryQuery, PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresStrategySummaryQuery, PostgresStrategyTaskRepository, PostgresTradeRepository,
+    PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
@@ -22,6 +24,7 @@ pub struct UseCases {
     pub notes: NoteUseCases,
     pub strategies: StrategyUseCases,
     pub trades: TradeUseCases,
+    pub strategy_tasks: StrategyTaskUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
 }
 
@@ -64,10 +67,21 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         change_history,
     );
 
+    let strategy_tasks = build_strategy_task_use_cases(db);
+
     UseCases {
         notes,
         strategies,
         trades,
+        strategy_tasks,
         custom_indicators,
     }
+}
+
+pub fn build_strategy_task_use_cases(db: impl Into<DatabaseHandle>) -> StrategyTaskUseCases {
+    let db = db.into();
+    let task_unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
+    let task_repository: SharedStrategyTaskRepository =
+        Arc::new(PostgresStrategyTaskRepository::new(db));
+    StrategyTaskUseCases::new(task_unit_of_work, task_repository)
 }
