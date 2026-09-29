@@ -7,14 +7,18 @@ use crate::services::note_kinds;
 use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
     self, current_note_ids, current_note_ids_with_status, find_current_versions,
-    find_initial_created_by_kind, find_version_of_note,
+    find_initial_created_by_kind, find_latest_versions, find_version_of_note,
 };
 use core_application::change_history::Actor;
 use core_application::note::{NoteUseCaseError, NoteWriteCommand};
 use core_application::strategy_scope::StrategyScope;
-use gateway_postgres::entities::{note, note_version};
+use core_domain::note_reference::{
+    ALLOWED_REF_KINDS, BodyTokenPolicy, collect_note_refs_with_policy, format_note_token_errors,
+};
+use gateway_postgres::entities::{note, note_ref, note_version};
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait};
+use std::collections::HashSet;
 
 use super::dto::{
     ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, NoteKindDto, NoteLinkDto,
@@ -27,6 +31,42 @@ use super::{
 
 /// note_version.status の CHECK 制約と一致させる。
 const ALLOWED_NOTE_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
+const PENDING_LIST_SCAN_PAGE_SIZE: u64 = super::MAX_LIST_LIMIT;
+
+fn parse_note_ref(value: &str) -> Result<(String, String), McpError> {
+    let Some((kind, id)) = value.split_once(':') else {
+        return Err(invalid_params("ref must use the kind:id format"));
+    };
+    let kind = kind.trim();
+    if !ALLOWED_REF_KINDS.contains(&kind) {
+        return Err(invalid_params(format!("invalid ref kind: {kind}")));
+    }
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(invalid_params("ref id must not be empty"));
+    }
+    Ok((kind.to_string(), id.to_string()))
+}
+
+fn refs_in_version(version: &note_version::Model) -> Result<Vec<(String, String)>, McpError> {
+    let graphs: Vec<core_domain::note_graph::GraphDef> =
+        serde_json::from_value(version.graphs_json.clone()).map_err(|error| {
+            internal_error(format!(
+                "failed to deserialize note_version.graphs_json: {error}"
+            ))
+        })?;
+    collect_note_refs_with_policy(
+        &version.body_md,
+        &graphs,
+        BodyTokenPolicy::AllowLegacyBodyTokens,
+    )
+    .map_err(|errors| {
+        internal_error(format!(
+            "failed to collect references from a pending note version: {}",
+            format_note_token_errors(&errors)
+        ))
+    })
+}
 
 /// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
 /// 必ず `Some` になるはずだが、不変条件が壊れた場合に別 strategy の id を誤って
@@ -195,6 +235,127 @@ impl StrategyServer {
         Ok(dto)
     }
 
+    async fn list_notes_including_pending(
+        &self,
+        session_strategy_id: uuid::Uuid,
+        params: ListNotesParams,
+        reference: Option<(String, String)>,
+    ) -> Result<ListNotesResult, McpError> {
+        let limit = clamp_limit(params.limit) as usize;
+        let include_body = params.include_body.unwrap_or(true);
+        let mut offset = 0_u64;
+        let mut notes = Vec::with_capacity(limit);
+
+        loop {
+            let mut query = note::Entity::find()
+                .filter(note::Column::StrategyId.eq(session_strategy_id))
+                .filter(
+                    note::Column::Id.in_subquery(
+                        note_version::Entity::find()
+                            .select_only()
+                            .column(note_version::Column::NoteId)
+                            .into_query(),
+                    ),
+                );
+            if let Some(kind) = params.kind.as_deref() {
+                query = query.filter(note::Column::Kind.eq(kind));
+            }
+            if let Some(updated_after) = params.updated_after {
+                query = query.filter(note::Column::UpdatedAt.gte(updated_after));
+            }
+            let rows = query
+                .order_by_desc(note::Column::UpdatedAt)
+                .order_by_desc(note::Column::Id)
+                .limit(PENDING_LIST_SCAN_PAGE_SIZE)
+                .offset(offset)
+                .all(&self.db)
+                .await
+                .map_err(db_error)?;
+            if rows.is_empty() {
+                break;
+            }
+
+            let note_ids: Vec<_> = rows.iter().map(|row| row.id).collect();
+            let mut versions = find_current_versions(&self.db, &note_ids)
+                .await
+                .map_err(db_error)?;
+            let pending_note_ids: Vec<_> = note_ids
+                .iter()
+                .filter(|note_id| !versions.contains_key(note_id))
+                .copied()
+                .collect();
+            versions.extend(
+                find_latest_versions(&self.db, &pending_note_ids)
+                    .await
+                    .map_err(db_error)?,
+            );
+
+            let matching_current_refs = if let Some((kind, id)) = reference.as_ref() {
+                note_ref::Entity::find()
+                    .filter(note_ref::Column::NoteId.is_in(note_ids.iter().copied()))
+                    .filter(note_ref::Column::RefKind.eq(kind))
+                    .filter(note_ref::Column::RefId.eq(id))
+                    .all(&self.db)
+                    .await
+                    .map_err(db_error)?
+                    .into_iter()
+                    .map(|row| row.note_id)
+                    .collect::<HashSet<_>>()
+            } else {
+                HashSet::new()
+            };
+
+            let mut matching_rows = Vec::new();
+            for row in rows {
+                let version = versions.get(&row.id).cloned().ok_or_else(|| {
+                    internal_error(format!("note {} has no current or latest version", row.id))
+                })?;
+                if params
+                    .status
+                    .as_deref()
+                    .is_some_and(|status| version.status != status)
+                {
+                    continue;
+                }
+                if let Some((kind, id)) = reference.as_ref() {
+                    let matches = if version.is_current {
+                        matching_current_refs.contains(&row.id)
+                    } else {
+                        refs_in_version(&version)?
+                            .iter()
+                            .any(|reference| reference.0 == *kind && reference.1 == *id)
+                    };
+                    if !matches {
+                        continue;
+                    }
+                }
+                matching_rows.push((row, version));
+            }
+
+            let matching_ids: Vec<_> = matching_rows.iter().map(|(row, _)| row.id).collect();
+            let creators = find_initial_created_by_kind(&self.db, &matching_ids)
+                .await
+                .map_err(db_error)?;
+            for (row, version) in matching_rows {
+                let created_by_kind = creators.get(&row.id).cloned().ok_or_else(|| {
+                    internal_error(format!("note {} has no initial version", row.id))
+                })?;
+                notes.push(note_to_dto(row, version, created_by_kind, include_body)?);
+                if notes.len() == limit {
+                    return Ok(ListNotesResult { notes });
+                }
+            }
+
+            let page_len = note_ids.len() as u64;
+            offset += page_len;
+            if page_len < PENDING_LIST_SCAN_PAGE_SIZE {
+                break;
+            }
+        }
+
+        Ok(ListNotesResult { notes })
+    }
+
     pub(crate) async fn list_notes_inner(
         &self,
         scope: impl Into<StrategyScope>,
@@ -209,10 +370,32 @@ impl StrategyServer {
             )));
         }
         let include_body = params.include_body.unwrap_or(true);
+        let reference = params.r#ref.as_deref().map(parse_note_ref).transpose()?;
+
+        if params.include_pending.unwrap_or(false) {
+            return self
+                .list_notes_including_pending(session_strategy_id, params, reference)
+                .await;
+        }
 
         let mut query = note::Entity::find()
             .filter(note::Column::StrategyId.eq(session_strategy_id))
             .filter(note::Column::Id.in_subquery(current_note_ids()));
+        if let Some(kind) = params.kind {
+            query = query.filter(note::Column::Kind.eq(kind));
+        }
+        if let Some((kind, id)) = reference {
+            query = query.filter(
+                note::Column::Id.in_subquery(
+                    note_ref::Entity::find()
+                        .select_only()
+                        .column(note_ref::Column::NoteId)
+                        .filter(note_ref::Column::RefKind.eq(kind))
+                        .filter(note_ref::Column::RefId.eq(id))
+                        .into_query(),
+                ),
+            );
+        }
         if let Some(status) = params.status {
             query =
                 query.filter(note::Column::Id.in_subquery(current_note_ids_with_status(&status)));
@@ -711,6 +894,305 @@ mod tests {
         assert_eq!(
             (titles, strategies),
             (vec!["a2", "a1"], vec![strategy_a, strategy_a]),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_filters_by_kind_and_ref_before_limit(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db, "a").await;
+        insert_note_kind(&db, "sample-kind", false).await;
+        insert_note_kind(&db, "other-kind", false).await;
+        let server = build_server(db);
+
+        let matching = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("matching".into()),
+                    body_md: Some("[[stock:demo-code]]".into()),
+                    kind: Some(Some("sample-kind".into())),
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write matching note");
+        for (title, kind, body_md) in [
+            ("wrong ref", "sample-kind", "[[stock:other-code]]"),
+            ("wrong kind", "other-kind", "[[stock:demo-code]]"),
+        ] {
+            server
+                .write_note_inner(
+                    strategy_id,
+                    None,
+                    WriteNoteParams {
+                        note_id: None,
+                        title: Some(title.into()),
+                        body_md: Some(body_md.into()),
+                        kind: Some(Some(kind.into())),
+                        frontmatter_json: None,
+                        change_reason: None,
+                        graphs: None,
+                    },
+                )
+                .await
+                .unwrap_or_else(|error| panic!("write {title} note failed: {error}"));
+        }
+
+        let result = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    limit: Some(1),
+                    kind: Some("sample-kind".into()),
+                    r#ref: Some("stock:demo-code".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("list matching note");
+
+        assert_eq!(
+            result
+                .notes
+                .into_iter()
+                .map(normalize_note)
+                .collect::<Vec<_>>(),
+            vec![NoteDto {
+                note_id: matching.note_id,
+                strategy_id,
+                version_id: Uuid::nil(),
+                version_no: 1,
+                title: "matching".into(),
+                body_md: Some("[[stock:demo-code]]".into()),
+                frontmatter_json: serde_json::Map::new(),
+                kind: Some("sample-kind".into()),
+                status: "unread".into(),
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+                graphs: vec![],
+                links: None,
+            }],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_rejects_ref_without_prefix(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = insert_strategy(&db, "a").await;
+        let server = build_server(db);
+
+        let error = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    r#ref: Some("demo-code".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect_err("ref without a kind prefix should be rejected");
+
+        assert_eq!(
+            (error.code, error.message.to_string()),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "ref must use the kind:id format".to_string(),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_includes_latest_pending_version_and_filters_its_refs(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "a").await;
+        insert_note_kind(&db, "sample-kind", true).await;
+        let server = build_server(db.clone());
+        let current = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("current".into()),
+                    body_md: Some("current body".into()),
+                    kind: None,
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write current note");
+
+        let mut graph = sample_graph("g1");
+        graph.nodes[0].r#ref = Some("sector:demo-sector".into());
+        let pending = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("pending first".into()),
+                    body_md: Some("[[theme:demo-theme]]".into()),
+                    kind: Some(Some("sample-kind".into())),
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: Some(vec![graph.clone()]),
+                },
+            )
+            .await
+            .expect("write pending note");
+        server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: Some(pending.note_id),
+                    title: Some("pending latest".into()),
+                    body_md: Some("[[stock:demo-code]]".into()),
+                    kind: None,
+                    frontmatter_json: None,
+                    change_reason: Some("revision".into()),
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write latest pending version");
+
+        let sentinel = ts_sentinel();
+        set_note_updated_at(
+            &db,
+            current.note_id,
+            sentinel + chrono::Duration::seconds(1),
+        )
+        .await;
+        set_note_updated_at(
+            &db,
+            pending.note_id,
+            sentinel + chrono::Duration::seconds(2),
+        )
+        .await;
+
+        let current_only = server
+            .list_notes_inner(strategy_id, ListNotesParams::default())
+            .await
+            .expect("list current notes");
+        let including_pending = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    include_pending: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("list including pending notes");
+        let by_body_ref = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    r#ref: Some("stock:demo-code".into()),
+                    include_pending: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("list pending notes by body reference");
+        let by_graph_ref = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    r#ref: Some("sector:demo-sector".into()),
+                    include_pending: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("list pending notes by graph reference");
+        let by_previous_version_ref = server
+            .list_notes_inner(
+                strategy_id,
+                ListNotesParams {
+                    r#ref: Some("theme:demo-theme".into()),
+                    include_pending: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("list pending notes by old version reference");
+
+        let current_expected = || NoteDto {
+            note_id: current.note_id,
+            strategy_id,
+            version_id: Uuid::nil(),
+            version_no: 1,
+            title: "current".into(),
+            body_md: Some("current body".into()),
+            frontmatter_json: serde_json::Map::new(),
+            kind: None,
+            status: "unread".into(),
+            created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+            created_at: ts_sentinel(),
+            updated_at: ts_sentinel(),
+            graphs: vec![],
+            links: None,
+        };
+        let pending_expected = || NoteDto {
+            note_id: pending.note_id,
+            strategy_id,
+            version_id: Uuid::nil(),
+            version_no: 2,
+            title: "pending latest".into(),
+            body_md: Some("[[stock:demo-code]]".into()),
+            frontmatter_json: serde_json::Map::new(),
+            kind: Some("sample-kind".into()),
+            status: "unread".into(),
+            created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+            created_at: ts_sentinel(),
+            updated_at: ts_sentinel(),
+            graphs: vec![graph.clone()],
+            links: None,
+        };
+        assert_eq!(
+            (
+                current_only
+                    .notes
+                    .into_iter()
+                    .map(normalize_note)
+                    .collect::<Vec<_>>(),
+                including_pending
+                    .notes
+                    .into_iter()
+                    .map(normalize_note)
+                    .collect::<Vec<_>>(),
+                by_body_ref
+                    .notes
+                    .into_iter()
+                    .map(normalize_note)
+                    .collect::<Vec<_>>(),
+                by_graph_ref
+                    .notes
+                    .into_iter()
+                    .map(normalize_note)
+                    .collect::<Vec<_>>(),
+                by_previous_version_ref
+                    .notes
+                    .into_iter()
+                    .map(normalize_note)
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                vec![current_expected()],
+                vec![pending_expected(), current_expected()],
+                vec![pending_expected()],
+                vec![pending_expected()],
+                vec![],
+            ),
         );
     }
 

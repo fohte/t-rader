@@ -258,12 +258,19 @@ pub struct ListNoteKindsResult {
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 pub struct ListNotesParams {
     pub limit: Option<u32>,
+    /// 指定した note_kind のノートだけを返す
+    pub kind: Option<String>,
+    /// `kind:id` の形式で参照先にリンクしたノートだけを返す
+    #[serde(rename = "ref")]
+    pub r#ref: Option<String>,
     /// "approved" / "unread" / "rejected" のいずれかで絞り込む。省略時は全 status
     pub status: Option<String>,
     /// この時刻以降 (inclusive) に更新されたノートのみ返す。省略時は下限なし
     pub updated_after: Option<DateTime<FixedOffset>>,
     /// false を指定すると body_md を省略し、レスポンスサイズを抑える。省略時は true (本文を含む)
     pub include_body: Option<bool>,
+    /// true を指定すると現行バージョンがないノートも返す。最新バージョンを使用する
+    pub include_pending: Option<bool>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, PartialEq)]
