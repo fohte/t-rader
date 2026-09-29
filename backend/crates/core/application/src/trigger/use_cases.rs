@@ -76,6 +76,10 @@ impl TriggerUseCases {
         scope: StrategyScope,
         command: CreateTriggerCommand,
     ) -> Result<Trigger, TriggerUseCaseError> {
+        let purpose = match command.purpose.clone() {
+            Some(purpose) => Some(self.validate_purpose(purpose).await?),
+            None => None,
+        };
         let (schedule, hook_slug, prompt_template) = validate_create(&command)?;
         validate_event_match(command.event_match.as_ref())?;
 
@@ -94,6 +98,7 @@ impl TriggerUseCases {
                 NewTrigger {
                     trigger_id: Uuid::new_v4(),
                     strategy_id: scope.id(),
+                    purpose,
                     kind: command.kind,
                     schedule,
                     hook_slug,
@@ -111,8 +116,12 @@ impl TriggerUseCases {
         &self,
         scope: StrategyScope,
         trigger_id: Uuid,
-        command: UpdateTriggerCommand,
+        mut command: UpdateTriggerCommand,
     ) -> Result<Trigger, TriggerUseCaseError> {
+        command.purpose = match command.purpose.take() {
+            Some(Some(purpose)) => Some(Some(self.validate_purpose(purpose).await?)),
+            other => other,
+        };
         let transaction = self.unit_of_work.begin().await?;
         let current = self
             .repository
@@ -177,7 +186,13 @@ impl TriggerUseCases {
         let prompt = expand_template(&trigger.prompt_template, &payload, &context);
         let submitted = self
             .strategy_tasks
-            .submit_task(agent_client, strategy_id, &prompt, source, None)
+            .submit_task(
+                agent_client,
+                strategy_id,
+                &prompt,
+                source,
+                trigger.purpose.clone(),
+            )
             .await?;
 
         let transaction = match self.unit_of_work.begin().await {
@@ -334,6 +349,19 @@ impl TriggerUseCases {
         }
         attempted
     }
+
+    async fn validate_purpose(&self, purpose: String) -> Result<String, TriggerUseCaseError> {
+        let purpose = purpose.trim().to_string();
+        if purpose.is_empty() {
+            return Err(TriggerUseCaseError::Validation(
+                "purpose must not be empty".into(),
+            ));
+        }
+        if !self.strategy_tasks.agent_config_exists(&purpose).await? {
+            return Err(TriggerUseCaseError::PurposeNotFound(purpose));
+        }
+        Ok(purpose)
+    }
 }
 
 fn validate_create(
@@ -420,6 +448,9 @@ fn apply_update(
     }
     if let Some(enabled) = command.enabled {
         trigger.enabled = enabled;
+    }
+    if let Some(purpose) = command.purpose {
+        trigger.purpose = purpose;
     }
     trigger.updated_at = Utc::now().fixed_offset();
     Ok(trigger)
@@ -528,6 +559,7 @@ mod tests {
         Trigger {
             trigger_id,
             strategy_id: Some(strategy_id),
+            purpose: None,
             kind,
             schedule: (kind == TriggerKind::Cron).then(|| "* * * * *".to_string()),
             hook_slug: (kind == TriggerKind::Hook).then(|| "sample-hook".to_string()),

@@ -1,6 +1,7 @@
 import { Button } from '@fohte/ui/button'
 import { Input } from '@fohte/ui/input'
 
+import { PurposeSelect } from '#components/purpose-select'
 import type { components } from '#lib/api/schema.gen'
 import { parseJson } from '#lib/json'
 
@@ -8,6 +9,7 @@ type Trigger = components['schemas']['Trigger']
 type TriggerKind = components['schemas']['TriggerKind']
 
 export interface FormState {
+  purpose: string
   kind: TriggerKind
   schedule: string
   hookSlug: string
@@ -17,6 +19,7 @@ export interface FormState {
 }
 
 export const EMPTY_FORM: FormState = {
+  purpose: '',
   kind: 'cron',
   schedule: '',
   hookSlug: '',
@@ -31,6 +34,7 @@ export function parseKind(value: string): TriggerKind {
 
 export function toFormState(trigger: Trigger): FormState {
   return {
+    purpose: trigger.purpose ?? '',
     kind: parseKind(trigger.kind),
     schedule: trigger.schedule ?? '',
     hookSlug: trigger.hook_slug ?? '',
@@ -82,6 +86,7 @@ export function validateForm(form: FormState): ValidationResult {
 export interface TriggerFormProps {
   mode: 'create' | 'edit'
   form: FormState
+  agentConfigs: ReadonlyArray<{ purpose: string }>
   onChange: (next: FormState) => void
   formError: string | null
   isSaving: boolean
@@ -92,6 +97,7 @@ export interface TriggerFormProps {
 export function TriggerForm({
   mode,
   form,
+  agentConfigs,
   onChange,
   formError,
   isSaving,
@@ -100,6 +106,11 @@ export function TriggerForm({
 }: TriggerFormProps) {
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     onChange({ ...form, [key]: value })
+  }
+
+  const purposes = agentConfigs.map((config) => config.purpose)
+  if (form.purpose !== '' && !purposes.includes(form.purpose)) {
+    purposes.unshift(form.purpose)
   }
 
   return (
@@ -111,6 +122,18 @@ export function TriggerForm({
         onSubmit()
       }}
     >
+      <div className="space-y-1.5">
+        <PurposeSelect
+          purposes={purposes}
+          selectedPurpose={form.purpose}
+          onPurposeChange={(purpose) => update('purpose', purpose)}
+          disabled={isSaving}
+        />
+        <p className="font-mono text-2xs text-muted-foreground">
+          未指定時は default の agent 設定を使用します。
+        </p>
+      </div>
+
       <div className="space-y-1.5">
         <label
           className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"

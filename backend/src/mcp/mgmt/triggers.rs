@@ -21,6 +21,7 @@ impl MgmtServer {
     ) -> Result<CreateStrategyTriggerResult, McpError> {
         let scope = self.strategy_scope(params.strategy_id).await?;
         let command = CreateTriggerCommand {
+            purpose: params.purpose,
             kind: match params.kind {
                 super::dto::TriggerKindParam::Cron => TriggerKind::Cron,
                 super::dto::TriggerKindParam::Hook => TriggerKind::Hook,
@@ -60,6 +61,7 @@ impl MgmtServer {
         })?;
         let scope = self.strategy_scope(strategy_id).await?;
         let command = UpdateTriggerCommand {
+            purpose: params.purpose,
             schedule: params.schedule,
             hook_slug: params.hook_slug,
             event_match: params.event_match.map(|value| Some(value.into())),
@@ -122,6 +124,9 @@ impl MgmtServer {
 fn validation_errors(err: TriggerUseCaseError) -> Result<Vec<String>, McpError> {
     match err {
         TriggerUseCaseError::Validation(msg) => Ok(vec![msg]),
+        TriggerUseCaseError::PurposeNotFound(purpose) => {
+            Ok(vec![format!("agent_config purpose {purpose} not found")])
+        }
         other => Err(map_trigger_error(other)),
     }
 }
@@ -131,6 +136,7 @@ mod tests {
     use std::sync::Arc;
 
     use rmcp::handler::server::wrapper::{Json, Parameters};
+    use serde_json::Value;
     use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
@@ -140,19 +146,36 @@ mod tests {
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
+    fn normalize_trigger_summaries(mut summaries: Value) -> Value {
+        if let Some(items) = summaries.as_array_mut() {
+            for item in items {
+                for key in ["created_at", "updated_at"] {
+                    if let Some(value) = item.get_mut(key) {
+                        *value = Value::String(format!("<{key}>"));
+                    }
+                }
+            }
+        }
+        summaries
+    }
+
     #[backend_test_macros::database_test]
     async fn create_strategy_trigger_inserts_cron_trigger(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
+        crate::services::agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("insert test agent_config");
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id,
+                purpose: Some("synthetic-purpose".to_string()),
                 kind: TriggerKindParam::Cron,
                 schedule: Some("0 9 * * *".to_string()),
                 hook_slug: None,
                 event_match: None,
-                prompt_template: "朝の市況を要約せよ".to_string(),
+                prompt_template: "synthetic prompt".to_string(),
                 enabled: None,
             }))
             .await
@@ -181,6 +204,7 @@ mod tests {
         assert_eq!(
             (
                 stored.strategy_id,
+                stored.purpose,
                 stored.kind.as_str().to_string(),
                 stored.schedule,
                 stored.hook_slug,
@@ -189,12 +213,36 @@ mod tests {
             ),
             (
                 Some(strategy_id),
+                Some("synthetic-purpose".to_string()),
                 "cron".to_string(),
                 Some("0 9 * * *".to_string()),
                 None,
-                "朝の市況を要約せよ".to_string(),
+                "synthetic prompt".to_string(),
                 true,
             ),
+        );
+
+        let Json(config) = server
+            .get_strategy_config(Parameters(super::super::dto::GetStrategyConfigParams {
+                strategy_id,
+            }))
+            .await
+            .expect("strategy config is available");
+        assert_eq!(
+            normalize_trigger_summaries(serde_json::to_value(config.triggers).unwrap()),
+            serde_json::json!([{
+                "trigger_id": trigger_id,
+                "purpose": "synthetic-purpose",
+                "kind": "cron",
+                "schedule": "0 9 * * *",
+                "hook_slug": null,
+                "event_match": null,
+                "prompt_template": "synthetic prompt",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }]),
         );
     }
 
@@ -208,6 +256,7 @@ mod tests {
         let Json(result) = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id,
+                purpose: None,
                 kind: TriggerKindParam::Cron,
                 schedule: None,
                 hook_slug: None,
@@ -246,6 +295,7 @@ mod tests {
         let err = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id: Uuid::new_v4(),
+                purpose: None,
                 kind: TriggerKindParam::Hook,
                 schedule: None,
                 hook_slug: Some("earnings".to_string()),
@@ -262,6 +312,9 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn update_strategy_trigger_applies_fields(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
+        crate::services::agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("insert test agent_config");
         let trigger_id =
             insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "old prompt").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -269,6 +322,7 @@ mod tests {
         let Json(result) = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id,
+                purpose: Some(Some("synthetic-purpose".to_string())),
                 schedule: Some("0 10 * * *".to_string()),
                 hook_slug: None,
                 event_match: None,
@@ -289,8 +343,14 @@ mod tests {
             .await
             .expect("trigger exists");
         assert_eq!(
-            (stored.schedule, stored.prompt_template, stored.enabled),
             (
+                stored.purpose,
+                stored.schedule,
+                stored.prompt_template,
+                stored.enabled,
+            ),
+            (
+                Some("synthetic-purpose".to_string()),
                 Some("0 10 * * *".to_string()),
                 "new prompt".to_string(),
                 false,
@@ -310,6 +370,7 @@ mod tests {
         let Json(result) = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id,
+                purpose: None,
                 schedule: None,
                 hook_slug: Some("earnings".to_string()),
                 event_match: None,
@@ -328,6 +389,7 @@ mod tests {
         let err = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id: Uuid::new_v4(),
+                purpose: None,
                 schedule: None,
                 hook_slug: None,
                 event_match: None,

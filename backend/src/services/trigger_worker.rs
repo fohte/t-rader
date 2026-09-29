@@ -48,6 +48,7 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
+    use sea_orm::IntoActiveModel;
     use uuid::Uuid;
 
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
@@ -56,7 +57,7 @@ mod tests {
     use crate::services::use_cases::build_use_cases;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use gateway_postgres::entities::{strategy, strategy_task};
+    use gateway_postgres::entities::{strategy, strategy_task, trigger};
 
     use super::*;
 
@@ -79,6 +80,7 @@ mod tests {
     #[derive(Debug, PartialEq, Eq)]
     struct TaskShape {
         strategy_id: Uuid,
+        purpose: Option<String>,
         source: String,
         prompt: String,
         phase: StrategyTaskPhase,
@@ -88,6 +90,7 @@ mod tests {
         fn from(row: strategy_task::Model) -> Self {
             Self {
                 strategy_id: row.strategy_id,
+                purpose: row.purpose,
                 source: row.source,
                 prompt: row.prompt,
                 phase: row.phase,
@@ -129,11 +132,63 @@ mod tests {
                 1,
                 vec![TaskShape {
                     strategy_id,
+                    purpose: Some(DEFAULT_PURPOSE.to_string()),
                     source: "cron".to_string(),
                     prompt: "sample strategy morning".to_string(),
                     phase: StrategyTaskPhase::Running,
                 }],
                 true,
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn fires_due_cron_with_trigger_purpose(db: gateway_postgres::DatabaseHandle) {
+        let strategy_id = seed_strategy(&db).await;
+        agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("insert test agent_config");
+        let past = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
+        let trigger_id = insert_test_cron_trigger(
+            &db,
+            strategy_id,
+            "* * * * *",
+            true,
+            Some(past),
+            "{{strategy.name}} morning",
+        )
+        .await;
+        let mut trigger = trigger::Entity::find_by_id(trigger_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .into_active_model();
+        trigger.purpose = Set(Some("synthetic-purpose".to_string()));
+        trigger.update(&db).await.unwrap();
+
+        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
+        let triggers = build_use_cases(db.clone()).triggers();
+        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let tasks = strategy_task::Entity::find()
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(TaskShape::from)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (attempts, tasks),
+            (
+                1,
+                vec![TaskShape {
+                    strategy_id,
+                    purpose: Some("synthetic-purpose".to_string()),
+                    source: "cron".to_string(),
+                    prompt: "sample strategy morning".to_string(),
+                    phase: StrategyTaskPhase::Running,
+                }],
             ),
         );
     }

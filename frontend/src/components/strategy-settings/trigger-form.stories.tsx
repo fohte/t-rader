@@ -22,6 +22,26 @@ export const CronCreation: Story = {
       schedule: '0 9 * * 1-5',
       promptTemplate: 'synthetic prompt',
     },
+    agentConfigs: [{ purpose: 'synthetic-purpose' }],
+    onChange: () => {},
+    formError: null,
+    isSaving: false,
+    onSubmit: () => {},
+    onCancel: null,
+  },
+}
+
+export const PurposeSelected: Story = {
+  name: 'the form uses a selected agent configuration.',
+  args: {
+    mode: 'create',
+    form: {
+      ...EMPTY_FORM,
+      purpose: 'synthetic-purpose',
+      schedule: '0 9 * * 1-5',
+      promptTemplate: 'synthetic prompt',
+    },
+    agentConfigs: [{ purpose: 'synthetic-purpose' }],
     onChange: () => {},
     formError: null,
     isSaving: false,
@@ -43,6 +63,7 @@ export const HookEditing: Story = {
 }`,
       promptTemplate: 'synthetic prompt',
     },
+    agentConfigs: [{ purpose: 'synthetic-purpose' }],
     onChange: () => {},
     formError: null,
     isSaving: false,
