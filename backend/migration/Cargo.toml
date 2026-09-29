@@ -11,3 +11,6 @@ sea-orm-migration = { workspace = true, features = [
     "sqlx-postgres",
 ] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+rstest = { workspace = true }

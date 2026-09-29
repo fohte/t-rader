@@ -64,16 +64,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     push_line(&mut generated, "        ]");
     push_line(&mut generated, "    }");
     push_line(&mut generated, "}");
-    generated.push('\n');
-    push_line(&mut generated, "#[cfg(test)]");
-    push_line(
-        &mut generated,
-        "const EXPECTED_MIGRATION_NAMES: &[&str] = &[",
-    );
-    for migration in &migrations {
-        push_line(&mut generated, &format!("    {:?},", migration.name));
-    }
-    push_line(&mut generated, "];");
 
     let output_path = Path::new(&env::var("OUT_DIR")?).join("migrations.rs");
     fs::write(output_path, generated)?;
