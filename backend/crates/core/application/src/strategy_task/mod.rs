@@ -3,9 +3,9 @@ mod reconcile;
 mod resume;
 mod submit;
 
-pub mod error;
-pub mod repository;
-pub mod types;
+mod error;
+mod repository;
+mod types;
 
 pub use error::{
     GetTaskError, ListTasksError, ReconcileTaskError, ResumeTaskError, SubmitTaskError,

@@ -1,5 +1,4 @@
 use chrono::{DateTime, FixedOffset};
-use uuid::Uuid;
 
 use crate::agent_task_client::{
     AgentTaskClient, AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
@@ -10,18 +9,6 @@ use super::error::ReconcileTaskError;
 use super::types::{StrategyTask, StrategyTaskPhase, StrategyTaskUpdate};
 
 impl StrategyTaskUseCases {
-    pub async fn apply_agent_status(
-        &self,
-        task_id: Uuid,
-        status: AgentTaskStatus,
-        now: DateTime<FixedOffset>,
-    ) -> Result<bool, ReconcileTaskError> {
-        let Some(task) = self.repository.find_by_id(task_id).await? else {
-            return Ok(false);
-        };
-        self.apply_status(task, status, now).await
-    }
-
     pub async fn reconcile_task(
         &self,
         agent_client: &dyn AgentTaskClient,
@@ -184,4 +171,134 @@ fn is_auto_resume_eligible(
         && now <= task.deadline_at
         && phase_for_state(status.state) == StrategyTaskPhase::Failed
         && status.error_kind.as_deref() == Some(EXECUTION_LOST_ERROR_KIND)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, FixedOffset};
+    use rstest::rstest;
+
+    use crate::agent_task_client::{AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND};
+
+    use super::{
+        agent_reported_reason, error_summary_for, is_auto_resume_eligible, phase_for_state,
+    };
+    use crate::strategy_task::{StrategyTask, StrategyTaskPhase};
+
+    fn task(auto_resumed_at: Option<DateTime<FixedOffset>>) -> StrategyTask {
+        let now = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").unwrap();
+        StrategyTask {
+            task_id: uuid::Uuid::nil(),
+            strategy_id: uuid::Uuid::nil(),
+            a2a_task_id: Some("agent-task".to_string()),
+            source: "test".to_string(),
+            prompt: "prompt".to_string(),
+            phase: StrategyTaskPhase::Running,
+            error_summary: None,
+            result_text: None,
+            deadline_at: now + chrono::Duration::minutes(1),
+            purpose: None,
+            as_of: None,
+            auto_resumed_at,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn status(
+        state: AgentTaskState,
+        error_message: Option<&str>,
+        error_kind: Option<&str>,
+    ) -> AgentTaskStatus {
+        AgentTaskStatus {
+            state,
+            result_text: None,
+            error_message: error_message.map(str::to_string),
+            error_kind: error_kind.map(str::to_string),
+            steps: None,
+        }
+    }
+
+    #[rstest]
+    #[case::submitted(AgentTaskState::Submitted, StrategyTaskPhase::Running)]
+    #[case::working(AgentTaskState::Working, StrategyTaskPhase::Running)]
+    #[case::input_required(AgentTaskState::InputRequired, StrategyTaskPhase::Failed)]
+    #[case::completed(AgentTaskState::Completed, StrategyTaskPhase::Completed)]
+    #[case::canceled(AgentTaskState::Canceled, StrategyTaskPhase::Failed)]
+    #[case::failed(AgentTaskState::Failed, StrategyTaskPhase::Failed)]
+    #[case::rejected(AgentTaskState::Rejected, StrategyTaskPhase::Failed)]
+    fn phase_for_agent_state(#[case] state: AgentTaskState, #[case] expected: StrategyTaskPhase) {
+        assert_eq!(phase_for_state(state), expected);
+    }
+
+    #[rstest]
+    #[case::message_precedes_kind(
+        AgentTaskState::Failed,
+        Some("failure"),
+        Some("execution_lost"),
+        Some("failure")
+    )]
+    #[case::kind_is_fallback(
+        AgentTaskState::Failed,
+        Some(""),
+        Some("execution_lost"),
+        Some("execution_lost")
+    )]
+    #[case::generic_failure(AgentTaskState::Failed, None, None, Some("agent task failed"))]
+    #[case::success_has_no_error(AgentTaskState::Completed, Some("stale"), None, None)]
+    fn error_summary_follows_failed_phase(
+        #[case] state: AgentTaskState,
+        #[case] error_message: Option<&str>,
+        #[case] error_kind: Option<&str>,
+        #[case] expected: Option<&str>,
+    ) {
+        let status = status(state, error_message, error_kind);
+        assert_eq!(
+            error_summary_for(&status, phase_for_state(state)),
+            expected.map(str::to_string),
+        );
+    }
+
+    #[rstest]
+    #[case::eligible(None, 0, true)]
+    #[case::already_resumed(Some("2025-12-31T00:00:00Z"), 0, false)]
+    #[case::past_deadline(None, 120, false)]
+    #[case::other_failure(None, 0, false)]
+    fn auto_resume_requires_unresumed_execution_loss_before_deadline(
+        #[case] auto_resumed_at: Option<&str>,
+        #[case] now_offset_seconds: i64,
+        #[case] expected: bool,
+    ) {
+        let task = task(auto_resumed_at.map(|value| DateTime::parse_from_rfc3339(value).unwrap()));
+        let now = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").unwrap()
+            + chrono::Duration::seconds(now_offset_seconds);
+        let error_kind = (expected || auto_resumed_at.is_some() || now_offset_seconds > 0)
+            .then_some(EXECUTION_LOST_ERROR_KIND);
+        let status = status(
+            AgentTaskState::Failed,
+            None,
+            if error_kind.is_some() {
+                error_kind
+            } else {
+                Some("other_failure")
+            },
+        );
+        assert_eq!(is_auto_resume_eligible(&task, &status, now), expected);
+    }
+
+    #[rstest]
+    #[case::message_over_kind(Some("reason"), Some("kind"), Some("reason"))]
+    #[case::empty_message_falls_back(Some(""), Some("kind"), Some("kind"))]
+    #[case::kind_only(None, Some("kind"), Some("kind"))]
+    #[case::empty_without_kind(Some(""), None, None)]
+    fn agent_reported_reason_prefers_non_empty_message(
+        #[case] message: Option<&str>,
+        #[case] kind: Option<&str>,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(
+            agent_reported_reason(&status(AgentTaskState::Failed, message, kind)),
+            expected,
+        );
+    }
 }

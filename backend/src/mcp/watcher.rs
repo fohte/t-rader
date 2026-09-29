@@ -18,8 +18,8 @@ pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
 where
     C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
 {
-    let use_cases = crate::services::use_cases::build_use_cases(db.clone());
-    run_once_with_use_cases(&use_cases.strategy_tasks, agent_client).await
+    let strategy_tasks = crate::services::use_cases::build_strategy_task_use_cases(db.clone());
+    run_once_with_use_cases(&strategy_tasks, agent_client).await
 }
 
 async fn run_once_with_use_cases(
@@ -72,7 +72,7 @@ pub fn spawn(
     interval: Duration,
     notify: Arc<Notify>,
 ) -> tokio::task::JoinHandle<()> {
-    let strategy_tasks = crate::services::use_cases::build_use_cases(db).strategy_tasks;
+    let strategy_tasks = crate::services::use_cases::build_strategy_task_use_cases(db);
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -91,56 +91,6 @@ pub fn spawn(
 }
 
 #[cfg(test)]
-fn agent_reported_reason(status: &crate::agent_client::AgentTaskStatus) -> Option<&str> {
-    status
-        .error_message
-        .as_deref()
-        .filter(|message| !message.is_empty())
-        .or(status.error_kind.as_deref())
-}
-
-#[cfg(test)]
-async fn apply_phase<C>(
-    db: &C,
-    row: gateway_postgres::entities::strategy_task::Model,
-    new_phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase,
-    new_error: Option<String>,
-    new_result_text: Option<String>,
-    new_steps: Option<serde_json::Value>,
-) -> Result<bool, core_application::strategy_task::ReconcileTaskError>
-where
-    C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
-{
-    let state = match new_phase {
-        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Pending => {
-            crate::agent_client::AgentTaskState::Submitted
-        }
-        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running => {
-            crate::agent_client::AgentTaskState::Working
-        }
-        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Completed => {
-            crate::agent_client::AgentTaskState::Completed
-        }
-        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Failed => {
-            crate::agent_client::AgentTaskState::Failed
-        }
-    };
-    crate::services::use_cases::build_use_cases(db.clone())
-        .strategy_tasks
-        .apply_agent_status(
-            row.task_id,
-            crate::agent_client::AgentTaskStatus {
-                state,
-                result_text: new_result_text,
-                error_message: new_error,
-                error_kind: None,
-                steps: new_steps,
-            },
-            Utc::now().fixed_offset(),
-        )
-        .await
-}
-#[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
@@ -153,7 +103,6 @@ mod tests {
         StrategyTaskPhase, StrategyTaskStepStatus,
     };
     use gateway_postgres::entities::{strategy, strategy_task, strategy_task_step};
-    use rstest::rstest;
     use sea_orm::{
         ActiveModelTrait,
         ActiveValue::{NotSet, Set},
@@ -232,26 +181,13 @@ mod tests {
             .unwrap()
     }
 
-    #[rstest]
-    #[case::message_over_kind(Some("boom"), Some("agent_error"), Some("boom"))]
-    #[case::empty_message_falls_back_to_kind(Some(""), Some("agent_error"), Some("agent_error"))]
-    #[case::kind_only(None, Some("usage_limit"), Some("usage_limit"))]
-    #[case::message_only(Some("boom"), None, Some("boom"))]
-    #[case::empty_message_without_kind(Some(""), None, None)]
-    #[case::neither(None, None, None)]
-    fn agent_reported_reason_prefers_non_empty_message(
-        #[case] error_message: Option<&str>,
-        #[case] error_kind: Option<&str>,
-        #[case] expected: Option<&str>,
-    ) {
-        let status = AgentTaskStatus {
-            state: AgentTaskState::Failed,
-            result_text: None,
-            error_message: error_message.map(str::to_string),
-            error_kind: error_kind.map(str::to_string),
-            steps: None,
-        };
-        assert_eq!(agent_reported_reason(&status), expected);
+    fn without_sequence(
+        mut steps: Vec<strategy_task_step::Model>,
+    ) -> Vec<strategy_task_step::Model> {
+        for step in &mut steps {
+            step.seq = 0;
+        }
+        steps
     }
 
     const FAR_FUTURE: chrono::Duration = chrono::Duration::minutes(15);
@@ -791,59 +727,71 @@ mod tests {
             "trace_id": "trace-1",
             "span_id": "span-1",
         });
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        let agent_client: SharedAgentTaskClient = fake.clone();
 
         // 新規ステップは insert される。
-        let row = fetch_task(&db, task_id).await;
-        let updated = apply_phase(
-            &db,
-            row,
-            StrategyTaskPhase::Running,
-            None,
-            None,
-            Some(serde_json::json!([running_step.clone()])),
-        )
-        .await
-        .unwrap();
-        assert!(updated);
-
-        let steps = fetch_steps(&db, task_id).await;
-        assert_eq!(steps.len(), 1);
-        let seq = steps[0].seq;
-        assert_eq!(
-            steps[0],
-            strategy_task_step::Model {
-                execution_step_id: step_id,
-                task_id,
-                phase_key: "investigate".to_string(),
-                label: "仮説の調査".to_string(),
-                model: "test-model".to_string(),
-                status: StrategyTaskStepStatus::Running,
-                item: None,
-                item_label: None,
-                output: None,
-                started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
-                finished_at: None,
-                trace_id: "trace-1".to_string(),
-                span_id: "span-1".to_string(),
-                error: None,
-                seq,
+        fake.set_status(
+            "t-steps",
+            AgentTaskStatus {
+                state: AgentTaskState::Working,
+                result_text: None,
+                error_message: None,
+                error_kind: None,
+                steps: Some(serde_json::json!([running_step.clone()])),
             },
+        )
+        .await;
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(
+            (updated, without_sequence(fetch_steps(&db, task_id).await)),
+            (
+                1,
+                vec![strategy_task_step::Model {
+                    execution_step_id: step_id,
+                    task_id,
+                    phase_key: "investigate".to_string(),
+                    label: "仮説の調査".to_string(),
+                    model: "test-model".to_string(),
+                    status: StrategyTaskStepStatus::Running,
+                    item: None,
+                    item_label: None,
+                    output: None,
+                    started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
+                    finished_at: None,
+                    trace_id: "trace-1".to_string(),
+                    span_id: "span-1".to_string(),
+                    error: None,
+                    seq: 0,
+                }],
+            ),
         );
 
         // 同じ内容の再送は upsert 対象にならない。
-        let row = fetch_task(&db, task_id).await;
-        let updated = apply_phase(
-            &db,
-            row,
-            StrategyTaskPhase::Running,
-            None,
-            None,
-            Some(serde_json::json!([running_step])),
-        )
-        .await
-        .unwrap();
-        assert!(!updated);
-        assert_eq!(fetch_steps(&db, task_id).await, vec![steps[0].clone()]);
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(
+            (updated, without_sequence(fetch_steps(&db, task_id).await)),
+            (
+                0,
+                vec![strategy_task_step::Model {
+                    execution_step_id: step_id,
+                    task_id,
+                    phase_key: "investigate".to_string(),
+                    label: "仮説の調査".to_string(),
+                    model: "test-model".to_string(),
+                    status: StrategyTaskStepStatus::Running,
+                    item: None,
+                    item_label: None,
+                    output: None,
+                    started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
+                    finished_at: None,
+                    trace_id: "trace-1".to_string(),
+                    span_id: "span-1".to_string(),
+                    error: None,
+                    seq: 0,
+                }],
+            ),
+        );
 
         // status/output の変化は既存行 (同じ execution_step_id) を更新する。
         let completed_step = serde_json::json!({
@@ -858,42 +806,42 @@ mod tests {
             "trace_id": "trace-1",
             "span_id": "span-1",
         });
-        let row = fetch_task(&db, task_id).await;
-        let updated = apply_phase(
-            &db,
-            row,
-            StrategyTaskPhase::Running,
-            None,
-            None,
-            Some(serde_json::json!([completed_step])),
-        )
-        .await
-        .unwrap();
-        assert!(updated);
-
-        let steps = fetch_steps(&db, task_id).await;
-        assert_eq!(steps.len(), 1);
-        assert_eq!(
-            steps[0],
-            strategy_task_step::Model {
-                execution_step_id: step_id,
-                task_id,
-                phase_key: "investigate".to_string(),
-                label: "仮説の調査".to_string(),
-                model: "test-model".to_string(),
-                status: StrategyTaskStepStatus::Completed,
-                item: None,
-                item_label: None,
-                output: Some(serde_json::json!({"summary": "ok"})),
-                started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
-                finished_at: Some(
-                    DateTime::parse_from_rfc3339("2026-01-01T00:00:05.000Z").unwrap()
-                ),
-                trace_id: "trace-1".to_string(),
-                span_id: "span-1".to_string(),
-                error: None,
-                seq,
+        fake.set_status(
+            "t-steps",
+            AgentTaskStatus {
+                state: AgentTaskState::Working,
+                result_text: None,
+                error_message: None,
+                error_kind: None,
+                steps: Some(serde_json::json!([completed_step])),
             },
+        )
+        .await;
+        let updated = run_once(&db, &agent_client).await;
+        assert_eq!(
+            (updated, without_sequence(fetch_steps(&db, task_id).await)),
+            (
+                1,
+                vec![strategy_task_step::Model {
+                    execution_step_id: step_id,
+                    task_id,
+                    phase_key: "investigate".to_string(),
+                    label: "仮説の調査".to_string(),
+                    model: "test-model".to_string(),
+                    status: StrategyTaskStepStatus::Completed,
+                    item: None,
+                    item_label: None,
+                    output: Some(serde_json::json!({"summary": "ok"})),
+                    started_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00.000Z").unwrap(),
+                    finished_at: Some(
+                        DateTime::parse_from_rfc3339("2026-01-01T00:00:05.000Z").unwrap(),
+                    ),
+                    trace_id: "trace-1".to_string(),
+                    span_id: "span-1".to_string(),
+                    error: None,
+                    seq: 0,
+                }],
+            ),
         );
     }
 
@@ -928,23 +876,27 @@ mod tests {
             })
         };
 
-        let row = fetch_task(&db, task_id).await;
-        apply_phase(
-            &db,
-            row,
-            StrategyTaskPhase::Completed,
-            None,
-            Some("done".to_string()),
-            Some(serde_json::json!([step("running"), step("completed")])),
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_status(
+            "t-txn",
+            AgentTaskStatus {
+                state: AgentTaskState::Completed,
+                result_text: Some("done".to_string()),
+                error_message: None,
+                error_kind: None,
+                steps: Some(serde_json::json!([step("running"), step("completed")])),
+            },
         )
-        .await
-        .expect_err("duplicate execution_step_id in one batch should fail at the DB level");
+        .await;
+        let agent_client: SharedAgentTaskClient = fake;
+        assert_eq!(run_once(&db, &agent_client).await, 0);
 
         // steps upsert の失敗で phase 更新もロールバックされ、行は変化していないこと。
         let row = fetch_task(&db, task_id).await;
-        assert_eq!(row.phase, StrategyTaskPhase::Running);
-        assert_eq!(row.result_text, None);
-        assert_eq!(fetch_steps(&db, task_id).await, vec![]);
+        assert_eq!(
+            (row.phase, row.result_text, fetch_steps(&db, task_id).await),
+            (StrategyTaskPhase::Running, None, vec![]),
+        );
     }
 
     #[backend_test_macros::database_test]

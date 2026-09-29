@@ -11,8 +11,7 @@ pub async fn resume_task<C>(
 where
     C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
 {
-    crate::services::use_cases::build_use_cases(db.clone())
-        .strategy_tasks
+    crate::services::use_cases::build_strategy_task_use_cases(db.clone())
         .resume(agent_client.as_ref(), task_id)
         .await
 }
@@ -25,8 +24,7 @@ pub async fn auto_resume_task<C>(
 where
     C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
 {
-    crate::services::use_cases::build_use_cases(db.clone())
-        .strategy_tasks
+    crate::services::use_cases::build_strategy_task_use_cases(db.clone())
         .auto_resume(agent_client.as_ref(), task_id)
         .await
 }
