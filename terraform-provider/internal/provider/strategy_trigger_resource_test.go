@@ -135,7 +135,7 @@ func TestStrategyTriggerResourceRead(t *testing.T) {
 	})
 	resourceSchema := strategyTriggerTestSchema(t)
 	state := tfsdk.State{Schema: resourceSchema}
-	if diagnostics := state.Set(ctx, triggerTestStateModel(types.DynamicNull())); diagnostics.HasError() {
+	if diagnostics := state.Set(ctx, triggerTestStateModel()); diagnostics.HasError() {
 		t.Fatalf("build read state: %v", diagnostics)
 	}
 	if diagnostics := state.SetAttribute(ctx, path.Root("id"), types.StringValue(testTriggerID)); diagnostics.HasError() {
@@ -263,7 +263,7 @@ func TestStrategyTriggerResourceDelete(t *testing.T) {
 	})
 	resourceSchema := strategyTriggerTestSchema(t)
 	state := tfsdk.State{Schema: resourceSchema}
-	if diagnostics := state.Set(ctx, triggerTestStateModel(types.DynamicNull())); diagnostics.HasError() {
+	if diagnostics := state.Set(ctx, triggerTestStateModel()); diagnostics.HasError() {
 		t.Fatalf("build delete state: %v", diagnostics)
 	}
 	if diagnostics := state.SetAttribute(ctx, path.Root("id"), types.StringValue(testTriggerID)); diagnostics.HasError() {
@@ -292,7 +292,7 @@ func TestStrategyTriggerResourceImportState(t *testing.T) {
 	ctx := context.Background()
 	resourceSchema := strategyTriggerTestSchema(t)
 	response := resource.ImportStateResponse{State: tfsdk.State{Schema: resourceSchema}}
-	initialState := triggerTestStateModel(types.DynamicNull())
+	initialState := triggerTestStateModel()
 	initialState.ID = types.StringNull()
 	if diagnostics := response.State.Set(ctx, initialState); diagnostics.HasError() {
 		t.Fatalf("initialize import state: %v", diagnostics)
@@ -431,65 +431,55 @@ func TestStrategyTriggerPlanValidation(t *testing.T) {
 func TestStrategyTriggerKindAndStrategyIDRequireReplacement(t *testing.T) {
 	t.Parallel()
 
-	resourceSchema := strategyTriggerTestSchema(t)
-	check := func(name string) (bool, []triggerTestDiagnostic) {
-		attribute := resourceSchema.Attributes[name].(schema.StringAttribute)
-		prior := triggerTestStateModel(types.DynamicNull())
-		planned := prior
-		if name == "kind" {
-			prior.Kind = types.StringValue("cron")
-			planned.Kind = types.StringValue("hook")
-		} else {
-			prior.StrategyID = types.StringValue(testStrategyID)
-			planned.StrategyID = types.StringValue("00000000-0000-4000-8000-000000000003")
-		}
-		state := tfsdk.State{Schema: resourceSchema}
-		if stateDiagnostics := state.Set(context.Background(), prior); stateDiagnostics.HasError() {
-			t.Fatalf("build prior state for %s: %v", name, stateDiagnostics)
-		}
-		plan := tfsdk.Plan{Schema: resourceSchema}
-		if planDiagnostics := plan.Set(context.Background(), planned); planDiagnostics.HasError() {
-			t.Fatalf("build plan for %s: %v", name, planDiagnostics)
-		}
-		var requiresReplace bool
-		var diagnostics diag.Diagnostics
-		for _, modifier := range attribute.PlanModifiers {
-			var response planmodifier.StringResponse
-			modifier.PlanModifyString(context.Background(), planmodifier.StringRequest{
-				Path:        path.Root(name),
-				State:       state,
-				Plan:        plan,
-				StateValue:  stateValueForTriggerTest(prior, name),
-				PlanValue:   stateValueForTriggerTest(planned, name),
-				ConfigValue: stateValueForTriggerTest(planned, name),
-			}, &response)
-			requiresReplace = requiresReplace || response.RequiresReplace
-			diagnostics.Append(response.Diagnostics...)
-		}
-		return requiresReplace, triggerTestDiagnostics(diagnostics)
+	cases := []struct {
+		name      string
+		attribute string
+		oldValue  string
+		newValue  string
+	}{
+		{name: "kind requires replacement", attribute: "kind", oldValue: "cron", newValue: "hook"},
+		{name: "strategy id requires replacement", attribute: "strategy_id", oldValue: testStrategyID, newValue: "00000000-0000-4000-8000-000000000003"},
 	}
-	type output struct {
-		KindRequiresReplace       bool
-		StrategyIDRequiresReplace bool
-		KindDiagnostics           []triggerTestDiagnostic
-		StrategyIDDiagnostics     []triggerTestDiagnostic
-	}
-	kindRequiresReplace, kindDiagnostics := check("kind")
-	strategyIDRequiresReplace, strategyIDDiagnostics := check("strategy_id")
-	got := output{
-		KindRequiresReplace:       kindRequiresReplace,
-		StrategyIDRequiresReplace: strategyIDRequiresReplace,
-		KindDiagnostics:           kindDiagnostics,
-		StrategyIDDiagnostics:     strategyIDDiagnostics,
-	}
-	want := output{
-		KindRequiresReplace:       true,
-		StrategyIDRequiresReplace: true,
-		KindDiagnostics:           []triggerTestDiagnostic{},
-		StrategyIDDiagnostics:     []triggerTestDiagnostic{},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("replacement output mismatch: got=%#v want=%#v", got, want)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			resourceSchema := strategyTriggerTestSchema(t)
+			prior := triggerTestModelWithReplacementValue(testCase.attribute, testCase.oldValue)
+			planned := triggerTestModelWithReplacementValue(testCase.attribute, testCase.newValue)
+			state := tfsdk.State{Schema: resourceSchema}
+			if diagnostics := state.Set(context.Background(), prior); diagnostics.HasError() {
+				t.Fatalf("build prior state: %v", diagnostics)
+			}
+			plan := tfsdk.Plan{Schema: resourceSchema}
+			if diagnostics := plan.Set(context.Background(), planned); diagnostics.HasError() {
+				t.Fatalf("build plan: %v", diagnostics)
+			}
+			attribute := resourceSchema.Attributes[testCase.attribute].(schema.StringAttribute)
+			var requiresReplace bool
+			var diagnostics diag.Diagnostics
+			for _, modifier := range attribute.PlanModifiers {
+				var response planmodifier.StringResponse
+				modifier.PlanModifyString(context.Background(), planmodifier.StringRequest{
+					Path:        path.Root(testCase.attribute),
+					State:       state,
+					Plan:        plan,
+					StateValue:  types.StringValue(testCase.oldValue),
+					PlanValue:   types.StringValue(testCase.newValue),
+					ConfigValue: types.StringValue(testCase.newValue),
+				}, &response)
+				requiresReplace = requiresReplace || response.RequiresReplace
+				diagnostics.Append(response.Diagnostics...)
+			}
+			type output struct {
+				RequiresReplace bool
+				Diagnostics     []triggerTestDiagnostic
+			}
+			got := output{RequiresReplace: requiresReplace, Diagnostics: triggerTestDiagnostics(diagnostics)}
+			want := output{RequiresReplace: true, Diagnostics: []triggerTestDiagnostic{}}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("replacement output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
 	}
 }
 
@@ -529,14 +519,14 @@ func validateStrategyTriggerConfig(t *testing.T, kind string, schedule, hookSlug
 	return triggerValidationOutput{Kind: triggerTestDiagnostics(kindResponse.Diagnostics), Config: triggerTestDiagnostics(configDiagnostics)}
 }
 
-func triggerTestStateModel(eventMatch types.Dynamic) strategyTriggerModel {
+func triggerTestStateModel() strategyTriggerModel {
 	return strategyTriggerModel{
 		ID:             types.StringValue(testTriggerID),
 		StrategyID:     types.StringValue(testStrategyID),
 		Kind:           types.StringValue("hook"),
 		Schedule:       types.StringNull(),
 		HookSlug:       types.StringValue("synthetic-hook"),
-		EventMatch:     eventMatch,
+		EventMatch:     types.DynamicNull(),
 		PromptTemplate: types.StringValue("synthetic prompt"),
 		Enabled:        types.BoolValue(true),
 		CreatedAt:      types.StringValue("2026-01-01T00:00:00Z"),
@@ -544,11 +534,14 @@ func triggerTestStateModel(eventMatch types.Dynamic) strategyTriggerModel {
 	}
 }
 
-func stateValueForTriggerTest(model strategyTriggerModel, name string) types.String {
-	if name == "kind" {
-		return model.Kind
+func triggerTestModelWithReplacementValue(attribute, value string) strategyTriggerModel {
+	model := triggerTestStateModel()
+	if attribute == "kind" {
+		model.Kind = types.StringValue(value)
+	} else {
+		model.StrategyID = types.StringValue(value)
 	}
-	return model.StrategyID
+	return model
 }
 
 func strategyTriggerTestSchema(t *testing.T) schema.Schema {
