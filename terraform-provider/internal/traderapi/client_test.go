@@ -31,6 +31,8 @@ func TestClientStrategyLifecycle(t *testing.T) {
 	updated.Name = "updated synthetic strategy"
 	updated.SortOrder = 5
 	updated.UpdatedAt = "2026-01-02T00:00:00Z"
+	cleared := updated
+	cleared.Description = nil
 
 	type observedRequest struct {
 		Method       string
@@ -63,9 +65,13 @@ func TestClientStrategyLifecycle(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == strategiesPath:
 			writeJSON(t, w, http.StatusCreated, created)
 		case r.Method == http.MethodPatch && r.URL.Path == strategiesPath+"/"+strategyID:
-			writeJSON(t, w, http.StatusOK, updated)
+			if string(body) == "{\"description\":null}\n" {
+				writeJSON(t, w, http.StatusOK, cleared)
+			} else {
+				writeJSON(t, w, http.StatusOK, updated)
+			}
 		case r.Method == http.MethodGet && r.URL.Path == strategiesPath+"/"+strategyID:
-			writeJSON(t, w, http.StatusOK, updated)
+			writeJSON(t, w, http.StatusOK, cleared)
 		case r.Method == http.MethodDelete && r.URL.Path == strategiesPath+"/"+strategyID:
 			w.WriteHeader(http.StatusNoContent)
 		default:
@@ -97,6 +103,13 @@ func TestClientStrategyLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var nullDescription *string
+	clearedResult, err := client.UpdateStrategy(context.Background(), strategyID, UpdateStrategyRequest{
+		Description: &nullDescription,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	readResult, err := client.GetStrategy(context.Background(), strategyID)
 	if err != nil {
 		t.Fatal(err)
@@ -109,12 +122,13 @@ func TestClientStrategyLifecycle(t *testing.T) {
 		{Method: http.MethodGet, Path: strategiesPath, ClientID: clientID, ClientSecret: clientSecret},
 		{Method: http.MethodPost, Path: strategiesPath, ClientID: clientID, ClientSecret: clientSecret, ContentType: "application/json", Body: `{"name":"synthetic strategy","description":"synthetic description","sort_order":3}` + "\n"},
 		{Method: http.MethodPatch, Path: strategiesPath + "/" + strategyID, ClientID: clientID, ClientSecret: clientSecret, ContentType: "application/json", Body: `{"name":"updated synthetic strategy","sort_order":5}` + "\n"},
+		{Method: http.MethodPatch, Path: strategiesPath + "/" + strategyID, ClientID: clientID, ClientSecret: clientSecret, ContentType: "application/json", Body: `{"description":null}` + "\n"},
 		{Method: http.MethodGet, Path: strategiesPath + "/" + strategyID, ClientID: clientID, ClientSecret: clientSecret},
 		{Method: http.MethodDelete, Path: strategiesPath + "/" + strategyID, ClientID: clientID, ClientSecret: clientSecret},
 	}
-	wantResults := []Strategy{created, updated, updated}
-	if !reflect.DeepEqual(observed, wantObserved) || !reflect.DeepEqual([]Strategy{createdResult, updatedResult, readResult}, wantResults) {
-		t.Fatalf("lifecycle output mismatch: observed=%#v results=%#v", observed, []Strategy{createdResult, updatedResult, readResult})
+	wantResults := []Strategy{created, updated, cleared, cleared}
+	if !reflect.DeepEqual(observed, wantObserved) || !reflect.DeepEqual([]Strategy{createdResult, updatedResult, clearedResult, readResult}, wantResults) {
+		t.Fatalf("lifecycle output mismatch: observed=%#v results=%#v", observed, []Strategy{createdResult, updatedResult, clearedResult, readResult})
 	}
 }
 

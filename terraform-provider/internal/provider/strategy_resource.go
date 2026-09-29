@@ -57,8 +57,7 @@ func (r *strategyResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"description": schema.StringAttribute{
 				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "戦略の説明。未指定または `null` は API の現在値を保持します。空文字列は空文字列として設定されます。",
+				MarkdownDescription: "戦略の説明。更新時に設定から外すと説明を削除します。",
 			},
 			"sort_order": schema.Int32Attribute{
 				Optional:            true,
@@ -148,7 +147,7 @@ func (r *strategyResource) Update(ctx context.Context, req resource.UpdateReques
 
 	updated, err := client.UpdateStrategy(ctx, plan.ID.ValueString(), traderapi.UpdateStrategyRequest{
 		Name:        stringAttributePointer(plan.Name),
-		Description: stringAttributePointer(plan.Description),
+		Description: stringAttributeUpdatePointer(plan.Description),
 		SortOrder:   int32AttributePointer(plan.SortOrder),
 	})
 	if err != nil {
@@ -202,6 +201,18 @@ func stringAttributePointer(value types.String) *string {
 		return nil
 	}
 	result := value.ValueString()
+	return &result
+}
+
+func stringAttributeUpdatePointer(value types.String) **string {
+	if value.IsUnknown() {
+		return nil
+	}
+	var result *string
+	if !value.IsNull() {
+		valueString := value.ValueString()
+		result = &valueString
+	}
 	return &result
 }
 

@@ -37,9 +37,9 @@ type CreateStrategyRequest struct {
 }
 
 type UpdateStrategyRequest struct {
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
-	SortOrder   *int32  `json:"sort_order,omitempty"`
+	Name        *string  `json:"name,omitempty"`
+	Description **string `json:"description,omitempty"`
+	SortOrder   *int32   `json:"sort_order,omitempty"`
 }
 
 type Client struct {
