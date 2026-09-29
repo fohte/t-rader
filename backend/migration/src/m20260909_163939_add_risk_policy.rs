@@ -35,7 +35,8 @@ impl MigrationTrait for Migration {
             .await?;
 
         // 口座全体の設定は単一行のみを持つ (id は常に 1 固定)。行が存在しない間は
-        // 「未設定」を表し、初回 PUT で upsert する (`services::account_risk_policy`)。
+        // 「未設定」を表し、初回 PUT で upsert する
+        // (`core_application::account_risk_policy::AccountRiskPolicyUseCases`)。
         manager
             .create_table(
                 Table::create()
