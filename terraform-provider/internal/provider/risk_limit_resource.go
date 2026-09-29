@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/oapi-codegen/nullable"
@@ -52,6 +53,7 @@ func (r *riskLimitResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"max_sector_ratio": schema.Float64Attribute{
 				Optional:            true,
+				Validators:          []validator.Float64{maxSectorRatioValidator{}},
 				MarkdownDescription: "口座全体の保有銘柄時価に対する、単一セクターの保有銘柄時価の上限比率。`(0, 1]` の範囲で指定し、省略すると上限を解除します。",
 			},
 		},
@@ -160,4 +162,24 @@ func float64NullableAttribute(value nullable.Nullable[float64]) types.Float64 {
 		return types.Float64Null()
 	}
 	return types.Float64Value(value.GetOrEmpty())
+}
+
+type maxSectorRatioValidator struct{}
+
+func (maxSectorRatioValidator) Description(context.Context) string {
+	return "比率は 0 より大きく 1 以下である必要があります。"
+}
+
+func (v maxSectorRatioValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (maxSectorRatioValidator) ValidateFloat64(_ context.Context, req validator.Float64Request, resp *validator.Float64Response) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	value := req.ConfigValue.ValueFloat64()
+	if value <= 0 || value > 1 {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid max sector ratio", "max_sector_ratio must be greater than 0 and less than or equal to 1.")
+	}
 }
