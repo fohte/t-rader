@@ -15,6 +15,11 @@ pre-commit:
       glob: '*.rs'
       run: scripts/generate-openapi-types && git add frontend/src/lib/api/schema.gen.d.ts agent/src/lib/api/schema.gen.d.ts
 
+    openapi-go-client:
+      priority: 3
+      glob: '*.rs'
+      run: scripts/generate-terraform-api-client && git add terraform-provider/internal/traderapi/client.gen.go
+
     format:
       # Remove trailing whitespace and ensure final newline
       run: basefmt {staged_files}

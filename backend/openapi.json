@@ -4054,7 +4054,7 @@
           "refs"
         ],
         "summary": "indicator 詳細",
-        "operationId": "get_indicator",
+        "operationId": "get_ref_indicator",
         "parameters": [
           {
             "name": "id",
