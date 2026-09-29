@@ -6,9 +6,9 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
-use uuid::Uuid;
 
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
@@ -21,8 +21,9 @@ use super::{StrategyServer, app_error_to_mcp, decimal_to_f64, trade_error};
 impl StrategyServer {
     pub(crate) async fn read_portfolio_inner(
         &self,
-        strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
     ) -> Result<ReadPortfolioResult, McpError> {
+        let strategy_id = scope.into().id();
         let account_summary = self
             .trade_use_cases
             .summary(None)

@@ -3,6 +3,7 @@
 //! 戦略境界の検査は、対象 (note_version / annotation) の所有権検査
 //! ([`super::fetch_note_owned_by`] / [`super::fetch_annotation_owned_by`]) が担う。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{
@@ -72,9 +73,10 @@ async fn ensure_comment_target_owned_by(
 impl StrategyServer {
     pub(crate) async fn read_comments_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadCommentsParams,
     ) -> Result<ReadCommentsResult, McpError> {
+        let session_strategy_id = scope.into().id();
         if !ALLOWED_COMMENT_TARGET_KIND.contains(&params.target_kind.as_str()) {
             return Err(invalid_params(format!(
                 "invalid target_kind: {} (expected one of {ALLOWED_COMMENT_TARGET_KIND:?})",
@@ -107,9 +109,10 @@ impl StrategyServer {
 
     pub(crate) async fn resolve_comment_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ResolveCommentParams,
     ) -> Result<ResolveCommentResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let current = comment::Entity::find_by_id(params.comment_id)
             .one(&self.db)
             .await
@@ -133,9 +136,10 @@ impl StrategyServer {
 
     pub(crate) async fn reply_comment_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReplyCommentParams,
     ) -> Result<ReplyCommentResult, McpError> {
+        let session_strategy_id = scope.into().id();
         if params.body.trim().is_empty() {
             return Err(invalid_params("body must not be empty"));
         }

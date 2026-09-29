@@ -1,8 +1,8 @@
 //! 自戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する読み取り専用 tool。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use uuid::Uuid;
 
 use crate::services::predictions::probability_steps;
 use gateway_postgres::entities::{prediction, prediction_grade};
@@ -16,8 +16,9 @@ const PROBABILITY_EPSILON: f64 = 1e-9;
 impl StrategyServer {
     pub(crate) async fn read_prediction_stats_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
     ) -> Result<ReadPredictionStatsResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let rows = prediction::Entity::find()
             .filter(prediction::Column::StrategyId.eq(session_strategy_id))
             .find_also_related(prediction_grade::Entity)

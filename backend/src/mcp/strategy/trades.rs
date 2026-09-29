@@ -4,9 +4,9 @@
 //! (`super` の doc comment にある例外参照)。戦略境界の検査は行わず、
 //! `TradeDto::strategy_id` でどの戦略の約定かを判別できるようにする。
 
+use core_application::StrategyScope;
 use core_application::trade::{Trade, TradeOrder, TradeQuery};
 use rmcp::ErrorData as McpError;
-use uuid::Uuid;
 
 use super::dto::{ReadTradesParams, ReadTradesResult, TradeDto};
 use super::{StrategyServer, clamp_limit, decimal_to_f64, trade_error};
@@ -26,9 +26,10 @@ fn trade_to_dto(m: Trade) -> TradeDto {
 impl StrategyServer {
     pub(crate) async fn read_trades_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadTradesParams,
     ) -> Result<ReadTradesResult, McpError> {
+        let _scope = scope.into();
         let symbol = params
             .symbol
             .as_deref()

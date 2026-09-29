@@ -10,13 +10,13 @@
 //! `search_refs` と同様、戦略に属さないマスタデータのため `session_strategy_id` は
 //! 使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use super::{StrategyServer, db_error, invalid_params};
 use crate::services::note_refs::ALLOWED_REF_KINDS;
@@ -69,9 +69,10 @@ impl StrategyServer {
     /// 別名を追加する。同じ (ref_kind, ref_id, term) が既にあれば idempotent に無視する。
     pub(crate) async fn add_ref_terms_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: AddRefTermsParams,
     ) -> Result<AddRefTermsResult, McpError> {
+        let _scope = scope.into();
         let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
 
         let mut added = Vec::new();
@@ -111,9 +112,10 @@ impl StrategyServer {
     /// 別名を削除する。登録されていない語を渡しても idempotent に無視する。
     pub(crate) async fn remove_ref_terms_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: RemoveRefTermsParams,
     ) -> Result<RemoveRefTermsResult, McpError> {
+        let _scope = scope.into();
         let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
 
         let mut removed = Vec::new();

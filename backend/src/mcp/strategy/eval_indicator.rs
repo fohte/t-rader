@@ -9,6 +9,7 @@
 
 use std::time::Duration;
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
@@ -35,9 +36,10 @@ enum SchemaCheckError {
 impl StrategyServer {
     pub(crate) async fn eval_indicator_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: EvalIndicatorParams,
     ) -> Result<EvalIndicatorResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let name = params.name.trim();
         if name.is_empty() {
             return Err(invalid_params("name must not be empty"));

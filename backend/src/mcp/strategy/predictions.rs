@@ -3,6 +3,7 @@
 //! 記録後の確率・期限・対象の書き換えは採点を無意味にするため、更新・削除の tool は
 //! 意図的に用意しない。読み取りは自戦略の予測に限る。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -17,8 +18,7 @@ use super::dto::{
     RecordPredictionResult,
 };
 use super::{
-    StrategyServer, clamp_limit, db_error, decimal_to_f64, ensure_strategy_exists,
-    fetch_note_owned_by, invalid_params,
+    StrategyServer, clamp_limit, db_error, decimal_to_f64, fetch_note_owned_by, invalid_params,
 };
 
 fn validation_to_mcp(err: crate::error::AppError) -> McpError {
@@ -63,9 +63,10 @@ async fn ensure_stock_exists(db: &impl sea_orm::ConnectionTrait, id: &str) -> Re
 impl StrategyServer {
     pub(crate) async fn record_prediction_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: RecordPredictionParams,
     ) -> Result<RecordPredictionResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let target_stock_id = params.target_stock_id.trim().to_string();
         let benchmark_stock_id = params.benchmark_stock_id.trim().to_string();
         if target_stock_id.is_empty() {
@@ -87,7 +88,6 @@ impl StrategyServer {
             return Err(invalid_params("due_date must be after base_date"));
         }
 
-        ensure_strategy_exists(&self.db, session_strategy_id).await?;
         if let Some(note_id) = params.note_id {
             fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
         }
@@ -117,9 +117,10 @@ impl StrategyServer {
 
     pub(crate) async fn list_predictions_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ListPredictionsParams,
     ) -> Result<ListPredictionsResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let mut query = prediction::Entity::find()
             .filter(prediction::Column::StrategyId.eq(session_strategy_id));
         if let Some(due_after) = params.due_after {

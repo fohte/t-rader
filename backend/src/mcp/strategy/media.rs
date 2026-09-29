@@ -4,8 +4,8 @@
 //! 沿ったテキスト応答を返す。discover フェーズがテキストにしか無い材料にアクセス
 //! できるようにするための tool。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
-use uuid::Uuid;
 
 use crate::services::litellm_client::{ChatMessage, ContentPart, FilePart};
 
@@ -29,9 +29,10 @@ where
 impl StrategyServer {
     pub(crate) async fn query_media_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: QueryMediaParams,
     ) -> Result<QueryMediaResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let media_url = params.media_url.trim().to_string();
         if media_url.is_empty() {
             return Err(invalid_params("media_url must not be empty"));
@@ -89,6 +90,7 @@ mod tests {
     use rstest::rstest;
     use sea_orm::{DatabaseBackend, MockDatabase};
     use serde_json::json;
+    use uuid::Uuid;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
@@ -22,10 +23,11 @@ const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
 impl StrategyServer {
     pub(crate) async fn query_data_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         execution_step_id: Option<Uuid>,
         params: QueryDataParams,
     ) -> Result<QueryDataResult, McpError> {
+        let _scope = scope.into();
         if params.instrument_ids.is_empty() {
             return Err(invalid_params("instrument_ids must not be empty"));
         }

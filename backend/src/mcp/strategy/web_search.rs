@@ -5,11 +5,11 @@
 //! (agent 視点の 1 task = 複数 step からなる) あたりの呼び出し回数に上限を設け、
 //! 超えたら LiteLLM を呼ばずにエラーを返す。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, OnConflict};
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
-use uuid::Uuid;
 
 use gateway_postgres::entities::mcp_tool_call_count;
 
@@ -110,10 +110,11 @@ async fn decrement_task_tool_call_count(
 impl StrategyServer {
     pub(crate) async fn search_web_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         task_execution_id: Option<String>,
         params: SearchWebParams,
     ) -> Result<SearchWebResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let query = params.query.trim().to_string();
         if query.is_empty() {
             return Err(invalid_params("query must not be empty"));
@@ -175,6 +176,7 @@ mod tests {
     use rstest::rstest;
     use sea_orm::{DatabaseBackend, MockDatabase};
     use serde_json::json;
+    use uuid::Uuid;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

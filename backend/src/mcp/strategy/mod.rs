@@ -34,6 +34,7 @@ pub(super) mod web_search;
 #[cfg(test)]
 mod tests_common;
 
+use core_application::{StrategyScope, StrategyScopeError};
 use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
 use rust_decimal::Decimal;
@@ -44,8 +45,9 @@ use uuid::Uuid;
 use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
+use crate::services::strategies::SeaOrmStrategyScopeSource;
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::entities::{annotation, note, strategy};
+use gateway_postgres::entities::{annotation, note};
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -164,6 +166,27 @@ impl StrategyServer {
         self.kata_executor
             .as_ref()
             .ok_or_else(|| internal_error("kata executor is not configured"))
+    }
+
+    pub(super) async fn strategy_scope_from_ctx(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+    ) -> Result<StrategyScope, McpError> {
+        let id = strategy_id_from_ctx(ctx)?;
+        let source = SeaOrmStrategyScopeSource::new(&self.db);
+        StrategyScope::verify(id, &source)
+            .await
+            .map_err(|error| match error {
+                StrategyScopeError::NotFound(id) => {
+                    invalid_params(format!("strategy {id} not found"))
+                }
+                StrategyScopeError::Source(
+                    core_application::StrategyScopeSourceError::QueryFailed(message),
+                ) => {
+                    tracing::error!(error = %message, "strategy mcp db error");
+                    internal_error(format!("database error: {message}"))
+                }
+            })
     }
 }
 
@@ -313,22 +336,6 @@ pub(super) async fn fetch_annotation_owned_by(
         )));
     }
     Ok(row)
-}
-
-pub(super) async fn ensure_strategy_exists(
-    db: &impl sea_orm::ConnectionTrait,
-    id: Uuid,
-) -> Result<(), McpError> {
-    let exists = strategy::Entity::find_by_id(id)
-        .one(db)
-        .await
-        .map_err(db_error)?
-        .is_some();
-    if exists {
-        Ok(())
-    } else {
-        Err(invalid_params(format!("strategy {id} not found")))
-    }
 }
 
 pub(super) fn decimal_to_f64(d: Decimal) -> f64 {

@@ -5,6 +5,7 @@
 //! 戦略に属さない市場データのため `search_refs` / `search_news`
 //! 同様、`x-strategy-id` を検索条件には使わない。
 
+use core_application::StrategyScope;
 use core_domain::holdings::{
     CrossShareholding as DomainCrossShareholding,
     CrossShareholdingCategory as DomainCrossShareholdingCategory, CrossShareholdingContent,
@@ -14,7 +15,6 @@ use core_domain::holdings::{
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::from_value;
-use uuid::Uuid;
 
 use gateway_postgres::entities::{
     cross_shareholding_documents, large_volume_shareholding_documents, major_shareholder_documents,
@@ -99,9 +99,10 @@ where
 impl StrategyServer {
     pub(crate) async fn read_shareholding_structure_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadShareholdingStructureParams,
     ) -> Result<ReadShareholdingStructureResult, McpError> {
+        let _scope = scope.into();
         validate_symbol(&params.symbol)?;
         let limit = clamp_limit(params.limit);
         let (lower, upper) = code_range(&params.symbol);

@@ -7,11 +7,11 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
-use uuid::Uuid;
 
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 use crate::services::account_risk_policy;
@@ -20,9 +20,7 @@ use crate::services::market_price::fetch_latest_prices;
 use gateway_postgres::entities::stock;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
-use super::{
-    StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, ensure_strategy_exists, trade_error,
-};
+use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, trade_error};
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
@@ -30,12 +28,11 @@ const LOT_SIZE: i64 = 100;
 impl StrategyServer {
     pub(crate) async fn check_buyable_qty_inner(
         &self,
-        strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: CheckBuyableQtyParams,
     ) -> Result<CheckBuyableQtyResult, McpError> {
+        let strategy_id = scope.into().id();
         let symbol = params.symbol;
-
-        ensure_strategy_exists(&self.db, strategy_id).await?;
 
         let account_risk_policy_row = account_risk_policy::find_current(&self.db)
             .await

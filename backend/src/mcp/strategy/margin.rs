@@ -2,12 +2,12 @@
 //! と日々公表信用取引残高 (`margin_alert`) を 4 桁銘柄コード + 期間で読み出す。
 
 use chrono::NaiveDate;
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use schemars::JsonSchema;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::models::PubReason;
 
@@ -187,9 +187,10 @@ impl StrategyServer {
     pub(crate) async fn read_margin_inner(
         &self,
         // 信用残は銘柄単位の市場データであり戦略に属さないため検索条件に使わない
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadMarginParams,
     ) -> Result<ReadMarginResult, McpError> {
+        let _scope = scope.into();
         if let (Some(from), Some(to)) = (params.from, params.to)
             && from > to
         {
