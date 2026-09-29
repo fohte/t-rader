@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/oapi-codegen/nullable"
 
@@ -70,24 +71,7 @@ func (r *riskLimitResource) Configure(_ context.Context, req resource.ConfigureR
 }
 
 func (r *riskLimitResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan riskLimitModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	client, ok := r.configuredClient(&resp.Diagnostics)
-	if !ok {
-		return
-	}
-
-	created, err := client.PutRiskLimit(ctx, traderapi.PutAccountRiskPolicyRequest{
-		MaxSectorRatio: float64AttributeNullable(plan.MaxSectorRatio),
-	})
-	if err != nil {
-		resp.Diagnostics.AddError("Error creating risk limit", err.Error())
-		return
-	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, riskLimitModelFromResponse(created))...)
+	r.upsert(ctx, req.Plan, &resp.State, &resp.Diagnostics, "Error creating risk limit")
 }
 
 func (r *riskLimitResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -110,28 +94,11 @@ func (r *riskLimitResource) Read(ctx context.Context, req resource.ReadRequest, 
 }
 
 func (r *riskLimitResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan riskLimitModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	client, ok := r.configuredClient(&resp.Diagnostics)
-	if !ok {
-		return
-	}
-
-	updated, err := client.PutRiskLimit(ctx, traderapi.PutAccountRiskPolicyRequest{
-		MaxSectorRatio: float64AttributeNullable(plan.MaxSectorRatio),
-	})
-	if err != nil {
-		resp.Diagnostics.AddError("Error updating risk limit", err.Error())
-		return
-	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, riskLimitModelFromResponse(updated))...)
+	r.upsert(ctx, req.Plan, &resp.State, &resp.Diagnostics, "Error updating risk limit")
 }
 
 func (r *riskLimitResource) Delete(_ context.Context, _ resource.DeleteRequest, _ *resource.DeleteResponse) {
-	// API に削除エンドポイントがないため、Terraform の state から除くだけにします。
+	// API に削除エンドポイントがないため、state からのみ除去する。
 }
 
 func (r *riskLimitResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -148,6 +115,27 @@ func (r *riskLimitResource) configuredClient(diagnostics *diag.Diagnostics) (*tr
 		return nil, false
 	}
 	return r.client, true
+}
+
+func (r *riskLimitResource) upsert(ctx context.Context, plan tfsdk.Plan, state *tfsdk.State, diagnostics *diag.Diagnostics, errorSummary string) {
+	var planModel riskLimitModel
+	diagnostics.Append(plan.Get(ctx, &planModel)...)
+	if diagnostics.HasError() {
+		return
+	}
+	client, ok := r.configuredClient(diagnostics)
+	if !ok {
+		return
+	}
+
+	updated, err := client.PutRiskLimit(ctx, traderapi.PutAccountRiskPolicyRequest{
+		MaxSectorRatio: float64AttributeNullable(planModel.MaxSectorRatio),
+	})
+	if err != nil {
+		diagnostics.AddError(errorSummary, err.Error())
+		return
+	}
+	diagnostics.Append(state.Set(ctx, riskLimitModelFromResponse(updated))...)
 }
 
 func riskLimitModelFromResponse(response traderapi.AccountRiskPolicyResponse) riskLimitModel {
