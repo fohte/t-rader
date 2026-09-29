@@ -124,8 +124,10 @@ const buildMgmtClient = Result.fromThrowable(
 // Real wiring for production use; executor tests inject a fake
 // FetchStrategyCandidates directly instead of exercising this MCP plumbing.
 export const createStrategyCandidatesFetcher = (
-  mgmtMcpUrl: string,
+  backendApiBaseUrl: string,
 ): FetchStrategyCandidates => {
+  const mgmtMcpUrl = `${backendApiBaseUrl.replace(/\/+$/, '')}/mcp/mgmt`
+
   return () => {
     const clientResult = buildMgmtClient(mgmtMcpUrl)
     if (clientResult.isErr()) {

@@ -225,6 +225,28 @@ pub(super) fn trade_error(error: core_application::trade::TradeUseCaseError) -> 
     internal_error(format!("database error: {error}"))
 }
 
+pub(super) fn strategy_use_case_error_to_mcp(
+    error: core_application::strategy::StrategyUseCaseError,
+) -> McpError {
+    match error {
+        core_application::strategy::StrategyUseCaseError::Validation(message) => {
+            invalid_params(message)
+        }
+        core_application::strategy::StrategyUseCaseError::NotFound(id) => {
+            invalid_params(format!("strategy {id} not found"))
+        }
+        core_application::strategy::StrategyUseCaseError::ConfirmationMismatch(id) => {
+            invalid_params(format!(
+                "strategy {id} not found or name changed since confirmation"
+            ))
+        }
+        other => {
+            tracing::error!(error = %other, "strategy mcp strategy operation failed");
+            internal_error(format!("strategy operation failed: {other}"))
+        }
+    }
+}
+
 pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
     let value = limit.map(u64::from).unwrap_or(DEFAULT_LIST_LIMIT);
     value.clamp(1, MAX_LIST_LIMIT)
@@ -360,8 +382,8 @@ pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
     })
 }
 
-/// `AppError` の MCP エラー変換。`services::investable_amount` / `services::account_risk_policy`
-/// / `models::risk_policy::parse_risk_policy` が返すエラーの共通ハンドリング。
+/// `AppError` の MCP エラー変換。`services::account_risk_policy` /
+/// `models::risk_policy::parse_risk_policy` が返すエラーの共通ハンドリング。
 pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
     use crate::error::AppError;
     match err {
