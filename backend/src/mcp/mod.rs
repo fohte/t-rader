@@ -12,11 +12,11 @@ use std::time::Duration;
 
 use crate::agent_client::SharedAgentTaskClient;
 use crate::data_provider::SharedDailyBarSource;
-use crate::database::DatabaseHandle;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
 use crate::services::strategy_tasks::DEADLINE_DURATION;
 use axum::Router;
+use gateway_postgres::DatabaseHandle;
 pub use mgmt::MgmtServer;
 use rmcp::transport::streamable_http_server::StreamableHttpService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;

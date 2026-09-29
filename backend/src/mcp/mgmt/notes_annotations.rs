@@ -3,10 +3,10 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
-use crate::entities::{annotation, note};
 use crate::services::note_versions::{
     current_note_ids, find_current_versions, find_initial_created_by_kind,
 };
+use gateway_postgres::entities::{annotation, note};
 
 use super::MgmtServer;
 use super::dto::{
@@ -104,7 +104,7 @@ mod tests {
     use super::*;
 
     #[backend_test_macros::database_test]
-    async fn list_recent_notes_caps_by_limit(db: crate::database::DatabaseHandle) {
+    async fn list_recent_notes_caps_by_limit(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         for i in 0..5 {
             insert_test_note(&db, strategy_id, &format!("note-{i}"), "body").await;

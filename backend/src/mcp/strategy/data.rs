@@ -1,6 +1,6 @@
 //! 価格データ取得の inner method 実装。
 //!
-//! DB (`repositories::bars`) から複数銘柄分のバーデータをまとめて取得し、
+//! DB (`gateway_postgres::repositories::bars`) から複数銘柄分のバーデータをまとめて取得し、
 //! MCP の wire 表現 ([`InstrumentBarsDto`]) に変換する。日足は全上場銘柄分が
 //! `services::daily_bars_ingest` で定期的に取り込まれているため、ここでは
 //! データプロバイダへの問い合わせは行わない (呼び出しのたびに叩くとレート制限に
@@ -8,13 +8,14 @@
 
 use std::collections::HashMap;
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
-use crate::repositories::bars::find_bars_by_instruments;
+use gateway_postgres::repositories::bars::find_bars_by_instruments;
 
 use super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
-use super::{StrategyServer, app_error_to_mcp, decimal_to_f64, invalid_params};
+use super::{StrategyServer, db_error, decimal_to_f64, invalid_params};
 
 /// 1 回の呼び出しで指定できる銘柄数の上限
 const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
@@ -22,10 +23,11 @@ const MAX_QUERY_DATA_INSTRUMENTS: usize = 100;
 impl StrategyServer {
     pub(crate) async fn query_data_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         execution_step_id: Option<Uuid>,
         params: QueryDataParams,
     ) -> Result<QueryDataResult, McpError> {
+        let _scope = scope.into();
         if params.instrument_ids.is_empty() {
             return Err(invalid_params("instrument_ids must not be empty"));
         }
@@ -66,7 +68,7 @@ impl StrategyServer {
 
         let rows = find_bars_by_instruments(&self.db, &instrument_ids, "1d", from, to)
             .await
-            .map_err(app_error_to_mcp)?;
+            .map_err(db_error)?;
 
         let mut bars_by_instrument: HashMap<String, Vec<BarDto>> = HashMap::new();
         for row in rows {
@@ -132,10 +134,10 @@ mod tests {
     use super::super::dto::{BarDto, InstrumentBarsDto, QueryDataParams, QueryDataResult};
     use super::super::tests_common::insert_strategy;
     use super::MAX_QUERY_DATA_INSTRUMENTS;
-    use crate::entities::{instruments, strategy_task_step_evidence};
     use crate::models::Bar;
     use crate::models::bar::Timeframe;
-    use crate::repositories::bars::upsert_bars;
+    use gateway_postgres::entities::{instruments, strategy_task_step_evidence};
+    use gateway_postgres::repositories::bars::upsert_bars;
 
     fn mock_db() -> DatabaseConnection {
         MockDatabase::new(DatabaseBackend::Postgres).into_connection()
@@ -192,8 +194,8 @@ mod tests {
     }
 
     async fn setup_server_with_bars(
-        db: crate::database::DatabaseHandle,
-    ) -> (crate::database::DatabaseHandle, StrategyServer, Uuid) {
+        db: gateway_postgres::DatabaseHandle,
+    ) -> (gateway_postgres::DatabaseHandle, StrategyServer, Uuid) {
         let strategy_id = insert_strategy(&db, "x").await;
 
         insert_test_instrument(&db, "7203").await;
@@ -241,7 +243,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_returns_bars_for_each_requested_instrument(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
@@ -283,7 +285,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_returns_empty_bars_for_instrument_with_no_data(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (_db, server, strategy_id) = setup_server_with_bars(db).await;
 
@@ -322,7 +324,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_records_evidence_per_instrument_when_execution_step_id_present(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server, strategy_id) = setup_server_with_bars(db).await;
         let execution_step_id = Uuid::new_v4();
@@ -347,7 +349,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn query_data_records_no_evidence_when_execution_step_id_absent(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server, strategy_id) = setup_server_with_bars(db).await;
 

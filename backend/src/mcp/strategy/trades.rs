@@ -4,16 +4,14 @@
 //! (`super` の doc comment にある例外参照)。戦略境界の検査は行わず、
 //! `TradeDto::strategy_id` でどの戦略の約定かを判別できるようにする。
 
+use core_application::StrategyScope;
+use core_application::trade::{Trade, TradeOrder, TradeQuery};
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
-
-use crate::entities::trade;
 
 use super::dto::{ReadTradesParams, ReadTradesResult, TradeDto};
-use super::{StrategyServer, clamp_limit, db_error, decimal_to_f64};
+use super::{StrategyServer, clamp_limit, decimal_to_f64, trade_error};
 
-fn trade_to_dto(m: trade::Model) -> TradeDto {
+fn trade_to_dto(m: Trade) -> TradeDto {
     TradeDto {
         trade_id: m.id,
         strategy_id: m.strategy_id,
@@ -28,30 +26,33 @@ fn trade_to_dto(m: trade::Model) -> TradeDto {
 impl StrategyServer {
     pub(crate) async fn read_trades_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadTradesParams,
     ) -> Result<ReadTradesResult, McpError> {
-        let mut query = trade::Entity::find();
-        if let Some(symbol) = params
+        let _scope = scope.into();
+        let symbol = params
             .symbol
             .as_deref()
             .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            query = query.filter(trade::Column::Symbol.eq(symbol));
-        }
-        if let Some(date_from) = params.date_from {
-            query = query.filter(trade::Column::Date.gte(date_from));
-        }
-        let rows = query
-            .order_by_desc(trade::Column::Date)
-            .order_by_desc(trade::Column::CreatedAt)
-            .limit(clamp_limit(params.limit))
-            .all(&self.db)
+            .filter(|symbol| !symbol.is_empty())
+            .map(ToOwned::to_owned);
+        let rows = self
+            .trade_use_cases
+            .list(TradeQuery {
+                strategy_id: None,
+                symbol,
+                date_from: params.date_from,
+                limit: Some(clamp_limit(params.limit)),
+                order: TradeOrder::DateDescending,
+                include_note_count: false,
+            })
             .await
-            .map_err(db_error)?;
+            .map_err(trade_error)?;
         Ok(ReadTradesResult {
-            trades: rows.into_iter().map(trade_to_dto).collect(),
+            trades: rows
+                .into_iter()
+                .map(|row| trade_to_dto(row.trade))
+                .collect(),
         })
     }
 }
@@ -66,7 +67,7 @@ mod tests {
 
     use super::super::dto::{ReadTradesParams, ReadTradesResult, TradeDto};
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::entities::trade;
+    use gateway_postgres::entities::trade;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -103,7 +104,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_returns_full_shape_across_strategies(db: crate::database::DatabaseHandle) {
+    async fn read_trades_returns_full_shape_across_strategies(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let trade_a = seed_trade(&db, strategy_a, "7203", "buy", 100, 1000, ymd(2026, 6, 1)).await;
@@ -143,7 +146,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_filters_by_symbol(db: crate::database::DatabaseHandle) {
+    async fn read_trades_filters_by_symbol(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000, ymd(2026, 6, 1)).await;
         seed_trade(&db, strategy_id, "6758", "buy", 50, 2000, ymd(2026, 6, 1)).await;
@@ -165,7 +168,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_filters_by_date_from_inclusive(db: crate::database::DatabaseHandle) {
+    async fn read_trades_filters_by_date_from_inclusive(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000, ymd(2026, 6, 1)).await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000, ymd(2026, 6, 5)).await;
@@ -188,7 +191,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_trades_respects_limit(db: crate::database::DatabaseHandle) {
+    async fn read_trades_respects_limit(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         for day in 1..=3 {
             seed_trade(

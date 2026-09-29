@@ -1,9 +1,9 @@
 //! 戦略実行 MCP の `read_valuation` tool。
 
 use chrono::NaiveDate;
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
-use uuid::Uuid;
 
 use super::dto::{ReadValuationParams, ReadValuationResult, ValuationDto};
 use super::{StrategyServer, db_error};
@@ -62,9 +62,10 @@ impl StrategyServer {
     pub(crate) async fn read_valuation_inner(
         &self,
         // valuation は会社単位の市場データであり戦略に属さないため検索条件に使わない。
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadValuationParams,
     ) -> Result<ReadValuationResult, McpError> {
+        let _scope = scope.into();
         let rows = self
             .db
             .query_all_raw(Statement::from_sql_and_values(
@@ -105,7 +106,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{ReadValuationParams, ReadValuationResult, ValuationDto};
-    use crate::entities::valuation;
+    use gateway_postgres::entities::valuation;
     fn ymd(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
@@ -131,7 +132,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_valuation_matches_code_prefix_and_date_range(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
         seed(&db, "ZZZZ0", ymd(2099, 1, 3), Decimal::new(125, 1)).await;

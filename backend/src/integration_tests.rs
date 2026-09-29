@@ -17,8 +17,6 @@ use uuid::Uuid;
 use crate::agent_client::{
     AgentTaskState, AgentTaskStatus, FakeAgentTaskClient, SharedAgentTaskClient,
 };
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::strategy_task;
 use crate::mcp::mgmt::{MgmtServer, SubmitStrategyTaskParams};
 use crate::mcp::watcher;
 use crate::services::agent_config;
@@ -28,9 +26,11 @@ use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy,
 };
+use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+use gateway_postgres::entities::strategy_task;
 
 #[backend_test_macros::database_test]
-async fn all_five_submission_routes_converge_on_submit_task(db: crate::database::DatabaseHandle) {
+async fn all_five_submission_routes_converge_on_submit_task(db: gateway_postgres::DatabaseHandle) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
     let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client.clone()).await;
@@ -168,7 +168,7 @@ async fn all_five_submission_routes_converge_on_submit_task(db: crate::database:
 
 #[backend_test_macros::database_test]
 async fn submitted_task_reaches_completed_with_result_text_after_watcher_reconciles(
-    db: crate::database::DatabaseHandle,
+    db: gateway_postgres::DatabaseHandle,
 ) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();

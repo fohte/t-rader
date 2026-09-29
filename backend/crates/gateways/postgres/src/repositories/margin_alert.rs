@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_alert;
-use crate::error::AppError;
-use crate::models::margin::MarginAlertRecord;
+use core_domain::margin::MarginAlertRecord;
 
 impl From<MarginAlertRecord> for margin_alert::ActiveModel {
     fn from(r: MarginAlertRecord) -> Self {
@@ -35,7 +34,7 @@ impl From<MarginAlertRecord> for margin_alert::ActiveModel {
 pub async fn upsert_margin_alert(
     db: &impl sea_orm::ConnectionTrait,
     records: Vec<MarginAlertRecord>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if records.is_empty() {
         return Ok(());
     }
@@ -72,7 +71,7 @@ pub async fn upsert_margin_alert(
 
 pub async fn find_latest_margin_alert_pub_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let latest = margin_alert::Entity::find()
         .order_by_desc(margin_alert::Column::PubDate)
         .one(db)
@@ -83,7 +82,7 @@ pub async fn find_latest_margin_alert_pub_date(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::margin::PubReason;
+    use core_domain::margin::PubReason;
     use sea_orm::EntityTrait;
     fn make_record(pub_date: NaiveDate, code: &str, app_date: NaiveDate) -> MarginAlertRecord {
         MarginAlertRecord {
@@ -115,7 +114,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn upsert_keeps_correction_rows_with_different_pub_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let app_date = NaiveDate::from_ymd_opt(2024, 2, 7).expect("date");
         let original_pub_date = NaiveDate::from_ymd_opt(2024, 2, 8).expect("date");
@@ -144,13 +143,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
+    async fn upsert_with_empty_vec_is_noop(db: gateway_postgres::DatabaseHandle) {
         let result = upsert_margin_alert(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_none_when_empty(db: crate::database::DatabaseHandle) {
+    async fn find_latest_returns_none_when_empty(db: gateway_postgres::DatabaseHandle) {
         let latest = find_latest_margin_alert_pub_date(&db)
             .await
             .expect("query ok");

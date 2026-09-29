@@ -96,7 +96,7 @@ mod tests {
     use crate::agent_client::FakeAgentTaskClient;
 
     #[backend_test_macros::database_test]
-    async fn create_rss_feed_inserts_and_lists(db: crate::database::DatabaseHandle) {
+    async fn create_rss_feed_inserts_and_lists(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(created) = server
@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rss_feed_rejects_invalid_source(db: crate::database::DatabaseHandle) {
+    async fn create_rss_feed_rejects_invalid_source(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db, Arc::new(FakeAgentTaskClient::new()));
         let err = server
             .create_rss_feed(Parameters(CreateRssFeedParams {

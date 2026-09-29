@@ -1,0 +1,42 @@
+[package]
+name = "gateway-postgres"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+test-support = ["dep:migration", "dep:sqlx"]
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+core-domain = { workspace = true }
+core-application = { workspace = true }
+migration = { path = "../../../migration", optional = true }
+sea-orm = { workspace = true, features = [
+    "runtime-tokio-native-tls",
+    "sqlx-postgres",
+    "with-chrono",
+    "with-uuid",
+    "with-rust_decimal",
+    "macros",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sqlx = { workspace = true, optional = true, features = [
+    "runtime-tokio",
+    "tls-native-tls",
+    "postgres",
+    "migrate",
+] }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+backend-test-macros = { path = "../../test-macros" }
+migration = { path = "../../../migration" }
+rust_decimal = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-native-tls", "postgres", "migrate"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

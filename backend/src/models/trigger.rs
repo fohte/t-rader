@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::trigger;
+use gateway_postgres::entities::trigger;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trigger)]
@@ -85,7 +85,13 @@ pub struct CreateTriggerRequest {
 pub struct UpdateTriggerRequest {
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
-    pub event_match: Option<serde_json::Value>,
+    /// 省略時は変更せず、`null` 指定時は条件を解除する。
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    #[schema(value_type = Option<serde_json::Value>)]
+    pub event_match: Option<Option<serde_json::Value>>,
     #[schema(min_length = 1, pattern = r"\S")]
     pub prompt_template: Option<String>,
     pub enabled: Option<bool>,

@@ -12,7 +12,6 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::annotation;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::handlers::strategies::map_submit_error;
@@ -22,6 +21,7 @@ use crate::models::{
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
+use gateway_postgres::entities::annotation;
 
 const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
@@ -429,8 +429,6 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
@@ -438,6 +436,8 @@ mod tests {
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use gateway_postgres::entities::strategy_task;
     use serde_json::Value;
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
@@ -477,7 +477,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_without_strategy_id_succeeds(db: crate::database::DatabaseHandle) {
+    async fn create_annotation_without_strategy_id_succeeds(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
@@ -515,7 +515,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_annotation_without_strategy_id_does_not_submit_task(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -567,7 +567,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_annotation_submits_single_review_task_referencing_annotation(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -626,7 +626,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn rejecting_already_rejected_annotation_does_not_resubmit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -655,7 +655,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_annotation_leaves_status_unchanged_when_agent_submission_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;

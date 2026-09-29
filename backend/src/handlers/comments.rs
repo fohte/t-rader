@@ -12,12 +12,12 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::comment;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CommentResponse, CreateCommentRequest, UpdateCommentRequest};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::comment_anchor;
+use gateway_postgres::entities::comment;
 
 const ALLOWED_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
 const ALLOWED_AUTHOR_KIND: [&str; 2] = ["human", "llm"];
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_comment_sets_resolved(db: crate::database::DatabaseHandle) {
+    async fn update_comment_sets_resolved(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let created = create_note_comment(&server).await;
         let id = created["id"].as_str().expect("id");
@@ -323,7 +323,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn update_comment_missing_id_is_404(db: crate::database::DatabaseHandle) {
+    async fn update_comment_missing_id_is_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .patch(&format!("/api/comments/{}", uuid::Uuid::new_v4()))
@@ -381,7 +381,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_comment_with_line_anchor_stores_explicit_lines(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
@@ -431,7 +431,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_comment_keeps_quote_with_explicit_line_anchor(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;
@@ -481,7 +481,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_comment_on_annotation_with_anchor_text_saves_text_without_line_numbers(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = create_test_server(db).await;
         let strategy_id = crate::testing::create_strategy(&server, "s").await;

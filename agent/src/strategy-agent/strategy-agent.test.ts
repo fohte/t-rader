@@ -14,11 +14,13 @@ import type {
   AgentConfigKey,
 } from '#strategy-agent/agent-config-client'
 import { AgentConfigFetchError } from '#strategy-agent/agent-config-client'
-import type { CompiledPhaseAgent } from '#strategy-agent/agent-graph/run-agent-graph'
+import type {
+  BuildPhaseAgentOptions,
+  CompiledPhaseAgent,
+} from '#strategy-agent/agent-graph/run-agent-graph'
 import type { StrategyTaskStep } from '#strategy-agent/agent-graph/step'
 import { MAX_MODEL_CALLS_PER_INVOKE } from '#strategy-agent/final-turn-middleware'
 import type {
-  CompiledStrategyAgent,
   McpToolsClient,
   RunStrategyAgentInput,
   StrategyAgentDeps,
@@ -87,15 +89,20 @@ const NOOP_SPAN_ID = '0000000000000000'
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
+const AGENT_GRAPH = `phases:
+  - key: work
+    label: Work
+    model: example-model-work
+    prompt: Complete the task
+`
+
 const AGENT_CONFIG: AgentConfig = {
   agentsMd: '# AGENTS',
   skills: { 'ja-stock': 'skill body' },
-  model: 'test-model',
-  agentGraph: '',
+  agentGraph: AGENT_GRAPH,
 }
 
 interface BuildDepsOptions {
-  readonly agentInvoke: CompiledStrategyAgent['invoke']
   readonly tools?: readonly DynamicStructuredTool[]
   readonly agentGraph?: string
   readonly buildPhaseAgentInvoke?: (
@@ -111,18 +118,9 @@ interface McpClientCall {
 
 interface Calls {
   fetchAgentConfigKey?: AgentConfigKey
-  createMcpClientStrategyId?: string
-  createMcpClientTaskId?: string
   mcpClientClosed: boolean
   // createMcpClient の呼び出しごとの 1 行。生成数と close タイミングの検証用。
   mcpClients: McpClientCall[]
-  createChatModelArg?: string
-  createChatModelReturnValue?: unknown
-  buildAgentOptions?: {
-    model: unknown
-    tools: readonly DynamicStructuredTool[]
-    systemPrompt: string
-  }
   capturedDeadlineSignal: AbortSignal | undefined
 }
 
@@ -144,9 +142,7 @@ const buildDeps = (
         agentGraph: options.agentGraph ?? AGENT_CONFIG.agentGraph,
       })
     },
-    createMcpClient: (strategyId, executionId): McpToolsClient => {
-      calls.createMcpClientStrategyId = strategyId
-      calls.createMcpClientTaskId = executionId
+    createMcpClient: (_strategyId, executionId): McpToolsClient => {
       const client: McpClientCall = { executionId, closed: false }
       calls.mcpClients.push(client)
       return {
@@ -158,18 +154,7 @@ const buildDeps = (
         },
       }
     },
-    createChatModel: (model) => {
-      calls.createChatModelArg = model
-      calls.createChatModelReturnValue = chatModel
-      return chatModel
-    },
-    buildAgent: (buildOptions) => {
-      calls.buildAgentOptions = buildOptions
-      calls.capturedDeadlineSignal = buildOptions.deadlineSignal
-      return {
-        invoke: (input) => options.agentInvoke(input),
-      }
-    },
+    createChatModel: () => chatModel,
     buildPhaseAgent: (buildOptions) => {
       calls.capturedDeadlineSignal = buildOptions.deadlineSignal
       return {
@@ -184,41 +169,28 @@ const buildDeps = (
   return { deps, calls }
 }
 
-describe('runStrategyAgent', () => {
-  it('passes the as_of time to the agent as part of the human message', async () => {
-    let invokedMessages: unknown
-    const { deps } = buildDeps({
-      agentInvoke: (input) => {
-        invokedMessages = input.messages
-        return Promise.resolve({
-          structuredResponse: { status: 'completed', message: 'done' },
-        })
+const buildPhaseAgentUnderTest = (
+  deps: StrategyAgentDeps,
+  options: Omit<BuildPhaseAgentOptions, 'responseSchema'>,
+): CompiledPhaseAgent =>
+  deps.buildPhaseAgent({
+    ...options,
+    responseSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string' },
+        message: { type: 'string' },
       },
-    })
-
-    await runStrategyAgent(
-      deps,
-      buildRunInput({ asOf: new Date('2026-01-02T03:04:05Z') }),
-    )
-
-    expect(invokedMessages).toEqual([
-      new HumanMessage(
-        [
-          '基準時刻 (as_of): 2026-01-02T03:04:05.000Z',
-          'これは実行の論理的な基準時刻であり、参照するデータがすべてこの時刻のものであることは保証されない。',
-          'do the thing',
-        ].join('\n\n'),
-      ),
-    ])
+      required: ['status', 'message'],
+    },
   })
 
+describe('runStrategyAgent', () => {
   it('passes the as_of time to the phase agent when agent_graph is configured', async () => {
     let invokedMessages: unknown
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: (input) => {
         invokedMessages = input.messages
         return Promise.resolve({ structuredResponse: {} })
@@ -244,40 +216,20 @@ describe('runStrategyAgent', () => {
     ])
   })
 
-  it('fetches the agent config, builds the agent with it, and maps a completed structured response', async () => {
+  it('fetches the agent config and runs the configured graph', async () => {
     const mcpTools = [buildFakeTool('query_data'), buildFakeTool('write_note')]
-    const { deps, calls } = buildDeps({
-      tools: mcpTools,
-      agentInvoke: () =>
-        Promise.resolve({
-          structuredResponse: { status: 'completed', message: 'done' },
-        }),
-    })
+    const { deps } = buildDeps({ tools: mcpTools })
 
     const result = await runStrategyAgent(deps, buildRunInput())
 
-    expect.soft(result).toEqual({ status: 'completed', message: 'done' })
-    expect.soft(calls.fetchAgentConfigKey).toEqual({ purpose: 'default' })
-    expect.soft(calls.createMcpClientStrategyId).toBe('strategy-1')
-    expect.soft(calls.createMcpClientTaskId).toBe('task-1')
-    expect.soft(calls.createChatModelArg).toBe('test-model')
-    expect
-      .soft(calls.buildAgentOptions?.systemPrompt)
-      .toBe('# AGENTS\n\n# Skill: ja-stock\n\nskill body')
-    expect.soft(calls.buildAgentOptions?.tools).toEqual(mcpTools)
-    expect
-      .soft(calls.buildAgentOptions?.model)
-      .toBe(calls.createChatModelReturnValue)
-    expect.soft(calls.mcpClientClosed).toBe(true)
+    expect(result).toEqual({
+      status: 'completed',
+      message: '1フェーズの実行が完了しました (Work)',
+    })
   })
 
   it('passes the given purpose straight through to fetchAgentConfig instead of the default', async () => {
-    const { deps, calls } = buildDeps({
-      agentInvoke: () =>
-        Promise.resolve({
-          structuredResponse: { status: 'completed', message: 'done' },
-        }),
-    })
+    const { deps, calls } = buildDeps({})
 
     await runStrategyAgent(deps, buildRunInput({ purpose: 'purpose-a' }))
 
@@ -286,40 +238,21 @@ describe('runStrategyAgent', () => {
     })
   })
 
-  it('maps an "error" structured response to failed with error_kind agent_error', async () => {
-    const { deps } = buildDeps({
-      agentInvoke: () =>
-        Promise.resolve({
-          structuredResponse: { status: 'error', message: 'could not comply' },
-        }),
-    })
+  it('fails when agent_graph is not configured', async () => {
+    const { deps } = buildDeps({ agentGraph: '' })
 
     const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'failed',
-      message: 'could not comply',
+      message: 'agent_graph is not configured',
       errorKind: 'agent_error',
     })
   })
 
-  it('maps a missing structured response to failed with error_kind agent_error', async () => {
+  it('maps a thrown usage-limit error from a phase to error_kind usage_limit', async () => {
     const { deps } = buildDeps({
-      agentInvoke: () => Promise.resolve({}),
-    })
-
-    const result = await runStrategyAgent(deps, buildRunInput())
-
-    expect(result).toEqual({
-      status: 'failed',
-      message: 'agent did not return a structured response',
-      errorKind: 'agent_error',
-    })
-  })
-
-  it('maps a thrown usage-limit error to error_kind usage_limit and still closes the MCP client', async () => {
-    const { deps, calls } = buildDeps({
-      agentInvoke: () =>
+      buildPhaseAgentInvoke: () =>
         Promise.reject(
           Object.assign(new Error('rate limited'), {
             rateLimitType: 'capacity',
@@ -331,30 +264,28 @@ describe('runStrategyAgent', () => {
 
     expect(result).toEqual({
       status: 'failed',
-      message: 'usage limit reached',
+      message: 'フェーズ「Work」(work) の実行に失敗しました: rate limited',
       errorKind: 'usage_limit',
     })
-    expect(calls.mcpClientClosed).toBe(true)
   })
 
-  it('maps a generic thrown error to error_kind agent_error using its message', async () => {
+  it('maps a generic thrown phase error to error_kind agent_error', async () => {
     const { deps } = buildDeps({
-      agentInvoke: () => Promise.reject(new Error('mcp tool blew up')),
+      buildPhaseAgentInvoke: () =>
+        Promise.reject(new Error('mcp tool blew up')),
     })
 
     const result = await runStrategyAgent(deps, buildRunInput())
 
     expect(result).toEqual({
       status: 'failed',
-      message: 'mcp tool blew up',
+      message: 'フェーズ「Work」(work) の実行に失敗しました: mcp tool blew up',
       errorKind: 'agent_error',
     })
   })
 
-  it('maps a fetchAgentConfig error result to error_kind agent_error and still closes the MCP client', async () => {
-    const { deps, calls } = buildDeps({
-      agentInvoke: () => Promise.reject(new Error('should not be invoked')),
-    })
+  it('maps a fetchAgentConfig error', async () => {
+    const { deps } = buildDeps({})
     const fetchError = new AgentConfigFetchError(
       'failed to fetch agent config for strategy strategy-1: 500',
     )
@@ -369,15 +300,12 @@ describe('runStrategyAgent', () => {
       message: fetchError.message,
       errorKind: 'agent_error',
     })
-    expect(calls.mcpClientClosed).toBe(true)
   })
 
   it('delegates to runAgentGraph when agent_graph is configured', async () => {
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
     })
 
     const result = await runStrategyAgent(deps, buildRunInput())
@@ -392,8 +320,6 @@ describe('runStrategyAgent', () => {
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
     })
     const notifications: (readonly StrategyTaskStep[])[] = []
 
@@ -441,8 +367,6 @@ describe('runStrategyAgent', () => {
     const { deps, calls } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
     })
 
     const result = await runStrategyAgent(
@@ -457,30 +381,11 @@ describe('runStrategyAgent', () => {
     expect(calls.capturedDeadlineSignal).toBe(controller.signal)
   })
 
-  it('forwards deadlineSignal through to deps.buildAgent when agent_graph is not configured', async () => {
-    const controller = new AbortController()
-    const { deps, calls } = buildDeps({
-      agentInvoke: () =>
-        Promise.resolve({
-          structuredResponse: { status: 'completed', message: 'done' },
-        }),
-    })
-
-    await runStrategyAgent(
-      deps,
-      buildRunInput({ deadlineSignal: controller.signal }),
-    )
-
-    expect(calls.capturedDeadlineSignal).toBe(controller.signal)
-  })
-
   it('skips a completed phase on resume when a valid resume step is provided', async () => {
     let buildPhaseAgentInvokeCalls = 0
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: () => {
         buildPhaseAgentInvokeCalls++
         return Promise.resolve({ structuredResponse: {} })
@@ -515,8 +420,6 @@ describe('runStrategyAgent', () => {
     const { deps } = buildDeps({
       agentGraph:
         'phases:\n  - key: p\n    label: P\n    model: m\n    prompt: do p\n',
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: () => {
         buildPhaseAgentInvokeCalls++
         return Promise.resolve({ structuredResponse: {} })
@@ -551,8 +454,6 @@ describe('runStrategyAgent', () => {
         '    max_parallel: 1',
         '',
       ].join('\n'),
-      agentInvoke: () =>
-        Promise.reject(new Error('buildAgent should not be invoked')),
       buildPhaseAgentInvoke: (_input, currentCalls) => {
         snapshots.push(currentCalls.mcpClients.map((c) => ({ ...c })))
         return Promise.resolve({ structuredResponse: { items: ['a', 'b'] } })
@@ -566,10 +467,9 @@ describe('runStrategyAgent', () => {
     const normalize = (clients: readonly McpClientCall[]): McpClientCall[] =>
       clients.map((client) => {
         const [prefix, stepId] = client.executionId.split(':')
-        if (stepId === undefined) return { ...client }
         expect(stepId).toMatch(UUID_PATTERN)
         return {
-          executionId: `${String(prefix)}:${label(stepId)}`,
+          executionId: `${String(prefix)}:${label(String(stepId))}`,
           closed: client.closed,
         }
       })
@@ -579,24 +479,18 @@ describe('runStrategyAgent', () => {
       message: '2フェーズの実行が完了しました (Plan → Work)',
     })
     expect.soft(snapshots.map(normalize)).toEqual([
+      [{ executionId: 'task-1:<step-1>', closed: false }],
       [
-        { executionId: 'task-1', closed: false },
-        { executionId: 'task-1:<step-1>', closed: false },
-      ],
-      [
-        { executionId: 'task-1', closed: false },
         { executionId: 'task-1:<step-1>', closed: true },
         { executionId: 'task-1:<step-2>', closed: false },
       ],
       [
-        { executionId: 'task-1', closed: false },
         { executionId: 'task-1:<step-1>', closed: true },
         { executionId: 'task-1:<step-2>', closed: true },
         { executionId: 'task-1:<step-3>', closed: false },
       ],
     ])
     expect.soft(normalize(calls.mcpClients)).toEqual([
-      { executionId: 'task-1', closed: true },
       { executionId: 'task-1:<step-1>', closed: true },
       { executionId: 'task-1:<step-2>', closed: true },
       { executionId: 'task-1:<step-3>', closed: true },
@@ -606,7 +500,6 @@ describe('runStrategyAgent', () => {
   it('fails fast on malformed agent_graph without invoking any agent', async () => {
     const { deps } = buildDeps({
       agentGraph: 'phases: [',
-      agentInvoke: () => Promise.reject(new Error('should not be invoked')),
       buildPhaseAgentInvoke: () =>
         Promise.reject(new Error('should not be invoked')),
     })
@@ -719,7 +612,7 @@ describe('createStrategyAgentDeps', () => {
   const buildStubModel = (fetch: ChatOpenAIFetch): ChatOpenAI =>
     new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       configuration: { baseURL: 'http://localhost', fetch },
     })
@@ -740,7 +633,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [],
       systemPrompt: 'you are a helpful bot',
@@ -770,7 +663,7 @@ describe('createStrategyAgentDeps', () => {
     new Response(
       JSON.stringify({
         id: callId,
-        model: 'chatgpt/gpt-5',
+        model: 'example-model-test-stream',
         choices: [
           {
             index: 0,
@@ -828,7 +721,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -852,7 +745,7 @@ describe('createStrategyAgentDeps', () => {
         new Response(
           JSON.stringify({
             id: 'call-1',
-            model: 'chatgpt/gpt-5',
+            model: 'example-model-test-stream',
             choices: [
               {
                 index: 0,
@@ -867,7 +760,7 @@ describe('createStrategyAgentDeps', () => {
     )
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -918,7 +811,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -1001,7 +894,7 @@ describe('createStrategyAgentDeps', () => {
       })
       const deps = createStrategyAgentDeps(baseConfig)
 
-      const agent = deps.buildAgent({
+      const agent = buildPhaseAgentUnderTest(deps, {
         model,
         tools: [buildFakeTool('search')],
         systemPrompt: 'you are a helpful bot',
@@ -1033,7 +926,7 @@ describe('createStrategyAgentDeps', () => {
       llmCallTimeoutMs: 10,
     })
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [],
       systemPrompt: 'you are a helpful bot',
@@ -1064,7 +957,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [],
       systemPrompt: 'you are a helpful bot',
@@ -1098,7 +991,7 @@ describe('createStrategyAgentDeps', () => {
       encoder.encode(
         `data: ${JSON.stringify({
           id: 'call-1',
-          model: 'chatgpt/gpt-5',
+          model: 'example-model-test-stream',
           choices: [
             {
               index: 0,
@@ -1121,7 +1014,7 @@ describe('createStrategyAgentDeps', () => {
 
     const model = new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       streaming: true,
       configuration: {
@@ -1159,7 +1052,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',
@@ -1193,7 +1086,7 @@ describe('createStrategyAgentDeps', () => {
       encoder.encode(
         `data: ${JSON.stringify({
           id: 'call-1',
-          model: 'chatgpt/gpt-5',
+          model: 'example-model-test-stream',
           choices: [
             {
               index: 0,
@@ -1219,7 +1112,7 @@ describe('createStrategyAgentDeps', () => {
 
     const model = new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       streaming: true,
       configuration: {
@@ -1255,7 +1148,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search'), buildFakeTool('notes')],
       systemPrompt: 'you are a helpful bot',
@@ -1297,7 +1190,7 @@ describe('createStrategyAgentDeps', () => {
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: 'call-1',
-                  model: 'chatgpt/gpt-5',
+                  model: 'example-model-test-stream',
                   choices: [
                     {
                       index: 0,
@@ -1328,7 +1221,7 @@ describe('createStrategyAgentDeps', () => {
             encoder.encode(
               `data: ${JSON.stringify({
                 id: 'call-1',
-                model: 'chatgpt/gpt-5',
+                model: 'example-model-test-stream',
                 choices: [{ index: 0, finish_reason: 'tool_calls', delta: {} }],
               })}\n\n`,
             ),
@@ -1341,7 +1234,7 @@ describe('createStrategyAgentDeps', () => {
     let callCount = 0
     const model = new ChatOpenAI({
       apiKey: 'test-key',
-      model: 'chatgpt/gpt-5',
+      model: 'example-model-test-stream',
       maxRetries: 0,
       streaming: true,
       configuration: {
@@ -1394,7 +1287,7 @@ describe('createStrategyAgentDeps', () => {
     })
     const deps = createStrategyAgentDeps(baseConfig)
 
-    const agent = deps.buildAgent({
+    const agent = buildPhaseAgentUnderTest(deps, {
       model,
       tools: [buildFakeTool('search')],
       systemPrompt: 'you are a helpful bot',

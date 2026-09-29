@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::strategy;
+use gateway_postgres::entities::strategy;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Strategy)]
@@ -47,7 +47,13 @@ pub struct CreateStrategyRequest {
 pub struct UpdateStrategyRequest {
     #[schema(min_length = 1, pattern = r"\S")]
     pub name: Option<String>,
-    pub description: Option<String>,
+    /// 省略時は変更せず、`null` 指定時は説明を削除する。
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub description: Option<Option<String>>,
     pub sort_order: Option<i32>,
 }
 

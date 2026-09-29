@@ -4,9 +4,9 @@ use chrono::{DateTime, FixedOffset};
 use uuid::Uuid;
 
 use crate::agent_client::{AgentTaskStatus, EXECUTION_LOST_ERROR_KIND, SharedAgentTaskClient};
-use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-use crate::entities::strategy_task;
 use crate::services::strategy_tasks;
+use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+use gateway_postgres::entities::strategy_task;
 
 use super::phase_for_state;
 

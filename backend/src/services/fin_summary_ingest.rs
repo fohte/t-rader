@@ -16,8 +16,8 @@ use sea_orm::{
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{DateRange, FinancialSummarySource, SharedFinancialSummarySource};
-use crate::entities::financial_summary;
 use crate::error::AppError;
+use gateway_postgres::entities::financial_summary;
 
 /// poll task のデフォルト実行間隔。財務情報の更新頻度 (日次) に合わせて 1 日とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -215,9 +215,9 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::financial_summary;
     use gateway_jquants::JQuantsPlan;
     use gateway_jquants::mock::JQuantsMockServer;
+    use gateway_postgres::entities::financial_summary;
     use rstest::rstest;
     use sea_orm::{ActiveModelTrait, EntityTrait};
     use serde_json::json;
@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_ingests_and_upserts_new_disclosures(db: crate::database::DatabaseHandle) {
+    async fn test_ingests_and_upserts_new_disclosures(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)
@@ -365,7 +365,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn test_replaces_all_fields_for_corrected_disclosures(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
@@ -475,7 +475,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_continues_past_days_that_fail_to_fetch(db: crate::database::DatabaseHandle) {
+    async fn test_continues_past_days_that_fail_to_fetch(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)

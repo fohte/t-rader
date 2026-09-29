@@ -9,7 +9,6 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{comment, note, note_version};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::strategies::map_submit_error;
@@ -17,6 +16,7 @@ use crate::models::{ChangeStatusRequest, NoteVersionResponse};
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::note_versions::{self, INITIAL_NOTE_STATUS};
 use crate::services::strategy_tasks::{self, TaskSource};
+use gateway_postgres::entities::{comment, note, note_version};
 
 async fn find_note_version<C: sea_orm::ConnectionTrait>(
     db: &C,

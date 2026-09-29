@@ -3,22 +3,22 @@
 //! 記録後の確率・期限・対象の書き換えは採点を無意味にするため、更新・削除の tool は
 //! 意図的に用意しない。読み取りは自戦略の予測に限る。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use crate::entities::{prediction, stock};
 use crate::services::predictions::{ensure_direction, ensure_probability};
+use gateway_postgres::entities::{prediction, stock};
 
 use super::dto::{
     ListPredictionsParams, ListPredictionsResult, PredictionDto, RecordPredictionParams,
     RecordPredictionResult,
 };
 use super::{
-    StrategyServer, clamp_limit, db_error, decimal_to_f64, ensure_strategy_exists,
-    fetch_note_owned_by, invalid_params,
+    StrategyServer, clamp_limit, db_error, decimal_to_f64, fetch_note_owned_by, invalid_params,
 };
 
 fn validation_to_mcp(err: crate::error::AppError) -> McpError {
@@ -63,9 +63,10 @@ async fn ensure_stock_exists(db: &impl sea_orm::ConnectionTrait, id: &str) -> Re
 impl StrategyServer {
     pub(crate) async fn record_prediction_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: RecordPredictionParams,
     ) -> Result<RecordPredictionResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let target_stock_id = params.target_stock_id.trim().to_string();
         let benchmark_stock_id = params.benchmark_stock_id.trim().to_string();
         if target_stock_id.is_empty() {
@@ -87,7 +88,6 @@ impl StrategyServer {
             return Err(invalid_params("due_date must be after base_date"));
         }
 
-        ensure_strategy_exists(&self.db, session_strategy_id).await?;
         if let Some(note_id) = params.note_id {
             fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
         }
@@ -117,9 +117,10 @@ impl StrategyServer {
 
     pub(crate) async fn list_predictions_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ListPredictionsParams,
     ) -> Result<ListPredictionsResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let mut query = prediction::Entity::find()
             .filter(prediction::Column::StrategyId.eq(session_strategy_id));
         if let Some(due_after) = params.due_after {
@@ -169,7 +170,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_creates_prediction_with_given_values(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -198,7 +199,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_same_target_and_benchmark(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -212,7 +213,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_rejects_invalid_direction(db: crate::database::DatabaseHandle) {
+    async fn record_prediction_rejects_invalid_direction(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
@@ -228,7 +229,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_rejects_invalid_probability(db: crate::database::DatabaseHandle) {
+    async fn record_prediction_rejects_invalid_probability(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
@@ -245,7 +246,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_due_date_not_after_base_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -262,7 +263,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn record_prediction_rejects_missing_target_stock(db: crate::database::DatabaseHandle) {
+    async fn record_prediction_rejects_missing_target_stock(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;
         let server = build_server(db);
@@ -276,7 +277,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_missing_benchmark_stock(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -291,7 +292,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn record_prediction_rejects_cross_strategy_linked_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -311,7 +312,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn list_predictions_returns_only_own_strategy_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -352,7 +353,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_predictions_filters_by_due_date_range(db: crate::database::DatabaseHandle) {
+    async fn list_predictions_filters_by_due_date_range(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
         insert_test_stock(&db, "BM1", "Benchmark").await;

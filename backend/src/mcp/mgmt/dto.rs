@@ -5,8 +5,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::{rss_feed, trigger};
 use crate::models::TriggerKind;
+use gateway_postgres::entities::{rss_feed, trigger};
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StrategySummary {
@@ -175,8 +175,8 @@ pub struct NoteKindSummary {
     pub sort_order: i32,
 }
 
-impl From<crate::entities::note_kind::Model> for NoteKindSummary {
-    fn from(model: crate::entities::note_kind::Model) -> Self {
+impl From<gateway_postgres::entities::note_kind::Model> for NoteKindSummary {
+    fn from(model: gateway_postgres::entities::note_kind::Model) -> Self {
         Self {
             key: model.key,
             display_name: model.display_name,

@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_ratio;
-use crate::error::AppError;
-use crate::models::ShortRatio;
+use core_domain::short_ratio::ShortRatio;
 
 impl From<ShortRatio> for short_ratio::ActiveModel {
     fn from(ratio: ShortRatio) -> Self {
@@ -25,7 +24,7 @@ impl From<ShortRatio> for short_ratio::ActiveModel {
 pub async fn upsert_short_ratios(
     db: &impl sea_orm::ConnectionTrait,
     ratios: Vec<ShortRatio>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if ratios.is_empty() {
         return Ok(());
     }
@@ -51,7 +50,7 @@ pub async fn upsert_short_ratios(
 /// DB 上の最新の対象日を返す。1 件も無ければ `None`。
 pub async fn find_latest_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let result = short_ratio::Entity::find()
         .order_by_desc(short_ratio::Column::Date)
         .one(db)
@@ -75,7 +74,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_inserts_new_records(db: crate::database::DatabaseHandle) {
+    async fn upsert_inserts_new_records(db: gateway_postgres::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         let ratios = vec![make_ratio(date, "0050", 100), make_ratio(date, "3050", 200)];
@@ -91,7 +90,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_updates_existing_record_on_correction(db: crate::database::DatabaseHandle) {
+    async fn upsert_updates_existing_record_on_correction(db: gateway_postgres::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         upsert_short_ratios(&db, vec![make_ratio(date, "0050", 100)])
@@ -114,13 +113,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
+    async fn upsert_with_empty_vec_is_noop(db: gateway_postgres::DatabaseHandle) {
         let result = upsert_short_ratios(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_date_returns_most_recent(db: crate::database::DatabaseHandle) {
+    async fn find_latest_date_returns_most_recent(db: gateway_postgres::DatabaseHandle) {
         let d1 = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
         let d2 = NaiveDate::from_ymd_opt(2025, 1, 8).expect("date");
         let d3 = NaiveDate::from_ymd_opt(2025, 1, 7).expect("date");
@@ -141,7 +140,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_date_returns_none_when_empty(db: crate::database::DatabaseHandle) {
+    async fn find_latest_date_returns_none_when_empty(db: gateway_postgres::DatabaseHandle) {
         let result = find_latest_date(&db).await.expect("find failed");
         assert_eq!(result, None);
     }

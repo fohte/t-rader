@@ -322,7 +322,7 @@
         "tags": [
           "agent_config"
         ],
-        "summary": "目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出す。",
+        "summary": "目的別 agent 設定一式 (AGENTS.md / skills / agent_graph) の統合取得。\nt-rader-agent がタスク実行のたびに呼び出す。",
         "operationId": "agent_config_get_agent_config_bundle",
         "parameters": [
           {
@@ -4582,6 +4582,67 @@
       }
     },
     "/api/rss-feeds/{id}": {
+      "get": {
+        "tags": [
+          "rss_feeds"
+        ],
+        "summary": "RSS フィードを取得",
+        "operationId": "get_rss_feed",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "rss_feed ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RssFeed"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "パスパラメータが不正",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "rss_feeds"
@@ -6817,7 +6878,6 @@
         "required": [
           "agents_md",
           "skills",
-          "model",
           "agent_graph"
         ],
         "properties": {
@@ -6826,9 +6886,6 @@
             "description": "多段フェーズ実行設定 (YAML)。未設定なら空文字列。"
           },
           "agents_md": {
-            "type": "string"
-          },
-          "model": {
             "type": "string"
           },
           "skills": {
@@ -7561,7 +7618,8 @@
             "type": "string",
             "description": "RSS フィード URL (http / https のみ)"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "CreateStrategyRequest": {
         "type": "object",
@@ -9420,7 +9478,8 @@
               "null"
             ]
           }
-        }
+        },
+        "additionalProperties": false
       },
       "UpdateStrategyRequest": {
         "type": "object",
@@ -9429,7 +9488,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "省略時は変更せず、`null` 指定時は説明を削除する。"
           },
           "name": {
             "type": [
@@ -9523,7 +9583,9 @@
               "null"
             ]
           },
-          "event_match": {},
+          "event_match": {
+            "description": "省略時は変更せず、`null` 指定時は条件を解除する。"
+          },
           "hook_slug": {
             "type": [
               "string",

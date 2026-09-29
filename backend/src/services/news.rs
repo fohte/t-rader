@@ -10,8 +10,8 @@ use sea_orm::{DatabaseConnection, EntityTrait, Set};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use crate::entities::news_item;
 use crate::services::rss_feed::{self, RssFeedError};
+use gateway_postgres::entities::news_item;
 
 #[derive(Debug, thiserror::Error)]
 pub enum NewsAggregationError {
@@ -123,9 +123,9 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entities::news_item;
     use crate::services::rss_feed::{self, CreateInput};
     use core_application::{FakeNewsAggregator, NewsAggregatorError, NewsFeed};
+    use gateway_postgres::entities::news_item;
     use sea_orm::{EntityTrait, PaginatorTrait};
     async fn create_feed(
         db: &impl sea_orm::ConnectionTrait,
@@ -148,7 +148,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn run_aggregation_cycle_passes_enabled_feeds_by_display_name(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         create_feed(&db, "feed_zulu", "Zulu publication", true).await;
         create_feed(&db, "feed_alpha", "Alpha publication", true).await;
@@ -180,7 +180,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn run_aggregation_cycle_stops_before_upsert_when_aggregator_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let aggregator = FakeNewsAggregator::new();
         *aggregator.fetch_error.lock().await =

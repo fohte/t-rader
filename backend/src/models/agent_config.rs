@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::agent_config;
+use gateway_postgres::entities::agent_config;
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -47,7 +47,6 @@ pub struct SkillsBody {
 pub struct AgentConfigResponse {
     pub agents_md: String,
     pub skills: BTreeMap<String, String>,
-    pub model: String,
     /// 多段フェーズ実行設定 (YAML)。未設定なら空文字列。
     pub agent_graph: String,
 }

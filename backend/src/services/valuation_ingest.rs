@@ -11,8 +11,8 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use tokio::task::JoinHandle;
 
 use crate::date_utils::latest_business_day;
-use crate::entities::{valuation, valuation_ingested_date};
 use crate::error::AppError;
+use gateway_postgres::entities::{valuation, valuation_ingested_date};
 
 /// poll task のデフォルト実行間隔。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60 * 60);
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn ingests_valuations_and_marks_non_empty_dates(db: crate::database::DatabaseHandle) {
+    async fn ingests_valuations_and_marks_non_empty_dates(db: gateway_postgres::DatabaseHandle) {
         let to = latest_business_day(Utc::now().date_naive());
         let expected_valuation = sample_valuation(to);
         let source = TestValuationSource {
@@ -358,7 +358,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn does_not_mark_empty_valuation_dates_as_ingested(db: crate::database::DatabaseHandle) {
+    async fn does_not_mark_empty_valuation_dates_as_ingested(db: gateway_postgres::DatabaseHandle) {
         let to = latest_business_day(Utc::now().date_naive());
         let source = TestValuationSource {
             range: Some(DateRange { from: to, to }),

@@ -2,11 +2,10 @@ use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::short_sale_report;
-use crate::error::AppError;
-use crate::models::ShortSaleReport;
+use core_domain::short_sale_report::ShortSaleReport;
 
 impl From<ShortSaleReport> for short_sale_report::ActiveModel {
     fn from(report: ShortSaleReport) -> Self {
@@ -39,7 +38,7 @@ impl From<ShortSaleReport> for short_sale_report::ActiveModel {
 pub async fn upsert_short_sale_reports(
     db: &impl sea_orm::ConnectionTrait,
     reports: Vec<ShortSaleReport>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if reports.is_empty() {
         return Ok(());
     }
@@ -101,7 +100,7 @@ pub async fn upsert_short_sale_reports(
 /// DB 上の最新の公表日を返す。1 件も無ければ `None`。
 pub async fn find_latest_disc_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let result = short_sale_report::Entity::find()
         .order_by_desc(short_sale_report::Column::DiscDate)
         .one(db)
@@ -134,7 +133,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_inserts_new_records(db: crate::database::DatabaseHandle) {
+    async fn upsert_inserts_new_records(db: gateway_postgres::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         let reports = vec![
@@ -153,7 +152,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_updates_existing_record_on_correction(db: crate::database::DatabaseHandle) {
+    async fn upsert_updates_existing_record_on_correction(db: gateway_postgres::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
         upsert_short_sale_reports(&db, vec![make_report(date, "7203", "報告者A", 0.05)])
@@ -178,7 +177,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn upsert_allows_same_disc_date_with_different_calc_date(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let disc_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
@@ -201,7 +200,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn upsert_dedups_duplicate_pk_rows_in_same_batch_keeping_last(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
@@ -243,7 +242,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn upsert_keeps_rows_distinct_when_a_dedup_key_column_differs(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
 
@@ -268,13 +267,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
+    async fn upsert_with_empty_vec_is_noop(db: gateway_postgres::DatabaseHandle) {
         let result = upsert_short_sale_reports(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_disc_date_returns_most_recent(db: crate::database::DatabaseHandle) {
+    async fn find_latest_disc_date_returns_most_recent(db: gateway_postgres::DatabaseHandle) {
         let d1 = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
         let d2 = NaiveDate::from_ymd_opt(2025, 1, 8).expect("date");
         let d3 = NaiveDate::from_ymd_opt(2025, 1, 7).expect("date");
@@ -295,7 +294,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_disc_date_returns_none_when_empty(db: crate::database::DatabaseHandle) {
+    async fn find_latest_disc_date_returns_none_when_empty(db: gateway_postgres::DatabaseHandle) {
         let result = find_latest_disc_date(&db).await.expect("find failed");
         assert_eq!(result, None);
     }

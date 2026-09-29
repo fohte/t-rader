@@ -13,8 +13,8 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
 use tokio::task::JoinHandle;
 
-use crate::entities::{indicator, indicator_observation};
 use crate::error::AppError;
+use gateway_postgres::entities::{indicator, indicator_observation};
 
 #[derive(Debug, thiserror::Error)]
 enum FredIngestError {
@@ -239,7 +239,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn creates_indicator_and_ingests_full_history_when_table_is_empty(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = MockServer::start().await;
         mount_series(
@@ -283,7 +283,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn resumes_from_latest_date_minus_lookback_and_updates_existing_value(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let def = series_def();
 
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn does_not_overwrite_existing_indicator_row(db: crate::database::DatabaseHandle) {
+    async fn does_not_overwrite_existing_indicator_row(db: gateway_postgres::DatabaseHandle) {
         let def = series_def();
         indicator::ActiveModel {
             id: Set(def.indicator_id.to_string()),

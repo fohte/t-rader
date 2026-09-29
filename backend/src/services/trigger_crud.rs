@@ -9,9 +9,9 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
-use crate::entities::trigger;
 use crate::error::AppError;
 use crate::models::{CreateTriggerRequest, TriggerKind, UpdateTriggerRequest};
+use gateway_postgres::entities::trigger;
 
 fn validate_template(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
@@ -79,7 +79,7 @@ async fn find_strategy_or_404(
     db: &impl sea_orm::ConnectionTrait,
     id: Uuid,
 ) -> Result<(), AppError> {
-    let exists = crate::entities::strategy::Entity::find_by_id(id)
+    let exists = gateway_postgres::entities::strategy::Entity::find_by_id(id)
         .one(db)
         .await?
         .is_some();
@@ -188,8 +188,8 @@ pub async fn update_trigger(
         active.hook_slug = Set(Some(trimmed));
     }
     if let Some(event_match) = payload.event_match {
-        validate_event_match(Some(&event_match))?;
-        active.event_match = Set(Some(event_match));
+        validate_event_match(event_match.as_ref())?;
+        active.event_match = Set(event_match);
     }
     if let Some(prompt_template) = payload.prompt_template {
         active.prompt_template = Set(validate_template(&prompt_template)?);

@@ -16,10 +16,10 @@ use tokio::task::JoinHandle;
 
 use crate::data_provider::{MarketDailyBarSource, SharedMarketDailyBarSource};
 use crate::date_utils::latest_business_day;
-use crate::entities::{instruments, jquants_daily_bars_ingested_date};
 use crate::error::AppError;
 use crate::models::Bar;
-use crate::repositories::bars::upsert_bars;
+use gateway_postgres::entities::{instruments, jquants_daily_bars_ingested_date};
+use gateway_postgres::repositories::bars::upsert_bars;
 
 /// poll task のデフォルト実行間隔。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60 * 60);
@@ -217,9 +217,9 @@ pub fn spawn_poll(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repositories::bars::{BarsQuery, find_bars};
     use gateway_jquants::JQuantsPlan;
     use gateway_jquants::mock::{JQuantsMockServer, MockBar};
+    use gateway_postgres::repositories::bars::{BarsQuery, find_bars};
     use rstest::rstest;
     use sea_orm::{ActiveModelTrait, EntityTrait};
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -301,7 +301,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn test_ingests_bars_and_creates_missing_instruments(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
@@ -364,7 +364,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_does_not_mark_unpublished_day_as_ingested(db: crate::database::DatabaseHandle) {
+    async fn test_does_not_mark_unpublished_day_as_ingested(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)
@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_continues_past_days_that_fail_to_fetch(db: crate::database::DatabaseHandle) {
+    async fn test_continues_past_days_that_fail_to_fetch(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)

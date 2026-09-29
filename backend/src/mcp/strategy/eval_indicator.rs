@@ -9,13 +9,14 @@
 
 use std::time::Duration;
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::entities::custom_indicator;
 use crate::kata_exec::{ExecRequest, KataExecError};
 use crate::services::custom_indicators::resolve_indicator;
+use gateway_postgres::entities::custom_indicator;
 
 use super::dto::{EvalIndicatorParams, EvalIndicatorResult};
 use super::{
@@ -35,9 +36,10 @@ enum SchemaCheckError {
 impl StrategyServer {
     pub(crate) async fn eval_indicator_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: EvalIndicatorParams,
     ) -> Result<EvalIndicatorResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let name = params.name.trim();
         if name.is_empty() {
             return Err(invalid_params("name must not be empty"));
@@ -184,9 +186,9 @@ mod tests {
     use super::super::StrategyServer;
     use super::super::dto::{EvalIndicatorParams, EvalIndicatorResult};
     use super::{EXEC_MAX_OUTPUT_BYTES, EXEC_MAX_TIMEOUT_SECS};
-    use crate::entities::{custom_indicator, strategy};
     use crate::kata_exec::{ExecResult, FakeKataExecutor, SharedKataExecutor};
     use crate::services::custom_indicators::{SCOPE_GLOBAL, SCOPE_STRATEGY};
+    use gateway_postgres::entities::{custom_indicator, strategy};
 
     async fn insert_strategy(db: &impl sea_orm::ConnectionTrait, name: &str) -> Uuid {
         let id = Uuid::new_v4();
@@ -231,7 +233,7 @@ mod tests {
     }
 
     fn build_server(
-        db: impl Into<crate::database::DatabaseHandle>,
+        db: impl Into<gateway_postgres::DatabaseHandle>,
         executor: Arc<FakeKataExecutor>,
     ) -> (StrategyServer, SharedKataExecutor) {
         let shared: SharedKataExecutor = executor;
@@ -249,7 +251,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_resolves_and_runs(db: crate::database::DatabaseHandle) {
+    async fn eval_indicator_resolves_and_runs(db: gateway_postgres::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         let ind = insert_indicator(
             &db,
@@ -301,7 +303,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_prefers_strategy_scope(db: crate::database::DatabaseHandle) {
+    async fn eval_indicator_prefers_strategy_scope(db: gateway_postgres::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         let _global = insert_indicator(
             &db,
@@ -353,7 +355,7 @@ mod tests {
 
     /// 戦略 A の session から戦略 B 専用 indicator は見えない (resolve 段で not found)。
     #[backend_test_macros::database_test]
-    async fn eval_indicator_rejects_cross_strategy_scope(db: crate::database::DatabaseHandle) {
+    async fn eval_indicator_rejects_cross_strategy_scope(db: gateway_postgres::DatabaseHandle) {
         let s_a = insert_strategy(&db, "a").await;
         let s_b = insert_strategy(&db, "b").await;
         insert_indicator(
@@ -385,7 +387,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_validates_input_args(db: crate::database::DatabaseHandle) {
+    async fn eval_indicator_validates_input_args(db: gateway_postgres::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -423,7 +425,7 @@ mod tests {
     /// sandbox 拒否 (network / subprocess / fs write) は MCP エラーではなく
     /// `exit_code != 0` + `stderr` で透過する。
     #[backend_test_macros::database_test]
-    async fn eval_indicator_passes_through_sandbox_rejection(db: crate::database::DatabaseHandle) {
+    async fn eval_indicator_passes_through_sandbox_rejection(db: gateway_postgres::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         let ind = insert_indicator(
             &db,
@@ -464,7 +466,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_rejects_invalid_output(db: crate::database::DatabaseHandle) {
+    async fn eval_indicator_rejects_invalid_output(db: gateway_postgres::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -502,7 +504,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn eval_indicator_rejects_output_schema_mismatch(db: crate::database::DatabaseHandle) {
+    async fn eval_indicator_rejects_output_schema_mismatch(db: gateway_postgres::DatabaseHandle) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
             &db,
@@ -544,7 +546,7 @@ mod tests {
     /// 「args が悪い」と誤認させない。
     #[backend_test_macros::database_test]
     async fn eval_indicator_reports_broken_input_schema_as_internal(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(
@@ -579,7 +581,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn eval_indicator_errors_when_executor_not_configured(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let sid = insert_strategy(&db, "s").await;
         insert_indicator(

@@ -2,9 +2,7 @@ pub mod agent_client;
 pub mod cli;
 pub(crate) mod concurrent;
 pub mod data_provider;
-pub mod database;
 pub(crate) mod date_utils;
-pub mod entities;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
@@ -14,7 +12,6 @@ pub mod kata_exec;
 pub mod mcp;
 pub mod middleware;
 pub mod models;
-pub mod repositories;
 pub(crate) mod serde_helpers;
 pub mod services;
 #[cfg(test)]
@@ -37,7 +34,6 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::agent_client::{AgentTaskClient, DisabledAgentTaskClient, SharedAgentTaskClient};
 use crate::data_provider::SharedDailyBarSource;
-use crate::database::DatabaseHandle;
 use crate::error::{AppError, ErrorResponse};
 use crate::handlers::{
     agent_config, agent_options, agent_tasks, annotations, bars, comments, config,
@@ -47,11 +43,14 @@ use crate::handlers::{
 };
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
+use core_application::trade::TradeUseCases;
 use gateway_jquants::JQuantsClient;
+use gateway_postgres::DatabaseHandle;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseHandle,
+    pub trade_use_cases: TradeUseCases,
     /// 日足データ取得元
     ///
     /// `DATA_PROVIDER=none` または client の未設定時は `None` で起動する。
@@ -145,8 +144,10 @@ mod app_state_tests {
         )
         .unwrap();
         let daily_bar_source: SharedDailyBarSource = Arc::new(client);
+        let db = DatabaseHandle::from(mock_db());
         let state = AppState {
-            db: mock_db().into(),
+            db: db.clone(),
+            trade_use_cases: crate::services::trades::build_use_cases(db),
             daily_bar_source: Some(daily_bar_source),
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
@@ -160,8 +161,10 @@ mod app_state_tests {
 
     #[rstest]
     fn test_daily_bar_source_returns_error_when_none() {
+        let db = DatabaseHandle::from(mock_db());
         let state = AppState {
-            db: mock_db().into(),
+            db: db.clone(),
+            trade_use_cases: crate::services::trades::build_use_cases(db),
             daily_bar_source: None,
             jquants_client: None,
             agent_task_client: AppState::disabled_agent_task_client(),
@@ -323,6 +326,7 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
             rss_feeds::create_rss_feed
         ))
         .routes(routes!(
+            rss_feeds::get_rss_feed,
             rss_feeds::update_rss_feed,
             rss_feeds::delete_rss_feed
         ))

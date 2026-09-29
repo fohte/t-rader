@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::annotation;
+use gateway_postgres::entities::annotation;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Annotation)]

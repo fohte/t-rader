@@ -1,10 +1,9 @@
 use chrono::NaiveDate;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QueryOrder, Set};
+use sea_orm::{DbErr, EntityTrait, QueryOrder, Set};
 
 use crate::entities::margin_interest;
-use crate::error::AppError;
-use crate::models::margin::MarginInterestRecord;
+use core_domain::margin::MarginInterestRecord;
 
 impl From<MarginInterestRecord> for margin_interest::ActiveModel {
     fn from(r: MarginInterestRecord) -> Self {
@@ -33,7 +32,7 @@ impl From<MarginInterestRecord> for margin_interest::ActiveModel {
 pub async fn upsert_margin_interest(
     db: &impl sea_orm::ConnectionTrait,
     records: Vec<MarginInterestRecord>,
-) -> Result<(), AppError> {
+) -> Result<(), DbErr> {
     if records.is_empty() {
         return Ok(());
     }
@@ -72,7 +71,7 @@ pub async fn upsert_margin_interest(
 
 pub async fn find_latest_margin_interest_date(
     db: &impl sea_orm::ConnectionTrait,
-) -> Result<Option<NaiveDate>, AppError> {
+) -> Result<Option<NaiveDate>, DbErr> {
     let latest = margin_interest::Entity::find()
         .order_by_desc(margin_interest::Column::Date)
         .one(db)
@@ -104,7 +103,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_inserts_and_updates_on_conflict(db: crate::database::DatabaseHandle) {
+    async fn upsert_inserts_and_updates_on_conflict(db: gateway_postgres::DatabaseHandle) {
         let date = NaiveDate::from_ymd_opt(2024, 1, 5).expect("date");
 
         upsert_margin_interest(&db, vec![make_record(date, "7203", 100)])
@@ -121,13 +120,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_with_empty_vec_is_noop(db: crate::database::DatabaseHandle) {
+    async fn upsert_with_empty_vec_is_noop(db: gateway_postgres::DatabaseHandle) {
         let result = upsert_margin_interest(&db, vec![]).await;
         assert!(result.is_ok());
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_none_when_empty(db: crate::database::DatabaseHandle) {
+    async fn find_latest_returns_none_when_empty(db: gateway_postgres::DatabaseHandle) {
         let latest = find_latest_margin_interest_date(&db)
             .await
             .expect("query ok");
@@ -135,7 +134,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn find_latest_returns_max_date(db: crate::database::DatabaseHandle) {
+    async fn find_latest_returns_max_date(db: gateway_postgres::DatabaseHandle) {
         let older = NaiveDate::from_ymd_opt(2024, 1, 5).expect("date");
         let newer = NaiveDate::from_ymd_opt(2024, 1, 12).expect("date");
         upsert_margin_interest(

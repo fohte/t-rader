@@ -6,11 +6,11 @@
 //! として扱う。空売り残高報告は会社単位の開示であり戦略に属さない市場データのため、
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
-use crate::entities::short_sale_report;
+use gateway_postgres::entities::short_sale_report;
 
 use super::dto::{ReadShortSaleReportsParams, ReadShortSaleReportsResult, ShortSaleReportDto};
 use super::{StrategyServer, clamp_limit, code_range, db_error, decimal_to_f64, validate_symbol};
@@ -41,9 +41,10 @@ fn short_sale_report_dto(row: short_sale_report::Model) -> ShortSaleReportDto {
 impl StrategyServer {
     pub(crate) async fn read_short_sale_reports_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadShortSaleReportsParams,
     ) -> Result<ReadShortSaleReportsResult, McpError> {
+        let _scope = scope.into();
         validate_symbol(&params.symbol)?;
         let limit = clamp_limit(params.limit);
         let (lower, upper) = code_range(&params.symbol);
@@ -87,7 +88,7 @@ mod tests {
     use super::super::dto::{ReadShortSaleReportsParams, ReadShortSaleReportsResult};
     use super::super::tests_common::build_server;
     use super::blank_to_none;
-    use crate::entities::short_sale_report;
+    use gateway_postgres::entities::short_sale_report;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -132,7 +133,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_non_4_digit_symbol(db: crate::database::DatabaseHandle) {
+    async fn rejects_non_4_digit_symbol(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_short_sale_reports_inner(
                 Uuid::new_v4(),
@@ -150,7 +151,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn matches_by_first_4_chars_newest_first_with_blank_fields_as_null(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         seed(
             &db,
@@ -237,7 +238,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn filters_by_disc_date_range(db: crate::database::DatabaseHandle) {
+    async fn filters_by_disc_date_range(db: gateway_postgres::DatabaseHandle) {
         for (day, name) in [(1u32, "Jan"), (15, "Mid"), (28, "Late")] {
             seed(
                 &db,
@@ -275,7 +276,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn respects_limit_after_ordering(db: crate::database::DatabaseHandle) {
+    async fn respects_limit_after_ordering(db: gateway_postgres::DatabaseHandle) {
         for (day, name) in [(1u32, "A"), (2, "B"), (3, "C")] {
             seed(
                 &db,

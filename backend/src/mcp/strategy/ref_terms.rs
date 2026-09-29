@@ -10,17 +10,17 @@
 //! `search_refs` と同様、戦略に属さないマスタデータのため `session_strategy_id` は
 //! 使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use super::{StrategyServer, db_error, invalid_params};
-use crate::entities::ref_term;
 use crate::services::note_refs::ALLOWED_REF_KINDS;
+use gateway_postgres::entities::ref_term;
 
 /// 戦略 Agent が追加する別名の固定 origin。
 const AGENT_TERM_ORIGIN: &str = "llm";
@@ -69,9 +69,10 @@ impl StrategyServer {
     /// 別名を追加する。同じ (ref_kind, ref_id, term) が既にあれば idempotent に無視する。
     pub(crate) async fn add_ref_terms_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: AddRefTermsParams,
     ) -> Result<AddRefTermsResult, McpError> {
+        let _scope = scope.into();
         let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
 
         let mut added = Vec::new();
@@ -111,9 +112,10 @@ impl StrategyServer {
     /// 別名を削除する。登録されていない語を渡しても idempotent に無視する。
     pub(crate) async fn remove_ref_terms_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: RemoveRefTermsParams,
     ) -> Result<RemoveRefTermsResult, McpError> {
+        let _scope = scope.into();
         let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
 
         let mut removed = Vec::new();
@@ -147,7 +149,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{AddRefTermsParams, RemoveRefTermsParams};
-    use crate::entities::ref_term;
+    use gateway_postgres::entities::ref_term;
 
     async fn seed_term(
         db: &impl sea_orm::ConnectionTrait,
@@ -168,7 +170,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn add_ref_terms_inserts_new_terms(db: crate::database::DatabaseHandle) {
+    async fn add_ref_terms_inserts_new_terms(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db);
 
         let result = server
@@ -191,7 +193,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn add_ref_terms_is_idempotent_and_skips_blank_terms(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
         seed_term(&db, "stock", "7203", "トヨタ").await;
@@ -212,7 +214,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn add_ref_terms_rejects_invalid_ref_kind(db: crate::database::DatabaseHandle) {
+    async fn add_ref_terms_rejects_invalid_ref_kind(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db);
 
         let err = server
@@ -230,7 +232,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn add_ref_terms_rejects_empty_ref_id(db: crate::database::DatabaseHandle) {
+    async fn add_ref_terms_rejects_empty_ref_id(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db);
 
         let err = server
@@ -248,7 +250,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn remove_ref_terms_deletes_only_matching_terms(db: crate::database::DatabaseHandle) {
+    async fn remove_ref_terms_deletes_only_matching_terms(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db.clone());
         seed_term(&db, "stock", "7203", "トヨタ").await;
         seed_term(&db, "stock", "7203", "Toyota").await;
@@ -276,7 +278,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn remove_ref_terms_rejects_invalid_ref_kind(db: crate::database::DatabaseHandle) {
+    async fn remove_ref_terms_rejects_invalid_ref_kind(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db);
 
         let err = server

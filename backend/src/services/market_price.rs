@@ -10,10 +10,10 @@ use sea_orm::{EntityTrait, Set};
 
 use crate::data_provider::DailyBarSource;
 use crate::date_utils::latest_business_day;
-use crate::entities::instruments;
 use crate::models::Timeframe;
-use crate::repositories::bars::find_latest_bar;
 use crate::services::backfill::{backfill_daily_bars, latest_fetchable_date};
+use gateway_postgres::entities::instruments;
+use gateway_postgres::repositories::bars::find_latest_bar;
 
 /// 銘柄ごとの直近終値と、その観測日。
 #[derive(Debug, PartialEq)]
@@ -123,10 +123,10 @@ mod tests {
     use super::*;
     use crate::models::instrument::{Instrument, Market};
     use crate::models::{Bar, Timeframe};
-    use crate::repositories::bars::upsert_bars;
     use crate::services::backfill::latest_fetchable_date;
     use crate::testing::MockProvider;
     use chrono::{Duration, NaiveDate, TimeZone, Utc};
+    use gateway_postgres::repositories::bars::upsert_bars;
     use rust_decimal::Decimal;
 
     fn sample_instrument(id: &str) -> Instrument {
@@ -210,7 +210,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn skips_provider_when_bar_already_reaches_the_fetchable_ceiling(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
         let bar = ceiling_bar("7203", 100);
@@ -232,7 +232,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn stops_calling_provider_once_bar_reaches_the_fetchable_ceiling(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let provider = MockProvider::new()
             .with_instruments(vec![sample_instrument("7203")])
@@ -246,7 +246,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn refetches_stale_bar_even_when_one_already_exists(db: crate::database::DatabaseHandle) {
+    async fn refetches_stale_bar_even_when_one_already_exists(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         insert_test_instrument(&db, "7203").await;
         let stale_date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");
         upsert_bars(&db, vec![make_bar("7203", stale_date, 100)])
@@ -272,7 +274,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfills_missing_bar_and_creates_instrument(db: crate::database::DatabaseHandle) {
+    async fn backfills_missing_bar_and_creates_instrument(db: gateway_postgres::DatabaseHandle) {
         let bar = backfillable_bar("7203", 200);
         let expected_date = bar.timestamp.date_naive();
         let provider = MockProvider::new()
@@ -293,7 +295,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn stale_symbols_that_cannot_catch_up_are_excluded_from_prices(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
         insert_test_instrument(&db, "6758").await;
@@ -328,7 +330,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn missing_bar_is_omitted_when_provider_is_none(db: crate::database::DatabaseHandle) {
+    async fn missing_bar_is_omitted_when_provider_is_none(db: gateway_postgres::DatabaseHandle) {
         let result = fetch_latest_prices(&db, None, &["7203".to_string()]).await;
 
         assert_eq!(
@@ -342,7 +344,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn provider_error_is_skipped_and_other_symbols_still_processed(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "6758").await;
         let date = NaiveDate::from_ymd_opt(2025, 1, 6).expect("date");

@@ -3,9 +3,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::rss_feed;
+use gateway_postgres::entities::rss_feed;
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct CreateRssFeedRequest {
     /// machine key (slug, `^[a-z0-9_-]+$`). 内部処理・MCP の参照用
     pub source: String,
@@ -19,6 +20,7 @@ pub struct CreateRssFeedRequest {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateRssFeedRequest {
     #[serde(default)]
     pub display_name: Option<String>,

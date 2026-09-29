@@ -4,8 +4,8 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::note_version;
 use crate::services::graph::GraphDef;
+use gateway_postgres::entities::note_version;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = NoteVersion)]

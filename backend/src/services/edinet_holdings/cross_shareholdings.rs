@@ -4,7 +4,7 @@ use core_domain::holdings::CrossShareholdingDocument;
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::OnConflict;
 
-use crate::entities::cross_shareholding_documents::{ActiveModel, Column, Entity};
+use gateway_postgres::entities::cross_shareholding_documents::{ActiveModel, Column, Entity};
 
 pub(crate) struct Endpoint;
 

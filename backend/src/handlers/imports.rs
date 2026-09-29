@@ -19,7 +19,6 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{stock, trade};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
@@ -29,6 +28,7 @@ use crate::models::{
 use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::import::sbi;
 use crate::services::strategies::ensure_strategies_exist;
+use gateway_postgres::entities::{stock, trade};
 
 const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
 

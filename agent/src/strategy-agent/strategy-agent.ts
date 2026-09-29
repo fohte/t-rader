@@ -2,7 +2,7 @@ import type { Message } from '@a2a-js/sdk'
 import { createGenAiTracingMiddleware } from '@fohte/service-kit/langchain-genai'
 import { captureWithFingerprint } from '@fohte/service-kit/observability'
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
-import { HumanMessage, SystemMessage } from '@langchain/core/messages'
+import { SystemMessage } from '@langchain/core/messages'
 import type { DynamicStructuredTool } from '@langchain/core/tools'
 import { MultiServerMCPClient } from '@langchain/mcp-adapters'
 import { ChatOpenAI } from '@langchain/openai'
@@ -13,7 +13,6 @@ import {
   toolStrategy,
 } from 'langchain'
 import { errAsync, ResultAsync } from 'neverthrow'
-import { z } from 'zod'
 
 import { extractMessageText } from '#a2a/message-text'
 import { logger } from '#logger'
@@ -39,7 +38,6 @@ import {
 } from '#strategy-agent/final-turn-middleware'
 import { modelResponseGuardMiddleware } from '#strategy-agent/model-response-guard-middleware'
 import { stripMessageNameMiddleware } from '#strategy-agent/strip-message-name-middleware'
-import { buildSystemPrompt } from '#strategy-agent/system-prompt'
 import {
   createToolCallCapMiddleware,
   MAX_TOOL_CALLS_PER_MODEL_CALL,
@@ -55,15 +53,8 @@ const EXECUTION_ID_HEADER = 'x-execution-id'
 const DEFAULT_PURPOSE = 'default'
 
 const EXECUTION_FAILED_FINGERPRINT = 'strategy-agent.execution-failed'
-const MCP_CLIENT_CLOSE_FAILED_FINGERPRINT =
-  'strategy-agent.mcp-client-close-failed'
 const RESUME_STEPS_PARSE_FAILED_FINGERPRINT =
   'strategy-agent.resume-steps-parse-failed'
-
-const structuredResponseSchema = z.object({
-  status: z.enum(['completed', 'error']),
-  message: z.string(),
-})
 
 export interface StrategyAgentResult {
   readonly status: 'completed' | 'failed'
@@ -76,19 +67,6 @@ export interface McpToolsClient {
   close(): Promise<void>
 }
 
-export interface CompiledStrategyAgent {
-  invoke(input: { messages: readonly HumanMessage[] }): Promise<{
-    structuredResponse?: z.infer<typeof structuredResponseSchema>
-  }>
-}
-
-export interface BuildStrategyAgentOptions {
-  readonly model: BaseChatModel
-  readonly tools: readonly DynamicStructuredTool[]
-  readonly systemPrompt: string
-  readonly deadlineSignal?: AbortSignal
-}
-
 export interface StrategyAgentDeps {
   readonly fetchAgentConfig: FetchAgentConfig
   readonly createMcpClient: (
@@ -99,9 +77,6 @@ export interface StrategyAgentDeps {
     model: string,
     options?: { reasoningEffort?: string },
   ) => BaseChatModel
-  readonly buildAgent: (
-    options: BuildStrategyAgentOptions,
-  ) => CompiledStrategyAgent
   readonly buildPhaseAgent: (
     options: BuildPhaseAgentOptions,
   ) => CompiledPhaseAgent
@@ -116,12 +91,8 @@ export interface StrategyAgentConfig {
   readonly llmCallTimeoutMs: number
 }
 
-// createDefaultBuildAgent/createDefaultBuildPhaseAgent (後述) の共通処理。
-// 両者は渡す response schema が異なるだけ。createAgent 自体の型推論は
-// `responseFormat: ReturnType<typeof toolStrategy>` を呼び出し側のスキーマに
-// 関わらず `Record<string, unknown>` に collapse するため、この関数は常に
-// その erase された形を返す。createDefaultBuildAgent 側で自身の固定スキーマに
-// narrowing し直す。
+// createAgent の型推論は response schema に関わらず
+// `Record<string, unknown>` に collapse するため、その形で返す。
 const buildCompiledAgent = (
   genAiProviderName: string,
   llmCallTimeoutMs: number,
@@ -137,7 +108,7 @@ const buildCompiledAgent = (
     model: options.model,
     tools: [...options.tools],
     // createAgent は string の systemPrompt を content parts 配列に変換するが、
-    // chatgpt/* は system ロールの配列 content を拒否するため文字列のまま渡す。
+    // 上流 API の一部は system ロールの配列 content を拒否するため文字列のまま渡す。
     systemPrompt: new SystemMessage(options.systemPrompt),
     responseFormat: options.responseFormat,
     middleware: [
@@ -195,32 +166,7 @@ const buildCompiledAgent = (
   }
 }
 
-const createDefaultBuildAgent =
-  (genAiProviderName: string, llmCallTimeoutMs: number) =>
-  (options: BuildStrategyAgentOptions): CompiledStrategyAgent => {
-    const compiled = buildCompiledAgent(genAiProviderName, llmCallTimeoutMs, {
-      ...options,
-      responseFormat: toolStrategy(structuredResponseSchema),
-    })
-    return {
-      invoke: async (input) => {
-        const result = await compiled.invoke(input)
-        if (result.structuredResponse === undefined) return {}
-        return {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- buildCompiledAgent は erase された Record<string, unknown> 形しか知らない (doc comment 参照) ため、上で toolStrategy に渡したスキーマへここで narrowing し直す。
-          structuredResponse: result.structuredResponse as z.infer<
-            typeof structuredResponseSchema
-          >,
-        }
-      },
-    }
-  }
-
-// createDefaultBuildAgent と同じ形だが、response schema は固定の
-// {status, message} zod スキーマではなく、agent_graph の `output` 設定から
-// フェーズごとに組み立てた生の JSON Schema — toolStrategy はどちらも
-// 受け付ける。CompiledPhaseAgent 自身の structuredResponse 型は既に erase
-// された Record<string, unknown> 形のため、narrowing は不要。
+// response schema は agent_graph の `output` 設定からフェーズごとに組み立てる。
 const createDefaultBuildPhaseAgent =
   (genAiProviderName: string, llmCallTimeoutMs: number) =>
   (options: BuildPhaseAgentOptions): CompiledPhaseAgent =>
@@ -275,10 +221,6 @@ export const createStrategyAgentDeps = (
           }
         : {}),
     }),
-  buildAgent: createDefaultBuildAgent(
-    config.genAiProviderName,
-    config.llmCallTimeoutMs,
-  ),
   buildPhaseAgent: createDefaultBuildPhaseAgent(
     config.genAiProviderName,
     config.llmCallTimeoutMs,
@@ -339,15 +281,6 @@ export const runStrategyAgent = async (
   } = input
   const promptText = withAsOf(extractMessageText(userMessage), asOf)
   const previousSteps = parseResumeSteps(resumeSteps, strategyId)
-  const mcpClient = deps.createMcpClient(strategyId, taskId)
-
-  const closeMcpClient = (): Promise<void> =>
-    mcpClient.close().catch((closeError: unknown) => {
-      logger.error({ err: closeError }, 'failed to close MCP client')
-      captureWithFingerprint(closeError, MCP_CLIENT_CLOSE_FAILED_FINGERPRINT, {
-        extras: { strategyId },
-      })
-    })
 
   const toErrorResult = (error: unknown): StrategyAgentResult => {
     logger.error({ err: error }, 'strategy agent execution failed')
@@ -368,100 +301,46 @@ export const runStrategyAgent = async (
     }
   }
 
-  // Ensures mcpClient is closed in .finally() even if setup throws synchronously.
   return Promise.resolve()
-    .then(() => {
-      // Started before fetchAgentConfig is awaited below so it's already in
-      // flight rather than sequenced after it. Only the legacy (non
-      // agent_graph) branch below consumes this — the agent_graph branch
-      // fetches step-scoped tools of its own via createStepMcpClient.
-      const toolsResult = ResultAsync.fromPromise(
-        mcpClient.getTools(),
-        (error) => error,
-      )
-
-      return deps
+    .then(() =>
+      deps
         .fetchAgentConfig({ purpose: purpose ?? DEFAULT_PURPOSE })
         .andThen((agentConfig) => {
           const parsedGraph = parseAgentGraph(agentConfig.agentGraph)
           if (parsedGraph.isErr()) {
             return errAsync(parsedGraph.error)
           }
-          // agent_graph が設定されている場合は多段フェーズのオーケストレー
-          // ターに委譲する。これは既に StrategyAgentResult に resolve
-          // される (reject はしないが、fromPromise を通すことで想定外の
-          // throw も下の toErrorResult と同じ経路に流す)。
-          if (parsedGraph.value !== undefined) {
-            return ResultAsync.fromPromise(
-              runAgentGraph(deps, parsedGraph.value, {
-                agentsMd: agentConfig.agentsMd,
-                skills: agentConfig.skills,
-                createStepMcpClient: (executionStepId) =>
-                  deps.createMcpClient(
-                    strategyId,
-                    `${taskId}:${executionStepId}`,
-                  ),
-                originalPromptText: promptText,
-                ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
-                ...(previousSteps !== undefined ? { previousSteps } : {}),
-                ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
-              }).then((result) => {
-                if (result.status === 'failed') {
-                  logger.error(
-                    { error: result.message },
-                    'strategy agent execution failed',
-                  )
-                  captureWithFingerprint(
-                    new Error(result.message),
-                    EXECUTION_FAILED_FINGERPRINT,
-                    { extras: { strategyId } },
-                  )
-                }
-                return result
-              }),
-              (error) => error,
-            )
-          }
-
-          return toolsResult
-            .andThen((tools) =>
-              ResultAsync.fromPromise(
-                deps
-                  .buildAgent({
-                    model: deps.createChatModel(agentConfig.model),
-                    tools,
-                    systemPrompt: buildSystemPrompt(agentConfig),
-                    ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
-                  })
-                  .invoke({
-                    messages: [new HumanMessage(promptText)],
-                  }),
-                (error) => error,
-              ),
-            )
-            .map((invokeResult): StrategyAgentResult => {
-              if (invokeResult.structuredResponse === undefined) {
-                return {
-                  status: 'failed',
-                  message: 'agent did not return a structured response',
-                  errorKind: 'agent_error',
-                }
+          return ResultAsync.fromPromise(
+            runAgentGraph(deps, parsedGraph.value, {
+              agentsMd: agentConfig.agentsMd,
+              skills: agentConfig.skills,
+              createStepMcpClient: (executionStepId) =>
+                deps.createMcpClient(
+                  strategyId,
+                  `${taskId}:${executionStepId}`,
+                ),
+              originalPromptText: promptText,
+              ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),
+              ...(previousSteps !== undefined ? { previousSteps } : {}),
+              ...(deadlineSignal !== undefined ? { deadlineSignal } : {}),
+            }).then((result) => {
+              if (result.status === 'failed') {
+                logger.error(
+                  { error: result.message },
+                  'strategy agent execution failed',
+                )
+                captureWithFingerprint(
+                  new Error(result.message),
+                  EXECUTION_FAILED_FINGERPRINT,
+                  { extras: { strategyId } },
+                )
               }
-              if (invokeResult.structuredResponse.status === 'completed') {
-                return {
-                  status: 'completed',
-                  message: invokeResult.structuredResponse.message,
-                }
-              }
-              return {
-                status: 'failed',
-                message: invokeResult.structuredResponse.message,
-                errorKind: 'agent_error',
-              }
-            })
+              return result
+            }),
+            (error) => error,
+          )
         })
-        .match((r) => r, toErrorResult)
-    })
+        .match((r) => r, toErrorResult),
+    )
     .catch((error: unknown) => toErrorResult(error))
-    .finally(() => closeMcpClient())
 }

@@ -2,6 +2,7 @@
 //!
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -9,7 +10,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Tr
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment};
+use gateway_postgres::entities::{annotation, comment};
 
 use super::dto::{
     AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
@@ -17,7 +18,7 @@ use super::dto::{
 };
 use super::{
     DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
+    decimal_to_f64, fetch_note_owned_by, internal_error, invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
@@ -53,11 +54,12 @@ fn annotation_to_dto(m: annotation::Model) -> Result<AnnotationDto, McpError> {
 impl StrategyServer {
     pub(crate) async fn create_annotation_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         execution_step_id: Option<Uuid>,
         execution_task_id: Option<String>,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let target_symbol = params.target_symbol.trim().to_string();
         if target_symbol.is_empty() {
             return Err(invalid_params("target_symbol must not be empty"));
@@ -69,8 +71,6 @@ impl StrategyServer {
         if params.text.trim().is_empty() {
             return Err(invalid_params("text must not be empty"));
         }
-
-        ensure_strategy_exists(&self.db, session_strategy_id).await?;
 
         // linked_note_id が指定されている場合、対象 note の strategy_id 一致を検査する
         if let Some(linked) = params.linked_note_id {
@@ -153,9 +153,10 @@ impl StrategyServer {
 
     pub(crate) async fn read_annotations_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadAnnotationsParams,
     ) -> Result<ReadAnnotationsResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let mut q = annotation::Entity::find()
             .filter(annotation::Column::StrategyId.eq(session_strategy_id))
             .order_by_desc(annotation::Column::Timestamp);
@@ -196,11 +197,11 @@ mod tests {
         ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
-    use crate::entities::annotation;
+    use gateway_postgres::entities::annotation;
 
     // target_kind に旧 allowlist 外の値を使い、DB の CHECK 制約撤去 (target_kind は自由記述) を回帰検出する
     #[backend_test_macros::database_test]
-    async fn create_annotation_then_read_annotations(db: crate::database::DatabaseHandle) {
+    async fn create_annotation_then_read_annotations(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);
         let ts: DateTime<FixedOffset> = "2026-06-01T09:00:00+09:00".parse().expect("ts");
@@ -262,7 +263,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_annotation_rejects_empty_target_kind(db: crate::database::DatabaseHandle) {
+    async fn create_annotation_rejects_empty_target_kind(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "x").await;
         let server = build_server(db);
         let err = server
@@ -286,7 +287,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_annotation_rejects_cross_strategy_linked_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -317,7 +318,7 @@ mod tests {
     /// 新しい試行のものだけが残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_replaces_unread_annotations_from_previous_attempt_of_same_step(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);
@@ -381,7 +382,7 @@ mod tests {
     /// 新しい試行が来ても削除されず残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_keeps_reviewed_annotations_from_previous_attempt(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
@@ -458,7 +459,7 @@ mod tests {
     /// (comment.target_id が FK を持たないため) 削除すると孤児化してしまうので残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_keeps_unread_annotations_with_comments_from_previous_attempt(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
@@ -535,7 +536,7 @@ mod tests {
     /// アノテーションを作る動作はこれまでどおり全件残る。
     #[backend_test_macros::database_test]
     async fn create_annotation_keeps_multiple_annotations_from_the_same_attempt(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db);

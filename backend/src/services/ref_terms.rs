@@ -7,10 +7,10 @@ use std::collections::HashMap;
 
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-use crate::entities::{indicator, ref_term, sector, stock, theme};
 use crate::error::AppError;
 use crate::models::RefResolution;
 use crate::text_normalize::normalize;
+use gateway_postgres::entities::{indicator, ref_term, sector, stock, theme};
 
 /// 指定 ref_kind に属する term の集合をまとめて別名解決する。ref_kind ごとに
 /// 1 クエリで全別名をロードし、Rust 側で正規化 (NFKC -> lowercase) して比較する。
@@ -177,8 +177,8 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use super::{resolve_many_by_term, resolve_refs};
-    use crate::entities::{indicator, ref_term, stock};
     use crate::models::RefResolution;
+    use gateway_postgres::entities::{indicator, ref_term, stock};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
 
@@ -237,7 +237,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_many_by_term_returns_multiple_candidates(db: crate::database::DatabaseHandle) {
+    async fn resolve_many_by_term_returns_multiple_candidates(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         seed_term(&db, "stock", "SAMPLE-STOCK-A", "サンプル語").await;
         seed_term(&db, "stock", "SAMPLE-STOCK-B", "サンプル語").await;
         seed_term(&db, "indicator", "SAMPLE-INDEX", "サンプル語").await;
@@ -256,7 +258,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_many_by_term_returns_empty_when_no_match(db: crate::database::DatabaseHandle) {
+    async fn resolve_many_by_term_returns_empty_when_no_match(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let matches = resolve_many_by_term(&db, "stock", &["存在しない".to_string()])
             .await
             .expect("resolve_many_by_term");
@@ -268,7 +272,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_many_by_term_matches_normalized_variants(db: crate::database::DatabaseHandle) {
+    async fn resolve_many_by_term_matches_normalized_variants(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         seed_term(&db, "indicator", "SAMPLE-INDICATOR", "DemoKey").await;
 
         let inputs = ["ＤＥＭＯＫＥＹ".to_string(), "demokey".to_string()];
@@ -290,7 +296,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn resolve_many_by_term_dedups_candidates_from_normalized_variant_aliases_on_same_ref_id(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         // 表記違いの別名 (大文字/小文字) が同じ ref_id に 2 件登録されていても、
         // 候補は 1 件に集約される
@@ -309,7 +315,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn resolve_refs_resolves_exact_id_alias_and_unresolved_in_input_order(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         seed_stock(&db, "SAMPLE-STOCK", "サンプル銘柄").await;
         seed_indicator(&db, "SAMPLE-INDICATOR", "サンプル指標").await;
@@ -349,7 +355,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_refs_leaves_ambiguous_alias_unresolved(db: crate::database::DatabaseHandle) {
+    async fn resolve_refs_leaves_ambiguous_alias_unresolved(db: gateway_postgres::DatabaseHandle) {
         seed_stock(&db, "SAMPLE-STOCK-A", "サンプル銘柄 A").await;
         seed_stock(&db, "SAMPLE-STOCK-B", "サンプル銘柄 B").await;
         seed_term(&db, "stock", "SAMPLE-STOCK-A", "サンプル語").await;
@@ -370,7 +376,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn resolve_refs_leaves_dangling_alias_unresolved(db: crate::database::DatabaseHandle) {
+    async fn resolve_refs_leaves_dangling_alias_unresolved(db: gateway_postgres::DatabaseHandle) {
         // master に存在しない ref_id を指す dangling な別名
         seed_term(&db, "stock", "MISSING-STOCK", "サンプル語").await;
 

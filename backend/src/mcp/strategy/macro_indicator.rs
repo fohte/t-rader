@@ -5,11 +5,11 @@
 //! 市場データのため、`search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には
 //! 使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-use uuid::Uuid;
 
-use crate::entities::indicator_observation;
+use gateway_postgres::entities::indicator_observation;
 
 use super::dto::{IndicatorObservationDto, ReadMacroIndicatorParams, ReadMacroIndicatorResult};
 use super::{StrategyServer, db_error, decimal_to_f64, invalid_params};
@@ -17,9 +17,10 @@ use super::{StrategyServer, db_error, decimal_to_f64, invalid_params};
 impl StrategyServer {
     pub(crate) async fn read_macro_indicator_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadMacroIndicatorParams,
     ) -> Result<ReadMacroIndicatorResult, McpError> {
+        let _scope = scope.into();
         let indicator_id = params.indicator_id.trim().to_string();
         if indicator_id.is_empty() {
             return Err(invalid_params("indicator_id must not be empty"));
@@ -60,7 +61,7 @@ mod tests {
 
     use super::super::dto::{IndicatorObservationDto, ReadMacroIndicatorParams};
     use super::super::tests_common::build_server;
-    use crate::entities::{indicator, indicator_observation};
+    use gateway_postgres::entities::{indicator, indicator_observation};
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -94,7 +95,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn returns_observations_in_date_range_oldest_first(db: crate::database::DatabaseHandle) {
+    async fn returns_observations_in_date_range_oldest_first(db: gateway_postgres::DatabaseHandle) {
         seed_indicator(&db, "USDJPY").await;
         seed_observation(&db, "USDJPY", ymd(2026, 9, 1), "147.50").await;
         seed_observation(&db, "USDJPY", ymd(2026, 9, 3), "148.20").await;
@@ -128,7 +129,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn returns_empty_when_no_observation_in_range(db: crate::database::DatabaseHandle) {
+    async fn returns_empty_when_no_observation_in_range(db: gateway_postgres::DatabaseHandle) {
         seed_indicator(&db, "VIX").await;
         seed_observation(&db, "VIX", ymd(2026, 1, 1), "15.0").await;
 
@@ -154,7 +155,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_empty_indicator_id(db: crate::database::DatabaseHandle) {
+    async fn rejects_empty_indicator_id(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),
@@ -170,7 +171,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_from_after_to(db: crate::database::DatabaseHandle) {
+    async fn rejects_from_after_to(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),

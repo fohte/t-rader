@@ -1,4 +1,4 @@
-import { ok } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -15,8 +15,10 @@ describe('parseAgentGraph', () => {
   it.each([
     { name: 'an empty string', yaml: '' },
     { name: 'a whitespace-only string', yaml: '   \n' },
-  ])('treats $name as unset', ({ yaml }) => {
-    expect(parseAgentGraph(yaml)).toEqual(ok(undefined))
+  ])('returns an error for $name', ({ yaml }) => {
+    expect(parseAgentGraph(yaml)).toEqual(
+      err(new AgentGraphParseError('agent_graph is not configured')),
+    )
   })
 
   it('parses a valid multi-phase config into camelCase phases', () => {
@@ -24,7 +26,7 @@ describe('parseAgentGraph', () => {
 phases:
   - key: plan
     label: 調査計画
-    model: claude-opus-4
+    model: example-model-plan
     reasoning_effort: high
     prompt: 仮説を立てよ
     output:
@@ -34,7 +36,7 @@ phases:
           title: { type: string }
   - key: investigate
     label: 仮説の調査
-    model: deepseek-v4-flash
+    model: example-model-investigate
     for_each: plan.hypotheses
     label_field: title
     max_parallel: 4
@@ -48,7 +50,7 @@ phases:
           {
             key: 'plan',
             label: '調査計画',
-            model: 'claude-opus-4',
+            model: 'example-model-plan',
             reasoningEffort: 'high',
             prompt: '仮説を立てよ',
             skills: [],
@@ -62,7 +64,7 @@ phases:
           {
             key: 'investigate',
             label: '仮説の調査',
-            model: 'deepseek-v4-flash',
+            model: 'example-model-investigate',
             prompt: '割り当てられた仮説を検証せよ',
             forEach: 'plan.hypotheses',
             labelField: 'title',
@@ -81,11 +83,11 @@ phases:
 phases:
   - key: plan
     label: 調査計画
-    model: claude-opus-4
+    model: example-model-plan
     prompt: 仮説を立てよ
   - key: synthesize
     label: 統合
-    model: claude-sonnet-4
+    model: example-model-synthesize
     prompt: まとめよ
     tools: []
 `
@@ -96,7 +98,7 @@ phases:
           {
             key: 'plan',
             label: '調査計画',
-            model: 'claude-opus-4',
+            model: 'example-model-plan',
             prompt: '仮説を立てよ',
             skills: [],
             output: {},
@@ -104,7 +106,7 @@ phases:
           {
             key: 'synthesize',
             label: '統合',
-            model: 'claude-sonnet-4',
+            model: 'example-model-synthesize',
             prompt: 'まとめよ',
             skills: [],
             tools: [],
@@ -130,7 +132,7 @@ phases:
 phases:
   - key: plan
     label: 調査計画
-    model: claude-opus-4
+    model: example-model-plan
 `)
 
     expect(result.isErr()).toBe(true)

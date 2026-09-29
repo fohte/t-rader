@@ -6,29 +6,34 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
-use uuid::Uuid;
 
-use crate::models::PositionSummary;
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
-use crate::services::trades::fetch_summary;
 
 use super::dto::{
     PortfolioPositionDto, PortfolioScopeDto, ReadPortfolioResult, StrategyPortfolioScopeDto,
 };
-use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64};
+use super::{StrategyServer, app_error_to_mcp, decimal_to_f64, trade_error};
 
 impl StrategyServer {
     pub(crate) async fn read_portfolio_inner(
         &self,
-        strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
     ) -> Result<ReadPortfolioResult, McpError> {
-        let account_summary = fetch_summary(&self.db, None).await.map_err(db_error)?;
-        let strategy_summary = fetch_summary(&self.db, Some(strategy_id))
+        let strategy_id = scope.into().id();
+        let account_summary = self
+            .trade_use_cases
+            .summary(None)
             .await
-            .map_err(db_error)?;
+            .map_err(trade_error)?;
+        let strategy_summary = self
+            .trade_use_cases
+            .summary(Some(strategy_id))
+            .await
+            .map_err(trade_error)?;
 
         let mut symbols: BTreeSet<String> = BTreeSet::new();
         symbols.extend(account_summary.positions.iter().map(|p| p.symbol.clone()));
@@ -82,7 +87,7 @@ impl StrategyServer {
 }
 
 fn to_position_dtos(
-    positions: Vec<PositionSummary>,
+    positions: Vec<core_application::trade::PositionSummary>,
     prices: &HashMap<String, Decimal>,
 ) -> Vec<PortfolioPositionDto> {
     positions
@@ -91,7 +96,10 @@ fn to_position_dtos(
         .collect()
 }
 
-fn to_position_dto(p: PositionSummary, prices: &HashMap<String, Decimal>) -> PortfolioPositionDto {
+fn to_position_dto(
+    p: core_application::trade::PositionSummary,
+    prices: &HashMap<String, Decimal>,
+) -> PortfolioPositionDto {
     let current_price = prices.get(&p.symbol).copied();
     let market_value = current_price.map(|price| p.qty * price);
     let unrealized_pnl = market_value.map(|mv| mv - p.cost_basis);
@@ -122,11 +130,11 @@ mod tests {
     use uuid::Uuid;
 
     use crate::data_provider::SharedDailyBarSource;
-    use crate::entities::trade;
     use crate::models::bar::{Bar, Timeframe};
     use crate::models::instrument::{Instrument, Market};
     use crate::services::investable_amount;
     use crate::testing::MockProvider;
+    use gateway_postgres::entities::trade;
 
     use super::super::StrategyServer;
     use super::super::dto::{
@@ -163,7 +171,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_portfolio_returns_account_and_strategy_scopes(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -230,7 +238,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_portfolio_returns_empty_scopes_when_no_trades(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
@@ -264,7 +272,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_portfolio_backfills_prices_and_computes_investable_amount(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000).await;

@@ -5,12 +5,12 @@ use sea_orm::{EntityTrait, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::strategy;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, StrategyResponse, UpdateStrategyRequest};
 use crate::services::change_history::Actor;
 use crate::services::strategy_config;
+use gateway_postgres::entities::strategy;
 
 mod investable_amount;
 mod tasks;
@@ -167,7 +167,7 @@ mod tests {
     use serde_json::json;
 
     #[backend_test_macros::database_test]
-    async fn create_and_list_strategy(db: crate::database::DatabaseHandle) {
+    async fn create_and_list_strategy(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/strategies")
@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_nonexistent_strategy_returns_404(db: crate::database::DatabaseHandle) {
+    async fn get_nonexistent_strategy_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000")
@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_strategy_removes_row(db: crate::database::DatabaseHandle) {
+    async fn delete_strategy_removes_row(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let id = create_strategy(&server, "to-delete").await;
 

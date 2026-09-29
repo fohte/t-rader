@@ -1,12 +1,12 @@
 //! 戦略実行 MCP のニュース検索 tool 実装。
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
-use crate::entities::news_item;
 use crate::handlers::refs::sanitize_like;
+use gateway_postgres::entities::news_item;
 
 use super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
 use super::{StrategyServer, clamp_limit, db_error};
@@ -15,9 +15,10 @@ impl StrategyServer {
     /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する。
     pub(crate) async fn search_news_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: SearchNewsParams,
     ) -> Result<SearchNewsResult, McpError> {
+        let _scope = scope.into();
         let mut query = news_item::Entity::find();
 
         if let Some(keyword) = params
@@ -86,7 +87,7 @@ mod tests {
 
     use super::super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
     use super::super::tests_common::build_server;
-    use crate::entities::news_item;
+    use gateway_postgres::entities::news_item;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -127,7 +128,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn search_news_returns_full_item_shape(db: crate::database::DatabaseHandle) {
+    async fn search_news_returns_full_item_shape(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db.clone());
 
         let published_at = at_noon(ymd(2026, 6, 1));
@@ -170,7 +171,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_matches_keyword_case_insensitively_in_title_or_body(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -217,7 +218,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_does_not_treat_underscore_as_single_char_wildcard(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -248,7 +249,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_filters_by_published_at_range_inclusive(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -295,7 +296,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_news_orders_newest_first_and_respects_limit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 

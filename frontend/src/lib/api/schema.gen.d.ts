@@ -66,7 +66,7 @@ export interface paths {
       cookie?: never
     }
     /**
-     * 目的別 agent 設定一式 (AGENTS.md / skills / モデル設定) の統合取得。
+     * 目的別 agent 設定一式 (AGENTS.md / skills / agent_graph) の統合取得。
      *     t-rader-agent がタスク実行のたびに呼び出す。
      */
     get: operations['agent_config_get_agent_config_bundle']
@@ -906,7 +906,8 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    get?: never
+    /** RSS フィードを取得 */
+    get: operations['get_rss_feed']
     put?: never
     post?: never
     /** RSS フィードを削除する。news_item 行は残す (履歴互換性)。 */
@@ -1229,7 +1230,6 @@ export interface components {
       /** @description 多段フェーズ実行設定 (YAML)。未設定なら空文字列。 */
       agent_graph: string
       agents_md: string
-      model: string
       skills: {
         [key: string]: string
       }
@@ -2069,6 +2069,7 @@ export interface components {
       url?: string | null
     }
     UpdateStrategyRequest: {
+      /** @description 省略時は変更せず、`null` 指定時は説明を削除する。 */
       description?: string | null
       name?: string | null
       /** Format: int32 */
@@ -2092,6 +2093,7 @@ export interface components {
     }
     UpdateTriggerRequest: {
       enabled?: boolean | null
+      /** @description 省略時は変更せず、`null` 指定時は条件を解除する。 */
       event_match?: unknown
       hook_slug?: string | null
       prompt_template?: string | null
@@ -5511,6 +5513,53 @@ export interface operations {
       }
       /** @description リクエストボディのパースに失敗 */
       422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      500: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+    }
+  }
+  get_rss_feed: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        /** @description rss_feed ID */
+        id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RssFeed']
+        }
+      }
+      /** @description パスパラメータが不正 */
+      400: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ErrorResponse']
+        }
+      }
+      404: {
         headers: {
           [name: string]: unknown
         }

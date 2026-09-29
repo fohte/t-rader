@@ -10,7 +10,6 @@ use backend::cli::Cli;
 use backend::create_router;
 use backend::data_provider::SharedDailyBarSource;
 use backend::data_provider::news::rss::RssNewsAggregator;
-use backend::database::DatabaseHandle;
 use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
@@ -19,6 +18,7 @@ use core_application::{IndicatorObservationSource, SharedNewsAggregator};
 use gateway_fred::FredClient;
 use gateway_ibkr::IbkrClient;
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
+use gateway_postgres::DatabaseHandle;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
 
@@ -367,8 +367,10 @@ async fn main() -> Result<(), AppError> {
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
+    let db = DatabaseHandle::from(db);
     let state = AppState {
-        db: DatabaseHandle::from(db),
+        db: db.clone(),
+        trade_use_cases: backend::services::trades::build_use_cases(db),
         daily_bar_source,
         jquants_client,
         agent_task_client,

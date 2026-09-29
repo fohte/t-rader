@@ -9,11 +9,11 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::AppState;
-use crate::entities::trigger;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::services::strategy_tasks::TaskSource;
 use crate::services::triggers::{FireTriggerError, evaluate_event_match, fire_trigger};
+use gateway_postgres::entities::trigger;
 
 /// hook 受信レスポンス。
 ///
@@ -121,11 +121,11 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::{strategy, strategy_task};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{create_test_server_with_db_and_agent_client, insert_test_hook_trigger};
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use gateway_postgres::entities::{strategy, strategy_task};
 
     /// strategy_task 行の動的フィールド (id / 時刻) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fires_when_event_match_satisfied(db: crate::database::DatabaseHandle) {
+    async fn fires_when_event_match_satisfied(db: gateway_postgres::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "長期").await;
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn skips_when_event_match_not_satisfied(db: crate::database::DatabaseHandle) {
+    async fn skips_when_event_match_not_satisfied(db: gateway_postgres::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "s").await;
@@ -241,7 +241,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn disabled_trigger_is_404(db: crate::database::DatabaseHandle) {
+    async fn disabled_trigger_is_404(db: gateway_postgres::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "s").await;
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn unknown_slug_is_404(db: crate::database::DatabaseHandle) {
+    async fn unknown_slug_is_404(db: gateway_postgres::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (_db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let res = server.post("/api/hooks/nope").json(&json!({})).await;
@@ -260,7 +260,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn placeholders_expand_from_payload(db: crate::database::DatabaseHandle) {
+    async fn placeholders_expand_from_payload(db: gateway_postgres::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, kube).await;
         let sid = seed_strategy(&db, "s").await;
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn agent_not_configured_returns_503(db: crate::database::DatabaseHandle) {
+    async fn agent_not_configured_returns_503(db: gateway_postgres::DatabaseHandle) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;

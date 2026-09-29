@@ -1,11 +1,11 @@
 //! 自戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する読み取り専用 tool。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use uuid::Uuid;
 
-use crate::entities::{prediction, prediction_grade};
 use crate::services::predictions::probability_steps;
+use gateway_postgres::entities::{prediction, prediction_grade};
 
 use super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
 use super::{StrategyServer, db_error, decimal_to_f64};
@@ -16,8 +16,9 @@ const PROBABILITY_EPSILON: f64 = 1e-9;
 impl StrategyServer {
     pub(crate) async fn read_prediction_stats_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
     ) -> Result<ReadPredictionStatsResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let rows = prediction::Entity::find()
             .filter(prediction::Column::StrategyId.eq(session_strategy_id))
             .find_also_related(prediction_grade::Entity)
@@ -82,8 +83,8 @@ mod tests {
     use sea_orm::ActiveValue::{NotSet, Set};
     use uuid::Uuid;
 
-    use crate::entities::{prediction, prediction_grade};
     use crate::testing::insert_test_stock;
+    use gateway_postgres::entities::{prediction, prediction_grade};
 
     use super::super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
     use super::super::tests_common::{build_server, insert_strategy};
@@ -144,7 +145,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_returns_empty_when_no_graded_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
@@ -166,7 +167,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_excludes_ungraded_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;
@@ -191,7 +192,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_excludes_other_strategy_predictions(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
@@ -218,7 +219,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_prediction_stats_aggregates_buckets_and_brier_score(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_test_stock(&db, "TGT1", "Target").await;

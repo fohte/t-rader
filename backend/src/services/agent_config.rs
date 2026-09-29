@@ -14,8 +14,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::agent_config;
 use crate::services::agent_graph::{self as agent_graph_svc, AgentGraphError};
+use gateway_postgres::entities::agent_config;
 
 const SLUG_PATTERN_DESC: &str = "^[a-z0-9][a-z0-9_-]*$";
 
@@ -38,9 +38,6 @@ pub enum AgentConfigError {
 
     #[error(transparent)]
     InvalidAgentGraph(#[from] AgentGraphError),
-
-    #[error("environment variable '{0}' is not set")]
-    MissingEnvVar(String),
 
     #[error("database error: {0}")]
     Database(#[from] DbErr),
@@ -289,33 +286,17 @@ pub fn skills_as_btree(model: &agent_config::Model) -> std::collections::BTreeMa
     skills_to_btree(&model.skills)
 }
 
-/// モデル設定は DB ではなく env 由来。
-pub(crate) fn agent_model_settings() -> Result<String, AgentConfigError> {
-    agent_model_settings_with(|key| std::env::var(key).ok())
-}
-
-fn agent_model_settings_with<F>(get: F) -> Result<String, AgentConfigError>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    get("STRATEGY_AGENT_MODEL")
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| AgentConfigError::MissingEnvVar("STRATEGY_AGENT_MODEL".to_string()))
-}
-
 /// `AgentConfigResponse` を組み立てる。
 pub(crate) fn build_agent_config_response(
     agents_md: String,
     skills: std::collections::BTreeMap<String, String>,
     agent_graph: String,
-) -> Result<crate::models::AgentConfigResponse, AgentConfigError> {
-    let model = agent_model_settings()?;
-    Ok(crate::models::AgentConfigResponse {
+) -> crate::models::AgentConfigResponse {
+    crate::models::AgentConfigResponse {
         agents_md,
         skills,
-        model,
         agent_graph,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -367,7 +348,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_and_list_roundtrip(db: crate::database::DatabaseHandle) {
+    async fn create_and_list_roundtrip(db: gateway_postgres::DatabaseHandle) {
         let created = create(&db, "explore".to_string()).await.unwrap();
         let expected = serde_json::json!({
             "id": "<id>",
@@ -387,39 +368,39 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_duplicate_purpose(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_duplicate_purpose(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = create(&db, "explore".to_string()).await.unwrap_err();
         assert!(matches!(err, AgentConfigError::DuplicatePurpose(p) if p == "explore"));
     }
 
     #[backend_test_macros::database_test]
-    async fn create_rejects_invalid_purpose_slug(db: crate::database::DatabaseHandle) {
+    async fn create_rejects_invalid_purpose_slug(db: gateway_postgres::DatabaseHandle) {
         let err = create(&db, "Bad Purpose".to_string()).await.unwrap_err();
         assert!(matches!(err, AgentConfigError::InvalidPurpose(_)));
     }
 
     #[backend_test_macros::database_test]
-    async fn find_or_404_rejects_unknown_purpose(db: crate::database::DatabaseHandle) {
+    async fn find_or_404_rejects_unknown_purpose(db: gateway_postgres::DatabaseHandle) {
         let err = find_or_404(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(p) if p == "missing"));
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_removes_row(db: crate::database::DatabaseHandle) {
+    async fn delete_removes_row(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         delete(&db, "explore").await.unwrap();
         assert!(list(&db).await.unwrap().is_empty());
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_missing_returns_not_found(db: crate::database::DatabaseHandle) {
+    async fn delete_missing_returns_not_found(db: gateway_postgres::DatabaseHandle) {
         let err = delete(&db, "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::NotFound(_)));
     }
 
     #[backend_test_macros::database_test]
-    async fn save_then_get_agents_md_round_trips(db: crate::database::DatabaseHandle) {
+    async fn save_then_get_agents_md_round_trips(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let content = "# 方針\n慎重に運用する";
         let saved = save_agents_md(&db, "explore", content.to_string())
@@ -433,7 +414,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_skills_replaces_whole_map(db: crate::database::DatabaseHandle) {
+    async fn put_skills_replaces_whole_map(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
 
         let mut skills = std::collections::BTreeMap::new();
@@ -454,7 +435,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_skills_rejects_invalid_name(db: crate::database::DatabaseHandle) {
+    async fn put_skills_rejects_invalid_name(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let mut skills = std::collections::BTreeMap::new();
         skills.insert("Bad Name".to_string(), "x".to_string());
@@ -463,7 +444,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn put_skill_add_update_delete_lifecycle(db: crate::database::DatabaseHandle) {
+    async fn put_skill_add_update_delete_lifecycle(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
 
         put_skill(&db, "explore", "scout", "first".to_string())
@@ -491,14 +472,14 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_skill_rejects_unknown_skill(db: crate::database::DatabaseHandle) {
+    async fn delete_skill_rejects_unknown_skill(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = delete_skill(&db, "explore", "missing").await.unwrap_err();
         assert!(matches!(err, AgentConfigError::SkillNotFound(name) if name == "missing"));
     }
 
     #[backend_test_macros::database_test]
-    async fn save_then_get_agent_graph_round_trips(db: crate::database::DatabaseHandle) {
+    async fn save_then_get_agent_graph_round_trips(db: gateway_postgres::DatabaseHandle) {
         create(&db, "explore".to_string()).await.unwrap();
         let yaml = indoc! {"
             phases:
@@ -514,7 +495,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn save_agent_graph_rejects_invalid_yaml_and_leaves_row_unchanged(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         create(&db, "explore".to_string()).await.unwrap();
         let err = save_agent_graph(&db, "explore", "phases: [")
@@ -522,34 +503,5 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, AgentConfigError::InvalidAgentGraph(_)));
         assert_eq!(find_or_404(&db, "explore").await.unwrap().agent_graph, "");
-    }
-
-    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |key: &str| {
-            pairs
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| (*v).to_string())
-        }
-    }
-
-    #[rstest]
-    #[case::unset(&[])]
-    #[case::empty(&[("STRATEGY_AGENT_MODEL", "")])]
-    fn agent_model_settings_with_errors_when_missing(#[case] env: &[(&str, &str)]) {
-        let err = agent_model_settings_with(env_get(env)).expect_err("expected missing env error");
-        assert_eq!(
-            err.to_string(),
-            "environment variable 'STRATEGY_AGENT_MODEL' is not set"
-        );
-    }
-
-    #[test]
-    fn agent_model_settings_with_resolves_overridden_env() {
-        assert_eq!(
-            agent_model_settings_with(env_get(&[("STRATEGY_AGENT_MODEL", "m-x")]))
-                .expect("configured"),
-            "m-x"
-        );
     }
 }

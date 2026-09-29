@@ -2,7 +2,7 @@ use chrono::{Duration, NaiveDate, Utc};
 
 use crate::data_provider::{DailyBarSource, DateRange};
 use crate::models::Timeframe;
-use crate::repositories::bars::upsert_bars;
+use gateway_postgres::repositories::bars::upsert_bars;
 
 const FALLBACK_FETCH_HISTORY_DAYS: i64 = 365 * 20;
 
@@ -118,8 +118,8 @@ mod tests {
     async fn find_all_bars(
         db: &impl sea_orm::ConnectionTrait,
         instrument_id: &str,
-    ) -> Vec<crate::entities::bars::Model> {
-        use crate::repositories::bars::{BarsQuery, find_bars};
+    ) -> Vec<gateway_postgres::entities::bars::Model> {
+        use gateway_postgres::repositories::bars::{BarsQuery, find_bars};
         find_bars(
             db,
             BarsQuery {
@@ -135,7 +135,7 @@ mod tests {
 
     /// テスト用 instrument を DB に挿入する
     async fn insert_test_instrument(db: &impl sea_orm::ConnectionTrait, id: &str) {
-        use crate::entities::instruments;
+        use gateway_postgres::entities::instruments;
         use sea_orm::sea_query::OnConflict;
         use sea_orm::{EntityTrait, Set};
 
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_saves_bars_to_db(db: crate::database::DatabaseHandle) {
+    async fn backfill_saves_bars_to_db(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         // フォールバック範囲内に収まる日付を使う
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_uses_source_range_when_available(db: crate::database::DatabaseHandle) {
+    async fn backfill_uses_source_range_when_available(db: gateway_postgres::DatabaseHandle) {
         insert_test_instrument(&db, "7203").await;
 
         let known_from = NaiveDate::from_ymd_opt(2020, 4, 1).expect("date");
@@ -225,7 +225,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn backfill_uses_fallback_history_when_source_has_no_range(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         insert_test_instrument(&db, "7203").await;
 
@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn backfill_handles_empty_response(db: crate::database::DatabaseHandle) {
+    async fn backfill_handles_empty_response(db: gateway_postgres::DatabaseHandle) {
         // 銘柄は存在するがバーデータなし
         let provider = MockProvider::new().with_instruments(vec![sample_instrument("9999")]);
 

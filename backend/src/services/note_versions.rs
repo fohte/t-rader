@@ -8,11 +8,11 @@ use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::entities::{note, note_kind, note_version};
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
 use crate::services::note_links::{copy_note_links, sync_note_links};
 use crate::services::note_refs::{sync_note_refs, sync_note_refs_after_graphs_only_update};
+use gateway_postgres::entities::{note, note_kind, note_version};
 
 pub struct AppendVersion {
     pub title: String,

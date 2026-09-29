@@ -85,7 +85,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 ## Core files
 
 - `backend/migration/` - SeaORM マイグレーション crate (MigrationTrait で Rust ファイル、起動時に自動実行)
-- `backend/src/entities/` - SeaORM Entity 定義 (`sea-orm-cli generate entity` で自動生成、手動編集禁止)
+- `backend/crates/gateways/postgres/src/entities/` - SeaORM Entity 定義 (`sea-orm-cli generate entity` で自動生成、手動編集禁止)
 - `backend/scripts/generate-entities.sh` - エンティティ生成スクリプト (CLI オプション一元管理)
 - `backend/src/main.rs` - Axum サーバーのエントリポイント、SeaORM DatabaseConnection 初期化
 - `backend/src/error.rs` - AppError 型定義
@@ -96,11 +96,13 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - `backend/crates/gateways/jquants/` - J-Quants API client とデータソース port の実装
 - `backend/crates/gateways/kata-exec/` - Kata Containers exec Pod の HTTP 実装
 - `backend/crates/gateways/litellm/` - LiteLLM client の HTTP 実装
+- `backend/crates/gateways/postgres/` - PostgreSQL / TimescaleDB gateway、SeaORM entity と repositories、`DatabaseHandle`、`test-support` feature の共有テスト DB 準備
 - `backend/crates/gateways/rss/` - RSS news aggregation の HTTP 実装
 - `backend/src/kata_exec/` - application port と gateway 実装の互換 facade
 - `backend/src/services/litellm_client.rs` - application port と gateway 実装の互換 facade
 - `backend/crates/gateways/t-rader-agent/` - t-rader-agent 内部 API client の HTTP 実装
 - `backend/src/agent_client/` - application port と gateway 実装の互換 facade
+- `backend/src/testing.rs` - backend の AppState、TestServer、entity に依存するテスト fixture
 - `backend/src/services/strategy_tasks/` - 戦略タスク投入の共通 service (`submit_task`、5 経路から呼ばれる)
 - `backend/src/mcp/watcher.rs` - 戦略タスクの phase polling (pending/running 行の状態照会 + deadline 超過の失敗確定)
 - `backend/src/handlers/agent_tasks.rs` - t-rader-agent からのタスク決着 webhook 受信
@@ -122,7 +124,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 
 ## Entities
 
-- `backend/src/entities/` 配下のファイルは `sea-orm-cli generate entity` で自動生成される。**手動編集禁止**
+- `backend/crates/gateways/postgres/src/entities/` 配下のファイルは `sea-orm-cli generate entity` で自動生成される。**手動編集禁止**
 - スキーマ変更後は `bash backend/scripts/generate-entities.sh` を実行して再生成し、差分をコミットすること
 - CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
 - カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること

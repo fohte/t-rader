@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::entities::trade;
+use core_application::trade::Trade;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trade)]
@@ -25,8 +25,8 @@ pub struct TradeResponse {
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
-impl From<trade::Model> for TradeResponse {
-    fn from(model: trade::Model) -> Self {
+impl From<Trade> for TradeResponse {
+    fn from(model: Trade) -> Self {
         Self {
             id: model.id,
             strategy_id: model.strategy_id,

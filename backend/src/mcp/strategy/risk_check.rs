@@ -7,21 +7,20 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
-use uuid::Uuid;
 
-use crate::entities::stock;
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 use crate::services::account_risk_policy;
 use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
-use crate::services::trades::fetch_summary;
+use gateway_postgres::entities::stock;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
-use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, ensure_strategy_exists};
+use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, trade_error};
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
@@ -29,12 +28,11 @@ const LOT_SIZE: i64 = 100;
 impl StrategyServer {
     pub(crate) async fn check_buyable_qty_inner(
         &self,
-        strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: CheckBuyableQtyParams,
     ) -> Result<CheckBuyableQtyResult, McpError> {
+        let strategy_id = scope.into().id();
         let symbol = params.symbol;
-
-        ensure_strategy_exists(&self.db, strategy_id).await?;
 
         let account_risk_policy_row = account_risk_policy::find_current(&self.db)
             .await
@@ -48,10 +46,16 @@ impl StrategyServer {
             None => None,
         };
 
-        let account_summary = fetch_summary(&self.db, None).await.map_err(db_error)?;
-        let strategy_summary = fetch_summary(&self.db, Some(strategy_id))
+        let account_summary = self
+            .trade_use_cases
+            .summary(None)
             .await
-            .map_err(db_error)?;
+            .map_err(trade_error)?;
+        let strategy_summary = self
+            .trade_use_cases
+            .summary(Some(strategy_id))
+            .await
+            .map_err(trade_error)?;
 
         let mut symbols: BTreeSet<String> = account_summary
             .positions
@@ -469,10 +473,10 @@ mod integration_tests {
 
     use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
     use super::super::tests_common::{build_server, insert_strategy};
-    use crate::entities::{instruments, sector, stock, trade};
     use crate::models::{Bar, Timeframe};
-    use crate::repositories::bars::upsert_bars;
     use crate::services::{account_risk_policy, investable_amount};
+    use gateway_postgres::entities::{instruments, sector, stock, trade};
+    use gateway_postgres::repositories::bars::upsert_bars;
 
     async fn seed_trade(
         db: &impl sea_orm::ConnectionTrait,
@@ -586,7 +590,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn defaults_to_cash_constraint_when_no_risk_policy_is_configured(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         record_investable_amount(&db, strategy_id, 1_000_000).await;
@@ -624,7 +628,7 @@ mod integration_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn sector_ratio_binds_across_strategies(db: crate::database::DatabaseHandle) {
+    async fn sector_ratio_binds_across_strategies(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         insert_stock(&db, "7203", Some("transport")).await;
@@ -674,7 +678,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn all_constraints_become_unavailable_when_target_price_is_missing(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         set_max_sector_ratio(&db, "0.2").await;
@@ -716,7 +720,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn sector_ratio_is_unavailable_when_target_has_no_sector(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         set_max_sector_ratio(&db, "0.2").await;
@@ -759,7 +763,7 @@ mod integration_tests {
 
     #[backend_test_macros::database_test]
     async fn sector_ratio_is_unavailable_when_a_held_position_price_is_missing(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "a").await;
         insert_stock(&db, "7203", Some("transport")).await;

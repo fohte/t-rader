@@ -306,7 +306,7 @@ jobs:
       - name: Check entity files are in sync
         working-directory: backend
         run: |
-          if ! git diff --exit-code src/entities; then
+          if ! git diff --exit-code crates/gateways/postgres/src/entities; then
             echo "::error::Entity files are out of sync with database schema."
             echo "Run 'bash backend/scripts/generate-entities.sh' locally and commit the changes."
             exit 1
@@ -439,8 +439,6 @@ jobs:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_api_fuzzing
           BACKEND_PORT: '3000'
           RUST_LOG: info
-          # 未設定だと agent-config 取得が失敗するため、CI 用のダミー値を設定
-          STRATEGY_AGENT_MODEL: test-model
         run: |
           cargo run > /tmp/backend.log 2>&1 &
           # サーバーが起動するまで待機
@@ -611,10 +609,9 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
-          # 未設定だと該当機能の呼び出しが失敗するため、CI 用のダミー値を設定
-          STRATEGY_AGENT_MODEL: test-model
+          # web 検索とメディア解析用の設定
           WEB_SEARCH_MODEL: test-web-search-model
-          GEMINI_MEDIA_MODEL: gemini-9-flash
+          GEMINI_MEDIA_MODEL: example-media-model
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov

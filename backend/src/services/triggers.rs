@@ -12,8 +12,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::agent_client::SharedAgentTaskClient;
-use crate::entities::{strategy, trigger};
 use crate::services::strategy_tasks::{SubmitTaskError, SubmittedTask, TaskSource, submit_task};
+use gateway_postgres::entities::{strategy, trigger};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FireTriggerError {
@@ -316,9 +316,9 @@ mod fire_tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::{strategy, strategy_task, trigger};
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
+    use gateway_postgres::entities::{strategy, strategy_task, trigger};
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::json;
@@ -371,7 +371,7 @@ mod fire_tests {
         strategy_id: Uuid,
         source: String,
         prompt: String,
-        phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase,
+        phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase,
     }
 
     impl TaskShape {
@@ -406,7 +406,7 @@ mod fire_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fire_creates_strategy_task_with_expected_source(db: crate::database::DatabaseHandle) {
+    async fn fire_creates_strategy_task_with_expected_source(db: gateway_postgres::DatabaseHandle) {
         let sid = seed_strategy(&db, "長期").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -435,7 +435,8 @@ mod fire_tests {
                     strategy_id: sid,
                     source: "hook".to_string(),
                     prompt: "alert 7203".to_string(),
-                    phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
+                    phase:
+                        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
                 },
                 TriggerFireShape {
                     trigger_id: tid,
@@ -448,7 +449,7 @@ mod fire_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fire_with_cron_source_writes_cron(db: crate::database::DatabaseHandle) {
+    async fn fire_with_cron_source_writes_cron(db: gateway_postgres::DatabaseHandle) {
         let sid = seed_strategy(&db, "s").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
@@ -487,13 +488,13 @@ mod fire_tests {
                 strategy_id: sid,
                 source: "cron".to_string(),
                 prompt: "morning s".to_string(),
-                phase: crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
+                phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
             }],
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn fire_disabled_trigger_returns_error(db: crate::database::DatabaseHandle) {
+    async fn fire_disabled_trigger_returns_error(db: gateway_postgres::DatabaseHandle) {
         let sid = seed_strategy(&db, "s").await;
         let id = Uuid::new_v4();
         trigger::ActiveModel {
@@ -521,7 +522,7 @@ mod fire_tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn fire_missing_trigger_returns_not_found(db: crate::database::DatabaseHandle) {
+    async fn fire_missing_trigger_returns_not_found(db: gateway_postgres::DatabaseHandle) {
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let missing = Uuid::new_v4();
         let err = fire_trigger(&db, &kube, missing, json!({}), TaskSource::Hook)
@@ -532,7 +533,7 @@ mod fire_tests {
 
     #[backend_test_macros::database_test]
     async fn fire_trigger_without_strategy_returns_no_strategy_error(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         // strategy_id が NULL の trigger を作る API が無いため直接 insert する
         let id = Uuid::new_v4();
@@ -562,7 +563,7 @@ mod fire_tests {
 
     #[backend_test_macros::database_test]
     async fn fire_does_not_update_last_fired_when_submit_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let sid = seed_strategy(&db, "p").await;
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())

@@ -54,7 +54,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_config_returns_null_when_env_unset(db: crate::database::DatabaseHandle) {
+    async fn get_config_returns_null_when_env_unset(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let response = server.get("/api/config").await;
         response.assert_status_ok();

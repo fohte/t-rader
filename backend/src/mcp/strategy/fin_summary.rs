@@ -1,9 +1,9 @@
 //! 戦略実行 MCP の `read_fin_summary` tool。財務情報テーブルの型付き列を返却 DTO に変換する。
 
 use chrono::NaiveDate;
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
-use uuid::Uuid;
 
 use super::dto::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
 use super::{StrategyServer, clamp_limit, db_error};
@@ -67,9 +67,10 @@ impl StrategyServer {
     pub(crate) async fn read_fin_summary_inner(
         &self,
         // 財務情報は会社単位の開示であり戦略に属さないマスタデータのため検索条件に使わない
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadFinSummaryParams,
     ) -> Result<ReadFinSummaryResult, McpError> {
+        let _scope = scope.into();
         let limit = clamp_limit(params.limit) as i64;
 
         let rows = self
@@ -195,7 +196,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
-    use crate::entities::financial_summary;
+    use gateway_postgres::entities::financial_summary;
 
     fn ymd(y: i32, m: u32, d: u32) -> chrono::NaiveDate {
         chrono::NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -286,7 +287,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_returns_typed_fields_and_nulls_missing_values(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -379,7 +380,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_computes_progress_rates_only_for_quarterly_statements(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -515,7 +516,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_matches_5_digit_code_by_leading_4_chars(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -543,7 +544,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_keeps_only_the_highest_disc_no_per_period_and_doc_type(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -603,7 +604,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_keeps_missing_and_blank_group_values_separate(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 
@@ -631,7 +632,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn read_fin_summary_orders_newest_first_and_respects_limit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let server = build_server(db.clone());
 

@@ -2,13 +2,13 @@
 //!
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
 use uuid::Uuid;
 
-use crate::entities::{note, note_version};
 use crate::services::change_history::Actor;
 use crate::services::graph::{GraphDef, validate_graphs};
 use crate::services::note_kinds;
@@ -17,6 +17,7 @@ use crate::services::note_versions::{
     self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_versions,
     find_initial_created_by_kind, find_version_of_note,
 };
+use gateway_postgres::entities::{note, note_version};
 
 use super::dto::{
     ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, NoteKindDto, NoteLinkDto,
@@ -24,7 +25,7 @@ use super::dto::{
 };
 use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, clamp_limit, db_error,
-    ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
+    fetch_note_owned_by, internal_error, invalid_params,
 };
 
 /// 検証済みの `graphs` を JSON へ変換する。
@@ -159,10 +160,11 @@ impl StrategyServer {
 
     pub(crate) async fn write_note_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
+        let session_strategy_id = scope.into().id();
         if let Some(graphs) = params.graphs.as_ref() {
             validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
         }
@@ -184,7 +186,6 @@ impl StrategyServer {
                 .await;
         }
 
-        ensure_strategy_exists(&self.db, session_strategy_id).await?;
         if let Some(Some(kind)) = params.kind.as_ref() {
             note_kinds::ensure_reference(&self.db, kind)
                 .await
@@ -386,9 +387,10 @@ impl StrategyServer {
 
     pub(crate) async fn read_note_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
+        let session_strategy_id = scope.into().id();
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
         let version = match params.version_id {
             Some(version_id) => find_version_of_note(&self.db, params.note_id, Some(version_id))
@@ -428,9 +430,10 @@ impl StrategyServer {
 
     pub(crate) async fn list_notes_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
+        let session_strategy_id = scope.into().id();
         if let Some(status) = params.status.as_deref()
             && !ALLOWED_NOTE_STATUS.contains(&status)
         {
@@ -499,9 +502,9 @@ mod tests {
         normalize_comment_model, normalize_note, seed_foreign_note,
         seed_note_version_comment_with_anchor, set_note_status, set_note_updated_at, ts_sentinel,
     };
-    use crate::entities::{comment, note_ref, note_version};
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::services::note_versions::find_current_version;
+    use gateway_postgres::entities::{comment, note_ref, note_version};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
@@ -566,7 +569,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_creates_then_read_note_returns_it(db: crate::database::DatabaseHandle) {
+    async fn write_note_creates_then_read_note_returns_it(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         insert_note_kind(&db, "sample-kind", false).await;
         let server = build_server(db);
@@ -635,7 +638,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_creates_note_ref_from_body_and_graphs(db: crate::database::DatabaseHandle) {
+    async fn write_note_creates_note_ref_from_body_and_graphs(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -669,7 +674,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_update_resyncs_note_refs(db: crate::database::DatabaseHandle) {
+    async fn write_note_update_resyncs_note_refs(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
@@ -721,7 +726,7 @@ mod tests {
     // database_test は rstest の case 引数を扱わないため、for ループで列挙する。
     #[backend_test_macros::database_test]
     async fn write_note_updates_existing_and_resets_status_to_unread(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "swing").await;
         let server = build_server(db.clone());
@@ -824,7 +829,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn write_note_rejects_cross_strategy_update(db: crate::database::DatabaseHandle) {
+    async fn write_note_rejects_cross_strategy_update(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -850,7 +855,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_note_rejects_cross_strategy(db: crate::database::DatabaseHandle) {
+    async fn read_note_rejects_cross_strategy(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db.clone());
@@ -870,7 +875,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_notes_filters_by_strategy(db: crate::database::DatabaseHandle) {
+    async fn list_notes_filters_by_strategy(db: gateway_postgres::DatabaseHandle) {
         let strategy_a = insert_strategy(&db, "a").await;
         let strategy_b = insert_strategy(&db, "b").await;
         let server = build_server(db);
@@ -908,7 +913,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_notes_filters_by_status(db: crate::database::DatabaseHandle) {
+    async fn list_notes_filters_by_status(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db.clone());
 
@@ -953,7 +958,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_notes_rejects_invalid_status(db: crate::database::DatabaseHandle) {
+    async fn list_notes_rejects_invalid_status(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -971,7 +976,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_notes_filters_by_updated_after(db: crate::database::DatabaseHandle) {
+    async fn list_notes_filters_by_updated_after(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db.clone());
 
@@ -1027,7 +1032,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_notes_include_body_false_omits_body(db: crate::database::DatabaseHandle) {
+    async fn list_notes_include_body_false_omits_body(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
 
@@ -1064,7 +1069,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_creates_with_graphs_then_read_note_returns_them(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1121,7 +1126,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_rejects_invalid_graph_and_does_not_create_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1153,7 +1158,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_rejects_invalid_body_tokens_without_creating_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1193,7 +1198,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_rejects_invalid_body_tokens_and_keeps_existing_note_unchanged(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1254,7 +1259,7 @@ mod tests {
     // body_md と graphs は独立に部分更新できる: 片方だけ送るともう片方は無傷。
     #[backend_test_macros::database_test]
     async fn write_note_update_graphs_and_body_are_independent(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1344,7 +1349,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_graphs_only_update_keeps_legacy_body_tokens(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
@@ -1427,7 +1432,7 @@ mod tests {
     /// 図のみを更新した場合も、他フィールド更新と同様に status が unread へ戻る。
     #[backend_test_macros::database_test]
     async fn write_note_update_with_graphs_only_resets_status_to_unread(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
@@ -1482,7 +1487,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_rejects_invalid_graph_on_update_and_leaves_note_unchanged(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1556,7 +1561,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_updating_body_md_keeps_comment_on_original_version(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
@@ -1637,7 +1642,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn write_note_updating_body_md_keeps_comment_position_on_original_version(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
@@ -1713,7 +1718,7 @@ mod tests {
     /// 更新する (agent 側のリトライによる重複作成を防ぐ)。
     #[backend_test_macros::database_test]
     async fn write_note_with_same_execution_id_collapses_onto_single_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1794,7 +1799,7 @@ mod tests {
     /// execution_id が異なれば別ノートとして作成される。
     #[backend_test_macros::database_test]
     async fn write_note_with_different_execution_ids_creates_distinct_notes(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1852,7 +1857,7 @@ mod tests {
     /// execution_id を省略した場合 (ヘッダ非対応クライアント互換) は従来通り毎回別ノートを作成する。
     #[backend_test_macros::database_test]
     async fn write_note_without_execution_id_creates_distinct_notes(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -1910,7 +1915,7 @@ mod tests {
     /// 明示的な note_id は execution_id によるノート解決より常に優先される。
     #[backend_test_macros::database_test]
     async fn write_note_explicit_note_id_wins_over_execution_id_lookup(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db);
@@ -2014,7 +2019,7 @@ mod tests {
     /// 作成経路を通さず実行 ID 付きの既存ノートを用意し、並行作成の先勝ちを模している。
     #[backend_test_macros::database_test]
     async fn insert_note_or_conflict_returns_none_when_execution_id_already_taken(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());

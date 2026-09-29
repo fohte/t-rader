@@ -8,12 +8,12 @@
 //! 売買代金) は JPX の空売り集計公表ページに基づく。戦略に属さない市場データのため
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
-use crate::entities::short_ratio;
+use gateway_postgres::entities::short_ratio;
 
 use super::dto::{ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto};
 use super::{StrategyServer, clamp_limit, db_error, decimal_to_f64, invalid_params};
@@ -100,9 +100,10 @@ fn sector_short_ratio_dto(row: short_ratio::Model) -> SectorShortRatioDto {
 impl StrategyServer {
     pub(crate) async fn read_sector_short_ratio_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadSectorShortRatioParams,
     ) -> Result<ReadSectorShortRatioResult, McpError> {
+        let _scope = scope.into();
         let sector33_code = sector33_code_for_name(&params.sector)
             .ok_or_else(|| invalid_params(format!("unknown sector name: {:?}", params.sector)))?;
         let limit = clamp_limit(params.limit);
@@ -144,7 +145,7 @@ mod tests {
     };
     use super::super::tests_common::build_server;
     use super::{compute_short_ratio, sector33_code_for_name};
-    use crate::entities::short_ratio;
+    use gateway_postgres::entities::short_ratio;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -204,7 +205,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_unknown_sector_name(db: crate::database::DatabaseHandle) {
+    async fn rejects_unknown_sector_name(db: gateway_postgres::DatabaseHandle) {
         let err = build_server(db)
             .read_sector_short_ratio_inner(
                 Uuid::new_v4(),
@@ -222,7 +223,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn returns_matching_sector_newest_first_with_computed_ratio(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         seed(&db, "3700", ymd(2026, 1, 5), Some(("700", "200", "100"))).await;
         seed(&db, "3700", ymd(2026, 1, 6), None).await;
@@ -266,7 +267,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn filters_by_date_range_and_respects_limit(db: crate::database::DatabaseHandle) {
+    async fn filters_by_date_range_and_respects_limit(db: gateway_postgres::DatabaseHandle) {
         for day in [1u32, 2, 3, 4] {
             seed(&db, "3700", ymd(2026, 1, day), Some(("100", "10", "10"))).await;
         }

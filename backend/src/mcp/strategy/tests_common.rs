@@ -5,7 +5,7 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ActiveModelTrait, EntityTrait, TransactionSession};
 use uuid::Uuid;
 
-use crate::entities::{annotation, comment, note, note_kind, note_version, strategy};
+use gateway_postgres::entities::{annotation, comment, note, note_kind, note_version, strategy};
 
 use super::StrategyServer;
 use super::dto::{AnnotationDto, CommentDto, NoteDto};
@@ -43,7 +43,7 @@ pub(super) async fn insert_note_kind(
     .expect("insert note kind");
 }
 
-pub(super) fn build_server(db: impl Into<crate::database::DatabaseHandle>) -> StrategyServer {
+pub(super) fn build_server(db: impl Into<gateway_postgres::DatabaseHandle>) -> StrategyServer {
     StrategyServer::new(db, None)
 }
 

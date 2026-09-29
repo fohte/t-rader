@@ -12,7 +12,6 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::entities::{note, note_version};
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateNoteRequest, NoteResponse, UpdateNoteRequest};
@@ -23,6 +22,7 @@ use crate::services::note_versions::{
     find_initial_created_by_kind,
 };
 use crate::services::strategies::ensure_strategy_exists;
+use gateway_postgres::entities::{note, note_version};
 
 const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
 const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
@@ -472,9 +472,6 @@ mod tests {
 
     use super::*;
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::comment;
-    use crate::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
@@ -482,6 +479,9 @@ mod tests {
         insert_test_strategy,
     };
     use axum_test::TestServer;
+    use gateway_postgres::entities::comment;
+    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
+    use gateway_postgres::entities::strategy_task;
     use serde_json::Value;
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
@@ -555,7 +555,7 @@ mod tests {
     /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
     /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
     #[backend_test_macros::database_test]
-    async fn note_without_strategy_id_rejects_execution_id(db: crate::database::DatabaseHandle) {
+    async fn note_without_strategy_id_rejects_execution_id(db: gateway_postgres::DatabaseHandle) {
         let (db, _server) = create_test_server_with_db(db).await;
 
         let result = note::ActiveModel {
@@ -575,7 +575,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_note_without_strategy_id_succeeds(db: crate::database::DatabaseHandle) {
+    async fn create_note_without_strategy_id_succeeds(db: gateway_postgres::DatabaseHandle) {
         let (_db, server) = create_test_server_with_db(db).await;
 
         let res = server
@@ -615,7 +615,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn create_note_rejects_invalid_tokens_without_saving(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
 
@@ -641,7 +641,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn update_note_rejects_invalid_tokens_and_keeps_original_body(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "strategy").await;
@@ -669,7 +669,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_note_without_strategy_id_does_not_submit_task(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -728,7 +728,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_note_submits_single_review_task_referencing_note(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -794,7 +794,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn rejecting_already_rejected_note_does_not_resubmit(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         let agent_client: SharedAgentTaskClient = fake.clone();
@@ -836,7 +836,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn reject_note_leaves_status_unchanged_when_agent_submission_fails(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
@@ -870,7 +870,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn update_note_keeps_comment_anchored_to_original_version(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "s").await;

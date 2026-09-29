@@ -9,77 +9,9 @@ use sea_orm::{ConnectionTrait, EntityTrait};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::entities::change_history;
 use crate::error::AppError;
-
-/// 記録する変更の actor。`change_history.actor_kind` の CHECK 制約 (`human`/`llm`) に対応する。
-#[derive(Debug, Clone, Copy)]
-pub enum Actor {
-    Human,
-    Llm { label: &'static str },
-}
-
-impl Actor {
-    fn kind(self) -> &'static str {
-        match self {
-            Actor::Human => "human",
-            Actor::Llm { .. } => "llm",
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Actor::Human => "user",
-            Actor::Llm { label } => label,
-        }
-    }
-}
-
-/// 対象種別。`change_history.target_kind` の CHECK 制約と enum 値を対応させる必要がある
-#[derive(Debug, Clone, Copy)]
-pub enum TargetKind {
-    Note,
-    Annotation,
-    Strategy,
-    Trade,
-    Comment,
-    CustomIndicator,
-    NoteKind,
-}
-
-impl TargetKind {
-    fn as_str(self) -> &'static str {
-        match self {
-            TargetKind::Note => "note",
-            TargetKind::Annotation => "annotation",
-            TargetKind::Strategy => "strategy",
-            TargetKind::Trade => "trade",
-            TargetKind::Comment => "comment",
-            TargetKind::CustomIndicator => "custom_indicator",
-            TargetKind::NoteKind => "note_kind",
-        }
-    }
-}
-
-/// 操作種別
-#[derive(Debug, Clone, Copy)]
-pub enum Op {
-    Create,
-    Update,
-    Delete,
-    StatusChange,
-}
-
-impl Op {
-    fn as_str(self) -> &'static str {
-        match self {
-            Op::Create => "create",
-            Op::Update => "update",
-            Op::Delete => "delete",
-            Op::StatusChange => "status_change",
-        }
-    }
-}
+pub use core_application::change_history::{Actor, Op, TargetKind};
+use gateway_postgres::entities::change_history;
 
 /// change_history に 1 件記録する。actor は "human" / "user" 固定。
 pub async fn record<C>(
@@ -134,7 +66,7 @@ mod tests {
     use serde_json::json;
 
     #[backend_test_macros::database_test]
-    async fn record_as_persists_the_given_actor(db: crate::database::DatabaseHandle) {
+    async fn record_as_persists_the_given_actor(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_test_strategy(&db, "s").await;
 
         record_as(

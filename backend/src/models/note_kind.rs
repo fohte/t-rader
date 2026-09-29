@@ -1,7 +1,7 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::entities::note_kind;
+use gateway_postgres::entities::note_kind;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = NoteKind)]

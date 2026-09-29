@@ -156,7 +156,6 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::{AgentTaskError, FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::entities::strategy_task;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
@@ -164,6 +163,7 @@ mod tests {
         create_test_server_with_db_and_agent_client, insert_test_strategy,
         insert_test_strategy_task,
     };
+    use gateway_postgres::entities::strategy_task;
 
     /// JSON body から動的フィールド (created_at/updated_at/as_of) を除去し、
     /// 単一の assert_eq! で残りのフィールドを比較できるようにする。
@@ -177,7 +177,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn submit_chat_creates_task_row_and_submits_to_agent(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_next_task_id("agent-task-1").await;
@@ -227,7 +227,7 @@ mod tests {
                 Some("agent-task-1".to_string()),
                 "frontend".to_string(),
                 "inspect 7203".to_string(),
-                crate::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
+                gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
                 None,
             ),
         );
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_unknown_strategy_returns_404(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_unknown_strategy_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
             .post("/api/strategies/00000000-0000-0000-0000-000000000000/chat")
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_empty_prompt_returns_400(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_empty_prompt_returns_400(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_agent_not_configured_returns_503(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_agent_not_configured_returns_503(db: gateway_postgres::DatabaseHandle) {
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::NotConfigured).await;
         let agent_client: SharedAgentTaskClient = fake;
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_missing_agent_config_returns_503(db: crate::database::DatabaseHandle) {
+    async fn submit_chat_missing_agent_config_returns_503(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_returns_phase(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_returns_phase(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_unknown_returns_404(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_unknown_returns_404(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn get_strategy_task_strategy_mismatch_returns_404(db: crate::database::DatabaseHandle) {
+    async fn get_strategy_task_strategy_mismatch_returns_404(db: gateway_postgres::DatabaseHandle) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
@@ -391,7 +391,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategy_tasks_returns_tasks_newest_first(db: crate::database::DatabaseHandle) {
+    async fn list_strategy_tasks_returns_tasks_newest_first(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_id = insert_test_strategy(&db, "x").await;
 
@@ -455,7 +455,9 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategy_tasks_unknown_strategy_returns_404(db: crate::database::DatabaseHandle) {
+    async fn list_strategy_tasks_unknown_strategy_returns_404(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let server = create_test_server(db).await;
         let res = server
             .get("/api/strategies/00000000-0000-0000-0000-000000000000/tasks")
@@ -464,7 +466,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn list_strategy_tasks_scoped_to_strategy(db: crate::database::DatabaseHandle) {
+    async fn list_strategy_tasks_scoped_to_strategy(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
         let strategy_a = insert_test_strategy(&db, "a").await;
         let strategy_b = insert_test_strategy(&db, "b").await;

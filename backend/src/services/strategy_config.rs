@@ -12,9 +12,9 @@ use sea_orm::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::entities::strategy;
 use crate::error::AppError;
 use crate::services::change_history::{self, Actor, Op, TargetKind};
+use gateway_postgres::entities::strategy;
 
 pub async fn find_or_404(
     db: &impl sea_orm::ConnectionTrait,
@@ -82,7 +82,7 @@ pub async fn create(
 #[derive(Default)]
 pub struct StrategyUpdate {
     pub name: Option<String>,
-    pub description: Option<String>,
+    pub description: Option<Option<String>>,
     pub sort_order: Option<i32>,
 }
 
@@ -106,7 +106,7 @@ pub async fn update(
             "description".into(),
             json!({ "from": current.description, "to": description }),
         );
-        active.description = Set(Some(description));
+        active.description = Set(description);
     }
     if let Some(sort_order) = payload.sort_order {
         diff.insert(
@@ -203,7 +203,7 @@ mod tests {
     use crate::testing::insert_test_strategy;
 
     #[backend_test_macros::database_test]
-    async fn delete_records_change_history_with_given_actor(db: crate::database::DatabaseHandle) {
+    async fn delete_records_change_history_with_given_actor(db: gateway_postgres::DatabaseHandle) {
         let id = insert_test_strategy(&db, "s").await;
 
         delete(&db, Actor::Llm { label: "mgmt-mcp" }, id)
@@ -212,7 +212,7 @@ mod tests {
 
         assert!(find_or_404(&db, id).await.is_err());
 
-        let row = crate::entities::change_history::Entity::find()
+        let row = gateway_postgres::entities::change_history::Entity::find()
             .one(&db)
             .await
             .expect("query")
@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn delete_unknown_id_returns_not_found(db: crate::database::DatabaseHandle) {
+    async fn delete_unknown_id_returns_not_found(db: gateway_postgres::DatabaseHandle) {
         let err = delete(&db, Actor::Human, Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
     }
@@ -245,7 +245,7 @@ mod tests {
     // 直前に別経路で名前が変わることを、事前の rename で決定的に再現する。
     #[backend_test_macros::database_test]
     async fn delete_confirmed_rejects_when_name_changed_after_confirmation(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let id = insert_test_strategy(&db, "original").await;
 

@@ -15,8 +15,8 @@ use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
 use tokio::task::JoinHandle;
 
 use crate::data_provider::{DateRange, EarningsScheduleSource, SharedEarningsScheduleSource};
-use crate::entities::jquants_earnings_date;
 use crate::error::AppError;
+use gateway_postgres::entities::jquants_earnings_date;
 
 /// poll task のデフォルト実行間隔。決算発表予定日の更新頻度 (日次) に合わせて 1 日とする。
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -225,7 +225,7 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn test_ingests_and_upserts_new_disclosures_including_undecided_schedule(
-        db: crate::database::DatabaseHandle,
+        db: gateway_postgres::DatabaseHandle,
     ) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
@@ -296,7 +296,7 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn test_continues_past_days_that_fail_to_fetch(db: crate::database::DatabaseHandle) {
+    async fn test_continues_past_days_that_fail_to_fetch(db: gateway_postgres::DatabaseHandle) {
         let mock = JQuantsMockServer::start().await;
         let client = mock
             .client_with_plan(JQuantsPlan::Standard)

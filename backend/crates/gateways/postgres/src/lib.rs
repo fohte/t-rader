@@ -5,6 +5,19 @@ use sea_orm::{
     IsolationLevel, QueryResult, Statement, TransactionError, TransactionOptions, TransactionTrait,
 };
 
+extern crate self as gateway_postgres;
+
+pub mod entities;
+pub mod repositories;
+mod trade;
+
+pub use trade::{
+    PostgresChangeHistory, PostgresTradeRepository, PostgresUnitOfWork, postgres_trade_use_cases,
+};
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 #[derive(Clone)]
 enum DatabaseHandleInner {
     Connection(DatabaseConnection),
