@@ -312,6 +312,12 @@ pub async fn delete_note(
 pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
     match error {
         NoteUseCaseError::Validation(message) => AppError::Validation(message),
+        NoteUseCaseError::UnknownNoteKind(kind) => {
+            AppError::Validation(format!("unknown note kind: {kind}"))
+        }
+        NoteUseCaseError::ReferencedNoteKindNotFound(kind) => {
+            AppError::NotFound(format!("note kind {kind} not found"))
+        }
         NoteUseCaseError::NotFound(message) => AppError::NotFound(message),
         NoteUseCaseError::Conflict(message) => AppError::Conflict(message),
         NoteUseCaseError::Repository(NoteRepositoryError::Database(error))
@@ -338,9 +344,9 @@ mod tests {
         insert_test_strategy,
     };
     use axum_test::TestServer;
-    use gateway_postgres::entities::comment;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
+    use gateway_postgres::entities::{change_history, comment};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use serde_json::{Value, json};
@@ -471,6 +477,90 @@ mod tests {
                 "created_by_kind": "human",
                 "execution_id": null,
             }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_note_records_history_in_the_same_use_case(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "sample note",
+                "body_md": "body",
+            }))
+            .await;
+        let body = res.json::<Value>();
+        let note_id = Uuid::parse_str(body["id"].as_str().expect("note id")).expect("uuid");
+        let version_id =
+            Uuid::parse_str(body["version_id"].as_str().expect("version id")).expect("uuid");
+        let histories = change_history::Entity::find()
+            .filter(change_history::Column::TargetId.eq(note_id))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| {
+                (
+                    row.target_kind,
+                    row.target_id,
+                    row.actor_kind,
+                    row.actor_label,
+                    row.op,
+                    row.diff_json,
+                    row.summary,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (res.status_code(), histories),
+            (
+                StatusCode::CREATED,
+                vec![(
+                    "note".to_string(),
+                    note_id,
+                    "human".to_string(),
+                    "user".to_string(),
+                    "create".to_string(),
+                    json!({
+                        "title": "sample note",
+                        "strategy_id": null,
+                        "from_version_id": null,
+                        "to_version_id": version_id,
+                        "version_no": 1,
+                    }),
+                    None,
+                )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_note_rejects_unknown_kind_as_bad_request(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "sample note",
+                "body_md": "body",
+                "kind": "sample-kind",
+            }))
+            .await;
+        let response = res.json::<Value>();
+        let saved_notes = note::Entity::find().all(&db).await.unwrap();
+
+        assert_eq!(
+            (res.status_code(), response, saved_notes.len()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": "unknown note kind: sample-kind"}),
+                0,
+            ),
         );
     }
 

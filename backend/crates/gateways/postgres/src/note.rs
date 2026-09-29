@@ -153,6 +153,7 @@ impl NoteRepository for PostgresNoteRepository {
             execution_id: Set(note.execution_id),
         };
         let result = if has_execution_id {
+            // 部分 unique index の predicate と一致しないと、Postgres が conflict target に選べない。
             note::Entity::insert(model)
                 .on_conflict(
                     OnConflict::columns([note::Column::StrategyId, note::Column::ExecutionId])
@@ -169,6 +170,7 @@ impl NoteRepository for PostgresNoteRepository {
         };
         match result {
             Ok(row) => Ok(Some(to_note(row))),
+            // SeaORM 2.0 は DO NOTHING 後の空 RETURNING をこの 2 種類で返す。
             Err(sea_orm::DbErr::RecordNotInserted | sea_orm::DbErr::RecordNotFound(_))
                 if has_execution_id =>
             {
@@ -444,5 +446,83 @@ fn to_version(model: note_version::Model) -> NoteVersion {
         execution_id: model.execution_id,
         created_at: model.created_at,
         reviewed_at: model.reviewed_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core_application::note::{NewNote, NoteRepository};
+    use core_application::unit_of_work::UnitOfWork;
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use uuid::Uuid;
+
+    use super::PostgresNoteRepository;
+
+    #[backend_test_macros::database_test]
+    async fn insert_note_returns_none_when_execution_id_conflicts(db: crate::DatabaseHandle) {
+        let strategy_id = Uuid::new_v4();
+        crate::entities::strategy::ActiveModel {
+            id: Set(strategy_id),
+            name: Set("sample strategy".to_string()),
+            description: Set(None),
+            sort_order: Set(0),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert test strategy");
+
+        let repository = PostgresNoteRepository::new();
+        let unit_of_work = crate::unit_of_work::PostgresUnitOfWork::new(db);
+        let transaction = unit_of_work.begin().await.expect("begin transaction");
+        let existing_note_id = Uuid::new_v4();
+        let execution_id = "sample-execution";
+        let first = repository
+            .insert_note(
+                &transaction,
+                NewNote {
+                    id: existing_note_id,
+                    strategy_id: Some(strategy_id),
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                    execution_id: Some(execution_id.into()),
+                },
+            )
+            .await
+            .expect("insert first note")
+            .map(|note| note.id);
+        let conflict = repository
+            .insert_note(
+                &transaction,
+                NewNote {
+                    id: Uuid::new_v4(),
+                    strategy_id: Some(strategy_id),
+                    kind: None,
+                    trigger: None,
+                    trigger_label: None,
+                    execution_id: Some(execution_id.into()),
+                },
+            )
+            .await
+            .expect("execution id conflict is not a repository error")
+            .map(|note| note.id);
+        let existing = repository
+            .find_note_by_execution_id(&transaction, strategy_id, execution_id)
+            .await
+            .expect("find first note")
+            .map(|note| note.id);
+
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("commit transaction");
+
+        assert_eq!(
+            (first, conflict, existing),
+            (Some(existing_note_id), None, Some(existing_note_id),),
+        );
     }
 }

@@ -46,9 +46,7 @@ impl NoteUseCases {
             self.repository
                 .find_note_kind_requires_approval(transaction, kind_key)
                 .await?
-                .ok_or_else(|| {
-                    NoteUseCaseError::NotFound(format!("note kind {kind_key} not found"))
-                })?
+                .ok_or_else(|| NoteUseCaseError::ReferencedNoteKindNotFound(kind_key.to_string()))?
         } else {
             false
         };

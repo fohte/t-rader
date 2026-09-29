@@ -5,9 +5,10 @@ use crate::error::AppError;
 use crate::services::graph::GraphDef;
 use gateway_postgres::entities::note_ref;
 
+#[cfg(test)]
+pub(crate) use core_domain::note_reference::extract_note_link_tokens;
 pub(crate) use core_domain::note_reference::{
-    ALLOWED_REF_KINDS, BodyTokenPolicy, NoteTokenValidationError, extract_note_link_tokens,
-    format_note_token_errors,
+    ALLOWED_REF_KINDS, BodyTokenPolicy, NoteTokenValidationError, format_note_token_errors,
 };
 
 pub(crate) async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
@@ -19,6 +20,7 @@ pub(crate) async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     sync_note_refs_with_policy(db, note_id, body_md, graphs_json, BodyTokenPolicy::Validate).await
 }
 
+#[cfg(test)]
 pub(crate) async fn sync_note_refs_after_graphs_only_update<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: uuid::Uuid,

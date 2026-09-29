@@ -10,8 +10,12 @@ use crate::unit_of_work::UnitOfWorkError;
 pub enum NoteUseCaseError {
     #[error("{0}")]
     Validation(String),
+    #[error("unknown note kind: {0}")]
+    UnknownNoteKind(String),
     #[error("{0}")]
     NotFound(String),
+    #[error("note kind {0} not found")]
+    ReferencedNoteKindNotFound(String),
     #[error("{0}")]
     Conflict(String),
     #[error("note {0} belongs to another strategy")]

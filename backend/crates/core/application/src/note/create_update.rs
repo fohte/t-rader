@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::change_history::{Actor, Op};
 use crate::note::types::{NoteMetadataUpdate, NoteSnapshot, UpdateNoteCommand};
+use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
 use crate::note::{NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
@@ -165,20 +166,8 @@ impl NoteUseCases {
             .await?
             .is_none()
         {
-            return Err(NoteUseCaseError::NotFound(format!(
-                "note kind {kind} not found"
-            )));
+            return Err(NoteUseCaseError::UnknownNoteKind(kind.to_string()));
         }
         Ok(())
-    }
-}
-
-fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCaseError> {
-    if value.is_object() {
-        Ok(())
-    } else {
-        Err(NoteUseCaseError::Validation(
-            "frontmatter_json must be a JSON object".into(),
-        ))
     }
 }

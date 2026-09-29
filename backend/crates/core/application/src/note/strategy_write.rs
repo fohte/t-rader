@@ -1,10 +1,11 @@
 use chrono::Utc;
-use serde_json::{Value, json};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::note::types::{
     NewNote, NoteSnapshot, NoteVersion, NoteVersionUpdate, NoteWriteCommand, NoteWriteResult,
 };
+use crate::note::use_cases::ensure_frontmatter_object;
 use crate::note::version_write::AppendVersionCommand;
 use crate::note::{NoteUseCaseError, NoteUseCases};
 use crate::unit_of_work::UnitOfWorkTransaction;
@@ -337,15 +338,5 @@ impl NoteUseCases {
                 created_by_kind,
             },
         })
-    }
-}
-
-fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCaseError> {
-    if value.is_object() {
-        Ok(())
-    } else {
-        Err(NoteUseCaseError::Validation(
-            "frontmatter_json must be a JSON object".into(),
-        ))
     }
 }

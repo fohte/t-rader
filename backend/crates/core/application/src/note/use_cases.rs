@@ -9,6 +9,16 @@ use crate::strategy_existence::SharedStrategyExistence;
 use crate::strategy_scope::StrategyScope;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 
+pub(super) fn ensure_frontmatter_object(value: &Value) -> Result<(), NoteUseCaseError> {
+    if value.is_object() {
+        Ok(())
+    } else {
+        Err(NoteUseCaseError::Validation(
+            "frontmatter_json must be a JSON object".into(),
+        ))
+    }
+}
+
 #[derive(Clone)]
 pub struct NoteUseCases {
     pub(super) unit_of_work: SharedUnitOfWork,

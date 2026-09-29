@@ -74,8 +74,11 @@ fn note_to_dto(
 fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
     match error {
         NoteUseCaseError::Validation(message) => invalid_params(message),
-        NoteUseCaseError::NotFound(message) if message.starts_with("note kind ") => {
-            internal_error(message)
+        NoteUseCaseError::UnknownNoteKind(kind) => {
+            invalid_params(format!("unknown note kind: {kind}"))
+        }
+        NoteUseCaseError::ReferencedNoteKindNotFound(kind) => {
+            internal_error(format!("note kind {kind} not found"))
         }
         NoteUseCaseError::NotFound(_) => McpError::resource_not_found("note not found", None),
         NoteUseCaseError::Forbidden(note_id) => invalid_params(format!(
@@ -268,7 +271,7 @@ mod tests {
     };
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::services::note_versions::find_current_version;
-    use gateway_postgres::entities::{comment, note_ref, note_version};
+    use gateway_postgres::entities::{comment, note, note_ref, note_version};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
@@ -385,6 +388,41 @@ mod tests {
                 graphs: vec![],
                 links: Some(vec![]),
             },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_unknown_kind_as_invalid_params(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        let error = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("sample note".into()),
+                    body_md: None,
+                    kind: Some(Some("sample-kind".into())),
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect_err("unknown note kind must be rejected");
+        let saved_notes = note::Entity::find().all(&db).await.unwrap();
+
+        assert_eq!(
+            (error.code, error.message.as_ref(), saved_notes.len(),),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "unknown note kind: sample-kind",
+                0,
+            ),
         );
     }
 
