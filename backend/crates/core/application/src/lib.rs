@@ -13,6 +13,7 @@ pub mod news_aggregator;
 pub mod persistence;
 pub mod shareholding_structure_source;
 pub mod short_selling_source;
+pub mod strategy;
 pub mod strategy_existence;
 pub mod strategy_scope;
 pub mod trade;

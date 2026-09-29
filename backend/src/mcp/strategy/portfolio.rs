@@ -10,20 +10,20 @@ use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 
-use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
 
 use super::dto::{
     PortfolioPositionDto, PortfolioScopeDto, ReadPortfolioResult, StrategyPortfolioScopeDto,
 };
-use super::{StrategyServer, app_error_to_mcp, decimal_to_f64, trade_error};
+use super::{StrategyServer, decimal_to_f64, strategy_use_case_error_to_mcp, trade_error};
 
 impl StrategyServer {
     pub(crate) async fn read_portfolio_inner(
         &self,
         scope: impl Into<StrategyScope>,
     ) -> Result<ReadPortfolioResult, McpError> {
-        let strategy_id = scope.into().id();
+        let scope = scope.into();
+        let strategy_id = scope.id();
         let account_summary = self
             .use_cases
             .trades
@@ -61,9 +61,12 @@ impl StrategyServer {
         let strategy_realized_pnl = strategy_summary.realized_pnl;
         let strategy_positions = to_position_dtos(strategy_summary.positions, &prices.prices);
 
-        let investable_amount_row = investable_amount::find_current(&self.db, strategy_id)
+        let investable_amount_row = self
+            .use_cases
+            .strategies
+            .current_investable_amount(scope)
             .await
-            .map_err(app_error_to_mcp)?;
+            .map_err(strategy_use_case_error_to_mcp)?;
         let unused_investable_amount = super::unused_investable_amount(
             investable_amount_row.as_ref().map(|row| row.amount_jpy),
             strategy_realized_pnl,
@@ -126,6 +129,8 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::{Duration, TimeZone, Utc};
+    use core_application::change_history::Actor;
+    use core_application::strategy_scope::StrategyScope;
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
@@ -134,7 +139,6 @@ mod tests {
     use crate::data_provider::SharedDailyBarSource;
     use crate::models::bar::{Bar, Timeframe};
     use crate::models::instrument::{Instrument, Market};
-    use crate::services::investable_amount;
     use crate::testing::MockProvider;
     use gateway_postgres::entities::trade;
 
@@ -279,14 +283,17 @@ mod tests {
         let strategy_id = insert_strategy(&db, "a").await;
         seed_trade(&db, strategy_id, "7203", "buy", 100, 1000).await;
 
-        investable_amount::record(
-            &db,
-            strategy_id,
-            Decimal::from(500_000),
-            Utc::now().fixed_offset() - Duration::days(1),
-        )
-        .await
-        .expect("record investable amount");
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+        use_cases
+            .strategies
+            .record_investable_amount(
+                Actor::Human,
+                StrategyScope::from(strategy_id),
+                Decimal::from(500_000),
+                Utc::now().fixed_offset() - Duration::days(1),
+            )
+            .await
+            .expect("record investable amount");
 
         // 取得元が範囲を公開しない場合は today が上限になり、それより古い日付なら fresh 判定される
         let bar_date = Utc::now().date_naive() - Duration::weeks(12) - Duration::days(1);
