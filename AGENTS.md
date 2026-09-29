@@ -66,7 +66,6 @@ cd backend && cargo clippy -- -D warnings
 
 # マイグレーション追加
 cd backend/migration && cargo run -- generate <name>
-# 生成後、lib.rs の Migrator::migrations() にも登録すること
 
 # エンティティ再生成 (マイグレーション変更後に実行)
 DATABASE_URL=... bash backend/scripts/generate-entities.sh
@@ -86,7 +85,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 
 - マイグレーションファイルは手動で作成しない。必ず `cd backend/migration && cargo run -- generate <name>` でファイルを生成してから up/down を実装すること
 - ファイル名のタイムスタンプは CLI が自動付与する。`DeriveMigrationName` でファイル名からマイグレーション名を自動導出する
-- 生成後、`backend/migration/src/lib.rs` の `Migrator::migrations()` に登録すること
+- `src/` 直下のマイグレーションファイルはファイル名順に自動登録されるため、追加時に `lib.rs` は編集しない
 - SeaQuery DSL でテーブル操作を記述するが、TimescaleDB 固有の SQL は `execute_unprepared` で raw SQL を使う
 - 初期スキーマなど論理的にまとまる変更は 1 ファイルにまとめる。不必要にファイルを分割しない
 

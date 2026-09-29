@@ -5,8 +5,12 @@ edition = "2024"
 
 [dependencies]
 indoc = "=2.0.7"
+sea-orm-cli = { version = "=2.0.3", default-features = false }
 sea-orm-migration = { workspace = true, features = [
     "runtime-tokio-native-tls",
     "sqlx-postgres",
 ] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+rstest = { workspace = true }

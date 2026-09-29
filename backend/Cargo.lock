@@ -2438,6 +2438,8 @@ name = "migration"
 version = "0.1.0"
 dependencies = [
  "indoc",
+ "rstest",
+ "sea-orm-cli",
  "sea-orm-migration",
  "tokio",
 ]
