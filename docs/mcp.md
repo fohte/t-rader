@@ -65,7 +65,7 @@ t-rader-agent は接続時に `x-strategy-id` HTTP ヘッダで自身が実行�
 
 任意ヘッダ `x-execution-id` で実行単位を識別できる。値は agent_graph のフェーズまたは for_each 要素ごとの実行ステップ 1 件 (`{a2a_task_id}:{step_id}`) を表す。戦略境界の検査対象ではなく、`write_note` / `create_annotation` の resume 時重複排除に使う。resume のたびに同じステップへ新しい `a2a_task_id` が発行されるため、`write_note` の冪等性キーは `step_id` 部分のみを使い (`a2a_task_id` が変わっても同じノートに収束させる)、`create_annotation` は `step_id` と `a2a_task_id` を分けて保持し resume 時の置換要否の判定に使う。
 
-任意ヘッダ `x-tool-models` で `agent_graph.tool_models` の JSON map を渡す。`search_web` と `query_media` はそれぞれ自分の tool 名をキーにしてモデルを取得し、キーが無い場合はエラーを返す。
+`search_web` と `query_media` の呼び出しでは、`x-tool-models` ヘッダに `agent_graph.tool_models` の JSON map が必要。各 tool は自分の名前をキーにモデルを取得し、ヘッダまたは対象キーが無い場合はエラーを返す。
 
 ### tool 一覧
 

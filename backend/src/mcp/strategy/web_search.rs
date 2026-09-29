@@ -16,7 +16,7 @@ use gateway_postgres::entities::mcp_tool_call_count;
 use super::dto::{SearchWebParams, SearchWebResult};
 use super::{StrategyServer, db_error, internal_error, invalid_params, litellm_error_to_mcp};
 
-const TOOL_NAME: &str = "search_web";
+pub(super) const TOOL_NAME: &str = "search_web";
 
 /// 1 回の戦略タスク実行 (`task_execution_id` = `x-execution-id` の `a2a_task_id` 部分) あたりの
 /// `search_web` 呼び出し回数上限。

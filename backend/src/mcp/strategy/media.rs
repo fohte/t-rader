@@ -1,6 +1,6 @@
 //! `query_media` tool の inner method 実装。
 //!
-//! 動画/音声 URL (YouTube の公開動画 URL を主対象) を Gemini に渡し、prompt の指示に
+//! 動画/音声 URL を `agent_graph.tool_models` で指定されたモデルに渡し、prompt の指示に
 //! 沿ったテキスト応答を返す。discover フェーズがテキストにしか無い材料にアクセス
 //! できるようにするための tool。
 
@@ -11,6 +11,8 @@ use crate::services::litellm_client::{ChatMessage, ContentPart, FilePart};
 
 use super::dto::{QueryMediaParams, QueryMediaResult};
 use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
+
+pub(super) const TOOL_NAME: &str = "query_media";
 
 impl StrategyServer {
     pub(crate) async fn query_media_inner(

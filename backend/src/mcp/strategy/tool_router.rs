@@ -28,10 +28,12 @@ use super::dto::{
     SearchWebParams, SearchWebResult, WriteNoteParams, WriteNoteResult,
 };
 use super::margin::{ReadMarginParams, ReadMarginResult};
+use super::media::TOOL_NAME as QUERY_MEDIA_TOOL_NAME;
 use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
+use super::web_search::TOOL_NAME as SEARCH_WEB_TOOL_NAME;
 use super::{
     StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, tool_model_from_ctx,
 };
@@ -235,7 +237,7 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<QueryMediaResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let model = tool_model_from_ctx(&ctx, "query_media")?;
+        let model = tool_model_from_ctx(&ctx, QUERY_MEDIA_TOOL_NAME)?;
         self.query_media_inner(scope, model, params).await.map(Json)
     }
 
@@ -251,7 +253,7 @@ impl StrategyServer {
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
         let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        let model = tool_model_from_ctx(&ctx, "search_web")?;
+        let model = tool_model_from_ctx(&ctx, SEARCH_WEB_TOOL_NAME)?;
         let task_execution_id = execution_task_id_from_ctx(&ctx);
         self.search_web_inner(scope, task_execution_id, model, params)
             .await
