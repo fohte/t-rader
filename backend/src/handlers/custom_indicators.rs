@@ -1,13 +1,13 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-    TransactionTrait,
+use core_application::change_history::ChangeHistoryError;
+use core_application::custom_indicator::{
+    CreateCustomIndicatorCommand, CustomIndicatorRepositoryError, CustomIndicatorUseCaseError,
+    UpdateCustomIndicatorCommand,
 };
-use serde_json::json;
+use core_application::strategy_existence::StrategyExistenceError;
+use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -17,18 +17,7 @@ use crate::models::{
     CreateCustomIndicatorRequest, CustomIndicatorResponse, PreviewIndicatorRequest,
     PreviewIndicatorResponse, UpdateCustomIndicatorRequest,
 };
-use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::custom_indicators::{PreviewInput, SCOPE_GLOBAL, SCOPE_STRATEGY, run_preview};
-use crate::services::strategies::ensure_strategy_exists;
-use gateway_postgres::entities::custom_indicator;
-
-fn validate_name(value: &str) -> Result<String, AppError> {
-    let trimmed = value.trim().to_string();
-    if trimmed.is_empty() {
-        return Err(AppError::Validation("name must not be empty".into()));
-    }
-    Ok(trimmed)
-}
+use crate::services::custom_indicators::{PreviewInput, run_preview};
 
 fn ensure_json_object(field: &str, value: &serde_json::Value) -> Result<(), AppError> {
     if value.is_object() {
@@ -38,30 +27,6 @@ fn ensure_json_object(field: &str, value: &serde_json::Value) -> Result<(), AppE
             "{field} must be a JSON object"
         )))
     }
-}
-
-async fn find_indicator_or_404(
-    db: &impl sea_orm::ConnectionTrait,
-    indicator_id: Uuid,
-) -> Result<custom_indicator::Model, AppError> {
-    custom_indicator::Entity::find_by_id(indicator_id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("indicator {indicator_id} not found")))
-}
-
-async fn find_strategy_scoped_or_404(
-    db: &impl sea_orm::ConnectionTrait,
-    strategy_id: Uuid,
-    indicator_id: Uuid,
-) -> Result<custom_indicator::Model, AppError> {
-    let model = find_indicator_or_404(db, indicator_id).await?;
-    if model.scope != SCOPE_STRATEGY || model.strategy_id != Some(strategy_id) {
-        return Err(AppError::NotFound(format!(
-            "indicator {indicator_id} not found"
-        )));
-    }
-    Ok(model)
 }
 
 /// グローバル indicator 一覧
@@ -77,11 +42,12 @@ async fn find_strategy_scoped_or_404(
 pub async fn list_global_indicators(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
-    let items = custom_indicator::Entity::find()
-        .filter(custom_indicator::Column::Scope.eq(SCOPE_GLOBAL))
-        .order_by_asc(custom_indicator::Column::Name)
-        .all(&state.db)
-        .await?;
+    let items = state
+        .use_cases
+        .custom_indicators
+        .list_global()
+        .await
+        .map_err(map_custom_indicator_error)?;
     Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
@@ -102,13 +68,12 @@ pub async fn list_strategy_indicators(
     State(state): State<AppState>,
     JsonPath(strategy_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<CustomIndicatorResponse>>, AppError> {
-    ensure_strategy_exists(&state.db, strategy_id).await?;
-    let items = custom_indicator::Entity::find()
-        .filter(custom_indicator::Column::Scope.eq(SCOPE_STRATEGY))
-        .filter(custom_indicator::Column::StrategyId.eq(strategy_id))
-        .order_by_asc(custom_indicator::Column::Name)
-        .all(&state.db)
-        .await?;
+    let items = state
+        .use_cases
+        .custom_indicators
+        .list_strategy(strategy_id)
+        .await
+        .map_err(map_custom_indicator_error)?;
     Ok(Json(items.into_iter().map(Into::into).collect()))
 }
 
@@ -129,9 +94,13 @@ pub async fn get_indicator(
     State(state): State<AppState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
-    Ok(Json(
-        find_indicator_or_404(&state.db, indicator_id).await?.into(),
-    ))
+    let indicator = state
+        .use_cases
+        .custom_indicators
+        .get(indicator_id)
+        .await
+        .map_err(map_custom_indicator_error)?;
+    Ok(Json(indicator.into()))
 }
 
 /// グローバル indicator 作成
@@ -153,10 +122,20 @@ pub async fn create_global_indicator(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
-    let txn = state.db.begin().await?;
-    let model = insert_indicator(&txn, payload, None).await?;
-    txn.commit().await?;
-    Ok((StatusCode::CREATED, Json(model.into())))
+    let indicator = state
+        .use_cases
+        .custom_indicators
+        .create(CreateCustomIndicatorCommand {
+            name: payload.name,
+            strategy_id: None,
+            code: payload.code,
+            input_schema: payload.input_schema,
+            output_schema: payload.output_schema,
+            description: payload.description,
+        })
+        .await
+        .map_err(map_custom_indicator_error)?;
+    Ok((StatusCode::CREATED, Json(indicator.into())))
 }
 
 /// 戦略 scope indicator 作成
@@ -181,56 +160,20 @@ pub async fn create_strategy_indicator(
     JsonPath(strategy_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<CreateCustomIndicatorRequest>,
 ) -> Result<(StatusCode, Json<CustomIndicatorResponse>), AppError> {
-    let txn = state.db.begin().await?;
-    ensure_strategy_exists(&txn, strategy_id).await?;
-    let model = insert_indicator(&txn, payload, Some(strategy_id)).await?;
-    txn.commit().await?;
-    Ok((StatusCode::CREATED, Json(model.into())))
-}
-
-async fn insert_indicator<C: ConnectionTrait>(
-    db: &C,
-    payload: CreateCustomIndicatorRequest,
-    strategy_id: Option<Uuid>,
-) -> Result<custom_indicator::Model, AppError> {
-    let name = validate_name(&payload.name)?;
-    ensure_json_object("input_schema", &payload.input_schema)?;
-    ensure_json_object("output_schema", &payload.output_schema)?;
-
-    let scope = if strategy_id.is_some() {
-        SCOPE_STRATEGY
-    } else {
-        SCOPE_GLOBAL
-    };
-
-    let indicator_id = Uuid::new_v4();
-    let active = custom_indicator::ActiveModel {
-        indicator_id: Set(indicator_id),
-        name: Set(name.clone()),
-        scope: Set(scope.to_string()),
-        strategy_id: Set(strategy_id),
-        code: Set(payload.code),
-        input_schema: Set(payload.input_schema),
-        output_schema: Set(payload.output_schema),
-        description: Set(payload.description),
-        created_at: NotSet,
-        updated_at: NotSet,
-    };
-    let created = custom_indicator::Entity::insert(active)
-        .exec_with_returning(db)
-        .await?;
-
-    change_history::record(
-        db,
-        TargetKind::CustomIndicator,
-        indicator_id,
-        Op::Create,
-        json!({ "name": name, "scope": scope, "strategy_id": strategy_id }),
-        None,
-    )
-    .await?;
-
-    Ok(created)
+    let indicator = state
+        .use_cases
+        .custom_indicators
+        .create(CreateCustomIndicatorCommand {
+            name: payload.name,
+            strategy_id: Some(strategy_id),
+            code: payload.code,
+            input_schema: payload.input_schema,
+            output_schema: payload.output_schema,
+            description: payload.description,
+        })
+        .await
+        .map_err(map_custom_indicator_error)?;
+    Ok((StatusCode::CREATED, Json(indicator.into())))
 }
 
 /// indicator 更新
@@ -255,65 +198,22 @@ pub async fn update_indicator(
     JsonPath(indicator_id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateCustomIndicatorRequest>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
-    let current = find_indicator_or_404(&state.db, indicator_id).await?;
-    let mut active = current.clone().into_active_model();
-    let mut diff = serde_json::Map::new();
-
-    if let Some(name) = payload.name {
-        let validated = validate_name(&name)?;
-        diff.insert(
-            "name".into(),
-            json!({ "from": current.name, "to": validated }),
-        );
-        active.name = Set(validated);
-    }
-    if let Some(code) = payload.code {
-        diff.insert(
-            "code".into(),
-            json!({ "len_from": current.code.len(), "len_to": code.len() }),
-        );
-        active.code = Set(code);
-    }
-    if let Some(input_schema) = payload.input_schema {
-        ensure_json_object("input_schema", &input_schema)?;
-        diff.insert(
-            "input_schema".into(),
-            json!({ "from": current.input_schema, "to": input_schema }),
-        );
-        active.input_schema = Set(input_schema);
-    }
-    if let Some(output_schema) = payload.output_schema {
-        ensure_json_object("output_schema", &output_schema)?;
-        diff.insert(
-            "output_schema".into(),
-            json!({ "from": current.output_schema, "to": output_schema }),
-        );
-        active.output_schema = Set(output_schema);
-    }
-    if let Some(description) = payload.description {
-        diff.insert(
-            "description".into(),
-            json!({ "from": current.description, "to": description }),
-        );
-        active.description = Set(description);
-    }
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    if !diff.is_empty() {
-        change_history::record(
-            &txn,
-            TargetKind::CustomIndicator,
+    let indicator = state
+        .use_cases
+        .custom_indicators
+        .update(
             indicator_id,
-            Op::Update,
-            serde_json::Value::Object(diff),
-            None,
+            UpdateCustomIndicatorCommand {
+                name: payload.name,
+                code: payload.code,
+                input_schema: payload.input_schema,
+                output_schema: payload.output_schema,
+                description: payload.description,
+            },
         )
-        .await?;
-    }
-    txn.commit().await?;
-    Ok(Json(updated.into()))
+        .await
+        .map_err(map_custom_indicator_error)?;
+    Ok(Json(indicator.into()))
 }
 
 /// indicator 削除
@@ -333,25 +233,12 @@ pub async fn delete_indicator(
     State(state): State<AppState>,
     JsonPath(indicator_id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let txn = state.db.begin().await?;
-    let res = custom_indicator::Entity::delete_by_id(indicator_id)
-        .exec(&txn)
-        .await?;
-    if res.rows_affected == 0 {
-        return Err(AppError::NotFound(format!(
-            "indicator {indicator_id} not found"
-        )));
-    }
-    change_history::record(
-        &txn,
-        TargetKind::CustomIndicator,
-        indicator_id,
-        Op::Delete,
-        json!({}),
-        None,
-    )
-    .await?;
-    txn.commit().await?;
+    state
+        .use_cases
+        .custom_indicators
+        .delete(indicator_id)
+        .await
+        .map_err(map_custom_indicator_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -375,12 +262,32 @@ pub async fn get_strategy_indicator(
     State(state): State<AppState>,
     JsonPath((strategy_id, indicator_id)): JsonPath<(Uuid, Uuid)>,
 ) -> Result<Json<CustomIndicatorResponse>, AppError> {
-    ensure_strategy_exists(&state.db, strategy_id).await?;
-    Ok(Json(
-        find_strategy_scoped_or_404(&state.db, strategy_id, indicator_id)
-            .await?
-            .into(),
-    ))
+    let indicator = state
+        .use_cases
+        .custom_indicators
+        .get_strategy_indicator(strategy_id, indicator_id)
+        .await
+        .map_err(map_custom_indicator_error)?;
+    Ok(Json(indicator.into()))
+}
+
+fn map_custom_indicator_error(error: CustomIndicatorUseCaseError) -> AppError {
+    match error {
+        CustomIndicatorUseCaseError::Validation(message) => AppError::Validation(message),
+        CustomIndicatorUseCaseError::NotFound(indicator_id) => {
+            AppError::NotFound(format!("indicator {indicator_id} not found"))
+        }
+        CustomIndicatorUseCaseError::Repository(CustomIndicatorRepositoryError::Database(
+            error,
+        ))
+        | CustomIndicatorUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | CustomIndicatorUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | CustomIndicatorUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
+        | CustomIndicatorUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
+            error.into()
+        }
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+    }
 }
 
 /// indicator を保存せずに 1 回だけ実行してみる (Monaco エディタのプレビュー用)
@@ -432,7 +339,7 @@ pub async fn preview_indicator(
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter};
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 
     use super::*;
     use crate::testing::{create_test_server, create_test_server_with_db};
@@ -840,75 +747,6 @@ mod tests {
                 "created_at": "<dyn>",
             }),
         );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn resolve_indicator_prefers_strategy_scope(db: gateway_postgres::DatabaseHandle) {
-        use crate::services::custom_indicators::resolve_indicator;
-
-        let strategy_id = Uuid::new_v4();
-        let now = chrono::Utc::now().fixed_offset();
-        gateway_postgres::entities::strategy::ActiveModel {
-            id: Set(strategy_id),
-            name: Set("s".into()),
-            description: Set(None),
-            sort_order: Set(0),
-            created_at: Set(now),
-            updated_at: Set(now),
-        }
-        .insert(&db)
-        .await
-        .unwrap();
-
-        let mk = |scope: &str, sid: Option<Uuid>, name: &str, code: &str| {
-            custom_indicator::ActiveModel {
-                indicator_id: Set(Uuid::new_v4()),
-                name: Set(name.into()),
-                scope: Set(scope.into()),
-                strategy_id: Set(sid),
-                code: Set(code.into()),
-                input_schema: Set(json!({})),
-                output_schema: Set(json!({})),
-                description: Set(None),
-                created_at: NotSet,
-                updated_at: NotSet,
-            }
-        };
-
-        custom_indicator::Entity::insert(mk(SCOPE_GLOBAL, None, "rsi", "global-code"))
-            .exec(&db)
-            .await
-            .unwrap();
-        custom_indicator::Entity::insert(mk(
-            SCOPE_STRATEGY,
-            Some(strategy_id),
-            "rsi",
-            "strategy-code",
-        ))
-        .exec(&db)
-        .await
-        .unwrap();
-        custom_indicator::Entity::insert(mk(SCOPE_GLOBAL, None, "global-only", "g"))
-            .exec(&db)
-            .await
-            .unwrap();
-
-        let resolved = resolve_indicator(&db, strategy_id, "rsi")
-            .await
-            .unwrap()
-            .expect("resolved");
-        assert_eq!(resolved.code, "strategy-code");
-
-        let resolved_global = resolve_indicator(&db, strategy_id, "global-only")
-            .await
-            .unwrap()
-            .expect("resolved");
-        assert_eq!(resolved_global.code, "g");
-
-        let unresolved = resolve_indicator(&db, strategy_id, "missing")
-            .await
-            .unwrap();
-        assert!(unresolved.is_none());
     }
 
     mod preview {

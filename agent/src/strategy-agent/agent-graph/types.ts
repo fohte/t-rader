@@ -16,5 +16,6 @@ export interface AgentGraphPhase {
 }
 
 export interface AgentGraphConfig {
+  readonly toolModels?: Readonly<Record<string, string>>
   readonly phases: readonly AgentGraphPhase[]
 }

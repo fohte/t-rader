@@ -23,6 +23,9 @@ describe('parseAgentGraph', () => {
 
   it('parses a valid multi-phase config into camelCase phases', () => {
     const yaml = `
+tool_models:
+  search_web: example-model-search
+  query_media: example-model-media
 phases:
   - key: plan
     label: 調査計画
@@ -46,6 +49,10 @@ phases:
 
     expect(parseAgentGraph(yaml)).toEqual(
       ok({
+        toolModels: {
+          search_web: 'example-model-search',
+          query_media: 'example-model-media',
+        },
         phases: [
           {
             key: 'plan',
