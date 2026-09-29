@@ -10,7 +10,6 @@ use crate::models::{
     AccountRiskPolicyData, AccountRiskPolicyResponse, PutAccountRiskPolicyRequest,
     parse_risk_policy, serialize_risk_policy, validate_ratio,
 };
-use crate::services::account_risk_policy;
 
 /// 口座全体のセクター集中度上限 (`max_sector_ratio`) を取得。未設定なら null を返す
 #[utoipa::path(
@@ -25,9 +24,9 @@ use crate::services::account_risk_policy;
 pub async fn get_account_risk_policy(
     State(state): State<AppState>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
-    let row = account_risk_policy::find_current(&state.db).await?;
-    let data = match row {
-        Some(row) => parse_risk_policy(row.risk_policy)?,
+    let risk_policy = state.use_cases.account_risk_policies.find_current().await?;
+    let data = match risk_policy {
+        Some(risk_policy) => parse_risk_policy(risk_policy)?,
         None => AccountRiskPolicyData {
             schema_version: crate::models::risk_policy::RISK_POLICY_SCHEMA_VERSION,
             max_sector_ratio: None,
@@ -60,8 +59,8 @@ pub async fn put_account_risk_policy(
         max_sector_ratio: payload.max_sector_ratio,
     };
     let value = serialize_risk_policy(&data)?;
-    let saved = account_risk_policy::save(&state.db, value).await?;
-    let data = parse_risk_policy::<AccountRiskPolicyData>(saved.risk_policy)?;
+    let saved = state.use_cases.account_risk_policies.save(value).await?;
+    let data = parse_risk_policy::<AccountRiskPolicyData>(saved)?;
     Ok(Json(data.into()))
 }
 

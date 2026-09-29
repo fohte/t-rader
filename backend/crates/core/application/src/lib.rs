@@ -1,3 +1,4 @@
+pub mod account_risk_policy;
 pub mod agent_task_client;
 pub mod change_history;
 pub mod custom_indicator;
