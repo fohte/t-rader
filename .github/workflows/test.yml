@@ -391,7 +391,8 @@ jobs:
     needs: detect-changes
     if: >-
       needs.detect-changes.outputs.backend == 'true' ||
-      needs.detect-changes.outputs.workflow == 'true'
+      needs.detect-changes.outputs.workflow == 'true' ||
+      needs.detect-changes.outputs.terraform_provider == 'true'
     runs-on: ubuntu-latest
     env:
       SCCACHE_GHA_ENABLED: 'true'
@@ -454,6 +455,30 @@ jobs:
             fi
             sleep 1
           done
+
+      - name: Setup Go for Terraform provider integration
+        if: needs.detect-changes.outputs.terraform_provider == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: terraform-provider/go.mod
+          cache-dependency-path: terraform-provider/go.sum
+
+      - name: Setup Terraform for provider integration
+        if: needs.detect-changes.outputs.terraform_provider == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
+
+      - name: Run Terraform dev_overrides lifecycle
+        if: needs.detect-changes.outputs.terraform_provider == 'true'
+        working-directory: terraform-provider
+        env:
+          BACKEND_URL: http://localhost:3000
+        run: |
+          mkdir -p "$RUNNER_TEMP/trader-provider"
+          go build -o "$RUNNER_TEMP/trader-provider/terraform-provider-trader" .
+          bash ./scripts/test-dev-overrides.sh "$RUNNER_TEMP/trader-provider"
 
       # schemathesis/action は常に --checks=all を渡すため、backend/schemathesis.toml
       # の [checks] での enabled=false は上書きされ効かない。無効化対象を toml から
