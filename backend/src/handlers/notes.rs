@@ -1,13 +1,8 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
-use serde_json::json;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
@@ -15,27 +10,16 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{CreateNoteRequest, NoteResponse, UpdateNoteRequest};
-use crate::services::change_history::{self, Actor, Op, TargetKind};
-use crate::services::note_kinds;
 use crate::services::note_versions::{
-    self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_versions,
+    self, current_note_ids, current_note_ids_with_status, find_current_versions,
     find_initial_created_by_kind,
 };
-use crate::services::strategies::ensure_strategy_exists;
+use core_application::change_history::{Actor, ChangeHistoryError};
+use core_application::note::NoteRepositoryError;
+use core_application::note::{NoteSnapshot, NoteUseCaseError, NoteWriteCommand, UpdateNoteCommand};
+use core_application::strategy_existence::StrategyExistenceError;
+use core_application::unit_of_work::UnitOfWorkError;
 use gateway_postgres::entities::{note, note_version};
-
-const ALLOWED_STATUSES: [&str; 3] = ["approved", "unread", "rejected"];
-const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
-
-fn ensure_frontmatter_object(fm: &serde_json::Value) -> Result<(), AppError> {
-    if fm.is_object() {
-        Ok(())
-    } else {
-        Err(AppError::Validation(
-            "frontmatter_json must be a JSON object".into(),
-        ))
-    }
-}
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -68,13 +52,6 @@ struct NoteWithVersion {
     created_by_kind: String,
 }
 
-async fn find_current_note_or_404<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    id: Uuid,
-) -> Result<NoteWithVersion, AppError> {
-    find_note_version_or_404(db, id, None).await
-}
-
 async fn find_note_version_or_404<C: sea_orm::ConnectionTrait>(
     db: &C,
     id: Uuid,
@@ -105,6 +82,28 @@ async fn find_note_version_or_404<C: sea_orm::ConnectionTrait>(
 
 fn note_version_response(current: NoteWithVersion) -> NoteResponse {
     NoteResponse::from_version(current.note, current.version, current.created_by_kind)
+}
+
+fn note_snapshot_response(snapshot: NoteSnapshot) -> NoteResponse {
+    NoteResponse {
+        id: snapshot.note.id,
+        version_id: snapshot.version.id,
+        version_no: snapshot.version.version_no,
+        is_current: snapshot.version.is_current,
+        strategy_id: snapshot.note.strategy_id,
+        title: snapshot.version.title,
+        body_md: snapshot.version.body_md,
+        frontmatter_json: snapshot.version.frontmatter_json,
+        kind: snapshot.note.kind,
+        status: snapshot.version.status,
+        trigger: snapshot.note.trigger,
+        trigger_label: snapshot.note.trigger_label,
+        created_by_kind: snapshot.created_by_kind,
+        created_at: snapshot.note.created_at,
+        updated_at: snapshot.note.updated_at,
+        graphs_json: snapshot.version.graphs_json,
+        execution_id: snapshot.note.execution_id,
+    }
 }
 
 /// ノート一覧
@@ -205,110 +204,42 @@ pub async fn create_note(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateNoteRequest>,
 ) -> Result<(StatusCode, Json<NoteResponse>), AppError> {
-    let title = payload.title.trim().to_string();
-    if title.is_empty() {
-        return Err(AppError::Validation("title must not be empty".into()));
-    }
-    if let Some(fm) = payload.frontmatter_json.as_ref() {
-        ensure_frontmatter_object(fm)?;
-    }
-    let status = payload
-        .status
-        .as_deref()
-        .unwrap_or(note_versions::INITIAL_NOTE_STATUS)
-        .to_string();
-    let explicit_status = payload.status.is_some();
-    if !ALLOWED_STATUSES.contains(&status.as_str()) {
-        return Err(AppError::Validation(format!("invalid status: {status}")));
-    }
-    let created_by = payload
-        .created_by_kind
-        .as_deref()
-        .unwrap_or("human")
-        .to_string();
-    if !ALLOWED_CREATED_BY.contains(&created_by.as_str()) {
-        return Err(AppError::Validation(format!(
-            "invalid created_by_kind: {created_by}"
-        )));
-    }
-    if explicit_status && created_by == "human" && status != "approved" {
-        return Err(AppError::Validation(
-            "human-created notes must start as approved".into(),
-        ));
-    }
-
-    let id = Uuid::new_v4();
-    let history_title = title.clone();
-    let txn = state.db.begin().await?;
-    if let Some(strategy_id) = payload.strategy_id {
-        ensure_strategy_exists(&txn, strategy_id).await?;
-    }
-    if let Some(kind) = payload.kind.as_deref() {
-        note_kinds::ensure_reference(&txn, kind).await?;
-    }
-
-    let model = note::ActiveModel {
-        id: Set(id),
-        strategy_id: Set(payload.strategy_id),
-        kind: Set(payload.kind.clone()),
-        trigger: Set(payload.trigger.map(|t| t.to_string())),
-        trigger_label: Set(payload.trigger_label.clone()),
-        created_at: NotSet,
-        updated_at: NotSet,
-        execution_id: Set(None),
-    };
-    note::Entity::insert(model)
-        .exec_with_returning(&txn)
-        .await?;
-
-    let mut version = note_versions::append_version(
-        &txn,
-        id,
-        AppendVersion {
-            title,
-            body_md: payload.body_md,
-            frontmatter_json: payload.frontmatter_json.unwrap_or_else(|| json!({})),
-            graphs_json: json!([]),
-            created_by_kind: created_by.clone(),
+    let created_by_kind = payload.created_by_kind.unwrap_or_else(|| "human".into());
+    let strategy_id = payload.strategy_id;
+    let history_title = payload.title.trim().to_string();
+    let snapshot = state
+        .use_cases
+        .notes
+        .write(NoteWriteCommand {
+            scope: None,
+            strategy_id,
             execution_id: None,
+            note_id: None,
+            title: Some(payload.title),
+            body_md: Some(payload.body_md),
+            frontmatter_json: Some(
+                payload
+                    .frontmatter_json
+                    .unwrap_or_else(|| serde_json::json!({})),
+            ),
+            graphs_json: Some(serde_json::json!([])),
+            kind: payload.kind.map(Some),
+            status: payload.status,
+            trigger: payload.trigger.map(|trigger| trigger.to_string()),
+            trigger_label: payload.trigger_label,
+            created_by_kind,
             change_reason: None,
-            change_diff: Some(json!({
-                "title": history_title,
-                "strategy_id": payload.strategy_id,
-            })),
             actor: Actor::Human,
-        },
-    )
-    .await?;
-    if explicit_status
-        && created_by != "human"
-        && !version.is_current
-        && status != note_versions::INITIAL_NOTE_STATUS
-    {
-        return Err(AppError::Validation(
-            "approval-required note versions must start as unread".into(),
-        ));
-    }
-    if created_by != "human" && version.is_current && status != note_versions::INITIAL_NOTE_STATUS {
-        let reviewed_at = chrono::Utc::now().fixed_offset();
-        version = note_version::ActiveModel {
-            id: Set(version.id),
-            status: Set(status),
-            reviewed_at: Set(Some(reviewed_at)),
-            ..Default::default()
-        }
-        .update(&txn)
-        .await?;
-    }
-    let created = note::Entity::find_by_id(id)
-        .one(&txn)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))?;
-
-    txn.commit().await?;
+            change_diff: Some(serde_json::json!({
+                "title": history_title,
+                "strategy_id": strategy_id,
+            })),
+        })
+        .await
+        .map_err(map_note_error)?;
     Ok((
         StatusCode::CREATED,
-        Json(NoteResponse::from_version(created, version, created_by)),
+        Json(note_snapshot_response(snapshot.snapshot)),
     ))
 }
 
@@ -333,110 +264,23 @@ pub async fn update_note(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateNoteRequest>,
 ) -> Result<Json<NoteResponse>, AppError> {
-    let current = find_current_note_or_404(&state.db, id).await?;
-    let current_note = current.note.clone();
-    let current_version = current.version.clone();
-    let mut active = current_note.clone().into_active_model();
-    let mut diff = serde_json::Map::new();
-    let mut new_title = current_version.title.clone();
-    let mut body_md = current_version.body_md.clone();
-    let mut frontmatter_json = current_version.frontmatter_json.clone();
-    let mut version_changed = false;
-
-    if let Some(title) = payload.title {
-        let updated_title = title.trim().to_string();
-        if updated_title.is_empty() {
-            return Err(AppError::Validation("title must not be empty".into()));
-        }
-        diff.insert(
-            "title".into(),
-            json!({ "from": current_version.title, "to": updated_title }),
-        );
-        version_changed = true;
-        new_title = updated_title;
-    }
-    if let Some(body) = payload.body_md {
-        diff.insert(
-            "body_md".into(),
-            json!({ "len_from": current_version.body_md.len(), "len_to": body.len() }),
-        );
-        body_md = body;
-        version_changed = true;
-    }
-    if let Some(fm) = payload.frontmatter_json {
-        ensure_frontmatter_object(&fm)?;
-        diff.insert(
-            "frontmatter_json".into(),
-            json!({ "from": current_version.frontmatter_json, "to": fm }),
-        );
-        frontmatter_json = fm;
-        version_changed = true;
-    }
-    if let Some(kind) = payload.kind {
-        if let Some(key) = kind.as_deref() {
-            note_kinds::ensure_reference(&state.db, key).await?;
-        }
-        diff.insert(
-            "kind".into(),
-            json!({ "from": current_note.kind, "to": kind }),
-        );
-        active.kind = Set(kind);
-    }
-    if let Some(tr) = payload.trigger {
-        let tr = tr.to_string();
-        diff.insert(
-            "trigger".into(),
-            json!({ "from": current_note.trigger, "to": tr }),
-        );
-        active.trigger = Set(Some(tr));
-    }
-    if let Some(tl) = payload.trigger_label {
-        diff.insert(
-            "trigger_label".into(),
-            json!({ "from": current_note.trigger_label, "to": tl }),
-        );
-        active.trigger_label = Set(Some(tl));
-    }
-
-    let txn = state.db.begin().await?;
-    active.updated_at = if version_changed {
-        NotSet
-    } else {
-        Set(chrono::Utc::now().fixed_offset())
-    };
-    active.update(&txn).await?;
-    if version_changed {
-        note_versions::append_version(
-            &txn,
+    let snapshot = state
+        .use_cases
+        .notes
+        .update(
             id,
-            AppendVersion {
-                title: new_title,
-                body_md,
-                frontmatter_json,
-                graphs_json: current_version.graphs_json,
-                created_by_kind: "human".into(),
-                execution_id: None,
-                change_reason: None,
-                change_diff: Some(serde_json::Value::Object(diff)),
-                actor: Actor::Human,
+            UpdateNoteCommand {
+                title: payload.title,
+                body_md: payload.body_md,
+                frontmatter_json: payload.frontmatter_json,
+                kind: payload.kind,
+                trigger: payload.trigger.map(|trigger| trigger.to_string()),
+                trigger_label: payload.trigger_label,
             },
         )
-        .await?;
-    } else if !diff.is_empty() {
-        change_history::record(
-            &txn,
-            TargetKind::Note,
-            id,
-            Op::Update,
-            serde_json::Value::Object(diff),
-            None,
-        )
-        .await?;
-    }
-    let updated_current = find_current_note_or_404(&txn, id).await?;
-    txn.commit().await?;
-
-    Ok(Json(note_version_response(updated_current)))
+        .await
+        .map_err(map_note_error)?;
+    Ok(Json(note_snapshot_response(snapshot)))
 }
 
 /// ノート削除
@@ -456,14 +300,35 @@ pub async fn delete_note(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let txn = state.db.begin().await?;
-    let res = note::Entity::delete_by_id(id).exec(&txn).await?;
-    if res.rows_affected == 0 {
-        return Err(AppError::NotFound(format!("note {id} not found")));
-    }
-    change_history::record(&txn, TargetKind::Note, id, Op::Delete, json!({}), None).await?;
-    txn.commit().await?;
+    state
+        .use_cases
+        .notes
+        .delete(id)
+        .await
+        .map_err(map_note_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub(super) fn map_note_error(error: NoteUseCaseError) -> AppError {
+    match error {
+        NoteUseCaseError::Validation(message) => AppError::Validation(message),
+        NoteUseCaseError::UnknownNoteKind(kind) => {
+            AppError::Validation(format!("unknown note kind: {kind}"))
+        }
+        NoteUseCaseError::ReferencedNoteKindNotFound(kind) => {
+            AppError::NotFound(format!("note kind {kind} not found"))
+        }
+        NoteUseCaseError::NotFound(message) => AppError::NotFound(message),
+        NoteUseCaseError::Conflict(message) => AppError::Conflict(message),
+        NoteUseCaseError::Repository(NoteRepositoryError::Database(error))
+        | NoteUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
+        | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
+            error.into()
+        }
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -479,10 +344,12 @@ mod tests {
         insert_test_strategy,
     };
     use axum_test::TestServer;
-    use gateway_postgres::entities::comment;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
-    use serde_json::Value;
+    use gateway_postgres::entities::{change_history, comment};
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use serde_json::{Value, json};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
@@ -610,6 +477,90 @@ mod tests {
                 "created_by_kind": "human",
                 "execution_id": null,
             }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_note_records_history_in_the_same_use_case(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "sample note",
+                "body_md": "body",
+            }))
+            .await;
+        let body = res.json::<Value>();
+        let note_id = Uuid::parse_str(body["id"].as_str().expect("note id")).expect("uuid");
+        let version_id =
+            Uuid::parse_str(body["version_id"].as_str().expect("version id")).expect("uuid");
+        let histories = change_history::Entity::find()
+            .filter(change_history::Column::TargetId.eq(note_id))
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| {
+                (
+                    row.target_kind,
+                    row.target_id,
+                    row.actor_kind,
+                    row.actor_label,
+                    row.op,
+                    row.diff_json,
+                    row.summary,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (res.status_code(), histories),
+            (
+                StatusCode::CREATED,
+                vec![(
+                    "note".to_string(),
+                    note_id,
+                    "human".to_string(),
+                    "user".to_string(),
+                    "create".to_string(),
+                    json!({
+                        "title": "sample note",
+                        "strategy_id": null,
+                        "from_version_id": null,
+                        "to_version_id": version_id,
+                        "version_no": 1,
+                    }),
+                    None,
+                )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_note_rejects_unknown_kind_as_bad_request(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+
+        let res = server
+            .post("/api/notes")
+            .json(&json!({
+                "title": "sample note",
+                "body_md": "body",
+                "kind": "sample-kind",
+            }))
+            .await;
+        let response = res.json::<Value>();
+        let saved_notes = note::Entity::find().all(&db).await.unwrap();
+
+        assert_eq!(
+            (res.status_code(), response, saved_notes.len()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": "unknown note kind: sample-kind"}),
+                0,
+            ),
         );
     }
 

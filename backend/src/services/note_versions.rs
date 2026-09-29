@@ -1,19 +1,29 @@
-//! ノートの追記専用バージョンを作成し、現行バージョンに付随するデータを同期する。
+//! note version の読み取りと note_kind 更新時の承認処理を提供する。
 
-use sea_orm::ActiveValue::{NotSet, Set};
+#[cfg(test)]
+use sea_orm::ActiveValue::NotSet;
+use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
+#[cfg(test)]
 use serde_json::json;
 use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::error::AppError;
+#[cfg(test)]
 use crate::services::change_history::{self, Actor, Op, TargetKind};
+#[cfg(test)]
 use crate::services::note_links::{copy_note_links, sync_note_links};
-use crate::services::note_refs::{sync_note_refs, sync_note_refs_after_graphs_only_update};
-use gateway_postgres::entities::{note, note_kind, note_version};
+use crate::services::note_refs::sync_note_refs;
+#[cfg(test)]
+use crate::services::note_refs::sync_note_refs_after_graphs_only_update;
+#[cfg(test)]
+use gateway_postgres::entities::note_kind;
+use gateway_postgres::entities::{note, note_version};
 
+#[cfg(test)]
 pub struct AppendVersion {
     pub title: String,
     pub body_md: String,
@@ -28,12 +38,14 @@ pub struct AppendVersion {
 
 pub const INITIAL_NOTE_STATUS: &str = "unread";
 const APPROVED_NOTE_STATUS: &str = "approved";
+#[cfg(test)]
 const HUMAN_CREATED_BY_KIND: &str = "human";
 
 /// 新しいバージョンを追加し、種別の承認設定に応じて現行バージョンを切り替える。
 ///
 /// 人間が追加したバージョンは承認済みで現行にする。承認必須の種別に対してエージェントが
 /// 追加したバージョンは、承認されるまで現行バージョンを維持する。
+#[cfg(test)]
 pub async fn append_version(
     txn: &impl sea_orm::ConnectionTrait,
     note_id: Uuid,

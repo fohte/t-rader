@@ -1,11 +1,6 @@
 use axum::Json;
 use axum::extract::State;
-use sea_orm::ActiveValue::Set;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    TransactionTrait,
-};
-use serde_json::json;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -13,8 +8,7 @@ use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, NoteVersionResponse};
-use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::note_versions::{self, INITIAL_NOTE_STATUS};
+use crate::services::note_versions::INITIAL_NOTE_STATUS;
 use crate::services::strategy_tasks::{self, TaskSource};
 use gateway_postgres::entities::{comment, note, note_version};
 
@@ -148,29 +142,12 @@ pub async fn approve_note_version(
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
-    let txn = state.db.begin().await?;
-    let version = find_note_version(&txn, note_id, version_no).await?;
-    ensure_pending_version(&version)?;
-
-    let now = chrono::Utc::now().fixed_offset();
-    let (updated, previous_current_id) =
-        note_versions::approve_pending_version(&txn, note_id, version.clone(), now).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Note,
-        note_id,
-        Op::StatusChange,
-        json!({
-            "from": version.status,
-            "to": "approved",
-            "version_id": version.id,
-            "previous_current_version_id": previous_current_id,
-            "label": payload.label.clone(),
-        }),
-        payload.label,
-    )
-    .await?;
-    txn.commit().await?;
+    let updated = state
+        .use_cases
+        .notes
+        .approve_version(note_id, version_no, payload.label)
+        .await
+        .map_err(crate::handlers::notes::map_note_error)?;
     Ok(Json(updated.into()))
 }
 
@@ -247,40 +224,12 @@ pub async fn reject_note_version(
         .map_err(map_submit_error)?;
     }
 
-    let txn = state.db.begin().await?;
-    let current_version = find_note_version(&txn, note_id, version_no).await?;
-    ensure_pending_version(&current_version)?;
-    let now = chrono::Utc::now().fixed_offset();
-    let updated = note_version::ActiveModel {
-        id: Set(current_version.id),
-        status: Set("rejected".to_string()),
-        reviewed_at: Set(Some(now)),
-        ..Default::default()
-    }
-    .update(&txn)
-    .await?;
-    note::ActiveModel {
-        id: Set(note_id),
-        updated_at: Set(now),
-        ..Default::default()
-    }
-    .update(&txn)
-    .await?;
-    change_history::record(
-        &txn,
-        TargetKind::Note,
-        note_id,
-        Op::StatusChange,
-        json!({
-            "from": current_version.status,
-            "to": "rejected",
-            "version_id": current_version.id,
-            "label": label.clone(),
-        }),
-        label,
-    )
-    .await?;
-    txn.commit().await?;
+    let updated = state
+        .use_cases
+        .notes
+        .reject_version(note_id, version_no, label, line_comment_count > 0)
+        .await
+        .map_err(crate::handlers::notes::map_note_error)?;
     Ok(Json(updated.into()))
 }
 
@@ -305,37 +254,11 @@ pub async fn make_note_version_current(
     State(state): State<AppState>,
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
-    let txn = state.db.begin().await?;
-    let version = find_note_version(&txn, note_id, version_no).await?;
-    if version.status != "approved" {
-        return Err(AppError::Conflict(format!(
-            "note version {note_id}/{version_no} is not approved"
-        )));
-    }
-    let current = note_versions::find_current_version(&txn, note_id).await?;
-    if current
-        .as_ref()
-        .is_some_and(|current| current.id == version.id)
-    {
-        txn.commit().await?;
-        return Ok(Json(version.into()));
-    }
-
-    let (updated, previous_current_id) =
-        note_versions::set_current_version(&txn, note_id, version.clone(), None, None).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Note,
-        note_id,
-        Op::Update,
-        json!({
-            "from_version_id": previous_current_id,
-            "to_version_id": updated.id,
-            "version_no": updated.version_no,
-        }),
-        None,
-    )
-    .await?;
-    txn.commit().await?;
+    let updated = state
+        .use_cases
+        .notes
+        .make_version_current(note_id, version_no)
+        .await
+        .map_err(crate::handlers::notes::map_note_error)?;
     Ok(Json(updated.into()))
 }
