@@ -49,3 +49,24 @@ impl From<note_version::Model> for NoteVersionResponse {
         }
     }
 }
+
+impl From<core_application::note::NoteVersion> for NoteVersionResponse {
+    fn from(version: core_application::note::NoteVersion) -> Self {
+        Self {
+            id: version.id,
+            note_id: version.note_id,
+            version_no: version.version_no,
+            title: version.title,
+            body_md: version.body_md,
+            frontmatter_json: version.frontmatter_json,
+            graphs_json: version.graphs_json,
+            status: version.status,
+            is_current: version.is_current,
+            change_reason: version.change_reason,
+            created_by_kind: version.created_by_kind,
+            execution_id: version.execution_id,
+            created_at: version.created_at,
+            reviewed_at: version.reviewed_at,
+        }
+    }
+}

@@ -856,6 +856,8 @@ dependencies = [
  "rstest",
  "rust_decimal",
  "serde",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
