@@ -25,12 +25,14 @@ impl StrategyServer {
     ) -> Result<ReadPortfolioResult, McpError> {
         let strategy_id = scope.into().id();
         let account_summary = self
-            .trade_use_cases
+            .use_cases
+            .trades
             .summary(None)
             .await
             .map_err(trade_error)?;
         let strategy_summary = self
-            .trade_use_cases
+            .use_cases
+            .trades
             .summary(Some(strategy_id))
             .await
             .map_err(trade_error)?;

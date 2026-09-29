@@ -370,7 +370,7 @@ async fn main() -> Result<(), AppError> {
     let db = DatabaseHandle::from(db);
     let state = AppState {
         db: db.clone(),
-        trade_use_cases: backend::services::trades::build_use_cases(db),
+        use_cases: backend::services::use_cases::build_use_cases(db),
         daily_bar_source,
         jquants_client,
         agent_task_client,

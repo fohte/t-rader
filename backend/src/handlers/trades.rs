@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use core_application::change_history::ChangeHistoryError;
-use core_application::persistence::PersistenceError;
 use core_application::trade::{
     CreateTradeCommand, PerformanceSummary as TradePerformanceSummary, TradeOrder, TradeQuery,
     TradeRepositoryError, TradeUpdateCommand, TradeUseCaseError,
@@ -43,7 +42,8 @@ pub async fn list_trades(
     JsonQuery(p): JsonQuery<ListTradesQuery>,
 ) -> Result<Json<Vec<TradeListItem>>, AppError> {
     let rows = state
-        .trade_use_cases
+        .use_cases
+        .trades
         .list(TradeQuery {
             strategy_id: p.strategy_id,
             symbol: p.symbol.filter(|symbol| !symbol.is_empty()),
@@ -82,7 +82,8 @@ pub async fn get_trade(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<TradeResponse>, AppError> {
     let trade = state
-        .trade_use_cases
+        .use_cases
+        .trades
         .get(id)
         .await
         .map_err(map_trade_error)?;
@@ -108,7 +109,8 @@ pub async fn create_trade(
     JsonBody(p): JsonBody<CreateTradeRequest>,
 ) -> Result<(StatusCode, Json<TradeResponse>), AppError> {
     let created = state
-        .trade_use_cases
+        .use_cases
+        .trades
         .create(CreateTradeCommand {
             strategy_id: p.strategy_id,
             symbol: p.symbol,
@@ -147,7 +149,8 @@ pub async fn update_trade(
     JsonBody(p): JsonBody<UpdateTradeRequest>,
 ) -> Result<Json<TradeResponse>, AppError> {
     let updated = state
-        .trade_use_cases
+        .use_cases
+        .trades
         .update(
             id,
             TradeUpdateCommand {
@@ -185,7 +188,8 @@ pub async fn delete_trade(
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
     state
-        .trade_use_cases
+        .use_cases
+        .trades
         .delete(id)
         .await
         .map_err(map_trade_error)?;
@@ -216,7 +220,8 @@ pub async fn trades_summary(
     JsonQuery(p): JsonQuery<SummaryQuery>,
 ) -> Result<Json<PerformanceSummary>, AppError> {
     let summary = state
-        .trade_use_cases
+        .use_cases
+        .trades
         .summary(p.strategy_id)
         .await
         .map_err(map_trade_error)?;
@@ -230,24 +235,11 @@ fn map_trade_error(error: TradeUseCaseError) -> AppError {
         TradeUseCaseError::Repository(TradeRepositoryError::Database(error))
         | TradeUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | TradeUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | TradeUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
-            map_persistence_error(error)
-        }
+        | TradeUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
+        | TradeUseCaseError::StrategyExistence(
+            core_application::strategy_existence::StrategyExistenceError::Database(error),
+        ) => error.into(),
         other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
-    }
-}
-
-fn map_persistence_error(error: PersistenceError) -> AppError {
-    match error {
-        PersistenceError::Database(message) => AppError::Database(sea_orm::DbErr::Custom(message)),
-        PersistenceError::MissingReference(_) => {
-            AppError::Validation("referenced resource does not exist".into())
-        }
-        PersistenceError::Conflict(_) => AppError::Conflict("resource already exists".into()),
-        PersistenceError::ConstraintViolation(_) => {
-            AppError::Validation("value violates database constraint".into())
-        }
-        PersistenceError::RecordNotUpdated(_) => AppError::NotFound("resource not found".into()),
     }
 }
 
@@ -282,8 +274,8 @@ mod tests {
     use serde_json::{Value, json};
     use uuid::Uuid;
 
-    use super::PersistenceError;
     use crate::testing::{create_test_server_with_db, insert_test_strategy};
+    use core_application::persistence::PersistenceError;
     use gateway_postgres::entities::{change_history, trade};
 
     #[rstest]
@@ -318,7 +310,7 @@ mod tests {
         #[case] expected_status: StatusCode,
         #[case] expected_message: &str,
     ) {
-        let response = super::map_persistence_error(error).into_response();
+        let response = crate::error::AppError::from(error).into_response();
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
