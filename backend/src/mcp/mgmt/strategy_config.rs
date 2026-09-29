@@ -1,14 +1,15 @@
 //! 管理 MCP の戦略設定 (name / description) の取得・作成・更新・削除と、
 //! 戦略に紐づく trigger の一覧取得 (読み取り専用) の tool。
 //!
-//! Web UI/REST と同じ `services::strategy_config` を経由するため、DB 更新・履歴記録は
-//! そちらに一本化されている。
+//! HTTP handler と同じ application usecase を呼び出す。
 
 use rmcp::ErrorData as McpError;
 
-use crate::error::AppError;
-use crate::services::change_history::Actor;
-use crate::services::strategy_config;
+use core_application::change_history::Actor;
+use core_application::strategy::{
+    CreateStrategyCommand, StrategyUpdateCommand, StrategyUseCaseError, validate_name,
+};
+
 use crate::services::trigger_crud;
 
 use super::dto::{
@@ -16,16 +17,20 @@ use super::dto::{
     GetStrategyConfigParams, GetStrategyConfigResult, TriggerSummary, UpdateStrategyConfigParams,
     UpdateStrategyConfigResult,
 };
-use super::{MgmtServer, map_app_error};
+use super::{MgmtServer, map_app_error, map_strategy_use_case_error};
 
 impl MgmtServer {
     pub(super) async fn get_strategy_config_inner(
         &self,
         params: GetStrategyConfigParams,
     ) -> Result<GetStrategyConfigResult, McpError> {
-        let row = strategy_config::find_or_404(&self.db, params.strategy_id)
+        let scope = self.strategy_scope(params.strategy_id).await?;
+        let row = self
+            .use_cases
+            .strategies
+            .get(scope)
             .await
-            .map_err(map_app_error)?;
+            .map_err(map_strategy_use_case_error)?;
         let triggers = trigger_crud::list_triggers(&self.db, params.strategy_id, None)
             .await
             .map_err(map_app_error)?;
@@ -43,7 +48,7 @@ impl MgmtServer {
     ) -> Result<CreateStrategyResult, McpError> {
         let mut errors = Vec::new();
 
-        if let Err(err) = strategy_config::validate_name(&params.name) {
+        if let Err(err) = validate_name(&params.name) {
             errors.push(validation_message(err));
         }
 
@@ -55,17 +60,19 @@ impl MgmtServer {
             });
         }
 
-        let created = strategy_config::create(
-            &self.db,
-            Actor::Llm { label: "mgmt-mcp" },
-            strategy_config::CreateStrategy {
-                name: params.name,
-                description: params.description,
-                sort_order: 0,
-            },
-        )
-        .await
-        .map_err(map_app_error)?;
+        let created = self
+            .use_cases
+            .strategies
+            .create(
+                Actor::Llm { label: "mgmt-mcp" },
+                CreateStrategyCommand {
+                    name: params.name,
+                    description: params.description,
+                    sort_order: 0,
+                },
+            )
+            .await
+            .map_err(map_strategy_use_case_error)?;
 
         Ok(CreateStrategyResult {
             ok: true,
@@ -81,7 +88,7 @@ impl MgmtServer {
         let mut errors = Vec::new();
 
         if let Some(name) = &params.name
-            && let Err(err) = strategy_config::validate_name(name)
+            && let Err(err) = validate_name(name)
         {
             errors.push(validation_message(err));
         }
@@ -90,18 +97,20 @@ impl MgmtServer {
             return Ok(UpdateStrategyConfigResult { ok: false, errors });
         }
 
-        strategy_config::update(
-            &self.db,
-            Actor::Llm { label: "mgmt-mcp" },
-            params.strategy_id,
-            strategy_config::StrategyUpdate {
-                name: params.name,
-                description: params.description.map(Some),
-                sort_order: None,
-            },
-        )
-        .await
-        .map_err(map_app_error)?;
+        let scope = self.strategy_scope(params.strategy_id).await?;
+        self.use_cases
+            .strategies
+            .update(
+                Actor::Llm { label: "mgmt-mcp" },
+                scope,
+                StrategyUpdateCommand {
+                    name: params.name,
+                    description: params.description.map(Some),
+                    sort_order: None,
+                },
+            )
+            .await
+            .map_err(map_strategy_use_case_error)?;
 
         Ok(UpdateStrategyConfigResult {
             ok: true,
@@ -113,9 +122,13 @@ impl MgmtServer {
         &self,
         params: DeleteStrategyParams,
     ) -> Result<DeleteStrategyResult, McpError> {
-        let current = strategy_config::find_or_404(&self.db, params.strategy_id)
+        let scope = self.strategy_scope(params.strategy_id).await?;
+        let current = self
+            .use_cases
+            .strategies
+            .get(scope)
             .await
-            .map_err(map_app_error)?;
+            .map_err(map_strategy_use_case_error)?;
         if params.confirm_name != current.name {
             return Ok(DeleteStrategyResult {
                 ok: false,
@@ -125,14 +138,15 @@ impl MgmtServer {
                 )],
             });
         }
-        strategy_config::delete_confirmed(
-            &self.db,
-            Actor::Llm { label: "mgmt-mcp" },
-            params.strategy_id,
-            &params.confirm_name,
-        )
-        .await
-        .map_err(map_app_error)?;
+        self.use_cases
+            .strategies
+            .delete_confirmed(
+                Actor::Llm { label: "mgmt-mcp" },
+                scope,
+                &params.confirm_name,
+            )
+            .await
+            .map_err(map_strategy_use_case_error)?;
         Ok(DeleteStrategyResult {
             ok: true,
             errors: vec![],
@@ -140,12 +154,12 @@ impl MgmtServer {
     }
 }
 
-/// `AppError::Validation` ならメッセージ本文だけを、それ以外なら Display 文字列を返す。
+/// 入力エラーならメッセージ本文だけを、それ以外なら Display 文字列を返す。
 /// validate_name は Validation 以外を返さない実装だが、将来変わってもエラーメッセージを
 /// 取りこぼさないためのフォールバック。
-fn validation_message(err: AppError) -> String {
+fn validation_message(err: StrategyUseCaseError) -> String {
     match err {
-        AppError::Validation(msg) => msg,
+        StrategyUseCaseError::Validation(msg) => msg,
         other => other.to_string(),
     }
 }
@@ -327,9 +341,11 @@ mod tests {
             .expect("tool call itself must succeed");
         assert!(!result.ok);
 
-        let row = strategy_config::find_or_404(&db, strategy_id)
+        let row = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
             .await
-            .expect("find strategy");
+            .expect("query strategy")
+            .expect("strategy exists");
         assert_eq!((row.name, row.description), ("original".to_string(), None));
     }
 
@@ -349,7 +365,13 @@ mod tests {
             .expect("tool call itself must succeed");
         assert_eq!((result.ok, result.errors.len()), (false, 1));
 
-        assert!(strategy_config::find_or_404(&db, strategy_id).await.is_ok());
+        assert!(
+            strategy::Entity::find_by_id(strategy_id)
+                .one(&db)
+                .await
+                .expect("query strategy")
+                .is_some()
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -368,10 +390,12 @@ mod tests {
             .expect("ok");
         assert_eq!((result.ok, result.errors), (true, Vec::<String>::new()));
 
-        assert!(
-            strategy_config::find_or_404(&db, strategy_id)
+        assert_eq!(
+            strategy::Entity::find_by_id(strategy_id)
+                .one(&db)
                 .await
-                .is_err()
+                .expect("query strategy"),
+            None,
         );
     }
 
