@@ -240,6 +240,11 @@ impl TriggerUseCases {
             .await?
             .ok_or_else(|| TriggerUseCaseError::HookNotFound(hook_slug.to_string()))?;
         if !evaluate_event_match(trigger.event_match.as_ref(), &payload) {
+            tracing::info!(
+                trigger_id = %trigger.trigger_id,
+                hook_slug,
+                "hook payload did not match event_match; ignored",
+            );
             return Ok(None);
         }
         match self
@@ -247,11 +252,13 @@ impl TriggerUseCases {
             .await
         {
             Ok(submitted) => Ok(Some(submitted)),
-            Err(
-                TriggerUseCaseError::NotFound(_)
-                | TriggerUseCaseError::Disabled(_)
-                | TriggerUseCaseError::NoStrategy(_),
-            ) => Err(TriggerUseCaseError::HookNotFound(hook_slug.to_string())),
+            Err(TriggerUseCaseError::NotFound(_) | TriggerUseCaseError::Disabled(_)) => {
+                Err(TriggerUseCaseError::HookNotFound(hook_slug.to_string()))
+            }
+            Err(TriggerUseCaseError::NoStrategy(trigger_id)) => {
+                tracing::warn!(trigger_id = %trigger_id, "hook fire rejected: trigger has no strategy_id");
+                Err(TriggerUseCaseError::HookNotFound(hook_slug.to_string()))
+            }
             Err(error) => Err(error),
         }
     }
@@ -442,5 +449,351 @@ fn validate_event_match(event_match: Option<&Value>) -> Result<(), TriggerUseCas
             TriggerUseCaseError::Validation("event_match must be an object or null".into()),
         ),
         _ => Ok(()),
+    }
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod tests {
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::Duration,
+    };
+
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use rstest::{fixture, rstest};
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use crate::{
+        agent_task_client::{
+            AgentTaskClient, AgentTaskError, AgentTaskRef, AgentTaskStatus, FakeAgentTaskClient,
+            SubmitAgentTask,
+        },
+        strategy::{FakeStrategyRepository, SharedStrategyRepository, Strategy},
+        strategy_existence::{FakeStrategyExistence, SharedStrategyExistence},
+        strategy_task::{
+            SharedStrategyTaskRepository, StrategyTask, StrategyTaskRepository,
+            StrategyTaskRepositoryError, StrategyTaskStep, StrategyTaskUpdate,
+            StrategyTaskUseCases, TaskListQuery, TaskSource,
+        },
+        trigger::{
+            FakeTriggerRepository, SharedTriggerRepository, Trigger, TriggerKind,
+            TriggerRepository, UpdateTriggerCommand,
+        },
+        unit_of_work::{FakeUnitOfWork, SharedUnitOfWork, UnitOfWorkTransaction},
+    };
+
+    use super::TriggerUseCases;
+
+    struct Harness {
+        use_cases: TriggerUseCases,
+        triggers: Arc<FakeTriggerRepository>,
+        strategies: Arc<FakeStrategyRepository>,
+        unit_of_work: Arc<FakeUnitOfWork>,
+    }
+
+    #[fixture]
+    fn harness() -> Harness {
+        let unit_of_work = Arc::new(FakeUnitOfWork::new());
+        let triggers = Arc::new(FakeTriggerRepository::new());
+        let strategies = Arc::new(FakeStrategyRepository::new());
+        let unit_of_work_shared: SharedUnitOfWork = unit_of_work.clone();
+        let trigger_repository: SharedTriggerRepository = triggers.clone();
+        let strategy_repository: SharedStrategyRepository = strategies.clone();
+        let strategy_existence: SharedStrategyExistence = Arc::new(FakeStrategyExistence::new());
+        let task_repository: SharedStrategyTaskRepository = Arc::new(TestStrategyTaskRepository);
+        let strategy_tasks =
+            StrategyTaskUseCases::new(unit_of_work_shared.clone(), task_repository);
+
+        Harness {
+            use_cases: TriggerUseCases::new(
+                unit_of_work_shared,
+                trigger_repository,
+                strategy_existence,
+                strategy_repository,
+                strategy_tasks,
+            ),
+            triggers,
+            strategies,
+            unit_of_work,
+        }
+    }
+
+    fn trigger(trigger_id: Uuid, strategy_id: Uuid, kind: TriggerKind) -> Trigger {
+        let now = Utc::now().fixed_offset();
+        Trigger {
+            trigger_id,
+            strategy_id: Some(strategy_id),
+            kind,
+            schedule: (kind == TriggerKind::Cron).then(|| "* * * * *".to_string()),
+            hook_slug: (kind == TriggerKind::Hook).then(|| "sample-hook".to_string()),
+            event_match: None,
+            prompt_template: "sample prompt".to_string(),
+            enabled: true,
+            last_fired_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn strategy(id: Uuid) -> Strategy {
+        let now = Utc::now().fixed_offset();
+        Strategy {
+            id,
+            name: "sample strategy".to_string(),
+            description: None,
+            sort_order: 0,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn update_rejects_trigger_outside_strategy_scope(harness: Harness) {
+        let trigger = trigger(Uuid::new_v4(), Uuid::new_v4(), TriggerKind::Hook);
+        let trigger_id = trigger.trigger_id;
+        harness.triggers.insert_trigger(trigger.clone()).await;
+
+        let result = harness
+            .use_cases
+            .update(
+                Uuid::new_v4().into(),
+                trigger_id,
+                UpdateTriggerCommand::default(),
+            )
+            .await;
+        let stored = harness
+            .triggers
+            .find_by_id(trigger_id)
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(
+            (result.err().map(|error| error.to_string()), stored,),
+            (
+                Some(format!("trigger {trigger_id} not found")),
+                Ok(Some(trigger)),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn fire_returns_not_found_when_trigger_disappears_after_submission(harness: Harness) {
+        let strategy_id = Uuid::new_v4();
+        let trigger = trigger(Uuid::new_v4(), strategy_id, TriggerKind::Hook);
+        let trigger_id = trigger.trigger_id;
+        harness
+            .strategies
+            .insert_strategy(strategy(strategy_id))
+            .await;
+        harness.triggers.insert_trigger(trigger).await;
+        let agent_client = DeletingAgentTaskClient::new(harness.triggers.clone(), trigger_id);
+
+        let result = harness
+            .use_cases
+            .fire(&agent_client, trigger_id, json!({}), TaskSource::Hook)
+            .await;
+        let submitted = agent_client.submitted.lock().await.len();
+        let committed = harness.unit_of_work.committed.lock().await.len();
+
+        assert_eq!(
+            (
+                result.err().map(|error| error.to_string()),
+                submitted,
+                committed,
+            ),
+            (Some(format!("trigger {trigger_id} not found")), 1, 2,),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn cron_tick_continues_after_a_trigger_panics(harness: Harness) {
+        let strategy_id = Uuid::new_v4();
+        harness
+            .strategies
+            .insert_strategy(strategy(strategy_id))
+            .await;
+        harness
+            .triggers
+            .insert_trigger(trigger(Uuid::new_v4(), strategy_id, TriggerKind::Cron))
+            .await;
+        harness
+            .triggers
+            .insert_trigger(trigger(Uuid::new_v4(), strategy_id, TriggerKind::Cron))
+            .await;
+        let agent_client = PanickingOnceAgentTaskClient::new();
+
+        let attempted = harness
+            .use_cases
+            .run_cron_tick(&agent_client, Duration::from_secs(60))
+            .await;
+        let submitted = agent_client.inner.submitted.lock().await.len();
+        let fired = harness
+            .triggers
+            .triggers
+            .lock()
+            .await
+            .values()
+            .filter(|trigger| trigger.last_fired_at.is_some())
+            .count();
+
+        assert_eq!((attempted, submitted, fired), (2, 1, 1));
+    }
+
+    struct TestStrategyTaskRepository;
+
+    #[async_trait]
+    impl StrategyTaskRepository for TestStrategyTaskRepository {
+        async fn strategy_exists(
+            &self,
+            _strategy_id: Uuid,
+        ) -> Result<bool, StrategyTaskRepositoryError> {
+            Ok(true)
+        }
+
+        async fn agent_config_exists(
+            &self,
+            _purpose: &str,
+        ) -> Result<bool, StrategyTaskRepositoryError> {
+            Ok(true)
+        }
+
+        async fn insert(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _task: StrategyTask,
+        ) -> Result<(), StrategyTaskRepositoryError> {
+            Ok(())
+        }
+
+        async fn update(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _task: StrategyTaskUpdate,
+        ) -> Result<bool, StrategyTaskRepositoryError> {
+            Ok(true)
+        }
+
+        async fn apply_status_and_steps(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _task_id: Uuid,
+            _task_update: Option<StrategyTaskUpdate>,
+            _steps: Option<serde_json::Value>,
+        ) -> Result<bool, StrategyTaskRepositoryError> {
+            Ok(false)
+        }
+
+        async fn find_by_id(
+            &self,
+            _task_id: Uuid,
+        ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError> {
+            Ok(None)
+        }
+
+        async fn find_by_a2a_task_id(
+            &self,
+            _a2a_task_id: &str,
+        ) -> Result<Option<StrategyTask>, StrategyTaskRepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _query: TaskListQuery,
+        ) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn list_in_flight(&self) -> Result<Vec<StrategyTask>, StrategyTaskRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn list_steps(
+            &self,
+            _task_id: Uuid,
+        ) -> Result<Vec<StrategyTaskStep>, StrategyTaskRepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn claim_resumable(
+            &self,
+            _transaction: &UnitOfWorkTransaction,
+            _task_id: Uuid,
+            _now: chrono::DateTime<chrono::FixedOffset>,
+            _mark_auto_resumed: bool,
+        ) -> Result<bool, StrategyTaskRepositoryError> {
+            Ok(true)
+        }
+    }
+
+    struct PanickingOnceAgentTaskClient {
+        panicked: AtomicBool,
+        inner: FakeAgentTaskClient,
+    }
+
+    impl PanickingOnceAgentTaskClient {
+        fn new() -> Self {
+            Self {
+                panicked: AtomicBool::new(false),
+                inner: FakeAgentTaskClient::new(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl AgentTaskClient for PanickingOnceAgentTaskClient {
+        async fn submit(&self, request: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
+            if !self.panicked.swap(true, Ordering::SeqCst) {
+                std::panic::resume_unwind(Box::new("simulated client panic"));
+            }
+            self.inner.submit(request).await
+        }
+
+        async fn get(&self, task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+            self.inner.get(task_id).await
+        }
+    }
+
+    struct DeletingAgentTaskClient {
+        repository: Arc<FakeTriggerRepository>,
+        trigger_id: Uuid,
+        submitted: tokio::sync::Mutex<Vec<SubmitAgentTask>>,
+    }
+
+    impl DeletingAgentTaskClient {
+        fn new(repository: Arc<FakeTriggerRepository>, trigger_id: Uuid) -> Self {
+            Self {
+                repository,
+                trigger_id,
+                submitted: tokio::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl AgentTaskClient for DeletingAgentTaskClient {
+        async fn submit(&self, request: SubmitAgentTask) -> Result<AgentTaskRef, AgentTaskError> {
+            self.submitted.lock().await.push(request);
+            self.repository
+                .triggers
+                .lock()
+                .await
+                .remove(&self.trigger_id);
+            Ok(AgentTaskRef {
+                task_id: "sample-task".to_string(),
+            })
+        }
+
+        async fn get(&self, task_id: &str) -> Result<AgentTaskStatus, AgentTaskError> {
+            Err(AgentTaskError::NotFound(task_id.to_string()))
+        }
     }
 }
