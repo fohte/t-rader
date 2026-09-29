@@ -121,7 +121,7 @@ jobs:
         continue-on-error: true
         env:
           # cargo-clippy は専用 job で実行するため、test job では常にスキップする
-          LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep' || 'cargo-clippy' }}
+          LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep,go-fmt,go-vet' || 'cargo-clippy,go-fmt,go-vet' }}
           # pinact's min-age check calls the GitHub API; without a token it hits
           # the 60 req/h unauthenticated limit shared per IP and fails on CI.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -174,6 +174,33 @@ jobs:
       - name: Run cargo-clippy
         run: lefthook run pre-commit --all-files --command cargo-clippy
 
+  terraform-provider:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.terraform_provider == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: terraform-provider/go.mod
+          cache-dependency-path: terraform-provider/go.sum
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.11
+          install_args: lefthook
+
+      - name: Run Go format and vet checks through lefthook
+        run: lefthook run pre-commit --all-files --command go-fmt --command go-vet
+
+      - name: Run Go tests
+        working-directory: terraform-provider
+        run: go test ./...
+
   detect-changes:
     runs-on: ubuntu-slim
     outputs:
@@ -182,6 +209,7 @@ jobs:
       agent: ${{ steps.changes-agent.outputs.any_changed }}
       workflow: ${{ steps.changes-workflow.outputs.any_changed }}
       mise: ${{ steps.changes-mise.outputs.any_changed }}
+      terraform_provider: ${{ steps.changes-terraform-provider.outputs.any_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -216,6 +244,15 @@ jobs:
         id: changes-mise
         with:
           files: .mise.toml
+
+      - name: Check for Terraform provider changes
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        id: changes-terraform-provider
+        with:
+          files: |
+            terraform-provider/**
+            .github/workflows/test.yml
+            lefthook.yml
 
   check-entity-sync:
     needs: detect-changes
@@ -672,7 +709,6 @@ jobs:
           done < <(find dist -name '*.js' -not -name 'chunk-*')
 
   # package 別 job 名を branch protection の required check に指定できないため、固定名の gate を使う。
-  # テスト、entity 同期、API fuzzing、knip、cargo-clippy の失敗を集約し、失敗がなければ skip する。
   # required check の skip は成功として扱われる。
   unit-test:
     runs-on: ubuntu-slim
@@ -681,6 +717,7 @@ jobs:
       - check-entity-sync
       - api-fuzzing-backend
       - cargo-clippy
+      - terraform-provider
       - unit-test-frontend
       - unit-test-backend
       - unit-test-agent
