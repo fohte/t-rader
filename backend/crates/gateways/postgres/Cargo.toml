@@ -32,7 +32,7 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-backend-test-macros = { path = "../../test-macros" }
+backend-test-macros = { path = "../../libs/test-macros" }
 migration = { path = "../../../migration" }
 rust_decimal = { workspace = true }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-native-tls", "postgres", "migrate"] }

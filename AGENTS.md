@@ -91,6 +91,7 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - `backend/src/error.rs` - AppError 型定義
 - `backend/crates/core/domain/` - application と gateway が共有する値型と東証の営業日判定
 - `backend/crates/core/application/` - agent task、indicator observation、kata-exec executor、LLM client、news aggregation、日足データソース (銘柄ごと / 全銘柄の日付指定)、銘柄マスタ、信用残、空売り、財務情報、保有構造、決算予定、バリュエーションの port と値型
+- `backend/crates/libs/test-macros/` - backend と gateway の DB test で使う proc macro
 - `backend/crates/gateways/fred/` - FRED API client の HTTP 実装
 - `backend/crates/gateways/ibkr/` - IBKR Client Portal Web API client の HTTP 実装
 - `backend/crates/gateways/jquants/` - J-Quants API client とデータソース port の実装
@@ -153,6 +154,8 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 ### Backend architecture
 
 backend の Rust crate を追加・変更するときは [`docs/backend-architecture.md`](./docs/backend-architecture.md) の crate 構成、依存規則、境界の責務に従うこと。
+
+crate は `backend/crates/<区分>/<crate>/` の 2 階層に配置する。`backend/crates/` 直下には区分ディレクトリだけを置く。
 
 ### Split files before they grow past ~500 lines of production code
 
