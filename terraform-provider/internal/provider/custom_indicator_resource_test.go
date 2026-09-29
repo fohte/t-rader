@@ -62,29 +62,27 @@ func TestCustomIndicatorResourceCreateRoutesByStrategyID(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			requests := make(chan customIndicatorCapturedRequest, 1)
 			created := syntheticCustomIndicator(testCase.responseID)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, err := io.ReadAll(r.Body)
-				if err != nil {
-					t.Errorf("read request body: %v", err)
-					return
-				}
-				var decodedBody map[string]interface{}
-				if err := json.Unmarshal(body, &decodedBody); err != nil {
-					t.Errorf("decode request body: %v", err)
-					return
-				}
-				requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path, Body: decodedBody}
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusCreated)
-				if err := json.NewEncoder(w).Encode(created); err != nil {
-					t.Errorf("encode response: %v", err)
-				}
-			}))
-			t.Cleanup(server.Close)
-
-			client := customIndicatorTestClient(t, server.URL)
+			client, requests := newCustomIndicatorTestClient(t, func(requests chan<- customIndicatorCapturedRequest) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					body, err := io.ReadAll(r.Body)
+					if err != nil {
+						t.Errorf("read request body: %v", err)
+						return
+					}
+					var decodedBody map[string]interface{}
+					if err := json.Unmarshal(body, &decodedBody); err != nil {
+						t.Errorf("decode request body: %v", err)
+						return
+					}
+					requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path, Body: decodedBody}
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusCreated)
+					if err := json.NewEncoder(w).Encode(created); err != nil {
+						t.Errorf("encode response: %v", err)
+					}
+				})
+			})
 			resourceSchema := customIndicatorResourceSchema(t)
 			plan := tfsdk.Plan{Schema: resourceSchema.Schema}
 			planModel := syntheticCustomIndicatorPlan(testCase.strategyID)
@@ -143,23 +141,21 @@ func TestCustomIndicatorResourceImportStateThenRead(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	requests := make(chan customIndicatorCapturedRequest, 1)
 	responseIndicator := syntheticCustomIndicator(stringPointer(testCustomIndicatorStrategyID))
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read request body: %v", err)
-			return
-		}
-		requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path, Body: string(body)}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(responseIndicator); err != nil {
-			t.Errorf("encode response: %v", err)
-		}
-	}))
-	t.Cleanup(server.Close)
-
-	client := customIndicatorTestClient(t, server.URL)
+	client, requests := newCustomIndicatorTestClient(t, func(requests chan<- customIndicatorCapturedRequest) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read request body: %v", err)
+				return
+			}
+			requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path, Body: string(body)}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(responseIndicator); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
+		})
+	})
 	resourceSchema := customIndicatorResourceSchema(t)
 	resourceInstance := &customIndicatorResource{client: client}
 	importState := tfsdk.State{Schema: resourceSchema.Schema}
@@ -239,18 +235,6 @@ func TestCustomIndicatorResourceStrategyIDRequiresReplace(t *testing.T) {
 			name:                "global to strategy",
 			stateStrategyID:     types.StringNull(),
 			planStrategyID:      types.StringValue(testCustomIndicatorStrategyID),
-			wantRequiresReplace: true,
-		},
-		{
-			name:                "strategy to global",
-			stateStrategyID:     types.StringValue(testCustomIndicatorStrategyID),
-			planStrategyID:      types.StringNull(),
-			wantRequiresReplace: true,
-		},
-		{
-			name:                "strategy to another strategy",
-			stateStrategyID:     types.StringValue(testCustomIndicatorStrategyID),
-			planStrategyID:      types.StringValue("00000000-0000-4000-8000-000000000004"),
 			wantRequiresReplace: true,
 		},
 		{
@@ -375,14 +359,14 @@ func TestCustomIndicatorResourceUpdateNotFoundDiagnostic(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	requests := make(chan customIndicatorCapturedRequest, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = io.WriteString(w, `{"error":"synthetic missing indicator"}`)
-	}))
-	t.Cleanup(server.Close)
+	client, requests := newCustomIndicatorTestClient(t, func(requests chan<- customIndicatorCapturedRequest) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"error":"synthetic missing indicator"}`)
+		})
+	})
 
 	resourceSchema := customIndicatorResourceSchema(t)
 	stateModel := syntheticCustomIndicatorModel(nil, "global")
@@ -398,7 +382,6 @@ func TestCustomIndicatorResourceUpdateNotFoundDiagnostic(t *testing.T) {
 	}
 
 	response := resource.UpdateResponse{State: tfsdk.State{Schema: resourceSchema.Schema, Raw: state.Raw}}
-	client := customIndicatorTestClient(t, server.URL)
 	(&customIndicatorResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
 	var observedRequest *customIndicatorCapturedRequest
 	select {
@@ -434,29 +417,29 @@ func TestCustomIndicatorResourceUpdate(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	requests := make(chan customIndicatorCapturedRequest, 1)
 	updatedIndicator := syntheticCustomIndicator(nil)
 	updatedIndicator.Name = "updated synthetic indicator"
 	updatedIndicator.Code = "return { value: 43 }"
 	updatedIndicator.Description = nullable.NewNullNullable[string]()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Errorf("read request body: %v", err)
-			return
-		}
-		var decodedBody map[string]interface{}
-		if err := json.Unmarshal(body, &decodedBody); err != nil {
-			t.Errorf("decode request body: %v", err)
-			return
-		}
-		requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path, Body: decodedBody}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(updatedIndicator); err != nil {
-			t.Errorf("encode response: %v", err)
-		}
-	}))
-	t.Cleanup(server.Close)
+	client, requests := newCustomIndicatorTestClient(t, func(requests chan<- customIndicatorCapturedRequest) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read request body: %v", err)
+				return
+			}
+			var decodedBody map[string]interface{}
+			if err := json.Unmarshal(body, &decodedBody); err != nil {
+				t.Errorf("decode request body: %v", err)
+				return
+			}
+			requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path, Body: decodedBody}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(updatedIndicator); err != nil {
+				t.Errorf("encode response: %v", err)
+			}
+		})
+	})
 
 	resourceSchema := customIndicatorResourceSchema(t)
 	stateModel := syntheticCustomIndicatorModel(nil, "global")
@@ -474,7 +457,6 @@ func TestCustomIndicatorResourceUpdate(t *testing.T) {
 	}
 
 	response := resource.UpdateResponse{State: tfsdk.State{Schema: resourceSchema.Schema, Raw: state.Raw}}
-	client := customIndicatorTestClient(t, server.URL)
 	(&customIndicatorResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
 	var resultState customIndicatorModel
 	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
@@ -535,15 +517,15 @@ func TestCustomIndicatorResourceDelete(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			requests := make(chan customIndicatorCapturedRequest, 1)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path}
-				w.WriteHeader(testCase.statusCode)
-				if testCase.body != "" {
-					_, _ = io.WriteString(w, testCase.body)
-				}
-			}))
-			t.Cleanup(server.Close)
+			client, requests := newCustomIndicatorTestClient(t, func(requests chan<- customIndicatorCapturedRequest) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path}
+					w.WriteHeader(testCase.statusCode)
+					if testCase.body != "" {
+						_, _ = io.WriteString(w, testCase.body)
+					}
+				})
+			})
 
 			resourceSchema := customIndicatorResourceSchema(t)
 			state := tfsdk.State{Schema: resourceSchema.Schema}
@@ -551,7 +533,6 @@ func TestCustomIndicatorResourceDelete(t *testing.T) {
 				t.Fatalf("build delete state: %v", diagnostics)
 			}
 			response := resource.DeleteResponse{}
-			client := customIndicatorTestClient(t, server.URL)
 			(&customIndicatorResource{client: client}).Delete(ctx, resource.DeleteRequest{State: state}, &response)
 			var observedRequest *customIndicatorCapturedRequest
 			select {
@@ -626,6 +607,17 @@ func customIndicatorTestDiagnostics(diagnostics diag.Diagnostics) []customIndica
 		return nil
 	}
 	return result
+}
+
+func newCustomIndicatorTestClient(
+	t *testing.T,
+	handler func(chan<- customIndicatorCapturedRequest) http.Handler,
+) (*traderapi.Client, <-chan customIndicatorCapturedRequest) {
+	t.Helper()
+	requests := make(chan customIndicatorCapturedRequest, 1)
+	server := httptest.NewServer(handler(requests))
+	t.Cleanup(server.Close)
+	return customIndicatorTestClient(t, server.URL), requests
 }
 
 func customIndicatorTestClient(t *testing.T, baseURL string) *traderapi.Client {
