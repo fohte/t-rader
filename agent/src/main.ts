@@ -44,7 +44,6 @@ export const main = async (): Promise<void> => {
   const agentCard = buildAgentCard({ url: env.TRADER_AGENT_URL })
   const strategyAgentDeps = createStrategyAgentDeps({
     backendApiBaseUrl: env.BACKEND_API_BASE_URL,
-    strategyMcpUrl: env.STRATEGY_MCP_URL,
     llmApiKey: env.LLM_API_KEY,
     llmBaseUrl: env.LLM_BASE_URL,
     genAiProviderName: GEN_AI_PROVIDER_NAME,
@@ -53,7 +52,9 @@ export const main = async (): Promise<void> => {
   const executor = new TraderAgentExecutor({
     taskStore,
     runStrategyAgent: (input) => runStrategyAgent(strategyAgentDeps, input),
-    fetchStrategyCandidates: createStrategyCandidatesFetcher(env.MGMT_MCP_URL),
+    fetchStrategyCandidates: createStrategyCandidatesFetcher(
+      env.BACKEND_API_BASE_URL,
+    ),
   })
   const requestHandler = new DefaultRequestHandler(
     agentCard,
@@ -72,7 +73,7 @@ export const main = async (): Promise<void> => {
     requestHandler,
     internalApiToken: env.INTERNAL_API_TOKEN,
     backendPushNotificationConfig: {
-      url: env.BACKEND_WEBHOOK_URL,
+      url: `${env.BACKEND_API_BASE_URL.replace(/\/+$/, '')}/api/agent-tasks/notifications`,
       token: env.BACKEND_WEBHOOK_TOKEN,
     },
     isShuttingDown: () => isShuttingDown,
