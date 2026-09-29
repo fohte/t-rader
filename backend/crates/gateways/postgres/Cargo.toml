@@ -10,7 +10,6 @@ test-support = ["dep:migration", "dep:sqlx"]
 async-trait = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 core-domain = { workspace = true }
-core-application = { workspace = true }
 migration = { path = "../../../migration", optional = true }
 sea-orm = { workspace = true, features = [
     "runtime-tokio-native-tls",
@@ -29,7 +28,6 @@ sqlx = { workspace = true, optional = true, features = [
     "migrate",
 ] }
 tracing = { workspace = true }
-uuid = { workspace = true }
 
 [dev-dependencies]
 backend-test-macros = { path = "../../test-macros" }

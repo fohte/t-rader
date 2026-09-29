@@ -45,8 +45,8 @@ use uuid::Uuid;
 use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
+use crate::services::strategies::SeaOrmStrategyScopeSource;
 use gateway_postgres::DatabaseHandle;
-use gateway_postgres::PostgresStrategyScopeSource;
 use gateway_postgres::entities::{annotation, note};
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
@@ -170,7 +170,7 @@ impl StrategyServer {
         ctx: &RequestContext<RoleServer>,
     ) -> Result<StrategyScope, McpError> {
         let id = strategy_id_from_ctx(ctx)?;
-        let source = PostgresStrategyScopeSource::new(&self.db);
+        let source = SeaOrmStrategyScopeSource::new(&self.db);
         StrategyScope::verify(id, &source)
             .await
             .map_err(|error| match error {

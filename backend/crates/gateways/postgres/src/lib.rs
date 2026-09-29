@@ -9,9 +9,6 @@ extern crate self as gateway_postgres;
 
 pub mod entities;
 pub mod repositories;
-mod strategy_scope;
-
-pub use strategy_scope::PostgresStrategyScopeSource;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

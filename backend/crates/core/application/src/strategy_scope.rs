@@ -77,3 +77,83 @@ impl From<Uuid> for StrategyScope {
         Self { id }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct FakeStrategyScopeSource {
+        existing_ids: HashSet<Uuid>,
+        requested_ids: Mutex<Vec<Vec<Uuid>>>,
+    }
+
+    #[async_trait]
+    impl StrategyScopeSource for FakeStrategyScopeSource {
+        async fn existing_ids(
+            &self,
+            ids: &[Uuid],
+        ) -> Result<HashSet<Uuid>, StrategyScopeSourceError> {
+            self.requested_ids
+                .lock()
+                .expect("lock requested ids")
+                .push(ids.to_vec());
+            Ok(self.existing_ids.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn verify_creates_scope_for_existing_id() {
+        let id = Uuid::new_v4();
+        let source = FakeStrategyScopeSource {
+            existing_ids: HashSet::from([id]),
+            ..FakeStrategyScopeSource::default()
+        };
+
+        assert_eq!(
+            StrategyScope::verify(id, &source)
+                .await
+                .map(StrategyScope::id),
+            Ok(id)
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_strategy_ids_deduplicates_and_reports_missing_id() {
+        let existing_id = Uuid::new_v4();
+        let missing_id = Uuid::new_v4();
+        let source = FakeStrategyScopeSource {
+            existing_ids: HashSet::from([existing_id]),
+            ..FakeStrategyScopeSource::default()
+        };
+
+        let result = verify_strategy_ids([existing_id, missing_id, missing_id], &source).await;
+        let requested_ids = source
+            .requested_ids
+            .into_inner()
+            .expect("read requested ids");
+
+        assert_eq!(
+            (result, requested_ids),
+            (
+                Err(StrategyScopeError::NotFound(missing_id)),
+                vec![vec![existing_id, missing_id]],
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_strategy_ids_skips_source_for_empty_input() {
+        let source = FakeStrategyScopeSource::default();
+
+        let result = verify_strategy_ids([], &source).await;
+        let requested_ids = source
+            .requested_ids
+            .into_inner()
+            .expect("read requested ids");
+
+        assert_eq!((result, requested_ids), (Ok(()), Vec::new()));
+    }
+}
