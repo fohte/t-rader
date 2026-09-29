@@ -33,37 +33,30 @@ EOF
 export TF_CLI_CONFIG_FILE="$cli_config"
 export TF_IN_AUTOMATION=true
 
-cat > "$workspace/strategy.tf" << 'EOF'
+write_strategy_config() {
+  local name="$1" description="$2" sort_order="$3"
+  cat > "$workspace/strategy.tf" << EOF
 resource "trader_strategy" "integration" {
-  name        = "synthetic strategy"
-  description = "synthetic description"
-  sort_order  = 3
+  name        = "$name"
+  description = "$description"
+  sort_order  = $sort_order
 }
 
 output "strategy_id" {
   value = trader_strategy.integration.id
 }
 EOF
+}
 
+write_strategy_config "synthetic strategy" "synthetic description" 3
 terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
 strategy_id="$(terraform -chdir="$workspace" output -raw strategy_id)"
 
-cat > "$workspace/strategy.tf" << 'EOF'
-resource "trader_strategy" "integration" {
-  name        = "updated synthetic strategy"
-  description = "updated synthetic description"
-  sort_order  = 5
-}
-
-output "strategy_id" {
-  value = trader_strategy.integration.id
-}
-EOF
-
+write_strategy_config "updated synthetic strategy" "updated synthetic description" 5
 terraform -chdir="$workspace" apply -auto-approve -input=false -no-color
 terraform -chdir="$workspace" state rm trader_strategy.integration
 terraform -chdir="$workspace" import -input=false -no-color trader_strategy.integration "$strategy_id"
-terraform -chdir="$workspace" plan -input=false -no-color
+terraform -chdir="$workspace" plan -input=false -no-color -detailed-exitcode
 
 rm "$workspace/strategy.tf"
 terraform -chdir="$workspace" apply -auto-approve -input=false -no-color

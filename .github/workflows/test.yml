@@ -484,6 +484,7 @@ jobs:
       # の [checks] での enabled=false は上書きされ効かない。無効化対象を toml から
       # 読み取り、--exclude-checks として明示的に渡す。
       - name: Determine schemathesis checks to exclude
+        if: needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.workflow == 'true'
         id: schemathesis-checks
         working-directory: backend
         run: |
@@ -508,6 +509,7 @@ jobs:
           echo "args=$args" >> "$GITHUB_OUTPUT"
 
       - name: Run Schemathesis API fuzzing
+        if: needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.workflow == 'true'
         uses: schemathesis/action@1f15936316e0742005bf69657b5909ac68f04cb3 # v2.1.0
         with:
           schema: http://localhost:3000/api-docs/openapi.json
