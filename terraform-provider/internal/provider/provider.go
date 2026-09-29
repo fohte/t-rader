@@ -100,7 +100,7 @@ func (p *traderProvider) Configure(ctx context.Context, req provider.ConfigureRe
 }
 
 func (p *traderProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{NewStrategyResource, NewAgentConfigResource, NewRiskLimitResource}
+	return []func() resource.Resource{NewStrategyResource, NewAgentConfigResource, NewRiskLimitResource, NewStrategyTriggerResource}
 }
 
 func (p *traderProvider) DataSources(_ context.Context) []func() datasource.DataSource {
