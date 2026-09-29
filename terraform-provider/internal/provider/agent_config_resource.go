@@ -104,6 +104,12 @@ func (r *agentConfigResource) Create(ctx context.Context, req resource.CreateReq
 	if err := client.UpdateAgentConfig(ctx, purpose, plan.AgentsMd.ValueString(), skills, plan.AgentGraph.ValueString()); err != nil {
 		if cleanupErr := client.DeleteAgentConfig(ctx, purpose); cleanupErr != nil {
 			err = fmt.Errorf("%w; remove partially created agent config: %v", err, cleanupErr)
+			resp.Diagnostics.Append(resp.State.Set(ctx, agentConfigModel{
+				Purpose:    plan.Purpose,
+				AgentsMd:   types.StringNull(),
+				Skills:     types.MapNull(types.StringType),
+				AgentGraph: types.StringNull(),
+			})...)
 		}
 		resp.Diagnostics.AddError("Error configuring created agent config", err.Error())
 		return
@@ -132,12 +138,7 @@ func (r *agentConfigResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	skillValues, err := skillsFromConfig(config.Skills)
-	if err != nil {
-		resp.Diagnostics.AddError("Error reading agent config", err.Error())
-		return
-	}
-	skills, diagnostics := types.MapValueFrom(ctx, types.StringType, skillValues)
+	skills, diagnostics := types.MapValueFrom(ctx, types.StringType, nonNilSkills(config.Skills))
 	resp.Diagnostics.Append(diagnostics...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -225,22 +226,6 @@ func nonNilSkills(skills map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return skills
-}
-
-func skillsFromConfig(value any) (map[string]string, error) {
-	skills, ok := value.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("backend returned agent config skills with type %T", value)
-	}
-	result := make(map[string]string, len(skills))
-	for name, content := range skills {
-		text, ok := content.(string)
-		if !ok {
-			return nil, fmt.Errorf("backend returned agent config skill %q with type %T", name, content)
-		}
-		result[name] = text
-	}
-	return result, nil
 }
 
 type agentGraphPhase struct {

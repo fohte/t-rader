@@ -23,28 +23,28 @@ func (c *Client) CreateAgentConfig(ctx context.Context, purpose string) error {
 	return nil
 }
 
-func (c *Client) GetAgentConfig(ctx context.Context, purpose string) (AgentConfig, error) {
-	response, err := c.api.AgentConfigGetAgentConfigWithResponse(ctx, purpose)
+func (c *Client) GetAgentConfig(ctx context.Context, purpose string) (AgentConfigResponse, error) {
+	response, err := c.api.AgentConfigGetAgentConfigBundleWithResponse(ctx, purpose)
 	if err != nil {
-		return AgentConfig{}, fmt.Errorf("send get agent config request: %w", err)
+		return AgentConfigResponse{}, fmt.Errorf("send get agent config request: %w", err)
 	}
 	if err := agentConfigResponseError(response.HTTPResponse, response.Body); err != nil {
-		return AgentConfig{}, err
+		return AgentConfigResponse{}, err
 	}
 	if response.JSON200 == nil {
-		return AgentConfig{}, errors.New("backend returned HTTP 200 without a JSON response")
+		return AgentConfigResponse{}, errors.New("backend returned HTTP 200 without a JSON response")
 	}
 	return *response.JSON200, nil
 }
 
 func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string, skills map[string]string, agentGraph string) error {
-	graphResponse, err := c.api.AgentConfigPutAgentGraphWithResponse(ctx, purpose, AgentConfigPutAgentGraphJSONRequestBody{
-		Content: agentGraph,
+	skillsResponse, err := c.api.AgentConfigPutSkillsWithResponse(ctx, purpose, AgentConfigPutSkillsJSONRequestBody{
+		Skills: skills,
 	})
 	if err != nil {
-		return fmt.Errorf("send update agent graph request: %w", err)
+		return fmt.Errorf("send update agent skills request: %w", err)
 	}
-	if err := agentConfigResponseError(graphResponse.HTTPResponse, graphResponse.Body); err != nil {
+	if err := agentConfigResponseError(skillsResponse.HTTPResponse, skillsResponse.Body); err != nil {
 		return err
 	}
 
@@ -58,13 +58,13 @@ func (c *Client) UpdateAgentConfig(ctx context.Context, purpose, agentsMd string
 		return err
 	}
 
-	skillsResponse, err := c.api.AgentConfigPutSkillsWithResponse(ctx, purpose, AgentConfigPutSkillsJSONRequestBody{
-		Skills: skills,
+	graphResponse, err := c.api.AgentConfigPutAgentGraphWithResponse(ctx, purpose, AgentConfigPutAgentGraphJSONRequestBody{
+		Content: agentGraph,
 	})
 	if err != nil {
-		return fmt.Errorf("send update agent skills request: %w", err)
+		return fmt.Errorf("send update agent graph request: %w", err)
 	}
-	return agentConfigResponseError(skillsResponse.HTTPResponse, skillsResponse.Body)
+	return agentConfigResponseError(graphResponse.HTTPResponse, graphResponse.Body)
 }
 
 func (c *Client) DeleteAgentConfig(ctx context.Context, purpose string) error {
