@@ -14,7 +14,7 @@ import { createApp } from '#app'
 import { observability } from '#bootstrap'
 import { createSql, pingDb } from '#db'
 import { runMigrations } from '#db/migrations'
-import { loadEnv } from '#env'
+import { buildBackendUrls, loadEnv } from '#env'
 import { logger } from '#logger'
 import {
   createStrategyAgentDeps,
@@ -32,6 +32,7 @@ const SHUTDOWN_TIMED_OUT_FINGERPRINT = 'main.shutdown-timed-out'
 
 export const main = async (): Promise<void> => {
   const env = loadEnv()
+  const backendUrls = buildBackendUrls(env.BACKEND_API_BASE_URL)
   const sql = createSql(env.DATABASE_URL)
   await pingDb(sql)
   await runMigrations(sql)
@@ -44,7 +45,7 @@ export const main = async (): Promise<void> => {
   const agentCard = buildAgentCard({ url: env.TRADER_AGENT_URL })
   const strategyAgentDeps = createStrategyAgentDeps({
     backendApiBaseUrl: env.BACKEND_API_BASE_URL,
-    strategyMcpUrl: env.STRATEGY_MCP_URL,
+    strategyMcpUrl: backendUrls.strategyMcp,
     llmApiKey: env.LLM_API_KEY,
     llmBaseUrl: env.LLM_BASE_URL,
     genAiProviderName: GEN_AI_PROVIDER_NAME,
@@ -53,7 +54,9 @@ export const main = async (): Promise<void> => {
   const executor = new TraderAgentExecutor({
     taskStore,
     runStrategyAgent: (input) => runStrategyAgent(strategyAgentDeps, input),
-    fetchStrategyCandidates: createStrategyCandidatesFetcher(env.MGMT_MCP_URL),
+    fetchStrategyCandidates: createStrategyCandidatesFetcher(
+      backendUrls.managementMcp,
+    ),
   })
   const requestHandler = new DefaultRequestHandler(
     agentCard,
@@ -72,7 +75,7 @@ export const main = async (): Promise<void> => {
     requestHandler,
     internalApiToken: env.INTERNAL_API_TOKEN,
     backendPushNotificationConfig: {
-      url: env.BACKEND_WEBHOOK_URL,
+      url: backendUrls.notifications,
       token: env.BACKEND_WEBHOOK_TOKEN,
     },
     isShuttingDown: () => isShuttingDown,

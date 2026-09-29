@@ -5,22 +5,24 @@ export interface Env {
   // Card's `url` field for future agent-to-agent callers.
   TRADER_AGENT_URL: string
   INTERNAL_API_TOKEN: string
-  BACKEND_WEBHOOK_URL: string
   BACKEND_WEBHOOK_TOKEN: string
   A2A_WATCHDOG_TIMEOUT_MS: number
   A2A_RETENTION_DAYS: number
   LLM_CALL_TIMEOUT_MS: number
-  // Base URL of t-rader backend, used to fetch AGENTS.md / skills / model
-  // via GET {base}/api/agent-configs/{purpose}/agent-config.
+  // agent が backend API、webhook、MCP endpoint に接続する base URL。
   BACKEND_API_BASE_URL: string
-  // Same target as backend's STRATEGY_MCP_URL env (the strategy MCP
-  // endpoint).
-  STRATEGY_MCP_URL: string
-  // The backend's management MCP endpoint (/mcp/mgmt), used to resolve a
-  // strategy from free text when message metadata doesn't carry strategy_id.
-  MGMT_MCP_URL: string
   LLM_API_KEY: string
   LLM_BASE_URL: string | undefined
+}
+
+export const buildBackendUrls = (baseUrl: string) => {
+  const base = baseUrl.replace(/\/+$/, '')
+
+  return {
+    notifications: `${base}/api/agent-tasks/notifications`,
+    strategyMcp: `${base}/mcp/strategy`,
+    managementMcp: `${base}/mcp/mgmt`,
+  }
 }
 
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000
@@ -92,7 +94,6 @@ export const loadEnv = (
     TRADER_AGENT_PORT: requirePositiveInt('TRADER_AGENT_PORT'),
     TRADER_AGENT_URL: requireString('TRADER_AGENT_URL'),
     INTERNAL_API_TOKEN: requireString('INTERNAL_API_TOKEN'),
-    BACKEND_WEBHOOK_URL: requireString('BACKEND_WEBHOOK_URL'),
     BACKEND_WEBHOOK_TOKEN: requireString('BACKEND_WEBHOOK_TOKEN'),
     A2A_WATCHDOG_TIMEOUT_MS: parsePositiveIntWithDefault(
       'A2A_WATCHDOG_TIMEOUT_MS',
@@ -107,8 +108,6 @@ export const loadEnv = (
       DEFAULT_LLM_CALL_TIMEOUT_MS,
     ),
     BACKEND_API_BASE_URL: requireString('BACKEND_API_BASE_URL'),
-    STRATEGY_MCP_URL: requireString('STRATEGY_MCP_URL'),
-    MGMT_MCP_URL: requireString('MGMT_MCP_URL'),
     LLM_API_KEY: requireString('LLM_API_KEY'),
     LLM_BASE_URL: optionalString('LLM_BASE_URL'),
   }
