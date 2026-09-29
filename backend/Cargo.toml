@@ -16,6 +16,7 @@ members = [
 ]
 default-members = [
     ".",
+    "migration",
     "crates/core/domain",
     "crates/core/application",
     "crates/gateways/fred",
@@ -81,6 +82,7 @@ wiremock = "=0.6.5"
 name = "backend"
 version = "0.1.0"
 edition = "2024"
+default-run = "backend"
 
 [dependencies]
 async-trait = { workspace = true }
