@@ -1,0 +1,16 @@
+package: traderapi
+output: internal/traderapi/client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  client-type-name: OpenAPIClient
+  include-tags:
+    - account
+    - agent_config
+    - custom_indicators
+    - rss_feeds
+    - strategies
+    - triggers
+  nullable-type: true
+  response-type-suffix: Result
