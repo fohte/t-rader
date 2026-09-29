@@ -69,10 +69,7 @@ async fn unread_note_counts_by_strategy(
         .all(db)
         .await
         .map_err(query_error)?;
-    Ok(rows
-        .into_iter()
-        .map(|(id, count)| (id, count.max(0) as u64))
-        .collect())
+    Ok(to_unread_counts(rows))
 }
 
 async fn unread_annotation_counts_by_strategy(
@@ -89,10 +86,13 @@ async fn unread_annotation_counts_by_strategy(
         .all(db)
         .await
         .map_err(query_error)?;
-    Ok(rows
-        .into_iter()
+    Ok(to_unread_counts(rows))
+}
+
+fn to_unread_counts(rows: Vec<(Uuid, i64)>) -> HashMap<Uuid, u64> {
+    rows.into_iter()
         .map(|(id, count)| (id, count.max(0) as u64))
-        .collect())
+        .collect()
 }
 
 fn query_error(error: sea_orm::DbErr) -> StrategySummaryQueryError {

@@ -188,10 +188,6 @@ impl StrategyUseCases {
         scope: StrategyScope,
     ) -> Result<Option<super::types::InvestableAmount>, StrategyUseCaseError> {
         self.repository
-            .find_by_id(scope.id())
-            .await?
-            .ok_or(StrategyUseCaseError::NotFound(scope.id()))?;
-        self.repository
             .find_current_investable_amount(scope.id(), Utc::now().fixed_offset())
             .await
             .map_err(Into::into)

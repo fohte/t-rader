@@ -175,6 +175,10 @@ mod tests {
 
     use crate::agent_client::FakeAgentTaskClient;
     use crate::testing::insert_test_cron_trigger;
+    use core_application::change_history::Actor;
+    use core_application::strategy::{StrategyUpdateCommand, StrategyUseCaseError};
+    use core_application::strategy_scope::StrategyScope;
+    use gateway_postgres::PostgresStrategyScopeSource;
     use gateway_postgres::entities::strategy;
 
     use super::super::tests_common::{build_server, insert_strategy};
@@ -371,6 +375,55 @@ mod tests {
                 .await
                 .expect("query strategy")
                 .is_some()
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn delete_confirmed_rejects_name_changed_after_confirmation(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "original").await;
+        let scope_source = PostgresStrategyScopeSource::new(&db);
+        let scope = StrategyScope::verify(strategy_id, &scope_source)
+            .await
+            .expect("verify strategy scope");
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+
+        use_cases
+            .strategies
+            .update(
+                Actor::Human,
+                scope,
+                StrategyUpdateCommand {
+                    name: Some("renamed".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("rename strategy");
+        let delete_result = use_cases
+            .strategies
+            .delete_confirmed(Actor::Human, scope, "original")
+            .await
+            .map(|()| "deleted")
+            .map_err(|error| match error {
+                StrategyUseCaseError::ConfirmationMismatch(_) => {
+                    "confirmation mismatch".to_string()
+                }
+                other => other.to_string(),
+            });
+        let remaining = strategy::Entity::find_by_id(strategy_id)
+            .one(&db)
+            .await
+            .expect("query strategy")
+            .map(|row| (row.id, row.name));
+
+        assert_eq!(
+            (delete_result, remaining),
+            (
+                Err("confirmation mismatch".to_string()),
+                Some((strategy_id, "renamed".to_string())),
+            ),
         );
     }
 
