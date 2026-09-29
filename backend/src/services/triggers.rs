@@ -67,7 +67,15 @@ where
     let context = build_standard_context(&strategy_row, now);
     let prompt = expand_template(&trigger_row.prompt_template, &payload, &context);
 
-    let outcome = submit_task(db, agent_client, strategy_id, &prompt, source, None).await?;
+    let outcome = submit_task(
+        db,
+        agent_client,
+        strategy_id,
+        &prompt,
+        source,
+        trigger_row.purpose.clone(),
+    )
+    .await?;
 
     let now_fixed = now.fixed_offset();
     let mut active = trigger_row.into_active_model();
@@ -347,11 +355,13 @@ mod fire_tests {
         strategy_id: Uuid,
         slug: &str,
         prompt_template: &str,
+        purpose: Option<&str>,
     ) -> Uuid {
         let id = Uuid::new_v4();
         trigger::ActiveModel {
             trigger_id: Set(id),
             strategy_id: Set(Some(strategy_id)),
+            purpose: Set(purpose.map(str::to_string)),
             kind: Set("hook".to_string()),
             schedule: Set(None),
             hook_slug: Set(Some(slug.to_string())),
@@ -374,6 +384,7 @@ mod fire_tests {
         strategy_id: Uuid,
         source: String,
         prompt: String,
+        purpose: Option<String>,
         phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase,
     }
 
@@ -383,6 +394,7 @@ mod fire_tests {
                 strategy_id: row.strategy_id,
                 source: row.source.clone(),
                 prompt: row.prompt.clone(),
+                purpose: row.purpose.clone(),
                 phase: row.phase.clone(),
             }
         }
@@ -411,10 +423,17 @@ mod fire_tests {
     #[backend_test_macros::database_test]
     async fn fire_creates_strategy_task_with_expected_source(db: gateway_postgres::DatabaseHandle) {
         let sid = seed_strategy(&db, "長期").await;
-        agent_config::create(&db, DEFAULT_PURPOSE.to_string())
+        agent_config::create(&db, "synthetic-purpose".to_string())
             .await
             .expect("insert test agent_config");
-        let tid = seed_hook_trigger(&db, sid, "tv", "alert {{payload.symbol}}").await;
+        let tid = seed_hook_trigger(
+            &db,
+            sid,
+            "tv",
+            "alert {{payload.symbol}}",
+            Some("synthetic-purpose"),
+        )
+        .await;
         let kube: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
 
         let outcome = fire_trigger(&db, &kube, tid, json!({"symbol": "7203"}), TaskSource::Hook)
@@ -438,6 +457,7 @@ mod fire_tests {
                     strategy_id: sid,
                     source: "hook".to_string(),
                     prompt: "alert 7203".to_string(),
+                    purpose: Some("synthetic-purpose".to_string()),
                     phase:
                         gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
                 },
@@ -461,6 +481,7 @@ mod fire_tests {
         trigger::ActiveModel {
             trigger_id: Set(id),
             strategy_id: Set(Some(sid)),
+            purpose: Set(None),
             kind: Set("cron".to_string()),
             schedule: Set(Some("0 9 * * 1-5".to_string())),
             hook_slug: Set(None),
@@ -491,6 +512,7 @@ mod fire_tests {
                 strategy_id: sid,
                 source: "cron".to_string(),
                 prompt: "morning s".to_string(),
+                purpose: Some(DEFAULT_PURPOSE.to_string()),
                 phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running,
             }],
         );
@@ -503,6 +525,7 @@ mod fire_tests {
         trigger::ActiveModel {
             trigger_id: Set(id),
             strategy_id: Set(Some(sid)),
+            purpose: Set(None),
             kind: Set("hook".to_string()),
             schedule: Set(None),
             hook_slug: Set(Some("off".to_string())),
@@ -543,6 +566,7 @@ mod fire_tests {
         trigger::ActiveModel {
             trigger_id: Set(id),
             strategy_id: Set(None),
+            purpose: Set(None),
             kind: Set("hook".to_string()),
             schedule: Set(None),
             hook_slug: Set(Some("global".to_string())),
@@ -572,7 +596,7 @@ mod fire_tests {
         agent_config::create(&db, DEFAULT_PURPOSE.to_string())
             .await
             .expect("insert test agent_config");
-        let tid = seed_hook_trigger(&db, sid, "p", "x").await;
+        let tid = seed_hook_trigger(&db, sid, "p", "x", None).await;
         let fake = Arc::new(FakeAgentTaskClient::new());
         fake.set_submit_error(AgentTaskError::Api {
             status: 500,

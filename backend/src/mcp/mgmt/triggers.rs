@@ -22,6 +22,7 @@ impl MgmtServer {
         params: CreateStrategyTriggerParams,
     ) -> Result<CreateStrategyTriggerResult, McpError> {
         let payload = CreateTriggerRequest {
+            purpose: params.purpose,
             kind: params.kind.into(),
             schedule: params.schedule,
             hook_slug: params.hook_slug,
@@ -48,6 +49,7 @@ impl MgmtServer {
         params: UpdateStrategyTriggerParams,
     ) -> Result<UpdateStrategyTriggerResult, McpError> {
         let payload = UpdateTriggerRequest {
+            purpose: params.purpose,
             schedule: params.schedule,
             hook_slug: params.hook_slug,
             event_match: params.event_match.map(|value| Some(value.into())),
@@ -104,6 +106,7 @@ mod tests {
 
     use crate::agent_client::FakeAgentTaskClient;
     use crate::mcp::mgmt::dto::TriggerKindParam;
+    use crate::services::agent_config;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
     use gateway_postgres::entities::trigger;
 
@@ -113,11 +116,15 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn create_strategy_trigger_inserts_cron_trigger(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
+        agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("agent config persisted");
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id,
+                purpose: Some("synthetic-purpose".to_string()),
                 kind: TriggerKindParam::Cron,
                 schedule: Some("0 9 * * *".to_string()),
                 hook_slug: None,
@@ -148,6 +155,7 @@ mod tests {
         assert_eq!(
             (
                 stored.strategy_id,
+                stored.purpose,
                 stored.kind,
                 stored.schedule,
                 stored.hook_slug,
@@ -156,6 +164,7 @@ mod tests {
             ),
             (
                 Some(strategy_id),
+                Some("synthetic-purpose".to_string()),
                 "cron".to_string(),
                 Some("0 9 * * *".to_string()),
                 None,
@@ -175,6 +184,7 @@ mod tests {
         let Json(result) = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id,
+                purpose: None,
                 kind: TriggerKindParam::Cron,
                 schedule: None,
                 hook_slug: None,
@@ -202,6 +212,7 @@ mod tests {
         let err = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id: Uuid::new_v4(),
+                purpose: None,
                 kind: TriggerKindParam::Hook,
                 schedule: None,
                 hook_slug: Some("earnings".to_string()),
@@ -218,6 +229,9 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn update_strategy_trigger_applies_fields(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
+        agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("agent config persisted");
         let trigger_id =
             insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "old prompt").await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -225,6 +239,7 @@ mod tests {
         let Json(result) = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id,
+                purpose: Some(Some("synthetic-purpose".to_string())),
                 schedule: Some("0 10 * * *".to_string()),
                 hook_slug: None,
                 event_match: None,
@@ -242,8 +257,14 @@ mod tests {
             .await
             .expect("trigger exists");
         assert_eq!(
-            (stored.schedule, stored.prompt_template, stored.enabled),
             (
+                stored.purpose,
+                stored.schedule,
+                stored.prompt_template,
+                stored.enabled,
+            ),
+            (
+                Some("synthetic-purpose".to_string()),
                 Some("0 10 * * *".to_string()),
                 "new prompt".to_string(),
                 false,
@@ -263,6 +284,7 @@ mod tests {
         let Json(result) = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id,
+                purpose: None,
                 schedule: None,
                 hook_slug: Some("earnings".to_string()),
                 event_match: None,
@@ -281,6 +303,7 @@ mod tests {
         let err = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id: Uuid::new_v4(),
+                purpose: None,
                 schedule: None,
                 hook_slug: None,
                 event_match: None,

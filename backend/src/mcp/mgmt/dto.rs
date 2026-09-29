@@ -236,6 +236,7 @@ pub struct DeleteNoteKindResult {
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct TriggerSummary {
     pub trigger_id: Uuid,
+    pub purpose: Option<String>,
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
@@ -252,6 +253,7 @@ impl From<trigger::Model> for TriggerSummary {
     fn from(m: trigger::Model) -> Self {
         Self {
             trigger_id: m.trigger_id,
+            purpose: m.purpose,
             kind: m.kind,
             schedule: m.schedule,
             hook_slug: m.hook_slug,
@@ -342,6 +344,8 @@ impl From<TriggerKindParam> for TriggerKind {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateStrategyTriggerParams {
     pub strategy_id: Uuid,
+    #[serde(default)]
+    pub purpose: Option<String>,
     pub kind: TriggerKindParam,
     /// kind=cron 時に必須 (UTC の 5 フィールド cron 式)
     #[serde(default)]
@@ -367,6 +371,11 @@ pub struct CreateStrategyTriggerResult {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateStrategyTriggerParams {
     pub trigger_id: Uuid,
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    pub purpose: Option<Option<String>>,
     #[serde(default)]
     pub schedule: Option<String>,
     #[serde(default)]

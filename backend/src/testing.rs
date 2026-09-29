@@ -220,6 +220,7 @@ pub async fn insert_test_cron_trigger(
     trigger::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
+        purpose: Set(None),
         kind: Set("cron".to_string()),
         schedule: Set(Some(schedule.to_string())),
         hook_slug: Set(None),
@@ -249,6 +250,7 @@ pub async fn insert_test_hook_trigger(
     trigger::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
+        purpose: Set(None),
         kind: Set("hook".to_string()),
         schedule: Set(None),
         hook_slug: Set(Some(slug.to_string())),

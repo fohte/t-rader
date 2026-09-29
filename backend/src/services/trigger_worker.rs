@@ -474,6 +474,7 @@ mod run_once_tests {
         trigger::ActiveModel {
             trigger_id: Set(id),
             strategy_id: Set(Some(sid)),
+            purpose: Set(None),
             kind: Set("hook".to_string()),
             schedule: Set(None),
             hook_slug: Set(Some("h".to_string())),

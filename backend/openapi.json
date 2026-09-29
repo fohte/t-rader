@@ -7746,6 +7746,12 @@
             "minLength": 1,
             "pattern": "\\S"
           },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "schedule": {
             "type": [
               "string",
@@ -9240,6 +9246,12 @@
           "prompt_template": {
             "type": "string"
           },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "schedule": {
             "type": [
               "string",
@@ -9599,6 +9611,13 @@
             ],
             "minLength": 1,
             "pattern": "\\S"
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "省略時は変更せず、`null` 指定時は default purpose に戻す。"
           },
           "schedule": {
             "type": [

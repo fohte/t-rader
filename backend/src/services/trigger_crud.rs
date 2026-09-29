@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::models::{CreateTriggerRequest, TriggerKind, UpdateTriggerRequest};
-use gateway_postgres::entities::trigger;
+use gateway_postgres::entities::{agent_config, trigger};
 
 fn validate_template(value: &str) -> Result<String, AppError> {
     let trimmed = value.trim().to_string();
@@ -89,6 +89,31 @@ async fn find_strategy_or_404(
     Ok(())
 }
 
+async fn validate_purpose(
+    db: &impl sea_orm::ConnectionTrait,
+    purpose: Option<String>,
+) -> Result<Option<String>, AppError> {
+    let Some(purpose) = purpose else {
+        return Ok(None);
+    };
+    let purpose = purpose.trim().to_string();
+    if purpose.is_empty() {
+        return Err(AppError::Validation("purpose must not be empty".into()));
+    }
+
+    let exists = agent_config::Entity::find()
+        .filter(agent_config::Column::Purpose.eq(&purpose))
+        .one(db)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(AppError::NotFound(format!(
+            "agent_config purpose {purpose} not found"
+        )));
+    }
+    Ok(Some(purpose))
+}
+
 async fn find_trigger_or_404(
     db: &impl sea_orm::ConnectionTrait,
     trigger_id: Uuid,
@@ -126,10 +151,12 @@ pub async fn create_trigger(
     validate_create(&payload)?;
     let prompt_template = validate_template(&payload.prompt_template)?;
     find_strategy_or_404(db, strategy_id).await?;
+    let purpose = validate_purpose(db, payload.purpose).await?;
 
     let model = trigger::ActiveModel {
         trigger_id: Set(Uuid::new_v4()),
         strategy_id: Set(Some(strategy_id)),
+        purpose: Set(purpose),
         kind: Set(payload.kind.as_str().to_string()),
         schedule: Set(payload.schedule.map(|s| s.trim().to_string())),
         hook_slug: Set(payload.hook_slug.map(|s| s.trim().to_string())),
@@ -163,6 +190,9 @@ pub async fn update_trigger(
     let current = find_trigger_or_404(db, trigger_id).await?;
     let mut active = current.clone().into_active_model();
 
+    if let Some(purpose) = payload.purpose {
+        active.purpose = Set(validate_purpose(db, purpose).await?);
+    }
     if let Some(schedule) = payload.schedule {
         if current.kind != TriggerKind::Cron.as_str() {
             return Err(AppError::Validation(

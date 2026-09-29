@@ -146,6 +146,14 @@ mod tests {
         res.json::<Value>()["id"].as_str().unwrap().to_string()
     }
 
+    async fn create_agent_config(server: &axum_test::TestServer, purpose: &str) {
+        server
+            .post("/api/agent-configs")
+            .json(&json!({ "purpose": purpose }))
+            .await
+            .assert_status(StatusCode::CREATED);
+    }
+
     /// trigger response の時刻系フィールドを placeholder に正規化する。
     /// 全フィールドを 1 つの literal と equality で比較するためのヘルパ。
     /// `trigger_id` は呼び出し側が事前生成 ID を知っているケースとそうでないケースの両方が
@@ -193,10 +201,12 @@ mod tests {
     async fn create_cron_trigger_succeeds(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
+        create_agent_config(&server, "synthetic-purpose").await;
         let res = server
             .post(&format!("/api/strategies/{sid}/triggers"))
             .json(&json!({
                 "kind": "cron",
+                "purpose": "synthetic-purpose",
                 "schedule": "0 9 * * 1-5",
                 "prompt_template": "morning briefing for {{strategy.name}}",
             }))
@@ -207,6 +217,7 @@ mod tests {
             json!({
                 "trigger_id": "<trigger_id>",
                 "strategy_id": sid,
+                "purpose": "synthetic-purpose",
                 "kind": "cron",
                 "schedule": "0 9 * * 1-5",
                 "hook_slug": null,
@@ -239,6 +250,7 @@ mod tests {
             json!({
                 "trigger_id": "<trigger_id>",
                 "strategy_id": sid,
+                "purpose": null,
                 "kind": "hook",
                 "schedule": null,
                 "hook_slug": "tv-alert",
@@ -291,6 +303,97 @@ mod tests {
             }))
             .await;
         res.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_with_unknown_purpose_is_404(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let res = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "cron",
+                "purpose": "missing-purpose",
+                "schedule": "0 9 * * *",
+                "prompt_template": "x",
+            }))
+            .await;
+
+        assert_eq!(
+            (res.status_code(), res.json::<Value>()),
+            (
+                StatusCode::NOT_FOUND,
+                json!({ "error": "agent_config purpose missing-purpose not found" }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_with_empty_purpose_is_400(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let res = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "cron",
+                "purpose": " ",
+                "schedule": "0 9 * * *",
+                "prompt_template": "x",
+            }))
+            .await;
+
+        assert_eq!(
+            (res.status_code(), res.json::<Value>()),
+            (
+                StatusCode::BAD_REQUEST,
+                json!({ "error": "purpose must not be empty" }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn deleting_agent_config_resets_trigger_purpose_to_default(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        create_agent_config(&server, "synthetic-purpose").await;
+        let created: Value = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "cron",
+                "purpose": "synthetic-purpose",
+                "schedule": "0 9 * * *",
+                "prompt_template": "x",
+            }))
+            .await
+            .json();
+        let tid = created["trigger_id"].as_str().unwrap().to_string();
+
+        server
+            .delete("/api/agent-configs/synthetic-purpose")
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+        let trigger = server.get(&format!("/api/triggers/{tid}")).await;
+        trigger.assert_status_ok();
+
+        assert_eq!(
+            normalize_trigger(trigger.json(), true),
+            json!({
+                "trigger_id": tid,
+                "strategy_id": sid,
+                "purpose": null,
+                "kind": "cron",
+                "schedule": "0 9 * * *",
+                "hook_slug": null,
+                "event_match": null,
+                "prompt_template": "x",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -351,6 +454,7 @@ mod tests {
             vec![json!({
                 "trigger_id": "<trigger_id>",
                 "strategy_id": sid,
+                "purpose": null,
                 "kind": "cron",
                 "schedule": "* * * * *",
                 "hook_slug": null,
@@ -405,6 +509,7 @@ mod tests {
         let expected = json!({
             "trigger_id": tid,
             "strategy_id": sid,
+            "purpose": null,
             "kind": "cron",
             "schedule": "0 9 * * 1-5",
             "hook_slug": null,
@@ -429,6 +534,60 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn update_purpose_omission_null_and_value_have_expected_semantics(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        create_agent_config(&server, "synthetic-purpose").await;
+        create_agent_config(&server, "replacement-purpose").await;
+        let created: Value = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "cron",
+                "purpose": "synthetic-purpose",
+                "schedule": "0 9 * * *",
+                "prompt_template": "x",
+            }))
+            .await
+            .json();
+        let tid = created["trigger_id"].as_str().unwrap().to_string();
+        let cases = [
+            (json!({}), Some("synthetic-purpose")),
+            (json!({ "purpose": null }), None),
+            (
+                json!({ "purpose": "replacement-purpose" }),
+                Some("replacement-purpose"),
+            ),
+        ];
+
+        for (body, purpose) in cases {
+            let updated = server
+                .put(&format!("/api/triggers/{tid}"))
+                .json(&body)
+                .await;
+            updated.assert_status_ok();
+            assert_eq!(
+                normalize_trigger(updated.json(), true),
+                json!({
+                    "trigger_id": tid,
+                    "strategy_id": sid,
+                    "purpose": purpose,
+                    "kind": "cron",
+                    "schedule": "0 9 * * *",
+                    "hook_slug": null,
+                    "event_match": null,
+                    "prompt_template": "x",
+                    "enabled": true,
+                    "last_fired_at": null,
+                    "created_at": "<created_at>",
+                    "updated_at": "<updated_at>",
+                }),
+            );
+        }
+    }
+
+    #[backend_test_macros::database_test]
     async fn update_event_match_omitted_keeps_existing_value(db: gateway_postgres::DatabaseHandle) {
         let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
         let updated = server
@@ -441,6 +600,7 @@ mod tests {
             json!({
                 "trigger_id": tid,
                 "strategy_id": sid,
+                "purpose": null,
                 "kind": "hook",
                 "schedule": null,
                 "hook_slug": "sample-hook",
@@ -467,6 +627,7 @@ mod tests {
             json!({
                 "trigger_id": tid,
                 "strategy_id": sid,
+                "purpose": null,
                 "kind": "hook",
                 "schedule": null,
                 "hook_slug": "sample-hook",
@@ -495,6 +656,7 @@ mod tests {
             json!({
                 "trigger_id": tid,
                 "strategy_id": sid,
+                "purpose": null,
                 "kind": "hook",
                 "schedule": null,
                 "hook_slug": "sample-hook",

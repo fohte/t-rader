@@ -8,6 +8,7 @@ type Trigger = components['schemas']['Trigger']
 type TriggerKind = components['schemas']['TriggerKind']
 
 export interface FormState {
+  purpose: string
   kind: TriggerKind
   schedule: string
   hookSlug: string
@@ -17,6 +18,7 @@ export interface FormState {
 }
 
 export const EMPTY_FORM: FormState = {
+  purpose: '',
   kind: 'cron',
   schedule: '',
   hookSlug: '',
@@ -31,6 +33,7 @@ export function parseKind(value: string): TriggerKind {
 
 export function toFormState(trigger: Trigger): FormState {
   return {
+    purpose: trigger.purpose ?? '',
     kind: parseKind(trigger.kind),
     schedule: trigger.schedule ?? '',
     hookSlug: trigger.hook_slug ?? '',
@@ -82,6 +85,7 @@ export function validateForm(form: FormState): ValidationResult {
 export interface TriggerFormProps {
   mode: 'create' | 'edit'
   form: FormState
+  agentConfigs: ReadonlyArray<{ purpose: string }>
   onChange: (next: FormState) => void
   formError: string | null
   isSaving: boolean
@@ -92,6 +96,7 @@ export interface TriggerFormProps {
 export function TriggerForm({
   mode,
   form,
+  agentConfigs,
   onChange,
   formError,
   isSaving,
@@ -111,6 +116,37 @@ export function TriggerForm({
         onSubmit()
       }}
     >
+      <div className="space-y-1.5">
+        <label
+          className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"
+          htmlFor="trigger-purpose"
+        >
+          purpose
+        </label>
+        <select
+          id="trigger-purpose"
+          value={form.purpose}
+          onChange={(e) => {
+            update('purpose', e.target.value)
+          }}
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 font-mono text-xs"
+        >
+          <option value="">default (未指定)</option>
+          {form.purpose !== '' &&
+            !agentConfigs.some((config) => config.purpose === form.purpose) && (
+              <option value={form.purpose}>{form.purpose}</option>
+            )}
+          {agentConfigs.map((config) => (
+            <option key={config.purpose} value={config.purpose}>
+              {config.purpose}
+            </option>
+          ))}
+        </select>
+        <p className="font-mono text-2xs text-muted-foreground">
+          未指定時は default の agent 設定を使用します。
+        </p>
+      </div>
+
       <div className="space-y-1.5">
         <label
           className="block font-mono text-2xs uppercase tracking-wider text-muted-foreground"

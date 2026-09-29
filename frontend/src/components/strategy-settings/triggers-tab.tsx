@@ -33,6 +33,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
     { params: { path: { id: strategyId } } },
   )
   const { data, isPending, isError, error } = useQuery(listQueryOptions)
+  const { data: agentConfigs = [] } = $api.useQuery('get', '/api/agent-configs')
 
   const triggers = useMemo(() => data ?? [], [data])
 
@@ -117,6 +118,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
         params: { path: { id: strategyId } },
         body: {
           kind: form.kind,
+          purpose: form.purpose === '' ? null : form.purpose,
           schedule: form.kind === 'cron' ? form.schedule.trim() : null,
           hook_slug: form.kind === 'hook' ? form.hookSlug.trim() : null,
           event_match: result.eventMatch,
@@ -151,6 +153,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
       return
     }
     const body: components['schemas']['UpdateTriggerRequest'] = {
+      purpose: form.purpose === '' ? null : form.purpose,
       prompt_template: form.promptTemplate.trim(),
       enabled: form.enabled,
       event_match: result.eventMatch,
@@ -317,6 +320,7 @@ export function TriggersTab({ strategyId }: TriggersTabProps) {
           <TriggerForm
             mode={isCreate ? 'create' : 'edit'}
             form={form}
+            agentConfigs={agentConfigs}
             onChange={setForm}
             formError={formError}
             isSaving={
