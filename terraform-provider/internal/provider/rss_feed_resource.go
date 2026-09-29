@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -67,7 +68,7 @@ func (r *rssFeedResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"url": schema.StringAttribute{
 				Required:            true,
-				Validators:          []validator.String{rssFeedTrimmedStringValidator{attributeName: "url"}},
+				Validators:          []validator.String{rssFeedURLValidator{}},
 				MarkdownDescription: "RSS フィードの HTTP または HTTPS URL。",
 			},
 			"enabled": schema.BoolAttribute{
@@ -163,10 +164,14 @@ func (r *rssFeedResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	updated, err := client.UpdateRssFeed(ctx, state.ID.ValueString(), traderapi.UpdateRssFeedRequest{
-		DisplayName: rssFeedStringAttributePointer(plan.DisplayName),
-		URL:         rssFeedStringAttributePointer(plan.URL),
+		DisplayName: stringAttributePointer(plan.DisplayName),
+		URL:         stringAttributePointer(plan.URL),
 		Enabled:     rssFeedBoolAttributePointer(plan.Enabled),
 	})
+	if errors.Is(err, traderapi.ErrNotFound) {
+		resp.Diagnostics.AddError("Error updating RSS feed", "RSS feed not found.")
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating RSS feed", err.Error())
 		return
@@ -212,14 +217,6 @@ func rssFeedModelFromAPI(feed traderapi.RssFeed) rssFeedModel {
 		CreatedAt:   types.StringValue(feed.CreatedAt),
 		UpdatedAt:   types.StringValue(feed.UpdatedAt),
 	}
-}
-
-func rssFeedStringAttributePointer(value types.String) *string {
-	if value.IsNull() || value.IsUnknown() {
-		return nil
-	}
-	result := value.ValueString()
-	return &result
 }
 
 func rssFeedBoolAttributePointer(value types.Bool) *bool {
@@ -276,5 +273,30 @@ func (v rssFeedTrimmedStringValidator) ValidateString(_ context.Context, req val
 	value := req.ConfigValue.ValueString()
 	if value == "" || strings.TrimSpace(value) != value {
 		resp.Diagnostics.AddAttributeError(req.Path, "Invalid RSS feed "+v.attributeName, "The value must be non-empty and cannot start or end with whitespace.")
+	}
+}
+
+type rssFeedURLValidator struct{}
+
+func (rssFeedURLValidator) Description(context.Context) string {
+	return "must be a valid HTTP or HTTPS URL without leading or trailing whitespace"
+}
+
+func (rssFeedURLValidator) MarkdownDescription(ctx context.Context) string {
+	return (rssFeedURLValidator{}).Description(ctx)
+}
+
+func (rssFeedURLValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	value := req.ConfigValue.ValueString()
+	if value == "" || strings.TrimSpace(value) != value {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid RSS feed URL", "The URL must be non-empty and cannot start or end with whitespace.")
+		return
+	}
+	parsedURL, err := url.Parse(value)
+	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid RSS feed URL", "The URL must be a valid HTTP or HTTPS URL.")
 	}
 }
