@@ -51,6 +51,7 @@ pub async fn list_trades(
             limit: None,
             order: TradeOrder::DateAscending,
             include_note_count: true,
+            include_note_references: false,
         })
         .await
         .map_err(map_trade_error)?;
