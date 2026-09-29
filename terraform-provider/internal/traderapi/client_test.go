@@ -9,6 +9,10 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/oapi-codegen/nullable"
 )
 
 const (
@@ -33,7 +37,7 @@ func TestClientCheckConnection(t *testing.T) {
 	t.Parallel()
 
 	client, requests := newTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		w.WriteHeader(http.StatusOK)
+		writeJSON(t, w, http.StatusOK, []Strategy{})
 	})
 
 	err := client.CheckConnection(context.Background())
@@ -69,8 +73,8 @@ func TestClientCreateStrategy(t *testing.T) {
 
 	result, err := client.CreateStrategy(context.Background(), CreateStrategyRequest{
 		Name:        created.Name,
-		Description: &description,
-		SortOrder:   &sortOrder,
+		Description: nullable.NewNullableWithValue(description),
+		SortOrder:   nullable.NewNullableWithValue(sortOrder),
 	})
 	request := <-requests
 	if got, want := struct {
@@ -89,7 +93,7 @@ func TestClientCreateStrategy(t *testing.T) {
 			ClientSecret: testSecret,
 			Accept:       "application/json",
 			ContentType:  "application/json",
-			Body:         `{"name":"synthetic strategy","description":"synthetic description","sort_order":3}` + "\n",
+			Body:         `{"description":"synthetic description","name":"synthetic strategy","sort_order":3}`,
 		},
 		Result: created,
 	}; !reflect.DeepEqual(got, want) {
@@ -103,8 +107,7 @@ func TestClientUpdateStrategy(t *testing.T) {
 	name := "updated synthetic strategy"
 	sortOrder := int32(5)
 	description := "updated synthetic description"
-	descriptionValue := &description
-	var noDescription *string
+	descriptionValue := nullable.NewNullableWithValue(description)
 
 	cases := []struct {
 		name    string
@@ -115,26 +118,26 @@ func TestClientUpdateStrategy(t *testing.T) {
 		{
 			name: "omitted description leaves API value unchanged",
 			payload: UpdateStrategyRequest{
-				Name:      &name,
-				SortOrder: &sortOrder,
+				Name:      nullable.NewNullableWithValue(name),
+				SortOrder: nullable.NewNullableWithValue(sortOrder),
 			},
-			body:   `{"name":"updated synthetic strategy","sort_order":5}` + "\n",
+			body:   `{"name":"updated synthetic strategy","sort_order":5}`,
 			result: testStrategyWithUpdate(),
 		},
 		{
 			name: "null description clears API value",
 			payload: UpdateStrategyRequest{
-				Description: &noDescription,
+				Description: nullable.NewNullNullable[string](),
 			},
-			body:   `{"description":null}` + "\n",
+			body:   `{"description":null}`,
 			result: testStrategyWithClearedDescription(),
 		},
 		{
 			name: "description value updates API value",
 			payload: UpdateStrategyRequest{
-				Description: &descriptionValue,
+				Description: descriptionValue,
 			},
-			body:   `{"description":"updated synthetic description"}` + "\n",
+			body:   `{"description":"updated synthetic description"}`,
 			result: testStrategyWithDescription(description),
 		},
 	}
@@ -298,12 +301,12 @@ func newTestClient(t *testing.T, handler testHandler) (*Client, <-chan observedR
 func testStrategy() Strategy {
 	description := "synthetic description"
 	return Strategy{
-		ID:          testStrategyID,
+		Id:          uuid.MustParse(testStrategyID),
 		Name:        "synthetic strategy",
-		Description: &description,
+		Description: nullable.NewNullableWithValue(description),
 		SortOrder:   3,
-		CreatedAt:   "2026-01-01T00:00:00Z",
-		UpdatedAt:   "2026-01-01T00:00:00Z",
+		CreatedAt:   time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
 	}
 }
 
@@ -311,19 +314,19 @@ func testStrategyWithUpdate() Strategy {
 	strategy := testStrategy()
 	strategy.Name = "updated synthetic strategy"
 	strategy.SortOrder = 5
-	strategy.UpdatedAt = "2026-01-02T00:00:00Z"
+	strategy.UpdatedAt = time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)
 	return strategy
 }
 
 func testStrategyWithClearedDescription() Strategy {
 	strategy := testStrategyWithUpdate()
-	strategy.Description = nil
+	strategy.Description = nullable.NewNullNullable[string]()
 	return strategy
 }
 
 func testStrategyWithDescription(description string) Strategy {
 	strategy := testStrategyWithUpdate()
-	strategy.Description = &description
+	strategy.Description = nullable.NewNullableWithValue(description)
 	return strategy
 }
 

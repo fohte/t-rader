@@ -120,6 +120,7 @@ pub async fn list_indicators(
     get,
     path = "/api/refs/indicators/{id}",
     tag = "refs",
+    operation_id = "get_ref_indicator",
     params(("id" = String, Path, description = "指標 ID")),
     responses(
         (status = 200, body = IndicatorResponse),

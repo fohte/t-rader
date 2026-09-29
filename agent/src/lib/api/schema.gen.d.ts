@@ -747,7 +747,7 @@ export interface paths {
       cookie?: never
     }
     /** indicator 詳細 */
-    get: operations['get_indicator']
+    get: operations['get_ref_indicator']
     put?: never
     post?: never
     delete?: never
@@ -5144,7 +5144,7 @@ export interface operations {
       }
     }
   }
-  get_indicator: {
+  get_ref_indicator: {
     parameters: {
       query?: never
       header?: never

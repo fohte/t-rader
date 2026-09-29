@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
 )
@@ -28,12 +31,12 @@ func TestStrategyResourceUpdateUsesPriorStateID(t *testing.T) {
 
 	ctx := context.Background()
 	updated := traderapi.Strategy{
-		ID:          testStrategyID,
+		Id:          uuid.MustParse(testStrategyID),
 		Name:        "updated synthetic strategy",
-		Description: nil,
+		Description: nullable.NewNullNullable[string](),
 		SortOrder:   5,
-		CreatedAt:   "2026-01-01T00:00:00Z",
-		UpdatedAt:   "2026-01-02T00:00:00Z",
+		CreatedAt:   time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC),
 	}
 	requests := make(chan struct {
 		Method string
@@ -203,7 +206,7 @@ func TestStringAttributeUpdatePointer(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			request := traderapi.UpdateStrategyRequest{Description: stringAttributeUpdatePointer(testCase.value)}
+			request := traderapi.UpdateStrategyRequest{Description: stringAttributeUpdateNullable(testCase.value)}
 			encoded, err := json.Marshal(request)
 			if err != nil {
 				t.Fatalf("encode update request: %v", err)

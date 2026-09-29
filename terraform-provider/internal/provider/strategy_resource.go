@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -14,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
 )
@@ -104,8 +106,8 @@ func (r *strategyResource) Create(ctx context.Context, req resource.CreateReques
 
 	created, err := client.CreateStrategy(ctx, traderapi.CreateStrategyRequest{
 		Name:        plan.Name.ValueString(),
-		Description: stringAttributePointer(plan.Description),
-		SortOrder:   int32AttributePointer(plan.SortOrder),
+		Description: stringAttributeNullable(plan.Description),
+		SortOrder:   int32AttributeNullable(plan.SortOrder),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating strategy", err.Error())
@@ -154,9 +156,9 @@ func (r *strategyResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	updated, err := client.UpdateStrategy(ctx, state.ID.ValueString(), traderapi.UpdateStrategyRequest{
-		Name:        stringAttributePointer(plan.Name),
-		Description: stringAttributeUpdatePointer(plan.Description),
-		SortOrder:   int32AttributePointer(plan.SortOrder),
+		Name:        stringAttributeUpdateNullable(plan.Name),
+		Description: stringAttributeUpdateNullable(plan.Description),
+		SortOrder:   int32AttributeNullable(plan.SortOrder),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Error updating strategy", err.Error())
@@ -195,48 +197,48 @@ func (r *strategyResource) configuredClient(diagnostics *diag.Diagnostics) (*tra
 
 func modelFromStrategy(strategy traderapi.Strategy) strategyModel {
 	return strategyModel{
-		ID:          types.StringValue(strategy.ID),
+		ID:          types.StringValue(strategy.Id.String()),
 		Name:        types.StringValue(strategy.Name),
-		Description: stringPointerAttribute(strategy.Description),
+		Description: stringNullableAttribute(strategy.Description),
 		SortOrder:   types.Int32Value(strategy.SortOrder),
-		CreatedAt:   types.StringValue(strategy.CreatedAt),
-		UpdatedAt:   types.StringValue(strategy.UpdatedAt),
+		CreatedAt:   types.StringValue(strategy.CreatedAt.Format(time.RFC3339Nano)),
+		UpdatedAt:   types.StringValue(strategy.UpdatedAt.Format(time.RFC3339Nano)),
 	}
 }
 
-func stringAttributePointer(value types.String) *string {
+func stringAttributeNullable(value types.String) nullable.Nullable[string] {
 	if value.IsNull() || value.IsUnknown() {
-		return nil
+		return nullable.Nullable[string]{}
 	}
-	result := value.ValueString()
-	return &result
+	return nullable.NewNullableWithValue(value.ValueString())
 }
 
-func stringAttributeUpdatePointer(value types.String) **string {
+func stringAttributeUpdateNullable(value types.String) nullable.Nullable[string] {
 	if value.IsUnknown() {
-		return nil
+		return nullable.Nullable[string]{}
 	}
-	var result *string
-	if !value.IsNull() {
-		valueString := value.ValueString()
-		result = &valueString
+	if value.IsNull() {
+		return nullable.NewNullNullable[string]()
 	}
-	return &result
+	return nullable.NewNullableWithValue(value.ValueString())
 }
 
-func int32AttributePointer(value types.Int32) *int32 {
+func int32AttributeNullable(value types.Int32) nullable.Nullable[int32] {
 	if value.IsNull() || value.IsUnknown() {
-		return nil
+		return nullable.Nullable[int32]{}
 	}
-	result := value.ValueInt32()
-	return &result
+	return nullable.NewNullableWithValue(value.ValueInt32())
 }
 
-func stringPointerAttribute(value *string) types.String {
-	if value == nil {
+func stringNullableAttribute(value nullable.Nullable[string]) types.String {
+	if !value.IsSpecified() || value.IsNull() {
 		return types.StringNull()
 	}
-	return types.StringValue(*value)
+	result, err := value.Get()
+	if err != nil {
+		return types.StringNull()
+	}
+	return types.StringValue(result)
 }
 
 type strategyNameValidator struct{}
