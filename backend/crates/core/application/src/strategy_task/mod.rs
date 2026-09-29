@@ -40,7 +40,3 @@ impl StrategyTaskUseCases {
         }
     }
 }
-
-pub fn phase_str(phase: StrategyTaskPhase) -> &'static str {
-    phase.as_str()
-}

@@ -6,10 +6,8 @@ pub use resume::{ResumeTaskError, auto_resume_task, resume_task};
 use uuid::Uuid;
 
 pub use core_application::strategy_task::{
-    DEADLINE_DURATION, DEFAULT_PURPOSE, GetTaskError, ListTasksError,
-    StrategyTaskPhase as ApplicationStrategyTaskPhase,
-    StrategyTaskStepStatus as ApplicationTaskStepStatus, SubmitTaskError, SubmittedTask,
-    TaskListQuery, TaskSource, TaskStatusView,
+    DEADLINE_DURATION, DEFAULT_PURPOSE, GetTaskError, ListTasksError, SubmitTaskError,
+    SubmittedTask, TaskListQuery, TaskSource, TaskStatusView,
 };
 pub use gateway_postgres::entities::sea_orm_active_enums::{
     StrategyTaskPhase, StrategyTaskStepStatus,
