@@ -173,13 +173,7 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
             invalid_params(format!("agent_config for purpose '{purpose}' not found"))
         }
         SubmitTaskError::Repository(error) => map_repository_error(error),
-        SubmitTaskError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | SubmitTaskError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
-            internal_error(format!("database error: {error}"))
-        }
-        SubmitTaskError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
-            internal_error("invalid strategy task transaction")
-        }
+        SubmitTaskError::UnitOfWork(error) => map_unit_of_work_error(error),
         SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
 }
@@ -193,13 +187,7 @@ fn map_resume_error(err: ResumeTaskError) -> McpError {
             "strategy task {id} is not resumable (current phase: {phase})"
         )),
         ResumeTaskError::Repository(error) => map_repository_error(error),
-        ResumeTaskError::UnitOfWork(UnitOfWorkError::Begin(error))
-        | ResumeTaskError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
-            internal_error(format!("database error: {error}"))
-        }
-        ResumeTaskError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
-            internal_error("invalid strategy task transaction")
-        }
+        ResumeTaskError::UnitOfWork(error) => map_unit_of_work_error(error),
         ResumeTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
 }
@@ -219,6 +207,16 @@ fn map_get_task_error(error: GetTaskError) -> McpError {
 fn map_repository_error(error: StrategyTaskRepositoryError) -> McpError {
     tracing::error!(error = %error, "strategy task repository error");
     internal_error(format!("strategy task persistence error: {error}"))
+}
+
+fn map_unit_of_work_error(error: UnitOfWorkError) -> McpError {
+    match error {
+        UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error) => {
+            tracing::error!(error = %error, "strategy task transaction error");
+            internal_error(format!("database error: {error}"))
+        }
+        UnitOfWorkError::InvalidTransaction => internal_error("invalid strategy task transaction"),
+    }
 }
 
 fn map_agent_task_error(err: &AgentTaskError) -> McpError {
