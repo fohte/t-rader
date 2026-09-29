@@ -569,6 +569,7 @@ mod tests {
     fn request_context(
         server: &StrategyServer,
         strategy_id: uuid::Uuid,
+        tool_models_header: Option<&str>,
     ) -> (
         RequestContext<RoleServer>,
         rmcp::service::RunningService<RoleServer, StrategyServer>,
@@ -589,12 +590,12 @@ mod tests {
             "x-strategy-id",
             strategy_id.to_string().parse().expect("valid header value"),
         );
-        parts.headers.insert(
-            "x-tool-models",
-            r#"{"search_web":"example-model-search","query_media":"example-model-media"}"#
-                .parse()
-                .expect("valid header value"),
-        );
+        if let Some(tool_models_header) = tool_models_header {
+            parts.headers.insert(
+                "x-tool-models",
+                tool_models_header.parse().expect("valid header value"),
+            );
+        }
         let mut ctx = RequestContext::new(NumberOrString::Number(1), running.peer().clone());
         ctx.extensions.insert(parts);
         (ctx, running)
@@ -617,7 +618,11 @@ mod tests {
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
         let server = StrategyServer::new(mock_db_with_strategy(strategy_id), None)
             .with_litellm_client(Some(std::sync::Arc::new(client)));
-        let (ctx, running) = request_context(&server, strategy_id);
+        let (ctx, running) = request_context(
+            &server,
+            strategy_id,
+            Some(r#"{"search_web":"example-model-search","query_media":"example-model-media"}"#),
+        );
         let result = server
             .query_media(
                 Parameters(QueryMediaParams {
@@ -685,7 +690,11 @@ mod tests {
         let client = LiteLlmClient::new(&litellm.uri(), None).expect("build client");
         let server = StrategyServer::new(mock_db_with_strategy(strategy_id), None)
             .with_litellm_client(Some(std::sync::Arc::new(client)));
-        let (ctx, running) = request_context(&server, strategy_id);
+        let (ctx, running) = request_context(
+            &server,
+            strategy_id,
+            Some(r#"{"search_web":"example-model-search","query_media":"example-model-media"}"#),
+        );
         let result = server
             .search_web(
                 Parameters(SearchWebParams {
@@ -729,8 +738,6 @@ mod tests {
 
     #[tokio::test]
     async fn query_data_rejects_nonexistent_strategy() {
-        use rmcp::model::NumberOrString;
-        use rmcp::service::serve_directly;
         use sea_orm::{DatabaseBackend, MockDatabase};
         use uuid::Uuid;
 
@@ -739,21 +746,7 @@ mod tests {
             .append_query_results([Vec::<gateway_postgres::entities::strategy::Model>::new()])
             .into_connection();
         let server = StrategyServer::new(db, None);
-        let (server_io, _client_io) = tokio::io::duplex(64);
-        let (reader, writer) = tokio::io::split(server_io);
-        let running = serve_directly::<RoleServer, _, _, std::io::Error, _>(
-            server.clone(),
-            (reader, writer),
-            None,
-        );
-
-        let mut parts = axum::http::Request::new(()).into_parts().0;
-        parts.headers.insert(
-            "x-strategy-id",
-            strategy_id.to_string().parse().expect("valid header value"),
-        );
-        let mut ctx = RequestContext::new(NumberOrString::Number(1), running.peer().clone());
-        ctx.extensions.insert(parts);
+        let (ctx, running) = request_context(&server, strategy_id, None);
 
         assert_eq!(
             server
