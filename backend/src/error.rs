@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use core_application::persistence::PersistenceError;
 use sea_orm::{DbErr, RuntimeErr, SqlErr};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -83,6 +84,22 @@ pub enum AppError {
 
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+}
+
+impl From<PersistenceError> for AppError {
+    fn from(error: PersistenceError) -> Self {
+        match error {
+            PersistenceError::Database(message) => Self::Database(sea_orm::DbErr::Custom(message)),
+            PersistenceError::MissingReference(_) => {
+                Self::Validation("referenced resource does not exist".into())
+            }
+            PersistenceError::Conflict(_) => Self::Conflict("resource already exists".into()),
+            PersistenceError::ConstraintViolation(_) => {
+                Self::Validation("value violates database constraint".into())
+            }
+            PersistenceError::RecordNotUpdated(_) => Self::NotFound("resource not found".into()),
+        }
+    }
 }
 
 /// API エラーレスポンスの JSON 構造

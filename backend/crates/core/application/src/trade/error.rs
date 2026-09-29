@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use super::repository::TradeRepositoryError;
 use crate::change_history::ChangeHistoryError;
+use crate::strategy_existence::StrategyExistenceError;
 use crate::unit_of_work::UnitOfWorkError;
 
 #[derive(Debug, Error)]
@@ -17,4 +18,6 @@ pub enum TradeUseCaseError {
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]
     ChangeHistory(#[from] ChangeHistoryError),
+    #[error(transparent)]
+    StrategyExistence(#[from] StrategyExistenceError),
 }

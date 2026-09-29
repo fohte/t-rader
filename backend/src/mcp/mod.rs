@@ -15,6 +15,7 @@ use crate::data_provider::SharedDailyBarSource;
 use crate::kata_exec::SharedKataExecutor;
 use crate::services::litellm_client::SharedLlmClient;
 use crate::services::strategy_tasks::DEADLINE_DURATION;
+use crate::services::use_cases::UseCases;
 use axum::Router;
 use gateway_postgres::DatabaseHandle;
 pub use mgmt::MgmtServer;
@@ -29,6 +30,7 @@ pub use strategy::StrategyServer;
 /// 跨いだ `mcp-session-id` は未知の session として扱われ、クライアントは initialize からやり直す。
 pub fn router(
     db: impl Into<DatabaseHandle>,
+    use_cases: UseCases,
     agent_client: SharedAgentTaskClient,
     daily_bar_source: Option<SharedDailyBarSource>,
     kata_executor: Option<SharedKataExecutor>,
@@ -37,16 +39,27 @@ pub fn router(
 ) -> Router {
     let db = db.into();
     let mgmt_db = db.clone();
+    let mgmt_use_cases = use_cases.clone();
     let mgmt = StreamableHttpService::new(
-        move || Ok(MgmtServer::new(mgmt_db.clone(), agent_client.clone())),
+        move || {
+            Ok(MgmtServer::with_use_cases(
+                mgmt_db.clone(),
+                mgmt_use_cases.clone(),
+                agent_client.clone(),
+            ))
+        },
         session_manager().into(),
         build_config(&extra_allowed_hosts),
     );
     let strategy = StreamableHttpService::new(
         move || {
-            Ok(StrategyServer::new(db.clone(), daily_bar_source.clone())
-                .with_kata_executor(kata_executor.clone())
-                .with_litellm_client(litellm_client.clone()))
+            Ok(StrategyServer::with_use_cases(
+                db.clone(),
+                use_cases.clone(),
+                daily_bar_source.clone(),
+            )
+            .with_kata_executor(kata_executor.clone())
+            .with_litellm_client(litellm_client.clone()))
         },
         session_manager().into(),
         build_config(&extra_allowed_hosts),
@@ -253,7 +266,8 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            db,
+            db.clone(),
+            crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -302,7 +316,8 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            db,
+            db.clone(),
+            crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -366,6 +381,7 @@ mod tests {
         let session_id = {
             let server_a = TestServer::new(router(
                 db.clone(),
+                crate::services::use_cases::build_use_cases(db.clone()),
                 test_agent_client(),
                 None,
                 None,
@@ -390,6 +406,7 @@ mod tests {
         // server_a は drop されたので in-memory session も消えている。
         let server_b = TestServer::new(router(
             db.clone(),
+            crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -461,7 +478,8 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            db,
+            db.clone(),
+            crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
             None,
             None,
@@ -488,7 +506,8 @@ mod tests {
             return;
         };
         let server = TestServer::new(router(
-            db,
+            db.clone(),
+            crate::services::use_cases::build_use_cases(db.clone()),
             test_agent_client(),
             None,
             None,

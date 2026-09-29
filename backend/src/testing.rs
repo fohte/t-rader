@@ -24,7 +24,7 @@ pub const TEST_AGENT_WEBHOOK_TOKEN: &str = "test-agent-webhook-token";
 fn base_state(db: DatabaseHandle) -> AppState {
     AppState {
         db: db.clone(),
-        trade_use_cases: crate::services::trades::build_use_cases(db),
+        use_cases: crate::services::use_cases::build_use_cases(db),
         daily_bar_source: None,
         jquants_client: None,
         agent_task_client: AppState::disabled_agent_task_client(),
