@@ -60,7 +60,11 @@ mod tests_common;
 use crate::agent_client::SharedAgentTaskClient;
 use crate::error::AppError;
 use crate::services::use_cases::UseCases;
-use gateway_postgres::DatabaseHandle;
+use core_application::strategy::StrategyUseCaseError;
+use core_application::strategy_scope::{
+    StrategyScope, StrategyScopeError, StrategyScopeSourceError,
+};
+use gateway_postgres::{DatabaseHandle, PostgresStrategyScopeSource};
 use rmcp::ErrorData as McpError;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
@@ -140,6 +144,20 @@ pub(super) fn map_app_error(err: AppError) -> McpError {
     }
 }
 
+pub(super) fn map_strategy_use_case_error(error: StrategyUseCaseError) -> McpError {
+    match error {
+        StrategyUseCaseError::Validation(message) => invalid_params(message),
+        StrategyUseCaseError::NotFound(id) => invalid_params(format!("strategy {id} not found")),
+        StrategyUseCaseError::ConfirmationMismatch(id) => invalid_params(format!(
+            "strategy {id} not found or name changed since confirmation"
+        )),
+        other => {
+            tracing::error!(error = %other, "mgmt mcp strategy operation failed");
+            internal_error(format!("strategy operation failed: {other}"))
+        }
+    }
+}
+
 pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
     let value = limit.map(u64::from).unwrap_or(DEFAULT_LIST_LIMIT);
     value.clamp(1, MAX_LIST_LIMIT)
@@ -147,6 +165,21 @@ pub(super) fn clamp_limit(limit: Option<u32>) -> u64 {
 
 #[tool_router]
 impl MgmtServer {
+    pub(super) async fn strategy_scope(&self, id: uuid::Uuid) -> Result<StrategyScope, McpError> {
+        let source = PostgresStrategyScopeSource::new(&self.db);
+        StrategyScope::verify(id, &source)
+            .await
+            .map_err(|error| match error {
+                StrategyScopeError::NotFound(id) => {
+                    invalid_params(format!("strategy {id} not found"))
+                }
+                StrategyScopeError::Source(StrategyScopeSourceError::QueryFailed(message)) => {
+                    tracing::error!(error = %message, "mgmt mcp strategy scope query failed");
+                    internal_error(format!("database error: {message}"))
+                }
+            })
+    }
+
     /// 戦略一覧 (id / 名前 / 最終更新 / 未読カード数)
     #[tool(
         name = "list_strategies",

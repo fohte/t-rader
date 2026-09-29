@@ -3,7 +3,6 @@ package traderapi
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,41 +11,21 @@ import (
 	"regexp"
 	"strings"
 	"time"
-)
 
-const strategiesPath = "/api/strategies"
+	"github.com/google/uuid"
+)
 
 var (
 	ErrNotFound = errors.New("strategy not found")
 	idPattern   = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 )
 
-type Strategy struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	SortOrder   int32   `json:"sort_order"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-}
+const strategiesPath = "/api/strategies"
 
-type CreateStrategyRequest struct {
-	Name        string  `json:"name"`
-	Description *string `json:"description,omitempty"`
-	SortOrder   *int32  `json:"sort_order,omitempty"`
-}
-
-type UpdateStrategyRequest struct {
-	Name        *string  `json:"name,omitempty"`
-	Description **string `json:"description,omitempty"`
-	SortOrder   *int32   `json:"sort_order,omitempty"`
-}
+const maxErrorBodyBytes = 64 * 1024
 
 type Client struct {
-	baseURL      *url.URL
-	httpClient   *http.Client
-	clientID     string
-	clientSecret string
+	api *ClientWithResponses
 }
 
 func New(baseURL, clientID, clientSecret string) (*Client, error) {
@@ -55,121 +34,152 @@ func New(baseURL, clientID, clientSecret string) (*Client, error) {
 		return nil, errors.New("base_url must be an absolute HTTP or HTTPS URL without credentials, query, or fragment")
 	}
 
-	return &Client{
-		baseURL:      parsedURL,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
-		clientID:     clientID,
-		clientSecret: clientSecret,
-	}, nil
+	apiClient, err := NewClientWithResponses(
+		parsedURL.String(),
+		WithHTTPClient(errorBodyLimitDoer{client: &http.Client{Timeout: 30 * time.Second}}),
+		WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
+			request.Header.Set("Accept", "application/json")
+			if clientID != "" {
+				request.Header.Set("CF-Access-Client-Id", clientID)
+				request.Header.Set("CF-Access-Client-Secret", clientSecret)
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create API client: %w", err)
+	}
+
+	return &Client{api: apiClient}, nil
+}
+
+// OpenAPI はリソース実装向けの生成 client を返します。
+func (c *Client) OpenAPI() *ClientWithResponses {
+	return c.api
 }
 
 func (c *Client) CheckConnection(ctx context.Context) error {
-	return c.do(ctx, http.MethodGet, strategiesPath, nil, nil)
+	response, err := c.api.ListStrategiesWithResponse(ctx)
+	if err != nil {
+		return fmt.Errorf("send connection check: %w", err)
+	}
+	return responseError(response.HTTPResponse, response.Body)
 }
 
 func (c *Client) CreateStrategy(ctx context.Context, payload CreateStrategyRequest) (Strategy, error) {
-	var strategy Strategy
-	if err := c.do(ctx, http.MethodPost, strategiesPath, payload, &strategy); err != nil {
+	response, err := c.api.CreateStrategyWithResponse(ctx, payload)
+	if err != nil {
+		return Strategy{}, fmt.Errorf("send create strategy request: %w", err)
+	}
+	if err := responseError(response.HTTPResponse, response.Body); err != nil {
 		return Strategy{}, err
 	}
-	return strategy, nil
+	if response.JSON201 == nil {
+		return Strategy{}, errors.New("backend returned HTTP 201 without a JSON response")
+	}
+	return *response.JSON201, nil
 }
 
 func (c *Client) GetStrategy(ctx context.Context, id string) (Strategy, error) {
-	requestPath, err := strategyPath(id)
+	strategyID, err := parseStrategyID(id)
 	if err != nil {
 		return Strategy{}, err
 	}
-	var strategy Strategy
-	if err := c.do(ctx, http.MethodGet, requestPath, nil, &strategy); err != nil {
+	response, err := c.api.GetStrategyWithResponse(ctx, strategyID)
+	if err != nil {
+		return Strategy{}, fmt.Errorf("send get strategy request: %w", err)
+	}
+	if err := responseError(response.HTTPResponse, response.Body); err != nil {
 		return Strategy{}, err
 	}
-	return strategy, nil
+	if response.JSON200 == nil {
+		return Strategy{}, errors.New("backend returned HTTP 200 without a JSON response")
+	}
+	return *response.JSON200, nil
 }
 
 func (c *Client) UpdateStrategy(ctx context.Context, id string, payload UpdateStrategyRequest) (Strategy, error) {
-	requestPath, err := strategyPath(id)
+	strategyID, err := parseStrategyID(id)
 	if err != nil {
 		return Strategy{}, err
 	}
-	var strategy Strategy
-	if err := c.do(ctx, http.MethodPatch, requestPath, payload, &strategy); err != nil {
+	response, err := c.api.UpdateStrategyWithResponse(ctx, strategyID, payload)
+	if err != nil {
+		return Strategy{}, fmt.Errorf("send update strategy request: %w", err)
+	}
+	if err := responseError(response.HTTPResponse, response.Body); err != nil {
 		return Strategy{}, err
 	}
-	return strategy, nil
+	if response.JSON200 == nil {
+		return Strategy{}, errors.New("backend returned HTTP 200 without a JSON response")
+	}
+	return *response.JSON200, nil
 }
 
 func (c *Client) DeleteStrategy(ctx context.Context, id string) error {
-	requestPath, err := strategyPath(id)
+	strategyID, err := parseStrategyID(id)
 	if err != nil {
 		return err
 	}
-	return c.do(ctx, http.MethodDelete, requestPath, nil, nil)
+	response, err := c.api.DeleteStrategyWithResponse(ctx, strategyID)
+	if err != nil {
+		return fmt.Errorf("send delete strategy request: %w", err)
+	}
+	return responseError(response.HTTPResponse, response.Body)
 }
 
-func (c *Client) do(ctx context.Context, method, requestPath string, payload, result any) (resultErr error) {
-	var requestBody bytes.Buffer
-	if payload != nil {
-		if err := json.NewEncoder(&requestBody).Encode(payload); err != nil {
-			return fmt.Errorf("encode request: %w", err)
-		}
+func parseStrategyID(id string) (uuid.UUID, error) {
+	if !idPattern.MatchString(id) {
+		return uuid.UUID{}, errors.New("strategy id must be a UUID")
 	}
-
-	targetURL := *c.baseURL
-	targetURL.Path = strings.TrimRight(targetURL.Path, "/") + requestPath
-	targetURL.RawPath = ""
-	var body io.Reader
-	if payload != nil {
-		body = &requestBody
-	}
-	request, err := http.NewRequestWithContext(ctx, method, targetURL.String(), body)
+	strategyID, err := uuid.Parse(id)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return uuid.UUID{}, fmt.Errorf("parse strategy id: %w", err)
 	}
-	request.Header.Set("Accept", "application/json")
-	if payload != nil {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	if c.clientID != "" {
-		request.Header.Set("CF-Access-Client-Id", c.clientID)
-		request.Header.Set("CF-Access-Client-Secret", c.clientSecret)
-	}
+	return strategyID, nil
+}
 
-	response, err := c.httpClient.Do(request)
-	if err != nil {
-		return fmt.Errorf("send request: %w", err)
+func responseError(response *http.Response, body []byte) error {
+	if response == nil {
+		return errors.New("backend response is missing")
 	}
-	defer func() {
-		if err := response.Body.Close(); err != nil && resultErr == nil {
-			resultErr = fmt.Errorf("close response body: %w", err)
-		}
-	}()
-
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, 64*1024))
-		if readErr != nil {
-			return fmt.Errorf("read error response: %w", readErr)
-		}
-		apiError := fmt.Errorf("backend returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(responseBody)))
-		if response.StatusCode == http.StatusNotFound {
-			return fmt.Errorf("%w: %w", ErrNotFound, apiError)
-		}
-		return apiError
-	}
-
-	if result == nil {
-		_, _ = io.Copy(io.Discard, response.Body)
+	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
 		return nil
 	}
-	if err := json.NewDecoder(response.Body).Decode(result); err != nil {
-		return fmt.Errorf("decode response: %w", err)
+	truncated := len(body) > maxErrorBodyBytes
+	if truncated {
+		body = body[:maxErrorBodyBytes]
 	}
-	return nil
+	message := strings.TrimSpace(string(body))
+	if truncated {
+		message += " [truncated]"
+	}
+	apiError := fmt.Errorf("backend returned HTTP %d: %s", response.StatusCode, message)
+	if response.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("%w: %w", ErrNotFound, apiError)
+	}
+	return apiError
 }
 
-func strategyPath(id string) (string, error) {
-	if !idPattern.MatchString(id) {
-		return "", errors.New("strategy id must be a UUID")
+type errorBodyLimitDoer struct {
+	client *http.Client
+}
+
+func (d errorBodyLimitDoer) Do(request *http.Request) (*http.Response, error) {
+	response, err := d.client.Do(request)
+	if err != nil || response == nil || (response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices) {
+		return response, err
 	}
-	return strategiesPath + "/" + id, nil
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes+1))
+	_ = response.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read error response: %w", err)
+	}
+	if len(body) > maxErrorBodyBytes {
+		// 上限を超えた JSON を生成 parser が不正な JSON として扱わないよう、Content-Type を変更する。
+		response.Header.Set("Content-Type", "text/plain")
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	return response, nil
 }

@@ -59,6 +59,13 @@ jobs:
             echo "has_backend=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Setup Go for generated API client
+        if: steps.check-backend.outputs.has_backend == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: terraform-provider/go.mod
+          cache-dependency-path: terraform-provider/go.sum
+
       # sccache がインストールされない場合、RUSTC_WRAPPER=sccache が残っていると
       # mise の cargo ツールインストール時にビルドが失敗するため無効化する
       - name: Disable sccache wrapper (frontend-only)
@@ -121,11 +128,16 @@ jobs:
         continue-on-error: true
         env:
           # cargo-clippy は専用 job で実行するため、test job では常にスキップする
-          LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,cargo-fmt,cargo-clippy,ast-grep,go-fmt,go-vet' || 'cargo-clippy,go-fmt,go-vet' }}
+          LEFTHOOK_EXCLUDE: ${{ steps.check-backend.outputs.has_backend == 'false' && 'dump-openapi,openapi-typescript,openapi-go-client,cargo-fmt,cargo-clippy,ast-grep,go-fmt,go-vet' || 'cargo-clippy,go-fmt,go-vet' }}
           # pinact's min-age check calls the GitHub API; without a token it hits
           # the 60 req/h unauthenticated limit shared per IP and fails on CI.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: lefthook run pre-commit --all-files
+
+      - name: Build Terraform provider after OpenAPI generation
+        if: steps.check-backend.outputs.has_backend == 'true'
+        working-directory: terraform-provider
+        run: go build ./...
 
       # Formatters configured with `stage_fixed: true` run `git add` after formatting,
       # which stages the changes.
@@ -189,6 +201,10 @@ jobs:
           go-version-file: terraform-provider/go.mod
           cache-dependency-path: terraform-provider/go.sum
 
+      - name: Check generated Go API client
+        run: ../scripts/generate-terraform-api-client && git diff --exit-code -- internal/traderapi/client.gen.go
+        working-directory: terraform-provider
+
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: 2026.9.11
@@ -251,6 +267,7 @@ jobs:
         with:
           files: |
             terraform-provider/**
+            backend/openapi.json
             .github/workflows/test.yml
             lefthook.yml
 
