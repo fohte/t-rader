@@ -6,9 +6,9 @@
 //! として扱う。空売り残高報告は会社単位の開示であり戦略に属さない市場データのため、
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
 use gateway_postgres::entities::short_sale_report;
 
@@ -41,9 +41,10 @@ fn short_sale_report_dto(row: short_sale_report::Model) -> ShortSaleReportDto {
 impl StrategyServer {
     pub(crate) async fn read_short_sale_reports_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadShortSaleReportsParams,
     ) -> Result<ReadShortSaleReportsResult, McpError> {
+        let _scope = scope.into();
         validate_symbol(&params.symbol)?;
         let limit = clamp_limit(params.limit);
         let (lower, upper) = code_range(&params.symbol);

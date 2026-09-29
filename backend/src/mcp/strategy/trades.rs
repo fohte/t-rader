@@ -4,9 +4,9 @@
 //! (`super` の doc comment にある例外参照)。戦略境界の検査は行わず、
 //! `TradeDto::strategy_id` でどの戦略の約定かを判別できるようにする。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
 use gateway_postgres::entities::trade;
 
@@ -28,9 +28,10 @@ fn trade_to_dto(m: trade::Model) -> TradeDto {
 impl StrategyServer {
     pub(crate) async fn read_trades_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadTradesParams,
     ) -> Result<ReadTradesResult, McpError> {
+        let _scope = scope.into();
         let mut query = trade::Entity::find();
         if let Some(symbol) = params
             .symbol

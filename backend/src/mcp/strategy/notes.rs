@@ -2,6 +2,7 @@
 //!
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
@@ -24,7 +25,7 @@ use super::dto::{
 };
 use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, clamp_limit, db_error,
-    ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
+    fetch_note_owned_by, internal_error, invalid_params,
 };
 
 /// 検証済みの `graphs` を JSON へ変換する。
@@ -159,10 +160,11 @@ impl StrategyServer {
 
     pub(crate) async fn write_note_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
+        let session_strategy_id = scope.into().id();
         if let Some(graphs) = params.graphs.as_ref() {
             validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
         }
@@ -184,7 +186,6 @@ impl StrategyServer {
                 .await;
         }
 
-        ensure_strategy_exists(&self.db, session_strategy_id).await?;
         if let Some(Some(kind)) = params.kind.as_ref() {
             note_kinds::ensure_reference(&self.db, kind)
                 .await
@@ -386,9 +387,10 @@ impl StrategyServer {
 
     pub(crate) async fn read_note_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadNoteParams,
     ) -> Result<NoteDto, McpError> {
+        let session_strategy_id = scope.into().id();
         let row = fetch_note_owned_by(&self.db, params.note_id, session_strategy_id).await?;
         let version = match params.version_id {
             Some(version_id) => find_version_of_note(&self.db, params.note_id, Some(version_id))
@@ -428,9 +430,10 @@ impl StrategyServer {
 
     pub(crate) async fn list_notes_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
+        let session_strategy_id = scope.into().id();
         if let Some(status) = params.status.as_deref()
             && !ALLOWED_NOTE_STATUS.contains(&status)
         {

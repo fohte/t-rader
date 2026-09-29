@@ -6,6 +6,7 @@
 
 use std::time::Duration;
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use uuid::Uuid;
 
@@ -23,9 +24,10 @@ pub(super) const MAX_CODE_BYTES: usize = 64 * 1024;
 impl StrategyServer {
     pub(crate) async fn eval_python_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: EvalPythonParams,
     ) -> Result<EvalPythonResult, McpError> {
+        let session_strategy_id = scope.into().id();
         if params.code.is_empty() {
             return Err(invalid_params("code must not be empty"));
         }

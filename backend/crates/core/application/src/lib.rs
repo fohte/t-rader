@@ -11,6 +11,7 @@ mod market_daily_bar_source;
 mod news_aggregator;
 mod shareholding_structure_source;
 mod short_selling_source;
+mod strategy_scope;
 mod valuation_source;
 
 pub use agent_task_client::{
@@ -51,6 +52,10 @@ pub use shareholding_structure_source::{
 };
 pub use short_selling_source::{
     SharedShortSellingSource, ShortSellingSource, ShortSellingSourceError,
+};
+pub use strategy_scope::{
+    SharedStrategyScopeSource, StrategyScope, StrategyScopeError, StrategyScopeSource,
+    StrategyScopeSourceError, verify_strategy_ids,
 };
 pub use valuation_source::{SharedValuationSource, ValuationSource, ValuationSourceError};
 

@@ -8,10 +8,10 @@
 //! 売買代金) は JPX の空売り集計公表ページに基づく。戦略に属さない市場データのため
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
 use gateway_postgres::entities::short_ratio;
 
@@ -100,9 +100,10 @@ fn sector_short_ratio_dto(row: short_ratio::Model) -> SectorShortRatioDto {
 impl StrategyServer {
     pub(crate) async fn read_sector_short_ratio_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadSectorShortRatioParams,
     ) -> Result<ReadSectorShortRatioResult, McpError> {
+        let _scope = scope.into();
         let sector33_code = sector33_code_for_name(&params.sector)
             .ok_or_else(|| invalid_params(format!("unknown sector name: {:?}", params.sector)))?;
         let limit = clamp_limit(params.limit);

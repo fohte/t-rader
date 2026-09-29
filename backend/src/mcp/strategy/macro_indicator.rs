@@ -5,9 +5,9 @@
 //! 市場データのため、`search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には
 //! 使わない。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-use uuid::Uuid;
 
 use gateway_postgres::entities::indicator_observation;
 
@@ -17,9 +17,10 @@ use super::{StrategyServer, db_error, decimal_to_f64, invalid_params};
 impl StrategyServer {
     pub(crate) async fn read_macro_indicator_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadMacroIndicatorParams,
     ) -> Result<ReadMacroIndicatorResult, McpError> {
+        let _scope = scope.into();
         let indicator_id = params.indicator_id.trim().to_string();
         if indicator_id.is_empty() {
             return Err(invalid_params("indicator_id must not be empty"));

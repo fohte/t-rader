@@ -1,6 +1,6 @@
 //! `#[tool_router]` による tool 登録。
 //!
-//! 各メソッドは ctx から strategy_id (と必要なら execution_id) を取り出し、対応する
+//! 各メソッドは ctx から検証済み `StrategyScope` (と必要なら execution_id) を作り、対応する
 //! ドメインモジュールの `*_inner` に委譲するだけの薄いラッパー。tool を追加する際は
 //! このファイルにラッパーを追加すること。
 
@@ -32,9 +32,7 @@ use super::ref_terms::{
     AddRefTermsParams, AddRefTermsResult, RemoveRefTermsParams, RemoveRefTermsResult,
 };
 use super::refs::{SearchRefsParams, SearchRefsResult};
-use super::{
-    StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx, strategy_id_from_ctx,
-};
+use super::{StrategyServer, execution_step_id_from_ctx, execution_task_id_from_ctx};
 
 #[tool_router]
 impl StrategyServer {
@@ -62,9 +60,9 @@ impl StrategyServer {
         Parameters(params): Parameters<QueryDataParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<QueryDataResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
-        self.query_data_inner(sid, execution_step_id, params)
+        self.query_data_inner(scope, execution_step_id, params)
             .await
             .map(Json)
     }
@@ -79,12 +77,12 @@ impl StrategyServer {
         Parameters(params): Parameters<WriteNoteParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<WriteNoteResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
         // a2a_task_id を含めず execution_step_id 部分のみをキーにする。resume で
         // a2a_task_id (= x-execution-id の task_id 部分) が変わっても、同じステップが
         // 書くノートが 1 件に収束するようにするため。
         let execution_id = execution_step_id_from_ctx(&ctx).map(|id| id.to_string());
-        self.write_note_inner(sid, execution_id, params)
+        self.write_note_inner(scope, execution_id, params)
             .await
             .map(Json)
     }
@@ -100,8 +98,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadNoteParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<NoteDto>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_note_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_note_inner(scope, params).await.map(Json)
     }
 
     /// 戦略のノート一覧を返す (新しい順)
@@ -115,8 +113,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ListNotesParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ListNotesResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.list_notes_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.list_notes_inner(scope, params).await.map(Json)
     }
 
     /// アノテーションを作成する
@@ -129,10 +127,10 @@ impl StrategyServer {
         Parameters(params): Parameters<CreateAnnotationParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<CreateAnnotationResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let execution_step_id = execution_step_id_from_ctx(&ctx);
         let execution_task_id = execution_task_id_from_ctx(&ctx);
-        self.create_annotation_inner(sid, execution_step_id, execution_task_id, params)
+        self.create_annotation_inner(scope, execution_step_id, execution_task_id, params)
             .await
             .map(Json)
     }
@@ -148,8 +146,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadAnnotationsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadAnnotationsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_annotations_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_annotations_inner(scope, params).await.map(Json)
     }
 
     /// ノート / アノテーションに付いたレビューコメントを読み出す
@@ -163,8 +161,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadCommentsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadCommentsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_comments_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_comments_inner(scope, params).await.map(Json)
     }
 
     /// レビューコメントを解決済み/未解決に切り替える
@@ -177,8 +175,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ResolveCommentParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ResolveCommentResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.resolve_comment_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.resolve_comment_inner(scope, params).await.map(Json)
     }
 
     /// レビューコメントに返信する
@@ -191,8 +189,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReplyCommentParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReplyCommentResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.reply_comment_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.reply_comment_inner(scope, params).await.map(Json)
     }
 
     /// Python コードを exec Pod で実行する
@@ -205,8 +203,8 @@ impl StrategyServer {
         Parameters(params): Parameters<EvalPythonParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<EvalPythonResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.eval_python_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.eval_python_inner(scope, params).await.map(Json)
     }
 
     /// 永続化された indicator (戦略 scope 優先) を exec Pod 上で評価する
@@ -219,8 +217,8 @@ impl StrategyServer {
         Parameters(params): Parameters<EvalIndicatorParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<EvalIndicatorResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.eval_indicator_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.eval_indicator_inner(scope, params).await.map(Json)
     }
 
     /// 動画/音声 URL の内容を Gemini でテキスト化する
@@ -234,8 +232,8 @@ impl StrategyServer {
         Parameters(params): Parameters<QueryMediaParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<QueryMediaResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.query_media_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.query_media_inner(scope, params).await.map(Json)
     }
 
     /// 問い合わせ文で web 検索し、テキストと出典 URL を返す
@@ -249,9 +247,9 @@ impl StrategyServer {
         Parameters(params): Parameters<SearchWebParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchWebResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
         let task_execution_id = execution_task_id_from_ctx(&ctx);
-        self.search_web_inner(sid, task_execution_id, params)
+        self.search_web_inner(scope, task_execution_id, params)
             .await
             .map(Json)
     }
@@ -266,8 +264,8 @@ impl StrategyServer {
         &self,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadPortfolioResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_portfolio_inner(sid).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_portfolio_inner(scope).await.map(Json)
     }
 
     /// 個々の約定を account-wide (全戦略横断) で返す
@@ -281,8 +279,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadTradesParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadTradesResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_trades_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_trades_inner(scope, params).await.map(Json)
     }
 
     /// 指定銘柄をあと何株買えるかを、制約ごとの上限株数とともに返す
@@ -296,8 +294,8 @@ impl StrategyServer {
         Parameters(params): Parameters<CheckBuyableQtyParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<CheckBuyableQtyResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.check_buyable_qty_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.check_buyable_qty_inner(scope, params).await.map(Json)
     }
 
     /// 銘柄の保有構造 (大量保有報告書・大株主状況・政策保有株式) を返す
@@ -311,8 +309,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadShareholdingStructureParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadShareholdingStructureResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_shareholding_structure_inner(sid, params)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_shareholding_structure_inner(scope, params)
             .await
             .map(Json)
     }
@@ -328,8 +326,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadShortSaleReportsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadShortSaleReportsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_short_sale_reports_inner(sid, params)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_short_sale_reports_inner(scope, params)
             .await
             .map(Json)
     }
@@ -345,8 +343,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadSectorShortRatioParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadSectorShortRatioResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_sector_short_ratio_inner(sid, params)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_sector_short_ratio_inner(scope, params)
             .await
             .map(Json)
     }
@@ -362,8 +360,10 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadMacroIndicatorParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadMacroIndicatorResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_macro_indicator_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_macro_indicator_inner(scope, params)
+            .await
+            .map(Json)
     }
 
     /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する
@@ -377,8 +377,8 @@ impl StrategyServer {
         Parameters(params): Parameters<SearchNewsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchNewsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.search_news_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.search_news_inner(scope, params).await.map(Json)
     }
 
     /// 参照型 (stock/indicator/sector/theme) を id/name/別名の部分一致で横断検索する
@@ -392,8 +392,8 @@ impl StrategyServer {
         Parameters(params): Parameters<SearchRefsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchRefsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.search_refs_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.search_refs_inner(scope, params).await.map(Json)
     }
 
     /// 参照型に別名 (表記揺れ・略称・旧社名等) を追加する
@@ -406,8 +406,8 @@ impl StrategyServer {
         Parameters(params): Parameters<AddRefTermsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<AddRefTermsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.add_ref_terms_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.add_ref_terms_inner(scope, params).await.map(Json)
     }
 
     /// 参照型から別名を削除する
@@ -420,8 +420,8 @@ impl StrategyServer {
         Parameters(params): Parameters<RemoveRefTermsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<RemoveRefTermsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.remove_ref_terms_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.remove_ref_terms_inner(scope, params).await.map(Json)
     }
 
     /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す
@@ -435,8 +435,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadFinSummaryParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadFinSummaryResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_fin_summary_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_fin_summary_inner(scope, params).await.map(Json)
     }
 
     /// 銘柄の日次バリュエーション指標を新しい順に返す
@@ -450,8 +450,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadValuationParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadValuationResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_valuation_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_valuation_inner(scope, params).await.map(Json)
     }
 
     /// 銘柄の信用残 (信用取引週末残高/信用取引残高、日々公表信用取引残高) を返す
@@ -465,8 +465,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ReadMarginParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadMarginResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_margin_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_margin_inner(scope, params).await.map(Json)
     }
 
     /// 予測を記録する (書き込み専用。更新・削除 tool は存在しない)
@@ -479,8 +479,8 @@ impl StrategyServer {
         Parameters(params): Parameters<RecordPredictionParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<RecordPredictionResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.record_prediction_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.record_prediction_inner(scope, params).await.map(Json)
     }
 
     /// 接続元戦略が記録した予測を一覧する
@@ -494,8 +494,8 @@ impl StrategyServer {
         Parameters(params): Parameters<ListPredictionsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ListPredictionsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.list_predictions_inner(sid, params).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.list_predictions_inner(scope, params).await.map(Json)
     }
 
     /// 接続元戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する
@@ -508,8 +508,8 @@ impl StrategyServer {
         &self,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<ReadPredictionStatsResult>, McpError> {
-        let sid = strategy_id_from_ctx(&ctx)?;
-        self.read_prediction_stats_inner(sid).await.map(Json)
+        let scope = self.strategy_scope_from_ctx(&ctx).await?;
+        self.read_prediction_stats_inner(scope).await.map(Json)
     }
 }
 
@@ -542,6 +542,55 @@ impl ServerHandler for StrategyServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn query_data_rejects_nonexistent_strategy() {
+        use rmcp::model::NumberOrString;
+        use rmcp::service::serve_directly;
+        use sea_orm::{DatabaseBackend, MockDatabase};
+        use uuid::Uuid;
+
+        let strategy_id = Uuid::new_v4();
+        let db = MockDatabase::new(DatabaseBackend::Postgres)
+            .append_query_results([Vec::<gateway_postgres::entities::strategy::Model>::new()])
+            .into_connection();
+        let server = StrategyServer::new(db, None);
+        let (server_io, _client_io) = tokio::io::duplex(64);
+        let (reader, writer) = tokio::io::split(server_io);
+        let running = serve_directly::<RoleServer, _, _, std::io::Error, _>(
+            server.clone(),
+            (reader, writer),
+            None,
+        );
+
+        let mut parts = axum::http::Request::new(()).into_parts().0;
+        parts.headers.insert(
+            "x-strategy-id",
+            strategy_id.to_string().parse().expect("valid header value"),
+        );
+        let mut ctx = RequestContext::new(NumberOrString::Number(1), running.peer().clone());
+        ctx.extensions.insert(parts);
+
+        assert_eq!(
+            server
+                .query_data(
+                    Parameters(QueryDataParams {
+                        instrument_ids: Vec::new(),
+                        from: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid test date"),
+                        to: chrono::NaiveDate::from_ymd_opt(2025, 1, 1).expect("valid test date"),
+                    }),
+                    ctx,
+                )
+                .await
+                .map(|Json(result)| result),
+            Err(McpError::invalid_params(
+                format!("strategy {strategy_id} not found"),
+                None,
+            )),
+        );
+
+        running.cancel().await.expect("stop the test server");
+    }
 
     #[test]
     fn read_only_hint_matches_read_write_split() {

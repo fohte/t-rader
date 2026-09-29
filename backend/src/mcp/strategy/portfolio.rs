@@ -6,9 +6,9 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
-use uuid::Uuid;
 
 use crate::models::PositionSummary;
 use crate::services::investable_amount;
@@ -23,8 +23,9 @@ use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64};
 impl StrategyServer {
     pub(crate) async fn read_portfolio_inner(
         &self,
-        strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
     ) -> Result<ReadPortfolioResult, McpError> {
+        let strategy_id = scope.into().id();
         let account_summary = fetch_summary(&self.db, None).await.map_err(db_error)?;
         let strategy_summary = fetch_summary(&self.db, Some(strategy_id))
             .await

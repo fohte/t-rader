@@ -2,6 +2,7 @@
 //!
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -17,7 +18,7 @@ use super::dto::{
 };
 use super::{
     DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    decimal_to_f64, ensure_strategy_exists, fetch_note_owned_by, internal_error, invalid_params,
+    decimal_to_f64, fetch_note_owned_by, internal_error, invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
@@ -53,11 +54,12 @@ fn annotation_to_dto(m: annotation::Model) -> Result<AnnotationDto, McpError> {
 impl StrategyServer {
     pub(crate) async fn create_annotation_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         execution_step_id: Option<Uuid>,
         execution_task_id: Option<String>,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let target_symbol = params.target_symbol.trim().to_string();
         if target_symbol.is_empty() {
             return Err(invalid_params("target_symbol must not be empty"));
@@ -69,8 +71,6 @@ impl StrategyServer {
         if params.text.trim().is_empty() {
             return Err(invalid_params("text must not be empty"));
         }
-
-        ensure_strategy_exists(&self.db, session_strategy_id).await?;
 
         // linked_note_id が指定されている場合、対象 note の strategy_id 一致を検査する
         if let Some(linked) = params.linked_note_id {
@@ -153,9 +153,10 @@ impl StrategyServer {
 
     pub(crate) async fn read_annotations_inner(
         &self,
-        session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadAnnotationsParams,
     ) -> Result<ReadAnnotationsResult, McpError> {
+        let session_strategy_id = scope.into().id();
         let mut q = annotation::Entity::find()
             .filter(annotation::Column::StrategyId.eq(session_strategy_id))
             .order_by_desc(annotation::Column::Timestamp);

@@ -1,9 +1,9 @@
 //! 戦略実行 MCP の `read_fin_summary` tool。財務情報テーブルの型付き列を返却 DTO に変換する。
 
 use chrono::NaiveDate;
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
-use uuid::Uuid;
 
 use super::dto::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
 use super::{StrategyServer, clamp_limit, db_error};
@@ -67,9 +67,10 @@ impl StrategyServer {
     pub(crate) async fn read_fin_summary_inner(
         &self,
         // 財務情報は会社単位の開示であり戦略に属さないマスタデータのため検索条件に使わない
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: ReadFinSummaryParams,
     ) -> Result<ReadFinSummaryResult, McpError> {
+        let _scope = scope.into();
         let limit = clamp_limit(params.limit) as i64;
 
         let rows = self

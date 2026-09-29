@@ -6,12 +6,12 @@
 //! いずれかへの部分一致 (大文字小文字・全角半角を区別しない) で検索し、`ref_kind` / `ref_id`
 //! / `name` の組で返す。
 
+use core_application::StrategyScope;
 use indoc::indoc;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::handlers::refs::sanitize_like;
 use crate::text_normalize::normalize;
@@ -91,9 +91,10 @@ impl StrategyServer {
     /// `session_strategy_id` は使わない。
     pub(crate) async fn search_refs_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: SearchRefsParams,
     ) -> Result<SearchRefsResult, McpError> {
+        let _scope = scope.into();
         let query = params.query.trim();
         if query.is_empty() {
             return Err(invalid_params("query must not be empty"));

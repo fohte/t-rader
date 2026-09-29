@@ -1,9 +1,9 @@
 //! 戦略実行 MCP のニュース検索 tool 実装。
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
+use core_application::StrategyScope;
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
 use crate::handlers::refs::sanitize_like;
 use gateway_postgres::entities::news_item;
@@ -15,9 +15,10 @@ impl StrategyServer {
     /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する。
     pub(crate) async fn search_news_inner(
         &self,
-        _session_strategy_id: Uuid,
+        scope: impl Into<StrategyScope>,
         params: SearchNewsParams,
     ) -> Result<SearchNewsResult, McpError> {
+        let _scope = scope.into();
         let mut query = news_item::Entity::find();
 
         if let Some(keyword) = params
