@@ -24,7 +24,7 @@ mod unit_of_work;
 
 pub use change_history::PostgresChangeHistory;
 pub use custom_indicator::PostgresCustomIndicatorRepository;
-pub use note::PostgresNoteRepository;
+pub use note::{PostgresNoteRepository, supersede_pending_versions_before};
 pub use strategy::PostgresStrategyRepository;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;

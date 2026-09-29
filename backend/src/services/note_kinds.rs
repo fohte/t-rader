@@ -198,7 +198,7 @@ pub async fn update(
             let Some(pending) = latest_pending else {
                 continue;
             };
-            let (approved, previous_current_id) =
+            let (approved, previous_current_id, superseded_version_ids) =
                 note_versions::approve_pending_version(&txn, note_id, pending, reviewed_at).await?;
             change_history::record_as(
                 &txn,
@@ -211,6 +211,7 @@ pub async fn update(
                     "to": "approved",
                     "version_id": approved.id,
                     "previous_current_version_id": previous_current_id,
+                    "superseded_version_ids": superseded_version_ids,
                     "label": null,
                 }),
                 None,
@@ -278,14 +279,14 @@ mod tests {
     use super::*;
     use crate::services::change_history::Actor;
     use crate::services::note_versions::{self, AppendVersion};
-    use gateway_postgres::entities::{note, note_version};
+    use gateway_postgres::entities::{change_history, note, note_version};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
     use serde_json::json;
 
     #[backend_test_macros::database_test]
-    async fn disabling_note_kind_approval_supersedes_older_pending_versions(
+    async fn disabling_note_kind_approval_supersedes_pending_versions_and_preserves_rejections(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let kind_key = "sample-kind";
@@ -326,25 +327,36 @@ mod tests {
         .await
         .expect("assign note kind");
 
-        for version_no in [2, 3] {
-            note_versions::append_version(
-                &db,
-                note_id,
-                AppendVersion {
-                    title: format!("version {version_no}"),
-                    body_md: "body".into(),
-                    frontmatter_json: json!({}),
-                    graphs_json: json!([]),
-                    created_by_kind: "llm".into(),
-                    execution_id: None,
-                    change_reason: Some("sample revision".into()),
-                    change_diff: None,
-                    actor: Actor::Human,
-                },
-            )
-            .await
-            .expect("append pending version");
+        let mut pending_versions = Vec::new();
+        for version_no in 2..=4 {
+            pending_versions.push(
+                note_versions::append_version(
+                    &db,
+                    note_id,
+                    AppendVersion {
+                        title: format!("version {version_no}"),
+                        body_md: "body".into(),
+                        frontmatter_json: json!({}),
+                        graphs_json: json!([]),
+                        created_by_kind: "llm".into(),
+                        execution_id: None,
+                        change_reason: Some("sample revision".into()),
+                        change_diff: None,
+                        actor: Actor::Human,
+                    },
+                )
+                .await
+                .expect("append pending version"),
+            );
         }
+        note_version::ActiveModel {
+            id: Set(pending_versions[1].id),
+            status: Set("rejected".into()),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("reject an older version");
 
         let updated_kind = update(
             &db,
@@ -357,7 +369,7 @@ mod tests {
         )
         .await
         .expect("disable approval requirement");
-        let versions = note_version::Entity::find()
+        let version_states = note_version::Entity::find()
             .filter(note_version::Column::NoteId.eq(note_id))
             .order_by_asc(note_version::Column::VersionNo)
             .all(&db)
@@ -366,16 +378,33 @@ mod tests {
             .into_iter()
             .map(|version| (version.version_no, version.status, version.is_current))
             .collect::<Vec<_>>();
+        let history_diff = change_history::Entity::find()
+            .filter(change_history::Column::TargetId.eq(note_id))
+            .filter(change_history::Column::Op.eq("status_change"))
+            .one(&db)
+            .await
+            .expect("find approval history")
+            .expect("approval history exists")
+            .diff_json;
 
         assert_eq!(
-            (updated_kind.requires_approval, versions),
+            (updated_kind.requires_approval, version_states, history_diff),
             (
                 false,
                 vec![
                     (1, "approved".into(), false),
                     (2, "superseded".into(), false),
-                    (3, "approved".into(), true),
+                    (3, "rejected".into(), false),
+                    (4, "approved".into(), true),
                 ],
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": pending_versions[2].id,
+                    "previous_current_version_id": initial.id,
+                    "superseded_version_ids": [pending_versions[0].id],
+                    "label": null,
+                }),
             ),
         );
     }

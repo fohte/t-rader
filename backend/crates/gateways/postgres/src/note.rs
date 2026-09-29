@@ -6,7 +6,9 @@ use core_application::note::{
 use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DbErr, EntityTrait, QueryFilter, QueryOrder,
+};
 use uuid::Uuid;
 
 use crate::entities::{note, note_kind, note_link, note_ref, note_version};
@@ -15,6 +17,25 @@ use crate::transaction::transaction_ref;
 
 #[derive(Clone, Copy, Default)]
 pub struct PostgresNoteRepository;
+
+pub async fn supersede_pending_versions_before(
+    transaction: &impl ConnectionTrait,
+    note_id: Uuid,
+    version_no: i32,
+) -> Result<Vec<Uuid>, DbErr> {
+    let mut superseded_ids = note_version::Entity::update_many()
+        .col_expr(note_version::Column::Status, Expr::value("superseded"))
+        .filter(note_version::Column::NoteId.eq(note_id))
+        .filter(note_version::Column::VersionNo.lt(version_no))
+        .filter(note_version::Column::Status.eq("unread"))
+        .exec_with_returning(transaction)
+        .await?
+        .into_iter()
+        .map(|version| version.id)
+        .collect::<Vec<_>>();
+    superseded_ids.sort_unstable();
+    Ok(superseded_ids)
+}
 
 impl PostgresNoteRepository {
     pub fn new() -> Self {
@@ -123,17 +144,11 @@ impl NoteRepository for PostgresNoteRepository {
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
         version_no: i32,
-    ) -> Result<(), NoteRepositoryError> {
+    ) -> Result<Vec<Uuid>, NoteRepositoryError> {
         let transaction =
             transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
-        note_version::Entity::update_many()
-            .col_expr(note_version::Column::Status, Expr::value("superseded"))
-            .filter(note_version::Column::NoteId.eq(note_id))
-            .filter(note_version::Column::VersionNo.lt(version_no))
-            .filter(note_version::Column::Status.eq("unread"))
-            .exec(transaction)
+        supersede_pending_versions_before(transaction, note_id, version_no)
             .await
-            .map(|_| ())
             .map_err(repository_error)
     }
 

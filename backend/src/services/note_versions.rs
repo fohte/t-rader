@@ -3,7 +3,6 @@
 #[cfg(test)]
 use sea_orm::ActiveValue::NotSet;
 use sea_orm::ActiveValue::Set;
-use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
 };
@@ -39,7 +38,6 @@ pub struct AppendVersion {
 
 pub const INITIAL_NOTE_STATUS: &str = "unread";
 const APPROVED_NOTE_STATUS: &str = "approved";
-const SUPERSEDED_NOTE_STATUS: &str = "superseded";
 #[cfg(test)]
 const HUMAN_CREATED_BY_KIND: &str = "human";
 
@@ -255,17 +253,10 @@ pub async fn approve_pending_version(
     note_id: Uuid,
     version: note_version::Model,
     reviewed_at: chrono::DateTime<chrono::FixedOffset>,
-) -> Result<(note_version::Model, Option<Uuid>), AppError> {
-    note_version::Entity::update_many()
-        .col_expr(
-            note_version::Column::Status,
-            Expr::value(SUPERSEDED_NOTE_STATUS),
-        )
-        .filter(note_version::Column::NoteId.eq(note_id))
-        .filter(note_version::Column::VersionNo.lt(version.version_no))
-        .filter(note_version::Column::Status.eq(INITIAL_NOTE_STATUS))
-        .exec(txn)
-        .await?;
+) -> Result<(note_version::Model, Option<Uuid>, Vec<Uuid>), AppError> {
+    let superseded_version_ids =
+        gateway_postgres::supersede_pending_versions_before(txn, note_id, version.version_no)
+            .await?;
 
     let current = find_current_version(txn, note_id).await?;
     if current
@@ -288,7 +279,7 @@ pub async fn approve_pending_version(
         }
         .update(txn)
         .await?;
-        return Ok((updated, current_id));
+        return Ok((updated, current_id, superseded_version_ids));
     }
 
     set_current_version(
@@ -299,6 +290,7 @@ pub async fn approve_pending_version(
         Some(reviewed_at),
     )
     .await
+    .map(|(updated, previous_current_id)| (updated, previous_current_id, superseded_version_ids))
 }
 
 pub async fn find_current_version<C: sea_orm::ConnectionTrait>(

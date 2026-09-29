@@ -59,7 +59,7 @@ pub trait NoteRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
         version_no: i32,
-    ) -> Result<(), NoteRepositoryError>;
+    ) -> Result<Vec<Uuid>, NoteRepositoryError>;
     async fn find_initial_created_by_kind(
         &self,
         transaction: &UnitOfWorkTransaction,

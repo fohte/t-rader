@@ -23,7 +23,8 @@ impl NoteUseCases {
             .require_version(&transaction, note_id, version_no)
             .await?;
         self.ensure_pending_version(&version)?;
-        self.repository
+        let superseded_version_ids = self
+            .repository
             .supersede_pending_versions_before(&transaction, note_id, version.version_no)
             .await?;
         let now = Utc::now().fixed_offset();
@@ -73,6 +74,7 @@ impl NoteUseCases {
                 "to": APPROVED_NOTE_STATUS,
                 "version_id": updated.id,
                 "previous_current_version_id": previous_current_id,
+                "superseded_version_ids": superseded_version_ids,
                 "label": label,
             }),
             label,
