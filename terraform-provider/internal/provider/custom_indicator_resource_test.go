@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/oapi-codegen/nullable"
@@ -228,42 +229,145 @@ func TestCustomIndicatorResourceStrategyIDRequiresReplace(t *testing.T) {
 
 	ctx := context.Background()
 	resourceSchema := customIndicatorResourceSchema(t)
-	stateModel := syntheticCustomIndicatorPlan(types.StringValue(testCustomIndicatorStrategyID))
-	stateModel.ID = types.StringValue(testCustomIndicatorID)
-	stateModel.Scope = types.StringValue("strategy")
-	stateModel.CreatedAt = types.StringValue("2026-01-02T03:04:05Z")
-	stateModel.UpdatedAt = types.StringValue("2026-01-02T03:04:05Z")
-	state := tfsdk.State{Schema: resourceSchema.Schema}
-	if diagnostics := state.Set(ctx, stateModel); diagnostics.HasError() {
-		t.Fatalf("build prior state: %v", diagnostics)
+	cases := []struct {
+		name                string
+		stateStrategyID     types.String
+		planStrategyID      types.String
+		wantRequiresReplace bool
+	}{
+		{
+			name:                "global to strategy",
+			stateStrategyID:     types.StringNull(),
+			planStrategyID:      types.StringValue(testCustomIndicatorStrategyID),
+			wantRequiresReplace: true,
+		},
+		{
+			name:                "strategy to global",
+			stateStrategyID:     types.StringValue(testCustomIndicatorStrategyID),
+			planStrategyID:      types.StringNull(),
+			wantRequiresReplace: true,
+		},
+		{
+			name:                "strategy to another strategy",
+			stateStrategyID:     types.StringValue(testCustomIndicatorStrategyID),
+			planStrategyID:      types.StringValue("00000000-0000-4000-8000-000000000004"),
+			wantRequiresReplace: true,
+		},
+		{
+			name:                "global remains global",
+			stateStrategyID:     types.StringNull(),
+			planStrategyID:      types.StringNull(),
+			wantRequiresReplace: false,
+		},
+		{
+			name:                "strategy remains in strategy",
+			stateStrategyID:     types.StringValue(testCustomIndicatorStrategyID),
+			planStrategyID:      types.StringValue(testCustomIndicatorStrategyID),
+			wantRequiresReplace: false,
+		},
 	}
 
-	planModel := syntheticCustomIndicatorPlan(types.StringValue("00000000-0000-4000-8000-000000000004"))
-	plan := tfsdk.Plan{Schema: resourceSchema.Schema}
-	if diagnostics := plan.Set(ctx, planModel); diagnostics.HasError() {
-		t.Fatalf("build replacement plan: %v", diagnostics)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			stateModel := syntheticCustomIndicatorPlan(testCase.stateStrategyID)
+			stateModel.ID = types.StringValue(testCustomIndicatorID)
+			stateModel.Scope = types.StringValue("global")
+			if !testCase.stateStrategyID.IsNull() {
+				stateModel.Scope = types.StringValue("strategy")
+			}
+			stateModel.CreatedAt = types.StringValue("2026-01-02T03:04:05Z")
+			stateModel.UpdatedAt = types.StringValue("2026-01-02T03:04:05Z")
+			state := tfsdk.State{Schema: resourceSchema.Schema}
+			if diagnostics := state.Set(ctx, stateModel); diagnostics.HasError() {
+				t.Fatalf("build prior state: %v", diagnostics)
+			}
+
+			planModel := syntheticCustomIndicatorPlan(testCase.planStrategyID)
+			plan := tfsdk.Plan{Schema: resourceSchema.Schema}
+			if diagnostics := plan.Set(ctx, planModel); diagnostics.HasError() {
+				t.Fatalf("build replacement plan: %v", diagnostics)
+			}
+
+			strategyIDAttribute := resourceSchema.Schema.Attributes["strategy_id"].(schema.StringAttribute)
+			var response planmodifier.StringResponse
+			strategyIDAttribute.PlanModifiers[0].PlanModifyString(ctx, planmodifier.StringRequest{
+				State:       state,
+				Plan:        plan,
+				StateValue:  stateModel.StrategyID,
+				PlanValue:   planModel.StrategyID,
+				ConfigValue: planModel.StrategyID,
+			}, &response)
+
+			got := struct {
+				RequiresReplace bool
+				Diagnostics     []customIndicatorTestDiagnostic
+			}{RequiresReplace: response.RequiresReplace, Diagnostics: customIndicatorTestDiagnostics(response.Diagnostics)}
+			want := struct {
+				RequiresReplace bool
+				Diagnostics     []customIndicatorTestDiagnostic
+			}{RequiresReplace: testCase.wantRequiresReplace, Diagnostics: nil}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("strategy_id plan modifier output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
+	}
+}
+
+func TestCustomIndicatorNameValidator(t *testing.T) {
+	t.Parallel()
+
+	namePath := path.Root("name")
+	nameAttribute := customIndicatorResourceSchema(t).Schema.Attributes["name"].(schema.StringAttribute)
+	cases := []struct {
+		name        string
+		value       types.String
+		diagnostics []customIndicatorTestDiagnostic
+	}{
+		{name: "null value is deferred", value: types.StringNull()},
+		{name: "unknown value is deferred", value: types.StringUnknown()},
+		{name: "valid name is accepted", value: types.StringValue("synthetic indicator")},
+		{
+			name:  "whitespace-only name is rejected",
+			value: types.StringValue(" \t "),
+			diagnostics: []customIndicatorTestDiagnostic{{
+				Severity: diag.SeverityError,
+				Summary:  "Invalid custom indicator name",
+				Detail:   "Custom indicator names cannot be empty or contain only whitespace.",
+			}},
+		},
+		{
+			name:  "surrounding whitespace is rejected",
+			value: types.StringValue(" synthetic indicator "),
+			diagnostics: []customIndicatorTestDiagnostic{{
+				Severity: diag.SeverityError,
+				Summary:  "Invalid custom indicator name",
+				Detail:   "Custom indicator names cannot start or end with whitespace because the API trims names.",
+			}},
+		},
 	}
 
-	strategyIDAttribute := resourceSchema.Schema.Attributes["strategy_id"].(schema.StringAttribute)
-	var response planmodifier.StringResponse
-	strategyIDAttribute.PlanModifiers[0].PlanModifyString(ctx, planmodifier.StringRequest{
-		State:       state,
-		Plan:        plan,
-		StateValue:  stateModel.StrategyID,
-		PlanValue:   planModel.StrategyID,
-		ConfigValue: planModel.StrategyID,
-	}, &response)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-	got := struct {
-		RequiresReplace bool
-		Diagnostics     []customIndicatorTestDiagnostic
-	}{RequiresReplace: response.RequiresReplace, Diagnostics: customIndicatorTestDiagnostics(response.Diagnostics)}
-	want := struct {
-		RequiresReplace bool
-		Diagnostics     []customIndicatorTestDiagnostic
-	}{RequiresReplace: true, Diagnostics: nil}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("strategy_id plan modifier output mismatch: got=%#v want=%#v", got, want)
+			var response validator.StringResponse
+			nameAttribute.Validators[0].ValidateString(context.Background(), validator.StringRequest{
+				Path:        namePath,
+				ConfigValue: testCase.value,
+			}, &response)
+
+			got := struct {
+				Diagnostics []customIndicatorTestDiagnostic
+			}{Diagnostics: customIndicatorTestDiagnostics(response.Diagnostics)}
+			want := struct {
+				Diagnostics []customIndicatorTestDiagnostic
+			}{Diagnostics: testCase.diagnostics}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("name validator output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
 	}
 }
 
@@ -323,6 +427,157 @@ func TestCustomIndicatorResourceUpdateNotFoundDiagnostic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("update not found output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestCustomIndicatorResourceUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	requests := make(chan customIndicatorCapturedRequest, 1)
+	updatedIndicator := syntheticCustomIndicator(nil)
+	updatedIndicator.Name = "updated synthetic indicator"
+	updatedIndicator.Code = "return { value: 43 }"
+	updatedIndicator.Description = nullable.NewNullNullable[string]()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+			return
+		}
+		var decodedBody map[string]interface{}
+		if err := json.Unmarshal(body, &decodedBody); err != nil {
+			t.Errorf("decode request body: %v", err)
+			return
+		}
+		requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path, Body: decodedBody}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(updatedIndicator); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	resourceSchema := customIndicatorResourceSchema(t)
+	stateModel := syntheticCustomIndicatorModel(nil, "global")
+	state := tfsdk.State{Schema: resourceSchema.Schema}
+	if diagnostics := state.Set(ctx, stateModel); diagnostics.HasError() {
+		t.Fatalf("build prior state: %v", diagnostics)
+	}
+	planModel := syntheticCustomIndicatorPlan(types.StringNull())
+	planModel.Name = types.StringValue(updatedIndicator.Name)
+	planModel.Code = types.StringValue(updatedIndicator.Code)
+	planModel.Description = types.StringNull()
+	plan := tfsdk.Plan{Schema: resourceSchema.Schema}
+	if diagnostics := plan.Set(ctx, planModel); diagnostics.HasError() {
+		t.Fatalf("build update plan: %v", diagnostics)
+	}
+
+	response := resource.UpdateResponse{State: tfsdk.State{Schema: resourceSchema.Schema, Raw: state.Raw}}
+	client := customIndicatorTestClient(t, server.URL)
+	(&customIndicatorResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
+	var resultState customIndicatorModel
+	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
+	var observedRequest *customIndicatorCapturedRequest
+	select {
+	case observed := <-requests:
+		observedRequest = &observed
+	default:
+	}
+
+	got := struct {
+		Request     *customIndicatorCapturedRequest
+		State       customIndicatorModel
+		Diagnostics []customIndicatorTestDiagnostic
+	}{Request: observedRequest, State: resultState, Diagnostics: customIndicatorTestDiagnostics(response.Diagnostics)}
+	wantState := syntheticCustomIndicatorModel(nil, "global")
+	wantState.Name = types.StringValue(updatedIndicator.Name)
+	wantState.Code = types.StringValue(updatedIndicator.Code)
+	wantState.Description = types.StringNull()
+	want := struct {
+		Request     *customIndicatorCapturedRequest
+		State       customIndicatorModel
+		Diagnostics []customIndicatorTestDiagnostic
+	}{
+		Request: &customIndicatorCapturedRequest{
+			Method: http.MethodPut,
+			Path:   "/api/indicators/" + testCustomIndicatorID,
+			Body: map[string]interface{}{
+				"code":          updatedIndicator.Code,
+				"description":   nil,
+				"input_schema":  map[string]interface{}{"period": float64(14)},
+				"name":          updatedIndicator.Name,
+				"output_schema": map[string]interface{}{"value": float64(42)},
+			},
+		},
+		State:       wantState,
+		Diagnostics: nil,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("update output mismatch: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestCustomIndicatorResourceDelete(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		statusCode int
+		body       string
+	}{
+		{name: "deleted indicator", statusCode: http.StatusNoContent},
+		{name: "already missing indicator", statusCode: http.StatusNotFound, body: `{"error":"synthetic missing indicator"}`},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			requests := make(chan customIndicatorCapturedRequest, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests <- customIndicatorCapturedRequest{Method: r.Method, Path: r.URL.Path}
+				w.WriteHeader(testCase.statusCode)
+				if testCase.body != "" {
+					_, _ = io.WriteString(w, testCase.body)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			resourceSchema := customIndicatorResourceSchema(t)
+			state := tfsdk.State{Schema: resourceSchema.Schema}
+			if diagnostics := state.Set(ctx, syntheticCustomIndicatorModel(nil, "global")); diagnostics.HasError() {
+				t.Fatalf("build delete state: %v", diagnostics)
+			}
+			response := resource.DeleteResponse{}
+			client := customIndicatorTestClient(t, server.URL)
+			(&customIndicatorResource{client: client}).Delete(ctx, resource.DeleteRequest{State: state}, &response)
+			var observedRequest *customIndicatorCapturedRequest
+			select {
+			case observed := <-requests:
+				observedRequest = &observed
+			default:
+			}
+
+			got := struct {
+				Request     *customIndicatorCapturedRequest
+				Diagnostics []customIndicatorTestDiagnostic
+			}{Request: observedRequest, Diagnostics: customIndicatorTestDiagnostics(response.Diagnostics)}
+			want := struct {
+				Request     *customIndicatorCapturedRequest
+				Diagnostics []customIndicatorTestDiagnostic
+			}{
+				Request: &customIndicatorCapturedRequest{
+					Method: http.MethodDelete,
+					Path:   "/api/indicators/" + testCustomIndicatorID,
+				},
+				Diagnostics: nil,
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("delete output mismatch: got=%#v want=%#v", got, want)
+			}
+		})
 	}
 }
 
