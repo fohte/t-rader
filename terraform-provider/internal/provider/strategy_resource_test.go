@@ -139,7 +139,7 @@ func TestStrategyResourceUpdateUsesPriorStateID(t *testing.T) {
 		}{
 			Method: http.MethodPatch,
 			Path:   "/api/strategies/" + testStrategyID,
-			Body:   `{"name":"updated synthetic strategy","description":null,"sort_order":5}` + "\n",
+			Body:   `{"description":null,"name":"updated synthetic strategy","sort_order":5}`,
 		},
 		State: modelFromStrategy(updated),
 	}
