@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
@@ -26,6 +27,12 @@ use super::{
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
 
+fn account_risk_policy_error_to_mcp(error: AccountRiskPolicyRepositoryError) -> McpError {
+    match error {
+        AccountRiskPolicyRepositoryError::Database(error) => app_error_to_mcp(error.into()),
+    }
+}
+
 impl StrategyServer {
     pub(crate) async fn check_buyable_qty_inner(
         &self,
@@ -41,7 +48,7 @@ impl StrategyServer {
             .account_risk_policies
             .find_current()
             .await
-            .map_err(|error| app_error_to_mcp(error.into()))?;
+            .map_err(account_risk_policy_error_to_mcp)?;
         let max_sector_ratio = match account_risk_policy {
             Some(risk_policy) => {
                 parse_risk_policy::<AccountRiskPolicyData>(risk_policy)

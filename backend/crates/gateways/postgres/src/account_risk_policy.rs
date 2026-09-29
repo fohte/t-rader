@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use core_application::account_risk_policy::AccountRiskPolicyRepository;
-use core_application::persistence::PersistenceError;
+use core_application::account_risk_policy::{
+    AccountRiskPolicyRepository, AccountRiskPolicyRepositoryError,
+};
 use sea_orm::ActiveValue::Set;
 use sea_orm::EntityTrait;
 use sea_orm::sea_query::OnConflict;
@@ -25,15 +26,16 @@ impl PostgresAccountRiskPolicyRepository {
 
 #[async_trait]
 impl AccountRiskPolicyRepository for PostgresAccountRiskPolicyRepository {
-    async fn find_current(&self) -> Result<Option<Value>, PersistenceError> {
+    async fn find_current(&self) -> Result<Option<Value>, AccountRiskPolicyRepositoryError> {
         account_risk_policy::Entity::find_by_id(SINGLETON_ID)
             .one(&self.db)
             .await
             .map(|row| row.map(|model| model.risk_policy))
             .map_err(persistence_error)
+            .map_err(Into::into)
     }
 
-    async fn save(&self, risk_policy: Value) -> Result<Value, PersistenceError> {
+    async fn save(&self, risk_policy: Value) -> Result<Value, AccountRiskPolicyRepositoryError> {
         let previous = self.find_current().await?;
         let model = account_risk_policy::ActiveModel {
             id: Set(SINGLETON_ID),

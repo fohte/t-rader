@@ -2,6 +2,7 @@
 
 use axum::Json;
 use axum::extract::State;
+use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
@@ -24,7 +25,12 @@ use crate::models::{
 pub async fn get_account_risk_policy(
     State(state): State<AppState>,
 ) -> Result<Json<AccountRiskPolicyResponse>, AppError> {
-    let risk_policy = state.use_cases.account_risk_policies.find_current().await?;
+    let risk_policy = state
+        .use_cases
+        .account_risk_policies
+        .find_current()
+        .await
+        .map_err(map_account_risk_policy_error)?;
     let data = match risk_policy {
         Some(risk_policy) => parse_risk_policy(risk_policy)?,
         None => AccountRiskPolicyData {
@@ -59,9 +65,20 @@ pub async fn put_account_risk_policy(
         max_sector_ratio: payload.max_sector_ratio,
     };
     let value = serialize_risk_policy(&data)?;
-    let saved = state.use_cases.account_risk_policies.save(value).await?;
+    let saved = state
+        .use_cases
+        .account_risk_policies
+        .save(value)
+        .await
+        .map_err(map_account_risk_policy_error)?;
     let data = parse_risk_policy::<AccountRiskPolicyData>(saved)?;
     Ok(Json(data.into()))
+}
+
+fn map_account_risk_policy_error(error: AccountRiskPolicyRepositoryError) -> AppError {
+    match error {
+        AccountRiskPolicyRepositoryError::Database(error) => error.into(),
+    }
 }
 
 #[cfg(test)]

@@ -1,7 +1,6 @@
 use serde_json::Value;
 
-use crate::persistence::PersistenceError;
-
+use super::error::AccountRiskPolicyRepositoryError;
 use super::repository::SharedAccountRiskPolicyRepository;
 
 #[derive(Clone)]
@@ -14,11 +13,14 @@ impl AccountRiskPolicyUseCases {
         Self { repository }
     }
 
-    pub async fn find_current(&self) -> Result<Option<Value>, PersistenceError> {
+    pub async fn find_current(&self) -> Result<Option<Value>, AccountRiskPolicyRepositoryError> {
         self.repository.find_current().await
     }
 
-    pub async fn save(&self, risk_policy: Value) -> Result<Value, PersistenceError> {
+    pub async fn save(
+        &self,
+        risk_policy: Value,
+    ) -> Result<Value, AccountRiskPolicyRepositoryError> {
         self.repository.save(risk_policy).await
     }
 }
@@ -31,8 +33,9 @@ mod tests {
     use serde_json::{Value, json};
     use tokio::sync::Mutex;
 
-    use crate::account_risk_policy::{AccountRiskPolicyRepository, AccountRiskPolicyUseCases};
-    use crate::persistence::PersistenceError;
+    use crate::account_risk_policy::{
+        AccountRiskPolicyRepository, AccountRiskPolicyRepositoryError, AccountRiskPolicyUseCases,
+    };
 
     #[derive(Default)]
     struct FakeAccountRiskPolicyRepository {
@@ -41,11 +44,14 @@ mod tests {
 
     #[async_trait]
     impl AccountRiskPolicyRepository for FakeAccountRiskPolicyRepository {
-        async fn find_current(&self) -> Result<Option<Value>, PersistenceError> {
+        async fn find_current(&self) -> Result<Option<Value>, AccountRiskPolicyRepositoryError> {
             Ok(self.current.lock().await.clone())
         }
 
-        async fn save(&self, risk_policy: Value) -> Result<Value, PersistenceError> {
+        async fn save(
+            &self,
+            risk_policy: Value,
+        ) -> Result<Value, AccountRiskPolicyRepositoryError> {
             *self.current.lock().await = Some(risk_policy.clone());
             Ok(risk_policy)
         }
