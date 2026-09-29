@@ -3,7 +3,7 @@ pre-commit:
     dump-openapi:
       priority: 1
       glob: '*.rs'
-      run: cd backend && cargo run -p backend --bin backend -- --dump-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json && cd .. && git add backend/openapi.json
+      run: cd backend && cargo run -- --dump-openapi > openapi.json.tmp && mv openapi.json.tmp openapi.json && cd .. && git add backend/openapi.json
 
     dump-agent-openapi:
       priority: 1
