@@ -19,6 +19,7 @@ mod strategy_summary_query;
 mod strategy_task;
 mod trade;
 mod transaction;
+mod trigger;
 mod unit_of_work;
 
 pub use change_history::PostgresChangeHistory;
@@ -29,6 +30,7 @@ pub use strategy_scope::PostgresStrategyScopeSource;
 pub use strategy_summary_query::PostgresStrategySummaryQuery;
 pub use strategy_task::PostgresStrategyTaskRepository;
 pub use trade::PostgresTradeRepository;
+pub use trigger::PostgresTriggerRepository;
 pub use unit_of_work::PostgresUnitOfWork;
 
 #[cfg(any(test, feature = "test-support"))]

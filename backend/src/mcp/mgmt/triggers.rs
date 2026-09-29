@@ -1,35 +1,37 @@
 //! 管理 MCP の trigger 書き込み tool (create/update/delete)。
 //!
-//! REST (`backend/src/handlers/triggers.rs`) と同じ `services::trigger_crud` を経由するため、
-//! 検証ロジックは一本化されている。trigger は `change_history` の対象外 (CHECK 制約が
-//! `"trigger"` を含まない) なので actor の指定は発生しない。
+//! REST (`backend/src/handlers/triggers.rs`) と同じ application use case を呼び出す。
 
 use rmcp::ErrorData as McpError;
 
-use crate::error::AppError;
-use crate::models::{CreateTriggerRequest, UpdateTriggerRequest};
-use crate::services::trigger_crud;
+use core_application::trigger::{
+    CreateTriggerCommand, TriggerKind, TriggerUseCaseError, UpdateTriggerCommand,
+};
 
 use super::dto::{
     CreateStrategyTriggerParams, CreateStrategyTriggerResult, DeleteStrategyTriggerParams,
     DeleteStrategyTriggerResult, UpdateStrategyTriggerParams, UpdateStrategyTriggerResult,
 };
-use super::{MgmtServer, map_app_error};
+use super::{MgmtServer, map_trigger_error};
 
 impl MgmtServer {
     pub(super) async fn create_strategy_trigger_inner(
         &self,
         params: CreateStrategyTriggerParams,
     ) -> Result<CreateStrategyTriggerResult, McpError> {
-        let payload = CreateTriggerRequest {
-            kind: params.kind.into(),
+        let scope = self.strategy_scope(params.strategy_id).await?;
+        let command = CreateTriggerCommand {
+            kind: match params.kind {
+                super::dto::TriggerKindParam::Cron => TriggerKind::Cron,
+                super::dto::TriggerKindParam::Hook => TriggerKind::Hook,
+            },
             schedule: params.schedule,
             hook_slug: params.hook_slug,
             event_match: params.event_match.map(Into::into),
             prompt_template: params.prompt_template,
             enabled: params.enabled,
         };
-        match trigger_crud::create_trigger(&self.db, params.strategy_id, payload).await {
+        match self.use_cases.triggers.create(scope, command).await {
             Ok(created) => Ok(CreateStrategyTriggerResult {
                 ok: true,
                 errors: vec![],
@@ -47,14 +49,29 @@ impl MgmtServer {
         &self,
         params: UpdateStrategyTriggerParams,
     ) -> Result<UpdateStrategyTriggerResult, McpError> {
-        let payload = UpdateTriggerRequest {
+        let current = self
+            .use_cases
+            .triggers
+            .get(params.trigger_id)
+            .await
+            .map_err(map_trigger_error)?;
+        let strategy_id = current.strategy_id.ok_or_else(|| {
+            super::invalid_params(format!("trigger {} not found", params.trigger_id))
+        })?;
+        let scope = self.strategy_scope(strategy_id).await?;
+        let command = UpdateTriggerCommand {
             schedule: params.schedule,
             hook_slug: params.hook_slug,
             event_match: params.event_match.map(|value| Some(value.into())),
             prompt_template: params.prompt_template,
             enabled: params.enabled,
         };
-        match trigger_crud::update_trigger(&self.db, params.trigger_id, payload).await {
+        match self
+            .use_cases
+            .triggers
+            .update(scope, params.trigger_id, command)
+            .await
+        {
             Ok(_) => Ok(UpdateStrategyTriggerResult {
                 ok: true,
                 errors: vec![],
@@ -70,7 +87,22 @@ impl MgmtServer {
         &self,
         params: DeleteStrategyTriggerParams,
     ) -> Result<DeleteStrategyTriggerResult, McpError> {
-        match trigger_crud::delete_trigger(&self.db, params.trigger_id).await {
+        let current = self
+            .use_cases
+            .triggers
+            .get(params.trigger_id)
+            .await
+            .map_err(map_trigger_error)?;
+        let strategy_id = current.strategy_id.ok_or_else(|| {
+            super::invalid_params(format!("trigger {} not found", params.trigger_id))
+        })?;
+        let scope = self.strategy_scope(strategy_id).await?;
+        match self
+            .use_cases
+            .triggers
+            .delete(scope, params.trigger_id)
+            .await
+        {
             Ok(()) => Ok(DeleteStrategyTriggerResult {
                 ok: true,
                 errors: vec![],
@@ -87,10 +119,10 @@ impl MgmtServer {
 /// 入力を直して再試行できるようにする。`NotFound` (存在しない strategy_id/trigger_id) や
 /// `Database` (hook_slug の unique 制約違反など) は参照ミスや DB 制約違反であり content の
 /// 修正だけでは直せないため、他の書き込み tool と同様に tool call そのものを失敗させる。
-fn validation_errors(err: AppError) -> Result<Vec<String>, McpError> {
+fn validation_errors(err: TriggerUseCaseError) -> Result<Vec<String>, McpError> {
     match err {
-        AppError::Validation(msg) => Ok(vec![msg]),
-        other => Err(map_app_error(other)),
+        TriggerUseCaseError::Validation(msg) => Ok(vec![msg]),
+        other => Err(map_trigger_error(other)),
     }
 }
 
@@ -99,13 +131,11 @@ mod tests {
     use std::sync::Arc;
 
     use rmcp::handler::server::wrapper::{Json, Parameters};
-    use sea_orm::EntityTrait;
     use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
     use crate::mcp::mgmt::dto::TriggerKindParam;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
-    use gateway_postgres::entities::trigger;
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
@@ -142,13 +172,16 @@ mod tests {
             .unwrap(),
         );
 
-        let stored = trigger_crud::get_trigger(&db, trigger_id)
+        let stored = server
+            .use_cases
+            .triggers
+            .get(trigger_id)
             .await
             .expect("trigger persisted");
         assert_eq!(
             (
                 stored.strategy_id,
-                stored.kind,
+                stored.kind.as_str().to_string(),
                 stored.schedule,
                 stored.hook_slug,
                 stored.prompt_template,
@@ -185,12 +218,23 @@ mod tests {
             .await
             .expect("tool call itself must succeed");
         assert_eq!(
-            (result.ok, result.errors.len(), result.trigger_id),
-            (false, 1, None),
+            serde_json::to_value(result).unwrap(),
+            serde_json::json!({
+                "ok": false,
+                "errors": ["schedule is required for kind=cron"],
+            }),
         );
 
-        let rows = trigger::Entity::find().all(&db).await.unwrap();
-        assert!(rows.is_empty());
+        let Json(config) = server
+            .get_strategy_config(Parameters(super::super::dto::GetStrategyConfigParams {
+                strategy_id,
+            }))
+            .await
+            .expect("strategy config is available");
+        assert_eq!(
+            serde_json::to_value(config.triggers).unwrap(),
+            serde_json::json!([]),
+        );
     }
 
     #[backend_test_macros::database_test]
@@ -238,7 +282,10 @@ mod tests {
             (true, Vec::<String>::new()),
         );
 
-        let stored = trigger_crud::get_trigger(&db, trigger_id)
+        let stored = server
+            .use_cases
+            .triggers
+            .get(trigger_id)
             .await
             .expect("trigger exists");
         assert_eq!(
@@ -309,7 +356,7 @@ mod tests {
             (true, Vec::<String>::new()),
         );
 
-        assert!(trigger_crud::get_trigger(&db, trigger_id).await.is_err());
+        assert!(server.use_cases.triggers.get(trigger_id).await.is_err());
     }
 
     #[backend_test_macros::database_test]

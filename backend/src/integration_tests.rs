@@ -3,7 +3,7 @@
 //!
 //! 各コンポーネント単体の挙動は `services::strategy_tasks` / `mcp::watcher` /
 //! `handlers::agent_tasks` 等のテストで既にカバーしているため、ここでは経路横断の契約
-//! (5 経路が同一の `submit_task` に収束すること、投入から完了応答までが一気通貫で反映
+//! (5 経路が同一の `StrategyTaskUseCases` に収束すること、投入から完了応答までが一気通貫で反映
 //! されること) のみを扱う。
 
 use std::sync::Arc;
@@ -22,6 +22,7 @@ use crate::mcp::watcher;
 use crate::services::agent_config;
 use crate::services::strategy_tasks::DEFAULT_PURPOSE;
 use crate::services::trigger_worker;
+use crate::services::use_cases::build_use_cases;
 use crate::testing::{
     create_test_server_with_db_and_agent_client, insert_test_cron_trigger,
     insert_test_hook_trigger, insert_test_strategy,
@@ -30,7 +31,9 @@ use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::strategy_task;
 
 #[backend_test_macros::database_test]
-async fn all_five_submission_routes_converge_on_submit_task(db: gateway_postgres::DatabaseHandle) {
+async fn all_five_submission_routes_converge_on_strategy_task_use_case(
+    db: gateway_postgres::DatabaseHandle,
+) {
     let fake = Arc::new(FakeAgentTaskClient::new());
     let agent_client: SharedAgentTaskClient = fake.clone();
     let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client.clone()).await;
@@ -65,8 +68,11 @@ async fn all_five_submission_routes_converge_on_submit_task(db: gateway_postgres
         "from cron",
     )
     .await;
-    let attempts =
-        trigger_worker::run_once(&db, &agent_client, trigger_worker::DEFAULT_INTERVAL).await;
+    let use_cases = build_use_cases(db.clone());
+    let attempts = use_cases
+        .triggers
+        .run_cron_tick(agent_client.as_ref(), trigger_worker::DEFAULT_INTERVAL)
+        .await;
     assert_eq!(attempts, 1);
 
     insert_test_hook_trigger(&db, strategy_id, "wh", "from hook", None, true).await;
@@ -98,7 +104,7 @@ async fn all_five_submission_routes_converge_on_submit_task(db: gateway_postgres
         .await;
     res.assert_status_ok();
 
-    // 5 経路すべてが submit_task を通って strategy_task 行を作ることを、source 別に検証する。
+    // 5 経路すべてが StrategyTaskUseCases を通って strategy_task 行を作ることを source 別に検証する。
     let mut rows: Vec<(String, String, StrategyTaskPhase)> = strategy_task::Entity::find()
         .filter(strategy_task::Column::StrategyId.eq(strategy_id))
         .all(&db)
@@ -142,7 +148,7 @@ async fn all_five_submission_routes_converge_on_submit_task(db: gateway_postgres
         ],
     );
 
-    // 同一の agent_client (= 同一の submit_task 呼び出し経路) に 5 件とも届いていることを検証する。
+    // 同一の agent_client (= 同一の StrategyTaskUseCases 呼び出し経路) に 5 件とも届いていることを検証する。
     let mut submitted_prompts: Vec<String> = fake
         .submitted
         .lock()

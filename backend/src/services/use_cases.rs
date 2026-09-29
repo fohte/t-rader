@@ -10,11 +10,13 @@ use core_application::strategy::{
 use core_application::strategy_existence::SharedStrategyExistence;
 use core_application::strategy_task::{SharedStrategyTaskRepository, StrategyTaskUseCases};
 use core_application::trade::{SharedTradeRepository, TradeUseCases};
+use core_application::trigger::{SharedTriggerRepository, TriggerUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresCustomIndicatorRepository,
     PostgresStrategyExistence, PostgresStrategyRepository, PostgresStrategySummaryQuery,
-    PostgresStrategyTaskRepository, PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresStrategyTaskRepository, PostgresTradeRepository, PostgresTriggerRepository,
+    PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
@@ -23,6 +25,7 @@ pub struct UseCases {
     pub trades: TradeUseCases,
     pub strategy_tasks: StrategyTaskUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
+    pub triggers: TriggerUseCases,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
@@ -37,6 +40,17 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         Arc::new(PostgresStrategyRepository::new(db.clone()));
     let strategy_summary_query: SharedStrategySummaryQuery =
         Arc::new(PostgresStrategySummaryQuery::new(db.clone()));
+    let strategy_tasks = build_strategy_task_use_cases(db.clone());
+    let trigger_repository: SharedTriggerRepository =
+        Arc::new(PostgresTriggerRepository::new(db.clone()));
+    let triggers = TriggerUseCases::new(
+        unit_of_work.clone(),
+        trigger_repository,
+        strategy_existence.clone(),
+        strategy_repository.clone(),
+        strategy_tasks.clone(),
+    );
+
     let strategies = StrategyUseCases::new(
         unit_of_work.clone(),
         strategy_repository,
@@ -57,13 +71,12 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         change_history,
     );
 
-    let strategy_tasks = build_strategy_task_use_cases(db);
-
     UseCases {
         strategies,
         trades,
         strategy_tasks,
         custom_indicators,
+        triggers,
     }
 }
 
