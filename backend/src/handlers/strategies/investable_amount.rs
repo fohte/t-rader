@@ -1,20 +1,17 @@
 use axum::Json;
 use axum::extract::State;
 use chrono::Utc;
-use rust_decimal::Decimal;
+use core_application::change_history::Actor;
+use core_application::strategy::InvestableAmount;
 use uuid::Uuid;
 
+use super::{map_strategy_error, strategy_scope_or_404};
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{InvestableAmountResponse, PutInvestableAmountRequest};
-use crate::services::investable_amount;
 
-use super::find_strategy_or_404;
-
-fn to_response(
-    current: Option<gateway_postgres::entities::strategy_investable_amount::Model>,
-) -> InvestableAmountResponse {
+fn to_response(current: Option<InvestableAmount>) -> InvestableAmountResponse {
     InvestableAmountResponse {
         amount_jpy: current.as_ref().map(|m| m.amount_jpy),
         effective_at: current.map(|m| m.effective_at),
@@ -39,8 +36,13 @@ pub async fn get_investable_amount(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<InvestableAmountResponse>, AppError> {
-    find_strategy_or_404(&state.db, id).await?;
-    let current = investable_amount::find_current(&state.db, id).await?;
+    let scope = strategy_scope_or_404(&state, id).await?;
+    let current = state
+        .use_cases
+        .strategies
+        .current_investable_amount(scope)
+        .await
+        .map_err(map_strategy_error)?;
     Ok(Json(to_response(current)))
 }
 
@@ -65,17 +67,16 @@ pub async fn put_investable_amount(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<PutInvestableAmountRequest>,
 ) -> Result<Json<InvestableAmountResponse>, AppError> {
-    find_strategy_or_404(&state.db, id).await?;
-    if payload.amount_jpy < Decimal::ZERO {
-        return Err(AppError::Validation(
-            "amount_jpy must be non-negative".into(),
-        ));
-    }
+    let scope = strategy_scope_or_404(&state, id).await?;
     let effective_at = payload
         .effective_at
         .unwrap_or_else(|| Utc::now().fixed_offset());
-    let created =
-        investable_amount::record(&state.db, id, payload.amount_jpy, effective_at).await?;
+    let created = state
+        .use_cases
+        .strategies
+        .record_investable_amount(Actor::Human, scope, payload.amount_jpy, effective_at)
+        .await
+        .map_err(map_strategy_error)?;
     Ok(Json(to_response(Some(created))))
 }
 
@@ -178,6 +179,56 @@ mod tests {
                 "amount_jpy": 2000000,
                 "effective_at": "2020-06-01T00:00:00Z",
             }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn get_ignores_future_history_and_returns_latest_effective_amount(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = create_test_server(db).await;
+        let id = create_strategy(&server, "s").await;
+        let mut write_statuses = Vec::new();
+
+        for (amount_jpy, effective_at) in [
+            (100000, "2020-01-01T00:00:00Z"),
+            (200000, "2020-06-01T00:00:00Z"),
+            (900000, "2099-01-01T00:00:00Z"),
+        ] {
+            write_statuses.push(
+                server
+                    .put(&format!("/api/strategies/{id}/investable-amount"))
+                    .json(&serde_json::json!({
+                        "amount_jpy": amount_jpy,
+                        "effective_at": effective_at,
+                    }))
+                    .await
+                    .status_code(),
+            );
+        }
+
+        let current = server
+            .get(&format!("/api/strategies/{id}/investable-amount"))
+            .await;
+
+        assert_eq!(
+            (
+                write_statuses,
+                current.status_code(),
+                current.json::<serde_json::Value>(),
+            ),
+            (
+                vec![
+                    axum::http::StatusCode::OK,
+                    axum::http::StatusCode::OK,
+                    axum::http::StatusCode::OK,
+                ],
+                axum::http::StatusCode::OK,
+                serde_json::json!({
+                    "amount_jpy": 200000,
+                    "effective_at": "2020-06-01T00:00:00Z",
+                }),
+            ),
         );
     }
 

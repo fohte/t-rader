@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::strategy;
+use core_application::strategy::Strategy;
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Strategy)]
@@ -19,8 +19,8 @@ pub struct StrategyResponse {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-impl From<strategy::Model> for StrategyResponse {
-    fn from(model: strategy::Model) -> Self {
+impl From<Strategy> for StrategyResponse {
+    fn from(model: Strategy) -> Self {
         Self {
             id: model.id,
             name: model.name,

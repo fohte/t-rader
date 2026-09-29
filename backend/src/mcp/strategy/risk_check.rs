@@ -15,12 +15,14 @@ use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
 use crate::services::account_risk_policy;
-use crate::services::investable_amount;
 use crate::services::market_price::fetch_latest_prices;
 use gateway_postgres::entities::stock;
 
 use super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
-use super::{StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, trade_error};
+use super::{
+    StrategyServer, app_error_to_mcp, db_error, decimal_to_f64, strategy_use_case_error_to_mcp,
+    trade_error,
+};
 
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
@@ -31,7 +33,8 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: CheckBuyableQtyParams,
     ) -> Result<CheckBuyableQtyResult, McpError> {
-        let strategy_id = scope.into().id();
+        let scope = scope.into();
+        let strategy_id = scope.id();
         let symbol = params.symbol;
 
         let account_risk_policy_row = account_risk_policy::find_current(&self.db)
@@ -109,9 +112,12 @@ impl StrategyServer {
             None => Decimal::ZERO,
         };
 
-        let investable_amount_row = investable_amount::find_current(&self.db, strategy_id)
+        let investable_amount_row = self
+            .use_cases
+            .strategies
+            .current_investable_amount(scope)
             .await
-            .map_err(app_error_to_mcp)?;
+            .map_err(strategy_use_case_error_to_mcp)?;
 
         let sector_ratio_result = compute_sector_ratio_constraint(
             max_sector_ratio,
@@ -476,7 +482,9 @@ mod integration_tests {
     use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
     use super::super::tests_common::{build_server, insert_strategy};
     use crate::models::{Bar, Timeframe};
-    use crate::services::{account_risk_policy, investable_amount};
+    use crate::services::account_risk_policy;
+    use core_application::change_history::Actor;
+    use core_application::strategy_scope::StrategyScope;
     use gateway_postgres::entities::{instruments, sector, stock, trade};
     use gateway_postgres::repositories::bars::upsert_bars;
 
@@ -576,18 +584,20 @@ mod integration_tests {
     }
 
     async fn record_investable_amount(
-        db: &impl sea_orm::ConnectionTrait,
+        db: &gateway_postgres::DatabaseHandle,
         strategy_id: Uuid,
         amount: i64,
     ) {
-        investable_amount::record(
-            db,
-            strategy_id,
-            Decimal::from(amount),
-            Utc::now().fixed_offset() - chrono::Duration::days(1),
-        )
-        .await
-        .expect("record investable amount");
+        crate::services::use_cases::build_use_cases(db.clone())
+            .strategies
+            .record_investable_amount(
+                Actor::Human,
+                StrategyScope::from(strategy_id),
+                Decimal::from(amount),
+                Utc::now().fixed_offset() - chrono::Duration::days(1),
+            )
+            .await
+            .expect("record investable amount");
     }
 
     #[backend_test_macros::database_test]
