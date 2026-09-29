@@ -1,18 +1,17 @@
-//! ノートバージョンに埋め込むグラフィカル表現 (`note_version.graphs_json`) のスキーマと検証。
+//! ノートバージョンに埋め込むグラフィカル表現の API schema。
 //!
 //! `#[serde(deny_unknown_fields)]` により、フィールド名の typo は
 //! `missing field` ではなく `unknown field ..., expected one of ...` として
 //! 返るため LLM が自力で直せる。
 //!
-//! `GraphDef` は schemars (`JsonSchema`) と utoipa (`ToSchema`) の両方を derive する。
-//! 前者は rmcp が生成する MCP tool の input schema、後者は openapi-typescript
-//! 経由の frontend 型の源になる。
+//! 業務ルールの検証は core-domain に置き、ここでは HTTP / MCP の schema を定義する。
 
-use std::collections::BTreeSet;
-
+use core_domain::note_graph as domain;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+pub use domain::GraphValidationError;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -64,98 +63,59 @@ pub struct GraphEdge {
     pub cite: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
-pub enum GraphValidationError {
-    #[error("graph {graph_id:?}: {location} = {value:?} is not a known node id (known: {known})")]
-    UnknownNodeId {
-        graph_id: String,
-        location: String,
-        value: String,
-        known: String,
-    },
-    #[error("graph {graph_id:?}: nodes[{index}].id = {value:?} is duplicated")]
-    DuplicateNodeId {
-        graph_id: String,
-        index: usize,
-        value: String,
-    },
-    #[error("graphs[{index}].id = {value:?} is duplicated")]
-    DuplicateGraphId { index: usize, value: String },
-    #[error(
-        "graph {graph_id:?}: {location}.value is set but cite is missing (add cite noting the source)"
-    )]
-    MissingCite { graph_id: String, location: String },
-}
-
-/// `graphs` 全体を検証する。`graphs[].id` の重複禁止、参照整合性 (`nodes[].id` の
-/// 重複禁止、`nodes[].parent` / `edges[].source` / `edges[].target` が `nodes[].id`
-/// に存在するか) と、`value` があるのに `cite` が無い場合を拒否する。
 pub fn validate_graphs(graphs: &[GraphDef]) -> Result<(), GraphValidationError> {
-    let mut known_graph_ids: BTreeSet<&str> = BTreeSet::new();
-    for (i, g) in graphs.iter().enumerate() {
-        if !known_graph_ids.insert(g.id.as_str()) {
-            return Err(GraphValidationError::DuplicateGraphId {
-                index: i,
-                value: g.id.clone(),
-            });
-        }
-    }
-    graphs.iter().try_for_each(validate_graph)
+    let graphs = graphs.iter().cloned().map(Into::into).collect::<Vec<_>>();
+    domain::validate_graphs(&graphs)
 }
 
-fn validate_graph(g: &GraphDef) -> Result<(), GraphValidationError> {
-    let mut known_ids: BTreeSet<&str> = BTreeSet::new();
-    for (i, n) in g.nodes.iter().enumerate() {
-        if !known_ids.insert(n.id.as_str()) {
-            return Err(GraphValidationError::DuplicateNodeId {
-                graph_id: g.id.clone(),
-                index: i,
-                value: n.id.clone(),
-            });
-        }
-        if n.value.is_some() && n.cite.is_none() {
-            return Err(GraphValidationError::MissingCite {
-                graph_id: g.id.clone(),
-                location: format!("nodes[{i}]"),
-            });
+impl From<GraphDef> for domain::GraphDef {
+    fn from(graph: GraphDef) -> Self {
+        Self {
+            id: graph.id,
+            layout: graph.layout.into(),
+            title: graph.title,
+            nodes: graph.nodes.into_iter().map(Into::into).collect(),
+            edges: graph.edges.into_iter().map(Into::into).collect(),
         }
     }
-
-    for (i, n) in g.nodes.iter().enumerate() {
-        if let Some(parent) = n.parent.as_deref() {
-            check_known_node_id(&g.id, format!("nodes[{i}].parent"), parent, &known_ids)?;
-        }
-    }
-
-    for (i, e) in g.edges.iter().enumerate() {
-        check_known_node_id(&g.id, format!("edges[{i}].source"), &e.source, &known_ids)?;
-        check_known_node_id(&g.id, format!("edges[{i}].target"), &e.target, &known_ids)?;
-        if e.value.is_some() && e.cite.is_none() {
-            return Err(GraphValidationError::MissingCite {
-                graph_id: g.id.clone(),
-                location: format!("edges[{i}]"),
-            });
-        }
-    }
-
-    Ok(())
 }
 
-fn check_known_node_id(
-    graph_id: &str,
-    location: String,
-    value: &str,
-    known_ids: &BTreeSet<&str>,
-) -> Result<(), GraphValidationError> {
-    if known_ids.contains(value) {
-        return Ok(());
+impl From<Layout> for domain::Layout {
+    fn from(layout: Layout) -> Self {
+        match layout {
+            Layout::Flow => Self::Flow,
+            Layout::Tree => Self::Tree,
+            Layout::Chain => Self::Chain,
+            Layout::Scatter => Self::Scatter,
+        }
     }
-    Err(GraphValidationError::UnknownNodeId {
-        graph_id: graph_id.to_string(),
-        location,
-        value: value.to_string(),
-        known: known_ids.iter().copied().collect::<Vec<_>>().join(", "),
-    })
+}
+
+impl From<GraphNode> for domain::GraphNode {
+    fn from(node: GraphNode) -> Self {
+        Self {
+            id: node.id,
+            label: node.label,
+            r#ref: node.r#ref,
+            value: node.value,
+            cite: node.cite,
+            parent: node.parent,
+            x: node.x,
+            y: node.y,
+        }
+    }
+}
+
+impl From<GraphEdge> for domain::GraphEdge {
+    fn from(edge: GraphEdge) -> Self {
+        Self {
+            source: edge.source,
+            target: edge.target,
+            label: edge.label,
+            value: edge.value,
+            cite: edge.cite,
+        }
+    }
 }
 
 #[cfg(test)]

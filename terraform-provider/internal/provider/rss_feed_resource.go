@@ -17,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/oapi-codegen/nullable"
 
 	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
 )
@@ -217,13 +216,6 @@ func modelFromRssFeed(feed traderapi.RssFeed) rssFeedModel {
 		CreatedAt:   types.StringValue(feed.CreatedAt.Format(time.RFC3339Nano)),
 		UpdatedAt:   types.StringValue(feed.UpdatedAt.Format(time.RFC3339Nano)),
 	}
-}
-
-func boolAttributeNullable(value types.Bool) nullable.Nullable[bool] {
-	if value.IsNull() || value.IsUnknown() {
-		return nullable.Nullable[bool]{}
-	}
-	return nullable.NewNullableWithValue(value.ValueBool())
 }
 
 type rssFeedSourceValidator struct{}

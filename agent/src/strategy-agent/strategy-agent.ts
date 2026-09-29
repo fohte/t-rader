@@ -49,6 +49,7 @@ const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
 const STRATEGY_ID_HEADER = 'x-strategy-id'
 const EXECUTION_ID_HEADER = 'x-execution-id'
+const TOOL_MODELS_HEADER = 'x-tool-models'
 
 const DEFAULT_PURPOSE = 'default'
 
@@ -72,6 +73,7 @@ export interface StrategyAgentDeps {
   readonly createMcpClient: (
     strategyId: string,
     executionId: string,
+    toolModels: Readonly<Record<string, string>>,
   ) => McpToolsClient
   readonly createChatModel: (
     model: string,
@@ -84,7 +86,6 @@ export interface StrategyAgentDeps {
 
 export interface StrategyAgentConfig {
   readonly backendApiBaseUrl: string
-  readonly strategyMcpUrl: string
   readonly llmApiKey: string
   readonly llmBaseUrl?: string | undefined
   readonly genAiProviderName: string
@@ -186,14 +187,15 @@ export const createStrategyAgentDeps = (
   config: StrategyAgentConfig,
 ): StrategyAgentDeps => ({
   fetchAgentConfig: createAgentConfigFetcher(config.backendApiBaseUrl),
-  createMcpClient: (strategyId, executionId) =>
+  createMcpClient: (strategyId, executionId, toolModels) =>
     new MultiServerMCPClient({
       mcpServers: {
         strategy: {
-          url: config.strategyMcpUrl,
+          url: `${config.backendApiBaseUrl.replace(/\/+$/, '')}/mcp/strategy`,
           headers: {
             [STRATEGY_ID_HEADER]: strategyId,
             [EXECUTION_ID_HEADER]: executionId,
+            [TOOL_MODELS_HEADER]: JSON.stringify(toolModels),
           },
         },
       },
@@ -318,6 +320,7 @@ export const runStrategyAgent = async (
                 deps.createMcpClient(
                   strategyId,
                   `${taskId}:${executionStepId}`,
+                  parsedGraph.value.toolModels ?? {},
                 ),
               originalPromptText: promptText,
               ...(onStepsChanged !== undefined ? { onStepsChanged } : {}),

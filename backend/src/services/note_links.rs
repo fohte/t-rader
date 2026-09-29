@@ -1,15 +1,23 @@
+#[cfg(test)]
 use std::collections::{BTreeMap, HashSet};
 
+#[cfg(test)]
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, QueryTrait};
 use uuid::Uuid;
 
+#[cfg(test)]
 use crate::error::AppError;
+#[cfg(test)]
 use crate::services::note_refs::extract_note_link_tokens;
+#[cfg(test)]
 use crate::services::note_versions::find_current_versions;
-use gateway_postgres::entities::{note, note_link, note_version};
+#[cfg(test)]
+use gateway_postgres::entities::note;
+use gateway_postgres::entities::{note_link, note_version};
 
 /// 新しいノートバージョンの作成時点でリンク先の現行バージョンを解決する。
+#[cfg(test)]
 pub async fn sync_note_links<C: sea_orm::ConnectionTrait>(
     db: &C,
     source_note: &note::Model,
@@ -90,6 +98,7 @@ pub async fn sync_note_links<C: sea_orm::ConnectionTrait>(
     Ok(())
 }
 
+#[cfg(test)]
 pub async fn copy_note_links<C: sea_orm::ConnectionTrait>(
     db: &C,
     source_version_id: Uuid,

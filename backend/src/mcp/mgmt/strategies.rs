@@ -1,103 +1,34 @@
 //! 管理 MCP の戦略一覧・タスク投入・タスク status tool。
 
-use std::collections::HashMap;
-
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
 
 use crate::agent_client::AgentTaskError;
-use crate::services::note_versions::{INITIAL_NOTE_STATUS, current_note_ids_with_status};
-use crate::services::strategy_tasks::{
-    self, ResumeTaskError, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
+use core_application::strategy_task::{
+    GetTaskError, ResumeTaskError, StrategyTaskRepositoryError, SubmitTaskError, TaskSource,
 };
-use gateway_postgres::entities::{annotation, note, strategy};
+use core_application::unit_of_work::UnitOfWorkError;
 
 use super::dto::{
     GetStrategyTaskStatusParams, GetStrategyTaskStatusResult, ListStrategiesResult,
     ResumeStrategyTaskParams, ResumeStrategyTaskResult, StrategySummary, SubmitStrategyTaskParams,
     SubmitStrategyTaskResult,
 };
-use super::{MgmtServer, db_error, internal_error, invalid_params};
-
-/// annotation の `status='unread'` 件数を strategy_id ごとに集約して返す。
-async fn unread_counts_by_strategy<E, C>(
-    db: &impl sea_orm::ConnectionTrait,
-    strategy_id_col: C,
-    status_col: C,
-    id_col: C,
-) -> Result<HashMap<Uuid, u64>, McpError>
-where
-    E: EntityTrait,
-    C: ColumnTrait,
-{
-    let rows: Vec<(Uuid, i64)> = E::find()
-        .select_only()
-        .column(strategy_id_col)
-        .column_as(id_col.count(), "unread_count")
-        .filter(status_col.eq("unread"))
-        .filter(strategy_id_col.is_not_null())
-        .group_by(strategy_id_col)
-        .into_tuple()
-        .all(db)
-        .await
-        .map_err(db_error)?;
-    Ok(rows
-        .into_iter()
-        .map(|(sid, c)| (sid, c.max(0) as u64))
-        .collect())
-}
-
-async fn unread_note_counts_by_strategy(
-    db: &impl sea_orm::ConnectionTrait,
-) -> Result<HashMap<Uuid, u64>, McpError> {
-    let rows: Vec<(Uuid, i64)> = note::Entity::find()
-        .select_only()
-        .column(note::Column::StrategyId)
-        .column_as(note::Column::Id.count(), "unread_count")
-        .filter(note::Column::Id.in_subquery(current_note_ids_with_status(INITIAL_NOTE_STATUS)))
-        .filter(note::Column::StrategyId.is_not_null())
-        .group_by(note::Column::StrategyId)
-        .into_tuple()
-        .all(db)
-        .await
-        .map_err(db_error)?;
-    Ok(rows
-        .into_iter()
-        .map(|(strategy_id, count)| (strategy_id, count.max(0) as u64))
-        .collect())
-}
+use super::{MgmtServer, internal_error, invalid_params, map_strategy_use_case_error};
 
 impl MgmtServer {
     pub(super) async fn list_strategies_inner(&self) -> Result<ListStrategiesResult, McpError> {
-        let rows = strategy::Entity::find()
-            .order_by_asc(strategy::Column::SortOrder)
-            .order_by_asc(strategy::Column::CreatedAt)
-            .all(&self.db)
+        let strategies = self
+            .use_cases
+            .strategies
+            .list_summaries()
             .await
-            .map_err(db_error)?;
-
-        let note_counts = unread_note_counts_by_strategy(&self.db).await?;
-        let annotation_counts =
-            unread_counts_by_strategy::<annotation::Entity, annotation::Column>(
-                &self.db,
-                annotation::Column::StrategyId,
-                annotation::Column::Status,
-                annotation::Column::Id,
-            )
-            .await?;
-
-        let strategies = rows
+            .map_err(map_strategy_use_case_error)?
             .into_iter()
-            .map(|row| {
-                let note_unread = note_counts.get(&row.id).copied().unwrap_or(0);
-                let annotation_unread = annotation_counts.get(&row.id).copied().unwrap_or(0);
-                StrategySummary {
-                    strategy_id: row.id,
-                    name: row.name,
-                    updated_at: row.updated_at,
-                    unread_card_count: note_unread + annotation_unread,
-                }
+            .map(|summary| StrategySummary {
+                strategy_id: summary.id,
+                name: summary.name,
+                updated_at: summary.updated_at,
+                unread_card_count: summary.unread_card_count,
             })
             .collect();
         Ok(ListStrategiesResult { strategies })
@@ -107,16 +38,18 @@ impl MgmtServer {
         &self,
         params: SubmitStrategyTaskParams,
     ) -> Result<SubmitStrategyTaskResult, McpError> {
-        let submitted = strategy_tasks::submit_task(
-            &self.db,
-            &self.agent_client,
-            params.strategy_id,
-            &params.prompt,
-            TaskSource::MgmtMcp,
-            params.purpose,
-        )
-        .await
-        .map_err(map_submit_error)?;
+        let submitted = self
+            .use_cases
+            .strategy_tasks
+            .submit_task(
+                self.agent_client.as_ref(),
+                params.strategy_id,
+                &params.prompt,
+                TaskSource::MgmtMcp,
+                params.purpose,
+            )
+            .await
+            .map_err(map_submit_error)?;
         Ok(SubmitStrategyTaskResult {
             task_id: submitted.task_id,
             a2a_task_id: submitted.a2a_task_id,
@@ -127,7 +60,10 @@ impl MgmtServer {
         &self,
         params: ResumeStrategyTaskParams,
     ) -> Result<ResumeStrategyTaskResult, McpError> {
-        let submitted = strategy_tasks::resume_task(&self.db, &self.agent_client, params.task_id)
+        let submitted = self
+            .use_cases
+            .strategy_tasks
+            .resume(self.agent_client.as_ref(), params.task_id)
             .await
             .map_err(map_resume_error)?;
         Ok(ResumeStrategyTaskResult {
@@ -140,16 +76,18 @@ impl MgmtServer {
         &self,
         params: GetStrategyTaskStatusParams,
     ) -> Result<GetStrategyTaskStatusResult, McpError> {
-        let view: TaskStatusView =
-            strategy_tasks::get_task_by_a2a_task_id(&self.db, &params.a2a_task_id)
-                .await
-                .map_err(db_error)?
-                .ok_or_else(|| McpError::resource_not_found("strategy task not found", None))?;
+        let view = self
+            .use_cases
+            .strategy_tasks
+            .get_by_a2a_task_id(&params.a2a_task_id)
+            .await
+            .map_err(map_get_task_error)?
+            .ok_or_else(|| McpError::resource_not_found("strategy task not found", None))?;
         Ok(GetStrategyTaskStatusResult {
             task_id: view.task_id,
             strategy_id: view.strategy_id,
             a2a_task_id: view.a2a_task_id,
-            phase: phase_str(&view.phase).to_string(),
+            phase: view.phase.as_str().to_string(),
             error_summary: view.error_summary,
             result_text: view.result_text,
             updated_at: view.updated_at,
@@ -164,7 +102,8 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
         SubmitTaskError::PurposeNotFound(purpose) => {
             invalid_params(format!("agent_config for purpose '{purpose}' not found"))
         }
-        SubmitTaskError::Database(db_err) => db_error(db_err),
+        SubmitTaskError::Repository(error) => map_repository_error(error),
+        SubmitTaskError::UnitOfWork(error) => map_unit_of_work_error(error),
         SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
 }
@@ -177,8 +116,36 @@ fn map_resume_error(err: ResumeTaskError) -> McpError {
         ResumeTaskError::NotResumable(id, phase) => invalid_params(format!(
             "strategy task {id} is not resumable (current phase: {phase})"
         )),
-        ResumeTaskError::Database(db_err) => db_error(db_err),
+        ResumeTaskError::Repository(error) => map_repository_error(error),
+        ResumeTaskError::UnitOfWork(error) => map_unit_of_work_error(error),
         ResumeTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
+    }
+}
+
+fn map_get_task_error(error: GetTaskError) -> McpError {
+    match error {
+        GetTaskError::NotFound(id) => {
+            McpError::resource_not_found(format!("strategy task {id} not found"), None)
+        }
+        GetTaskError::StrategyMismatch { task_id, .. } => {
+            McpError::resource_not_found(format!("strategy task {task_id} not found"), None)
+        }
+        GetTaskError::Repository(error) => map_repository_error(error),
+    }
+}
+
+fn map_repository_error(error: StrategyTaskRepositoryError) -> McpError {
+    tracing::error!(error = %error, "strategy task repository error");
+    internal_error(format!("strategy task persistence error: {error}"))
+}
+
+fn map_unit_of_work_error(error: UnitOfWorkError) -> McpError {
+    match error {
+        UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error) => {
+            tracing::error!(error = %error, "strategy task transaction error");
+            internal_error(format!("database error: {error}"))
+        }
+        UnitOfWorkError::InvalidTransaction => internal_error("invalid strategy task transaction"),
     }
 }
 
@@ -201,15 +168,18 @@ fn map_agent_task_error(err: &AgentTaskError) -> McpError {
 mod tests {
     use std::sync::Arc;
 
+    use uuid::Uuid;
+
     use super::super::tests_common::{build_server, insert_strategy};
     use crate::agent_client::FakeAgentTaskClient;
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use gateway_postgres::entities::strategy_task;
+    use gateway_postgres::entities::{annotation, strategy_task};
     use rmcp::handler::server::wrapper::{Json, Parameters};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
+    use sea_orm::EntityTrait;
 
     use super::*;
 

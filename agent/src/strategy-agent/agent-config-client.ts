@@ -51,7 +51,7 @@ const agentConfigUrl = (
   backendApiBaseUrl: string,
   key: AgentConfigKey,
 ): string =>
-  `${backendApiBaseUrl}/api/agent-configs/${encodeURIComponent(key.purpose)}/agent-config`
+  `${backendApiBaseUrl.replace(/\/+$/, '')}/api/agent-configs/${encodeURIComponent(key.purpose)}/agent-config`
 
 const describeKey = (key: AgentConfigKey): string => `purpose ${key.purpose}`
 

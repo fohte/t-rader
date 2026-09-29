@@ -653,9 +653,6 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgres://t_rader:t_rader@localhost:5432/t_rader_test
-          # web 検索とメディア解析用の設定
-          WEB_SEARCH_MODEL: test-web-search-model
-          GEMINI_MEDIA_MODEL: example-media-model
         run: cargo llvm-cov nextest --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov

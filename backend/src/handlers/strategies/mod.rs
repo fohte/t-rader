@@ -1,16 +1,22 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::{EntityTrait, QueryOrder};
+use core_application::change_history::Actor;
+use core_application::strategy::{
+    CreateStrategyCommand, StrategyRepositoryError, StrategySummaryQueryError,
+    StrategyUpdateCommand, StrategyUseCaseError,
+};
+use core_application::strategy_scope::{
+    StrategyScope, StrategyScopeError, StrategyScopeSourceError,
+};
+use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
 use crate::models::{CreateStrategyRequest, StrategyResponse, UpdateStrategyRequest};
-use crate::services::change_history::Actor;
-use crate::services::strategy_config;
-use gateway_postgres::entities::strategy;
+use gateway_postgres::PostgresStrategyScopeSource;
 
 mod investable_amount;
 mod tasks;
@@ -19,13 +25,55 @@ pub use investable_amount::{
     __path_get_investable_amount, __path_put_investable_amount, get_investable_amount,
     put_investable_amount,
 };
-pub(crate) use tasks::map_submit_error;
 pub use tasks::{
     __path_get_strategy_task, __path_list_strategy_tasks, __path_submit_strategy_chat,
     get_strategy_task, list_strategy_tasks, submit_strategy_chat,
 };
+pub(crate) use tasks::{map_list_task_error, map_submit_error};
 
-pub(super) use strategy_config::find_or_404 as find_strategy_or_404;
+pub(super) async fn strategy_scope_or_404(
+    state: &AppState,
+    id: Uuid,
+) -> Result<StrategyScope, AppError> {
+    verify_strategy_scope(&state.db, id).await
+}
+
+async fn verify_strategy_scope(
+    db: &gateway_postgres::DatabaseHandle,
+    id: Uuid,
+) -> Result<StrategyScope, AppError> {
+    let source = PostgresStrategyScopeSource::new(db);
+    StrategyScope::verify(id, &source)
+        .await
+        .map_err(|error| match error {
+            StrategyScopeError::NotFound(id) => {
+                AppError::NotFound(format!("strategy {id} not found"))
+            }
+            StrategyScopeError::Source(StrategyScopeSourceError::QueryFailed(message)) => {
+                AppError::Database(sea_orm::DbErr::Custom(message))
+            }
+        })
+}
+
+pub(crate) fn map_strategy_error(error: StrategyUseCaseError) -> AppError {
+    match error {
+        StrategyUseCaseError::Validation(message) => AppError::Validation(message),
+        StrategyUseCaseError::NotFound(id) => {
+            AppError::NotFound(format!("strategy {id} not found"))
+        }
+        StrategyUseCaseError::ConfirmationMismatch(id) => AppError::NotFound(format!(
+            "strategy {id} not found or name changed since confirmation"
+        )),
+        StrategyUseCaseError::Repository(StrategyRepositoryError::Database(error))
+        | StrategyUseCaseError::SummaryQuery(StrategySummaryQueryError::Database(error))
+        | StrategyUseCaseError::ChangeHistory(
+            core_application::change_history::ChangeHistoryError::Database(error),
+        )
+        | StrategyUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | StrategyUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+    }
+}
 
 /// 戦略一覧
 #[utoipa::path(
@@ -40,11 +88,12 @@ pub(super) use strategy_config::find_or_404 as find_strategy_or_404;
 pub async fn list_strategies(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<StrategyResponse>>, AppError> {
-    let items = strategy::Entity::find()
-        .order_by_asc(strategy::Column::SortOrder)
-        .order_by_asc(strategy::Column::CreatedAt)
-        .all(&state.db)
-        .await?;
+    let items = state
+        .use_cases
+        .strategies
+        .list()
+        .await
+        .map_err(map_strategy_error)?;
     Ok(Json(
         items.into_iter().map(StrategyResponse::from).collect(),
     ))
@@ -67,7 +116,13 @@ pub async fn get_strategy(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<StrategyResponse>, AppError> {
-    let model = find_strategy_or_404(&state.db, id).await?;
+    let scope = strategy_scope_or_404(&state, id).await?;
+    let model = state
+        .use_cases
+        .strategies
+        .get(scope)
+        .await
+        .map_err(map_strategy_error)?;
     Ok(Json(model.into()))
 }
 
@@ -89,16 +144,19 @@ pub async fn create_strategy(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateStrategyRequest>,
 ) -> Result<(StatusCode, Json<StrategyResponse>), AppError> {
-    let created = strategy_config::create(
-        &state.db,
-        Actor::Human,
-        strategy_config::CreateStrategy {
-            name: payload.name,
-            description: payload.description,
-            sort_order: payload.sort_order.unwrap_or(0),
-        },
-    )
-    .await?;
+    let created = state
+        .use_cases
+        .strategies
+        .create(
+            Actor::Human,
+            CreateStrategyCommand {
+                name: payload.name,
+                description: payload.description,
+                sort_order: payload.sort_order.unwrap_or(0),
+            },
+        )
+        .await
+        .map_err(map_strategy_error)?;
 
     Ok((StatusCode::CREATED, Json(created.into())))
 }
@@ -124,17 +182,21 @@ pub async fn update_strategy(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateStrategyRequest>,
 ) -> Result<Json<StrategyResponse>, AppError> {
-    let updated = strategy_config::update(
-        &state.db,
-        Actor::Human,
-        id,
-        strategy_config::StrategyUpdate {
-            name: payload.name,
-            description: payload.description,
-            sort_order: payload.sort_order,
-        },
-    )
-    .await?;
+    let scope = strategy_scope_or_404(&state, id).await?;
+    let updated = state
+        .use_cases
+        .strategies
+        .update(
+            Actor::Human,
+            scope,
+            StrategyUpdateCommand {
+                name: payload.name,
+                description: payload.description,
+                sort_order: payload.sort_order,
+            },
+        )
+        .await
+        .map_err(map_strategy_error)?;
 
     Ok(Json(updated.into()))
 }
@@ -156,15 +218,42 @@ pub async fn delete_strategy(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    find_strategy_or_404(&state.db, id).await?;
-    strategy_config::delete(&state.db, Actor::Human, id).await?;
+    let scope = strategy_scope_or_404(&state, id).await?;
+    state
+        .use_cases
+        .strategies
+        .delete(Actor::Human, scope)
+        .await
+        .map_err(map_strategy_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::testing::{create_strategy, create_test_server};
-    use serde_json::json;
+    use serde_json::{Value, json};
+
+    fn normalize_strategy(mut value: Value) -> Value {
+        for key in ["created_at", "updated_at"] {
+            if let Some(field) = value.get_mut(key) {
+                *field = Value::String(format!("<{key}>"));
+            }
+        }
+        value
+    }
+
+    async fn create_strategy_with_description(
+        db: gateway_postgres::DatabaseHandle,
+    ) -> (axum_test::TestServer, String) {
+        let server = create_test_server(db).await;
+        let created = server
+            .post("/api/strategies")
+            .json(&json!({ "name": "strategy", "description": "initial" }))
+            .await;
+        created.assert_status(axum::http::StatusCode::CREATED);
+        let id = created.json::<Value>()["id"].as_str().unwrap().to_string();
+        (server, id)
+    }
 
     #[backend_test_macros::database_test]
     async fn create_and_list_strategy(db: gateway_postgres::DatabaseHandle) {
@@ -180,6 +269,71 @@ mod tests {
         let body: Vec<serde_json::Value> = list.json();
         assert_eq!(body.len(), 1);
         assert_eq!(body[0]["name"], "長期投資");
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_description_omitted_keeps_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, id) = create_strategy_with_description(db).await;
+        let updated = server
+            .patch(&format!("/api/strategies/{id}"))
+            .json(&json!({}))
+            .await;
+        updated.assert_status_ok();
+        assert_eq!(
+            normalize_strategy(updated.json()),
+            json!({
+                "id": id,
+                "name": "strategy",
+                "description": "initial",
+                "sort_order": 0,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_description_null_clears_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, id) = create_strategy_with_description(db).await;
+        let updated = server
+            .patch(&format!("/api/strategies/{id}"))
+            .json(&json!({ "description": null }))
+            .await;
+        updated.assert_status_ok();
+        assert_eq!(
+            normalize_strategy(updated.json()),
+            json!({
+                "id": id,
+                "name": "strategy",
+                "description": null,
+                "sort_order": 0,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_description_value_replaces_existing_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (server, id) = create_strategy_with_description(db).await;
+        let updated = server
+            .patch(&format!("/api/strategies/{id}"))
+            .json(&json!({ "description": "replacement" }))
+            .await;
+        updated.assert_status_ok();
+        assert_eq!(
+            normalize_strategy(updated.json()),
+            json!({
+                "id": id,
+                "name": "strategy",
+                "description": "replacement",
+                "sort_order": 0,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
     }
 
     #[backend_test_macros::database_test]

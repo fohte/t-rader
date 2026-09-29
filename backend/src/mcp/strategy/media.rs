@@ -1,6 +1,6 @@
 //! `query_media` tool の inner method 実装。
 //!
-//! 動画/音声 URL (YouTube の公開動画 URL を主対象) を Gemini に渡し、prompt の指示に
+//! 動画/音声 URL を `agent_graph.tool_models` で指定されたモデルに渡し、prompt の指示に
 //! 沿ったテキスト応答を返す。discover フェーズがテキストにしか無い材料にアクセス
 //! できるようにするための tool。
 
@@ -12,24 +12,13 @@ use crate::services::litellm_client::{ChatMessage, ContentPart, FilePart};
 use super::dto::{QueryMediaParams, QueryMediaResult};
 use super::{StrategyServer, internal_error, invalid_params, litellm_error_to_mcp};
 
-/// `GEMINI_MEDIA_MODEL` でモデル名を指定する。未設定または空文字の場合はエラーを返す。
-fn gemini_media_model() -> Result<String, McpError> {
-    gemini_media_model_with(|key| std::env::var(key).ok())
-}
-
-fn gemini_media_model_with<F>(get: F) -> Result<String, McpError>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    get("GEMINI_MEDIA_MODEL")
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| internal_error("GEMINI_MEDIA_MODEL is not set"))
-}
+pub(super) const TOOL_NAME: &str = "query_media";
 
 impl StrategyServer {
     pub(crate) async fn query_media_inner(
         &self,
         scope: impl Into<StrategyScope>,
+        model: String,
         params: QueryMediaParams,
     ) -> Result<QueryMediaResult, McpError> {
         let session_strategy_id = scope.into().id();
@@ -46,7 +35,6 @@ impl StrategyServer {
             .litellm_client
             .as_ref()
             .ok_or_else(|| internal_error("litellm client is not configured"))?;
-        let model = gemini_media_model()?;
 
         let messages = vec![ChatMessage {
             role: "user",
@@ -98,7 +86,6 @@ mod tests {
 
     use super::super::StrategyServer;
     use super::super::dto::{QueryMediaParams, QueryMediaResult};
-    use super::*;
 
     fn mock_db() -> sea_orm::DatabaseConnection {
         MockDatabase::new(DatabaseBackend::Postgres).into_connection()
@@ -129,15 +116,33 @@ mod tests {
         let out = server
             .query_media_inner(
                 Uuid::new_v4(),
+                "example-model-media".to_string(),
                 params("https://www.youtube.com/watch?v=abc", "銘柄を列挙して"),
             )
             .await
             .expect("query_media");
+        let requests = litellm
+            .received_requests()
+            .await
+            .expect("recorded requests");
+        let body: serde_json::Value = requests[0].body_json().expect("parse request body");
         assert_eq!(
-            out,
-            QueryMediaResult {
-                text: "銘柄Aについて言及".into(),
-            }
+            (out, body),
+            (
+                QueryMediaResult {
+                    text: "銘柄Aについて言及".into(),
+                },
+                json!({
+                    "model": "example-model-media",
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "銘柄を列挙して"},
+                            {"type": "file", "file": {"file_id": "https://www.youtube.com/watch?v=abc"}},
+                        ],
+                    }],
+                }),
+            ),
         );
     }
 
@@ -147,6 +152,7 @@ mod tests {
         let err = server
             .query_media_inner(
                 Uuid::new_v4(),
+                "example-model-media".to_string(),
                 params("https://example.com/v.mp4", "説明して"),
             )
             .await
@@ -171,43 +177,16 @@ mod tests {
     ) {
         let server = StrategyServer::new(mock_db(), None);
         let err = server
-            .query_media_inner(Uuid::new_v4(), params(media_url, prompt))
+            .query_media_inner(
+                Uuid::new_v4(),
+                "example-model-media".to_string(),
+                params(media_url, prompt),
+            )
             .await
             .expect_err("expected invalid params");
         assert_eq!(
             (err.code, err.message.as_ref()),
             (rmcp::model::ErrorCode::INVALID_PARAMS, expected_msg),
-        );
-    }
-
-    fn env_get<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
-        move |key: &str| {
-            pairs
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| (*v).to_string())
-        }
-    }
-
-    #[rstest]
-    #[case::unset(&[])]
-    #[case::empty(&[("GEMINI_MEDIA_MODEL", "")])]
-    fn gemini_media_model_with_errors_when_missing(#[case] env: &[(&str, &str)]) {
-        let err = gemini_media_model_with(env_get(env)).expect_err("expected missing env error");
-        assert_eq!(
-            (err.code, err.message.as_ref()),
-            (
-                rmcp::model::ErrorCode::INTERNAL_ERROR,
-                "GEMINI_MEDIA_MODEL is not set",
-            ),
-        );
-    }
-
-    #[test]
-    fn gemini_media_model_with_resolves_overridden_env() {
-        assert_eq!(
-            gemini_media_model_with(env_get(&[("GEMINI_MEDIA_MODEL", "m-x")])).expect("configured"),
-            "m-x"
         );
     }
 }

@@ -167,6 +167,28 @@ mod tests {
         value
     }
 
+    async fn create_hook_trigger_with_event_match(
+        db: gateway_postgres::DatabaseHandle,
+    ) -> (axum_test::TestServer, String, String) {
+        let server = create_test_server(db).await;
+        let sid = create_strategy(&server, "s").await;
+        let created = server
+            .post(&format!("/api/strategies/{sid}/triggers"))
+            .json(&json!({
+                "kind": "hook",
+                "hook_slug": "sample-hook",
+                "event_match": {"event": {"eq": "initial"}},
+                "prompt_template": "x",
+            }))
+            .await;
+        created.assert_status(StatusCode::CREATED);
+        let tid = created.json::<Value>()["trigger_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        (server, sid, tid)
+    }
+
     #[backend_test_macros::database_test]
     async fn create_cron_trigger_succeeds(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
@@ -404,6 +426,86 @@ mod tests {
 
         let after = server.get(&format!("/api/triggers/{tid}")).await;
         after.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_event_match_omitted_keeps_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
+        let updated = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({}))
+            .await;
+        updated.assert_status_ok();
+        assert_eq!(
+            normalize_trigger(updated.json(), true),
+            json!({
+                "trigger_id": tid,
+                "strategy_id": sid,
+                "kind": "hook",
+                "schedule": null,
+                "hook_slug": "sample-hook",
+                "event_match": {"event": {"eq": "initial"}},
+                "prompt_template": "x",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_event_match_null_clears_existing_value(db: gateway_postgres::DatabaseHandle) {
+        let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
+        let updated = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({ "event_match": null }))
+            .await;
+        updated.assert_status_ok();
+        assert_eq!(
+            normalize_trigger(updated.json(), true),
+            json!({
+                "trigger_id": tid,
+                "strategy_id": sid,
+                "kind": "hook",
+                "schedule": null,
+                "hook_slug": "sample-hook",
+                "event_match": null,
+                "prompt_template": "x",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_event_match_value_replaces_existing_value(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (server, sid, tid) = create_hook_trigger_with_event_match(db).await;
+        let updated = server
+            .put(&format!("/api/triggers/{tid}"))
+            .json(&json!({ "event_match": {"source": {"eq": "replacement"}} }))
+            .await;
+        updated.assert_status_ok();
+        assert_eq!(
+            normalize_trigger(updated.json(), true),
+            json!({
+                "trigger_id": tid,
+                "strategy_id": sid,
+                "kind": "hook",
+                "schedule": null,
+                "hook_slug": "sample-hook",
+                "event_match": {"source": {"eq": "replacement"}},
+                "prompt_template": "x",
+                "enabled": true,
+                "last_fired_at": null,
+                "created_at": "<created_at>",
+                "updated_at": "<updated_at>",
+            }),
+        );
     }
 
     #[backend_test_macros::database_test]
