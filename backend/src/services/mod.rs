@@ -24,7 +24,6 @@ pub mod note_versions;
 pub mod prediction_grading;
 pub mod predictions;
 pub mod ref_terms;
-pub mod rss_feed;
 pub mod short_ratio_ingest;
 pub mod short_sale_report_ingest;
 pub mod stock_master_sync;

@@ -1,93 +1,70 @@
 //! 戦略実行 MCP のニュース検索 tool 実装。
 
-use chrono::{DateTime, FixedOffset, NaiveDate};
+use core_application::news::{NewsArticle, SearchNewsQuery};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-
-use crate::handlers::refs::sanitize_like;
-use gateway_postgres::entities::news_item;
 
 use super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
-use super::{StrategyServer, clamp_limit, db_error};
+use super::{StrategyServer, internal_error};
 
 impl StrategyServer {
-    /// news_item を title/body_snippet のキーワードと published_at の期間で直接検索する。
+    /// news_item を title/body_snippet のキーワードと published_at の期間で検索する。
     pub(crate) async fn search_news_inner(
         &self,
         scope: impl Into<StrategyScope>,
         params: SearchNewsParams,
     ) -> Result<SearchNewsResult, McpError> {
-        let _scope = scope.into();
-        let mut query = news_item::Entity::find();
-
-        if let Some(keyword) = params
-            .keyword
-            .as_deref()
-            .map(str::trim)
-            .filter(|k| !k.is_empty())
-        {
-            let pattern = format!("%{}%", sanitize_like(keyword));
-            query = query.filter(
-                Condition::any()
-                    .add(news_item::Column::Title.ilike(pattern.clone()))
-                    .add(news_item::Column::BodySnippet.ilike(pattern)),
-            );
-        }
-        if let Some(from) = params.from {
-            query = query.filter(news_item::Column::PublishedAt.gte(start_of_day(from)));
-        }
-        if let Some(to) = params.to {
-            query = query.filter(news_item::Column::PublishedAt.lte(end_of_day(to)));
-        }
-
-        let rows = query
-            .order_by_desc(news_item::Column::PublishedAt)
-            .limit(clamp_limit(params.limit))
-            .all(&self.db)
+        let scope = scope.into();
+        let rows = self
+            .use_cases
+            .news
+            .search_news(
+                scope,
+                SearchNewsQuery {
+                    keyword: params.keyword,
+                    from: params.from,
+                    to: params.to,
+                    limit: params.limit,
+                },
+            )
             .await
-            .map_err(db_error)?;
+            .map_err(map_news_error)?;
 
-        let items = rows
-            .into_iter()
-            .map(|n| NewsItemDto {
-                id: n.id,
-                source: n.source,
-                url: n.url,
-                title: n.title,
-                body_snippet: n.body_snippet,
-                published_at: n.published_at,
-            })
-            .collect();
-
-        Ok(SearchNewsResult { items })
+        Ok(SearchNewsResult {
+            items: rows.into_iter().map(Into::into).collect(),
+        })
     }
 }
 
-fn start_of_day(date: NaiveDate) -> DateTime<FixedOffset> {
-    date.and_hms_opt(0, 0, 0)
-        .unwrap_or_default()
-        .and_utc()
-        .fixed_offset()
+impl From<NewsArticle> for NewsItemDto {
+    fn from(article: NewsArticle) -> Self {
+        Self {
+            id: article.id,
+            source: article.source,
+            url: article.url,
+            title: article.title,
+            body_snippet: article.body_snippet,
+            published_at: article.published_at,
+        }
+    }
 }
 
-fn end_of_day(date: NaiveDate) -> DateTime<FixedOffset> {
-    date.and_hms_opt(23, 59, 59)
-        .unwrap_or_default()
-        .and_utc()
-        .fixed_offset()
+fn map_news_error(error: core_application::news::NewsUseCaseError) -> McpError {
+    tracing::error!(error = %error, "strategy mcp news search failed");
+    internal_error(format!("database error: {error}"))
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, FixedOffset, NaiveDate};
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
     use uuid::Uuid;
 
     use super::super::dto::{NewsItemDto, SearchNewsParams, SearchNewsResult};
     use super::super::tests_common::build_server;
-    use gateway_postgres::entities::news_item;
+    use core_application::news::{NewsItemRepository, NewsSearchCriteria};
+    use core_application::news_aggregator::NewsItem;
+    use core_application::unit_of_work::UnitOfWork;
+    use gateway_postgres::{DatabaseHandle, PostgresNewsItemRepository, PostgresUnitOfWork};
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
@@ -101,26 +78,45 @@ mod tests {
     }
 
     async fn insert_news_item_with(
-        db: &impl sea_orm::ConnectionTrait,
+        db: &DatabaseHandle,
         url: &str,
         title: &str,
         body_snippet: Option<&str>,
         published_at: DateTime<FixedOffset>,
     ) -> Uuid {
-        let id = Uuid::new_v4();
-        news_item::ActiveModel {
-            id: Set(id),
-            source: Set("Test".into()),
-            url: Set(url.into()),
-            title: Set(title.into()),
-            body_snippet: Set(body_snippet.map(str::to_string)),
-            published_at: Set(published_at),
-            fetched_at: Set(published_at),
-        }
-        .insert(db)
-        .await
-        .expect("insert news item");
-        id
+        let unit_of_work = PostgresUnitOfWork::new(db.clone());
+        let repository = PostgresNewsItemRepository::new(db.clone());
+        let transaction = unit_of_work.begin().await.expect("transaction begins");
+        repository
+            .upsert(
+                &transaction,
+                &[NewsItem {
+                    source: "Sample publication".into(),
+                    url: url.into(),
+                    title: title.into(),
+                    body_snippet: body_snippet.map(str::to_string),
+                    published_at: published_at.with_timezone(&chrono::Utc),
+                }],
+            )
+            .await
+            .expect("insert news item");
+        unit_of_work
+            .commit(transaction)
+            .await
+            .expect("transaction commits");
+        repository
+            .search(NewsSearchCriteria {
+                keyword: None,
+                from: None,
+                to: None,
+                limit: 200,
+            })
+            .await
+            .expect("search inserted news item")
+            .into_iter()
+            .find(|item| item.url == url)
+            .map(|item| item.id)
+            .expect("inserted news item exists")
     }
 
     fn result_urls(result: &SearchNewsResult) -> Vec<String> {
@@ -135,8 +131,8 @@ mod tests {
         let id = insert_news_item_with(
             &db,
             "https://ex.com/1",
-            "トヨタ自動車 決算発表",
-            Some("好調"),
+            "Example Ventures earnings update",
+            Some("quarterly results"),
             published_at,
         )
         .await;
@@ -159,10 +155,10 @@ mod tests {
             SearchNewsResult {
                 items: vec![NewsItemDto {
                     id,
-                    source: "Test".into(),
+                    source: "Sample publication".into(),
                     url: "https://ex.com/1".into(),
-                    title: "トヨタ自動車 決算発表".into(),
-                    body_snippet: Some("好調".into()),
+                    title: "Example Ventures earnings update".into(),
+                    body_snippet: Some("quarterly results".into()),
                     published_at,
                 }],
             },
@@ -178,7 +174,7 @@ mod tests {
         insert_news_item_with(
             &db,
             "https://ex.com/1",
-            "TOYOTA 決算発表",
+            "EXAMPLE VENTURES earnings update",
             None,
             at_noon(ymd(2026, 6, 1)),
         )
@@ -204,7 +200,7 @@ mod tests {
             .search_news_inner(
                 Uuid::new_v4(),
                 SearchNewsParams {
-                    keyword: Some("toyota".into()),
+                    keyword: Some("example ventures".into()),
                     from: None,
                     to: None,
                     limit: None,

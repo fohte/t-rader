@@ -4,6 +4,10 @@ use core_application::change_history::SharedChangeHistoryPort;
 use core_application::custom_indicator::{
     CustomIndicatorUseCases, SharedCustomIndicatorRepository,
 };
+use core_application::news::{NewsUseCases, SharedNewsItemRepository};
+use core_application::rss_feed::{
+    RssFeedUseCases, SharedRssFeedRepository, SharedRssFeedUrlValidator,
+};
 use core_application::strategy::{
     SharedStrategyRepository, SharedStrategySummaryQuery, StrategyUseCases,
 };
@@ -12,15 +16,19 @@ use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresCustomIndicatorRepository,
-    PostgresStrategyExistence, PostgresStrategyRepository, PostgresStrategySummaryQuery,
-    PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresNewsItemRepository, PostgresRssFeedRepository, PostgresStrategyExistence,
+    PostgresStrategyRepository, PostgresStrategySummaryQuery, PostgresTradeRepository,
+    PostgresUnitOfWork,
 };
+use gateway_rss::HttpRssFeedUrlValidator;
 
 #[derive(Clone)]
 pub struct UseCases {
     pub strategies: StrategyUseCases,
     pub trades: TradeUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
+    pub rss_feeds: RssFeedUseCases,
+    pub news: NewsUseCases,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
@@ -29,6 +37,10 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let repository: SharedTradeRepository = Arc::new(PostgresTradeRepository::new(db.clone()));
     let custom_indicator_repository: SharedCustomIndicatorRepository =
         Arc::new(PostgresCustomIndicatorRepository::new(db.clone()));
+    let rss_feed_repository: SharedRssFeedRepository =
+        Arc::new(PostgresRssFeedRepository::new(db.clone()));
+    let news_item_repository: SharedNewsItemRepository =
+        Arc::new(PostgresNewsItemRepository::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
     let change_history: SharedChangeHistoryPort = Arc::new(PostgresChangeHistory);
     let strategy_repository: SharedStrategyRepository =
@@ -49,15 +61,24 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         change_history.clone(),
     );
     let custom_indicators = CustomIndicatorUseCases::new(
-        unit_of_work,
+        unit_of_work.clone(),
         custom_indicator_repository,
         strategy_existence,
         change_history,
     );
+    let rss_feed_url_validator: SharedRssFeedUrlValidator = Arc::new(HttpRssFeedUrlValidator);
+    let rss_feeds = RssFeedUseCases::new(
+        unit_of_work.clone(),
+        rss_feed_repository.clone(),
+        rss_feed_url_validator,
+    );
+    let news = NewsUseCases::new(unit_of_work, rss_feed_repository, news_item_repository);
 
     UseCases {
         strategies,
         trades,
         custom_indicators,
+        rss_feeds,
+        news,
     }
 }

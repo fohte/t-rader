@@ -221,8 +221,9 @@ async fn main() -> Result<(), AppError> {
         Arc::new(RssNewsAggregator::new().map_err(|err| {
             AppError::Config(format!("failed to initialize RSS news aggregator: {err}"))
         })?);
+    let use_cases = backend::services::use_cases::build_use_cases(db.clone());
     let _news_poll = backend::services::news::spawn_poll(
-        db.clone(),
+        use_cases.news.clone(),
         news_aggregator,
         std::time::Duration::from_secs(3600),
     );
@@ -371,7 +372,7 @@ async fn main() -> Result<(), AppError> {
     let db = DatabaseHandle::from(db);
     let state = AppState {
         db: db.clone(),
-        use_cases: backend::services::use_cases::build_use_cases(db),
+        use_cases,
         daily_bar_source,
         jquants_client,
         agent_task_client,

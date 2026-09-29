@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::TriggerKind;
-use gateway_postgres::entities::{rss_feed, trigger};
+use core_application::rss_feed::RssFeed;
+use gateway_postgres::entities::trigger;
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StrategySummary {
@@ -119,8 +120,8 @@ pub struct RssFeedSummary {
     pub enabled: bool,
 }
 
-impl From<rss_feed::Model> for RssFeedSummary {
-    fn from(m: rss_feed::Model) -> Self {
+impl From<RssFeed> for RssFeedSummary {
+    fn from(m: RssFeed) -> Self {
         Self {
             id: m.id,
             source: m.source,
