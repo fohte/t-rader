@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -48,6 +50,7 @@ func (r *strategyResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "バックエンドが発行する戦略 UUID。",
 			},
 			"name": schema.StringAttribute{
@@ -140,12 +143,17 @@ func (r *strategyResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var state strategyModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	client, ok := r.configuredClient(&resp.Diagnostics)
 	if !ok {
 		return
 	}
 
-	updated, err := client.UpdateStrategy(ctx, plan.ID.ValueString(), traderapi.UpdateStrategyRequest{
+	updated, err := client.UpdateStrategy(ctx, state.ID.ValueString(), traderapi.UpdateStrategyRequest{
 		Name:        stringAttributePointer(plan.Name),
 		Description: stringAttributeUpdatePointer(plan.Description),
 		SortOrder:   int32AttributePointer(plan.SortOrder),
