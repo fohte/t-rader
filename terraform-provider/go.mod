@@ -1,6 +1,6 @@
 module github.com/fohte/t-rader/terraform-provider
 
-go 1.26.0
+go 1.27.1
 
 require github.com/hashicorp/terraform-plugin-framework v1.19.0
 
