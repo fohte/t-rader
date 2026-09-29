@@ -1,311 +1,88 @@
-//! 戦略タスクの phase 監視 (polling)
-//!
-//! 一定 interval で `strategy_task.phase IN ('pending', 'running')` の行を LIST し、
-//! t-rader-agent の内部 API (`GET /internal/tasks/:task_id`) を照会して結果を DB に反映する。
-//! t-rader-agent からの webhook 受信は `notify` 経由で polling を即時発火させるための最適化に
-//! 過ぎず、決着の正 (最終的な整合性を保証する経路) は本 polling である。
-//!
-//! `deadline_at` を過ぎた行は failed に確定する。内部 API 到達不能・投入自体の記録漏れは
-//! もちろん、内部 API が正常に応答 (working/completed 含む) しているケースも対象であり、
-//! 応答が生きている限り延命され続けることを防ぐ。
+//! 戦略タスクを polling し、application use case で agent の状態を反映する。
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, FixedOffset, Utc};
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, TransactionSession,
-};
+use chrono::Utc;
 use tokio::sync::Notify;
 
-use crate::agent_client::{AgentTaskError, AgentTaskState, AgentTaskStatus, SharedAgentTaskClient};
-use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-use gateway_postgres::entities::strategy_task;
-
-mod auto_resume;
-mod steps;
-
-use steps::upsert_steps;
+use crate::agent_client::SharedAgentTaskClient;
+use core_application::strategy_task::StrategyTaskUseCases;
+use gateway_postgres::DatabaseHandle;
 
 pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(10);
-
-/// 1 tick あたりに同時実行する内部 API 問い合わせ数の上限。1 件の遅延・タイムアウトが
-/// 他の reconcile をブロックしないよう、行ごとに `get` を並列化する。t-rader-agent に
-/// 同時接続を投げすぎないよう上限を設ける。
 const MAX_CONCURRENT_STATUS_FETCHES: usize = 8;
 
-/// A2A TaskState を strategy_task の phase に写像する。
-/// input-required は追加入力を渡す経路が無いため failed 扱いとする
-/// (failed からの再開は resume_task による手動 resume と execution_lost 時の自動 resume に限る)。
-fn phase_for_state(state: AgentTaskState) -> StrategyTaskPhase {
-    match state {
-        AgentTaskState::Submitted | AgentTaskState::Working => StrategyTaskPhase::Running,
-        AgentTaskState::Completed => StrategyTaskPhase::Completed,
-        AgentTaskState::InputRequired
-        | AgentTaskState::Canceled
-        | AgentTaskState::Failed
-        | AgentTaskState::Rejected => StrategyTaskPhase::Failed,
-    }
+/// 1 回分の polling を実行する。失敗した個別 task はログに残して次へ進む。
+pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
+where
+    C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
+{
+    let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+    run_once_with_use_cases(&use_cases.strategy_tasks, agent_client).await
 }
 
-fn error_summary_for(status: &AgentTaskStatus, phase: &StrategyTaskPhase) -> Option<String> {
-    if *phase != StrategyTaskPhase::Failed {
-        return None;
-    }
-    Some(
-        agent_reported_reason(status)
-            .unwrap_or("agent task failed")
-            .to_string(),
-    )
-}
-
-/// agent が報告した失敗理由。本文 (フェーズ名を含む) を優先し、無い (空を含む) 場合のみ
-/// 分類名にフォールバックする。agent は `new Error('')` 等で空の本文を返しうる。
-fn agent_reported_reason(status: &AgentTaskStatus) -> Option<&str> {
-    status
-        .error_message
-        .as_deref()
-        .filter(|m| !m.is_empty())
-        .or(status.error_kind.as_deref())
-}
-
-/// 1 回分の polling を実行する。失敗した個別 task はログに残し、他の task の処理を継続する。
-///
-/// 戻り値は phase 更新が走った task 数。
-pub async fn run_once(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
+async fn run_once_with_use_cases(
+    strategy_tasks: &StrategyTaskUseCases,
     agent_client: &SharedAgentTaskClient,
 ) -> usize {
-    let rows = match strategy_task::Entity::find()
-        .filter(
-            strategy_task::Column::Phase
-                .is_in([StrategyTaskPhase::Pending, StrategyTaskPhase::Running]),
-        )
-        .order_by_asc(strategy_task::Column::CreatedAt)
-        .all(db)
-        .await
-    {
-        Ok(rows) => rows,
-        Err(err) => {
-            tracing::warn!(error = %err, "failed to list in-flight strategy_task rows");
+    let tasks = match strategy_tasks.list_in_flight_tasks().await {
+        Ok(tasks) => tasks,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to list in-flight strategy_task rows");
             return 0;
         }
     };
-
     let now = Utc::now().fixed_offset();
-    let task_ids = rows.iter().map(|row| row.task_id).collect::<Vec<_>>();
-    let results =
-        crate::concurrent::map_concurrent(rows, MAX_CONCURRENT_STATUS_FETCHES, |row| async move {
-            reconcile_one(db, agent_client, row, now).await
-        })
-        .await;
+    let task_ids = tasks.iter().map(|task| task.task_id).collect::<Vec<_>>();
+    let results = crate::concurrent::map_concurrent(
+        tasks,
+        MAX_CONCURRENT_STATUS_FETCHES,
+        |task| async move {
+            strategy_tasks
+                .reconcile_task(agent_client.as_ref(), task, now)
+                .await
+        },
+    )
+    .await;
     let mut updated = 0usize;
     for (task_id, result) in task_ids.into_iter().zip(results) {
         match result {
-            Ok(true) => updated += 1,
-            Ok(false) => {}
+            Ok(Ok(true)) => updated += 1,
+            Ok(Ok(false)) => {}
+            Ok(Err(error)) => tracing::warn!(
+                error = %error,
+                strategy_task_id = %task_id,
+                "strategy_task reconcile failed",
+            ),
             Err(error) => tracing::warn!(
                 error = %error,
                 strategy_task_id = %task_id,
-                "strategy_task reconcile task panicked"
+                "strategy_task reconcile task panicked",
             ),
         }
     }
     updated
 }
 
-/// 単一行の status 取得 → phase 反映を行う。更新が走った場合のみ `true` を返す。
-async fn reconcile_one(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
-    agent_client: &SharedAgentTaskClient,
-    row: strategy_task::Model,
-    now: DateTime<FixedOffset>,
-) -> bool {
-    let Some(a2a_task_id) = row.a2a_task_id.clone() else {
-        // submit_task の Pending 行 INSERT 後、内部 API 投入前にプロセスが落ちた等で
-        // a2a_task_id が記録されないまま孤児化したケース。get のしようがないので
-        // deadline のみで確定する。
-        if now > row.deadline_at {
-            return apply_failed(
-                db,
-                row,
-                "agent task submission was not recorded".to_string(),
-            )
-            .await;
-        }
-        return false;
-    };
-
-    match agent_client.get(&a2a_task_id).await {
-        Ok(status) => {
-            let auto_resume_eligible = auto_resume::is_eligible(&row, &status, now);
-            let task_id = row.task_id;
-            let updated = apply_status(db, row, status, now).await;
-            if updated && auto_resume_eligible {
-                auto_resume::attempt(db, agent_client, task_id).await;
-            }
-            updated
-        }
-        Err(err) => {
-            // 一時的な到達不能 (NotFound を含む)。t-rader-agent 側の task 作成と backend
-            // 側の a2a_task_id 記録は別段階のため、insert 直後の一過性の不整合を誤って
-            // 確定させないよう deadline 超過まではリトライに委ねる。超過後は server ごと
-            // 長期停止しているとみなして失敗確定する (client 側の最終防衛)。
-            if now > row.deadline_at {
-                let message = match &err {
-                    AgentTaskError::NotFound(_) => format!("agent task {a2a_task_id} not found"),
-                    _ => format!("agent task unreachable: {err}"),
-                };
-                apply_failed(db, row, message).await
-            } else {
-                tracing::warn!(
-                    error = %err,
-                    task_id = %row.task_id,
-                    a2a_task_id,
-                    "failed to fetch agent task status; will retry on next tick",
-                );
-                false
-            }
-        }
-    }
-}
-
-/// エージェントの応答から phase を確定する。`row.deadline_at` を超過していれば、
-/// エージェント側の状態 (heartbeat がある限り延命される working も、超過後に届いた
-/// completed も含む) に関わらず最終防衛として failed に上書きする。この場合も
-/// result_text/steps はエージェントから届いた内容をそのまま反映する
-/// (deadline 超過は phase/error_summary のみを上書きする)。
-async fn apply_status(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
-    row: strategy_task::Model,
-    status: AgentTaskStatus,
-    now: DateTime<FixedOffset>,
-) -> bool {
-    let (new_phase, new_error) = if now > row.deadline_at {
-        let message = match agent_reported_reason(&status) {
-            Some(reported) => format!("agent task exceeded deadline (agent reported: {reported})"),
-            None => "agent task exceeded deadline".to_string(),
-        };
-        (StrategyTaskPhase::Failed, Some(message))
-    } else {
-        let new_phase = phase_for_state(status.state);
-        let new_error = error_summary_for(&status, &new_phase);
-        (new_phase, new_error)
-    };
-    let new_result_text = status.result_text.or_else(|| row.result_text.clone());
-    let new_steps = status.steps.clone();
-    apply_phase_logged(db, row, new_phase, new_error, new_result_text, new_steps).await
-}
-
-async fn apply_failed(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
-    row: strategy_task::Model,
-    message: String,
-) -> bool {
-    apply_phase_logged(
-        db,
-        row,
-        StrategyTaskPhase::Failed,
-        Some(message),
-        None,
-        None,
-    )
-    .await
-}
-
-/// `apply_phase` を呼び、失敗した場合はログを残して `false` にフォールバックする。
-async fn apply_phase_logged(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
-    row: strategy_task::Model,
-    new_phase: StrategyTaskPhase,
-    new_error: Option<String>,
-    new_result_text: Option<String>,
-    new_steps: Option<serde_json::Value>,
-) -> bool {
-    match apply_phase(db, row, new_phase, new_error, new_result_text, new_steps).await {
-        Ok(updated) => updated,
-        Err(err) => {
-            tracing::warn!(error = %err, "failed to update strategy_task phase");
-            false
-        }
-    }
-}
-
-/// 1 行ぶんの phase / error_summary / result_text 更新と、`strategy_task_step` へのステップ
-/// upsert を適用する。いずれも差分が無ければ DB 書き込みをしない。主キーと変更カラムのみを
-/// `Set` した ActiveModel で UPDATE することで、prompt 等の長文カラムを毎回書き直すのを避ける。
-///
-/// 両方の書き込みを 1 トランザクションにまとめる。片方だけ成功すると、phase が
-/// Completed/Failed に進んでいるのに steps が反映されない (またはその逆の) 行が生じ、
-/// `run_once` の対象 (`phase IN ('pending', 'running')`) から外れて恒久的に取り残される。
-async fn apply_phase(
-    db: &(impl sea_orm::ConnectionTrait + sea_orm::TransactionTrait),
-    row: strategy_task::Model,
-    new_phase: StrategyTaskPhase,
-    new_error: Option<String>,
-    new_result_text: Option<String>,
-    new_steps: Option<serde_json::Value>,
-) -> Result<bool, sea_orm::DbErr> {
-    let row_changed = new_phase != row.phase
-        || new_error != row.error_summary
-        || new_result_text != row.result_text;
-
-    let txn = db.begin().await?;
-
-    if row_changed {
-        let active = strategy_task::ActiveModel {
-            task_id: sea_orm::ActiveValue::Unchanged(row.task_id),
-            phase: Set(new_phase),
-            error_summary: Set(new_error),
-            result_text: Set(new_result_text),
-            updated_at: Set(Utc::now().fixed_offset()),
-            strategy_id: NotSet,
-            a2a_task_id: NotSet,
-            source: NotSet,
-            prompt: NotSet,
-            deadline_at: NotSet,
-            created_at: NotSet,
-            purpose: NotSet,
-            as_of: NotSet,
-            auto_resumed_at: NotSet,
-        };
-        strategy_task::Entity::update(active).exec(&txn).await?;
-    }
-
-    let steps_changed = match new_steps {
-        Some(serde_json::Value::Array(steps)) if !steps.is_empty() => {
-            upsert_steps(&txn, row.task_id, &steps).await?
-        }
-        _ => false,
-    };
-
-    txn.commit().await?;
-
-    Ok(row_changed || steps_changed)
-}
-
-/// 定期 polling のバックグラウンドタスクを起動する。
-///
-/// `notify` は webhook 受信時に即時 polling を誘発するための最適化。tick 到来と notify の
-/// どちらが先でも 1 回の polling を実行する。
+/// 定期 polling を開始する。webhook notification は polling の即時実行を誘発する。
 pub fn spawn(
-    db: DatabaseConnection,
+    db: impl Into<DatabaseHandle>,
     agent_client: SharedAgentTaskClient,
     interval: Duration,
     notify: Arc<Notify>,
 ) -> tokio::task::JoinHandle<()> {
+    let strategy_tasks = crate::services::use_cases::build_use_cases(db).strategy_tasks;
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        // 起動直後の即時実行は避ける (initial delay)。
         ticker.tick().await;
         loop {
             tokio::select! {
                 _ = ticker.tick() => {}
                 _ = notify.notified() => {}
             }
-            let updated = run_once(&db, &agent_client).await;
+            let updated = run_once_with_use_cases(&strategy_tasks, &agent_client).await;
             if updated > 0 {
                 tracing::info!(updated, "strategy_task phases reconciled");
             }
@@ -314,14 +91,74 @@ pub fn spawn(
 }
 
 #[cfg(test)]
+fn agent_reported_reason(status: &crate::agent_client::AgentTaskStatus) -> Option<&str> {
+    status
+        .error_message
+        .as_deref()
+        .filter(|message| !message.is_empty())
+        .or(status.error_kind.as_deref())
+}
+
+#[cfg(test)]
+async fn apply_phase<C>(
+    db: &C,
+    row: gateway_postgres::entities::strategy_task::Model,
+    new_phase: gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase,
+    new_error: Option<String>,
+    new_result_text: Option<String>,
+    new_steps: Option<serde_json::Value>,
+) -> Result<bool, core_application::strategy_task::ReconcileTaskError>
+where
+    C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
+{
+    let state = match new_phase {
+        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Pending => {
+            crate::agent_client::AgentTaskState::Submitted
+        }
+        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Running => {
+            crate::agent_client::AgentTaskState::Working
+        }
+        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Completed => {
+            crate::agent_client::AgentTaskState::Completed
+        }
+        gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase::Failed => {
+            crate::agent_client::AgentTaskState::Failed
+        }
+    };
+    crate::services::use_cases::build_use_cases(db.clone())
+        .strategy_tasks
+        .apply_agent_status(
+            row.task_id,
+            crate::agent_client::AgentTaskStatus {
+                state,
+                result_text: new_result_text,
+                error_message: new_error,
+                error_kind: None,
+                steps: new_steps,
+            },
+            Utc::now().fixed_offset(),
+        )
+        .await
+}
+#[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use crate::agent_client::{AgentTaskError, EXECUTION_LOST_ERROR_KIND, FakeAgentTaskClient};
-    use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskStepStatus;
-    use gateway_postgres::entities::{strategy, strategy_task_step};
+    use crate::agent_client::{
+        AgentTaskError, AgentTaskState, AgentTaskStatus, EXECUTION_LOST_ERROR_KIND,
+        FakeAgentTaskClient,
+    };
+    use chrono::DateTime;
+    use gateway_postgres::entities::sea_orm_active_enums::{
+        StrategyTaskPhase, StrategyTaskStepStatus,
+    };
+    use gateway_postgres::entities::{strategy, strategy_task, strategy_task_step};
     use rstest::rstest;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+    use sea_orm::{
+        ActiveModelTrait,
+        ActiveValue::{NotSet, Set},
+        ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+    };
     use uuid::Uuid;
 
     use super::*;

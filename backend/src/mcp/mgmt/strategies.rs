@@ -8,9 +8,10 @@ use uuid::Uuid;
 
 use crate::agent_client::AgentTaskError;
 use crate::services::note_versions::{INITIAL_NOTE_STATUS, current_note_ids_with_status};
-use crate::services::strategy_tasks::{
-    self, ResumeTaskError, SubmitTaskError, TaskSource, TaskStatusView, phase_str,
+use core_application::strategy_task::{
+    GetTaskError, ResumeTaskError, StrategyTaskRepositoryError, SubmitTaskError, TaskSource,
 };
+use core_application::unit_of_work::UnitOfWorkError;
 use gateway_postgres::entities::{annotation, note, strategy};
 
 use super::dto::{
@@ -107,16 +108,18 @@ impl MgmtServer {
         &self,
         params: SubmitStrategyTaskParams,
     ) -> Result<SubmitStrategyTaskResult, McpError> {
-        let submitted = strategy_tasks::submit_task(
-            &self.db,
-            &self.agent_client,
-            params.strategy_id,
-            &params.prompt,
-            TaskSource::MgmtMcp,
-            params.purpose,
-        )
-        .await
-        .map_err(map_submit_error)?;
+        let submitted = self
+            .use_cases
+            .strategy_tasks
+            .submit_task(
+                self.agent_client.as_ref(),
+                params.strategy_id,
+                &params.prompt,
+                TaskSource::MgmtMcp,
+                params.purpose,
+            )
+            .await
+            .map_err(map_submit_error)?;
         Ok(SubmitStrategyTaskResult {
             task_id: submitted.task_id,
             a2a_task_id: submitted.a2a_task_id,
@@ -127,7 +130,10 @@ impl MgmtServer {
         &self,
         params: ResumeStrategyTaskParams,
     ) -> Result<ResumeStrategyTaskResult, McpError> {
-        let submitted = strategy_tasks::resume_task(&self.db, &self.agent_client, params.task_id)
+        let submitted = self
+            .use_cases
+            .strategy_tasks
+            .resume(self.agent_client.as_ref(), params.task_id)
             .await
             .map_err(map_resume_error)?;
         Ok(ResumeStrategyTaskResult {
@@ -140,16 +146,18 @@ impl MgmtServer {
         &self,
         params: GetStrategyTaskStatusParams,
     ) -> Result<GetStrategyTaskStatusResult, McpError> {
-        let view: TaskStatusView =
-            strategy_tasks::get_task_by_a2a_task_id(&self.db, &params.a2a_task_id)
-                .await
-                .map_err(db_error)?
-                .ok_or_else(|| McpError::resource_not_found("strategy task not found", None))?;
+        let view = self
+            .use_cases
+            .strategy_tasks
+            .get_by_a2a_task_id(&params.a2a_task_id)
+            .await
+            .map_err(map_get_task_error)?
+            .ok_or_else(|| McpError::resource_not_found("strategy task not found", None))?;
         Ok(GetStrategyTaskStatusResult {
             task_id: view.task_id,
             strategy_id: view.strategy_id,
             a2a_task_id: view.a2a_task_id,
-            phase: phase_str(&view.phase).to_string(),
+            phase: view.phase.as_str().to_string(),
             error_summary: view.error_summary,
             result_text: view.result_text,
             updated_at: view.updated_at,
@@ -164,7 +172,14 @@ fn map_submit_error(err: SubmitTaskError) -> McpError {
         SubmitTaskError::PurposeNotFound(purpose) => {
             invalid_params(format!("agent_config for purpose '{purpose}' not found"))
         }
-        SubmitTaskError::Database(db_err) => db_error(db_err),
+        SubmitTaskError::Repository(error) => map_repository_error(error),
+        SubmitTaskError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | SubmitTaskError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            internal_error(format!("database error: {error}"))
+        }
+        SubmitTaskError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            internal_error("invalid strategy task transaction")
+        }
         SubmitTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
 }
@@ -177,9 +192,33 @@ fn map_resume_error(err: ResumeTaskError) -> McpError {
         ResumeTaskError::NotResumable(id, phase) => invalid_params(format!(
             "strategy task {id} is not resumable (current phase: {phase})"
         )),
-        ResumeTaskError::Database(db_err) => db_error(db_err),
+        ResumeTaskError::Repository(error) => map_repository_error(error),
+        ResumeTaskError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | ResumeTaskError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            internal_error(format!("database error: {error}"))
+        }
+        ResumeTaskError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            internal_error("invalid strategy task transaction")
+        }
         ResumeTaskError::AgentTask(agent_err) => map_agent_task_error(&agent_err),
     }
+}
+
+fn map_get_task_error(error: GetTaskError) -> McpError {
+    match error {
+        GetTaskError::NotFound(id) => {
+            McpError::resource_not_found(format!("strategy task {id} not found"), None)
+        }
+        GetTaskError::StrategyMismatch { task_id, .. } => {
+            McpError::resource_not_found(format!("strategy task {task_id} not found"), None)
+        }
+        GetTaskError::Repository(error) => map_repository_error(error),
+    }
+}
+
+fn map_repository_error(error: StrategyTaskRepositoryError) -> McpError {
+    tracing::error!(error = %error, "strategy task repository error");
+    internal_error(format!("strategy task persistence error: {error}"))
 }
 
 fn map_agent_task_error(err: &AgentTaskError) -> McpError {

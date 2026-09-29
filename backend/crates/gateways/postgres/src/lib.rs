@@ -13,6 +13,7 @@ mod persistence;
 pub mod repositories;
 mod strategy_existence;
 mod strategy_scope;
+mod strategy_task;
 mod trade;
 mod transaction;
 mod unit_of_work;
@@ -20,6 +21,7 @@ mod unit_of_work;
 pub use change_history::PostgresChangeHistory;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;
+pub use strategy_task::PostgresStrategyTaskRepository;
 pub use trade::PostgresTradeRepository;
 pub use unit_of_work::PostgresUnitOfWork;
 
