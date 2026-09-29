@@ -97,6 +97,16 @@ pre-commit:
       root: 'backend/'
       run: cargo clippy --all-targets -- -D warnings
 
+    go-fmt:
+      glob: '*.go'
+      root: 'terraform-provider/'
+      run: test -z "$(gofmt -l .)"
+
+    go-vet:
+      glob: '*.go'
+      root: 'terraform-provider/'
+      run: go vet ./...
+
 commit-msg:
   commands:
     commitlint:
