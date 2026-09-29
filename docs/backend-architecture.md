@@ -65,7 +65,7 @@ backend/crates/
 
 現在の backend では、集約のユースケース container と Postgres 実装の組み立てを `backend/src/services/use_cases.rs` の `UseCases` / `build_use_cases` に集約する。新しい集約を application に移すときは、port とユースケースを `backend/crates/core/application` に、Postgres adapter を `backend/crates/gateways/postgres` に追加し、`UseCases` にフィールドを追加して `build_use_cases` で一度だけ組み立てる。
 
-HTTP の `AppState` と MCP の strategy / mgmt server は同じ `UseCases` を受け取る。HTTP handler は `state.use_cases` 経由で、MCP server は自身の `use_cases` 経由で対象のユースケースを呼び出す。transaction、変更履歴、strategy 存在確認には既存の共通 port と Postgres 実装を使う。HTTP では `PersistenceError` を `AppError` に変換する。
+HTTP の `AppState` と MCP の StrategyServer / MgmtServer は同じ `UseCases` を受け取る。HTTP handler は `state.use_cases` 経由で、StrategyServer は自身の `use_cases` 経由で対象のユースケースを呼び出す。MgmtServer にも同じ container を渡し、MCP server の組み立てを共通化する。transaction、変更履歴、strategy 存在確認には既存の共通 port と Postgres 実装を使う。HTTP では `PersistenceError` を `AppError` に変換する。
 
 `entrypoints/*` 同士、`gateways/*` 同士、および entrypoint と gateway の間は依存させない。`core/domain` と `core/application` から entrypoint や gateway に依存させない。`core/domain` が直接依存してよい外部 crate は `chrono`, `rust_decimal`, `uuid`, `thiserror`, `jpholiday` (祝日の計算のみで I/O を持たない) と `serde` の derive に限る (テストでのみ使う dev-dependencies は対象外)。それ以外の外部 crate は依存させず、特に I/O や framework の crate (`sea-orm`, `reqwest`, `axum`, `rmcp`, `utoipa`, `tokio` など) は依存させない。
 

@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_uses_one_transaction_for_repository_and_history() {
+    async fn create_uses_one_transaction_across_repository_strategy_existence_and_history() {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakeTradeRepository::new());
         let strategy_existence = Arc::new(FakeStrategyExistence::new());
