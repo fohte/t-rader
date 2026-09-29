@@ -1,0 +1,75 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release_please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs['terraform-provider--release_created'] }}
+      tag_name: ${{ steps.release.outputs['terraform-provider--tag_name'] }}
+    steps:
+      - uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
+        id: octo-sts
+        with:
+          scope: ${{ github.repository }}
+          identity: ${{ github.event.repository.name }}-release-please
+          domain: octo-sts.fohte.net
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.octo-sts.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build_release:
+    needs: release_please
+    if: ${{ needs.release_please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: terraform-provider/go.mod
+          cache-dependency-path: terraform-provider/go.sum
+
+      - name: Build and upload provider
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.release_please.outputs.tag_name }}
+        run: |
+          version="${TAG_NAME#terraform-provider-v}"
+          binary="terraform-provider-trader_v${version}"
+          archive="terraform-provider-trader_${version}_${GOOS}_${GOARCH}.zip"
+
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$RUNNER_TEMP/$binary" .
+          zip -j "$RUNNER_TEMP/$archive" "$RUNNER_TEMP/$binary"
+          gh release upload "$TAG_NAME" "$RUNNER_TEMP/$archive" --clobber
+        working-directory: terraform-provider
