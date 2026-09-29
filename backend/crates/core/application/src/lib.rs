@@ -12,6 +12,7 @@ pub mod margin_source;
 pub mod market_daily_bar_source;
 pub mod news_aggregator;
 pub mod note;
+pub mod note_kind;
 pub mod persistence;
 pub mod shareholding_structure_source;
 pub mod short_selling_source;
