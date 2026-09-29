@@ -367,8 +367,10 @@ async fn main() -> Result<(), AppError> {
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
+    let db = DatabaseHandle::from(db);
     let state = AppState {
-        db: DatabaseHandle::from(db),
+        db: db.clone(),
+        trade_use_cases: backend::services::trades::build_use_cases(db),
         daily_bar_source,
         jquants_client,
         agent_task_client,

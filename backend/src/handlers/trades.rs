@@ -1,16 +1,14 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use rust_decimal::Decimal;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::QuerySelect;
-use sea_orm::{
-    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
+use core_application::change_history::ChangeHistoryError;
+use core_application::persistence::PersistenceError;
+use core_application::trade::{
+    CreateTradeCommand, PerformanceSummary as TradePerformanceSummary, TradeOrder, TradeQuery,
+    TradeRepositoryError, TradeUpdateCommand, TradeUseCaseError,
 };
+use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
-use serde_json::json;
-use std::collections::HashMap;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
@@ -20,13 +18,6 @@ use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
     CreateTradeRequest, PerformanceSummary, TradeListItem, TradeResponse, UpdateTradeRequest,
 };
-use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::strategies::ensure_strategy_exists;
-use crate::services::trades as trades_svc;
-use gateway_postgres::entities::{trade, trade_note};
-
-const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
-const ALLOWED_SOURCE: [&str; 3] = ["manual", "csv", "api"];
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -51,39 +42,23 @@ pub async fn list_trades(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<ListTradesQuery>,
 ) -> Result<Json<Vec<TradeListItem>>, AppError> {
-    let mut q = trade::Entity::find()
-        .order_by_asc(trade::Column::Date)
-        .order_by_asc(trade::Column::CreatedAt);
-    if let Some(sid) = p.strategy_id {
-        q = q.filter(trade::Column::StrategyId.eq(sid));
-    }
-    if let Some(sym) = p.symbol.as_deref().filter(|s| !s.is_empty()) {
-        q = q.filter(trade::Column::Symbol.eq(sym));
-    }
-    let trades = q.all(&state.db).await?;
-    if trades.is_empty() {
-        return Ok(Json(Vec::new()));
-    }
-
-    let trade_ids = trades.iter().map(|trade| trade.id).collect::<Vec<_>>();
-    let note_counts: HashMap<Uuid, i64> = trade_note::Entity::find()
-        .select_only()
-        .column(trade_note::Column::TradeId)
-        .column_as(trade_note::Column::TradeId.count(), "note_count")
-        .filter(trade_note::Column::TradeId.is_in(trade_ids))
-        .group_by(trade_note::Column::TradeId)
-        .into_tuple()
-        .all(&state.db)
-        .await?
-        .into_iter()
-        .collect();
-
+    let rows = state
+        .trade_use_cases
+        .list(TradeQuery {
+            strategy_id: p.strategy_id,
+            symbol: p.symbol.filter(|symbol| !symbol.is_empty()),
+            date_from: None,
+            limit: None,
+            order: TradeOrder::DateAscending,
+            include_note_count: true,
+        })
+        .await
+        .map_err(map_trade_error)?;
     Ok(Json(
-        trades
-            .into_iter()
-            .map(|trade| TradeListItem {
-                note_count: note_counts.get(&trade.id).copied().unwrap_or_default(),
-                trade: trade.into(),
+        rows.into_iter()
+            .map(|row| TradeListItem {
+                trade: row.trade.into(),
+                note_count: row.note_count,
             })
             .collect(),
     ))
@@ -106,11 +81,12 @@ pub async fn get_trade(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<TradeResponse>, AppError> {
-    let m = trade::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("trade {id} not found")))?;
-    Ok(Json(m.into()))
+    let trade = state
+        .trade_use_cases
+        .get(id)
+        .await
+        .map_err(map_trade_error)?;
+    Ok(Json(trade.into()))
 }
 
 /// 取引作成
@@ -131,65 +107,21 @@ pub async fn create_trade(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateTradeRequest>,
 ) -> Result<(StatusCode, Json<TradeResponse>), AppError> {
-    let symbol = p.symbol.trim().to_string();
-    if symbol.is_empty() {
-        return Err(AppError::Validation("symbol must not be empty".into()));
-    }
-    if !ALLOWED_SIDE.contains(&p.side.as_str()) {
-        return Err(AppError::Validation(format!("invalid side: {}", p.side)));
-    }
-    if !ALLOWED_SOURCE.contains(&p.source.as_str()) {
-        return Err(AppError::Validation(format!(
-            "invalid source: {}",
-            p.source
-        )));
-    }
-    if p.qty <= Decimal::ZERO {
-        return Err(AppError::Validation("qty must be positive".into()));
-    }
-    if p.price < Decimal::ZERO {
-        return Err(AppError::Validation("price must be non-negative".into()));
-    }
-
-    let txn = state.db.begin().await?;
-    ensure_strategy_exists(&txn, p.strategy_id).await?;
-
-    let id = Uuid::new_v4();
-    let model = trade::ActiveModel {
-        id: Set(id),
-        strategy_id: Set(p.strategy_id),
-        symbol: Set(symbol.clone()),
-        side: Set(p.side.clone()),
-        qty: Set(p.qty),
-        price: Set(p.price),
-        fee: Set(p.fee.unwrap_or(Decimal::ZERO)),
-        date: Set(p.date),
-        source: Set(p.source.clone()),
-        note: Set(p.note.clone()),
-        created_at: NotSet,
-        updated_at: NotSet,
-    };
-    let created = trade::Entity::insert(model)
-        .exec_with_returning(&txn)
-        .await?;
-
-    change_history::record(
-        &txn,
-        TargetKind::Trade,
-        id,
-        Op::Create,
-        json!({
-            "strategy_id": p.strategy_id,
-            "symbol": symbol,
-            "side": p.side,
-            "qty": p.qty,
-            "price": p.price,
-        }),
-        None,
-    )
-    .await?;
-    txn.commit().await?;
-
+    let created = state
+        .trade_use_cases
+        .create(CreateTradeCommand {
+            strategy_id: p.strategy_id,
+            symbol: p.symbol,
+            side: p.side,
+            qty: p.qty,
+            price: p.price,
+            fee: p.fee,
+            date: p.date,
+            source: p.source,
+            note: p.note,
+        })
+        .await
+        .map_err(map_trade_error)?;
     Ok((StatusCode::CREATED, Json(created.into())))
 }
 
@@ -214,85 +146,24 @@ pub async fn update_trade(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<UpdateTradeRequest>,
 ) -> Result<Json<TradeResponse>, AppError> {
-    let current = trade::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("trade {id} not found")))?;
-    let mut active = current.clone().into_active_model();
-    let mut diff = serde_json::Map::new();
-
-    if let Some(v) = p.strategy_id {
-        ensure_strategy_exists(&state.db, v).await?;
-        diff.insert(
-            "strategy_id".into(),
-            json!({ "from": current.strategy_id, "to": v }),
-        );
-        active.strategy_id = Set(v);
-    }
-    if let Some(v) = p.symbol {
-        let trimmed = v.trim().to_string();
-        if trimmed.is_empty() {
-            return Err(AppError::Validation("symbol must not be empty".into()));
-        }
-        diff.insert(
-            "symbol".into(),
-            json!({ "from": current.symbol, "to": trimmed }),
-        );
-        active.symbol = Set(trimmed);
-    }
-    if let Some(v) = p.side {
-        if !ALLOWED_SIDE.contains(&v.as_str()) {
-            return Err(AppError::Validation(format!("invalid side: {v}")));
-        }
-        diff.insert("side".into(), json!({ "from": current.side, "to": v }));
-        active.side = Set(v);
-    }
-    if let Some(v) = p.qty {
-        if v <= Decimal::ZERO {
-            return Err(AppError::Validation("qty must be positive".into()));
-        }
-        diff.insert("qty".into(), json!({ "from": current.qty, "to": v }));
-        active.qty = Set(v);
-    }
-    if let Some(v) = p.price {
-        diff.insert("price".into(), json!({ "from": current.price, "to": v }));
-        active.price = Set(v);
-    }
-    if let Some(v) = p.fee {
-        diff.insert("fee".into(), json!({ "from": current.fee, "to": v }));
-        active.fee = Set(v);
-    }
-    if let Some(v) = p.date {
-        diff.insert("date".into(), json!({ "from": current.date, "to": v }));
-        active.date = Set(v);
-    }
-    if let Some(v) = p.source {
-        if !ALLOWED_SOURCE.contains(&v.as_str()) {
-            return Err(AppError::Validation(format!("invalid source: {v}")));
-        }
-        diff.insert("source".into(), json!({ "from": current.source, "to": v }));
-        active.source = Set(v);
-    }
-    if let Some(v) = p.note {
-        diff.insert("note".into(), json!({ "from": current.note, "to": v }));
-        active.note = Set(Some(v));
-    }
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    if !diff.is_empty() {
-        change_history::record(
-            &txn,
-            TargetKind::Trade,
+    let updated = state
+        .trade_use_cases
+        .update(
             id,
-            Op::Update,
-            serde_json::Value::Object(diff),
-            None,
+            TradeUpdateCommand {
+                strategy_id: p.strategy_id,
+                symbol: p.symbol,
+                side: p.side,
+                qty: p.qty,
+                price: p.price,
+                fee: p.fee,
+                date: p.date,
+                source: p.source,
+                note: p.note,
+            },
         )
-        .await?;
-    }
-    txn.commit().await?;
+        .await
+        .map_err(map_trade_error)?;
     Ok(Json(updated.into()))
 }
 
@@ -313,13 +184,11 @@ pub async fn delete_trade(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let txn = state.db.begin().await?;
-    let res = trade::Entity::delete_by_id(id).exec(&txn).await?;
-    if res.rows_affected == 0 {
-        return Err(AppError::NotFound(format!("trade {id} not found")));
-    }
-    change_history::record(&txn, TargetKind::Trade, id, Op::Delete, json!({}), None).await?;
-    txn.commit().await?;
+    state
+        .trade_use_cases
+        .delete(id)
+        .await
+        .map_err(map_trade_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -346,21 +215,121 @@ pub async fn trades_summary(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<SummaryQuery>,
 ) -> Result<Json<PerformanceSummary>, AppError> {
-    Ok(Json(
-        trades_svc::fetch_summary(&state.db, p.strategy_id).await?,
-    ))
+    let summary = state
+        .trade_use_cases
+        .summary(p.strategy_id)
+        .await
+        .map_err(map_trade_error)?;
+    Ok(Json(summary_response(summary)))
+}
+
+fn map_trade_error(error: TradeUseCaseError) -> AppError {
+    match error {
+        TradeUseCaseError::Validation(message) => AppError::Validation(message),
+        TradeUseCaseError::NotFound(id) => AppError::NotFound(format!("trade {id} not found")),
+        TradeUseCaseError::Repository(TradeRepositoryError::Database(error))
+        | TradeUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | TradeUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | TradeUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            map_persistence_error(error)
+        }
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+    }
+}
+
+fn map_persistence_error(error: PersistenceError) -> AppError {
+    match error {
+        PersistenceError::Database(message) => AppError::Database(sea_orm::DbErr::Custom(message)),
+        PersistenceError::MissingReference(_) => {
+            AppError::Validation("referenced resource does not exist".into())
+        }
+        PersistenceError::Conflict(_) => AppError::Conflict("resource already exists".into()),
+        PersistenceError::ConstraintViolation(_) => {
+            AppError::Validation("value violates database constraint".into())
+        }
+        PersistenceError::RecordNotUpdated(_) => AppError::NotFound("resource not found".into()),
+    }
+}
+
+fn summary_response(summary: TradePerformanceSummary) -> PerformanceSummary {
+    PerformanceSummary {
+        strategy_id: summary.strategy_id,
+        trade_count: summary.trade_count,
+        realized_pnl: summary.realized_pnl,
+        positions: summary
+            .positions
+            .into_iter()
+            .map(|position| crate::models::PositionSummary {
+                symbol: position.symbol,
+                qty: position.qty,
+                avg_cost: position.avg_cost,
+                cost_basis: position.cost_basis,
+                realized_pnl: position.realized_pnl,
+            })
+            .collect(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    use rstest::rstest;
     use rust_decimal::Decimal;
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::{Value, json};
     use uuid::Uuid;
 
+    use super::PersistenceError;
     use crate::testing::{create_test_server_with_db, insert_test_strategy};
-    use gateway_postgres::entities::trade;
+    use gateway_postgres::entities::{change_history, trade};
+
+    #[rstest]
+    #[case::missing_reference(
+        PersistenceError::MissingReference("foreign key violation".into()),
+        StatusCode::BAD_REQUEST,
+        "referenced resource does not exist",
+    )]
+    #[case::conflict(
+        PersistenceError::Conflict("unique violation".into()),
+        StatusCode::CONFLICT,
+        "resource already exists",
+    )]
+    #[case::constraint_violation(
+        PersistenceError::ConstraintViolation("check violation".into()),
+        StatusCode::BAD_REQUEST,
+        "value violates database constraint",
+    )]
+    #[case::record_not_updated(
+        PersistenceError::RecordNotUpdated("record not updated".into()),
+        StatusCode::NOT_FOUND,
+        "resource not found",
+    )]
+    #[case::database_error(
+        PersistenceError::Database("database unavailable".into()),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal server error",
+    )]
+    #[tokio::test]
+    async fn persistence_errors_keep_http_response_classification(
+        #[case] error: PersistenceError,
+        #[case] expected_status: StatusCode,
+        #[case] expected_message: &str,
+    ) {
+        let response = super::map_persistence_error(error).into_response();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read response body");
+        let body: Value = serde_json::from_slice(&bytes).expect("parse response body");
+
+        assert_eq!(
+            (status, body),
+            (expected_status, json!({ "error": expected_message }),),
+        );
+    }
 
     fn normalize_trade(mut value: Value) -> Value {
         value["id"] = json!("<dyn>");
@@ -368,6 +337,56 @@ mod tests {
         value["created_at"] = json!("<dyn>");
         value["updated_at"] = json!("<dyn>");
         value
+    }
+
+    struct SeedTrade {
+        strategy_id: Uuid,
+        trade_id: Uuid,
+        side: &'static str,
+        qty: i64,
+        price: i64,
+        fee: i64,
+        day: u32,
+    }
+
+    async fn seed_trade(db: &impl sea_orm::ConnectionTrait, seed: SeedTrade) {
+        trade::ActiveModel {
+            id: Set(seed.trade_id),
+            strategy_id: Set(seed.strategy_id),
+            symbol: Set("FICTIONAL-SYMBOL".into()),
+            side: Set(seed.side.into()),
+            qty: Set(Decimal::from(seed.qty)),
+            price: Set(Decimal::from(seed.price)),
+            fee: Set(Decimal::from(seed.fee)),
+            date: Set(chrono::NaiveDate::from_ymd_opt(2026, 6, seed.day).expect("valid date")),
+            source: Set("manual".into()),
+            note: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+        }
+        .insert(db)
+        .await
+        .expect("insert trade");
+    }
+
+    async fn history_snapshot(
+        db: &impl sea_orm::ConnectionTrait,
+        trade_id: Uuid,
+    ) -> (String, Uuid, String, String, String, Value) {
+        let history = change_history::Entity::find()
+            .filter(change_history::Column::TargetId.eq(trade_id))
+            .one(db)
+            .await
+            .expect("query change history")
+            .expect("change history exists");
+        (
+            history.target_kind,
+            history.target_id,
+            history.actor_kind,
+            history.actor_label,
+            history.op,
+            history.diff_json,
+        )
     }
 
     #[backend_test_macros::database_test]
@@ -419,6 +438,235 @@ mod tests {
                 "updated_at": "<dyn>",
                 "note_count": 0,
             })],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_persists_trade_and_change_history(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        let response = server
+            .post("/api/trades")
+            .json(&json!({
+                    "strategy_id": strategy_id,
+                    "symbol": "  FICTIONAL-SYMBOL  ",
+                    "side": "buy",
+                    "qty": 3,
+                    "price": 25,
+                    "date": "2026-06-01",
+                    "source": "manual",
+            }))
+            .await;
+        let response_status = response.status_code();
+        let response_body = response.json::<Value>();
+        let trade_id = Uuid::parse_str(response_body["id"].as_str().expect("trade id"))
+            .expect("valid trade id");
+        let actual = normalize_trade(response_body);
+        let history = history_snapshot(&db, trade_id).await;
+
+        assert_eq!(
+            (response_status, actual, history),
+            (
+                StatusCode::CREATED,
+                json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "side": "buy",
+                    "qty": 3,
+                    "price": 25,
+                    "fee": 0,
+                    "date": "2026-06-01",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                }),
+                (
+                    "trade".to_string(),
+                    trade_id,
+                    "human".to_string(),
+                    "user".to_string(),
+                    "create".to_string(),
+                    json!({
+                        "strategy_id": strategy_id,
+                        "symbol": "FICTIONAL-SYMBOL",
+                        "side": "buy",
+                        "qty": 3,
+                        "price": 25,
+                    }),
+                ),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_records_the_changed_fields(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        let trade_id = Uuid::new_v4();
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id,
+                side: "buy",
+                qty: 3,
+                price: 25,
+                fee: 0,
+                day: 1,
+            },
+        )
+        .await;
+
+        let response = server
+            .patch(&format!("/api/trades/{trade_id}"))
+            .json(&json!({ "side": "sell", "qty": 5 }))
+            .await;
+        let response_status = response.status_code();
+        let actual = normalize_trade(response.json::<Value>());
+        let history = history_snapshot(&db, trade_id).await;
+
+        assert_eq!(
+            (response_status, actual, history),
+            (
+                StatusCode::OK,
+                json!({
+                    "id": "<dyn>",
+                    "strategy_id": "<dyn>",
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "side": "sell",
+                    "qty": 5,
+                    "price": 25,
+                    "fee": 0,
+                    "date": "2026-06-01",
+                    "source": "manual",
+                    "note": null,
+                    "created_at": "<dyn>",
+                    "updated_at": "<dyn>",
+                }),
+                (
+                    "trade".to_string(),
+                    trade_id,
+                    "human".to_string(),
+                    "user".to_string(),
+                    "update".to_string(),
+                    json!({
+                        "side": { "from": "buy", "to": "sell" },
+                        "qty": { "from": 3, "to": 5 },
+                    }),
+                ),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn summary_uses_fifo_cost_and_realized_profit(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id: Uuid::new_v4(),
+                side: "buy",
+                qty: 100,
+                price: 100,
+                fee: 10,
+                day: 1,
+            },
+        )
+        .await;
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id: Uuid::new_v4(),
+                side: "buy",
+                qty: 100,
+                price: 120,
+                fee: 0,
+                day: 2,
+            },
+        )
+        .await;
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id: Uuid::new_v4(),
+                side: "sell",
+                qty: 150,
+                price: 130,
+                fee: 20,
+                day: 3,
+            },
+        )
+        .await;
+
+        let response = server
+            .get(&format!("/api/trades/summary?strategy_id={strategy_id}"))
+            .await;
+
+        assert_eq!(
+            response.json::<Value>(),
+            json!({
+                "strategy_id": strategy_id,
+                "trade_count": 3,
+                "realized_pnl": 3470,
+                "positions": [{
+                    "symbol": "FICTIONAL-SYMBOL",
+                    "qty": 50,
+                    "avg_cost": 120,
+                    "cost_basis": 6000,
+                    "realized_pnl": 3470,
+                }],
+            }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn delete_removes_trade_and_records_change_history(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "fictional-strategy").await;
+        let trade_id = Uuid::new_v4();
+        seed_trade(
+            &db,
+            SeedTrade {
+                strategy_id,
+                trade_id,
+                side: "buy",
+                qty: 3,
+                price: 25,
+                fee: 0,
+                day: 1,
+            },
+        )
+        .await;
+
+        let response = server.delete(&format!("/api/trades/{trade_id}")).await;
+        let response_status = response.status_code();
+        let trade_exists = trade::Entity::find_by_id(trade_id)
+            .one(&db)
+            .await
+            .expect("query trade")
+            .is_some();
+        let history = history_snapshot(&db, trade_id).await;
+
+        assert_eq!(
+            (response_status, trade_exists, history),
+            (
+                StatusCode::NO_CONTENT,
+                false,
+                (
+                    "trade".to_string(),
+                    trade_id,
+                    "human".to_string(),
+                    "user".to_string(),
+                    "delete".to_string(),
+                    json!({}),
+                ),
+            ),
         );
     }
 }
