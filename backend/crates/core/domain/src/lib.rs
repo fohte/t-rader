@@ -7,6 +7,8 @@ pub mod holdings;
 pub mod indicator_observation;
 pub mod instrument;
 pub mod margin;
+pub mod note_graph;
+pub mod note_reference;
 pub mod short_ratio;
 pub mod short_sale_report;
 pub mod valuation;

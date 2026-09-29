@@ -1,16 +1,18 @@
 use std::sync::Arc;
 
 use core_application::change_history::SharedChangeHistoryPort;
+use core_application::note::{NoteUseCases, SharedNoteRepository};
 use core_application::strategy_existence::SharedStrategyExistence;
 use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
-    DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresTradeRepository,
-    PostgresUnitOfWork,
+    DatabaseHandle, PostgresChangeHistory, PostgresNoteRepository, PostgresStrategyExistence,
+    PostgresTradeRepository, PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
 pub struct UseCases {
+    pub notes: NoteUseCases,
     pub trades: TradeUseCases,
 }
 
@@ -20,7 +22,14 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let repository: SharedTradeRepository = Arc::new(PostgresTradeRepository::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
     let change_history: SharedChangeHistoryPort = Arc::new(PostgresChangeHistory);
+    let note_repository: SharedNoteRepository = Arc::new(PostgresNoteRepository::new());
+    let notes = NoteUseCases::new(
+        unit_of_work.clone(),
+        note_repository,
+        strategy_existence.clone(),
+        change_history.clone(),
+    );
     let trades = TradeUseCases::new(unit_of_work, repository, strategy_existence, change_history);
 
-    UseCases { trades }
+    UseCases { notes, trades }
 }
