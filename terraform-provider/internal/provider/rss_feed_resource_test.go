@@ -75,12 +75,7 @@ func TestRssFeedResourceCreate(t *testing.T) {
 
 	response := resource.CreateResponse{State: tfsdk.State{Schema: resourceSchema.Schema}}
 	(&rssFeedResource{client: client}).Create(ctx, resource.CreateRequest{Plan: plan}, &response)
-	var observedRequest *rssFeedRequestObservation
-	select {
-	case observed := <-requests:
-		observedRequest = &observed
-	default:
-	}
+	observedRequest := receiveRssFeedRequest(requests)
 	var resultState rssFeedModel
 	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
 
@@ -141,12 +136,7 @@ func TestRssFeedResourceRead(t *testing.T) {
 
 	response := resource.ReadResponse{State: tfsdk.State{Raw: state.Raw, Schema: resourceSchema.Schema}}
 	(&rssFeedResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
-	var observedRequest *rssFeedRequestObservation
-	select {
-	case observed := <-requests:
-		observedRequest = &observed
-	default:
-	}
+	observedRequest := receiveRssFeedRequest(requests)
 	var resultState rssFeedModel
 	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
 
@@ -193,12 +183,7 @@ func TestRssFeedResourceReadRemovesMissingFeed(t *testing.T) {
 
 	response := resource.ReadResponse{State: tfsdk.State{Raw: state.Raw, Schema: resourceSchema.Schema}}
 	(&rssFeedResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
-	var observedRequest *rssFeedRequestObservation
-	select {
-	case observed := <-requests:
-		observedRequest = &observed
-	default:
-	}
+	observedRequest := receiveRssFeedRequest(requests)
 	got := struct {
 		Request      *rssFeedRequestObservation
 		StateRemoved bool
@@ -263,12 +248,7 @@ func TestRssFeedResourceUpdateUsesPriorStateID(t *testing.T) {
 
 	response := resource.UpdateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: resourceSchema.Schema}}
 	(&rssFeedResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
-	var observedRequest *rssFeedRequestObservation
-	select {
-	case observed := <-requests:
-		observedRequest = &observed
-	default:
-	}
+	observedRequest := receiveRssFeedRequest(requests)
 	var resultState rssFeedModel
 	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
 
@@ -316,12 +296,7 @@ func TestRssFeedResourceDelete(t *testing.T) {
 
 	response := resource.DeleteResponse{State: state}
 	(&rssFeedResource{client: client}).Delete(ctx, resource.DeleteRequest{State: state}, &response)
-	var observedRequest *rssFeedRequestObservation
-	select {
-	case observed := <-requests:
-		observedRequest = &observed
-	default:
-	}
+	observedRequest := receiveRssFeedRequest(requests)
 	got := struct {
 		Request     *rssFeedRequestObservation
 		Diagnostics []rssFeedDiagnosticObservation
@@ -667,6 +642,11 @@ func recordRssFeedRequest(t *testing.T, requests chan<- rssFeedRequestObservatio
 	}
 	requests <- rssFeedRequestObservation{Method: request.Method, Path: request.URL.Path, Body: string(body)}
 	return true
+}
+
+func receiveRssFeedRequest(requests <-chan rssFeedRequestObservation) *rssFeedRequestObservation {
+	observed := <-requests
+	return &observed
 }
 
 func rssFeedResourceSchema(t *testing.T) resource.SchemaResponse {
