@@ -516,8 +516,7 @@ describe('runStrategyAgent', () => {
 
 describe('createStrategyAgentDeps', () => {
   const baseConfig = {
-    backendApiBaseUrl: 'http://t-rader-backend',
-    strategyMcpUrl: 'http://t-rader-backend/mcp/strategy',
+    backendApiBaseUrl: 'http://t-rader-backend/',
     llmApiKey: 'test-key',
     genAiProviderName: 'opencode',
     llmCallTimeoutMs: 600_000,
