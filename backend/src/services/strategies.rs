@@ -29,6 +29,14 @@ pub async fn ensure_strategy_exists<C: ConnectionTrait + Sync>(
         .map_err(map_scope_error)
 }
 
+pub async fn strategy_scope<C: ConnectionTrait + Sync>(
+    conn: &C,
+    strategy_id: Uuid,
+) -> Result<StrategyScope, StrategyScopeError> {
+    let source = PostgresStrategyScopeSource::new(conn);
+    StrategyScope::verify(strategy_id, &source).await
+}
+
 pub async fn ensure_strategies_exist<C, I>(conn: &C, ids: I) -> Result<(), AppError>
 where
     C: ConnectionTrait + Sync,

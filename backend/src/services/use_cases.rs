@@ -6,24 +6,29 @@ use core_application::comment::{CommentUseCases, SharedCommentRepository};
 use core_application::custom_indicator::{
     CustomIndicatorUseCases, SharedCustomIndicatorRepository,
 };
+use core_application::note::{NoteUseCases, SharedNoteRepository};
 use core_application::strategy::{
     SharedStrategyRepository, SharedStrategySummaryQuery, StrategyUseCases,
 };
 use core_application::strategy_existence::SharedStrategyExistence;
+use core_application::strategy_task::{SharedStrategyTaskRepository, StrategyTaskUseCases};
 use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresAnnotationRepository, PostgresChangeHistory, PostgresCommentRepository,
-    PostgresCustomIndicatorRepository, PostgresStrategyExistence, PostgresStrategyRepository,
-    PostgresStrategySummaryQuery, PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresCustomIndicatorRepository, PostgresNoteRepository, PostgresStrategyExistence,
+    PostgresStrategyRepository, PostgresStrategySummaryQuery, PostgresStrategyTaskRepository,
+    PostgresTradeRepository, PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
 pub struct UseCases {
     pub annotations: AnnotationUseCases,
     pub comments: CommentUseCases,
+    pub notes: NoteUseCases,
     pub strategies: StrategyUseCases,
     pub trades: TradeUseCases,
+    pub strategy_tasks: StrategyTaskUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
 }
 
@@ -46,6 +51,13 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let comments = CommentUseCases::new(
         unit_of_work.clone(),
         comment_repository,
+        change_history.clone(),
+    );
+    let note_repository: SharedNoteRepository = Arc::new(PostgresNoteRepository::new());
+    let notes = NoteUseCases::new(
+        unit_of_work.clone(),
+        note_repository,
+        strategy_existence.clone(),
         change_history.clone(),
     );
     let strategy_repository: SharedStrategyRepository =
@@ -72,11 +84,23 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         change_history,
     );
 
+    let strategy_tasks = build_strategy_task_use_cases(db);
+
     UseCases {
         annotations,
         comments,
+        notes,
         strategies,
         trades,
+        strategy_tasks,
         custom_indicators,
     }
+}
+
+pub fn build_strategy_task_use_cases(db: impl Into<DatabaseHandle>) -> StrategyTaskUseCases {
+    let db = db.into();
+    let task_unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
+    let task_repository: SharedStrategyTaskRepository =
+        Arc::new(PostgresStrategyTaskRepository::new(db));
+    StrategyTaskUseCases::new(task_unit_of_work, task_repository)
 }

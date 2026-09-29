@@ -2,22 +2,19 @@
 //!
 //! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
 
-use core_application::strategy_scope::StrategyScope;
-use rmcp::ErrorData as McpError;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
-use uuid::Uuid;
-
-use crate::services::change_history::Actor;
-use crate::services::graph::{GraphDef, validate_graphs};
+use crate::services::graph::GraphDef;
 use crate::services::note_kinds;
 use crate::services::note_links::find_links_from_version;
 use crate::services::note_versions::{
-    self, AppendVersion, current_note_ids, current_note_ids_with_status, find_current_versions,
+    self, current_note_ids, current_note_ids_with_status, find_current_versions,
     find_initial_created_by_kind, find_version_of_note,
 };
+use core_application::change_history::Actor;
+use core_application::note::{NoteUseCaseError, NoteWriteCommand};
+use core_application::strategy_scope::StrategyScope;
 use gateway_postgres::entities::{note, note_version};
+use rmcp::ErrorData as McpError;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use super::dto::{
     ListNoteKindsResult, ListNotesParams, ListNotesResult, NoteDto, NoteKindDto, NoteLinkDto,
@@ -27,73 +24,6 @@ use super::{
     STRATEGY_AGENT_ACTOR, StrategyServer, app_error_to_mcp, clamp_limit, db_error,
     fetch_note_owned_by, internal_error, invalid_params,
 };
-
-/// 検証済みの `graphs` を JSON へ変換する。
-fn graphs_to_json(graphs: Vec<GraphDef>) -> Result<serde_json::Value, McpError> {
-    serde_json::to_value(graphs)
-        .map_err(|e| internal_error(format!("failed to serialize graphs: {e}")))
-}
-
-/// insert 済みの note に初回バージョンを追加し、同一トランザクションを commit する。
-async fn commit_new_note(
-    txn: sea_orm::DatabaseTransaction,
-    id: Uuid,
-    content: AppendVersion,
-) -> Result<WriteNoteResult, McpError> {
-    note_versions::append_version(&txn, id, content)
-        .await
-        .map_err(app_error_to_mcp)?;
-    txn.commit().await.map_err(db_error)?;
-    Ok(WriteNoteResult {
-        note_id: id,
-        created: true,
-    })
-}
-
-/// 新規ノートのメタデータと初回バージョンを組み立てる。
-fn build_new_note_model(
-    session_strategy_id: Uuid,
-    execution_id: Option<String>,
-    params: WriteNoteParams,
-) -> Result<(Uuid, note::ActiveModel, AppendVersion), McpError> {
-    let title = params
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| invalid_params("title is required when creating a new note"))?
-        .to_string();
-    let body_md = params.body_md.unwrap_or_default();
-    let frontmatter_json: serde_json::Value = params.frontmatter_json.unwrap_or_default().into();
-    let graphs_json = graphs_to_json(params.graphs.unwrap_or_default())?;
-    let id = Uuid::new_v4();
-    Ok((
-        id,
-        note::ActiveModel {
-            id: Set(id),
-            strategy_id: Set(Some(session_strategy_id)),
-            kind: Set(params.kind.flatten()),
-            trigger: Set(None),
-            trigger_label: Set(None),
-            created_at: NotSet,
-            updated_at: NotSet,
-            execution_id: Set(execution_id.clone()),
-        },
-        AppendVersion {
-            title,
-            body_md,
-            frontmatter_json,
-            graphs_json,
-            created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
-            execution_id,
-            change_reason: params.change_reason,
-            change_diff: None,
-            actor: Actor::Llm {
-                label: STRATEGY_AGENT_ACTOR,
-            },
-        },
-    ))
-}
 
 /// note_version.status の CHECK 制約と一致させる。
 const ALLOWED_NOTE_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
@@ -141,6 +71,23 @@ fn note_to_dto(
     })
 }
 
+fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
+    match error {
+        NoteUseCaseError::Validation(message) => invalid_params(message),
+        NoteUseCaseError::UnknownNoteKind(kind) => {
+            invalid_params(format!("unknown note kind: {kind}"))
+        }
+        NoteUseCaseError::ReferencedNoteKindNotFound(kind) => {
+            internal_error(format!("note kind {kind} not found"))
+        }
+        NoteUseCaseError::NotFound(_) => McpError::resource_not_found("note not found", None),
+        NoteUseCaseError::Forbidden(note_id) => invalid_params(format!(
+            "forbidden: note {note_id} belongs to another strategy"
+        )),
+        other => internal_error(format!("{other}")),
+    }
+}
+
 impl StrategyServer {
     pub(crate) async fn list_note_kinds_inner(&self) -> Result<ListNoteKindsResult, McpError> {
         let note_kinds = note_kinds::list(&self.db)
@@ -164,225 +111,45 @@ impl StrategyServer {
         execution_id: Option<String>,
         params: WriteNoteParams,
     ) -> Result<WriteNoteResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        if let Some(graphs) = params.graphs.as_ref() {
-            validate_graphs(graphs).map_err(|e| invalid_params(e.to_string()))?;
-        }
-
-        let effective_note_id = match params.note_id {
-            Some(note_id) => Some(note_id),
-            None => match execution_id.as_deref() {
-                Some(exec_id) => {
-                    self.find_note_by_execution_id(session_strategy_id, exec_id)
-                        .await?
-                }
-                None => None,
-            },
-        };
-
-        if let Some(note_id) = effective_note_id {
-            return self
-                .update_note(session_strategy_id, note_id, execution_id, params)
-                .await;
-        }
-
-        if let Some(Some(kind)) = params.kind.as_ref() {
-            note_kinds::ensure_reference(&self.db, kind)
-                .await
-                .map_err(app_error_to_mcp)?;
-        }
-
-        let Some(exec_id) = execution_id else {
-            return self.insert_note(session_strategy_id, None, params).await;
-        };
-
-        // execution_id 付きの create は並行呼び出しで UNIQUE 違反になりうるため
-        // ON CONFLICT DO NOTHING で挿入を試み、負けた場合は勝者の行を更新対象にフォールバックする。
-        let params_for_fallback = params.clone();
-        match self
-            .insert_note_or_conflict(session_strategy_id, exec_id.clone(), params)
-            .await?
-        {
-            Some(result) => Ok(result),
-            None => {
-                let note_id = self
-                    .find_note_by_execution_id(session_strategy_id, &exec_id)
-                    .await?
-                    .ok_or_else(|| {
-                        db_error(sea_orm::DbErr::Custom(
-                            "note disappeared between ON CONFLICT and SELECT".into(),
-                        ))
-                    })?;
-                self.update_note(
-                    session_strategy_id,
-                    note_id,
-                    Some(exec_id),
-                    params_for_fallback,
-                )
-                .await
-            }
-        }
-    }
-
-    async fn find_note_by_execution_id(
-        &self,
-        session_strategy_id: Uuid,
-        execution_id: &str,
-    ) -> Result<Option<Uuid>, McpError> {
-        note::Entity::find()
-            .filter(note::Column::StrategyId.eq(session_strategy_id))
-            .filter(note::Column::ExecutionId.eq(execution_id))
-            .one(&self.db)
-            .await
-            .map_err(db_error)
-            .map(|m| m.map(|m| m.id))
-    }
-
-    /// 既存ノートへ `params` の指定フィールドのみを部分適用する。`write_note_inner` の
-    /// 「明示 note_id」経路と「execution_id の ON CONFLICT 敗北」経路の両方から呼ばれる。
-    async fn update_note(
-        &self,
-        session_strategy_id: Uuid,
-        note_id: Uuid,
-        execution_id: Option<String>,
-        params: WriteNoteParams,
-    ) -> Result<WriteNoteResult, McpError> {
-        let current = fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
-        let current_version = note_versions::find_latest_version(&self.db, note_id)
-            .await
-            .map_err(db_error)?
-            .ok_or_else(|| internal_error(format!("note {note_id} has no version")))?;
-        let mut touched = false;
-        let mut version_changed = false;
-        let mut title = current_version.title.clone();
-        let mut body_md = current_version.body_md.clone();
-        let mut frontmatter_json = current_version.frontmatter_json.clone();
-        let mut graphs_json = current_version.graphs_json.clone();
-        if let Some(requested_title) = params.title {
-            let updated_title = requested_title.trim().to_string();
-            if updated_title.is_empty() {
-                return Err(invalid_params("title must not be empty"));
-            }
-            title = updated_title;
-            touched = true;
-            version_changed = true;
-        }
-        if let Some(body) = params.body_md {
-            body_md = body;
-            touched = true;
-            version_changed = true;
-        }
-        if let Some(kind) = params.kind
-            && kind != current.kind
-        {
-            return Err(invalid_params(
-                "kind can only be set when creating a new note",
-            ));
-        }
-        if let Some(fm) = params.frontmatter_json {
-            frontmatter_json = fm.into();
-            touched = true;
-            version_changed = true;
-        }
-        if let Some(graphs) = params.graphs {
-            graphs_json = graphs_to_json(graphs)?;
-            touched = true;
-            version_changed = true;
-        }
-        if !touched {
-            return Err(invalid_params(
-                "at least one of title / body_md / frontmatter_json / graphs must be provided",
-            ));
-        }
-        if version_changed
-            && title == current_version.title
-            && body_md == current_version.body_md
-            && frontmatter_json == current_version.frontmatter_json
-            && graphs_json == current_version.graphs_json
-        {
-            return Ok(WriteNoteResult {
-                note_id,
-                created: false,
-            });
-        }
-        let txn = self.db.begin().await.map_err(db_error)?;
-        if version_changed {
-            note_versions::append_version(
-                &txn,
-                note_id,
-                AppendVersion {
-                    title,
-                    body_md,
-                    frontmatter_json,
-                    graphs_json,
-                    created_by_kind: STRATEGY_AGENT_ACTOR.to_string(),
-                    execution_id,
-                    change_reason: params.change_reason,
-                    change_diff: None,
-                    actor: Actor::Llm {
-                        label: STRATEGY_AGENT_ACTOR,
-                    },
+        let scope = scope.into();
+        let graphs_json = params
+            .graphs
+            .map(|graphs| {
+                let graphs: Vec<core_domain::note_graph::GraphDef> =
+                    graphs.into_iter().map(Into::into).collect();
+                serde_json::to_value(graphs)
+                    .map_err(|error| internal_error(format!("failed to serialize graphs: {error}")))
+            })
+            .transpose()?;
+        let result = self
+            .use_cases
+            .notes
+            .write(NoteWriteCommand {
+                scope: Some(scope),
+                strategy_id: Some(scope.id()),
+                execution_id,
+                note_id: params.note_id,
+                title: params.title,
+                body_md: params.body_md,
+                frontmatter_json: params.frontmatter_json.map(serde_json::Value::Object),
+                graphs_json,
+                kind: params.kind,
+                status: None,
+                trigger: None,
+                trigger_label: None,
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                change_reason: params.change_reason,
+                actor: Actor::Llm {
+                    label: STRATEGY_AGENT_ACTOR,
                 },
-            )
+                change_diff: None,
+            })
             .await
-            .map_err(app_error_to_mcp)?;
-        }
-        txn.commit().await.map_err(db_error)?;
+            .map_err(note_use_case_to_mcp)?;
         Ok(WriteNoteResult {
-            note_id,
-            created: false,
+            note_id: result.note_id,
+            created: result.created,
         })
-    }
-
-    async fn insert_note(
-        &self,
-        session_strategy_id: Uuid,
-        execution_id: Option<String>,
-        params: WriteNoteParams,
-    ) -> Result<WriteNoteResult, McpError> {
-        let (id, model, content) = build_new_note_model(session_strategy_id, execution_id, params)?;
-        let txn = self.db.begin().await.map_err(db_error)?;
-        note::Entity::insert(model)
-            .exec_without_returning(&txn)
-            .await
-            .map_err(db_error)?;
-        commit_new_note(txn, id, content).await
-    }
-
-    /// `execution_id` 付きの新規作成を `ON CONFLICT (strategy_id, execution_id) DO NOTHING` で
-    /// 試みる。対象インデックスは部分インデックス (`execution_id IS NOT NULL` のみ) なので、
-    /// `target_and_where` で ON CONFLICT 側にも同じ述語を明示しないと Postgres がこのインデックスを
-    /// arbiter に選べない (述語が一致しないと "no unique or exclusion constraint" エラーになる)。
-    /// 衝突時 (`Ok(None)`) は呼び出し側が SELECT して更新にフォールバックすること。
-    async fn insert_note_or_conflict(
-        &self,
-        session_strategy_id: Uuid,
-        execution_id: String,
-        params: WriteNoteParams,
-    ) -> Result<Option<WriteNoteResult>, McpError> {
-        let (id, model, content) =
-            build_new_note_model(session_strategy_id, Some(execution_id), params)?;
-        let txn = self.db.begin().await.map_err(db_error)?;
-        let insert_result = note::Entity::insert(model)
-            .on_conflict(
-                OnConflict::columns([note::Column::StrategyId, note::Column::ExecutionId])
-                    .target_and_where(Expr::col(note::Column::ExecutionId).is_not_null())
-                    .do_nothing()
-                    .to_owned(),
-            )
-            .exec_with_returning(&txn)
-            .await;
-        match insert_result {
-            Ok(_) => commit_new_note(txn, id, content).await.map(Some),
-            // ON CONFLICT DO NOTHING で skip されたとき、SeaORM 2.0 では
-            // `exec_with_returning` は `RecordNotFound` を返す (RETURNING 行が空のため)。
-            // `RecordNotInserted` も `RecordNotFound` と同じく INSERT が skip された結果として扱う。
-            Err(sea_orm::DbErr::RecordNotInserted | sea_orm::DbErr::RecordNotFound(_)) => {
-                txn.rollback().await.map_err(db_error)?;
-                Ok(None)
-            }
-            Err(err) => Err(db_error(err)),
-        }
     }
 
     pub(crate) async fn read_note_inner(
@@ -504,7 +271,7 @@ mod tests {
     };
     use crate::services::graph::{GraphDef, GraphEdge, GraphNode, Layout};
     use crate::services::note_versions::find_current_version;
-    use gateway_postgres::entities::{comment, note_ref, note_version};
+    use gateway_postgres::entities::{comment, note, note_ref, note_version};
 
     const INVALID_NOTE_BODY: &str = "[[bogus:one]] [[bare-demo]]";
     const INVALID_BODY_TOKEN_ERROR: &str = concat!(
@@ -621,6 +388,41 @@ mod tests {
                 graphs: vec![],
                 links: Some(vec![]),
             },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn write_note_rejects_unknown_kind_as_invalid_params(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let strategy_id = insert_strategy(&db, "long").await;
+        let server = build_server(db.clone());
+
+        let error = server
+            .write_note_inner(
+                strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("sample note".into()),
+                    body_md: None,
+                    kind: Some(Some("sample-kind".into())),
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect_err("unknown note kind must be rejected");
+        let saved_notes = note::Entity::find().all(&db).await.unwrap();
+
+        assert_eq!(
+            (error.code, error.message.as_ref(), saved_notes.len(),),
+            (
+                rmcp::model::ErrorCode::INVALID_PARAMS,
+                "unknown note kind: sample-kind",
+                0,
+            ),
         );
     }
 
@@ -2014,17 +1816,15 @@ mod tests {
         );
     }
 
-    /// `insert_note_or_conflict` は同一 (strategy_id, execution_id) の行が既に存在するとき、
-    /// パーシャルユニークインデックスへの生の制約違反エラーを投げず `Ok(None)` を返す。
-    /// 作成経路を通さず実行 ID 付きの既存ノートを用意し、並行作成の先勝ちを模している。
+    /// 既存の execution_id へ書き込むと新規作成ではなく更新になる。
     #[backend_test_macros::database_test]
-    async fn insert_note_or_conflict_returns_none_when_execution_id_already_taken(
+    async fn write_note_with_existing_execution_id_updates_the_existing_note(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let strategy_id = insert_strategy(&db, "long").await;
         let server = build_server(db.clone());
 
-        crate::testing::insert_test_note_with_execution_id(
+        let note_id = crate::testing::insert_test_note_with_execution_id(
             &db,
             strategy_id,
             "winner",
@@ -2034,13 +1834,13 @@ mod tests {
         .await;
 
         let result = server
-            .insert_note_or_conflict(
+            .write_note_inner(
                 strategy_id,
-                "exec-1".into(),
+                Some("exec-1".into()),
                 WriteNoteParams {
                     note_id: None,
-                    title: Some("loser".into()),
-                    body_md: Some("loser body".into()),
+                    title: Some("revised title".into()),
+                    body_md: Some("revised body".into()),
                     kind: None,
                     frontmatter_json: None,
                     change_reason: None,
@@ -2048,7 +1848,18 @@ mod tests {
                 },
             )
             .await
-            .expect("ON CONFLICT DO NOTHING must not raise a raw constraint-violation error");
-        assert_eq!(result, None);
+            .unwrap();
+        let current = find_current_version(&db, note_id).await.unwrap().unwrap();
+        assert_eq!(
+            (result, current.title, current.body_md),
+            (
+                WriteNoteResult {
+                    note_id,
+                    created: false,
+                },
+                "revised title".into(),
+                "revised body".into(),
+            ),
+        );
     }
 }

@@ -25,24 +25,17 @@ pub use investable_amount::{
     __path_get_investable_amount, __path_put_investable_amount, get_investable_amount,
     put_investable_amount,
 };
-pub(crate) use tasks::map_submit_error;
 pub use tasks::{
     __path_get_strategy_task, __path_list_strategy_tasks, __path_submit_strategy_chat,
     get_strategy_task, list_strategy_tasks, submit_strategy_chat,
 };
+pub(crate) use tasks::{map_list_task_error, map_submit_error};
 
 pub(super) async fn strategy_scope_or_404(
     state: &AppState,
     id: Uuid,
 ) -> Result<StrategyScope, AppError> {
     verify_strategy_scope(&state.db, id).await
-}
-
-pub(super) async fn find_strategy_or_404(
-    db: &gateway_postgres::DatabaseHandle,
-    id: Uuid,
-) -> Result<(), AppError> {
-    verify_strategy_scope(db, id).await.map(|_| ())
 }
 
 async fn verify_strategy_scope(
