@@ -234,11 +234,7 @@ func stringNullableAttribute(value nullable.Nullable[string]) types.String {
 	if !value.IsSpecified() || value.IsNull() {
 		return types.StringNull()
 	}
-	result, err := value.Get()
-	if err != nil {
-		return types.StringNull()
-	}
-	return types.StringValue(result)
+	return types.StringValue(value.GetOrEmpty())
 }
 
 type strategyNameValidator struct{}

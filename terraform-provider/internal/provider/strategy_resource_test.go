@@ -190,7 +190,7 @@ func TestStrategyResourceIDPlanModifierUsesPriorState(t *testing.T) {
 	}
 }
 
-func TestStringAttributeUpdatePointer(t *testing.T) {
+func TestStringAttributeUpdateNullable(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {

@@ -37,7 +37,7 @@ func TestClientCheckConnection(t *testing.T) {
 	t.Parallel()
 
 	client, requests := newTestClient(t, func(w http.ResponseWriter, _ *http.Request, _ []byte) {
-		writeJSON(t, w, http.StatusOK, []Strategy{})
+		w.WriteHeader(http.StatusOK)
 	})
 
 	err := client.CheckConnection(context.Background())

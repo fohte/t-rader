@@ -1,9 +1,11 @@
 package traderapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -20,8 +22,10 @@ var (
 
 const strategiesPath = "/api/strategies"
 
+const maxErrorBodyBytes = 64 * 1024
+
 type Client struct {
-	*ClientWithResponses
+	api *ClientWithResponses
 }
 
 func New(baseURL, clientID, clientSecret string) (*Client, error) {
@@ -32,7 +36,7 @@ func New(baseURL, clientID, clientSecret string) (*Client, error) {
 
 	apiClient, err := NewClientWithResponses(
 		parsedURL.String(),
-		WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
+		WithHTTPClient(errorBodyLimitDoer{client: &http.Client{Timeout: 30 * time.Second}}),
 		WithRequestEditorFn(func(_ context.Context, request *http.Request) error {
 			request.Header.Set("Accept", "application/json")
 			if clientID != "" {
@@ -46,11 +50,16 @@ func New(baseURL, clientID, clientSecret string) (*Client, error) {
 		return nil, fmt.Errorf("create API client: %w", err)
 	}
 
-	return &Client{ClientWithResponses: apiClient}, nil
+	return &Client{api: apiClient}, nil
+}
+
+// OpenAPI はリソース実装向けの生成 client を返します。
+func (c *Client) OpenAPI() *ClientWithResponses {
+	return c.api
 }
 
 func (c *Client) CheckConnection(ctx context.Context) error {
-	response, err := c.ListStrategiesWithResponse(ctx)
+	response, err := c.api.ListStrategiesWithResponse(ctx)
 	if err != nil {
 		return fmt.Errorf("send connection check: %w", err)
 	}
@@ -58,7 +67,7 @@ func (c *Client) CheckConnection(ctx context.Context) error {
 }
 
 func (c *Client) CreateStrategy(ctx context.Context, payload CreateStrategyRequest) (Strategy, error) {
-	response, err := c.CreateStrategyWithResponse(ctx, payload)
+	response, err := c.api.CreateStrategyWithResponse(ctx, payload)
 	if err != nil {
 		return Strategy{}, fmt.Errorf("send create strategy request: %w", err)
 	}
@@ -76,7 +85,7 @@ func (c *Client) GetStrategy(ctx context.Context, id string) (Strategy, error) {
 	if err != nil {
 		return Strategy{}, err
 	}
-	response, err := c.GetStrategyWithResponse(ctx, strategyID)
+	response, err := c.api.GetStrategyWithResponse(ctx, strategyID)
 	if err != nil {
 		return Strategy{}, fmt.Errorf("send get strategy request: %w", err)
 	}
@@ -94,7 +103,7 @@ func (c *Client) UpdateStrategy(ctx context.Context, id string, payload UpdateSt
 	if err != nil {
 		return Strategy{}, err
 	}
-	response, err := c.UpdateStrategyWithResponse(ctx, strategyID, payload)
+	response, err := c.api.UpdateStrategyWithResponse(ctx, strategyID, payload)
 	if err != nil {
 		return Strategy{}, fmt.Errorf("send update strategy request: %w", err)
 	}
@@ -112,7 +121,7 @@ func (c *Client) DeleteStrategy(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	response, err := c.DeleteStrategyWithResponse(ctx, strategyID)
+	response, err := c.api.DeleteStrategyWithResponse(ctx, strategyID)
 	if err != nil {
 		return fmt.Errorf("send delete strategy request: %w", err)
 	}
@@ -137,9 +146,40 @@ func responseError(response *http.Response, body []byte) error {
 	if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
 		return nil
 	}
-	apiError := fmt.Errorf("backend returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+	truncated := len(body) > maxErrorBodyBytes
+	if truncated {
+		body = body[:maxErrorBodyBytes]
+	}
+	message := strings.TrimSpace(string(body))
+	if truncated {
+		message += " [truncated]"
+	}
+	apiError := fmt.Errorf("backend returned HTTP %d: %s", response.StatusCode, message)
 	if response.StatusCode == http.StatusNotFound {
 		return fmt.Errorf("%w: %w", ErrNotFound, apiError)
 	}
 	return apiError
+}
+
+type errorBodyLimitDoer struct {
+	client *http.Client
+}
+
+func (d errorBodyLimitDoer) Do(request *http.Request) (*http.Response, error) {
+	response, err := d.client.Do(request)
+	if err != nil || response == nil || (response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices) {
+		return response, err
+	}
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes+1))
+	_ = response.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("read error response: %w", err)
+	}
+	if len(body) > maxErrorBodyBytes {
+		// 上限を超えた JSON を生成 parser が不正な JSON として扱わないよう、Content-Type を変更する。
+		response.Header.Set("Content-Type", "text/plain")
+	}
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	return response, nil
 }
