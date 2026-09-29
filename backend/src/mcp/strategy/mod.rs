@@ -34,6 +34,8 @@ pub(super) mod web_search;
 #[cfg(test)]
 mod tests_common;
 
+use std::collections::BTreeMap;
+
 use core_application::strategy_scope::{StrategyScope, StrategyScopeError};
 use rmcp::ErrorData as McpError;
 use rmcp::service::{RequestContext, RoleServer};
@@ -69,6 +71,7 @@ const STRATEGY_ID_HEADER: &str = "x-strategy-id";
 /// agent 側の実行を cancel しないため、resume 後も旧試行の agent プロセスが生存して
 /// 呼び出しを送ってくると、新しい試行が書いた内容を上書き/削除しうる。
 const EXECUTION_ID_HEADER: &str = "x-execution-id";
+const TOOL_MODELS_HEADER: &str = "x-tool-models";
 
 pub(super) const DEFAULT_ANNOTATION_STATUS: &str = "unread";
 
@@ -313,6 +316,35 @@ fn execution_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     execution_id_from_headers(&parts.headers)
 }
 
+fn tool_model_from_headers(
+    headers: &axum::http::HeaderMap,
+    tool_name: &str,
+) -> Result<String, McpError> {
+    let header = headers
+        .get(TOOL_MODELS_HEADER)
+        .ok_or_else(|| internal_error(format!("missing {TOOL_MODELS_HEADER} header")))?;
+    let raw = header
+        .to_str()
+        .map_err(|_| invalid_params(format!("{TOOL_MODELS_HEADER} header is not valid ASCII")))?;
+    let tool_models: BTreeMap<String, String> = serde_json::from_str(raw)
+        .map_err(|_| invalid_params(format!("{TOOL_MODELS_HEADER} header is not valid JSON")))?;
+    tool_models
+        .get(tool_name)
+        .cloned()
+        .ok_or_else(|| internal_error(format!("tool model for {tool_name} is not configured")))
+}
+
+fn tool_model_from_ctx(
+    ctx: &RequestContext<RoleServer>,
+    tool_name: &str,
+) -> Result<String, McpError> {
+    let parts = ctx
+        .extensions
+        .get::<axum::http::request::Parts>()
+        .ok_or_else(|| internal_error("missing http parts in mcp request context"))?;
+    tool_model_from_headers(&parts.headers, tool_name)
+}
+
 /// `x-execution-id` ヘッダ値 (`{a2a_task_id}:{step_id}`) から `step_id` を取り出す。
 /// FK を持たない理由は `backend/src/mcp/strategy/evidence.rs` を参照。
 fn execution_step_id_from_execution_id(execution_id: &str) -> Option<Uuid> {
@@ -434,6 +466,67 @@ mod tests {
 
     fn execution_headers_with(value: Option<&[u8]>) -> axum::http::HeaderMap {
         header_map_with(EXECUTION_ID_HEADER, value)
+    }
+
+    fn tool_models_headers_with(value: Option<&[u8]>) -> axum::http::HeaderMap {
+        header_map_with(TOOL_MODELS_HEADER, value)
+    }
+
+    #[rstest]
+    #[case::search_web("search_web", "example-model-search")]
+    #[case::query_media("query_media", "example-model-media")]
+    fn tool_model_from_headers_returns_the_value_for_the_requested_tool(
+        #[case] tool_name: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(
+            tool_model_from_headers(
+                &tool_models_headers_with(Some(
+                    br#"{"search_web":"example-model-search","query_media":"example-model-media"}"#,
+                )),
+                tool_name,
+            ),
+            Ok(expected.to_string()),
+        );
+    }
+
+    #[rstest]
+    #[case::missing_header(
+        None,
+        "search_web",
+        rmcp::model::ErrorCode::INTERNAL_ERROR,
+        "missing x-tool-models header"
+    )]
+    #[case::missing_search_web(
+        Some(br#"{"query_media":"example-model-media"}"#.as_slice()),
+        "search_web",
+        rmcp::model::ErrorCode::INTERNAL_ERROR,
+        "tool model for search_web is not configured"
+    )]
+    #[case::missing_query_media(
+        Some(br#"{"search_web":"example-model-search"}"#.as_slice()),
+        "query_media",
+        rmcp::model::ErrorCode::INTERNAL_ERROR,
+        "tool model for query_media is not configured"
+    )]
+    #[case::invalid_json(
+        Some(b"not-json".as_slice()),
+        "search_web",
+        rmcp::model::ErrorCode::INVALID_PARAMS,
+        "x-tool-models header is not valid JSON"
+    )]
+    fn tool_model_from_headers_rejects_unavailable_configuration(
+        #[case] header: Option<&[u8]>,
+        #[case] tool_name: &str,
+        #[case] expected_code: rmcp::model::ErrorCode,
+        #[case] expected_message: &str,
+    ) {
+        let err = tool_model_from_headers(&tool_models_headers_with(header), tool_name)
+            .expect_err("expected tool model configuration error");
+        assert_eq!(
+            (err.code, err.message.as_ref()),
+            (expected_code, expected_message),
+        );
     }
 
     #[test]
