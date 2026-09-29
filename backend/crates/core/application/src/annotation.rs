@@ -324,6 +324,8 @@ impl AnnotationUseCases {
         current_execution_task_id: &str,
         actor: Actor,
     ) -> Result<(), AnnotationUseCaseError> {
+        // 同じ step の実行が別の task に切り替わったとき、前 task の未レビュー annotation を置き換える。
+        // 1 step から複数件作成できるため、一意制約ではなく古い未レビュー分を削除する。
         let mut stale_ids = self
             .repository
             .find_stale_unread_in_transaction(
@@ -342,6 +344,7 @@ impl AnnotationUseCases {
             .commented_annotation_ids_in_transaction(transaction, &stale_ids)
             .await?;
         for id in stale_ids {
+            // comment.target_id は FK を持たず、削除すると comment が孤児化するため、コメント付きは残す。
             if commented.contains(&id) || !self.repository.delete(transaction, id).await? {
                 continue;
             }
