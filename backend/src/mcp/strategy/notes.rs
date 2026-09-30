@@ -81,6 +81,22 @@ fn refs_in_version(version: &note_version::Model) -> Result<Vec<(String, String)
     })
 }
 
+fn note_ids_matching_ref(
+    kind: &str,
+    id: &str,
+    restrict_to: Option<sea_orm::sea_query::SelectStatement>,
+) -> sea_orm::sea_query::SelectStatement {
+    let mut query = note_ref::Entity::find()
+        .select_only()
+        .column(note_ref::Column::NoteId)
+        .filter(note_ref::Column::RefKind.eq(kind))
+        .filter(note_ref::Column::RefId.eq(id));
+    if let Some(restrict_to) = restrict_to {
+        query = query.filter(note_ref::Column::NoteId.in_subquery(restrict_to));
+    }
+    query.into_query()
+}
+
 /// `m.strategy_id` は呼び出し元が `session_strategy_id` で絞り込んだ行から来るため
 /// 必ず `Some` になるはずだが、不変条件が壊れた場合に別 strategy の id を誤って
 /// 返さないよう fail-loud にする。
@@ -257,6 +273,7 @@ impl StrategyServer {
         params: &ListNotesParams,
         reference: Option<&(String, String)>,
         cursor: Option<PendingNoteCursor>,
+        page_size: u64,
     ) -> Result<Option<PendingNotesPage>, McpError> {
         let mut query =
             note::Entity::find().filter(note::Column::StrategyId.eq(session_strategy_id));
@@ -283,13 +300,7 @@ impl StrategyServer {
             None => current_note_ids(),
         };
         if let Some((kind, id)) = reference {
-            current_candidate_ids = note_ref::Entity::find()
-                .select_only()
-                .column(note_ref::Column::NoteId)
-                .filter(note_ref::Column::RefKind.eq(kind))
-                .filter(note_ref::Column::RefId.eq(id))
-                .filter(note_ref::Column::NoteId.in_subquery(current_candidate_ids))
-                .into_query();
+            current_candidate_ids = note_ids_matching_ref(kind, id, Some(current_candidate_ids));
         }
         if params.status.is_some() || reference.is_some() {
             query = query.filter(
@@ -302,14 +313,14 @@ impl StrategyServer {
         let rows = query
             .order_by_desc(note::Column::UpdatedAt)
             .order_by_desc(note::Column::Id)
-            .limit(PENDING_LIST_SCAN_PAGE_SIZE)
+            .limit(page_size)
             .all(&self.db)
             .await
             .map_err(db_error)?;
         if rows.is_empty() {
             return Ok(None);
         }
-        let has_more = rows.len() as u64 == PENDING_LIST_SCAN_PAGE_SIZE;
+        let has_more = rows.len() as u64 == page_size;
         let last = rows
             .last()
             .ok_or_else(|| internal_error("pending note page is empty"))?;
@@ -383,6 +394,7 @@ impl StrategyServer {
         session_strategy_id: uuid::Uuid,
         params: ListNotesParams,
         reference: Option<(String, String)>,
+        page_size: u64,
     ) -> Result<ListNotesResult, McpError> {
         let limit = clamp_limit(params.limit) as usize;
         let include_body = params.include_body.unwrap_or(true);
@@ -391,7 +403,13 @@ impl StrategyServer {
 
         loop {
             let Some(page) = self
-                .fetch_pending_notes_page(session_strategy_id, &params, reference.as_ref(), cursor)
+                .fetch_pending_notes_page(
+                    session_strategy_id,
+                    &params,
+                    reference.as_ref(),
+                    cursor,
+                    page_size,
+                )
                 .await?
             else {
                 break;
@@ -423,7 +441,20 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ListNotesParams,
     ) -> Result<ListNotesResult, McpError> {
-        let session_strategy_id = scope.into().id();
+        self.list_notes_inner_with_pending_page_size(
+            scope.into().id(),
+            params,
+            PENDING_LIST_SCAN_PAGE_SIZE,
+        )
+        .await
+    }
+
+    async fn list_notes_inner_with_pending_page_size(
+        &self,
+        session_strategy_id: uuid::Uuid,
+        params: ListNotesParams,
+        pending_page_size: u64,
+    ) -> Result<ListNotesResult, McpError> {
         if let Some(status) = params.status.as_deref()
             && !ALLOWED_NOTE_STATUS.contains(&status)
         {
@@ -436,7 +467,12 @@ impl StrategyServer {
 
         if params.include_pending.unwrap_or(false) {
             return self
-                .list_notes_including_pending(session_strategy_id, params, reference)
+                .list_notes_including_pending(
+                    session_strategy_id,
+                    params,
+                    reference,
+                    pending_page_size,
+                )
                 .await;
         }
 
@@ -447,16 +483,8 @@ impl StrategyServer {
             query = query.filter(note::Column::Kind.eq(kind));
         }
         if let Some((kind, id)) = reference {
-            query = query.filter(
-                note::Column::Id.in_subquery(
-                    note_ref::Entity::find()
-                        .select_only()
-                        .column(note_ref::Column::NoteId)
-                        .filter(note_ref::Column::RefKind.eq(kind))
-                        .filter(note_ref::Column::RefId.eq(id))
-                        .into_query(),
-                ),
-            );
+            query =
+                query.filter(note::Column::Id.in_subquery(note_ids_matching_ref(&kind, &id, None)));
         }
         if let Some(status) = params.status {
             query =
@@ -1291,6 +1319,59 @@ mod tests {
                 expected_latest_pending_note(&fixture, "unread"),
                 expected_current_note(fixture.current_note_id, fixture.strategy_id),
             ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_notes_scans_pending_pages_until_a_ref_matches(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = build_server(db.clone());
+        let fixture = create_pending_note_fixture(&db, &server).await;
+        let non_matching = server
+            .write_note_inner(
+                fixture.strategy_id,
+                None,
+                WriteNoteParams {
+                    note_id: None,
+                    title: Some("newer pending".into()),
+                    body_md: Some("[[theme:demo-theme]]".into()),
+                    kind: Some(Some("sample-kind".into())),
+                    frontmatter_json: None,
+                    change_reason: None,
+                    graphs: None,
+                },
+            )
+            .await
+            .expect("write non-matching pending note");
+        set_note_updated_at(
+            &db,
+            non_matching.note_id,
+            ts_sentinel() + chrono::Duration::seconds(3),
+        )
+        .await;
+
+        let result = server
+            .list_notes_inner_with_pending_page_size(
+                fixture.strategy_id,
+                ListNotesParams {
+                    limit: Some(1),
+                    r#ref: Some("stock:demo-code".into()),
+                    include_pending: Some(true),
+                    ..Default::default()
+                },
+                1,
+            )
+            .await
+            .expect("list matching pending note after an unmatched page");
+
+        assert_eq!(
+            result
+                .notes
+                .into_iter()
+                .map(normalize_note)
+                .collect::<Vec<_>>(),
+            vec![expected_latest_pending_note(&fixture, "unread")],
         );
     }
 
