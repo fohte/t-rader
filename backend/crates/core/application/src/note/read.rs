@@ -84,6 +84,13 @@ impl NoteReadUseCases {
         })
     }
 
+    pub async fn get_note_strategy_id(
+        &self,
+        note_id: Uuid,
+    ) -> Result<Option<Uuid>, NoteReadUseCaseError> {
+        Ok(self.require_note(note_id).await?.strategy_id)
+    }
+
     pub async fn list_note_versions(
         &self,
         note_id: Uuid,

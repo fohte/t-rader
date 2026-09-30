@@ -188,20 +188,20 @@ pub async fn reject_note_version(
         ));
     }
 
-    let snapshot = state
+    let strategy_id = state
         .use_cases
         .note_reads()
-        .get_note(note_id, Some(version.id), false, None)
+        .get_note_strategy_id(note_id)
         .await
         .map_err(crate::handlers::notes::map_note_read_error)?;
-    if let Some(strategy_id) = snapshot.note.strategy_id {
+    if let Some(strategy_id) = strategy_id {
         let reason = label
             .as_deref()
             .map(|label| format!("理由: {label}。"))
             .unwrap_or_default();
         let prompt = format!(
             "ノート「{}」(id: {}) の v{} (version_id: {}) がレビューで却下されました。{}付いているコメントを確認し、指摘を反映してください。",
-            snapshot.version.title, note_id, version_no, version.id, reason
+            version.title, note_id, version_no, version.id, reason
         );
         strategy_tasks::submit_task(
             &state.db,

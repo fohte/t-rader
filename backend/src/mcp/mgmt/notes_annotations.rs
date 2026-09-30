@@ -3,14 +3,45 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
-use core_application::note::NoteListQuery;
+use core_application::note::{NoteListQuery, NoteReadQueryError, NoteReadUseCaseError};
 use gateway_postgres::entities::annotation;
 
 use super::MgmtServer;
 use super::dto::{
     AnnotationMeta, ListRecentAnnotationsResult, ListRecentNotesResult, ListRecentParams, NoteMeta,
 };
-use super::{clamp_limit, db_error};
+use super::{clamp_limit, db_error, internal_error, invalid_params, map_app_error};
+
+fn note_read_error_to_mcp(error: NoteReadUseCaseError) -> McpError {
+    match error {
+        NoteReadUseCaseError::NotFound(_) => McpError::resource_not_found("note not found", None),
+        NoteReadUseCaseError::Forbidden(note_id) => invalid_params(format!(
+            "forbidden: note {note_id} belongs to another strategy"
+        )),
+        NoteReadUseCaseError::VersionDoesNotBelong {
+            note_id,
+            version_id,
+        } => invalid_params(format!(
+            "version_id {version_id} does not belong to note {note_id}"
+        )),
+        NoteReadUseCaseError::NoVersion(note_id) => {
+            internal_error(format!("note {note_id} has no version"))
+        }
+        NoteReadUseCaseError::InitialVersionNotFound(note_id) => {
+            internal_error(format!("note {note_id} has no initial version"))
+        }
+        NoteReadUseCaseError::VersionNumberNotFound { .. }
+        | NoteReadUseCaseError::NoteVersionNotFound => {
+            McpError::resource_not_found("note version not found", None)
+        }
+        NoteReadUseCaseError::Query(NoteReadQueryError::Database(error)) => {
+            map_app_error(error.into())
+        }
+        NoteReadUseCaseError::Query(NoteReadQueryError::InvalidData(message)) => {
+            internal_error(message)
+        }
+    }
+}
 
 impl MgmtServer {
     pub(super) async fn list_recent_notes_inner(
@@ -30,7 +61,7 @@ impl MgmtServer {
                 },
             )
             .await
-            .map_err(crate::mcp::strategy::notes::note_read_error_to_mcp)?;
+            .map_err(note_read_error_to_mcp)?;
         let notes = page
             .notes
             .into_iter()
