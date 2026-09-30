@@ -58,7 +58,7 @@ impl StrategyServer {
     ) -> Result<SearchRefsResult, McpError> {
         let refs = self
             .use_cases
-            .refs
+            .refs()
             .search_all(&params.query, clamp_limit(params.limit))
             .await
             .map_err(ref_use_case_error)?

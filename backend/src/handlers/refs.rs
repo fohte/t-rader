@@ -41,7 +41,7 @@ pub async fn list_stocks(
 ) -> Result<Json<Vec<StockResponse>>, AppError> {
     let items = state
         .use_cases
-        .refs
+        .refs()
         .list_stocks(params.q.as_deref())
         .await
         .map_err(map_ref_error)?
@@ -69,7 +69,7 @@ pub async fn get_stock(
 ) -> Result<Json<StockResponse>, AppError> {
     let m = state
         .use_cases
-        .refs
+        .refs()
         .get_stock(&id)
         .await
         .map_err(map_ref_error)?
@@ -94,7 +94,7 @@ pub async fn list_indicators(
 ) -> Result<Json<Vec<IndicatorResponse>>, AppError> {
     let items = state
         .use_cases
-        .refs
+        .refs()
         .list_indicators(params.q.as_deref())
         .await
         .map_err(map_ref_error)?
@@ -123,7 +123,7 @@ pub async fn get_indicator(
 ) -> Result<Json<IndicatorResponse>, AppError> {
     let m = state
         .use_cases
-        .refs
+        .refs()
         .get_indicator(&id)
         .await
         .map_err(map_ref_error)?
@@ -148,7 +148,7 @@ pub async fn list_sectors(
 ) -> Result<Json<Vec<SectorResponse>>, AppError> {
     let items = state
         .use_cases
-        .refs
+        .refs()
         .list_sectors(params.q.as_deref())
         .await
         .map_err(map_ref_error)?
@@ -176,7 +176,7 @@ pub async fn get_sector(
 ) -> Result<Json<SectorResponse>, AppError> {
     let m = state
         .use_cases
-        .refs
+        .refs()
         .get_sector(&id)
         .await
         .map_err(map_ref_error)?
@@ -201,7 +201,7 @@ pub async fn list_themes(
 ) -> Result<Json<Vec<ThemeResponse>>, AppError> {
     let items = state
         .use_cases
-        .refs
+        .refs()
         .list_themes(params.q.as_deref())
         .await
         .map_err(map_ref_error)?
@@ -229,7 +229,7 @@ pub async fn get_theme(
 ) -> Result<Json<ThemeResponse>, AppError> {
     let m = state
         .use_cases
-        .refs
+        .refs()
         .get_theme(&id)
         .await
         .map_err(map_ref_error)?
@@ -295,7 +295,7 @@ pub async fn resolve_refs(
 
     let out = state
         .use_cases
-        .refs
+        .refs()
         .resolve(&requested)
         .await
         .map_err(map_ref_error)?

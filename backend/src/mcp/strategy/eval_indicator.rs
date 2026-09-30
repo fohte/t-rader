@@ -53,7 +53,7 @@ impl StrategyServer {
 
         let indicator = self
             .use_cases
-            .custom_indicators
+            .custom_indicators()
             .resolve(strategy_scope, name)
             .await
             .map_err(|e| internal_error(format!("failed to resolve indicator: {e}")))?

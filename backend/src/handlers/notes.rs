@@ -199,7 +199,7 @@ pub async fn create_note(
     let history_title = payload.title.trim().to_string();
     let snapshot = state
         .use_cases
-        .notes
+        .notes()
         .write(NoteWriteCommand {
             scope: None,
             strategy_id,
@@ -256,7 +256,7 @@ pub async fn update_note(
 ) -> Result<Json<NoteResponse>, AppError> {
     let snapshot = state
         .use_cases
-        .notes
+        .notes()
         .update(
             id,
             UpdateNoteCommand {
@@ -292,7 +292,7 @@ pub async fn delete_note(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .notes
+        .notes()
         .delete(id)
         .await
         .map_err(map_note_error)?;

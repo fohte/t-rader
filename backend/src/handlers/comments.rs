@@ -81,7 +81,7 @@ pub async fn create_comment(
     let author_label = p.author_label.as_deref().unwrap_or("user").to_string();
     let created = state
         .use_cases
-        .comments
+        .comments()
         .create(CreateCommentCommand {
             scope: None,
             actor: Actor::Human,
@@ -125,7 +125,7 @@ pub async fn update_comment(
 ) -> Result<Json<CommentResponse>, AppError> {
     let updated = state
         .use_cases
-        .comments
+        .comments()
         .resolve(ResolveCommentCommand {
             scope: None,
             actor: Actor::Human,
@@ -157,7 +157,7 @@ pub async fn delete_comment(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .comments
+        .comments()
         .delete(DeleteCommentCommand {
             scope: None,
             actor: Actor::Human,

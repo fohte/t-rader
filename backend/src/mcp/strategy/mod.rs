@@ -414,8 +414,7 @@ pub(super) fn decimal_to_f64(d: Decimal) -> f64 {
     })
 }
 
-/// `AppError` の MCP エラー変換。`services::account_risk_policy` /
-/// `models::risk_policy::parse_risk_policy` が返すエラーの共通ハンドリング。
+/// `AppError` の MCP エラー変換。リスクポリシーのパースエラーを MCP エラーへ変換する。
 pub(super) fn app_error_to_mcp(err: crate::error::AppError) -> McpError {
     use crate::error::AppError;
     match err {

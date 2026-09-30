@@ -1,19 +1,16 @@
 //! 外部 hook 受信 endpoint。`/api/hooks/:hook_slug` で payload を受け、
-//! 対応する `trigger` 行の `event_match` を満たした場合に共通 service 経由で発火する。
+//! 対応する `trigger` 行の `event_match` を満たした場合に application use case 経由で発火する。
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use core_application::trigger::TriggerUseCaseError;
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonBody, JsonPath};
-use crate::services::strategy_tasks::TaskSource;
-use crate::services::triggers::{FireTriggerError, evaluate_event_match, fire_trigger};
-use gateway_postgres::entities::trigger;
 
 /// hook 受信レスポンス。
 ///
@@ -55,57 +52,36 @@ pub async fn receive_hook(
     JsonPath(hook_slug): JsonPath<String>,
     JsonBody(payload): JsonBody<serde_json::Value>,
 ) -> Result<(StatusCode, Json<HookResponse>), AppError> {
-    let trigger_row = trigger::Entity::find()
-        .filter(trigger::Column::HookSlug.eq(hook_slug.clone()))
-        .filter(trigger::Column::Enabled.eq(true))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("hook {hook_slug} not found")))?;
-
-    if !evaluate_event_match(trigger_row.event_match.as_ref(), &payload) {
-        tracing::info!(
-            trigger_id = %trigger_row.trigger_id,
-            hook_slug,
-            "hook payload did not match event_match; ignored",
-        );
-        return Ok((
-            StatusCode::OK,
-            Json(HookResponse {
-                fired: false,
-                task_id: None,
-            }),
-        ));
-    }
-
-    let trigger_id = trigger_row.trigger_id;
-    match fire_trigger(
-        &state.db,
-        &state.agent_task_client,
-        trigger_id,
-        payload,
-        TaskSource::Hook,
-    )
-    .await
+    match state
+        .use_cases
+        .triggers()
+        .fire_hook(state.agent_task_client.as_ref(), &hook_slug, payload)
+        .await
     {
-        Ok(outcome) => Ok((
+        Ok(Some(outcome)) => Ok((
             StatusCode::OK,
             Json(HookResponse {
                 fired: true,
                 task_id: Some(outcome.task_id),
             }),
         )),
-        // SELECT と fire の間に削除 / 無効化された race。
-        Err(FireTriggerError::TriggerNotFound(_) | FireTriggerError::Disabled(_)) => {
-            Err(AppError::NotFound(format!("hook {hook_slug} not found")))
+        Ok(None) => Ok((
+            StatusCode::OK,
+            Json(HookResponse {
+                fired: false,
+                task_id: None,
+            }),
+        )),
+        Err(
+            TriggerUseCaseError::HookNotFound(_)
+            | TriggerUseCaseError::NotFound(_)
+            | TriggerUseCaseError::Disabled(_)
+            | TriggerUseCaseError::NoStrategy(_),
+        ) => Err(AppError::NotFound(format!("hook {hook_slug} not found"))),
+        Err(TriggerUseCaseError::Submit(error)) => {
+            Err(crate::handlers::strategies::map_submit_error(error))
         }
-        Err(FireTriggerError::NoStrategy(trigger_id)) => {
-            tracing::warn!(trigger_id = %trigger_id, "hook fire rejected: trigger has no strategy_id");
-            Err(AppError::NotFound(format!("hook {hook_slug} not found")))
-        }
-        Err(FireTriggerError::Submit(err)) => {
-            Err(crate::handlers::strategies::map_submit_error(err))
-        }
-        Err(FireTriggerError::Database(err)) => Err(AppError::Database(err)),
+        Err(error) => Err(super::triggers::map_trigger_use_case_error(error)),
     }
 }
 

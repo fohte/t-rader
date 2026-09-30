@@ -257,8 +257,11 @@ async fn main() -> Result<(), AppError> {
         interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
         "starting cron trigger worker",
     );
+    let use_cases = backend::services::use_cases::build_use_cases(
+        gateway_postgres::DatabaseHandle::from(db.clone()),
+    );
     let _trigger_worker = backend::services::trigger_worker::spawn(
-        db.clone(),
+        use_cases.triggers(),
         agent_task_client.clone(),
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
@@ -362,7 +365,7 @@ async fn main() -> Result<(), AppError> {
     let db = DatabaseHandle::from(db);
     let use_cases = backend::services::use_cases::build_use_cases(db.clone());
     let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
-        use_cases.predictions.clone(),
+        use_cases.predictions(),
         backend::services::prediction_grading::DEFAULT_INTERVAL,
     );
     tracing::info!(

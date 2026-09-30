@@ -23,6 +23,7 @@ gateway-litellm = { path = "crates/gateways/litellm" }
 gateway-postgres = { path = "crates/gateways/postgres" }
 gateway-rss = { path = "crates/gateways/rss" }
 gateway-t-rader-agent = { path = "crates/gateways/t-rader-agent" }
+rate-limit = { path = "crates/libs/rate-limit" }
 cron = "=0.17.0"
 axum-test = "=18.7.0"
 base64 = "=0.22.1"
@@ -38,6 +39,7 @@ prettyplease = "=0.2.37"
 progenitor = { version = "=0.14.0", default-features = false }
 progenitor-client = "=0.14.0"
 quick-xml = "=0.40.1"
+redis = { version = "=0.32.7", default-features = false, features = ["script", "connection-manager", "tokio-comp"] }
 reqwest = { version = "=0.13.5", default-features = false }
 rmcp = "=3.1.4"
 rstest = "=0.26.1"

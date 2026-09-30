@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use core_application::account_risk_policy::AccountRiskPolicyRepositoryError;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
@@ -14,7 +15,6 @@ use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 
 use crate::models::{AccountRiskPolicyData, parse_risk_policy};
-use crate::services::account_risk_policy;
 use crate::services::market_price::fetch_latest_prices;
 use gateway_postgres::entities::stock;
 
@@ -27,6 +27,12 @@ use super::{
 /// 日本株の単元株数 (100 株)。上限株数はすべてこの倍数に切り捨てて返す。
 const LOT_SIZE: i64 = 100;
 
+fn account_risk_policy_error_to_mcp(error: AccountRiskPolicyRepositoryError) -> McpError {
+    match error {
+        AccountRiskPolicyRepositoryError::Database(error) => app_error_to_mcp(error.into()),
+    }
+}
+
 impl StrategyServer {
     pub(crate) async fn check_buyable_qty_inner(
         &self,
@@ -37,12 +43,15 @@ impl StrategyServer {
         let strategy_id = scope.id();
         let symbol = params.symbol;
 
-        let account_risk_policy_row = account_risk_policy::find_current(&self.db)
+        let account_risk_policy = self
+            .use_cases
+            .account_risk_policies()
+            .find_current()
             .await
-            .map_err(app_error_to_mcp)?;
-        let max_sector_ratio = match account_risk_policy_row {
-            Some(row) => {
-                parse_risk_policy::<AccountRiskPolicyData>(row.risk_policy)
+            .map_err(account_risk_policy_error_to_mcp)?;
+        let max_sector_ratio = match account_risk_policy {
+            Some(risk_policy) => {
+                parse_risk_policy::<AccountRiskPolicyData>(risk_policy)
                     .map_err(app_error_to_mcp)?
                     .max_sector_ratio
             }
@@ -51,13 +60,13 @@ impl StrategyServer {
 
         let account_summary = self
             .use_cases
-            .trades
+            .trades()
             .summary(None)
             .await
             .map_err(trade_error)?;
         let strategy_summary = self
             .use_cases
-            .trades
+            .trades()
             .summary(Some(strategy_id))
             .await
             .map_err(trade_error)?;
@@ -114,7 +123,7 @@ impl StrategyServer {
 
         let investable_amount_row = self
             .use_cases
-            .strategies
+            .strategies()
             .current_investable_amount(scope)
             .await
             .map_err(strategy_use_case_error_to_mcp)?;
@@ -482,7 +491,6 @@ mod integration_tests {
     use super::super::dto::{CheckBuyableQtyParams, CheckBuyableQtyResult, ConstraintResult};
     use super::super::tests_common::{build_server, insert_strategy};
     use crate::models::{Bar, Timeframe};
-    use crate::services::account_risk_policy;
     use core_application::change_history::Actor;
     use core_application::strategy_scope::StrategyScope;
     use gateway_postgres::entities::{instruments, sector, stock, trade};
@@ -577,8 +585,11 @@ mod integration_tests {
         .expect("insert test stock");
     }
 
-    async fn set_max_sector_ratio(db: &impl sea_orm::ConnectionTrait, ratio: &str) {
-        account_risk_policy::save(db, serde_json::json!({ "max_sector_ratio": ratio }))
+    async fn set_max_sector_ratio(db: &gateway_postgres::DatabaseHandle, ratio: &str) {
+        let use_cases = crate::services::use_cases::build_use_cases(db.clone());
+        use_cases
+            .account_risk_policies()
+            .save(serde_json::json!({ "max_sector_ratio": ratio }))
             .await
             .expect("set max_sector_ratio");
     }
@@ -589,7 +600,7 @@ mod integration_tests {
         amount: i64,
     ) {
         crate::services::use_cases::build_use_cases(db.clone())
-            .strategies
+            .strategies()
             .record_investable_amount(
                 Actor::Human,
                 StrategyScope::from(strategy_id),
