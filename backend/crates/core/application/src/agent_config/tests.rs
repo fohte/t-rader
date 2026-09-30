@@ -8,7 +8,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::persistence::PersistenceError;
-use crate::unit_of_work::{UnitOfWork, UnitOfWorkError, UnitOfWorkTransaction};
+use crate::unit_of_work::{FakeUnitOfWork, UnitOfWorkTransaction};
 
 use super::super::error::{AgentConfigRepositoryError, AgentConfigUseCaseError};
 use super::super::repository::AgentConfigRepository;
@@ -16,46 +16,29 @@ use super::super::types::{AgentConfig, NewAgentConfig};
 use super::AgentConfigUseCases;
 
 #[derive(Default)]
-struct FakeUnitOfWork;
-
-#[async_trait]
-impl UnitOfWork for FakeUnitOfWork {
-    async fn begin(&self) -> Result<UnitOfWorkTransaction, UnitOfWorkError> {
-        Ok(UnitOfWorkTransaction::new(()))
-    }
-
-    async fn commit(&self, _transaction: UnitOfWorkTransaction) -> Result<(), UnitOfWorkError> {
-        Ok(())
-    }
-}
-
-#[derive(Default)]
 struct FakeAgentConfigRepository {
     configs: Mutex<BTreeMap<String, AgentConfig>>,
+}
+
+impl FakeAgentConfigRepository {
+    fn configs(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, AgentConfig>> {
+        self.configs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 #[async_trait]
 impl AgentConfigRepository for FakeAgentConfigRepository {
     async fn list(&self) -> Result<Vec<AgentConfig>, AgentConfigRepositoryError> {
-        Ok(self
-            .configs
-            .lock()
-            .expect("lock configs")
-            .values()
-            .cloned()
-            .collect())
+        Ok(self.configs().values().cloned().collect())
     }
 
     async fn find_by_purpose(
         &self,
         purpose: &str,
     ) -> Result<Option<AgentConfig>, AgentConfigRepositoryError> {
-        Ok(self
-            .configs
-            .lock()
-            .expect("lock configs")
-            .get(purpose)
-            .cloned())
+        Ok(self.configs().get(purpose).cloned())
     }
 
     async fn find_by_purpose_in_transaction(
@@ -71,7 +54,7 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
         _transaction: &UnitOfWorkTransaction,
         agent_config: NewAgentConfig,
     ) -> Result<AgentConfig, AgentConfigRepositoryError> {
-        let mut configs = self.configs.lock().expect("lock configs");
+        let mut configs = self.configs();
         if configs.contains_key(&agent_config.purpose) {
             return Err(PersistenceError::Conflict("duplicate purpose".into()).into());
         }
@@ -93,7 +76,7 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
         _transaction: &UnitOfWorkTransaction,
         agent_config: AgentConfig,
     ) -> Result<AgentConfig, AgentConfigRepositoryError> {
-        let mut configs = self.configs.lock().expect("lock configs");
+        let mut configs = self.configs();
         if !configs.contains_key(&agent_config.purpose) {
             return Err(
                 PersistenceError::RecordNotUpdated("agent_config disappeared".into()).into(),
@@ -108,24 +91,22 @@ impl AgentConfigRepository for FakeAgentConfigRepository {
         _transaction: &UnitOfWorkTransaction,
         purpose: &str,
     ) -> Result<bool, AgentConfigRepositoryError> {
-        Ok(self
-            .configs
-            .lock()
-            .expect("lock configs")
-            .remove(purpose)
-            .is_some())
+        Ok(self.configs().remove(purpose).is_some())
     }
 }
 
 struct Fixture {
     use_cases: AgentConfigUseCases,
+    unit_of_work: Arc<FakeUnitOfWork>,
 }
 
 #[fixture]
 fn fixture() -> Fixture {
+    let unit_of_work = Arc::new(FakeUnitOfWork::new());
     let repository = Arc::new(FakeAgentConfigRepository::default());
     Fixture {
-        use_cases: AgentConfigUseCases::new(Arc::new(FakeUnitOfWork), repository),
+        use_cases: AgentConfigUseCases::new(unit_of_work.clone(), repository),
+        unit_of_work,
     }
 }
 
@@ -140,6 +121,17 @@ fn normalize(mut agent_config: AgentConfig) -> AgentConfig {
     agent_config
 }
 
+async fn get_normalized(use_cases: &AgentConfigUseCases, purpose: &str) -> Option<AgentConfig> {
+    use_cases.get(purpose).await.ok().map(normalize)
+}
+
+async fn transaction_counts(unit_of_work: &FakeUnitOfWork) -> (usize, usize) {
+    (
+        unit_of_work.begun.lock().await.len(),
+        unit_of_work.committed.lock().await.len(),
+    )
+}
+
 #[rstest]
 #[case::uppercase("Invalid")]
 #[case::space("has space")]
@@ -152,9 +144,17 @@ async fn create_rejects_invalid_purpose(fixture: Fixture, #[case] purpose: &str)
         .await
         .expect_err("invalid purpose should be rejected");
 
-    assert_eq!(
+    let output = (
         error.to_string(),
-        format!("purpose must match ^[a-z0-9][a-z0-9_-]*$ (got '{purpose}')")
+        transaction_counts(&fixture.unit_of_work).await,
+    );
+
+    assert_eq!(
+        output,
+        (
+            format!("purpose must match ^[a-z0-9][a-z0-9_-]*$ (got '{purpose}')"),
+            (0, 0),
+        ),
     );
 }
 
@@ -186,22 +186,13 @@ async fn create_and_update_skills_round_trip(fixture: Fixture) {
         .expect("update skill");
 
     assert_eq!(
-        normalize(
-            fixture
-                .use_cases
-                .get("example-purpose")
-                .await
-                .expect("get agent config"),
-        ),
-        AgentConfig {
-            id: Uuid::nil(),
-            purpose: "example-purpose".to_string(),
-            agents_md: String::new(),
-            skills: json!({ "sample_skill": "updated content" }),
-            agent_graph: String::new(),
-            created_at: fixed_timestamp(),
-            updated_at: fixed_timestamp(),
-        },
+        get_normalized(&fixture.use_cases, "example-purpose").await,
+        Some(expected_config(
+            "example-purpose",
+            "",
+            json!({ "sample_skill": "updated content" }),
+            "",
+        )),
     );
 }
 
@@ -321,14 +312,13 @@ async fn save_agents_md_persists_content(fixture: Fixture) {
         .expect("save markdown");
 
     assert_eq!(
-        normalize(
-            fixture
-                .use_cases
-                .get("example-purpose")
-                .await
-                .expect("get config"),
-        ),
-        expected_config("example-purpose", "# Guidance", serde_json::json!({}), ""),
+        get_normalized(&fixture.use_cases, "example-purpose").await,
+        Some(expected_config(
+            "example-purpose",
+            "# Guidance",
+            serde_json::json!({}),
+            "",
+        )),
     );
 }
 
@@ -502,19 +492,18 @@ async fn save_agent_graph_validates_then_persists_yaml(fixture: Fixture) {
         .save_agent_graph("example-purpose", yaml)
         .await
         .expect("save graph");
-    let config = normalize(
-        fixture
-            .use_cases
-            .get("example-purpose")
-            .await
-            .expect("get config"),
-    );
+    let config = get_normalized(&fixture.use_cases, "example-purpose").await;
 
     assert_eq!(
         (result, config),
         (
             yaml.to_string(),
-            expected_config("example-purpose", "", serde_json::json!({}), yaml),
+            Some(expected_config(
+                "example-purpose",
+                "",
+                serde_json::json!({}),
+                yaml,
+            )),
         ),
     );
 }
@@ -535,20 +524,21 @@ async fn save_agent_graph_rejects_invalid_yaml_without_saving(fixture: Fixture) 
 
     let output = (
         error.to_string(),
-        normalize(
-            fixture
-                .use_cases
-                .get("example-purpose")
-                .await
-                .expect("get config"),
-        ),
+        get_normalized(&fixture.use_cases, "example-purpose").await,
+        transaction_counts(&fixture.unit_of_work).await,
     );
 
     assert_eq!(
         output,
         (
             "agent_graph is not valid YAML: did not find expected node content at line 2 column 1, while parsing a flow node".to_string(),
-            expected_config("example-purpose", "", serde_json::json!({}), ""),
+            Some(expected_config(
+                "example-purpose",
+                "",
+                serde_json::json!({}),
+                "",
+            )),
+            (1, 1),
         ),
     );
 }

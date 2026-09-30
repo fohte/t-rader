@@ -10,7 +10,7 @@ use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
 use super::error::{AgentConfigRepositoryError, AgentConfigUseCaseError};
 use super::graph::parse_agent_graph;
 use super::repository::SharedAgentConfigRepository;
-use super::types::{AgentConfig, NewAgentConfig};
+use super::types::{AgentConfig, NewAgentConfig, skills_as_btree};
 
 #[derive(Clone)]
 pub struct AgentConfigUseCases {
@@ -192,7 +192,7 @@ impl AgentConfigUseCases {
     ) -> Result<AgentConfig, AgentConfigUseCaseError> {
         let purpose = current.purpose.clone();
         let from: Vec<String> = current.skills_as_btree().into_keys().collect();
-        let to: Vec<String> = skills_to_btree(&skills).into_keys().collect();
+        let to: Vec<String> = skills_as_btree(&skills).into_keys().collect();
         current.skills = skills;
         current.updated_at = Utc::now().fixed_offset();
         let saved = self
@@ -248,18 +248,6 @@ fn skills_object(value: &Value) -> Map<String, Value> {
     value.as_object().cloned().unwrap_or_default()
 }
 
-fn skills_to_btree(value: &Value) -> BTreeMap<String, String> {
-    let mut skills = BTreeMap::new();
-    if let Some(object) = value.as_object() {
-        for (name, content) in object {
-            if let Some(content) = content.as_str() {
-                skills.insert(name.clone(), content.to_string());
-            }
-        }
-    }
-    skills
-}
-
 fn apply_skills_patch(current: &Value, patch: Map<String, Value>) -> Map<String, Value> {
     let mut skills = skills_object(current);
     for (name, content) in patch {
@@ -272,6 +260,6 @@ fn apply_skills_patch(current: &Value, patch: Map<String, Value>) -> Map<String,
     skills
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-support"))]
 #[path = "tests.rs"]
 mod tests;
