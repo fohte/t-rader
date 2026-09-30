@@ -1,14 +1,13 @@
 use axum::Json;
 use axum::extract::State;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use core_application::prediction::{PredictionRepositoryError, PredictionUseCaseError};
+use core_application::unit_of_work::UnitOfWorkError;
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonPath;
-use crate::handlers::notes::find_note_or_404;
 use crate::models::PredictionResponse;
-use gateway_postgres::entities::prediction;
 
 /// ノートに紐づく予測一覧 (記録順)。
 #[utoipa::path(
@@ -27,14 +26,36 @@ pub async fn list_note_predictions(
     State(state): State<AppState>,
     JsonPath(note_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<PredictionResponse>>, AppError> {
-    find_note_or_404(&state.db, note_id).await?;
-
-    let rows = prediction::Entity::find()
-        .filter(prediction::Column::NoteId.eq(note_id))
-        .order_by_asc(prediction::Column::CreatedAt)
-        .all(&state.db)
-        .await?;
+    let rows = state
+        .use_cases
+        .predictions
+        .list_by_note(note_id)
+        .await
+        .map_err(map_prediction_error)?;
     Ok(Json(rows.into_iter().map(Into::into).collect()))
+}
+
+fn map_prediction_error(error: PredictionUseCaseError) -> AppError {
+    match error {
+        PredictionUseCaseError::Validation(message) => AppError::Validation(message),
+        PredictionUseCaseError::NoteNotFound(note_id) => {
+            AppError::NotFound(format!("note {note_id} not found"))
+        }
+        PredictionUseCaseError::Forbidden(note_id) => {
+            AppError::Validation(format!("note {note_id} belongs to another strategy"))
+        }
+        PredictionUseCaseError::Repository(PredictionRepositoryError::Database(error)) => {
+            error.into()
+        }
+        PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+        PredictionUseCaseError::Repository(PredictionRepositoryError::InvalidTransaction)
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            AppError::Database(sea_orm::DbErr::Custom(
+                "prediction transaction has an unexpected type".into(),
+            ))
+        }
+    }
 }
 
 #[cfg(test)]

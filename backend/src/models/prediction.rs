@@ -4,7 +4,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::prediction;
+use core_application::prediction::Prediction;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = Prediction)]
@@ -22,10 +22,10 @@ pub struct PredictionResponse {
     pub created_at: DateTime<FixedOffset>,
 }
 
-impl From<prediction::Model> for PredictionResponse {
-    fn from(prediction: prediction::Model) -> Self {
+impl From<Prediction> for PredictionResponse {
+    fn from(prediction: Prediction) -> Self {
         Self {
-            prediction_id: prediction.prediction_id,
+            prediction_id: prediction.id,
             strategy_id: prediction.strategy_id,
             note_id: prediction.note_id,
             target_stock_id: prediction.target_stock_id,

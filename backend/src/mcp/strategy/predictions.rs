@@ -3,38 +3,58 @@
 //! 記録後の確率・期限・対象の書き換えは採点を無意味にするため、更新・削除の tool は
 //! 意図的に用意しない。読み取りは自戦略の予測に限る。
 
+use core_application::persistence::PersistenceError;
+use core_application::prediction::{
+    PredictionListQuery, PredictionUseCaseError, RecordPredictionCommand,
+};
 use core_application::strategy_scope::StrategyScope;
+use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use uuid::Uuid;
-
-use crate::services::predictions::{ensure_direction, ensure_probability};
-use gateway_postgres::entities::{prediction, stock};
 
 use super::dto::{
     ListPredictionsParams, ListPredictionsResult, PredictionDto, RecordPredictionParams,
     RecordPredictionResult,
 };
-use super::{
-    StrategyServer, clamp_limit, db_error, decimal_to_f64, fetch_note_owned_by, invalid_params,
-};
+use super::{StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params};
 
-fn validation_to_mcp(err: crate::error::AppError) -> McpError {
-    match err {
-        crate::error::AppError::Validation(msg) => invalid_params(msg),
-        other => invalid_params(format!("validation failed: {other}")),
+fn prediction_error_to_mcp(error: PredictionUseCaseError) -> McpError {
+    match error {
+        PredictionUseCaseError::Validation(message) => invalid_params(message),
+        PredictionUseCaseError::NoteNotFound(_) => {
+            McpError::resource_not_found("note not found", None)
+        }
+        PredictionUseCaseError::Forbidden(note_id) => invalid_params(format!(
+            "forbidden: note {note_id} belongs to another strategy"
+        )),
+        PredictionUseCaseError::Repository(
+            core_application::prediction::PredictionRepositoryError::Database(error),
+        ) => prediction_database_error(error),
+        PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            prediction_database_error(error)
+        }
+        PredictionUseCaseError::Repository(
+            core_application::prediction::PredictionRepositoryError::InvalidTransaction,
+        )
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            internal_error("prediction transaction has an unexpected type")
+        }
     }
+}
+
+fn prediction_database_error(error: PersistenceError) -> McpError {
+    tracing::error!(error = %error, "strategy mcp prediction operation failed");
+    internal_error(format!("database error: {error}"))
 }
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
     Decimal::try_from(v).map_err(|err| invalid_params(format!("invalid decimal value: {err}")))
 }
 
-fn prediction_to_dto(m: prediction::Model) -> PredictionDto {
+fn prediction_to_dto(m: core_application::prediction::Prediction) -> PredictionDto {
     PredictionDto {
-        prediction_id: m.prediction_id,
+        prediction_id: m.id,
         strategy_id: m.strategy_id,
         note_id: m.note_id,
         target_stock_id: m.target_stock_id,
@@ -47,69 +67,30 @@ fn prediction_to_dto(m: prediction::Model) -> PredictionDto {
     }
 }
 
-async fn ensure_stock_exists(db: &impl sea_orm::ConnectionTrait, id: &str) -> Result<(), McpError> {
-    let exists = stock::Entity::find_by_id(id)
-        .one(db)
-        .await
-        .map_err(db_error)?
-        .is_some();
-    if exists {
-        Ok(())
-    } else {
-        Err(invalid_params(format!("stock {id} not found")))
-    }
-}
-
 impl StrategyServer {
     pub(crate) async fn record_prediction_inner(
         &self,
         scope: impl Into<StrategyScope>,
         params: RecordPredictionParams,
     ) -> Result<RecordPredictionResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        let target_stock_id = params.target_stock_id.trim().to_string();
-        let benchmark_stock_id = params.benchmark_stock_id.trim().to_string();
-        if target_stock_id.is_empty() {
-            return Err(invalid_params("target_stock_id must not be empty"));
-        }
-        if benchmark_stock_id.is_empty() {
-            return Err(invalid_params("benchmark_stock_id must not be empty"));
-        }
-        if target_stock_id == benchmark_stock_id {
-            return Err(invalid_params(
-                "target_stock_id and benchmark_stock_id must differ",
-            ));
-        }
-        let direction = params.direction.trim();
-        ensure_direction(direction).map_err(validation_to_mcp)?;
         let probability = f64_to_decimal(params.probability)?;
-        ensure_probability(probability).map_err(validation_to_mcp)?;
-        if params.due_date <= params.base_date {
-            return Err(invalid_params("due_date must be after base_date"));
-        }
-
-        if let Some(note_id) = params.note_id {
-            fetch_note_owned_by(&self.db, note_id, session_strategy_id).await?;
-        }
-        ensure_stock_exists(&self.db, &target_stock_id).await?;
-        ensure_stock_exists(&self.db, &benchmark_stock_id).await?;
-
-        let model = prediction::ActiveModel {
-            prediction_id: Set(Uuid::new_v4()),
-            strategy_id: Set(session_strategy_id),
-            note_id: Set(params.note_id),
-            target_stock_id: Set(target_stock_id),
-            benchmark_stock_id: Set(benchmark_stock_id),
-            direction: Set(direction.to_string()),
-            probability: Set(probability),
-            base_date: Set(params.base_date),
-            due_date: Set(params.due_date),
-            created_at: NotSet,
-        };
-        let created = prediction::Entity::insert(model)
-            .exec_with_returning(&self.db)
+        let created = self
+            .use_cases
+            .predictions
+            .record(
+                scope.into(),
+                RecordPredictionCommand {
+                    note_id: params.note_id,
+                    target_stock_id: params.target_stock_id,
+                    benchmark_stock_id: params.benchmark_stock_id,
+                    direction: params.direction,
+                    probability,
+                    base_date: params.base_date,
+                    due_date: params.due_date,
+                },
+            )
             .await
-            .map_err(db_error)?;
+            .map_err(prediction_error_to_mcp)?;
         Ok(RecordPredictionResult {
             prediction: prediction_to_dto(created),
         })
@@ -120,21 +101,19 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ListPredictionsParams,
     ) -> Result<ListPredictionsResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        let mut query = prediction::Entity::find()
-            .filter(prediction::Column::StrategyId.eq(session_strategy_id));
-        if let Some(due_after) = params.due_after {
-            query = query.filter(prediction::Column::DueDate.gte(due_after));
-        }
-        if let Some(due_before) = params.due_before {
-            query = query.filter(prediction::Column::DueDate.lte(due_before));
-        }
-        let rows = query
-            .order_by_desc(prediction::Column::CreatedAt)
-            .limit(clamp_limit(params.limit))
-            .all(&self.db)
+        let rows = self
+            .use_cases
+            .predictions
+            .list_by_strategy(
+                scope.into(),
+                PredictionListQuery {
+                    due_after: params.due_after,
+                    due_before: params.due_before,
+                    limit: clamp_limit(params.limit),
+                },
+            )
             .await
-            .map_err(db_error)?;
+            .map_err(prediction_error_to_mcp)?;
         Ok(ListPredictionsResult {
             predictions: rows.into_iter().map(prediction_to_dto).collect(),
         })
