@@ -178,17 +178,29 @@ pub async fn run_all(
     let results = [
         (
             large_volume_shareholdings::Endpoint::NAME,
-            run_ingest_cycle::<large_volume_shareholdings::Endpoint>(db, source).await,
+            run_ingest_cycle::<large_volume_shareholdings::Endpoint>(db, source)
+                .await
+                .map_err(|error| error.to_string()),
         ),
         (
             cross_shareholdings::Endpoint::NAME,
-            run_ingest_cycle::<cross_shareholdings::Endpoint>(db, source).await,
+            run_ingest_cycle::<cross_shareholdings::Endpoint>(db, source)
+                .await
+                .map_err(|error| error.to_string()),
         ),
         (
             major_shareholders::Endpoint::NAME,
-            run_ingest_cycle::<major_shareholders::Endpoint>(db, source).await,
+            run_ingest_cycle::<major_shareholders::Endpoint>(db, source)
+                .await
+                .map_err(|error| error.to_string()),
         ),
     ];
+    finish_run_all(results)
+}
+
+fn finish_run_all(
+    results: impl IntoIterator<Item = (&'static str, Result<IngestStats, String>)>,
+) -> Result<(), String> {
     let mut failures = Vec::new();
     for (name, result) in results {
         match result {
@@ -269,6 +281,61 @@ mod tests {
             ingest_start_date(fetchable_from, available_from, latest_submitted_on),
             expected,
         );
+    }
+
+    #[rstest]
+    #[case::all_succeed(
+        vec![
+            ("sample-first-endpoint", Ok(IngestStats::default())),
+            ("sample-second-endpoint", Ok(IngestStats::default())),
+            ("sample-third-endpoint", Ok(IngestStats::default())),
+        ],
+        Ok(()),
+    )]
+    #[case::failed_date_is_reported(
+        vec![
+            ("sample-first-endpoint", Ok(IngestStats::default())),
+            (
+                "sample-second-endpoint",
+                Ok(IngestStats {
+                    failed_dates: 1,
+                    ..IngestStats::default()
+                }),
+            ),
+            ("sample-third-endpoint", Ok(IngestStats::default())),
+        ],
+        Err("sample-second-endpoint: 1 dates failed".to_string()),
+    )]
+    #[case::endpoint_error_is_reported(
+        vec![
+            ("sample-first-endpoint", Ok(IngestStats::default())),
+            ("sample-second-endpoint", Err("sample failure".to_string())),
+            ("sample-third-endpoint", Ok(IngestStats::default())),
+        ],
+        Err("sample-second-endpoint: sample failure".to_string()),
+    )]
+    #[case::all_failures_are_aggregated(
+        vec![
+            (
+                "sample-first-endpoint",
+                Ok(IngestStats {
+                    failed_dates: 2,
+                    ..IngestStats::default()
+                }),
+            ),
+            ("sample-second-endpoint", Err("sample failure".to_string())),
+            ("sample-third-endpoint", Ok(IngestStats::default())),
+        ],
+        Err(
+            "sample-first-endpoint: 2 dates failed; sample-second-endpoint: sample failure"
+                .to_string(),
+        ),
+    )]
+    fn reports_failures_across_endpoint_results(
+        #[case] results: Vec<(&'static str, Result<IngestStats, String>)>,
+        #[case] expected: Result<(), String>,
+    ) {
+        assert_eq!(finish_run_all(results), expected);
     }
 
     fn document(document_id: &str, stock_code: &str, date: NaiveDate) -> serde_json::Value {

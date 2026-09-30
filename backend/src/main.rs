@@ -22,6 +22,7 @@ use gateway_jquants::{JQuantsClient, JQuantsPlan};
 use gateway_postgres::DatabaseHandle;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database};
+use tokio::sync::watch;
 
 fn parse_jquants_plan(value: Option<String>) -> Result<JQuantsPlan, AppError> {
     let value = value.filter(|value| !value.is_empty()).ok_or_else(|| {
@@ -47,6 +48,28 @@ fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>, AppError> 
         std::env::var("JQUANTS_API_KEY").ok(),
         std::env::var("JQUANTS_PLAN").ok(),
     )
+}
+
+async fn wait_for_shutdown(mut receiver: watch::Receiver<bool>) {
+    let _ = receiver.wait_for(|shutdown| *shutdown).await;
+}
+
+async fn wait_for_os_shutdown_signal() -> Result<(), std::io::Error> {
+    let ctrl_c = tokio::signal::ctrl_c();
+
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut terminate = signal(SignalKind::terminate())?;
+        tokio::select! {
+            result = ctrl_c => result,
+            _ = terminate.recv() => Ok(()),
+        }
+    }
+
+    #[cfg(not(unix))]
+    ctrl_c.await
 }
 
 #[tokio::main]
@@ -275,11 +298,21 @@ async fn main() -> Result<(), AppError> {
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let signal_tx = shutdown_tx.clone();
+    let _shutdown_listener = tokio::spawn(async move {
+        if let Err(error) = wait_for_os_shutdown_signal().await {
+            tracing::error!(%error, "failed to listen for shutdown signal");
+        }
+        let _ = signal_tx.send(true);
+    });
+
     let worker = backend::entrypoints::scheduler::initialize(
         db.clone(),
         use_cases.clone(),
         fred_source,
         jquants_client.clone(),
+        wait_for_shutdown(shutdown_rx.clone()),
     )
     .await
     .map_err(|error| AppError::Config(format!("failed to initialize Graphile Worker: {error}")))?;
@@ -309,13 +342,37 @@ async fn main() -> Result<(), AppError> {
         .await
         .map_err(|e| AppError::Config(format!("failed to bind to {addr}: {e}")))?;
 
-    tokio::select! {
-        result = worker.run() => result
-            .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}"))),
-        result = axum::serve(
+    let mut worker_run = Box::pin(worker.run());
+    let mut server_run = Box::pin(async move {
+        axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
-        ) => result.map_err(|error| AppError::Config(format!("server error: {error}"))),
+        )
+        .with_graceful_shutdown(wait_for_shutdown(shutdown_rx))
+        .await
+    });
+
+    tokio::select! {
+        result = &mut worker_run => {
+            let _ = shutdown_tx.send(true);
+            let worker_result = result
+                .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+            let server_result = server_run
+                .await
+                .map_err(|error| AppError::Config(format!("server error: {error}")));
+            worker_result?;
+            server_result
+        }
+        result = &mut server_run => {
+            let _ = shutdown_tx.send(true);
+            let server_result = result
+                .map_err(|error| AppError::Config(format!("server error: {error}")));
+            let worker_result = worker_run
+                .await
+                .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+            server_result?;
+            worker_result
+        }
     }
 }
 
@@ -346,5 +403,20 @@ mod tests {
         #[case] expected: Result<Option<(String, JQuantsPlan)>, ()>,
     ) {
         assert_eq!(jquants_config(api_key, plan).map_err(|_| ()), expected);
+    }
+
+    #[tokio::test]
+    async fn shutdown_signal_reaches_worker_and_server_waiters() {
+        let (sender, receiver) = watch::channel(false);
+        let (worker_finished, server_finished, signal_sent) = tokio::join!(
+            wait_for_shutdown(receiver.clone()),
+            wait_for_shutdown(receiver),
+            async move { sender.send(true).is_ok() },
+        );
+
+        assert_eq!(
+            (worker_finished, server_finished, signal_sent),
+            ((), (), true)
+        );
     }
 }

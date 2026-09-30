@@ -1,6 +1,7 @@
 mod jobs;
 mod state;
 
+use std::future::Future;
 use std::sync::Arc;
 
 use chrono::Weekday;
@@ -29,6 +30,7 @@ pub async fn initialize(
     use_cases: UseCases,
     fred_source: Option<SharedIndicatorObservationSource>,
     jquants_client: Option<Arc<JQuantsClient>>,
+    shutdown_signal: impl Future<Output = ()> + Send + 'static,
 ) -> Result<Worker, String> {
     let crontabs = build_crontabs(fred_source.is_some(), jquants_client.is_some())
         .map_err(|error| error.to_string())?;
@@ -43,6 +45,9 @@ pub async fn initialize(
         .pg_pool(pool)
         .schema(GRAPHILE_WORKER_SCHEMA)
         .concurrency(2)
+        .use_notification_delivery(false)
+        .listen_os_shutdown_signals(false)
+        .shutdown_signal(shutdown_signal)
         .add_extension(state)
         .define_job::<FredIngest>()
         .define_job::<StockMasterSync>()

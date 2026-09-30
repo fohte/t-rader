@@ -1,7 +1,12 @@
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 
+use gateway_jquants::JQuantsClient;
+use graphile_worker::WorkerContext;
 use tokio::time::timeout;
+
+use crate::entrypoints::scheduler::state::SchedulerState;
 
 pub mod fred;
 pub mod jquants;
@@ -10,6 +15,43 @@ pub mod prediction;
 pub(super) const DAILY_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 pub(super) const HOURLY_TIMEOUT: Duration = Duration::from_secs(50 * 60);
 pub(super) const WEEKLY_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
+
+pub(super) async fn run_with_state<F, Fut>(
+    context: WorkerContext,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: FnOnce(SchedulerState) -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    let Some(state) = context.get_ext::<SchedulerState>() else {
+        return Err("scheduler state is not configured".to_string());
+    };
+
+    run_with_timeout(task_name, duration, task(state.clone())).await
+}
+
+pub(super) async fn run_jquants_job<F, Fut>(
+    context: WorkerContext,
+    task_name: &'static str,
+    duration: Duration,
+    task: F,
+) -> Result<(), String>
+where
+    F: FnOnce(SchedulerState, Arc<JQuantsClient>) -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    run_with_state(context, task_name, duration, |state| async move {
+        let client = state
+            .jquants_client
+            .clone()
+            .ok_or_else(|| "J-Quants client is not configured".to_string())?;
+        task(state, client).await
+    })
+    .await
+}
 
 pub(super) async fn run_with_timeout<F>(
     task_name: &'static str,
