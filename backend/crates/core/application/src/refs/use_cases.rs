@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use core_domain::note_reference::is_valid_group_ref_id;
+use core_domain::note_reference::is_valid_ref_id_format;
 
 use crate::unit_of_work::SharedUnitOfWork;
 
@@ -83,7 +83,7 @@ impl RefUseCases {
                     "unknown ref kind: {kind}"
                 )));
             }
-            if kind == "group" && !is_valid_group_ref_id(id.trim()) {
+            if !is_valid_ref_id_format(kind, id.trim()) {
                 return Err(RefUseCaseError::Validation(format!(
                     "invalid group ref_id: {id}"
                 )));
@@ -257,7 +257,7 @@ fn normalize_ref(ref_kind: &str, ref_id: &str) -> Result<(String, String), RefUs
             "ref_id must not be empty".into(),
         ));
     }
-    if ref_kind == "group" && !is_valid_group_ref_id(ref_id) {
+    if !is_valid_ref_id_format(ref_kind, ref_id) {
         return Err(RefUseCaseError::Validation(format!(
             "invalid group ref_id: {ref_id}"
         )));

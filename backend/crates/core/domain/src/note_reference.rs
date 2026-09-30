@@ -239,7 +239,7 @@ fn classify_token(inner: &str) -> TokenClassification<'_> {
         if id.is_empty() {
             return TokenClassification::Invalid("参照 ID を空にできません".to_string());
         }
-        if kind == "group" && !is_valid_group_ref_id(id) {
+        if !is_valid_ref_id_format(kind, id) {
             return TokenClassification::Invalid(
                 "group ID は axis-key/group-key 形式で指定してください".to_string(),
             );
@@ -331,6 +331,15 @@ pub fn is_valid_group_ref_id(id: &str) -> bool {
     !axis_key.is_empty() && !group_key.is_empty() && !group_key.contains('/')
 }
 
+/// group 参照は軸 key と group key を含む。他の参照 ID は不透明値として扱う。
+pub fn is_valid_ref_id_format(kind: &str, id: &str) -> bool {
+    match kind {
+        "stock" | "indicator" => true,
+        "group" => is_valid_group_ref_id(id),
+        _ => false,
+    }
+}
+
 pub fn collect_note_refs(
     body: &str,
     graphs: &[GraphDef],
@@ -389,12 +398,10 @@ pub fn collect_note_refs_with_policy(
                     refs.push((kind.to_string(), id));
                     continue;
                 }
-                TokenClassification::RemovedRef => {
-                    "図ノードでは stock / indicator / group の参照だけを使用できます".to_string()
-                }
                 TokenClassification::Annotation
                 | TokenClassification::Graph(_)
-                | TokenClassification::Note(_) => {
+                | TokenClassification::Note(_)
+                | TokenClassification::RemovedRef => {
                     "図ノードでは stock / indicator / group の参照だけを使用できます".to_string()
                 }
                 TokenClassification::Invalid(reason) => {

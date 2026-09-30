@@ -211,13 +211,9 @@ fn map_ref_error(error: RefUseCaseError) -> AppError {
 
 #[cfg(test)]
 mod tests {
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
     use serde_json::{Value, json};
-    use uuid::Uuid;
 
-    use crate::testing::{create_test_server_with_db, insert_test_stock};
-    use gateway_postgres::entities::{group_axis, stock_group};
+    use crate::testing::{create_test_server_with_db, insert_test_group, insert_test_stock};
 
     fn normalize_stock_timestamps(stocks: &mut Value) {
         for stock in stocks.as_array_mut().expect("stock list") {
@@ -263,27 +259,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn resolve_group_link_returns_its_name(db: gateway_postgres::DatabaseHandle) {
         let (db, server) = create_test_server_with_db(db).await;
-        let axis_id = Uuid::new_v4();
-        group_axis::ActiveModel {
-            id: Set(axis_id),
-            key: Set("demo-axis".into()),
-            name: Set("Sample Axis".into()),
-            description: Set("Sample axis for tests".into()),
-            sync_source: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert group axis");
-        stock_group::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            axis_id: Set(axis_id),
-            key: Set("demo-group".into()),
-            name: Set("Sample Group".into()),
-            description: Set(None),
-        }
-        .insert(&db)
-        .await
-        .expect("insert stock group");
+        insert_test_group(&db, "demo-axis", "demo-group", "Sample Group").await;
 
         let response = server
             .get("/api/refs/resolve?link=group%3Ademo-axis%2Fdemo-group")

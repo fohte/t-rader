@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn test_collect_note_refs_reports_every_invalid_token_and_allowed_form() {
         let body = indoc::indoc! {"
-            [[foo:bar]] [[bare-demo]] [[stock:]] [[anno:]] [[graph:1bad]]
+            [[foo:bar]] [[bare-demo]] [[stock:]] [[sector:]] [[theme:]] [[anno:]] [[graph:1bad]]
 
             [[graph:missing]]
 
@@ -250,6 +250,8 @@ mod tests {
                 "- 本文のトークン \"[[foo:bar]]\": 未知の prefix `foo` です\n",
                 "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
                 "- 本文のトークン \"[[stock:]]\": 参照 ID を空にできません\n",
+                "- 本文のトークン \"[[sector:]]\": 参照 ID を空にできません\n",
+                "- 本文のトークン \"[[theme:]]\": 参照 ID を空にできません\n",
                 "- 本文のトークン \"[[anno:]]\": annotation ID は英数字で始まり、英数字・`_`・`-` のみ使用できます\n",
                 "- 本文のトークン \"[[graph:1bad]]\": graph ID は英字で始まり、英数字・`_`・`-` のみ使用できます\n",
                 "- 本文のトークン \"[[graph:missing]]\": 対応する graphs[].id がありません\n",

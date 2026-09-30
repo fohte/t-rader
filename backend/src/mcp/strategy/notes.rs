@@ -14,7 +14,7 @@ use core_application::note::{NoteUseCaseError, NoteWriteCommand};
 use core_application::strategy_scope::StrategyScope;
 use core_domain::note_reference::{
     ALLOWED_REF_KINDS, BodyTokenPolicy, collect_note_refs_with_policy, format_note_token_errors,
-    is_valid_group_ref_id,
+    is_valid_ref_id_format,
 };
 use gateway_postgres::entities::{note, note_ref, note_version};
 use rmcp::ErrorData as McpError;
@@ -59,7 +59,7 @@ fn parse_note_ref(value: &str) -> Result<(String, String), McpError> {
     if id.is_empty() {
         return Err(invalid_params("ref id must not be empty"));
     }
-    if kind == "group" && !is_valid_group_ref_id(id) {
+    if !is_valid_ref_id_format(kind, id) {
         return Err(invalid_params(
             "group ref id must use axis-key/group-key format",
         ));

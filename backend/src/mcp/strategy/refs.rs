@@ -101,8 +101,7 @@ mod tests {
 
     use super::super::tests_common::build_server;
     use super::{RefDto, SearchRefsParams, SearchRefsResult};
-    use gateway_postgres::entities::{group_axis, indicator, ref_term, stock, stock_group};
-    use uuid::Uuid;
+    use gateway_postgres::entities::{indicator, ref_term, stock};
 
     async fn seed_ref_term(
         db: &impl sea_orm::ConnectionTrait,
@@ -157,42 +156,13 @@ mod tests {
         .expect("seed indicator");
     }
 
-    async fn seed_group(
-        db: &impl sea_orm::ConnectionTrait,
-        axis_key: &str,
-        group_key: &str,
-        name: &str,
-    ) -> String {
-        let axis_id = Uuid::new_v4();
-        group_axis::ActiveModel {
-            id: Set(axis_id),
-            key: Set(axis_key.into()),
-            name: Set("Sample Axis".into()),
-            description: Set("Sample axis for tests".into()),
-            sync_source: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("seed group axis");
-        stock_group::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            axis_id: Set(axis_id),
-            key: Set(group_key.into()),
-            name: Set(name.into()),
-            description: Set(None),
-        }
-        .insert(db)
-        .await
-        .expect("seed stock group");
-        format!("{axis_key}/{group_key}")
-    }
-
     #[backend_test_macros::database_test]
     async fn search_refs_matches_across_all_kinds_ordered_by_name(
         db: gateway_postgres::DatabaseHandle,
     ) {
         seed_indicator(&db, "IND1", "Alpha Indicator").await;
-        let group_id = seed_group(&db, "demo-axis", "demo-group", "Alpha Group").await;
+        let group_id =
+            crate::testing::insert_test_group(&db, "demo-axis", "demo-group", "Alpha Group").await;
         seed_stock(&db, "STK1", "Alpha Stock").await;
         seed_stock(&db, "STK2", "Beta Stock").await;
         let server = build_server(db);
@@ -260,7 +230,9 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_refs_is_case_insensitive(db: gateway_postgres::DatabaseHandle) {
-        let group_id = seed_group(&db, "demo-axis", "sample-group", "Sample Group").await;
+        let group_id =
+            crate::testing::insert_test_group(&db, "demo-axis", "sample-group", "Sample Group")
+                .await;
         let server = build_server(db);
 
         let result = server
@@ -290,7 +262,7 @@ mod tests {
     ) {
         // "_" は ILIKE の単一文字ワイルドカードなので、素通しすると "AXB" が
         // "A_B" にマッチしてしまう。sanitize_like で除去され、マッチしないことを確認する。
-        seed_group(&db, "demo-axis", "sample-group", "AXB").await;
+        crate::testing::insert_test_group(&db, "demo-axis", "sample-group", "AXB").await;
         let server = build_server(db);
 
         let result = server
@@ -306,9 +278,9 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_refs_respects_limit_after_ordering(db: gateway_postgres::DatabaseHandle) {
-        seed_group(&db, "demo-axis-a", "sample-group", "Match A").await;
-        seed_group(&db, "demo-axis-b", "sample-group", "Match B").await;
-        seed_group(&db, "demo-axis-c", "sample-group", "Match C").await;
+        crate::testing::insert_test_group(&db, "demo-axis-a", "sample-group", "Match A").await;
+        crate::testing::insert_test_group(&db, "demo-axis-b", "sample-group", "Match B").await;
+        crate::testing::insert_test_group(&db, "demo-axis-c", "sample-group", "Match C").await;
         let server = build_server(db);
 
         let result = server
@@ -449,7 +421,7 @@ mod tests {
     async fn search_refs_does_not_treat_full_width_underscore_as_wildcard(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        seed_group(&db, "demo-axis", "sample-group", "AXB").await;
+        crate::testing::insert_test_group(&db, "demo-axis", "sample-group", "AXB").await;
         let server = build_server(db);
 
         let result = server
@@ -498,7 +470,8 @@ mod tests {
 
     #[backend_test_macros::database_test]
     async fn search_refs_matches_group_id_and_alias(db: gateway_postgres::DatabaseHandle) {
-        let group_id = seed_group(&db, "demo-axis", "demo-group", "Sample Group").await;
+        let group_id =
+            crate::testing::insert_test_group(&db, "demo-axis", "demo-group", "Sample Group").await;
         seed_ref_term(&db, "group", &group_id, "demo-alias").await;
         let server = build_server(db);
 

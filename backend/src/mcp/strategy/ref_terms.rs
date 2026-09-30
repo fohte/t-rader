@@ -198,6 +198,39 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn ref_term_operations_reject_invalid_group_ref_ids(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let server = build_server(db);
+        let add_result = server
+            .add_ref_terms_inner(AddRefTermsParams {
+                ref_kind: "group".into(),
+                ref_id: "demo-group".into(),
+                terms: vec!["Sample Group".into()],
+            })
+            .await
+            .map(|_| ())
+            .map_err(|error| error.code);
+        let remove_result = server
+            .remove_ref_terms_inner(RemoveRefTermsParams {
+                ref_kind: "group".into(),
+                ref_id: "demo-group".into(),
+                terms: vec!["Sample Group".into()],
+            })
+            .await
+            .map(|_| ())
+            .map_err(|error| error.code);
+
+        assert_eq!(
+            [add_result, remove_result],
+            [
+                Err(rmcp::model::ErrorCode::INVALID_PARAMS),
+                Err(rmcp::model::ErrorCode::INVALID_PARAMS),
+            ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn remove_ref_terms_deletes_only_matching_terms(db: gateway_postgres::DatabaseHandle) {
         let server = build_server(db.clone());
         seed_term(&db, "stock", "7203", "トヨタ").await;
