@@ -1387,9 +1387,11 @@ dependencies = [
  "graphile_worker",
  "rstest",
  "serde",
+ "serde_json",
  "sqlx",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
