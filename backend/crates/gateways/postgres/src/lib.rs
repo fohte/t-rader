@@ -8,11 +8,14 @@ use sea_orm::{
 extern crate self as gateway_postgres;
 
 mod account_risk_policy;
+mod agent_config;
 mod annotation;
 mod change_history;
 mod comment;
 mod custom_indicator;
+mod earnings_schedule;
 pub mod entities;
+mod financial_summary;
 mod indicator_observation;
 mod margin;
 mod news;
@@ -21,6 +24,7 @@ mod note_kind;
 mod note_read_query;
 mod persistence;
 mod prediction;
+mod refs;
 pub mod repositories;
 mod rss_feed;
 mod short_ratio;
@@ -34,19 +38,24 @@ mod trade;
 mod transaction;
 mod trigger;
 mod unit_of_work;
+mod valuation;
 
 pub use account_risk_policy::PostgresAccountRiskPolicyRepository;
+pub use agent_config::PostgresAgentConfigRepository;
 pub use annotation::PostgresAnnotationRepository;
 pub use change_history::PostgresChangeHistory;
 pub use comment::PostgresCommentRepository;
 pub use custom_indicator::PostgresCustomIndicatorRepository;
+pub use earnings_schedule::PostgresEarningsScheduleRepository;
+pub use financial_summary::PostgresFinancialSummaryRepository;
 pub use indicator_observation::PostgresIndicatorObservationRepository;
 pub use margin::PostgresMarginRepository;
 pub use news::PostgresNewsItemRepository;
-pub use note::PostgresNoteRepository;
+pub use note::{PostgresNoteRepository, supersede_pending_versions_before};
 pub use note_kind::PostgresNoteKindRepository;
 pub use note_read_query::PostgresNoteReadQuery;
 pub use prediction::PostgresPredictionRepository;
+pub use refs::PostgresRefRepository;
 pub use rss_feed::PostgresRssFeedRepository;
 pub use short_ratio::PostgresShortRatioRepository;
 pub use short_sale_report::PostgresShortSaleReportRepository;
@@ -58,6 +67,7 @@ pub use strategy_task::PostgresStrategyTaskRepository;
 pub use trade::PostgresTradeRepository;
 pub use trigger::PostgresTriggerRepository;
 pub use unit_of_work::PostgresUnitOfWork;
+pub use valuation::PostgresValuationRepository;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

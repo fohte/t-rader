@@ -5,8 +5,8 @@ use serde_json::json;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, ResponseTemplate};
 
-use crate::DataProviderError;
 use crate::jquants::mock::{JQuantsMockServer, MockBar};
+use crate::{DataProviderError, JQuantsPlan};
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 
 fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -483,7 +483,6 @@ mod fetch_instrument {
 
 mod error_handling {
     use super::*;
-    use crate::JQuantsPlan;
 
     #[rstest]
     #[tokio::test]
@@ -503,16 +502,20 @@ mod error_handling {
 
     #[rstest]
     #[tokio::test]
-    async fn test_429_waits_for_cooldown_then_succeeds() -> Result<(), DataProviderError> {
+    async fn test_429_retries_until_success() -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
 
-        // 最初の 2 回は 429 を返し、3 回目 (2 回の cooldown 明け後) で成功する
+        // 最初の 2 回は 429 を返し、3 回目で成功する
         Mock::given(method("GET"))
             .and(path("/equities/master"))
             .and(query_param("code", "86970"))
-            .respond_with(ResponseTemplate::new(429).set_body_json(json!({
-                "message": "Too Many Requests",
-            })))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "0")
+                    .set_body_json(json!({
+                        "message": "Too Many Requests",
+                    })),
+            )
             .up_to_n_times(2)
             .mount(mock.server_ref())
             .await;
@@ -553,30 +556,82 @@ mod error_handling {
 
     #[rstest]
     #[tokio::test]
-    async fn test_client_fails_immediately_when_window_limit_is_exceeded() {
+    async fn test_429_cooldown_longer_than_max_wait_returns_wait_error()
+    -> Result<(), DataProviderError> {
         let mock = JQuantsMockServer::start().await;
-        mock.instrument().code("00001").ok().await;
+        mock.error()
+            .rate_limited_with_retry_after("/equities/master", "2")
+            .await;
 
-        let client = mock.client_with_plan(JQuantsPlan::Free).expect("client");
-        let max_requests = client.current_rate_limit();
-        for _ in 0..max_requests {
-            client
-                .fetch_instrument("00001")
-                .await
-                .expect("request within the limit should succeed");
-        }
-
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            client.fetch_instrument("00001"),
-        )
-        .await
-        .expect("test client should fail fast instead of waiting for the window");
+        let max_wait = std::time::Duration::from_millis(50);
+        let client = mock.client_with_plan_and_max_wait(JQuantsPlan::Premium, max_wait)?;
+        let result = client.fetch_instrument("SAMPLE").await;
+        let received_requests = mock
+            .server_ref()
+            .received_requests()
+            .await
+            .map(|requests| requests.len());
 
         assert_eq!(
-            result.map(|_| ()),
-            Err(DataProviderError::RateLimitWindowFull { max_requests }),
+            (result.err(), received_requests),
+            (
+                Some(DataProviderError::RateLimitWaitExceeded { max_wait }),
+                Some(1),
+            ),
         );
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_429_retries_after_cooldown_when_wait_is_unbounded()
+    -> Result<(), DataProviderError> {
+        let mock = JQuantsMockServer::start().await;
+        let instrument_id = "SAMPLE";
+        Mock::given(method("GET"))
+            .and(path("/equities/master"))
+            .and(query_param("code", instrument_id))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "1")
+                    .set_body_json(json!({ "message": "Too Many Requests" })),
+            )
+            .up_to_n_times(1)
+            .mount(mock.server_ref())
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/equities/master"))
+            .and(query_param("code", instrument_id))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "data": [{
+                    "Code": instrument_id,
+                    "CoName": "Sample Corporation",
+                    "MktNm": "Sample Market",
+                    "S33Nm": "Sample Industry",
+                }],
+            })))
+            .mount(mock.server_ref())
+            .await;
+
+        let client =
+            mock.client_with_plan_and_max_wait(JQuantsPlan::Premium, std::time::Duration::MAX)?;
+        let started = tokio::time::Instant::now();
+        let instrument = client.fetch_instrument(instrument_id).await?;
+        let received_requests = mock
+            .server_ref()
+            .received_requests()
+            .await
+            .map(|requests| requests.len());
+
+        assert_eq!(
+            (
+                instrument.id,
+                received_requests,
+                started.elapsed() >= std::time::Duration::from_millis(900),
+            ),
+            (instrument_id.to_string(), Some(2), true),
+        );
+        Ok(())
     }
 }
 
@@ -584,10 +639,6 @@ mod error_handling {
 
 mod fetch_fin_summary_by_date {
     use super::*;
-    use crate::JQuantsPlan;
-    use crate::jquants::FIN_SUMMARY_RATE_LIMIT_PER_MINUTE;
-    use crate::jquants::JQuantsClient;
-    use crate::jquants::apply_safety_margin;
 
     #[rstest]
     #[tokio::test]
@@ -612,118 +663,6 @@ mod fetch_fin_summary_by_date {
         assert_eq!(items, vec![item]);
         Ok(())
     }
-
-    /// `/fins/summary` は契約プランと別枠で 60 req/分の上限があるため、契約プランの上限
-    /// (Standard=120, Premium=500) がそれより高くても 60 に抑えられる必要がある。
-    /// 両者とも安全マージン (半分) を適用した値同士の min になる
-    #[rstest]
-    #[case::free(JQuantsPlan::Free, 2)]
-    #[case::light(JQuantsPlan::Light, 30)]
-    #[case::standard(JQuantsPlan::Standard, 30)]
-    #[case::premium(JQuantsPlan::Premium, 30)]
-    fn test_rate_limit_never_exceeds_endpoint_specific_cap(
-        #[case] plan: JQuantsPlan,
-        #[case] expected: usize,
-    ) {
-        let client = JQuantsClient::new("test-api-key".to_string(), plan).expect("client");
-
-        let capped = client
-            .current_rate_limit()
-            .min(apply_safety_margin(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE));
-
-        assert_eq!(capped, expected);
-    }
-}
-
-// === レートリミッター ===
-
-mod rate_limiter {
-    use super::super::RATE_LIMIT_COOLDOWN;
-    use super::super::rate_limiter::{RATE_LIMIT_WINDOW, RateLimiter};
-    use crate::DataProviderError;
-    use rstest::rstest;
-
-    const TEST_LIMIT: usize = 3;
-
-    async fn fill_window(limiter: &RateLimiter, limit: usize) {
-        for _ in 0..limit {
-            limiter
-                .acquire(limit)
-                .await
-                .expect("request within the limit should be allowed");
-        }
-    }
-
-    #[rstest]
-    #[case::base_limit(TEST_LIMIT)]
-    #[case::higher_limit(TEST_LIMIT * 2)]
-    #[tokio::test]
-    async fn test_allows_requests_within_limit(#[case] limit: usize) {
-        let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
-
-        // 上限以内のリクエストは即座に通過する
-        fill_window(&limiter, limit).await;
-    }
-
-    #[rstest]
-    #[tokio::test(start_paused = true)]
-    async fn test_blocks_when_limit_exceeded() {
-        let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
-
-        // 上限まで消費
-        fill_window(&limiter, TEST_LIMIT).await;
-
-        // 次の acquire は待機するはず
-        let acquire_future = limiter.acquire(TEST_LIMIT);
-        let result =
-            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
-        assert!(result.is_err(), "上限超過時に acquire がブロックされるべき");
-
-        // ウィンドウを経過させると通過する
-        tokio::time::advance(RATE_LIMIT_WINDOW).await;
-        let acquire_future = limiter.acquire(TEST_LIMIT);
-        let result =
-            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
-        assert_eq!(result.expect("window should expire"), Ok(()),);
-    }
-
-    #[rstest]
-    #[tokio::test(start_paused = true)]
-    async fn test_cooldown_blocks_all_acquires_until_elapsed() {
-        let limiter = RateLimiter::new(RATE_LIMIT_COOLDOWN);
-
-        // ウィンドウの空きがあっても、cooldown 中は acquire がブロックされる
-        limiter.note_rate_limited().await;
-        let acquire_future = limiter.acquire(TEST_LIMIT);
-        let result =
-            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
-        assert!(
-            result.is_err(),
-            "cooldown 中は acquire がブロックされるべき"
-        );
-
-        // cooldown を経過させると通過する
-        tokio::time::advance(RATE_LIMIT_COOLDOWN).await;
-        let acquire_future = limiter.acquire(TEST_LIMIT);
-        let result =
-            tokio::time::timeout(std::time::Duration::from_millis(100), acquire_future).await;
-        assert_eq!(result.expect("cooldown should expire"), Ok(()),);
-    }
-
-    #[rstest]
-    #[tokio::test(start_paused = true)]
-    async fn test_fails_immediately_when_limit_exceeded_with_fail_fast_behavior() {
-        let limiter = RateLimiter::new_fail_fast(RATE_LIMIT_COOLDOWN);
-
-        fill_window(&limiter, TEST_LIMIT).await;
-
-        assert_eq!(
-            limiter.acquire(TEST_LIMIT).await,
-            Err(DataProviderError::RateLimitWindowFull {
-                max_requests: TEST_LIMIT,
-            }),
-        );
-    }
 }
 
 mod configured_plan {
@@ -734,26 +673,20 @@ mod configured_plan {
     use rstest::rstest;
 
     #[rstest]
-    #[case::free(JQuantsPlan::Free, 2)]
-    #[case::light(JQuantsPlan::Light, 30)]
-    #[case::standard(JQuantsPlan::Standard, 60)]
-    #[case::premium(JQuantsPlan::Premium, 250)]
-    fn required_plan_controls_fetchable_range_and_rate_limit(
-        #[case] plan: JQuantsPlan,
-        #[case] max_requests: usize,
-    ) {
+    #[case::free(JQuantsPlan::Free)]
+    #[case::light(JQuantsPlan::Light)]
+    #[case::standard(JQuantsPlan::Standard)]
+    #[case::premium(JQuantsPlan::Premium)]
+    fn plan_controls_fetchable_range(#[case] plan: JQuantsPlan) {
         let today = date(2025, 1, 10);
         let client = JQuantsClient::with_base_url("http://localhost", "key", plan).expect("client");
 
         assert_eq!(
-            (client.plan_date_range(today), client.current_rate_limit(),),
-            (
-                DateRange {
-                    from: plan.range(today).0,
-                    to: plan.range(today).1
-                },
-                max_requests
-            ),
+            client.plan_date_range(today),
+            DateRange {
+                from: plan.range(today).0,
+                to: plan.range(today).1
+            },
         );
     }
 

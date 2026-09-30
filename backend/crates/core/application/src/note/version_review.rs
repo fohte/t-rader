@@ -69,6 +69,10 @@ impl NoteUseCases {
     ) -> Result<crate::note::types::NoteVersion, NoteUseCaseError> {
         let note_id = version.note_id;
         self.ensure_pending_version(&version)?;
+        let superseded_version_ids = self
+            .repository
+            .supersede_pending_versions_before(transaction, note_id, version.version_no)
+            .await?;
         let current = self
             .repository
             .find_current_version(transaction, note_id)
@@ -115,6 +119,7 @@ impl NoteUseCases {
                 "to": APPROVED_NOTE_STATUS,
                 "version_id": updated.id,
                 "previous_current_version_id": previous_current_id,
+                "superseded_version_ids": superseded_version_ids,
                 "label": label,
             }),
             label,

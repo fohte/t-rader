@@ -32,7 +32,7 @@ pub(super) mod valuation;
 pub(super) mod web_search;
 
 #[cfg(test)]
-mod tests_common;
+pub(in crate::mcp) mod tests_common;
 
 use std::collections::BTreeMap;
 
@@ -225,6 +225,20 @@ pub(super) fn db_error(err: sea_orm::DbErr) -> McpError {
 
 pub(super) fn trade_error(error: core_application::trade::TradeUseCaseError) -> McpError {
     tracing::error!(error = %error, "strategy mcp trade operation failed");
+    internal_error(format!("database error: {error}"))
+}
+
+pub(super) fn financial_summary_error(
+    error: core_application::financial_summary::FinancialSummaryUseCaseError,
+) -> McpError {
+    tracing::error!(error = %error, "strategy mcp db error");
+    internal_error(format!("database error: {error}"))
+}
+
+pub(super) fn valuation_error(
+    error: core_application::valuation::ValuationUseCaseError,
+) -> McpError {
+    tracing::error!(error = %error, "strategy mcp db error");
     internal_error(format!("database error: {error}"))
 }
 

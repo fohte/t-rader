@@ -1,16 +1,24 @@
+#[cfg(test)]
 use sea_orm::ActiveValue::Set;
+#[cfg(test)]
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
+#[cfg(test)]
 use crate::error::AppError;
+#[cfg(test)]
 use crate::services::graph::GraphDef;
+#[cfg(test)]
 use gateway_postgres::entities::note_ref;
 
+pub(crate) use core_domain::note_reference::ALLOWED_REF_KINDS;
 #[cfg(test)]
 pub(crate) use core_domain::note_reference::extract_note_link_tokens;
+#[cfg(test)]
 pub(crate) use core_domain::note_reference::{
-    ALLOWED_REF_KINDS, BodyTokenPolicy, NoteTokenValidationError, format_note_token_errors,
+    BodyTokenPolicy, NoteTokenValidationError, format_note_token_errors,
 };
 
+#[cfg(test)]
 pub(crate) async fn sync_note_refs<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: uuid::Uuid,
@@ -37,6 +45,7 @@ pub(crate) async fn sync_note_refs_after_graphs_only_update<C: sea_orm::Connecti
     .await
 }
 
+#[cfg(test)]
 async fn sync_note_refs_with_policy<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_id: uuid::Uuid,
@@ -84,11 +93,13 @@ async fn sync_note_refs_with_policy<C: sea_orm::ConnectionTrait>(
     Ok(())
 }
 
+#[cfg(test)]
 fn deserialize_graphs(graphs_json: &serde_json::Value) -> Result<Vec<GraphDef>, AppError> {
     serde_json::from_value(graphs_json.clone())
         .map_err(|error| AppError::Validation(format!("invalid graphs_json: {error}")))
 }
 
+#[cfg(test)]
 fn domain_graphs(graphs: &[GraphDef]) -> Vec<core_domain::note_graph::GraphDef> {
     graphs.iter().cloned().map(Into::into).collect()
 }
@@ -101,6 +112,7 @@ fn collect_note_refs(
     core_domain::note_reference::collect_note_refs(body, &domain_graphs(graphs))
 }
 
+#[cfg(test)]
 fn collect_note_refs_with_policy(
     body: &str,
     graphs: &[GraphDef],

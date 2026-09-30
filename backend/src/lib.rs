@@ -16,7 +16,6 @@ pub(crate) mod serde_helpers;
 pub mod services;
 #[cfg(test)]
 pub mod testing;
-pub(crate) mod text_normalize;
 
 use std::sync::Arc;
 
@@ -138,8 +137,10 @@ mod app_state_tests {
     #[rstest]
     fn test_daily_bar_source_returns_source_when_set() {
         let client = gateway_jquants::JQuantsClient::new(
+            "redis://127.0.0.1:6379/",
             "test-key".into(),
             gateway_jquants::JQuantsPlan::Standard,
+            std::time::Duration::ZERO,
         )
         .unwrap();
         let daily_bar_source: SharedDailyBarSource = Arc::new(client);

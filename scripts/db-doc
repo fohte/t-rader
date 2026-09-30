@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# マイグレーションだけを適用した使い捨て DB から tbls の DB ドキュメントを生成する。
+#
+# Usage:
+#   mise run db-doc
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
+
+compose=(docker compose -f docker-compose.infra.yml)
+"${compose[@]}" up -d --wait db
+
+port="$("${compose[@]}" port db 5432 | tr -d '\r' | sed 's/.*://')"
+if [[ -z "$port" ]]; then
+  echo "failed to resolve the Postgres port" >&2
+  exit 1
+fi
+
+current_database=''
+
+cleanup_database() {
+  if [[ -n "$current_database" ]]; then
+    "${compose[@]}" exec -T db dropdb --if-exists --force -U t_rader "$current_database"
+    current_database=''
+  fi
+}
+
+cleanup_on_exit() {
+  local exit_code=$?
+  local cleanup_status
+  trap - EXIT
+  if [[ -n "$current_database" ]]; then
+    if "${compose[@]}" exec -T db dropdb --if-exists --force -U t_rader "$current_database"; then
+      current_database=''
+    else
+      cleanup_status=$?
+      if ((exit_code == 0)); then
+        exit_code=$cleanup_status
+      fi
+    fi
+  fi
+  exit "$exit_code"
+}
+trap cleanup_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+for package in backend agent; do
+  current_database="t_rader_doc_${package}_$$"
+  "${compose[@]}" exec -T db createdb -U t_rader "$current_database"
+  database_url="postgres://t_rader:t_rader@127.0.0.1:${port}/${current_database}"
+
+  case "$package" in
+    backend)
+      (cd backend && DATABASE_URL="$database_url" cargo run -q -p migration -- up)
+      ;;
+    agent)
+      (cd agent && DATABASE_URL="$database_url" pnpm run db:migrate)
+      ;;
+  esac
+
+  (
+    cd "$package"
+    TBLS_DSN="${database_url}?sslmode=disable" tbls doc --rm-dist -c .tbls.yml
+  )
+  cleanup_database
+done

@@ -13,14 +13,18 @@ chrono = { workspace = true, features = ["alloc", "clock"] }
 core-domain = { workspace = true }
 cron = { workspace = true }
 futures-util = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml_ng = { workspace = true }
 rust_decimal = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["sync"] }
 uuid = { workspace = true, features = ["serde", "v4", "v5"] }
+unicode-normalization = { workspace = true }
 
 [dev-dependencies]
+indoc = "=2.0.7"
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 
