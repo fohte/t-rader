@@ -21,7 +21,6 @@ pub mod note_links;
 pub mod note_refs;
 pub mod note_versions;
 pub mod prediction_grading;
-pub mod predictions;
 pub mod ref_terms;
 pub mod rss_feed;
 pub mod short_ratio_ingest;
