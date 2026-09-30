@@ -55,10 +55,13 @@ function makeProps(
     input: '',
     status: { kind: 'idle' },
     notes: [],
+    purposes: [],
+    selectedPurpose: '',
     currentTaskId: null,
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
+    onPurposeChange: NOOP,
     onSubmit: NOOP,
   }
   return { ...base, ...overrides }
@@ -111,6 +114,7 @@ describe('FloatingChatView', () => {
     )
 
     expect(screen.getByText('タスクを投入しています…')).toBeInTheDocument()
+    expect(screen.getByLabelText('実行目的')).toBeDisabled()
     expect(screen.getByLabelText('メッセージ入力')).toBeDisabled()
     expect(screen.getByRole('button', { name: '送信' })).toBeDisabled()
   })

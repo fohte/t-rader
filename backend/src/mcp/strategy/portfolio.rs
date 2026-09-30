@@ -24,13 +24,13 @@ impl StrategyServer {
         let strategy_id = scope.id();
         let account_summary = self
             .use_cases
-            .trades
+            .trades()
             .summary(None)
             .await
             .map_err(trade_error)?;
         let strategy_summary = self
             .use_cases
-            .trades
+            .trades()
             .summary(Some(strategy_id))
             .await
             .map_err(trade_error)?;
@@ -42,7 +42,7 @@ impl StrategyServer {
 
         let prices = self
             .use_cases
-            .bars
+            .bars()
             .fetch_latest_prices(self.daily_bar_source.as_deref(), &symbols)
             .await;
 
@@ -64,7 +64,7 @@ impl StrategyServer {
 
         let investable_amount_row = self
             .use_cases
-            .strategies
+            .strategies()
             .current_investable_amount(scope)
             .await
             .map_err(strategy_use_case_error_to_mcp)?;
@@ -286,7 +286,7 @@ mod tests {
 
         let use_cases = crate::services::use_cases::build_use_cases(db.clone());
         use_cases
-            .strategies
+            .strategies()
             .record_investable_amount(
                 Actor::Human,
                 StrategyScope::from(strategy_id),

@@ -57,7 +57,7 @@ pub async fn list_note_kinds(
     Ok(Json(
         state
             .use_cases
-            .note_kinds
+            .note_kinds()
             .list()
             .await?
             .into_iter()
@@ -87,7 +87,7 @@ pub async fn create_note_kind(
 ) -> Result<(StatusCode, Json<NoteKindResponse>), AppError> {
     let created = state
         .use_cases
-        .note_kinds
+        .note_kinds()
         .create(
             Actor::Human,
             CreateNoteKindCommand {
@@ -125,7 +125,7 @@ pub async fn update_note_kind(
 ) -> Result<Json<NoteKindResponse>, AppError> {
     let updated = state
         .use_cases
-        .note_kinds
+        .note_kinds()
         .update(
             Actor::Human,
             &key,
@@ -159,7 +159,7 @@ pub async fn delete_note_kind(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .note_kinds
+        .note_kinds()
         .delete(Actor::Human, &key)
         .await?;
     Ok(StatusCode::NO_CONTENT)

@@ -81,7 +81,7 @@ pub async fn list_bars(
         to,
     };
 
-    let bars = state.use_cases.bars.find_bars(query).await?;
+    let bars = state.use_cases.bars().find_bars(query).await?;
 
     Ok(Json(bars.into_iter().map(BarResponse::from).collect()))
 }

@@ -18,7 +18,7 @@ pub async fn run_once<C>(db: &C, agent_client: &SharedAgentTaskClient) -> usize
 where
     C: sea_orm::ConnectionTrait + Clone + Into<DatabaseHandle>,
 {
-    let strategy_tasks = crate::services::use_cases::build_strategy_task_use_cases(db.clone());
+    let strategy_tasks = crate::services::use_cases::build_use_cases(db.clone()).strategy_tasks();
     run_once_with_use_cases(&strategy_tasks, agent_client).await
 }
 
@@ -72,7 +72,7 @@ pub fn spawn(
     interval: Duration,
     notify: Arc<Notify>,
 ) -> tokio::task::JoinHandle<()> {
-    let strategy_tasks = crate::services::use_cases::build_strategy_task_use_cases(db);
+    let strategy_tasks = crate::services::use_cases::build_use_cases(db).strategy_tasks();
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

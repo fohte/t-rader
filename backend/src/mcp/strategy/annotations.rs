@@ -88,7 +88,7 @@ impl StrategyServer {
         let price = params.price.map(f64_to_decimal).transpose()?;
         let created = self
             .use_cases
-            .annotations
+            .annotations()
             .create(CreateAnnotationCommand {
                 scope: Some(scope),
                 actor: Actor::Llm { label: "analyst" },

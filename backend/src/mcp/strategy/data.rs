@@ -65,7 +65,7 @@ impl StrategyServer {
 
         let rows = self
             .use_cases
-            .bars
+            .bars()
             .find_bars_by_instruments(BarsByInstrumentsQuery {
                 instrument_ids: instrument_ids.clone(),
                 timeframe: "1d".to_string(),

@@ -339,7 +339,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
-            use_cases.bars.clone(),
+            use_cases.bars(),
             client.clone(),
             backend::services::daily_bars_ingest::DEFAULT_INTERVAL,
         );
@@ -363,7 +363,7 @@ async fn main() -> Result<(), AppError> {
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
     let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
-        use_cases.predictions.clone(),
+        use_cases.predictions(),
         backend::services::prediction_grading::DEFAULT_INTERVAL,
     );
     tracing::info!(
