@@ -48,7 +48,6 @@ mod tests {
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::{NotSet, Set};
     use sea_orm::EntityTrait;
-    use sea_orm::IntoActiveModel;
     use uuid::Uuid;
 
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
@@ -57,7 +56,7 @@ mod tests {
     use crate::services::use_cases::build_use_cases;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
-    use gateway_postgres::entities::{strategy, strategy_task, trigger};
+    use gateway_postgres::entities::{strategy, strategy_task};
 
     use super::*;
 
@@ -112,6 +111,7 @@ mod tests {
             true,
             Some(past),
             "{{strategy.name}} morning",
+            None,
         )
         .await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
@@ -149,23 +149,16 @@ mod tests {
             .await
             .expect("insert test agent_config");
         let past = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
-        let trigger_id = insert_test_cron_trigger(
+        insert_test_cron_trigger(
             &db,
             strategy_id,
             "* * * * *",
             true,
             Some(past),
             "{{strategy.name}} morning",
+            Some("synthetic-purpose"),
         )
         .await;
-        let mut trigger = trigger::Entity::find_by_id(trigger_id)
-            .one(&db)
-            .await
-            .unwrap()
-            .unwrap()
-            .into_active_model();
-        trigger.purpose = Set(Some("synthetic-purpose".to_string()));
-        trigger.update(&db).await.unwrap();
 
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let triggers = build_use_cases(db.clone()).triggers();
@@ -197,7 +190,7 @@ mod tests {
     async fn skips_disabled_cron(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = seed_strategy(&db).await;
         let past = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0).unwrap();
-        insert_test_cron_trigger(&db, strategy_id, "* * * * *", false, Some(past), "x").await;
+        insert_test_cron_trigger(&db, strategy_id, "* * * * *", false, Some(past), "x", None).await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();
@@ -218,7 +211,16 @@ mod tests {
     async fn skips_when_no_slot_after_last_fire(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = seed_strategy(&db).await;
         let just_fired = chrono::Utc::now() - chrono::Duration::seconds(1);
-        insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, Some(just_fired), "x").await;
+        insert_test_cron_trigger(
+            &db,
+            strategy_id,
+            "0 9 * * *",
+            true,
+            Some(just_fired),
+            "x",
+            None,
+        )
+        .await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
         let triggers = use_cases.triggers();

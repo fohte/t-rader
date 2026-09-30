@@ -233,7 +233,7 @@ pub struct DeleteNoteKindResult {
     pub key: String,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, PartialEq, Serialize, JsonSchema)]
 pub struct TriggerSummary {
     pub trigger_id: Uuid,
     pub purpose: Option<String>,

@@ -417,49 +417,41 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn create_with_unknown_purpose_is_404(db: gateway_postgres::DatabaseHandle) {
+    async fn create_with_invalid_purpose_returns_error(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let sid = create_strategy(&server, "s").await;
-        let res = server
-            .post(&format!("/api/strategies/{sid}/triggers"))
-            .json(&json!({
-                "kind": "cron",
-                "purpose": "missing-purpose",
-                "schedule": "0 9 * * *",
-                "prompt_template": "x",
-            }))
-            .await;
-
-        assert_eq!(
-            (res.status_code(), res.json::<Value>()),
+        let cases = [
             (
+                "unknown purpose",
+                "missing-purpose",
                 StatusCode::NOT_FOUND,
                 json!({ "error": "agent_config purpose missing-purpose not found" }),
             ),
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn create_with_empty_purpose_is_400(db: gateway_postgres::DatabaseHandle) {
-        let server = create_test_server(db).await;
-        let sid = create_strategy(&server, "s").await;
-        let res = server
-            .post(&format!("/api/strategies/{sid}/triggers"))
-            .json(&json!({
-                "kind": "cron",
-                "purpose": " ",
-                "schedule": "0 9 * * *",
-                "prompt_template": "x",
-            }))
-            .await;
-
-        assert_eq!(
-            (res.status_code(), res.json::<Value>()),
             (
+                "empty purpose",
+                " ",
                 StatusCode::BAD_REQUEST,
                 json!({ "error": "purpose must not be empty" }),
             ),
-        );
+        ];
+
+        for (case, purpose, expected_status, expected_body) in cases {
+            let res = server
+                .post(&format!("/api/strategies/{sid}/triggers"))
+                .json(&json!({
+                    "kind": "cron",
+                    "purpose": purpose,
+                    "schedule": "0 9 * * *",
+                    "prompt_template": "x",
+                }))
+                .await;
+
+            assert_eq!(
+                (res.status_code(), res.json::<Value>()),
+                (expected_status, expected_body),
+                "case: {case}",
+            );
+        }
     }
 
     #[backend_test_macros::database_test]
