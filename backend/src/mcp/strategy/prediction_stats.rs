@@ -1,7 +1,8 @@
 //! 自戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する読み取り専用 tool。
 
-use core_application::prediction::PredictionUseCaseError;
+use core_application::prediction::{PredictionRepositoryError, PredictionUseCaseError};
 use core_application::strategy_scope::StrategyScope;
+use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 
 use super::StrategyServer;
@@ -36,18 +37,26 @@ impl StrategyServer {
 }
 
 fn prediction_stats_error_to_mcp(error: PredictionUseCaseError) -> McpError {
-    match error {
-        PredictionUseCaseError::Repository(
-            core_application::prediction::PredictionRepositoryError::Database(error),
-        ) => {
-            tracing::error!(error = %error, "strategy mcp db error");
-            super::internal_error(format!("database error: {error}"))
+    tracing::error!(error = %error, "strategy mcp prediction stats failed");
+    let message = match error {
+        PredictionUseCaseError::Validation(message) => {
+            format!("prediction stats validation failed: {message}")
         }
-        other => {
-            tracing::error!(error = %other, "strategy mcp prediction stats failed");
-            super::internal_error(format!("database error: {other}"))
+        PredictionUseCaseError::NoteNotFound(note_id) => format!("note {note_id} not found"),
+        PredictionUseCaseError::Forbidden(note_id) => {
+            format!("note {note_id} belongs to another strategy")
         }
-    }
+        PredictionUseCaseError::Repository(PredictionRepositoryError::Database(error))
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            format!("database error: {error}")
+        }
+        PredictionUseCaseError::Repository(PredictionRepositoryError::InvalidTransaction)
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            "prediction transaction has an unexpected type".into()
+        }
+    };
+    super::internal_error(message)
 }
 
 #[cfg(test)]

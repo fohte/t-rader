@@ -22,6 +22,7 @@ pub fn spawn_poll(
         let mut ticker = tokio::time::interval(interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
+            // 採点済みの予測は次回対象から除外されるため、起動直後も実行できる。
             ticker.tick().await;
             match run_once(&predictions).await {
                 Ok(stats) => {

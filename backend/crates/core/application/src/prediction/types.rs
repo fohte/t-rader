@@ -142,3 +142,23 @@ pub(super) fn grading_outcome(
 pub(super) fn compute_return(base: Decimal, due: Decimal) -> Option<Decimal> {
     (due - base).checked_div(base)
 }
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use rust_decimal::Decimal;
+
+    use super::compute_return;
+
+    #[rstest]
+    #[case::positive_return(Decimal::new(100, 0), Decimal::new(110, 0), Some(Decimal::new(10, 2)))]
+    #[case::negative_return(Decimal::new(100, 0), Decimal::new(90, 0), Some(Decimal::new(-10, 2)))]
+    #[case::zero_base_is_none(Decimal::new(0, 0), Decimal::new(90, 0), None)]
+    fn compute_return_cases(
+        #[case] base: Decimal,
+        #[case] due: Decimal,
+        #[case] expected: Option<Decimal>,
+    ) {
+        assert_eq!(compute_return(base, due), expected);
+    }
+}

@@ -1,3 +1,5 @@
+//! 採点は終値と予測方向から決定的に計算し、LLM の判断に依存させない。
+
 use chrono::NaiveDate;
 
 use core_domain::business_day::latest_business_day;
@@ -7,6 +9,7 @@ use super::types::{GradingStats, NewPredictionGrade, Prediction};
 use super::use_cases::PredictionUseCases;
 
 impl PredictionUseCases {
+    /// 個人利用の規模を前提に、全戦略の期限到来済み予測をまとめて取得して採点する。
     pub(super) async fn grade_due_inner(
         &self,
         today: NaiveDate,
