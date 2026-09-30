@@ -327,8 +327,8 @@ async fn ibkr_live_smoke() {
     let base = std::env::var("IBKR_BASE_URL").expect("IBKR_BASE_URL");
     let token = std::env::var("IBKR_SESSION_TOKEN").ok();
     let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL");
-    let rate_limiter =
-        rate_limit::RateLimiter::new(&redis_url, "t-rader:ratelimit:").expect("rate limiter");
+    let rate_limiter = rate_limit::RateLimiter::new(&redis_url, crate::RATE_LIMIT_KEY_PREFIX)
+        .expect("rate limiter");
     let client = crate::IbkrClient::new(
         Some(base),
         token,

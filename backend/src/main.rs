@@ -17,7 +17,7 @@ use clap::Parser;
 use core_application::indicator_observation_source::IndicatorObservationSource;
 use core_application::news_aggregator::SharedNewsAggregator;
 use gateway_fred::FredClient;
-use gateway_ibkr::IbkrClient;
+use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
 use gateway_postgres::DatabaseHandle;
 use migration::{Migrator, MigratorTrait};
@@ -136,9 +136,10 @@ async fn main() -> Result<(), AppError> {
             let exchange = std::env::var("IBKR_EXCHANGE")
                 .ok()
                 .filter(|s| !s.is_empty());
-            let rate_limiter = RateLimiter::new(&redis_url, "t-rader:ratelimit:").map_err(|e| {
-                AppError::Config(format!("failed to initialize IBKR rate limiter: {e}"))
-            })?;
+            let rate_limiter =
+                RateLimiter::new(&redis_url, RATE_LIMIT_KEY_PREFIX).map_err(|e| {
+                    AppError::Config(format!("failed to initialize IBKR rate limiter: {e}"))
+                })?;
             let client = Arc::new(
                 IbkrClient::new(
                     base_url,

@@ -29,6 +29,9 @@ const DEFAULT_BASE_URL: &str = "https://localhost:5000/v1/api";
 /// 日本株のデフォルト取引所コード (Tokyo Stock Exchange, JPY)
 const DEFAULT_EXCHANGE: &str = "TSEJ";
 
+/// IBKR の共有 rate limiter が Redis key に使う prefix。
+pub const RATE_LIMIT_KEY_PREFIX: &str = "t-rader:ratelimit:";
+
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 500;
 
