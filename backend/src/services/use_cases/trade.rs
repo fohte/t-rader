@@ -19,7 +19,7 @@ impl UseCases {
         TradeNoteUseCases::new(
             self.unit_of_work.clone(),
             Arc::new(PostgresTradeRepository::new(self.db.clone())),
-            self.notes(),
+            self.note_reads(),
         )
     }
 }

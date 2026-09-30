@@ -235,6 +235,7 @@ pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
         TradeUseCaseError::Validation(message) => AppError::Validation(message),
         TradeUseCaseError::NotFound(id) => AppError::NotFound(format!("trade {id} not found")),
         TradeUseCaseError::ResourceNotFound(message) => AppError::NotFound(message),
+        TradeUseCaseError::NoteRead(error) => super::notes::map_note_read_error(error),
         TradeUseCaseError::Repository(TradeRepositoryError::Database(error))
         | TradeUseCaseError::NoteRepository(NoteRepositoryError::Database(error))
         | TradeUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))

@@ -1,12 +1,10 @@
 use serde_json::Value;
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::change_history::{ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
-use crate::note::NoteRepositoryError;
 use crate::note::NoteUseCaseError;
 use crate::note::repository::SharedNoteRepository;
-use crate::note::types::{Note, NoteSnapshot, NoteVersion};
+use crate::note::types::{Note, NoteSnapshot};
 use crate::strategy_existence::SharedStrategyExistence;
 use crate::strategy_scope::StrategyScope;
 use crate::unit_of_work::{SharedUnitOfWork, UnitOfWorkTransaction};
@@ -53,54 +51,6 @@ impl NoteUseCases {
             .find_note(transaction, note_id)
             .await?
             .ok_or_else(|| NoteUseCaseError::NotFound(format!("note {note_id} not found")))
-    }
-
-    pub(crate) async fn find_note_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        note_id: Uuid,
-    ) -> Result<Option<Note>, NoteRepositoryError> {
-        self.repository.find_note(transaction, note_id).await
-    }
-
-    pub(crate) async fn find_notes_by_ids_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        note_ids: &[Uuid],
-    ) -> Result<Vec<Note>, NoteRepositoryError> {
-        self.repository
-            .find_notes_by_ids(transaction, note_ids)
-            .await
-    }
-
-    pub(crate) async fn find_versions_by_ids_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        version_ids: &[Uuid],
-    ) -> Result<Vec<NoteVersion>, NoteRepositoryError> {
-        self.repository
-            .find_versions_by_ids(transaction, version_ids)
-            .await
-    }
-
-    pub(crate) async fn find_current_version_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        note_id: Uuid,
-    ) -> Result<Option<NoteVersion>, NoteRepositoryError> {
-        self.repository
-            .find_current_version(transaction, note_id)
-            .await
-    }
-
-    pub(crate) async fn find_initial_created_by_kind_by_note_ids_in_transaction(
-        &self,
-        transaction: &UnitOfWorkTransaction,
-        note_ids: &[Uuid],
-    ) -> Result<HashMap<Uuid, String>, NoteRepositoryError> {
-        self.repository
-            .find_initial_created_by_kind_by_note_ids(transaction, note_ids)
-            .await
     }
 
     pub(super) fn ensure_scope(

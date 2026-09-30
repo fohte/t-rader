@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use uuid::Uuid;
 
-use crate::note::{NoteSnapshot, NoteUseCases};
+use crate::note::{NoteReadUseCaseError, NoteReadUseCases, NoteSnapshot};
 use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::TradeUseCaseError;
@@ -13,19 +11,19 @@ use super::types::NewTradeNoteLink;
 pub struct TradeNoteUseCases {
     unit_of_work: SharedUnitOfWork,
     trade_repository: SharedTradeRepository,
-    note_use_cases: NoteUseCases,
+    note_read_use_cases: NoteReadUseCases,
 }
 
 impl TradeNoteUseCases {
     pub fn new(
         unit_of_work: SharedUnitOfWork,
         trade_repository: SharedTradeRepository,
-        note_use_cases: NoteUseCases,
+        note_read_use_cases: NoteReadUseCases,
     ) -> Self {
         Self {
             unit_of_work,
             trade_repository,
-            note_use_cases,
+            note_read_use_cases,
         }
     }
 
@@ -36,63 +34,17 @@ impl TradeNoteUseCases {
             .trade_repository
             .list_note_links(&transaction, trade_id)
             .await?;
-        if links.is_empty() {
-            self.unit_of_work.commit(transaction).await?;
-            return Ok(Vec::new());
-        }
-
-        let note_ids: Vec<Uuid> = links.iter().map(|link| link.note_id).collect();
-        let version_ids: Vec<Uuid> = links.iter().map(|link| link.note_version_id).collect();
-        let notes = self
-            .note_use_cases
-            .find_notes_by_ids_in_transaction(&transaction, &note_ids)
-            .await?
-            .into_iter()
-            .map(|note| (note.id, note))
-            .collect::<HashMap<_, _>>();
-        let versions = self
-            .note_use_cases
-            .find_versions_by_ids_in_transaction(&transaction, &version_ids)
-            .await?
-            .into_iter()
-            .map(|version| (version.id, version))
-            .collect::<HashMap<_, _>>();
-        let creators = self
-            .note_use_cases
-            .find_initial_created_by_kind_by_note_ids_in_transaction(&transaction, &note_ids)
-            .await?;
-
-        let snapshots = links
-            .into_iter()
-            .map(|link| {
-                let note = notes.get(&link.note_id).cloned().ok_or_else(|| {
-                    TradeUseCaseError::ResourceNotFound(format!("note {} not found", link.note_id))
-                })?;
-                let version = versions
-                    .get(&link.note_version_id)
-                    .cloned()
-                    .filter(|version| version.note_id == link.note_id)
-                    .ok_or_else(|| {
-                        TradeUseCaseError::ResourceNotFound(format!(
-                            "version {} for note {} not found",
-                            link.note_version_id, link.note_id
-                        ))
-                    })?;
-                let created_by_kind = creators.get(&link.note_id).cloned().ok_or_else(|| {
-                    TradeUseCaseError::ResourceNotFound(format!(
-                        "initial version for note {} not found",
-                        link.note_id
-                    ))
-                })?;
-                Ok(NoteSnapshot {
-                    note,
-                    version,
-                    created_by_kind,
-                })
-            })
-            .collect::<Result<Vec<_>, TradeUseCaseError>>()?;
-
         self.unit_of_work.commit(transaction).await?;
+
+        let mut snapshots = Vec::with_capacity(links.len());
+        for link in links {
+            snapshots.push(
+                self.note_read_use_cases
+                    .get_note(link.note_id, Some(link.note_version_id), false, None)
+                    .await
+                    .map_err(map_note_read_error)?,
+            );
+        }
         Ok(snapshots)
     }
 
@@ -103,27 +55,21 @@ impl TradeNoteUseCases {
     ) -> Result<super::types::TradeNoteLink, TradeUseCaseError> {
         let transaction = self.unit_of_work.begin().await?;
         let trade = self.require_trade(&transaction, trade_id).await?;
-        let note = self
-            .note_use_cases
-            .find_note_in_transaction(&transaction, note_id)
-            .await?;
-        match note {
-            Some(note) if note.strategy_id == Some(trade.strategy_id) => {}
-            _ => {
-                return Err(TradeUseCaseError::Validation(
-                    "note_id must belong to the same strategy as the trade".into(),
-                ));
-            }
+        let note_strategy_id = match self.note_read_use_cases.get_note_strategy_id(note_id).await {
+            Ok(strategy_id) => strategy_id,
+            Err(NoteReadUseCaseError::NotFound(_)) => None,
+            Err(error) => return Err(error.into()),
+        };
+        if note_strategy_id != Some(trade.strategy_id) {
+            return Err(TradeUseCaseError::Validation(
+                "note_id must belong to the same strategy as the trade".into(),
+            ));
         }
-        let version = self
-            .note_use_cases
-            .find_current_version_in_transaction(&transaction, note_id)
-            .await?
-            .ok_or_else(|| {
-                TradeUseCaseError::ResourceNotFound(format!(
-                    "current version for note {note_id} not found"
-                ))
-            })?;
+        let snapshot = self
+            .note_read_use_cases
+            .get_note(note_id, None, false, None)
+            .await
+            .map_err(map_note_read_error)?;
         let link = self
             .trade_repository
             .insert_note_link(
@@ -131,7 +77,7 @@ impl TradeNoteUseCases {
                 NewTradeNoteLink {
                     trade_id,
                     note_id,
-                    note_version_id: version.id,
+                    note_version_id: snapshot.version.id,
                 },
             )
             .await?;
@@ -163,5 +109,23 @@ impl TradeNoteUseCases {
             .find_by_id_in_transaction(transaction, trade_id)
             .await?
             .ok_or(TradeUseCaseError::NotFound(trade_id))
+    }
+}
+
+fn map_note_read_error(error: NoteReadUseCaseError) -> TradeUseCaseError {
+    match error {
+        NoteReadUseCaseError::NotFound(message) => TradeUseCaseError::ResourceNotFound(message),
+        NoteReadUseCaseError::VersionDoesNotBelong {
+            note_id,
+            version_id,
+        } => TradeUseCaseError::ResourceNotFound(format!(
+            "version {version_id} for note {note_id} not found"
+        )),
+        NoteReadUseCaseError::InitialVersionNotFound(note_id) => {
+            TradeUseCaseError::ResourceNotFound(format!(
+                "initial version for note {note_id} not found"
+            ))
+        }
+        error => TradeUseCaseError::NoteRead(error),
     }
 }

@@ -1,6 +1,6 @@
 use super::repository::TradeRepositoryError;
 use crate::change_history::ChangeHistoryError;
-use crate::note::NoteRepositoryError;
+use crate::note::{NoteReadUseCaseError, NoteRepositoryError};
 use crate::strategy_existence::StrategyExistenceError;
 use crate::unit_of_work::UnitOfWorkError;
 use thiserror::Error;
@@ -18,6 +18,8 @@ pub enum TradeUseCaseError {
     Repository(#[from] TradeRepositoryError),
     #[error(transparent)]
     NoteRepository(#[from] NoteRepositoryError),
+    #[error(transparent)]
+    NoteRead(#[from] NoteReadUseCaseError),
     #[error(transparent)]
     UnitOfWork(#[from] UnitOfWorkError),
     #[error(transparent)]
