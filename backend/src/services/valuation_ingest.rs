@@ -1,366 +1,47 @@
 //! 日次バリュエーション指標を全銘柄分取り込む定期タスク。
 
-use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
-use core_application::valuation_source::ValuationSource;
-use core_domain::valuation::Valuation;
-use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
-use std::collections::HashSet;
+use std::time::Duration;
 
-use crate::date_utils::latest_business_day;
-use crate::error::AppError;
-use gateway_postgres::entities::{valuation, valuation_ingested_date};
+use chrono::Utc;
+use core_application::valuation::{IngestStats, ValuationUseCaseError};
+use core_application::valuation_source::{SharedValuationSource, ValuationSource};
+use gateway_postgres::DatabaseHandle;
+use sea_orm::DatabaseConnection;
+use tokio::task::JoinHandle;
 
-/// 初回取得で欠けを補完する営業日数。
-const TARGET_BUSINESS_DAYS: usize = 400;
+/// poll task のデフォルト実行間隔。
+pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-/// 遡及訂正を拾うため毎回取り直す直近営業日数。
-const REFETCH_WINDOW_BUSINESS_DAYS: usize = 7;
-
-/// poll サイクルの結果統計。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct IngestStats {
-    pub days_attempted: usize,
-    pub rows_upserted: usize,
-}
-
-/// `to` を含めて過去に遡り、直近 `count` 営業日を古い順で返す。
-fn recent_business_days(to: NaiveDate, count: usize) -> Vec<NaiveDate> {
-    let mut days = Vec::with_capacity(count);
-    let mut date = to;
-    while days.len() < count {
-        if latest_business_day(date) == date {
-            days.push(date);
-        }
-        date -= ChronoDuration::days(1);
-    }
-    days.reverse();
-    days
-}
-
-/// 直近 `REFETCH_WINDOW_BUSINESS_DAYS` 日と未取り込み日を返す。
-fn target_dates(business_days: &[NaiveDate], ingested: &HashSet<NaiveDate>) -> Vec<NaiveDate> {
-    let refetch_from_index = business_days
-        .len()
-        .saturating_sub(REFETCH_WINDOW_BUSINESS_DAYS);
-    business_days
-        .iter()
-        .enumerate()
-        .filter(|(index, date)| *index >= refetch_from_index || !ingested.contains(date))
-        .map(|(_, date)| *date)
-        .collect()
-}
-
-/// `from` 以降の取り込み済み営業日を返す。
-async fn find_ingested_dates(
-    db: &impl sea_orm::ConnectionTrait,
-    from: NaiveDate,
-) -> Result<HashSet<NaiveDate>, AppError> {
-    let rows = valuation_ingested_date::Entity::find()
-        .filter(valuation_ingested_date::Column::Date.gte(from))
-        .all(db)
-        .await?;
-    Ok(rows.into_iter().map(|row| row.date).collect())
-}
-
-/// 取り込み済み営業日を記録する。
-async fn mark_ingested(
-    db: &impl sea_orm::ConnectionTrait,
-    date: NaiveDate,
-) -> Result<(), AppError> {
-    valuation_ingested_date::Entity::insert(valuation_ingested_date::ActiveModel {
-        date: Set(date),
-    })
-    .on_conflict(
-        OnConflict::column(valuation_ingested_date::Column::Date)
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec_without_returning(db)
-    .await?;
-    Ok(())
-}
-
-/// 1 日分の指標を型付きカラムへ upsert する。
-async fn upsert_valuations(
-    db: &impl sea_orm::ConnectionTrait,
-    items: Vec<Valuation>,
-) -> Result<usize, AppError> {
-    if items.is_empty() {
-        return Ok(0);
-    }
-
-    let mut models = Vec::with_capacity(items.len());
-    for item in items {
-        models.push(valuation::ActiveModel {
-            code: Set(item.code),
-            date: Set(item.date),
-            eps: Set(item.eps),
-            fwd_eps: Set(item.fwd_eps),
-            bps: Set(item.bps),
-            roe: Set(item.roe),
-            fwd_roe: Set(item.fwd_roe),
-            per: Set(item.per),
-            fwd_per: Set(item.fwd_per),
-            pbr: Set(item.pbr),
-            mkt_cap: Set(item.mkt_cap),
-        });
-    }
-    let row_count = models.len();
-
-    valuation::Entity::insert_many(models)
-        .on_conflict(
-            OnConflict::columns([valuation::Column::Code, valuation::Column::Date])
-                .update_columns([
-                    valuation::Column::Eps,
-                    valuation::Column::FwdEps,
-                    valuation::Column::Bps,
-                    valuation::Column::Roe,
-                    valuation::Column::FwdRoe,
-                    valuation::Column::Per,
-                    valuation::Column::FwdPer,
-                    valuation::Column::Pbr,
-                    valuation::Column::MktCap,
-                ])
-                .to_owned(),
-        )
-        .exec_without_returning(db)
-        .await?;
-
-    Ok(row_count)
-}
-
-/// 1 サイクル実行。データソースが取得可能範囲を返さない場合はスキップする。
+/// バリュエーション指標を取り込む 1 tick。
 pub async fn run_ingest_cycle(
-    db: &impl sea_orm::ConnectionTrait,
+    db: &DatabaseConnection,
     source: &dyn ValuationSource,
-) -> Result<IngestStats, AppError> {
-    let today = Utc::now().date_naive();
-    let Some(range) = source.fetchable_range(today) else {
-        tracing::debug!("valuation を取得できないため取り込みをスキップします");
-        return Ok(IngestStats::default());
-    };
-
-    let to = latest_business_day(range.to.min(today));
-    let business_days = recent_business_days(to, TARGET_BUSINESS_DAYS)
-        .into_iter()
-        .filter(|date| *date >= range.from)
-        .collect::<Vec<_>>();
-    let Some(&earliest) = business_days.first() else {
-        return Ok(IngestStats::default());
-    };
-
-    let ingested = find_ingested_dates(db, earliest).await?;
-    let targets = target_dates(&business_days, &ingested);
-    let mut stats = IngestStats::default();
-
-    for date in targets {
-        stats.days_attempted += 1;
-        match source.fetch_valuations_by_date(date).await {
-            Ok(items) if items.is_empty() => {
-                tracing::debug!(%date, "この日の valuation はまだ公開されていません");
-            }
-            Ok(items) => match upsert_valuations(db, items).await {
-                Ok(row_count) => {
-                    stats.rows_upserted += row_count;
-                    if let Err(error) = mark_ingested(db, date).await {
-                        tracing::warn!(%date, %error, "valuation の取り込み日記録に失敗、この日を再試行します");
-                    }
-                }
-                Err(error) => {
-                    tracing::warn!(%date, %error, "valuation の格納に失敗、この日をスキップします");
-                }
-            },
-            Err(error) => {
-                tracing::warn!(%date, %error, "valuation の取得に失敗、この日をスキップします");
-            }
-        }
-    }
-
-    Ok(stats)
+) -> Result<IngestStats, ValuationUseCaseError> {
+    crate::services::use_cases::build_use_cases(DatabaseHandle::from(db.clone()))
+        .valuations()
+        .run_ingest_cycle(source, Utc::now().date_naive())
+        .await
 }
 
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-    use std::sync::Mutex;
-
-    use super::*;
-    use async_trait::async_trait;
-    use chrono::NaiveDate;
-    use core_application::daily_bar_source::DateRange;
-    use core_application::valuation_source::{ValuationSource, ValuationSourceError};
-    use core_domain::valuation::Valuation;
-    use gateway_jquants::JQuantsPlan;
-    use gateway_jquants::mock::JQuantsMockServer;
-    use rust_decimal::Decimal;
-    use sea_orm::{DatabaseBackend, EntityTrait, MockDatabase};
-    fn date(year: i32, month: u32, day: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
-    }
-
-    struct TestValuationSource {
-        range: Option<DateRange>,
-        items: Vec<Valuation>,
-        requested_dates: Mutex<Vec<NaiveDate>>,
-    }
-
-    #[async_trait]
-    impl ValuationSource for TestValuationSource {
-        async fn fetch_valuations_by_date(
-            &self,
-            date: NaiveDate,
-        ) -> Result<Vec<Valuation>, ValuationSourceError> {
-            self.requested_dates
-                .lock()
-                .expect("requests lock")
-                .push(date);
-            Ok(self.items.clone())
+/// データソースが設定された場合に poll task を起動する。
+pub fn spawn_poll(
+    db: DatabaseConnection,
+    source: SharedValuationSource,
+    interval: Duration,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            match run_ingest_cycle(&db, source.as_ref()).await {
+                Ok(stats) => tracing::debug!(
+                    days_attempted = stats.days_attempted,
+                    rows_upserted = stats.rows_upserted,
+                    "valuation ingest cycle completed",
+                ),
+                Err(error) => tracing::warn!(%error, "valuation ingest cycle failed"),
+            }
         }
-
-        fn fetchable_range(&self, _today: NaiveDate) -> Option<DateRange> {
-            self.range.clone()
-        }
-    }
-
-    fn sample_valuation(date: NaiveDate) -> Valuation {
-        Valuation {
-            code: "ZZZZ0".to_string(),
-            date,
-            eps: Some(Decimal::new(125, 1)),
-            fwd_eps: None,
-            bps: None,
-            roe: None,
-            fwd_roe: None,
-            per: None,
-            fwd_per: None,
-            pbr: None,
-            mkt_cap: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn skips_when_source_has_no_fetchable_range() {
-        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
-        let mock = JQuantsMockServer::start().await;
-        let client = mock.client_with_plan(JQuantsPlan::Free).expect("client");
-
-        let stats = run_ingest_cycle(&db, &client).await.expect("cycle ok");
-        let requests = mock
-            .server_ref()
-            .received_requests()
-            .await
-            .expect("recorded requests")
-            .into_iter()
-            .map(|request| request.url.path().to_string())
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            (stats, requests),
-            (IngestStats::default(), Vec::<String>::new())
-        );
-    }
-
-    #[test]
-    fn selects_recent_refetch_window_and_missing_dates() {
-        let business_days = recent_business_days(date(2099, 1, 5), 10);
-        let ingested = HashSet::from([business_days[1], business_days[2], business_days[8]]);
-
-        assert_eq!(
-            target_dates(&business_days, &ingested),
-            vec![
-                business_days[0],
-                business_days[3],
-                business_days[4],
-                business_days[5],
-                business_days[6],
-                business_days[7],
-                business_days[8],
-                business_days[9],
-            ],
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn ingests_valuations_and_marks_non_empty_dates(db: gateway_postgres::DatabaseHandle) {
-        let to = latest_business_day(Utc::now().date_naive());
-        let expected_valuation = sample_valuation(to);
-        let source = TestValuationSource {
-            range: Some(DateRange { from: to, to }),
-            items: vec![expected_valuation.clone()],
-            requested_dates: Mutex::new(Vec::new()),
-        };
-
-        let stats = run_ingest_cycle(&db, &source).await.expect("cycle ok");
-        let rows = valuation::Entity::find()
-            .all(&db)
-            .await
-            .expect("query valuations");
-        let ingested = find_ingested_dates(&db, to).await.expect("query dates");
-        let requested_dates = source
-            .requested_dates
-            .lock()
-            .expect("requests lock")
-            .clone();
-
-        assert_eq!(
-            (stats, rows, ingested, requested_dates),
-            (
-                IngestStats {
-                    days_attempted: 1,
-                    rows_upserted: 1,
-                },
-                vec![valuation::Model {
-                    code: expected_valuation.code,
-                    date: expected_valuation.date,
-                    eps: expected_valuation.eps,
-                    fwd_eps: expected_valuation.fwd_eps,
-                    bps: expected_valuation.bps,
-                    roe: expected_valuation.roe,
-                    fwd_roe: expected_valuation.fwd_roe,
-                    per: expected_valuation.per,
-                    fwd_per: expected_valuation.fwd_per,
-                    pbr: expected_valuation.pbr,
-                    mkt_cap: expected_valuation.mkt_cap,
-                }],
-                HashSet::from([to]),
-                vec![to],
-            )
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn does_not_mark_empty_valuation_dates_as_ingested(db: gateway_postgres::DatabaseHandle) {
-        let to = latest_business_day(Utc::now().date_naive());
-        let source = TestValuationSource {
-            range: Some(DateRange { from: to, to }),
-            items: Vec::new(),
-            requested_dates: Mutex::new(Vec::new()),
-        };
-
-        let stats = run_ingest_cycle(&db, &source).await.expect("cycle ok");
-        let rows = valuation::Entity::find()
-            .all(&db)
-            .await
-            .expect("query valuations");
-        let ingested = find_ingested_dates(&db, to).await.expect("query dates");
-        let requested_dates = source
-            .requested_dates
-            .lock()
-            .expect("requests lock")
-            .clone();
-
-        assert_eq!(
-            (stats, rows, ingested, requested_dates),
-            (
-                IngestStats {
-                    days_attempted: 1,
-                    rows_upserted: 0,
-                },
-                Vec::<valuation::Model>::new(),
-                HashSet::new(),
-                vec![to],
-            )
-        );
-    }
+    })
 }

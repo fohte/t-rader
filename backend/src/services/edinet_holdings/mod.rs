@@ -4,13 +4,20 @@ mod cross_shareholdings;
 mod large_volume_shareholdings;
 mod major_shareholders;
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
 use core_application::shareholding_structure_source::{
-    ShareholdingStructureSource, ShareholdingStructureSourceError,
+    SharedShareholdingStructureSource, ShareholdingStructureSource,
+    ShareholdingStructureSourceError,
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryOrder};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryOrder};
 use serde::Serialize;
+use tokio::task::JoinHandle;
+
+/// ポーリング実行間隔。日次で更新されるデータに対して 1 日間隔とする。
+pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 既存データの最新日からこの日数分遡って再取得する。
 const REFETCH_WINDOW_DAYS: i64 = 30;
@@ -171,60 +178,46 @@ fn serialize_details<T: Serialize>(details: T) -> Result<serde_json::Value, sea_
     serde_json::to_value(details).map_err(|error| sea_orm::DbErr::Custom(error.to_string()))
 }
 
-pub async fn run_all(
-    db: &impl sea_orm::ConnectionTrait,
-    source: &dyn ShareholdingStructureSource,
-) -> Result<(), String> {
+/// poll task を起動する。初回は即実行し、その後 `interval` で繰り返す。
+pub fn spawn_poll(
+    db: DatabaseConnection,
+    source: SharedShareholdingStructureSource,
+    interval: Duration,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            run_all(&db, source.as_ref()).await;
+        }
+    })
+}
+
+async fn run_all(db: &impl sea_orm::ConnectionTrait, source: &dyn ShareholdingStructureSource) {
     let results = [
         (
             large_volume_shareholdings::Endpoint::NAME,
-            run_ingest_cycle::<large_volume_shareholdings::Endpoint>(db, source)
-                .await
-                .map_err(|error| error.to_string()),
+            run_ingest_cycle::<large_volume_shareholdings::Endpoint>(db, source).await,
         ),
         (
             cross_shareholdings::Endpoint::NAME,
-            run_ingest_cycle::<cross_shareholdings::Endpoint>(db, source)
-                .await
-                .map_err(|error| error.to_string()),
+            run_ingest_cycle::<cross_shareholdings::Endpoint>(db, source).await,
         ),
         (
             major_shareholders::Endpoint::NAME,
-            run_ingest_cycle::<major_shareholders::Endpoint>(db, source)
-                .await
-                .map_err(|error| error.to_string()),
+            run_ingest_cycle::<major_shareholders::Endpoint>(db, source).await,
         ),
     ];
-    finish_run_all(results)
-}
-
-fn finish_run_all(
-    results: impl IntoIterator<Item = (&'static str, Result<IngestStats, String>)>,
-) -> Result<(), String> {
-    let mut failures = Vec::new();
     for (name, result) in results {
         match result {
-            Ok(stats) if stats.failed_dates == 0 => {
-                tracing::debug!(endpoint = name, ?stats, "保有構造の取り込みが完了しました");
-            }
             Ok(stats) => {
-                failures.push(format!("{name}: {} dates failed", stats.failed_dates));
-                tracing::warn!(
-                    endpoint = name,
-                    ?stats,
-                    "保有構造の一部日付を取り込めませんでした"
-                );
+                tracing::debug!(endpoint = name, ?stats, "保有構造の取り込みが完了しました")
             }
             Err(error) => {
-                failures.push(format!("{name}: {error}"));
                 tracing::warn!(endpoint = name, %error, "保有構造の取り込みに失敗しました")
             }
         }
-    }
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(failures.join("; "))
     }
 }
 
@@ -281,61 +274,6 @@ mod tests {
             ingest_start_date(fetchable_from, available_from, latest_submitted_on),
             expected,
         );
-    }
-
-    #[rstest]
-    #[case::all_succeed(
-        vec![
-            ("sample-first-endpoint", Ok(IngestStats::default())),
-            ("sample-second-endpoint", Ok(IngestStats::default())),
-            ("sample-third-endpoint", Ok(IngestStats::default())),
-        ],
-        Ok(()),
-    )]
-    #[case::failed_date_is_reported(
-        vec![
-            ("sample-first-endpoint", Ok(IngestStats::default())),
-            (
-                "sample-second-endpoint",
-                Ok(IngestStats {
-                    failed_dates: 1,
-                    ..IngestStats::default()
-                }),
-            ),
-            ("sample-third-endpoint", Ok(IngestStats::default())),
-        ],
-        Err("sample-second-endpoint: 1 dates failed".to_string()),
-    )]
-    #[case::endpoint_error_is_reported(
-        vec![
-            ("sample-first-endpoint", Ok(IngestStats::default())),
-            ("sample-second-endpoint", Err("sample failure".to_string())),
-            ("sample-third-endpoint", Ok(IngestStats::default())),
-        ],
-        Err("sample-second-endpoint: sample failure".to_string()),
-    )]
-    #[case::all_failures_are_aggregated(
-        vec![
-            (
-                "sample-first-endpoint",
-                Ok(IngestStats {
-                    failed_dates: 2,
-                    ..IngestStats::default()
-                }),
-            ),
-            ("sample-second-endpoint", Err("sample failure".to_string())),
-            ("sample-third-endpoint", Ok(IngestStats::default())),
-        ],
-        Err(
-            "sample-first-endpoint: 2 dates failed; sample-second-endpoint: sample failure"
-                .to_string(),
-        ),
-    )]
-    fn reports_failures_across_endpoint_results(
-        #[case] results: Vec<(&'static str, Result<IngestStats, String>)>,
-        #[case] expected: Result<(), String>,
-    ) {
-        assert_eq!(finish_run_all(results), expected);
     }
 
     fn document(document_id: &str, stock_code: &str, date: NaiveDate) -> serde_json::Value {

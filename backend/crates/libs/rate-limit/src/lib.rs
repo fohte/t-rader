@@ -340,7 +340,6 @@ fn duration_to_millis(duration: Duration) -> Result<u64, RateLimitError> {
     u64::try_from(milliseconds)
         .ok()
         .filter(|milliseconds| *milliseconds <= MAX_EXACT_DURATION_MILLIS)
-        .map(|milliseconds| milliseconds.max(1))
         .ok_or(RateLimitError::InvalidDuration)
 }
 

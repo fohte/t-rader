@@ -1,11 +1,15 @@
 //! `rss_feed` テーブルの CRUD HTTP handler。
 //!
-//! バリデーション・DB 操作は `services::rss_feed` に委譲する thin wrapper。
+//! RSS feed のユースケース結果を HTTP 応答に変換する。
 
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use uuid::Uuid;
+
+use core_application::rss_feed::{
+    CreateRssFeedCommand, RssFeedRepositoryError, RssFeedUseCaseError, UpdateRssFeedPatch,
+};
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
@@ -13,17 +17,20 @@ use crate::extractors::{JsonBody, JsonPath, JsonQuery};
 use crate::models::{
     CreateRssFeedRequest, ListRssFeedsQuery, RssFeedResponse, UpdateRssFeedRequest,
 };
-use crate::services::rss_feed as svc;
 
-/// service レイヤのエラーを AppError にマップする
-fn map_err(err: svc::RssFeedError) -> AppError {
+fn map_err(err: RssFeedUseCaseError) -> AppError {
     match err {
-        svc::RssFeedError::InvalidSource(_)
-        | svc::RssFeedError::InvalidUrl(_)
-        | svc::RssFeedError::EmptyDisplayName => AppError::Validation(err.to_string()),
-        svc::RssFeedError::DuplicateSource(_) => AppError::Conflict(err.to_string()),
-        svc::RssFeedError::NotFound(_) => AppError::NotFound(err.to_string()),
-        svc::RssFeedError::Database(e) => AppError::Database(e),
+        RssFeedUseCaseError::Validation(message) => AppError::Validation(message),
+        error @ RssFeedUseCaseError::Repository(RssFeedRepositoryError::DuplicateSource(_)) => {
+            AppError::Conflict(error.to_string())
+        }
+        error @ RssFeedUseCaseError::NotFound(_) => AppError::NotFound(error.to_string()),
+        RssFeedUseCaseError::Repository(RssFeedRepositoryError::Persistence(error)) => error.into(),
+        RssFeedUseCaseError::UnitOfWork(
+            core_application::unit_of_work::UnitOfWorkError::Begin(error)
+            | core_application::unit_of_work::UnitOfWorkError::Commit(error),
+        ) => error.into(),
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
     }
 }
 
@@ -45,7 +52,10 @@ pub async fn list_rss_feeds(
     State(state): State<AppState>,
     JsonQuery(query): JsonQuery<ListRssFeedsQuery>,
 ) -> Result<Json<Vec<RssFeedResponse>>, AppError> {
-    let rows = svc::list(&state.db, query.enabled_only.unwrap_or(false))
+    let rows = state
+        .use_cases
+        .rss_feeds()
+        .list(query.enabled_only.unwrap_or(false))
         .await
         .map_err(map_err)?;
     Ok(Json(rows.into_iter().map(RssFeedResponse::from).collect()))
@@ -68,7 +78,7 @@ pub async fn get_rss_feed(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<RssFeedResponse>, AppError> {
-    let feed = svc::get(&state.db, id).await.map_err(map_err)?;
+    let feed = state.use_cases.rss_feeds().get(id).await.map_err(map_err)?;
     Ok(Json(feed.into()))
 }
 
@@ -91,17 +101,17 @@ pub async fn create_rss_feed(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateRssFeedRequest>,
 ) -> Result<(StatusCode, Json<RssFeedResponse>), AppError> {
-    let created = svc::create(
-        &state.db,
-        svc::CreateInput {
+    let created = state
+        .use_cases
+        .rss_feeds()
+        .create(CreateRssFeedCommand {
             source: payload.source,
             display_name: payload.display_name,
             url: payload.url,
             enabled: payload.enabled,
-        },
-    )
-    .await
-    .map_err(map_err)?;
+        })
+        .await
+        .map_err(map_err)?;
     Ok((StatusCode::CREATED, Json(created.into())))
 }
 
@@ -126,17 +136,19 @@ pub async fn update_rss_feed(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<UpdateRssFeedRequest>,
 ) -> Result<Json<RssFeedResponse>, AppError> {
-    let updated = svc::update(
-        &state.db,
-        id,
-        svc::UpdatePatch {
-            display_name: payload.display_name,
-            url: payload.url,
-            enabled: payload.enabled,
-        },
-    )
-    .await
-    .map_err(map_err)?;
+    let updated = state
+        .use_cases
+        .rss_feeds()
+        .update(
+            id,
+            UpdateRssFeedPatch {
+                display_name: payload.display_name,
+                url: payload.url,
+                enabled: payload.enabled,
+            },
+        )
+        .await
+        .map_err(map_err)?;
     Ok(Json(updated.into()))
 }
 
@@ -157,7 +169,12 @@ pub async fn delete_rss_feed(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    svc::delete(&state.db, id).await.map_err(map_err)?;
+    state
+        .use_cases
+        .rss_feeds()
+        .delete(id)
+        .await
+        .map_err(map_err)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -202,9 +219,9 @@ mod tests {
         let res = server
             .post("/api/rss-feeds")
             .json(&json!({
-                "source": "bloomberg-jp",
-                "display_name": "Bloomberg JP",
-                "url": "https://feeds.bloomberg.co.jp/markets.xml",
+                "source": "sample-newswire",
+                "display_name": "Sample Newswire",
+                "url": "https://feeds.example.invalid/markets.xml",
             }))
             .await;
         res.assert_status(StatusCode::CREATED);
@@ -212,9 +229,9 @@ mod tests {
             normalize(res.json()),
             json!({
                 "id": "<id>",
-                "source": "bloomberg-jp",
-                "display_name": "Bloomberg JP",
-                "url": "https://feeds.bloomberg.co.jp/markets.xml",
+                "source": "sample-newswire",
+                "display_name": "Sample Newswire",
+                "url": "https://feeds.example.invalid/markets.xml",
                 "enabled": true,
                 "created_at": "<created_at>",
                 "updated_at": "<updated_at>",

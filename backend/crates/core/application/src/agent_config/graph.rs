@@ -141,8 +141,10 @@ mod tests {
 
     #[rstest]
     fn parse_empty_string_is_unset() {
-        assert_eq!(parse_agent_graph(""), Ok(None));
-        assert_eq!(parse_agent_graph("   \n"), Ok(None));
+        assert_eq!(
+            (parse_agent_graph(""), parse_agent_graph("   \n")),
+            (Ok(None), Ok(None)),
+        );
     }
 
     #[rstest]
@@ -154,7 +156,7 @@ mod tests {
             phases:
               - key: plan
                 label: 調査計画
-                model: claude-opus-4
+                model: sample-model-plan
                 reasoning_effort: high
                 prompt: 仮説を立てよ
                 output:
@@ -165,7 +167,7 @@ mod tests {
                       title: { type: string }
               - key: investigate
                 label: 仮説の調査
-                model: deepseek-v4-flash
+                model: sample-model-investigator
                 for_each: plan.hypotheses
                 label_field: title
                 max_parallel: 4
@@ -184,7 +186,7 @@ mod tests {
                     AgentGraphPhase {
                         key: "plan".to_string(),
                         label: "調査計画".to_string(),
-                        model: "claude-opus-4".to_string(),
+                        model: "sample-model-plan".to_string(),
                         reasoning_effort: Some("high".to_string()),
                         prompt: "仮説を立てよ".to_string(),
                         for_each: None,
@@ -206,7 +208,7 @@ mod tests {
                     AgentGraphPhase {
                         key: "investigate".to_string(),
                         label: "仮説の調査".to_string(),
-                        model: "deepseek-v4-flash".to_string(),
+                        model: "sample-model-investigator".to_string(),
                         reasoning_effort: None,
                         prompt: "割り当てられた仮説を検証せよ".to_string(),
                         for_each: Some("plan.hypotheses".to_string()),
@@ -254,8 +256,13 @@ mod tests {
 
     #[rstest]
     fn parse_rejects_invalid_yaml() {
-        let err = parse_agent_graph("phases: [").unwrap_err();
-        assert!(matches!(err, AgentGraphError::InvalidYaml(_)));
+        assert_eq!(
+            parse_agent_graph("phases: ["),
+            Err(AgentGraphError::InvalidYaml(
+                "did not find expected node content at line 2 column 1, while parsing a flow node"
+                    .to_string(),
+            )),
+        );
     }
 
     #[rstest]
@@ -268,8 +275,12 @@ mod tests {
                 prompt: p
                 unknown_field: x
         "};
-        let err = parse_agent_graph(yaml).unwrap_err();
-        assert!(matches!(err, AgentGraphError::InvalidYaml(_)));
+        assert_eq!(
+            parse_agent_graph(yaml),
+            Err(AgentGraphError::InvalidYaml(
+                "phases[0]: unknown field `unknown_field`, expected one of `key`, `label`, `model`, `reasoning_effort`, `prompt`, `for_each`, `label_field`, `max_parallel`, `skills`, `tools`, `output` at line 6 column 5".to_string(),
+            )),
+        );
     }
 
     #[rstest]

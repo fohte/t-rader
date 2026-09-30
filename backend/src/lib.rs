@@ -3,7 +3,6 @@ pub mod cli;
 pub(crate) mod concurrent;
 pub mod data_provider;
 pub(crate) mod date_utils;
-pub mod entrypoints;
 pub mod error;
 pub mod extractors;
 pub mod handlers;
@@ -17,7 +16,6 @@ pub(crate) mod serde_helpers;
 pub mod services;
 #[cfg(test)]
 pub mod testing;
-pub(crate) mod text_normalize;
 
 use std::sync::Arc;
 

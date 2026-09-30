@@ -21,6 +21,7 @@ impl MgmtServer {
     ) -> Result<CreateStrategyTriggerResult, McpError> {
         let scope = self.strategy_scope(params.strategy_id).await?;
         let command = CreateTriggerCommand {
+            purpose: params.purpose,
             kind: match params.kind {
                 super::dto::TriggerKindParam::Cron => TriggerKind::Cron,
                 super::dto::TriggerKindParam::Hook => TriggerKind::Hook,
@@ -60,6 +61,7 @@ impl MgmtServer {
         })?;
         let scope = self.strategy_scope(strategy_id).await?;
         let command = UpdateTriggerCommand {
+            purpose: params.purpose,
             schedule: params.schedule,
             hook_slug: params.hook_slug,
             event_match: params.event_match.map(|value| Some(value.into())),
@@ -122,6 +124,9 @@ impl MgmtServer {
 fn validation_errors(err: TriggerUseCaseError) -> Result<Vec<String>, McpError> {
     match err {
         TriggerUseCaseError::Validation(msg) => Ok(vec![msg]),
+        TriggerUseCaseError::PurposeNotFound(purpose) => {
+            Ok(vec![format!("agent_config purpose {purpose} not found")])
+        }
         other => Err(map_trigger_error(other)),
     }
 }
@@ -134,25 +139,38 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::FakeAgentTaskClient;
-    use crate::mcp::mgmt::dto::TriggerKindParam;
+    use crate::mcp::mgmt::dto::{TriggerKindParam, TriggerSummary};
+    use crate::mcp::strategy::tests_common::ts_sentinel;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
 
     use super::super::tests_common::{build_server, insert_strategy};
     use super::*;
 
+    fn normalize_trigger_summaries(mut summaries: Vec<TriggerSummary>) -> Vec<TriggerSummary> {
+        for summary in &mut summaries {
+            summary.created_at = ts_sentinel();
+            summary.updated_at = ts_sentinel();
+        }
+        summaries
+    }
+
     #[backend_test_macros::database_test]
     async fn create_strategy_trigger_inserts_cron_trigger(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
+        crate::testing::agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("insert test agent_config");
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id,
+                purpose: Some("synthetic-purpose".to_string()),
                 kind: TriggerKindParam::Cron,
                 schedule: Some("0 9 * * *".to_string()),
                 hook_slug: None,
                 event_match: None,
-                prompt_template: "朝の市況を要約せよ".to_string(),
+                prompt_template: "synthetic prompt".to_string(),
                 enabled: None,
             }))
             .await
@@ -181,6 +199,7 @@ mod tests {
         assert_eq!(
             (
                 stored.strategy_id,
+                stored.purpose,
                 stored.kind.as_str().to_string(),
                 stored.schedule,
                 stored.hook_slug,
@@ -189,12 +208,36 @@ mod tests {
             ),
             (
                 Some(strategy_id),
+                Some("synthetic-purpose".to_string()),
                 "cron".to_string(),
                 Some("0 9 * * *".to_string()),
                 None,
-                "朝の市況を要約せよ".to_string(),
+                "synthetic prompt".to_string(),
                 true,
             ),
+        );
+
+        let Json(config) = server
+            .get_strategy_config(Parameters(super::super::dto::GetStrategyConfigParams {
+                strategy_id,
+            }))
+            .await
+            .expect("strategy config is available");
+        assert_eq!(
+            normalize_trigger_summaries(config.triggers),
+            vec![TriggerSummary {
+                trigger_id,
+                purpose: Some("synthetic-purpose".to_string()),
+                kind: "cron".to_string(),
+                schedule: Some("0 9 * * *".to_string()),
+                hook_slug: None,
+                event_match: None,
+                prompt_template: "synthetic prompt".to_string(),
+                enabled: true,
+                last_fired_at: None,
+                created_at: ts_sentinel(),
+                updated_at: ts_sentinel(),
+            }],
         );
     }
 
@@ -208,6 +251,7 @@ mod tests {
         let Json(result) = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id,
+                purpose: None,
                 kind: TriggerKindParam::Cron,
                 schedule: None,
                 hook_slug: None,
@@ -246,6 +290,7 @@ mod tests {
         let err = server
             .create_strategy_trigger(Parameters(CreateStrategyTriggerParams {
                 strategy_id: Uuid::new_v4(),
+                purpose: None,
                 kind: TriggerKindParam::Hook,
                 schedule: None,
                 hook_slug: Some("earnings".to_string()),
@@ -262,13 +307,25 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn update_strategy_trigger_applies_fields(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
-        let trigger_id =
-            insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "old prompt").await;
+        crate::testing::agent_config::create(&db, "synthetic-purpose".to_string())
+            .await
+            .expect("insert test agent_config");
+        let trigger_id = insert_test_cron_trigger(
+            &db,
+            strategy_id,
+            "0 9 * * *",
+            true,
+            None,
+            "old prompt",
+            None,
+        )
+        .await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id,
+                purpose: Some(Some("synthetic-purpose".to_string())),
                 schedule: Some("0 10 * * *".to_string()),
                 hook_slug: None,
                 event_match: None,
@@ -289,8 +346,14 @@ mod tests {
             .await
             .expect("trigger exists");
         assert_eq!(
-            (stored.schedule, stored.prompt_template, stored.enabled),
             (
+                stored.purpose,
+                stored.schedule,
+                stored.prompt_template,
+                stored.enabled,
+            ),
+            (
+                Some("synthetic-purpose".to_string()),
                 Some("0 10 * * *".to_string()),
                 "new prompt".to_string(),
                 false,
@@ -304,12 +367,14 @@ mod tests {
     ) {
         let strategy_id = insert_strategy(&db, "s").await;
         let trigger_id =
-            insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "prompt").await;
+            insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, None, "prompt", None)
+                .await;
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
 
         let Json(result) = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id,
+                purpose: None,
                 schedule: None,
                 hook_slug: Some("earnings".to_string()),
                 event_match: None,
@@ -328,6 +393,7 @@ mod tests {
         let err = server
             .update_strategy_trigger(Parameters(UpdateStrategyTriggerParams {
                 trigger_id: Uuid::new_v4(),
+                purpose: None,
                 schedule: None,
                 hook_slug: None,
                 event_match: None,

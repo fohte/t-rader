@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::TriggerKind;
-use gateway_postgres::entities::rss_feed;
+use core_application::rss_feed::RssFeed;
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StrategySummary {
@@ -119,8 +119,8 @@ pub struct RssFeedSummary {
     pub enabled: bool,
 }
 
-impl From<rss_feed::Model> for RssFeedSummary {
-    fn from(m: rss_feed::Model) -> Self {
+impl From<RssFeed> for RssFeedSummary {
+    fn from(m: RssFeed) -> Self {
         Self {
             id: m.id,
             source: m.source,
@@ -233,9 +233,10 @@ pub struct DeleteNoteKindResult {
     pub key: String,
 }
 
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, PartialEq, Serialize, JsonSchema)]
 pub struct TriggerSummary {
     pub trigger_id: Uuid,
+    pub purpose: Option<String>,
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
@@ -252,6 +253,7 @@ impl From<core_application::trigger::Trigger> for TriggerSummary {
     fn from(trigger: core_application::trigger::Trigger) -> Self {
         Self {
             trigger_id: trigger.trigger_id,
+            purpose: trigger.purpose,
             kind: trigger.kind.as_str().to_string(),
             schedule: trigger.schedule,
             hook_slug: trigger.hook_slug,
@@ -344,6 +346,8 @@ impl From<TriggerKindParam> for TriggerKind {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateStrategyTriggerParams {
     pub strategy_id: Uuid,
+    #[serde(default)]
+    pub purpose: Option<String>,
     pub kind: TriggerKindParam,
     /// kind=cron 時に必須 (UTC の 5 フィールド cron 式)
     #[serde(default)]
@@ -369,6 +373,11 @@ pub struct CreateStrategyTriggerResult {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdateStrategyTriggerParams {
     pub trigger_id: Uuid,
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    pub purpose: Option<Option<String>>,
     #[serde(default)]
     pub schedule: Option<String>,
     #[serde(default)]
