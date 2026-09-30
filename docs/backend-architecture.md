@@ -33,6 +33,7 @@ backend/crates/
 │   ├── kata-exec/
 │   └── t-rader-agent/
 └── libs/                 # 外部 crate と同じ扱いの自前ライブラリ
+    ├── rate-limit/       # Redis を使った共有 rate limit
     └── test-macros/      # DB test 用 attribute macro
 ```
 
@@ -45,6 +46,7 @@ backend/crates/
 | `entrypoints/*`      | HTTP、MCP、webhook、定期実行などの入力を受け取り、application のユースケースを呼び出す。 |
 | `gateways/*`         | application の port を実装し、外部システムとの入出力を担う。                             |
 | `apps/*`             | 各 crate を組み立てる composition root とする。                                          |
+| `libs/rate-limit`    | Redis を使って process 間で共有する rate limit と cooldown を提供する。                  |
 | `libs/test-macros`   | DB test 用 proc macro を提供する。                                                       |
 | `backend/migration/` | SeaORM migration を管理する。                                                            |
 
@@ -59,9 +61,12 @@ backend/crates/
 | `core/domain`      | なし                                                         |
 | `core/application` | `core/domain`                                                |
 | `entrypoints/*`    | `core/application`, `core/domain`                            |
-| `gateways/*`       | `core/application`, `core/domain`                            |
+| `gateways/*`       | `core/application`, `core/domain`, `libs/rate-limit`         |
 | `apps/*`           | `backend/crates/` 内のすべての crate と `backend/migration/` |
+| `libs/rate-limit`  | なし                                                         |
 | `libs/test-macros` | なし                                                         |
+
+`libs/rate-limit` は外部 crate への依存だけを持ち、`backend/crates/` 内の crate には依存しない。利用できるのは `gateways/*` と composition root (`backend`、将来の `apps/*`) のみとし、`core/*` と `entrypoints/*` からは依存させない。
 
 `gateways/postgres` は `DatabaseHandle`、SeaORM entity 定義、repository 関数を提供する。trade など一部の集約では `core/application` が定義する `UnitOfWork`、repository、`ChangeHistoryPort` port も実装する。`test-support` feature だけが共有テスト DB の準備に必要な `migration` と `sqlx` を有効にする。`gateways/postgres` は `libs/test-macros` を dev-dependency として使い、backend と同じ DB test macro を利用できる。
 
