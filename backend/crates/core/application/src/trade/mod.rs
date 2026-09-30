@@ -10,7 +10,7 @@ pub use error::TradeUseCaseError;
 pub use repository::{SharedTradeRepository, TradeRepository, TradeRepositoryError};
 pub use types::{
     CreateTradeCommand, NewTrade, PerformanceSummary, PositionSummary, Trade, TradeListItem,
-    TradeOrder, TradeQuery, TradeUpdate, TradeUpdateCommand,
+    TradeNoteReference, TradeOrder, TradeQuery, TradeUpdate, TradeUpdateCommand,
 };
 pub use use_cases::TradeUseCases;
 

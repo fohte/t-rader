@@ -261,7 +261,7 @@ async fn main() -> Result<(), AppError> {
         "starting cron trigger worker",
     );
     let _trigger_worker = backend::services::trigger_worker::spawn(
-        db.clone(),
+        use_cases.triggers(),
         agent_task_client.clone(),
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );

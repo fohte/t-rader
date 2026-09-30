@@ -7,6 +7,7 @@ use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresUnitOfWork,
 };
 
+mod account_risk_policy;
 mod annotation;
 mod bars;
 mod comment;
@@ -17,6 +18,7 @@ mod prediction;
 mod strategy;
 mod strategy_task;
 mod trade;
+mod trigger;
 
 #[derive(Clone)]
 pub struct UseCases {

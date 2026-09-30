@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::TriggerKind;
-use gateway_postgres::entities::{rss_feed, trigger};
+use gateway_postgres::entities::rss_feed;
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct StrategySummary {
@@ -239,7 +239,7 @@ pub struct TriggerSummary {
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
-    /// `services::trigger_crud::validate_event_match` が書き込み時に object または null のみに制限する。
+    /// trigger use case が書き込み時に object または null のみに制限する。
     pub event_match: Option<serde_json::Map<String, serde_json::Value>>,
     pub prompt_template: String,
     pub enabled: bool,
@@ -248,19 +248,21 @@ pub struct TriggerSummary {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-impl From<trigger::Model> for TriggerSummary {
-    fn from(m: trigger::Model) -> Self {
+impl From<core_application::trigger::Trigger> for TriggerSummary {
+    fn from(trigger: core_application::trigger::Trigger) -> Self {
         Self {
-            trigger_id: m.trigger_id,
-            kind: m.kind,
-            schedule: m.schedule,
-            hook_slug: m.hook_slug,
-            event_match: m.event_match.and_then(|v| v.as_object().cloned()),
-            prompt_template: m.prompt_template,
-            enabled: m.enabled,
-            last_fired_at: m.last_fired_at,
-            created_at: m.created_at,
-            updated_at: m.updated_at,
+            trigger_id: trigger.trigger_id,
+            kind: trigger.kind.as_str().to_string(),
+            schedule: trigger.schedule,
+            hook_slug: trigger.hook_slug,
+            event_match: trigger
+                .event_match
+                .and_then(|value| value.as_object().cloned()),
+            prompt_template: trigger.prompt_template,
+            enabled: trigger.enabled,
+            last_fired_at: trigger.last_fired_at,
+            created_at: trigger.created_at,
+            updated_at: trigger.updated_at,
         }
     }
 }

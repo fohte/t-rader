@@ -1,3 +1,4 @@
+pub mod account_risk_policy;
 pub mod agent_task_client;
 pub mod annotation;
 pub mod bars;
@@ -25,5 +26,6 @@ pub mod strategy_existence;
 pub mod strategy_scope;
 pub mod strategy_task;
 pub mod trade;
+pub mod trigger;
 pub mod unit_of_work;
 pub mod valuation_source;

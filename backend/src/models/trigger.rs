@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use gateway_postgres::entities::trigger;
-
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(as = Trigger)]
 pub struct TriggerResponse {
@@ -26,25 +24,25 @@ pub struct TriggerResponse {
     pub updated_at: DateTime<FixedOffset>,
 }
 
-impl From<trigger::Model> for TriggerResponse {
-    fn from(model: trigger::Model) -> Self {
-        let event_match = model
+impl From<core_application::trigger::Trigger> for TriggerResponse {
+    fn from(trigger: core_application::trigger::Trigger) -> Self {
+        let event_match = trigger
             .event_match
             .and_then(|value| value.as_object().cloned())
             .map(|object| object.into_iter().collect());
 
         Self {
-            trigger_id: model.trigger_id,
-            strategy_id: model.strategy_id,
-            kind: model.kind,
-            schedule: model.schedule,
-            hook_slug: model.hook_slug,
+            trigger_id: trigger.trigger_id,
+            strategy_id: trigger.strategy_id,
+            kind: trigger.kind.as_str().to_string(),
+            schedule: trigger.schedule,
+            hook_slug: trigger.hook_slug,
             event_match,
-            prompt_template: model.prompt_template,
-            enabled: model.enabled,
-            last_fired_at: model.last_fired_at,
-            created_at: model.created_at,
-            updated_at: model.updated_at,
+            prompt_template: trigger.prompt_template,
+            enabled: trigger.enabled,
+            last_fired_at: trigger.last_fired_at,
+            created_at: trigger.created_at,
+            updated_at: trigger.updated_at,
         }
     }
 }
