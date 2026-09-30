@@ -96,6 +96,12 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
 - カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること
 
+## DB schema docs
+
+- backend と agent の DB schema docs は `mise run db-doc` で再生成する
+- CI はスキーマ関連の変更がある PR で `backend/docs/db/` と `agent/docs/db/` を再生成し、自動コミットする
+- 生成には開発 DB ではなく、migration を適用した使い捨て DB を使う
+
 ## 環境変数
 
 - `.env` (git 管理) にローカル開発用のデフォルト値を定義している
