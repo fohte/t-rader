@@ -26,6 +26,7 @@ pub(super) mod refs;
 pub(super) mod risk_check;
 pub(super) mod short_ratio;
 pub(super) mod short_sale_report;
+pub(super) mod stock_groups;
 mod tool_router;
 pub(super) mod trades;
 pub(super) mod valuation;

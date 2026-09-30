@@ -24,6 +24,7 @@ mod refs;
 mod rss_feed;
 mod short_ratio;
 mod short_sale_report;
+mod stock_group;
 mod strategy;
 mod strategy_task;
 mod trade;
