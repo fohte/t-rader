@@ -118,8 +118,8 @@ pub async fn submit_strategy_chat(
         )
         .await
         .map_err(|error| match error {
-            SubmitTaskError::PurposeNotFound(purpose) if requested_purpose.is_some() => {
-                AppError::Validation(format!("agent_config for purpose '{purpose}' not found"))
+            err @ SubmitTaskError::PurposeNotFound(_) if requested_purpose.is_some() => {
+                AppError::Validation(err.to_string())
             }
             error => map_submit_error(error),
         })?;
@@ -402,44 +402,36 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_missing_agent_config_returns_503(db: gateway_postgres::DatabaseHandle) {
-        let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
-        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "x").await;
-
-        let res = server
-            .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": "inspect 7203" }))
-            .await;
-        res.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(
-            res.json::<serde_json::Value>(),
-            json!({ "error": "agent_config for purpose 'default' not found" }),
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn submit_chat_unknown_requested_purpose_returns_400(
+    async fn submit_chat_missing_agent_config_uses_requested_purpose_for_status(
         db: gateway_postgres::DatabaseHandle,
     ) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
         let strategy_id = insert_test_strategy(&db, "example-strategy").await;
-
-        let res = server
-            .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": "inspect the example", "purpose": "example-purpose" }))
-            .await;
-        let status = res.status_code();
-        let body = res.json::<serde_json::Value>();
-
-        assert_eq!(
-            (status, body),
+        let cases = [
             (
-                axum::http::StatusCode::BAD_REQUEST,
-                json!({ "error": "agent_config for purpose 'example-purpose' not found" }),
+                json!({ "prompt": "inspect the example" }),
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "agent_config for purpose 'default' not found",
             ),
-        );
+            (
+                json!({ "prompt": "inspect the example", "purpose": "example-purpose" }),
+                axum::http::StatusCode::BAD_REQUEST,
+                "agent_config for purpose 'example-purpose' not found",
+            ),
+        ];
+
+        for (body, expected_status, expected_error) in cases {
+            let res = server
+                .post(&format!("/api/strategies/{strategy_id}/chat"))
+                .json(&body)
+                .await;
+
+            assert_eq!(
+                (res.status_code(), res.json::<serde_json::Value>()),
+                (expected_status, json!({ "error": expected_error })),
+            );
+        }
     }
 
     #[backend_test_macros::database_test]

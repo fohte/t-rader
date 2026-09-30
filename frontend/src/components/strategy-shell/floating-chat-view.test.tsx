@@ -94,25 +94,6 @@ describe('FloatingChatView', () => {
     expect(onSubmit).toHaveBeenCalledOnce()
   })
 
-  it('実行目的を選ぶと onPurposeChange に値が伝わる', async () => {
-    const onPurposeChange = vi.fn()
-    await renderInRouter(
-      <FloatingChatView
-        {...makeProps({
-          purposes: ['example-purpose'],
-          onPurposeChange,
-        })}
-      />,
-    )
-
-    await userEvent.selectOptions(
-      screen.getByLabelText('実行目的'),
-      'example-purpose',
-    )
-
-    expect(onPurposeChange.mock.calls).toEqual([['example-purpose']])
-  })
-
   it('入力するたびに onInputChange に値が伝わる', async () => {
     const onInputChange = vi.fn()
     await renderInRouter(
@@ -133,6 +114,7 @@ describe('FloatingChatView', () => {
     )
 
     expect(screen.getByText('タスクを投入しています…')).toBeInTheDocument()
+    expect(screen.getByLabelText('実行目的')).toBeDisabled()
     expect(screen.getByLabelText('メッセージ入力')).toBeDisabled()
     expect(screen.getByRole('button', { name: '送信' })).toBeDisabled()
   })

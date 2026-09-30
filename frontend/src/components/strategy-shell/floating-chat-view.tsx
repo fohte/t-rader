@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 
+import { PurposeSelect } from '#components/purpose-select'
 import { formatRelative } from '#lib/note-utils'
 
 export interface FloatingChatNote {
@@ -124,25 +125,12 @@ export function FloatingChatView({
         }}
         className="space-y-2 border-t border-border px-3.5 py-3"
       >
-        <label className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-          <span>実行目的</span>
-          <select
-            aria-label="実行目的"
-            value={selectedPurpose}
-            onChange={(e) => {
-              onPurposeChange(e.target.value)
-            }}
-            disabled={inputDisabled}
-            className="min-w-0 flex-1 border border-border bg-background px-2 py-1.5 text-foreground outline-none disabled:opacity-60"
-          >
-            <option value="">既定の設定</option>
-            {purposes.map((purpose) => (
-              <option key={purpose} value={purpose}>
-                {purpose}
-              </option>
-            ))}
-          </select>
-        </label>
+        <PurposeSelect
+          purposes={purposes}
+          selectedPurpose={selectedPurpose}
+          onPurposeChange={onPurposeChange}
+          disabled={inputDisabled}
+        />
         <div className="flex items-center gap-2">
           <span className="font-mono font-bold text-primary">&gt;</span>
           <input
