@@ -18,7 +18,7 @@ use super::dto::{ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorS
 use super::{StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params};
 
 /// 33 業種名 -> 33 業種コード。
-/// https://jpx-j-quants.com/ja/spec/eq-master/sector33code
+/// https://jpx-jquants.com/ja/spec/eq-master/sector33code
 const SECTOR33_CODES: &[(&str, &str)] = &[
     ("水産・農林業", "0050"),
     ("鉱業", "1050"),
