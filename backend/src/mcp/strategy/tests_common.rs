@@ -52,7 +52,7 @@ pub(super) fn build_server(db: impl Into<gateway_postgres::DatabaseHandle>) -> S
 }
 
 /// DTO の比較で動的な timestamp を差し替えるための sentinel 値。
-pub(super) fn ts_sentinel() -> DateTime<FixedOffset> {
+pub(in crate::mcp) fn ts_sentinel() -> DateTime<FixedOffset> {
     chrono::DateTime::<chrono::Utc>::UNIX_EPOCH.fixed_offset()
 }
 

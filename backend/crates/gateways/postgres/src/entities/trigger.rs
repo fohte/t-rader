@@ -23,10 +23,20 @@ pub struct Model {
     pub last_fired_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub purpose: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::agent_config::Entity",
+        from = "Column::Purpose",
+        to = "super::agent_config::Column::Purpose",
+        on_update = "NoAction",
+        on_delete = "SetNull"
+    )]
+    AgentConfig,
     #[sea_orm(
         belongs_to = "super::strategy::Entity",
         from = "Column::StrategyId",
@@ -35,6 +45,12 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Strategy,
+}
+
+impl Related<super::agent_config::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::AgentConfig.def()
+    }
 }
 
 impl Related<super::strategy::Entity> for Entity {

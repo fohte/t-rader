@@ -24,7 +24,7 @@ import (
 
 const (
 	testTriggerID       = "00000000-0000-4000-8000-000000000002"
-	testTriggerResponse = `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","kind":"hook","schedule":null,"hook_slug":"synthetic-hook","event_match":{"status":"ready"},"prompt_template":"synthetic prompt","enabled":true,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
+	testTriggerResponse = `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":"synthetic-purpose","kind":"hook","schedule":null,"hook_slug":"synthetic-hook","event_match":{"status":"ready"},"prompt_template":"synthetic prompt","enabled":true,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
 )
 
 type triggerTestRequest struct {
@@ -49,7 +49,7 @@ func TestStrategyTriggerResourceCreate(t *testing.T) {
 
 	ctx := context.Background()
 	var observed triggerTestRequest
-	createResponse := `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","kind":"hook","schedule":null,"hook_slug":"synthetic-hook","event_match":{"attempts":9,"items":["alpha","beta"],"status":"ready"},"prompt_template":"synthetic prompt","enabled":true,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
+	createResponse := `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":"synthetic-purpose","kind":"hook","schedule":null,"hook_slug":"synthetic-hook","event_match":{"attempts":9,"items":["alpha","beta"],"status":"ready"},"prompt_template":"synthetic prompt","enabled":true,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-02T00:00:00Z"}`
 	client := newStrategyTriggerTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		observed = readTriggerTestRequest(t, r)
 		writeTriggerTestResponse(t, w, http.StatusCreated, createResponse)
@@ -77,6 +77,7 @@ func TestStrategyTriggerResourceCreate(t *testing.T) {
 	if diagnostics := plan.Set(ctx, strategyTriggerModel{
 		ID:             types.StringUnknown(),
 		StrategyID:     types.StringValue(testStrategyID),
+		Purpose:        types.StringValue("synthetic-purpose"),
 		Kind:           types.StringValue("hook"),
 		Schedule:       types.StringNull(),
 		HookSlug:       types.StringValue("synthetic-hook"),
@@ -103,11 +104,12 @@ func TestStrategyTriggerResourceCreate(t *testing.T) {
 		Request: triggerTestRequest{
 			Method: http.MethodPost,
 			Path:   "/api/strategies/" + testStrategyID + "/triggers",
-			Body:   `{"enabled":true,"event_match":{"attempts":9,"items":["alpha","beta"],"status":"ready"},"hook_slug":"synthetic-hook","kind":"hook","prompt_template":"synthetic prompt"}`,
+			Body:   `{"enabled":true,"event_match":{"attempts":9,"items":["alpha","beta"],"status":"ready"},"hook_slug":"synthetic-hook","kind":"hook","prompt_template":"synthetic prompt","purpose":"synthetic-purpose"}`,
 		},
 		State: strategyTriggerModel{
 			ID:             types.StringValue(testTriggerID),
 			StrategyID:     types.StringValue(testStrategyID),
+			Purpose:        types.StringValue("synthetic-purpose"),
 			Kind:           types.StringValue("hook"),
 			Schedule:       types.StringNull(),
 			HookSlug:       types.StringValue("synthetic-hook"),
@@ -158,6 +160,7 @@ func TestStrategyTriggerResourceRead(t *testing.T) {
 		State: strategyTriggerModel{
 			ID:             types.StringValue(testTriggerID),
 			StrategyID:     types.StringValue(testStrategyID),
+			Purpose:        types.StringValue("synthetic-purpose"),
 			Kind:           types.StringValue("hook"),
 			Schedule:       types.StringNull(),
 			HookSlug:       types.StringValue("synthetic-hook"),
@@ -179,7 +182,7 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 
 	ctx := context.Background()
 	var observed triggerTestRequest
-	updatedResponse := `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","kind":"hook","schedule":null,"hook_slug":"synthetic-hook","event_match":null,"prompt_template":"updated synthetic prompt","enabled":false,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-03T00:00:00Z"}`
+	updatedResponse := `{"trigger_id":"00000000-0000-4000-8000-000000000002","strategy_id":"00000000-0000-4000-8000-000000000001","purpose":null,"kind":"hook","schedule":null,"hook_slug":"synthetic-hook","event_match":null,"prompt_template":"updated synthetic prompt","enabled":false,"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-03T00:00:00Z"}`
 	client := newStrategyTriggerTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		observed = readTriggerTestRequest(t, r)
 		writeTriggerTestResponse(t, w, http.StatusOK, updatedResponse)
@@ -190,6 +193,7 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 	if diagnostics := priorState.Set(ctx, strategyTriggerModel{
 		ID:             types.StringValue(testTriggerID),
 		StrategyID:     types.StringValue(testStrategyID),
+		Purpose:        types.StringValue("synthetic-purpose"),
 		Kind:           types.StringValue("hook"),
 		Schedule:       types.StringNull(),
 		HookSlug:       types.StringValue("synthetic-hook"),
@@ -205,6 +209,7 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 	if diagnostics := plan.Set(ctx, strategyTriggerModel{
 		ID:             types.StringUnknown(),
 		StrategyID:     types.StringValue(testStrategyID),
+		Purpose:        types.StringNull(),
 		Kind:           types.StringValue("hook"),
 		Schedule:       types.StringNull(),
 		HookSlug:       types.StringValue("synthetic-hook"),
@@ -231,11 +236,12 @@ func TestStrategyTriggerResourceUpdateClearsEventMatch(t *testing.T) {
 		Request: triggerTestRequest{
 			Method: http.MethodPut,
 			Path:   "/api/triggers/" + testTriggerID,
-			Body:   `{"enabled":false,"event_match":null,"hook_slug":"synthetic-hook","prompt_template":"updated synthetic prompt","schedule":null}`,
+			Body:   `{"enabled":false,"event_match":null,"hook_slug":"synthetic-hook","prompt_template":"updated synthetic prompt","purpose":null,"schedule":null}`,
 		},
 		State: strategyTriggerModel{
 			ID:             types.StringValue(testTriggerID),
 			StrategyID:     types.StringValue(testStrategyID),
+			Purpose:        types.StringNull(),
 			Kind:           types.StringValue("hook"),
 			Schedule:       types.StringNull(),
 			HookSlug:       types.StringValue("synthetic-hook"),
@@ -491,6 +497,7 @@ func validateStrategyTriggerConfig(t *testing.T, kind string, schedule, hookSlug
 	if diagnostics := plan.Set(ctx, strategyTriggerModel{
 		ID:             types.StringUnknown(),
 		StrategyID:     types.StringValue(testStrategyID),
+		Purpose:        types.StringNull(),
 		Kind:           types.StringValue(kind),
 		Schedule:       schedule,
 		HookSlug:       hookSlug,
@@ -523,6 +530,7 @@ func triggerTestStateModel() strategyTriggerModel {
 	return strategyTriggerModel{
 		ID:             types.StringValue(testTriggerID),
 		StrategyID:     types.StringValue(testStrategyID),
+		Purpose:        types.StringValue("synthetic-purpose"),
 		Kind:           types.StringValue("hook"),
 		Schedule:       types.StringNull(),
 		HookSlug:       types.StringValue("synthetic-hook"),

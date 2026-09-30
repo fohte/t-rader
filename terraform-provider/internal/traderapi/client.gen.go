@@ -119,6 +119,9 @@ type CreateTriggerRequest struct {
 	Kind           TriggerKind               `json:"kind"`
 	PromptTemplate string                    `json:"prompt_template"`
 
+	// Purpose 省略時または `null` 指定時は default の agent 設定を使用する。
+	Purpose nullable.Nullable[string] `json:"purpose,omitempty"`
+
 	// Schedule kind=cron 時に必須 (UTC の 5 フィールド cron 式)
 	Schedule nullable.Nullable[string] `json:"schedule,omitempty"`
 }
@@ -304,6 +307,7 @@ type Trigger struct {
 	Kind           string                                    `json:"kind"`
 	LastFiredAt    nullable.Nullable[time.Time]              `json:"last_fired_at,omitempty"`
 	PromptTemplate string                                    `json:"prompt_template"`
+	Purpose        nullable.Nullable[string]                 `json:"purpose,omitempty"`
 	Schedule       nullable.Nullable[string]                 `json:"schedule,omitempty"`
 	StrategyId     nullable.Nullable[openapi_types.UUID]     `json:"strategy_id,omitempty"`
 	TriggerId      openapi_types.UUID                        `json:"trigger_id"`
@@ -345,7 +349,10 @@ type UpdateTriggerRequest struct {
 	EventMatch     interface{}               `json:"event_match,omitempty"`
 	HookSlug       nullable.Nullable[string] `json:"hook_slug,omitempty"`
 	PromptTemplate nullable.Nullable[string] `json:"prompt_template,omitempty"`
-	Schedule       nullable.Nullable[string] `json:"schedule,omitempty"`
+
+	// Purpose 省略時は変更せず、`null` 指定時は default purpose に戻す。
+	Purpose  nullable.Nullable[string] `json:"purpose,omitempty"`
+	Schedule nullable.Nullable[string] `json:"schedule,omitempty"`
 }
 
 // Value defines model for Value.

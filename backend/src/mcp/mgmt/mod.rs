@@ -151,6 +151,9 @@ pub(super) fn map_trigger_error(error: core_application::trigger::TriggerUseCase
     match error {
         TriggerUseCaseError::Validation(message) => invalid_params(message),
         TriggerUseCaseError::NotFound(id) => invalid_params(format!("trigger {id} not found")),
+        TriggerUseCaseError::PurposeNotFound(purpose) => {
+            invalid_params(format!("agent_config purpose {purpose} not found"))
+        }
         TriggerUseCaseError::HookNotFound(slug) => invalid_params(format!("hook {slug} not found")),
         TriggerUseCaseError::Disabled(id) | TriggerUseCaseError::NoStrategy(id) => {
             invalid_params(format!("trigger {id} is not available"))
