@@ -104,6 +104,8 @@ async fn main() -> Result<(), AppError> {
         return Ok(());
     }
 
+    let app_db = DatabaseHandle::from(db.clone());
+
     let provider_kind = std::env::var("DATA_PROVIDER")
         .ok()
         .map(|s| s.to_lowercase())
@@ -236,7 +238,7 @@ async fn main() -> Result<(), AppError> {
             })?;
             let source: Arc<dyn IndicatorObservationSource> = Arc::new(fred_client);
             let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
-                db.clone(),
+                use_cases.indicator_observations(),
                 source,
                 backend::services::fred_ingest::DEFAULT_INTERVAL,
             );
@@ -258,8 +260,11 @@ async fn main() -> Result<(), AppError> {
         interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
         "starting cron trigger worker",
     );
+    let use_cases = backend::services::use_cases::build_use_cases(
+        gateway_postgres::DatabaseHandle::from(db.clone()),
+    );
     let _trigger_worker = backend::services::trigger_worker::spawn(
-        db.clone(),
+        use_cases.triggers(),
         agent_task_client.clone(),
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
@@ -277,7 +282,7 @@ async fn main() -> Result<(), AppError> {
 
         let _short_sale_report_ingest_poll =
             backend::services::short_sale_report_ingest::spawn_poll(
-                db.clone(),
+                use_cases.short_sale_reports(),
                 client.clone(),
                 backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
             );
@@ -287,7 +292,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
-            db.clone(),
+            use_cases.short_ratios(),
             client.clone(),
             backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
         );
@@ -297,7 +302,7 @@ async fn main() -> Result<(), AppError> {
         );
 
         let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
-            db.clone(),
+            use_cases.margins(),
             client.clone(),
             backend::services::margin_ingest::DEFAULT_INTERVAL,
         );
@@ -360,8 +365,6 @@ async fn main() -> Result<(), AppError> {
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
-    let db = DatabaseHandle::from(db);
-    let use_cases = backend::services::use_cases::build_use_cases(db.clone());
     let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
         use_cases.predictions(),
         backend::services::prediction_grading::DEFAULT_INTERVAL,
@@ -371,7 +374,7 @@ async fn main() -> Result<(), AppError> {
         "prediction grading poll task started",
     );
     let state = AppState {
-        db: db.clone(),
+        db: app_db,
         use_cases,
         daily_bar_source,
         jquants_client,

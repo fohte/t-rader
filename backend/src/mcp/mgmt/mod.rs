@@ -144,6 +144,31 @@ pub(super) fn map_app_error(err: AppError) -> McpError {
     }
 }
 
+pub(super) fn map_trigger_error(error: core_application::trigger::TriggerUseCaseError) -> McpError {
+    use core_application::trigger::{TriggerRepositoryError, TriggerUseCaseError};
+    use core_application::unit_of_work::UnitOfWorkError;
+
+    match error {
+        TriggerUseCaseError::Validation(message) => invalid_params(message),
+        TriggerUseCaseError::NotFound(id) => invalid_params(format!("trigger {id} not found")),
+        TriggerUseCaseError::HookNotFound(slug) => invalid_params(format!("hook {slug} not found")),
+        TriggerUseCaseError::Disabled(id) | TriggerUseCaseError::NoStrategy(id) => {
+            invalid_params(format!("trigger {id} is not available"))
+        }
+        TriggerUseCaseError::Repository(TriggerRepositoryError::Database(error))
+        | TriggerUseCaseError::StrategyRepository(
+            core_application::strategy::StrategyRepositoryError::Database(error),
+        )
+        | TriggerUseCaseError::StrategyExistence(
+            core_application::strategy_existence::StrategyExistenceError::Database(error),
+        )
+        | TriggerUseCaseError::UnitOfWork(
+            UnitOfWorkError::Begin(error) | UnitOfWorkError::Commit(error),
+        ) => map_app_error(error.into()),
+        other => internal_error(format!("trigger operation failed: {other}")),
+    }
+}
+
 pub(super) fn map_strategy_use_case_error(error: StrategyUseCaseError) -> McpError {
     match error {
         StrategyUseCaseError::Validation(message) => invalid_params(message),

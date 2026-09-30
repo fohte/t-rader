@@ -7,17 +7,23 @@ use gateway_postgres::{
     DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresUnitOfWork,
 };
 
+mod account_risk_policy;
 mod annotation;
 mod comment;
 mod custom_indicator;
+mod indicator_observation;
+mod margin;
 mod news;
 mod note;
 mod note_kind;
 mod prediction;
 mod rss_feed;
+mod short_ratio;
+mod short_sale_report;
 mod strategy;
 mod strategy_task;
 mod trade;
+mod trigger;
 
 #[derive(Clone)]
 pub struct UseCases {

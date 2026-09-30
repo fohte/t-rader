@@ -59,12 +59,20 @@ pub struct TradeQuery {
     pub limit: Option<u64>,
     pub order: TradeOrder,
     pub include_note_count: bool,
+    pub include_note_references: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TradeNoteReference {
+    pub note_id: Uuid,
+    pub note_version_id: Uuid,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TradeListItem {
     pub trade: Trade,
     pub note_count: i64,
+    pub note_references: Vec<TradeNoteReference>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

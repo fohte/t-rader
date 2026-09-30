@@ -7,11 +7,14 @@ use sea_orm::{
 
 extern crate self as gateway_postgres;
 
+mod account_risk_policy;
 mod annotation;
 mod change_history;
 mod comment;
 mod custom_indicator;
 pub mod entities;
+mod indicator_observation;
+mod margin;
 mod news;
 mod note;
 mod note_kind;
@@ -19,6 +22,8 @@ mod persistence;
 mod prediction;
 pub mod repositories;
 mod rss_feed;
+mod short_ratio;
+mod short_sale_report;
 mod strategy;
 mod strategy_existence;
 mod strategy_scope;
@@ -26,23 +31,30 @@ mod strategy_summary_query;
 mod strategy_task;
 mod trade;
 mod transaction;
+mod trigger;
 mod unit_of_work;
 
+pub use account_risk_policy::PostgresAccountRiskPolicyRepository;
 pub use annotation::PostgresAnnotationRepository;
 pub use change_history::PostgresChangeHistory;
 pub use comment::PostgresCommentRepository;
 pub use custom_indicator::PostgresCustomIndicatorRepository;
+pub use indicator_observation::PostgresIndicatorObservationRepository;
+pub use margin::PostgresMarginRepository;
 pub use news::PostgresNewsItemRepository;
 pub use note::PostgresNoteRepository;
 pub use note_kind::PostgresNoteKindRepository;
 pub use prediction::PostgresPredictionRepository;
 pub use rss_feed::PostgresRssFeedRepository;
+pub use short_ratio::PostgresShortRatioRepository;
+pub use short_sale_report::PostgresShortSaleReportRepository;
 pub use strategy::PostgresStrategyRepository;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;
 pub use strategy_summary_query::PostgresStrategySummaryQuery;
 pub use strategy_task::PostgresStrategyTaskRepository;
 pub use trade::PostgresTradeRepository;
+pub use trigger::PostgresTriggerRepository;
 pub use unit_of_work::PostgresUnitOfWork;
 
 #[cfg(any(test, feature = "test-support"))]
