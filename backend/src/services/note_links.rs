@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, HashSet};
 
 #[cfg(test)]
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, QueryTrait};
+#[cfg(test)]
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+#[cfg(test)]
 use uuid::Uuid;
 
 #[cfg(test)]
@@ -13,8 +15,7 @@ use crate::services::note_refs::extract_note_link_tokens;
 #[cfg(test)]
 use crate::services::note_versions::find_current_versions;
 #[cfg(test)]
-use gateway_postgres::entities::note;
-use gateway_postgres::entities::{note_link, note_version};
+use gateway_postgres::entities::{note, note_link};
 
 /// 新しいノートバージョンの作成時点でリンク先の現行バージョンを解決する。
 #[cfg(test)]
@@ -119,29 +120,13 @@ pub async fn copy_note_links<C: sea_orm::ConnectionTrait>(
     Ok(())
 }
 
+#[cfg(test)]
 pub async fn find_links_from_version<C: sea_orm::ConnectionTrait>(
     db: &C,
     version_id: Uuid,
 ) -> Result<Vec<note_link::Model>, sea_orm::DbErr> {
     note_link::Entity::find()
         .filter(note_link::Column::FromVersionId.eq(version_id))
-        .all(db)
-        .await
-}
-
-pub async fn find_current_links_to_note<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_id: Uuid,
-) -> Result<Vec<note_link::Model>, sea_orm::DbErr> {
-    let current_version_ids = note_version::Entity::find()
-        .select_only()
-        .column(note_version::Column::Id)
-        .filter(note_version::Column::IsCurrent.eq(true))
-        .into_query();
-
-    note_link::Entity::find()
-        .filter(note_link::Column::ToNoteId.eq(note_id))
-        .filter(note_link::Column::FromVersionId.in_subquery(current_version_ids))
         .all(db)
         .await
 }

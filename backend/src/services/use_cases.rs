@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
 use core_application::change_history::SharedChangeHistoryPort;
-use core_application::change_history::SharedChangeHistoryQuery;
 use core_application::strategy_existence::SharedStrategyExistence;
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
-    DatabaseHandle, PostgresChangeHistory, PostgresChangeHistoryQuery, PostgresStrategyExistence,
-    PostgresUnitOfWork,
+    DatabaseHandle, PostgresChangeHistory, PostgresStrategyExistence, PostgresUnitOfWork,
 };
 
 mod account_risk_policy;
 mod agent_config;
 mod annotation;
+mod bars;
 mod change_history;
 mod comment;
 mod custom_indicator;
@@ -39,7 +38,6 @@ pub struct UseCases {
     pub(super) unit_of_work: SharedUnitOfWork,
     pub(super) strategy_existence: SharedStrategyExistence,
     pub(super) change_history: SharedChangeHistoryPort,
-    pub(super) change_history_query: SharedChangeHistoryQuery,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
@@ -47,14 +45,11 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let unit_of_work: SharedUnitOfWork = Arc::new(PostgresUnitOfWork::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
     let change_history: SharedChangeHistoryPort = Arc::new(PostgresChangeHistory);
-    let change_history_query: SharedChangeHistoryQuery =
-        Arc::new(PostgresChangeHistoryQuery::new(db.clone()));
 
     UseCases {
         db,
         unit_of_work,
         strategy_existence,
         change_history,
-        change_history_query,
     }
 }
