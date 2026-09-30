@@ -1,6 +1,11 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use core_application::change_history::ChangeHistoryError;
+use core_application::note::{NoteRepositoryError, NoteUseCaseError};
+use core_application::note_kind::{NoteKindRepositoryError, NoteKindUseCaseError};
 use core_application::persistence::PersistenceError;
+use core_application::strategy_existence::StrategyExistenceError;
+use core_application::unit_of_work::UnitOfWorkError;
 use sea_orm::{DbErr, RuntimeErr, SqlErr};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -99,6 +104,44 @@ impl From<PersistenceError> for AppError {
             }
             PersistenceError::RecordNotUpdated(_) => Self::NotFound("resource not found".into()),
         }
+    }
+}
+
+impl From<NoteKindUseCaseError> for AppError {
+    fn from(error: NoteKindUseCaseError) -> Self {
+        match error {
+            NoteKindUseCaseError::Validation(message) => Self::Validation(message),
+            NoteKindUseCaseError::NotFound(message) => Self::NotFound(message),
+            NoteKindUseCaseError::Conflict(message) => Self::Conflict(message),
+            NoteKindUseCaseError::Repository(NoteKindRepositoryError::Database(error))
+            | NoteKindUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+            | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+            | NoteKindUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+            NoteKindUseCaseError::Note(error) => map_note_use_case_error(error),
+            other => Self::Database(DbErr::Custom(other.to_string())),
+        }
+    }
+}
+
+fn map_note_use_case_error(error: NoteUseCaseError) -> AppError {
+    match error {
+        NoteUseCaseError::Validation(message) => AppError::Validation(message),
+        NoteUseCaseError::UnknownNoteKind(kind) => {
+            AppError::Validation(format!("unknown note kind: {kind}"))
+        }
+        NoteUseCaseError::NotFound(message) => AppError::NotFound(message),
+        NoteUseCaseError::ReferencedNoteKindNotFound(key) => {
+            AppError::NotFound(format!("note kind {key} not found"))
+        }
+        NoteUseCaseError::Conflict(message) => AppError::Conflict(message),
+        NoteUseCaseError::Repository(NoteRepositoryError::Database(error))
+        | NoteUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | NoteUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
+        | NoteUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
+            error.into()
+        }
+        other => AppError::Database(DbErr::Custom(other.to_string())),
     }
 }
 

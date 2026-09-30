@@ -8,6 +8,7 @@ use core_application::custom_indicator::{
 };
 use core_application::news::{NewsUseCases, SharedNewsItemRepository};
 use core_application::note::{NoteUseCases, SharedNoteRepository};
+use core_application::note_kind::{NoteKindUseCases, SharedNoteKindRepository};
 use core_application::prediction::{PredictionUseCases, SharedPredictionRepository};
 use core_application::rss_feed::{
     RssFeedUseCases, SharedRssFeedRepository, SharedRssFeedUrlValidator,
@@ -21,10 +22,10 @@ use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresAnnotationRepository, PostgresChangeHistory, PostgresCommentRepository,
-    PostgresCustomIndicatorRepository, PostgresNewsItemRepository, PostgresNoteRepository,
-    PostgresPredictionRepository, PostgresRssFeedRepository, PostgresStrategyExistence,
-    PostgresStrategyRepository, PostgresStrategySummaryQuery, PostgresStrategyTaskRepository,
-    PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresCustomIndicatorRepository, PostgresNewsItemRepository, PostgresNoteKindRepository,
+    PostgresNoteRepository, PostgresPredictionRepository, PostgresRssFeedRepository,
+    PostgresStrategyExistence, PostgresStrategyRepository, PostgresStrategySummaryQuery,
+    PostgresStrategyTaskRepository, PostgresTradeRepository, PostgresUnitOfWork,
 };
 use gateway_rss::HttpRssFeedUrlValidator;
 
@@ -40,6 +41,7 @@ pub struct UseCases {
     pub custom_indicators: CustomIndicatorUseCases,
     pub rss_feeds: RssFeedUseCases,
     pub news: NewsUseCases,
+    pub note_kinds: NoteKindUseCases,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
@@ -73,6 +75,14 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         note_repository,
         strategy_existence.clone(),
         change_history.clone(),
+    );
+    let note_kind_repository: SharedNoteKindRepository =
+        Arc::new(PostgresNoteKindRepository::new(db.clone()));
+    let note_kinds = NoteKindUseCases::new(
+        unit_of_work.clone(),
+        note_kind_repository,
+        change_history.clone(),
+        notes.clone(),
     );
     let strategy_repository: SharedStrategyRepository =
         Arc::new(PostgresStrategyRepository::new(db.clone()));
@@ -121,6 +131,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         custom_indicators,
         rss_feeds,
         news,
+        note_kinds,
     }
 }
 

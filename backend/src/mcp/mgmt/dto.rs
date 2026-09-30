@@ -176,8 +176,8 @@ pub struct NoteKindSummary {
     pub sort_order: i32,
 }
 
-impl From<gateway_postgres::entities::note_kind::Model> for NoteKindSummary {
-    fn from(model: gateway_postgres::entities::note_kind::Model) -> Self {
+impl From<core_application::note_kind::NoteKind> for NoteKindSummary {
+    fn from(model: core_application::note_kind::NoteKind) -> Self {
         Self {
             key: model.key,
             display_name: model.display_name,
