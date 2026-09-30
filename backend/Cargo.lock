@@ -506,7 +506,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "unicode-normalization",
  "utoipa",
  "utoipa-axum",
  "utoipa-swagger-ui",
@@ -868,6 +867,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "unicode-normalization",
  "uuid",
 ]
 

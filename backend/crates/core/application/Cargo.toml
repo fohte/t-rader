@@ -19,6 +19,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, optional = true, features = ["sync"] }
 uuid = { workspace = true, features = ["serde", "v4", "v5"] }
+unicode-normalization = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
