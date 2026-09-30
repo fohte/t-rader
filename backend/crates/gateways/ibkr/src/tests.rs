@@ -254,6 +254,30 @@ mod fetch_daily_bars {
 mod error_handling {
     use super::*;
 
+    #[tokio::test]
+    async fn a_429_response_is_not_retried() -> Result<(), Box<dyn std::error::Error>> {
+        let mock = IbkrMockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/trsrv/stocks"))
+            .respond_with(ResponseTemplate::new(429).set_body_json(json!({"error": "slow down"})))
+            .mount(mock.server_ref())
+            .await;
+
+        let client = mock.client()?;
+        let result = client.fetch_instrument("0000").await;
+        let received_requests = mock
+            .server_ref()
+            .received_requests()
+            .await
+            .map(|requests| requests.len());
+
+        assert_eq!(
+            (result, received_requests),
+            (Err(IbkrError::RateLimited { retries: 0 }), Some(1)),
+        );
+        Ok(())
+    }
+
     #[rstest]
     #[tokio::test]
     async fn test_retries_on_5xx_then_succeeds() -> Result<(), IbkrError> {
@@ -302,7 +326,17 @@ mod error_handling {
 async fn ibkr_live_smoke() {
     let base = std::env::var("IBKR_BASE_URL").expect("IBKR_BASE_URL");
     let token = std::env::var("IBKR_SESSION_TOKEN").ok();
-    let client = crate::IbkrClient::new(Some(base), token, None).unwrap();
+    let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL");
+    let rate_limiter = rate_limit::RateLimiter::new(&redis_url, crate::RATE_LIMIT_KEY_PREFIX)
+        .expect("rate limiter");
+    let client = crate::IbkrClient::new(
+        Some(base),
+        token,
+        None,
+        rate_limiter,
+        std::time::Duration::from_secs(30),
+    )
+    .unwrap();
     let instrument = client.fetch_instrument("7203").await.unwrap();
     assert_eq!(instrument.id, "7203");
 }

@@ -1,4 +1,5 @@
 use core_application::daily_bar_source::DailyBarSourceError;
+use std::time::Duration;
 
 /// IBKR Client Portal Web API の呼び出しで発生するエラー
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -15,9 +16,17 @@ pub enum IbkrError {
     #[error("api error (status {status}): {message}")]
     Api { status: u16, message: String },
 
-    /// レートリミット超過でリトライ上限に到達
+    /// IBKR API が 429 を返した
     #[error("rate limited after {retries} retries")]
     RateLimited { retries: u32 },
+
+    /// 共有 rate limit の取得に失敗
+    #[error("rate limit error: {0}")]
+    RateLimit(String),
+
+    /// 共有 rate limit の待機上限に到達
+    #[error("rate limit wait exceeded after {max_wait:?}")]
+    RateLimitWaitExceeded { max_wait: Duration },
 
     /// レスポンスのパースに失敗
     #[error("failed to parse response: {0}")]
@@ -28,7 +37,9 @@ impl From<IbkrError> for DailyBarSourceError {
     fn from(error: IbkrError) -> Self {
         match error {
             IbkrError::NotFound(message) => Self::NotFound(message),
-            error @ IbkrError::RateLimited { .. } => Self::RateLimited(error.to_string()),
+            error @ (IbkrError::RateLimited { .. } | IbkrError::RateLimitWaitExceeded { .. }) => {
+                Self::RateLimited(error.to_string())
+            }
             error => Self::Failed(error.to_string()),
         }
     }
@@ -36,6 +47,8 @@ impl From<IbkrError> for DailyBarSourceError {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use rstest::rstest;
 
     use super::{DailyBarSourceError, IbkrError};
@@ -46,9 +59,17 @@ mod tests {
         DailyBarSourceError::NotFound("sample instrument".to_string()),
     )]
     #[case::rate_limited(
-        IbkrError::RateLimited { retries: 3 },
-        DailyBarSourceError::RateLimited("rate limited after 3 retries".to_string()),
-    )]
+            IbkrError::RateLimited { retries: 3 },
+            DailyBarSourceError::RateLimited("rate limited after 3 retries".to_string()),
+        )]
+    #[case::rate_limit_wait_exceeded(
+            IbkrError::RateLimitWaitExceeded { max_wait: Duration::from_secs(30) },
+            DailyBarSourceError::RateLimited("rate limit wait exceeded after 30s".to_string()),
+        )]
+    #[case::rate_limit_error(
+            IbkrError::RateLimit("Redis operation failed".to_string()),
+            DailyBarSourceError::Failed("rate limit error: Redis operation failed".to_string()),
+        )]
     #[case::api(
         IbkrError::Api { status: 503, message: "source unavailable".to_string() },
         DailyBarSourceError::Failed("api error (status 503): source unavailable".to_string()),
