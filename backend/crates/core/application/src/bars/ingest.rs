@@ -11,6 +11,7 @@ use super::types::IngestStats;
 use super::use_cases::BarsUseCases;
 
 const TARGET_BUSINESS_DAYS: usize = 400;
+/// 遡及訂正を拾うため、記録の有無によらず常に再取得する直近営業日数。
 const REFETCH_WINDOW_BUSINESS_DAYS: usize = 7;
 const FALLBACK_FETCH_HISTORY_DAYS: i64 = 365 * 20;
 
@@ -162,7 +163,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::{NaiveDate, TimeZone, Utc};
     use core_domain::bar::{Bar, Timeframe};
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
@@ -274,12 +275,23 @@ mod tests {
         }
     }
 
-    fn use_cases() -> (BarsUseCases, Arc<FakeUnitOfWork>, Arc<FakeBarsRepository>) {
+    struct BarsFixture {
+        use_cases: BarsUseCases,
+        unit_of_work: Arc<FakeUnitOfWork>,
+        repository: Arc<FakeBarsRepository>,
+    }
+
+    #[fixture]
+    fn bars_fixture() -> BarsFixture {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakeBarsRepository::new());
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
         let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
-        (use_cases, unit_of_work, repository)
+        BarsFixture {
+            use_cases,
+            unit_of_work,
+            repository,
+        }
     }
 
     async fn seed_old_dates(repository: &FakeBarsRepository, to: NaiveDate) -> Vec<NaiveDate> {
@@ -292,30 +304,42 @@ mod tests {
         business_days
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn ingest_cycle_saves_bars_and_marks_the_date_in_one_transaction() {
+    async fn ingest_cycle_saves_bars_and_marks_the_date_in_one_transaction(
+        bars_fixture: BarsFixture,
+    ) {
         let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
-        let (use_cases, unit_of_work, repository) = use_cases();
         let source = FakeMarketDailyBarSource::new(to);
         let bar = make_bar("SAMPLE-ALPHA", to, 125);
         source.set_bars(to, vec![bar.clone()]).await;
-        seed_old_dates(&repository, to).await;
+        seed_old_dates(&bars_fixture.repository, to).await;
 
-        let result = use_cases.run_ingest_cycle(&source).await;
+        let result = bars_fixture.use_cases.run_ingest_cycle(&source).await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
-        let transaction_ids = unit_of_work.begun.lock().await.clone();
+        let transaction_ids = bars_fixture.unit_of_work.begun.lock().await.clone();
         let transaction_id = transaction_ids.first().copied().unwrap_or_default();
 
         assert_eq!(
             (
                 succeeded,
                 stats,
-                repository.bars.lock().await.clone(),
-                repository.ingested_dates.lock().await.contains(&to),
-                repository.instruments.lock().await.clone(),
-                unit_of_work.committed.lock().await.clone(),
-                repository.write_transaction_ids.lock().await.clone(),
+                bars_fixture.repository.bars.lock().await.clone(),
+                bars_fixture
+                    .repository
+                    .ingested_dates
+                    .lock()
+                    .await
+                    .contains(&to),
+                bars_fixture.repository.instruments.lock().await.clone(),
+                bars_fixture.unit_of_work.committed.lock().await.clone(),
+                bars_fixture
+                    .repository
+                    .write_transaction_ids
+                    .lock()
+                    .await
+                    .clone(),
             ),
             (
                 true,
@@ -332,14 +356,14 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn ingest_cycle_does_not_mark_an_empty_date() {
+    async fn ingest_cycle_does_not_mark_an_empty_date(bars_fixture: BarsFixture) {
         let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
-        let (use_cases, unit_of_work, repository) = use_cases();
         let source = FakeMarketDailyBarSource::new(to);
-        seed_old_dates(&repository, to).await;
+        seed_old_dates(&bars_fixture.repository, to).await;
 
-        let result = use_cases.run_ingest_cycle(&source).await;
+        let result = bars_fixture.use_cases.run_ingest_cycle(&source).await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
 
@@ -347,9 +371,14 @@ mod tests {
             (
                 succeeded,
                 stats,
-                repository.bars.lock().await.clone(),
-                repository.ingested_dates.lock().await.contains(&to),
-                unit_of_work.committed.lock().await.len(),
+                bars_fixture.repository.bars.lock().await.clone(),
+                bars_fixture
+                    .repository
+                    .ingested_dates
+                    .lock()
+                    .await
+                    .contains(&to),
+                bars_fixture.unit_of_work.committed.lock().await.len(),
             ),
             (
                 true,
@@ -364,30 +393,30 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn ingest_cycle_continues_after_a_failed_date() {
+    async fn ingest_cycle_continues_after_a_failed_date(bars_fixture: BarsFixture) {
         let to = core_domain::business_day::latest_business_day(Utc::now().date_naive());
-        let (use_cases, unit_of_work, repository) = use_cases();
         let source = FakeMarketDailyBarSource::new(to);
-        let business_days = seed_old_dates(&repository, to).await;
+        let business_days = seed_old_dates(&bars_fixture.repository, to).await;
         let previous = business_days[business_days.len() - 2];
         let bar = make_bar("SAMPLE-BETA", previous, 230);
         source.set_bars(previous, vec![bar.clone()]).await;
         source.fail_on(to).await;
 
-        let result = use_cases.run_ingest_cycle(&source).await;
+        let result = bars_fixture.use_cases.run_ingest_cycle(&source).await;
         let succeeded = result.is_ok();
         let stats = result.unwrap_or_default();
-        let ingested_dates = repository.ingested_dates.lock().await.clone();
+        let ingested_dates = bars_fixture.repository.ingested_dates.lock().await.clone();
 
         assert_eq!(
             (
                 succeeded,
                 stats,
-                repository.bars.lock().await.clone(),
+                bars_fixture.repository.bars.lock().await.clone(),
                 ingested_dates.contains(&to),
                 ingested_dates.contains(&previous),
-                unit_of_work.committed.lock().await.len(),
+                bars_fixture.unit_of_work.committed.lock().await.len(),
             ),
             (
                 true,

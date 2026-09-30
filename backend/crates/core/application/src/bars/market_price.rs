@@ -137,7 +137,7 @@ mod tests {
     use chrono::{Duration, NaiveDate, TimeZone, Utc};
     use core_domain::bar::{Bar, Timeframe};
     use core_domain::business_day::latest_business_day;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use rust_decimal::Decimal;
     use tokio::sync::Mutex;
 
@@ -238,30 +238,46 @@ mod tests {
         }
     }
 
-    fn use_cases() -> (BarsUseCases, Arc<FakeUnitOfWork>, Arc<FakeBarsRepository>) {
+    struct BarsFixture {
+        use_cases: BarsUseCases,
+        unit_of_work: Arc<FakeUnitOfWork>,
+        repository: Arc<FakeBarsRepository>,
+    }
+
+    #[fixture]
+    fn bars_fixture() -> BarsFixture {
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
         let repository = Arc::new(FakeBarsRepository::new());
         let shared_unit_of_work: SharedUnitOfWork = unit_of_work.clone();
         let use_cases = BarsUseCases::new(shared_unit_of_work, repository.clone());
-        (use_cases, unit_of_work, repository)
+        BarsFixture {
+            use_cases,
+            unit_of_work,
+            repository,
+        }
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn backfill_uses_the_fallback_range_when_the_source_has_no_known_range() {
+    async fn backfill_uses_the_fallback_range_when_the_source_has_no_known_range(
+        bars_fixture: BarsFixture,
+    ) {
         let today = Utc::now().date_naive();
         let bar = make_bar("SAMPLE-GAMMA", today - Duration::days(900), 145);
         let source = FakeDailyBarSource::new(None);
         source.set_bars("SAMPLE-GAMMA", vec![bar.clone()]).await;
-        let (use_cases, unit_of_work, repository) = use_cases();
 
-        let result = use_cases.backfill_daily_bars(&source, "SAMPLE-GAMMA").await;
+        let result = bars_fixture
+            .use_cases
+            .backfill_daily_bars(&source, "SAMPLE-GAMMA")
+            .await;
 
         assert_eq!(
             (
                 result.is_ok(),
                 source.calls.lock().await.clone(),
-                repository.bars.lock().await.clone(),
-                unit_of_work.committed.lock().await.len(),
+                bars_fixture.repository.bars.lock().await.clone(),
+                bars_fixture.unit_of_work.committed.lock().await.len(),
             ),
             (
                 true,
@@ -278,16 +294,86 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn fetch_latest_prices_backfills_stale_bars_and_aligns_the_observation_date() {
+    async fn backfill_does_not_open_a_transaction_when_source_returns_no_bars(
+        bars_fixture: BarsFixture,
+    ) {
+        let today = Utc::now().date_naive();
+        let source = FakeDailyBarSource::new(None);
+
+        let result = bars_fixture
+            .use_cases
+            .backfill_daily_bars(&source, "SAMPLE-GAMMA")
+            .await;
+
+        assert_eq!(
+            (
+                result.is_ok(),
+                source.calls.lock().await.clone(),
+                bars_fixture.repository.bars.lock().await.clone(),
+                bars_fixture.unit_of_work.begun.lock().await.clone(),
+                bars_fixture.unit_of_work.committed.lock().await.clone(),
+                bars_fixture
+                    .repository
+                    .write_transaction_ids
+                    .lock()
+                    .await
+                    .clone(),
+            ),
+            (
+                true,
+                vec![(
+                    "SAMPLE-GAMMA".to_string(),
+                    DateRange {
+                        from: today - Duration::days(365 * 20),
+                        to: today,
+                    },
+                )],
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+            ),
+        );
+    }
+
+    #[test]
+    fn select_common_priced_at_excludes_symbols_with_mismatched_dates() {
+        let earlier_date = date(2037, 4, 13);
+        let latest_date = date(2037, 4, 14);
+
+        assert_eq!(
+            super::select_common_priced_at(HashMap::from([
+                (
+                    "SAMPLE-ALPHA".to_string(),
+                    (earlier_date, Decimal::new(100, 0)),
+                ),
+                (
+                    "SAMPLE-BETA".to_string(),
+                    (latest_date, Decimal::new(200, 0)),
+                ),
+            ])),
+            (
+                HashMap::from([("SAMPLE-BETA".to_string(), Decimal::new(200, 0))]),
+                Some(latest_date),
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn fetch_latest_prices_backfills_stale_bars_and_aligns_the_observation_date(
+        bars_fixture: BarsFixture,
+    ) {
         let today = Utc::now().date_naive();
         let ceiling = latest_business_day(today);
         let known_range = (ceiling - Duration::days(30), ceiling);
         let stale_bar = make_bar("SAMPLE-ALPHA", ceiling - Duration::days(2), 100);
         let fresh_bar = make_bar("SAMPLE-BETA", ceiling, 210);
         let backfilled_bar = make_bar("SAMPLE-ALPHA", ceiling, 130);
-        let (use_cases, unit_of_work, repository) = use_cases();
-        repository
+        bars_fixture
+            .repository
             .seed_bars(vec![stale_bar.clone(), fresh_bar.clone()])
             .await;
         let source = FakeDailyBarSource::new(Some(known_range));
@@ -295,7 +381,8 @@ mod tests {
             .set_bars("SAMPLE-ALPHA", vec![backfilled_bar.clone()])
             .await;
 
-        let result = use_cases
+        let result = bars_fixture
+            .use_cases
             .fetch_latest_prices(
                 Some(&source),
                 &["SAMPLE-ALPHA".to_string(), "SAMPLE-BETA".to_string()],
@@ -305,11 +392,16 @@ mod tests {
         assert_eq!(
             (
                 result,
-                repository.bars.lock().await.clone(),
-                repository.instruments.lock().await.clone(),
+                bars_fixture.repository.bars.lock().await.clone(),
+                bars_fixture.repository.instruments.lock().await.clone(),
                 source.calls.lock().await.clone(),
-                unit_of_work.committed.lock().await.len(),
-                repository.write_transaction_ids.lock().await.len(),
+                bars_fixture.unit_of_work.committed.lock().await.len(),
+                bars_fixture
+                    .repository
+                    .write_transaction_ids
+                    .lock()
+                    .await
+                    .len(),
             ),
             (
                 LatestPrices {
@@ -334,11 +426,13 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn fetch_latest_prices_returns_no_prices_when_bars_are_missing_without_a_source() {
-        let (use_cases, _, _) = use_cases();
-
-        let result = use_cases
+    async fn fetch_latest_prices_returns_no_prices_when_bars_are_missing_without_a_source(
+        bars_fixture: BarsFixture,
+    ) {
+        let result = bars_fixture
+            .use_cases
             .fetch_latest_prices(None, &["SAMPLE-MISSING".to_string()])
             .await;
 
@@ -351,17 +445,23 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn fetch_latest_prices_keeps_other_symbols_when_backfill_fails() {
+    async fn fetch_latest_prices_keeps_other_symbols_when_backfill_fails(
+        bars_fixture: BarsFixture,
+    ) {
         let ceiling = latest_business_day(Utc::now().date_naive());
         let known_range = (ceiling - Duration::days(30), ceiling);
         let fresh_bar = make_bar("SAMPLE-BETA", ceiling, 210);
-        let (use_cases, unit_of_work, repository) = use_cases();
-        repository.seed_bars(vec![fresh_bar.clone()]).await;
+        bars_fixture
+            .repository
+            .seed_bars(vec![fresh_bar.clone()])
+            .await;
         let source = FakeDailyBarSource::new(Some(known_range));
         source.fail_for("SAMPLE-ALPHA").await;
 
-        let result = use_cases
+        let result = bars_fixture
+            .use_cases
             .fetch_latest_prices(
                 Some(&source),
                 &["SAMPLE-ALPHA".to_string(), "SAMPLE-BETA".to_string()],
@@ -371,11 +471,16 @@ mod tests {
         assert_eq!(
             (
                 result,
-                repository.bars.lock().await.clone(),
-                repository.instruments.lock().await.clone(),
+                bars_fixture.repository.bars.lock().await.clone(),
+                bars_fixture.repository.instruments.lock().await.clone(),
                 source.calls.lock().await.clone(),
-                unit_of_work.committed.lock().await.len(),
-                repository.write_transaction_ids.lock().await.len(),
+                bars_fixture.unit_of_work.committed.lock().await.len(),
+                bars_fixture
+                    .repository
+                    .write_transaction_ids
+                    .lock()
+                    .await
+                    .len(),
             ),
             (
                 LatestPrices {
