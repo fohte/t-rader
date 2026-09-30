@@ -437,7 +437,7 @@ impl StrategyServer {
     /// 分類軸のグループを作成する
     #[tool(
         name = "create_stock_group",
-        description = "Create a stock group under an existing group axis. The axis must be managed by an agent rather than a synchronization source. Group keys become part of note links and cannot be changed later."
+        description = "Create a stock group under an existing group axis. The axis must be managed by an agent rather than a synchronization source. Group keys are immutable."
     )]
     async fn create_stock_group(
         &self,

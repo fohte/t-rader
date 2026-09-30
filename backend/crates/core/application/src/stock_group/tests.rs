@@ -4,6 +4,7 @@ use crate::change_history::{Actor, FakeChangeHistory, Op, TargetKind};
 use crate::unit_of_work::{FakeUnitOfWork, SharedUnitOfWork};
 use rstest::{fixture, rstest};
 use serde_json::json;
+use uuid::Uuid;
 
 use super::{
     CreateStockGroupCommand, FakeStockGroupRepository, StockGroup, StockGroupUseCaseError,
@@ -130,6 +131,38 @@ async fn create_records_history_in_the_same_transaction(harness: Harness) {
 
 #[rstest]
 #[tokio::test]
+async fn create_maps_repository_conflict_to_validation(harness: Harness) {
+    harness.repository.insert_axis("sample-axis", None).await;
+    harness
+        .repository
+        .conflict_next_insert("unique constraint conflict")
+        .await;
+
+    let error = harness
+        .use_cases
+        .create(CreateStockGroupCommand {
+            axis_key: "sample-axis".into(),
+            key: "sample-group".into(),
+            name: "Sample group".into(),
+            description: None,
+        })
+        .await
+        .expect_err("repository conflict is returned as validation");
+    let history = harness.change_history.entries.lock().await.clone();
+    let committed = harness.unit_of_work.committed.lock().await.clone();
+
+    assert_eq!(
+        (error.to_string(), history.len(), committed.len()),
+        (
+            "stock group sample-axis/sample-group already exists".to_string(),
+            0,
+            0,
+        ),
+    );
+}
+
+#[rstest]
+#[tokio::test]
 async fn update_records_only_changed_fields_and_keeps_keys_immutable(harness: Harness) {
     let group = create_group(&harness)
         .await
@@ -186,12 +219,11 @@ async fn update_records_only_changed_fields_and_keeps_keys_immutable(harness: Ha
 
 #[rstest]
 #[tokio::test]
-async fn membership_changes_are_idempotent_audited_and_listed(harness: Harness) {
+async fn add_stock_is_idempotent_and_audited(harness: Harness) {
     let group = create_group(&harness)
         .await
         .expect("group creation succeeds");
     harness.change_history.entries.lock().await.clear();
-    harness.repository.insert_stock("0001").await;
     harness.repository.insert_stock("0002").await;
 
     let added_first = harness
@@ -204,16 +236,93 @@ async fn membership_changes_are_idempotent_audited_and_listed(harness: Harness) 
         .add_stock("sample-axis", "sample-group", "0002")
         .await
         .expect("repeated add succeeds");
+
+    let history = stock_group_history(&harness).await;
+
+    assert_eq!(
+        (added_first, added_second, history),
+        (
+            true,
+            false,
+            vec![(
+                Actor::Llm { label: "analyst" },
+                TargetKind::StockGroup,
+                group.id,
+                Op::Update,
+                json!({
+                    "stock_id": "0002",
+                    "membership": { "from": false, "to": true },
+                }),
+            )],
+        ),
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn add_stock_rejects_unknown_stock(harness: Harness) {
+    create_group(&harness)
+        .await
+        .expect("group creation succeeds");
+    harness.change_history.entries.lock().await.clear();
+    harness.unit_of_work.committed.lock().await.clear();
+
+    let error = harness
+        .use_cases
+        .add_stock("sample-axis", "sample-group", "0009")
+        .await
+        .expect_err("unknown stock is rejected");
+    let history = harness.change_history.entries.lock().await.clone();
+    let committed = harness.unit_of_work.committed.lock().await.clone();
+
+    assert_eq!(
+        (error.to_string(), history.len(), committed.len()),
+        ("stock 0009 not found".to_string(), 0, 0),
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn list_stock_ids_returns_sorted_members(harness: Harness) {
+    create_group(&harness)
+        .await
+        .expect("group creation succeeds");
+    harness.repository.insert_stock("0001").await;
+    harness.repository.insert_stock("0002").await;
+    harness
+        .use_cases
+        .add_stock("sample-axis", "sample-group", "0002")
+        .await
+        .expect("first stock add succeeds");
     harness
         .use_cases
         .add_stock("sample-axis", "sample-group", "0001")
         .await
         .expect("second stock add succeeds");
+
     let stocks = harness
         .use_cases
         .list_stock_ids("sample-axis", "sample-group")
         .await
         .expect("stock listing succeeds");
+
+    assert_eq!(stocks, vec!["0001".to_string(), "0002".to_string()]);
+}
+
+#[rstest]
+#[tokio::test]
+async fn remove_stock_is_idempotent_and_audited(harness: Harness) {
+    let group = create_group(&harness)
+        .await
+        .expect("group creation succeeds");
+    harness.repository.insert_stock("0002").await;
+    harness
+        .use_cases
+        .add_stock("sample-axis", "sample-group", "0002")
+        .await
+        .expect("stock add succeeds");
+    harness.change_history.entries.lock().await.clear();
+
     let removed_first = harness
         .use_cases
         .remove_stock("sample-axis", "sample-group", "0002")
@@ -229,68 +338,47 @@ async fn membership_changes_are_idempotent_audited_and_listed(harness: Harness) 
         .list_stock_ids("sample-axis", "sample-group")
         .await
         .expect("stock listing succeeds");
-    let history = harness.change_history.entries.lock().await.clone();
+    let history = stock_group_history(&harness).await;
 
     assert_eq!(
-        (
-            added_first,
-            added_second,
-            stocks,
-            removed_first,
-            removed_second,
-            remaining,
-            history
-                .into_iter()
-                .map(|entry| (
-                    entry.record.actor,
-                    entry.record.target_kind,
-                    entry.record.target_id,
-                    entry.record.op,
-                    entry.record.diff,
-                ))
-                .collect::<Vec<_>>(),
-        ),
+        (removed_first, removed_second, remaining, history),
         (
             true,
             false,
-            vec!["0001".to_string(), "0002".to_string()],
-            true,
-            false,
-            vec!["0001".to_string()],
-            vec![
-                (
-                    Actor::Llm { label: "analyst" },
-                    TargetKind::StockGroup,
-                    group.id,
-                    Op::Update,
-                    json!({
-                        "stock_id": "0002",
-                        "membership": { "from": false, "to": true },
-                    }),
-                ),
-                (
-                    Actor::Llm { label: "analyst" },
-                    TargetKind::StockGroup,
-                    group.id,
-                    Op::Update,
-                    json!({
-                        "stock_id": "0001",
-                        "membership": { "from": false, "to": true },
-                    }),
-                ),
-                (
-                    Actor::Llm { label: "analyst" },
-                    TargetKind::StockGroup,
-                    group.id,
-                    Op::Update,
-                    json!({
-                        "stock_id": "0002",
-                        "membership": { "from": true, "to": false },
-                    }),
-                ),
-            ],
+            Vec::new(),
+            vec![(
+                Actor::Llm { label: "analyst" },
+                TargetKind::StockGroup,
+                group.id,
+                Op::Update,
+                json!({
+                    "stock_id": "0002",
+                    "membership": { "from": true, "to": false },
+                }),
+            ),],
         ),
     );
+}
+
+async fn stock_group_history(
+    harness: &Harness,
+) -> Vec<(Actor, TargetKind, Uuid, Op, serde_json::Value)> {
+    harness
+        .change_history
+        .entries
+        .lock()
+        .await
+        .iter()
+        .map(|entry| {
+            (
+                entry.record.actor,
+                entry.record.target_kind,
+                entry.record.target_id,
+                entry.record.op,
+                entry.record.diff.clone(),
+            )
+        })
+        .collect()
 }
 
 #[rstest]

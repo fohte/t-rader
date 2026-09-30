@@ -4,7 +4,7 @@ use core_application::stock_group::{
 };
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{StrategyServer, internal_error, invalid_params};
@@ -22,7 +22,10 @@ pub struct UpdateStockGroupParams {
     pub axis_key: String,
     pub group_key: String,
     pub name: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
     pub description: Option<Option<String>>,
 }
 
@@ -157,31 +160,26 @@ fn stock_group_error(error: StockGroupUseCaseError) -> McpError {
         | StockGroupUseCaseError::GroupNotFound { .. }) => invalid_params(error.to_string()),
         error => {
             tracing::error!(error = %error, "strategy mcp stock group operation failed");
-            internal_error("stock group operation failed")
+            internal_error(format!("database error: {error}"))
         }
     }
-}
-
-fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Option::<String>::deserialize(deserializer).map(Some)
 }
 
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
     use sea_orm::ActiveValue::{NotSet, Set};
-    use sea_orm::{ActiveModelTrait, EntityTrait};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
     use serde_json::json;
     use uuid::Uuid;
 
     use gateway_postgres::entities::{change_history, group_axis, stock};
 
+    use super::super::StrategyServer;
     use super::super::tests_common::{ChangeHistoryShape, build_server, change_history_for};
     use super::{
-        CreateStockGroupParams, ListStockGroupMembersParams, StockGroupMemberParams,
+        CreateStockGroupParams, ListStockGroupMembersParams, ListStockGroupMembersResult,
+        StockGroupDto, StockGroupMemberChangeResult, StockGroupMemberParams,
         UpdateStockGroupParams,
     };
 
@@ -240,13 +238,8 @@ mod tests {
         .expect("insert stock");
     }
 
-    #[backend_test_macros::database_test]
-    async fn stock_group_changes_are_persisted_and_audited(db: gateway_postgres::DatabaseHandle) {
-        insert_axis(&db, None).await;
-        insert_stock(&db, "0001").await;
-        insert_stock(&db, "0002").await;
-        let server = build_server(db.clone());
-        let created = server
+    async fn create_group(server: &StrategyServer) -> Result<StockGroupDto, super::McpError> {
+        server
             .create_stock_group_inner(CreateStockGroupParams {
                 axis_key: "sample-axis".into(),
                 group_key: "sample-group".into(),
@@ -254,7 +247,77 @@ mod tests {
                 description: Some("Sample description".into()),
             })
             .await
-            .expect("create stock group");
+    }
+
+    fn normalize_group(mut group: StockGroupDto) -> StockGroupDto {
+        group.id = Uuid::nil();
+        group
+    }
+
+    async fn clear_change_history(db: &impl sea_orm::ConnectionTrait, target_id: Uuid) {
+        change_history::Entity::delete_many()
+            .filter(change_history::Column::TargetId.eq(target_id))
+            .exec(db)
+            .await
+            .expect("clear change history");
+    }
+
+    fn history_shape(
+        target_id: Uuid,
+        op: &str,
+        diff_json: serde_json::Value,
+    ) -> ChangeHistoryShape {
+        ChangeHistoryShape {
+            id: Uuid::nil(),
+            target_kind: "stock_group".into(),
+            target_id,
+            actor_kind: "llm".into(),
+            actor_label: "analyst".into(),
+            op: op.into(),
+            diff_json,
+            summary: None,
+            created_at: super::super::tests_common::ts_sentinel(),
+        }
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_stock_group_persists_and_audits(db: gateway_postgres::DatabaseHandle) {
+        insert_axis(&db, None).await;
+        let server = build_server(db.clone());
+        let created = create_group(&server).await.expect("create stock group");
+        let history = change_history_for(&db, created.id).await;
+
+        assert_eq!(
+            (normalize_group(created.clone()), history),
+            (
+                StockGroupDto {
+                    id: Uuid::nil(),
+                    axis_key: "sample-axis".into(),
+                    group_key: "sample-group".into(),
+                    name: "Sample group".into(),
+                    description: Some("Sample description".into()),
+                },
+                vec![history_shape(
+                    created.id,
+                    "create",
+                    json!({
+                        "axis_key": "sample-axis",
+                        "group_key": "sample-group",
+                        "name": "Sample group",
+                        "description": "Sample description",
+                    }),
+                )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn update_stock_group_records_changed_fields(db: gateway_postgres::DatabaseHandle) {
+        insert_axis(&db, None).await;
+        let server = build_server(db.clone());
+        let created = create_group(&server).await.expect("create stock group");
+        clear_change_history(&db, created.id).await;
+
         let updated = server
             .update_stock_group_inner(UpdateStockGroupParams {
                 axis_key: "sample-axis".into(),
@@ -264,6 +327,38 @@ mod tests {
             })
             .await
             .expect("update stock group");
+        let history = change_history_for(&db, created.id).await;
+
+        assert_eq!(
+            (normalize_group(updated), history),
+            (
+                StockGroupDto {
+                    id: Uuid::nil(),
+                    axis_key: "sample-axis".into(),
+                    group_key: "sample-group".into(),
+                    name: "Renamed group".into(),
+                    description: None,
+                },
+                vec![history_shape(
+                    created.id,
+                    "update",
+                    json!({
+                        "description": { "from": "Sample description", "to": null },
+                        "name": { "from": "Sample group", "to": "Renamed group" },
+                    }),
+                )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn add_stock_to_group_is_idempotent_and_audited(db: gateway_postgres::DatabaseHandle) {
+        insert_axis(&db, None).await;
+        insert_stock(&db, "0002").await;
+        let server = build_server(db.clone());
+        let created = create_group(&server).await.expect("create stock group");
+        clear_change_history(&db, created.id).await;
+
         let added_first = server
             .add_stock_to_group_inner(StockGroupMemberParams {
                 axis_key: "sample-axis".into(),
@@ -271,8 +366,7 @@ mod tests {
                 stock_id: "0002".into(),
             })
             .await
-            .expect("add stock")
-            .changed;
+            .expect("add stock");
         let added_second = server
             .add_stock_to_group_inner(StockGroupMemberParams {
                 axis_key: "sample-axis".into(),
@@ -280,16 +374,44 @@ mod tests {
                 stock_id: "0002".into(),
             })
             .await
-            .expect("repeat stock add")
-            .changed;
-        server
-            .add_stock_to_group_inner(StockGroupMemberParams {
-                axis_key: "sample-axis".into(),
-                group_key: "sample-group".into(),
-                stock_id: "0001".into(),
-            })
-            .await
-            .expect("add second stock");
+            .expect("repeat stock add");
+        let history = change_history_for(&db, created.id).await;
+
+        assert_eq!(
+            (added_first, added_second, history),
+            (
+                StockGroupMemberChangeResult { changed: true },
+                StockGroupMemberChangeResult { changed: false },
+                vec![history_shape(
+                    created.id,
+                    "update",
+                    json!({
+                        "stock_id": "0002",
+                        "membership": { "from": false, "to": true },
+                    }),
+                )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn list_stock_group_members_returns_sorted_ids(db: gateway_postgres::DatabaseHandle) {
+        insert_axis(&db, None).await;
+        insert_stock(&db, "0001").await;
+        insert_stock(&db, "0002").await;
+        let server = build_server(db.clone());
+        create_group(&server).await.expect("create stock group");
+        for stock_id in ["0002", "0001"] {
+            server
+                .add_stock_to_group_inner(StockGroupMemberParams {
+                    axis_key: "sample-axis".into(),
+                    group_key: "sample-group".into(),
+                    stock_id: stock_id.into(),
+                })
+                .await
+                .expect("add stock");
+        }
+
         let members = server
             .list_stock_group_members_inner(ListStockGroupMembersParams {
                 axis_key: "sample-axis".into(),
@@ -297,6 +419,35 @@ mod tests {
             })
             .await
             .expect("list group members");
+
+        assert_eq!(
+            members,
+            ListStockGroupMembersResult {
+                axis_key: "sample-axis".into(),
+                group_key: "sample-group".into(),
+                stock_ids: vec!["0001".into(), "0002".into()],
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn remove_stock_from_group_is_idempotent_and_audited(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        insert_axis(&db, None).await;
+        insert_stock(&db, "0002").await;
+        let server = build_server(db.clone());
+        let created = create_group(&server).await.expect("create stock group");
+        server
+            .add_stock_to_group_inner(StockGroupMemberParams {
+                axis_key: "sample-axis".into(),
+                group_key: "sample-group".into(),
+                stock_id: "0002".into(),
+            })
+            .await
+            .expect("add stock");
+        clear_change_history(&db, created.id).await;
+
         let removed_first = server
             .remove_stock_from_group_inner(StockGroupMemberParams {
                 axis_key: "sample-axis".into(),
@@ -304,8 +455,7 @@ mod tests {
                 stock_id: "0002".into(),
             })
             .await
-            .expect("remove stock")
-            .changed;
+            .expect("remove stock");
         let removed_second = server
             .remove_stock_from_group_inner(StockGroupMemberParams {
                 axis_key: "sample-axis".into(),
@@ -313,128 +463,56 @@ mod tests {
                 stock_id: "0002".into(),
             })
             .await
-            .expect("repeat stock removal")
-            .changed;
-        let remaining = server
+            .expect("repeat stock removal");
+        let members = server
             .list_stock_group_members_inner(ListStockGroupMembersParams {
                 axis_key: "sample-axis".into(),
                 group_key: "sample-group".into(),
             })
             .await
-            .expect("list remaining members");
+            .expect("list group members");
         let history = change_history_for(&db, created.id).await;
 
         assert_eq!(
+            (removed_first, removed_second, members.stock_ids, history),
             (
-                created.clone(),
-                updated,
-                added_first,
-                added_second,
-                members.stock_ids,
-                removed_first,
-                removed_second,
-                remaining.stock_ids,
-                history,
-            ),
-            (
-                super::StockGroupDto {
-                    id: created.id,
-                    axis_key: "sample-axis".into(),
-                    group_key: "sample-group".into(),
-                    name: "Sample group".into(),
-                    description: Some("Sample description".into()),
-                },
-                super::StockGroupDto {
-                    id: created.id,
-                    axis_key: "sample-axis".into(),
-                    group_key: "sample-group".into(),
-                    name: "Renamed group".into(),
-                    description: None,
-                },
-                true,
-                false,
-                vec!["0001".to_string(), "0002".to_string()],
-                true,
-                false,
-                vec!["0001".to_string()],
-                vec![
-                    ChangeHistoryShape {
-                        id: Uuid::nil(),
-                        target_kind: "stock_group".into(),
-                        target_id: created.id,
-                        actor_kind: "llm".into(),
-                        actor_label: "analyst".into(),
-                        op: "create".into(),
-                        diff_json: json!({
-                            "axis_key": "sample-axis",
-                            "group_key": "sample-group",
-                            "name": "Sample group",
-                            "description": "Sample description",
-                        }),
-                        summary: None,
-                        created_at: super::super::tests_common::ts_sentinel(),
-                    },
-                    ChangeHistoryShape {
-                        id: Uuid::nil(),
-                        target_kind: "stock_group".into(),
-                        target_id: created.id,
-                        actor_kind: "llm".into(),
-                        actor_label: "analyst".into(),
-                        op: "update".into(),
-                        diff_json: json!({
-                            "description": { "from": "Sample description", "to": null },
-                            "name": { "from": "Sample group", "to": "Renamed group" },
-                        }),
-                        summary: None,
-                        created_at: super::super::tests_common::ts_sentinel(),
-                    },
-                    ChangeHistoryShape {
-                        id: Uuid::nil(),
-                        target_kind: "stock_group".into(),
-                        target_id: created.id,
-                        actor_kind: "llm".into(),
-                        actor_label: "analyst".into(),
-                        op: "update".into(),
-                        diff_json: json!({
-                            "stock_id": "0002",
-                            "membership": { "from": false, "to": true },
-                        }),
-                        summary: None,
-                        created_at: super::super::tests_common::ts_sentinel(),
-                    },
-                    ChangeHistoryShape {
-                        id: Uuid::nil(),
-                        target_kind: "stock_group".into(),
-                        target_id: created.id,
-                        actor_kind: "llm".into(),
-                        actor_label: "analyst".into(),
-                        op: "update".into(),
-                        diff_json: json!({
-                            "stock_id": "0001",
-                            "membership": { "from": false, "to": true },
-                        }),
-                        summary: None,
-                        created_at: super::super::tests_common::ts_sentinel(),
-                    },
-                    ChangeHistoryShape {
-                        id: Uuid::nil(),
-                        target_kind: "stock_group".into(),
-                        target_id: created.id,
-                        actor_kind: "llm".into(),
-                        actor_label: "analyst".into(),
-                        op: "update".into(),
-                        diff_json: json!({
-                            "stock_id": "0002",
-                            "membership": { "from": true, "to": false },
-                        }),
-                        summary: None,
-                        created_at: super::super::tests_common::ts_sentinel(),
-                    },
-                ],
+                StockGroupMemberChangeResult { changed: true },
+                StockGroupMemberChangeResult { changed: false },
+                Vec::new(),
+                vec![history_shape(
+                    created.id,
+                    "update",
+                    json!({
+                        "stock_id": "0002",
+                        "membership": { "from": true, "to": false },
+                    }),
+                )],
             ),
         );
     }
 
+    #[backend_test_macros::database_test]
+    async fn add_stock_to_group_rejects_unknown_stock(db: gateway_postgres::DatabaseHandle) {
+        insert_axis(&db, None).await;
+        let server = build_server(db.clone());
+        let created = create_group(&server).await.expect("create stock group");
+        clear_change_history(&db, created.id).await;
+
+        let error = server
+            .add_stock_to_group_inner(StockGroupMemberParams {
+                axis_key: "sample-axis".into(),
+                group_key: "sample-group".into(),
+                stock_id: "0009".into(),
+            })
+            .await
+            .expect_err("unknown stock is rejected");
+        let history = change_history_for(&db, created.id).await;
+
+        assert_eq!(
+            (error.code, history),
+            (rmcp::model::ErrorCode::INVALID_PARAMS, Vec::new()),
+        );
+    }
     #[backend_test_macros::database_test]
     async fn synchronized_axes_reject_all_mutations(db: gateway_postgres::DatabaseHandle) {
         insert_axis(&db, Some("sample-sync")).await;

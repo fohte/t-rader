@@ -2,10 +2,11 @@ use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use crate::change_history::{Actor, ChangeHistoryRecord, Op, SharedChangeHistoryPort, TargetKind};
+use crate::persistence::PersistenceError;
 use crate::unit_of_work::SharedUnitOfWork;
 
 use super::error::StockGroupUseCaseError;
-use super::repository::{GroupAxis, SharedStockGroupRepository};
+use super::repository::{GroupAxis, SharedStockGroupRepository, StockGroupRepositoryError};
 use super::types::{CreateStockGroupCommand, NewStockGroup, StockGroup, UpdateStockGroupCommand};
 
 #[derive(Clone)]
@@ -56,13 +57,21 @@ impl StockGroupUseCases {
                 NewStockGroup {
                     id: Uuid::new_v4(),
                     axis_id: axis.id,
-                    axis_key,
-                    key: group_key,
+                    axis_key: axis_key.clone(),
+                    key: group_key.clone(),
                     name,
                     description: command.description,
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| match error {
+                StockGroupRepositoryError::Database(PersistenceError::Conflict(_)) => {
+                    StockGroupUseCaseError::Validation(format!(
+                        "stock group {axis_key}/{group_key} already exists"
+                    ))
+                }
+                error => error.into(),
+            })?;
         self.record_history(
             &transaction,
             &group,

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::persistence::PersistenceError;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
 use super::repository::{GroupAxis, StockGroupRepository, StockGroupRepositoryError};
@@ -15,6 +16,7 @@ pub struct FakeStockGroupRepository {
     groups: Mutex<HashMap<Uuid, StockGroup>>,
     stocks: Mutex<HashSet<String>>,
     members: Mutex<HashSet<(Uuid, String)>>,
+    insert_conflict: Mutex<Option<String>>,
     pub transaction_ids: Mutex<Vec<Uuid>>,
 }
 
@@ -38,6 +40,10 @@ impl FakeStockGroupRepository {
 
     pub async fn insert_stock(&self, stock_id: &str) {
         self.stocks.lock().await.insert(stock_id.to_owned());
+    }
+
+    pub async fn conflict_next_insert(&self, message: &str) {
+        *self.insert_conflict.lock().await = Some(message.to_owned());
     }
 
     async fn record_transaction(
@@ -91,6 +97,9 @@ impl StockGroupRepository for FakeStockGroupRepository {
         group: NewStockGroup,
     ) -> Result<StockGroup, StockGroupRepositoryError> {
         self.record_transaction(transaction).await?;
+        if let Some(message) = self.insert_conflict.lock().await.take() {
+            return Err(PersistenceError::Conflict(message).into());
+        }
         let group = StockGroup {
             id: group.id,
             axis_id: group.axis_id,
