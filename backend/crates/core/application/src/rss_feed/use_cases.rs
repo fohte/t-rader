@@ -158,7 +158,7 @@ mod tests {
     use rstest::rstest;
     use uuid::Uuid;
 
-    use super::{RssFeedUseCases, validate_display_name, validate_source, validate_url};
+    use super::RssFeedUseCases;
     use crate::rss_feed::{
         CreateRssFeedCommand, FakeRssFeedRepository, RssFeed, RssFeedRepository,
         RssFeedUrlValidator, UpdateRssFeedPatch,
@@ -206,12 +206,63 @@ mod tests {
         (use_cases, repository)
     }
 
+    fn create_command(source: &str, display_name: &str, url: &str) -> CreateRssFeedCommand {
+        CreateRssFeedCommand {
+            source: source.into(),
+            display_name: display_name.into(),
+            url: url.into(),
+            enabled: Some(true),
+        }
+    }
+
+    fn expected_feed(source: &str, display_name: &str, url: &str) -> RssFeed {
+        RssFeed {
+            id: Uuid::nil(),
+            source: source.into(),
+            display_name: display_name.into(),
+            url: url.into(),
+            enabled: true,
+            created_at: timestamp(),
+            updated_at: timestamp(),
+        }
+    }
+
+    async fn create_and_normalize(
+        use_cases: &RssFeedUseCases,
+        source: &str,
+        display_name: &str,
+        url: &str,
+    ) -> Result<RssFeed, String> {
+        use_cases
+            .create(create_command(source, display_name, url))
+            .await
+            .map(normalize)
+            .map_err(|error| error.to_string())
+    }
+
     #[rstest]
     #[case::lowercase_slug("feed-source")]
     #[case::underscore("feed_source")]
     #[case::digits("feed-225")]
-    fn source_accepts_ascii_slug(#[case] source: &str) {
-        assert_eq!(validate_source(source).unwrap(), source);
+    #[tokio::test]
+    async fn source_accepts_ascii_slug(#[case] source: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let actual = create_and_normalize(
+            &use_cases,
+            source,
+            "Sample publication",
+            "https://example.invalid/feed.xml",
+        )
+        .await;
+
+        assert_eq!(
+            actual,
+            Ok(expected_feed(
+                source,
+                "Sample publication",
+                "https://example.invalid/feed.xml",
+            )),
+        );
     }
 
     #[rstest]
@@ -219,18 +270,33 @@ mod tests {
     #[case::space("feed source", "source must match ^[a-z0-9_-]+$ (got 'feed source')")]
     #[case::non_ascii("配信元", "source must match ^[a-z0-9_-]+$ (got '配信元')")]
     #[case::empty("", "source must match ^[a-z0-9_-]+$ (got '')")]
-    fn source_rejects_invalid_slug(#[case] source: &str, #[case] expected_error: &str) {
-        assert_eq!(
-            validate_source(source).map_err(|error| error.to_string()),
-            Err(expected_error.to_string()),
-        );
+    #[tokio::test]
+    async fn source_rejects_invalid_slug(#[case] source: &str, #[case] expected_error: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let actual = create_and_normalize(
+            &use_cases,
+            source,
+            "Sample publication",
+            "https://example.invalid/feed.xml",
+        )
+        .await;
+
+        assert_eq!(actual, Err(expected_error.to_string()));
     }
 
     #[rstest]
     #[case::http("http://example.invalid/feed.xml")]
     #[case::https("https://feeds.example.invalid/rss")]
-    fn url_accepts_http_schemes(#[case] url: &str) {
-        assert_eq!(validate_url(url, &TestUrlValidator).unwrap(), url);
+    #[tokio::test]
+    async fn url_accepts_http_schemes(#[case] url: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let actual =
+            create_and_normalize(&use_cases, "feed-alpha", "Sample publication", url).await;
+
+        assert_eq!(
+            actual,
+            Ok(expected_feed("feed-alpha", "Sample publication", url)),
+        );
     }
 
     #[rstest]
@@ -243,28 +309,54 @@ mod tests {
         "url must be a valid http(s) URL (got 'ftp://example.invalid/feed')"
     )]
     #[case::invalid("not-a-url", "url must be a valid http(s) URL (got 'not-a-url')")]
-    fn url_rejects_invalid_values(#[case] url: &str, #[case] expected_error: &str) {
-        assert_eq!(
-            validate_url(url, &TestUrlValidator).map_err(|error| error.to_string()),
-            Err(expected_error.to_string()),
-        );
+    #[tokio::test]
+    async fn url_rejects_invalid_values(#[case] url: &str, #[case] expected_error: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let actual =
+            create_and_normalize(&use_cases, "feed-alpha", "Sample publication", url).await;
+
+        assert_eq!(actual, Err(expected_error.to_string()));
     }
 
     #[rstest]
     #[case::trimmed(" Sample publication ", "Sample publication")]
     #[case::ordinary("Sample publication", "Sample publication")]
-    fn display_name_trims_surrounding_whitespace(#[case] name: &str, #[case] expected: &str) {
-        assert_eq!(validate_display_name(name).unwrap(), expected);
+    #[tokio::test]
+    async fn display_name_trims_surrounding_whitespace(#[case] name: &str, #[case] expected: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let actual = create_and_normalize(
+            &use_cases,
+            "feed-alpha",
+            name,
+            "https://example.invalid/feed.xml",
+        )
+        .await;
+
+        assert_eq!(
+            actual,
+            Ok(expected_feed(
+                "feed-alpha",
+                expected,
+                "https://example.invalid/feed.xml",
+            )),
+        );
     }
 
     #[rstest]
     #[case::empty("")]
     #[case::whitespace("   ")]
-    fn display_name_rejects_empty_values(#[case] name: &str) {
-        assert_eq!(
-            validate_display_name(name).map_err(|error| error.to_string()),
-            Err("display_name must not be empty".into()),
-        );
+    #[tokio::test]
+    async fn display_name_rejects_empty_values(#[case] name: &str) {
+        let (use_cases, _) = use_cases(Vec::new());
+        let actual = create_and_normalize(
+            &use_cases,
+            "feed-alpha",
+            name,
+            "https://example.invalid/feed.xml",
+        )
+        .await;
+
+        assert_eq!(actual, Err("display_name must not be empty".into()));
     }
 
     #[tokio::test]
