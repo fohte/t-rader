@@ -124,11 +124,13 @@ fn provision_start_date() -> NaiveDate {
 
 #[cfg(all(test, feature = "test-support"))]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     use async_trait::async_trait;
     use chrono::NaiveDate;
     use core_domain::financial_summary::FinancialSummary;
+    use rstest::{fixture, rstest};
     use tokio::sync::Mutex;
 
     use crate::daily_bar_source::DateRange;
@@ -183,7 +185,13 @@ mod tests {
     struct FakeSource {
         range: Option<DateRange>,
         fetched_dates: Mutex<Vec<NaiveDate>>,
-        summaries: Vec<FinancialSummary>,
+        summaries_by_date: Mutex<HashMap<NaiveDate, Vec<FinancialSummary>>>,
+    }
+
+    impl FakeSource {
+        async fn set_summaries(&self, date: NaiveDate, summaries: Vec<FinancialSummary>) {
+            self.summaries_by_date.lock().await.insert(date, summaries);
+        }
     }
 
     #[async_trait]
@@ -193,7 +201,13 @@ mod tests {
             date: NaiveDate,
         ) -> Result<Vec<FinancialSummary>, FinancialSummarySourceError> {
             self.fetched_dates.lock().await.push(date);
-            Ok(self.summaries.clone())
+            Ok(self
+                .summaries_by_date
+                .lock()
+                .await
+                .get(&date)
+                .cloned()
+                .unwrap_or_default())
         }
 
         fn fetchable_range(&self, _today: NaiveDate) -> Option<DateRange> {
@@ -251,34 +265,63 @@ mod tests {
         }
     }
 
-    fn build_use_cases(
+    struct IngestHarness {
+        from: NaiveDate,
+        middle: NaiveDate,
+        to: NaiveDate,
+        source: Arc<FakeSource>,
         repository: Arc<FakeRepository>,
-        unit_of_work: SharedUnitOfWork,
-    ) -> FinancialSummaryUseCases {
-        FinancialSummaryUseCases::new(unit_of_work, repository)
+        unit_of_work: Arc<FakeUnitOfWork>,
+        use_cases: FinancialSummaryUseCases,
     }
 
-    #[tokio::test]
-    async fn ingest_fetches_business_days_and_commits_each_day() {
+    #[fixture]
+    fn harness() -> IngestHarness {
         let from = date(2042, 2, 3);
+        let middle = date(2042, 2, 4);
         let to = date(2042, 2, 5);
         let repository = Arc::new(FakeRepository::default());
         let source = Arc::new(FakeSource {
             range: Some(DateRange { from, to }),
             fetched_dates: Mutex::new(Vec::new()),
-            summaries: vec![summary(from)],
+            summaries_by_date: Mutex::new(HashMap::new()),
         });
         let unit_of_work = Arc::new(FakeUnitOfWork::new());
-        let use_cases = build_use_cases(repository.clone(), unit_of_work.clone());
+        let use_cases = FinancialSummaryUseCases::new(
+            unit_of_work.clone() as SharedUnitOfWork,
+            repository.clone(),
+        );
 
-        let stats = use_cases
-            .run_ingest_cycle(source.as_ref(), to)
+        IngestHarness {
+            from,
+            middle,
+            to,
+            source,
+            repository,
+            unit_of_work,
+            use_cases,
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn ingest_fetches_business_days_and_commits_each_nonempty_day(harness: IngestHarness) {
+        for date in [harness.from, harness.middle, harness.to] {
+            harness
+                .source
+                .set_summaries(date, vec![summary(date)])
+                .await;
+        }
+
+        let stats = harness
+            .use_cases
+            .run_ingest_cycle(harness.source.as_ref(), harness.to)
             .await
             .expect("ingest succeeds");
-        let fetched_dates = source.fetched_dates.lock().await.clone();
-        let upserts = repository.upserts.lock().await.clone();
-        let begun = unit_of_work.begun.lock().await.clone();
-        let committed = unit_of_work.committed.lock().await.clone();
+        let fetched_dates = harness.source.fetched_dates.lock().await.clone();
+        let upserts = harness.repository.upserts.lock().await.clone();
+        let begun = harness.unit_of_work.begun.lock().await.clone();
+        let committed = harness.unit_of_work.committed.lock().await.clone();
 
         assert_eq!(
             (
@@ -294,7 +337,7 @@ mod tests {
                     days_attempted: 3,
                     upserted: 3,
                 },
-                vec![from, date(2042, 2, 4), to],
+                vec![harness.from, harness.middle, harness.to],
                 3,
                 3,
                 true,
@@ -303,11 +346,63 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn read_for_symbol_uses_repository_without_a_transaction() {
-        let repository = Arc::new(FakeRepository::default());
-        let unit_of_work = Arc::new(FakeUnitOfWork::new());
-        let use_cases = build_use_cases(repository.clone(), unit_of_work.clone());
+    async fn ingest_skips_empty_daily_results_without_a_transaction_or_upsert(
+        harness: IngestHarness,
+    ) {
+        harness
+            .source
+            .set_summaries(harness.from, vec![summary(harness.from)])
+            .await;
+        harness
+            .source
+            .set_summaries(harness.to, vec![summary(harness.to)])
+            .await;
+
+        let stats = harness
+            .use_cases
+            .run_ingest_cycle(harness.source.as_ref(), harness.to)
+            .await
+            .expect("ingest succeeds");
+        let fetched_dates = harness.source.fetched_dates.lock().await.clone();
+        let upserts = harness.repository.upserts.lock().await.clone();
+        let begun = harness.unit_of_work.begun.lock().await.clone();
+        let committed = harness.unit_of_work.committed.lock().await.clone();
+
+        assert_eq!(
+            (
+                stats,
+                fetched_dates,
+                upserts.len(),
+                upserts
+                    .iter()
+                    .map(|(_, summaries)| summaries[0].disclosure_date)
+                    .collect::<Vec<_>>(),
+                begun.len(),
+                committed.len(),
+                committed == begun,
+                upserts.iter().map(|(id, _)| *id).collect::<Vec<_>>() == begun,
+            ),
+            (
+                super::FinancialSummaryIngestStats {
+                    days_attempted: 3,
+                    upserted: 2,
+                },
+                vec![harness.from, harness.middle, harness.to],
+                2,
+                vec![harness.from, harness.to],
+                2,
+                2,
+                true,
+                true,
+            ),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn read_for_symbol_uses_repository_without_a_transaction(harness: IngestHarness) {
         let strategy_id = uuid::Uuid::new_v4();
         struct ExistingStrategy(uuid::Uuid);
         #[async_trait]
@@ -324,15 +419,16 @@ mod tests {
             .await
             .expect("strategy exists");
 
-        use_cases
+        harness
+            .use_cases
             .find_for_symbol(scope, "ZZ99", 25)
             .await
             .expect("query succeeds");
 
         assert_eq!(
             (
-                repository.queries.lock().await.clone(),
-                unit_of_work.begun.lock().await.is_empty(),
+                harness.repository.queries.lock().await.clone(),
+                harness.unit_of_work.begun.lock().await.is_empty(),
             ),
             (vec![("ZZ99".to_owned(), 25)], true),
         );

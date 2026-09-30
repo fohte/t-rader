@@ -280,17 +280,12 @@ mod tests {
         }
     }
 
-    #[backend_test_macros::database_test]
-    async fn upsert_and_find_for_symbol_preserve_dedup_order_and_limit(db: crate::DatabaseHandle) {
-        let repository = PostgresFinancialSummaryRepository::new(db.clone());
-        let unit_of_work = PostgresUnitOfWork::new(db);
+    async fn upsert_summaries(
+        repository: &PostgresFinancialSummaryRepository,
+        unit_of_work: &PostgresUnitOfWork,
+        summaries: Vec<FinancialSummary>,
+    ) -> usize {
         let transaction = unit_of_work.begin().await.expect("begin transaction");
-        let summaries = vec![
-            summary("ZQXZ0", "2", date(2042, 4, 3), "group-a", 20.0),
-            summary("ZQXZ0", "12", date(2042, 4, 1), "group-a", 120.0),
-            summary("ZQXZ0", "1", date(2042, 4, 4), "group-b", 40.0),
-            summary("WXYZ0", "1", date(2042, 4, 5), "group-c", 99.0),
-        ];
         let upserted = repository
             .upsert(&transaction, summaries)
             .await
@@ -299,25 +294,97 @@ mod tests {
             .commit(transaction)
             .await
             .expect("commit transaction");
+        upserted
+    }
+
+    #[backend_test_macros::database_test]
+    async fn upsert_returns_number_of_written_summaries(db: crate::DatabaseHandle) {
+        let repository = PostgresFinancialSummaryRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        let summary = summary("ZQXZ0", "1", date(2042, 4, 1), "group-a", 10.0);
+        let upserted = upsert_summaries(&repository, &unit_of_work, vec![summary]).await;
+
+        assert_eq!(upserted, 1);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn latest_disclosure_date_returns_the_newest_stored_date(db: crate::DatabaseHandle) {
+        let repository = PostgresFinancialSummaryRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        upsert_summaries(
+            &repository,
+            &unit_of_work,
+            vec![
+                summary("ZQXZ0", "1", date(2042, 4, 1), "group-a", 10.0),
+                summary("ABCD0", "2", date(2042, 4, 5), "group-b", 20.0),
+            ],
+        )
+        .await;
         let latest = repository
             .latest_disclosure_date()
             .await
             .expect("find latest date");
+
+        assert_eq!(latest, Some(date(2042, 4, 5)));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn find_for_symbol_keeps_highest_disclosure_number_per_group_and_orders_newest_first(
+        db: crate::DatabaseHandle,
+    ) {
+        let repository = PostgresFinancialSummaryRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        upsert_summaries(
+            &repository,
+            &unit_of_work,
+            vec![
+                summary("ZQXZ0", "2", date(2042, 4, 3), "group-a", 20.0),
+                summary("ZQXZ0", "12", date(2042, 4, 1), "group-a", 120.0),
+                summary("ZQXZ0", "1", date(2042, 4, 4), "group-b", 40.0),
+            ],
+        )
+        .await;
+        let rows = repository
+            .find_for_symbol("ZQXZ", 10)
+            .await
+            .expect("find summaries");
+
+        assert_eq!(
+            rows,
+            vec![
+                summary("ZQXZ0", "1", date(2042, 4, 4), "group-b", 40.0),
+                summary("ZQXZ0", "12", date(2042, 4, 1), "group-a", 120.0),
+            ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn find_for_symbol_respects_limit_after_ordering_distinct_groups(
+        db: crate::DatabaseHandle,
+    ) {
+        let repository = PostgresFinancialSummaryRepository::new(db.clone());
+        let unit_of_work = PostgresUnitOfWork::new(db);
+        upsert_summaries(
+            &repository,
+            &unit_of_work,
+            vec![
+                summary("ZQXZ0", "1", date(2042, 4, 1), "group-a", 10.0),
+                summary("ZQXZ0", "2", date(2042, 4, 2), "group-b", 20.0),
+                summary("ZQXZ0", "3", date(2042, 4, 3), "group-c", 30.0),
+            ],
+        )
+        .await;
         let rows = repository
             .find_for_symbol("ZQXZ", 2)
             .await
             .expect("find summaries");
 
         assert_eq!(
-            (upserted, latest, rows),
-            (
-                4,
-                Some(date(2042, 4, 5)),
-                vec![
-                    summary("ZQXZ0", "1", date(2042, 4, 4), "group-b", 40.0),
-                    summary("ZQXZ0", "12", date(2042, 4, 1), "group-a", 120.0),
-                ],
-            ),
+            rows,
+            vec![
+                summary("ZQXZ0", "3", date(2042, 4, 3), "group-c", 30.0),
+                summary("ZQXZ0", "2", date(2042, 4, 2), "group-b", 20.0),
+            ],
         );
     }
 }

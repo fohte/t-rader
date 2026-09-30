@@ -102,11 +102,15 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, day).expect("valid date")
     }
 
-    fn schedule(scheduled_date: Option<NaiveDate>, company_name: &str) -> EarningsSchedule {
+    fn schedule(
+        published_date: NaiveDate,
+        scheduled_date: Option<NaiveDate>,
+        company_name: &str,
+    ) -> EarningsSchedule {
         EarningsSchedule {
             code: "ZZ999".into(),
             fiscal_quarter_name: "FY-QX".into(),
-            published_date: date(2042, 7, 6),
+            published_date,
             scheduled_date,
             fiscal_year_end: "1231".into(),
             company_name: company_name.into(),
@@ -115,34 +119,61 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_updates_existing_composite_key_and_latest_date_is_reported(db: DatabaseHandle) {
+    async fn upsert_inserts_schedule(db: DatabaseHandle) {
         let repository = PostgresEarningsScheduleRepository::new(db.clone());
-        let original = schedule(Some(date(2042, 8, 10)), "架空社");
-        let updated = schedule(None, "架空社更新");
-
-        let counts = (
-            repository.upsert(vec![original]).await.expect("insert row"),
-            repository
-                .upsert(vec![updated.clone()])
-                .await
-                .expect("update row"),
-            repository.upsert(Vec::new()).await.expect("empty upsert"),
-            repository
-                .latest_published_date()
-                .await
-                .expect("latest date"),
-        );
+        let published_date = date(2042, 7, 6);
+        let value = schedule(published_date, Some(date(2042, 8, 10)), "架空社");
+        let count = repository
+            .upsert(vec![value.clone()])
+            .await
+            .expect("insert row");
         let rows = jquants_earnings_date::Entity::find()
             .all(&db)
             .await
             .expect("list rows");
 
         assert_eq!(
-            (counts, rows.len(), rows.first().cloned(),),
+            (count, rows),
             (
-                (1, 1, 0, Some(date(2042, 7, 6))),
                 1,
-                Some(jquants_earnings_date::Model {
+                vec![jquants_earnings_date::Model {
+                    code: value.code,
+                    fq_name: value.fiscal_quarter_name,
+                    pub_date: value.published_date,
+                    sch_date: value.scheduled_date,
+                    fye: value.fiscal_year_end,
+                    co_name: value.company_name,
+                    co_name_en: value.company_name_en,
+                }],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn upsert_updates_a_matching_composite_key(db: DatabaseHandle) {
+        let repository = PostgresEarningsScheduleRepository::new(db.clone());
+        let published_date = date(2042, 7, 6);
+        let original = schedule(published_date, Some(date(2042, 8, 10)), "架空社");
+        let updated = schedule(published_date, None, "架空社更新");
+        repository
+            .upsert(vec![original])
+            .await
+            .expect("insert original row");
+
+        let count = repository
+            .upsert(vec![updated.clone()])
+            .await
+            .expect("update row");
+        let rows = jquants_earnings_date::Entity::find()
+            .all(&db)
+            .await
+            .expect("list rows");
+
+        assert_eq!(
+            (count, rows),
+            (
+                1,
+                vec![jquants_earnings_date::Model {
                     code: updated.code,
                     fq_name: updated.fiscal_quarter_name,
                     pub_date: updated.published_date,
@@ -150,8 +181,41 @@ mod tests {
                     fye: updated.fiscal_year_end,
                     co_name: updated.company_name,
                     co_name_en: updated.company_name_en,
-                }),
+                }],
             ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn empty_upsert_returns_zero_without_writing(db: DatabaseHandle) {
+        let repository = PostgresEarningsScheduleRepository::new(db.clone());
+
+        let count = repository.upsert(Vec::new()).await.expect("empty upsert");
+        let rows = jquants_earnings_date::Entity::find()
+            .all(&db)
+            .await
+            .expect("list rows");
+
+        assert_eq!((count, rows), (0, Vec::new()));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn latest_published_date_returns_the_maximum_date(db: DatabaseHandle) {
+        let repository = PostgresEarningsScheduleRepository::new(db);
+        repository
+            .upsert(vec![
+                schedule(date(2042, 7, 6), None, "架空社"),
+                schedule(date(2042, 7, 7), None, "架空社"),
+            ])
+            .await
+            .expect("insert schedules");
+
+        assert_eq!(
+            repository
+                .latest_published_date()
+                .await
+                .expect("latest date"),
+            Some(date(2042, 7, 7)),
         );
     }
 }

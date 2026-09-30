@@ -232,6 +232,11 @@ mod tests {
         Arc::new(FakeValuationRepository::default())
     }
 
+    #[fixture]
+    fn business_days() -> Vec<NaiveDate> {
+        super::recent_business_days(date(2099, 1, 9), 10)
+    }
+
     fn sample_valuation(date: NaiveDate) -> Valuation {
         Valuation {
             code: "ZZZZ0".to_string(),
@@ -270,8 +275,8 @@ mod tests {
     #[tokio::test]
     async fn ingests_missing_dates_and_refetches_recent_dates(
         repository: Arc<FakeValuationRepository>,
+        business_days: Vec<NaiveDate>,
     ) {
-        let business_days = business_days_ending(date(2099, 1, 9), 10);
         let today = *business_days.last().expect("business days exist");
         let targets = vec![
             business_days[0],
@@ -425,18 +430,5 @@ mod tests {
             (result, query),
             (expected, Some(("ZZZZ".to_string(), from, to))),
         );
-    }
-
-    fn business_days_ending(to: NaiveDate, count: usize) -> Vec<NaiveDate> {
-        let mut days = Vec::with_capacity(count);
-        let mut current = to;
-        while days.len() < count {
-            if core_domain::business_day::latest_business_day(current) == current {
-                days.push(current);
-            }
-            current -= chrono::Duration::days(1);
-        }
-        days.reverse();
-        days
     }
 }

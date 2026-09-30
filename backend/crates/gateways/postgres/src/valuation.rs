@@ -233,24 +233,38 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upsert_updates_existing_rows_and_mark_ingested_is_idempotent(
-        db: crate::DatabaseHandle,
-    ) {
+    async fn upsert_updates_existing_rows(db: crate::DatabaseHandle) {
         let repository = PostgresValuationRepository::new(db);
         let symbol = Uuid::new_v4().simple().to_string()[..4].to_uppercase();
         let code = format!("{symbol}0");
-        let ingestion_date = date(9999, 2, 27);
-        let original = valuation(code.clone(), ingestion_date, Decimal::new(120, 1));
-        let corrected = valuation(code.clone(), ingestion_date, Decimal::new(135, 1));
+        let valuation_date = date(9999, 2, 27);
+        let original = valuation(code.clone(), valuation_date, Decimal::new(120, 1));
+        let corrected = valuation(code.clone(), valuation_date, Decimal::new(135, 1));
 
         let initial_upsert = repository
             .upsert(vec![original])
             .await
             .expect("initial upsert succeeds");
-        repository
+        let corrected_upsert = repository
             .upsert(vec![corrected.clone()])
             .await
             .expect("corrected upsert succeeds");
+        let stored = repository
+            .find_by_symbol_date_range(&symbol, valuation_date, valuation_date)
+            .await
+            .expect("valuation query succeeds");
+
+        assert_eq!(
+            (initial_upsert, corrected_upsert, stored),
+            (1, 1, vec![corrected])
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn mark_ingested_is_idempotent(db: crate::DatabaseHandle) {
+        let repository = PostgresValuationRepository::new(db);
+        let ingestion_date = date(9999, 12, 31);
+
         repository
             .mark_ingested(ingestion_date)
             .await
@@ -263,14 +277,7 @@ mod tests {
             .find_ingested_dates(ingestion_date)
             .await
             .expect("ingested dates query succeeds");
-        let stored = repository
-            .find_by_symbol_date_range(&symbol, ingestion_date, ingestion_date)
-            .await
-            .expect("valuation query succeeds");
 
-        assert_eq!(
-            (initial_upsert, ingested, stored),
-            (1, vec![ingestion_date], vec![corrected])
-        );
+        assert_eq!(ingested, vec![ingestion_date]);
     }
 }
