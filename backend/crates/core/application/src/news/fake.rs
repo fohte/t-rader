@@ -7,7 +7,9 @@ use uuid::Uuid;
 use crate::news_aggregator::NewsItem;
 use crate::unit_of_work::{FakeTransaction, UnitOfWorkTransaction};
 
-use super::repository::{NewsItemRepository, NewsItemRepositoryError, NewsSearchCriteria};
+use super::repository::{
+    NewsItemRepository, NewsItemRepositoryError, NewsSearchCriteria, sanitize_search_keyword,
+};
 use super::types::NewsArticle;
 #[derive(Default)]
 pub struct FakeNewsItemRepository {
@@ -15,6 +17,7 @@ pub struct FakeNewsItemRepository {
     pub searches: Mutex<Vec<NewsSearchCriteria>>,
     pub transaction_ids: Mutex<Vec<Uuid>>,
     pub articles: Mutex<Vec<NewsArticle>>,
+    pub upsert_error: Mutex<Option<String>>,
 }
 
 impl FakeNewsItemRepository {
@@ -43,14 +46,12 @@ impl NewsItemRepository for FakeNewsItemRepository {
         items: &[NewsItem],
     ) -> Result<usize, NewsItemRepositoryError> {
         self.record_transaction(transaction).await?;
-        let urls: HashSet<_> = items.iter().map(|item| item.url.as_str()).collect();
-        if urls.len() != items.len() {
+        if let Some(message) = self.upsert_error.lock().await.clone() {
             return Err(NewsItemRepositoryError::Persistence(
-                crate::persistence::PersistenceError::Database(
-                    "news item batch contains duplicate URLs".into(),
-                ),
+                crate::persistence::PersistenceError::Database(message),
             ));
         }
+        let urls: HashSet<_> = items.iter().map(|item| item.url.as_str()).collect();
         let mut articles = self.articles.lock().await;
         for item in items {
             if let Some(article) = articles.iter_mut().find(|article| article.url == item.url) {
@@ -82,7 +83,7 @@ impl NewsItemRepository for FakeNewsItemRepository {
         let keyword = criteria
             .keyword
             .as_deref()
-            .map(sanitize_like)
+            .map(sanitize_search_keyword)
             .map(|value| value.to_lowercase());
         let mut articles: Vec<_> = self
             .articles
@@ -109,11 +110,4 @@ impl NewsItemRepository for FakeNewsItemRepository {
             .take(usize::try_from(criteria.limit).unwrap_or(usize::MAX))
             .collect())
     }
-}
-
-fn sanitize_like(value: &str) -> String {
-    value
-        .chars()
-        .filter(|character| !matches!(character, '%' | '_' | '\\'))
-        .collect()
 }

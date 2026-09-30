@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use core_application::news::{
     NewsArticle, NewsItemRepository, NewsItemRepositoryError, NewsSearchCriteria,
+    sanitize_search_keyword,
 };
 use core_application::news_aggregator::NewsItem;
 use core_application::unit_of_work::UnitOfWorkTransaction;
@@ -80,7 +81,7 @@ impl NewsItemRepository for PostgresNewsItemRepository {
     ) -> Result<Vec<NewsArticle>, NewsItemRepositoryError> {
         let mut query = news_item::Entity::find();
         if let Some(keyword) = criteria.keyword.as_deref() {
-            let pattern = format!("%{}%", sanitize_like(keyword));
+            let pattern = format!("%{}%", sanitize_search_keyword(keyword));
             query = query.filter(
                 Condition::any()
                     .add(news_item::Column::Title.ilike(pattern.clone()))
@@ -108,14 +109,6 @@ fn transaction_ref(
 ) -> Result<&sea_orm::DatabaseTransaction, NewsItemRepositoryError> {
     crate::transaction::transaction_ref(transaction)
         .ok_or(NewsItemRepositoryError::InvalidTransaction)
-}
-
-fn sanitize_like(value: &str) -> String {
-    // SeaORM の ILIKE は ESCAPE 句を指定できないため、ワイルドカードを除去する。
-    value
-        .chars()
-        .filter(|character| !matches!(character, '%' | '_' | '\\'))
-        .collect()
 }
 
 fn start_of_day(date: chrono::NaiveDate) -> DateTime<FixedOffset> {

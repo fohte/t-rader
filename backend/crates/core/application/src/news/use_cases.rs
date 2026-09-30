@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn aggregation_cycle_propagates_duplicate_url_batch_error() {
+    async fn aggregation_cycle_propagates_repository_error() {
         let (use_cases, news_repository) = use_cases(Vec::new());
         let aggregator = FakeNewsAggregator::new();
         let item = NewsItem {
@@ -222,7 +222,8 @@ mod tests {
             body_snippet: None,
             published_at: DateTime::<Utc>::UNIX_EPOCH,
         };
-        *aggregator.items.lock().await = vec![item.clone(), item];
+        *aggregator.items.lock().await = vec![item];
+        *news_repository.upsert_error.lock().await = Some("sample failure".into());
 
         let result = use_cases
             .run_aggregation_cycle(&aggregator)
@@ -232,10 +233,7 @@ mod tests {
 
         assert_eq!(
             (result, upserts),
-            (
-                Err("news item batch contains duplicate URLs".into()),
-                Vec::new(),
-            ),
+            (Err("sample failure".into()), Vec::new()),
         );
     }
 

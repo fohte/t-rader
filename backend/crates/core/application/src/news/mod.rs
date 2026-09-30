@@ -10,6 +10,7 @@ pub use error::NewsUseCaseError;
 pub use fake::FakeNewsItemRepository;
 pub use repository::{
     NewsItemRepository, NewsItemRepositoryError, NewsSearchCriteria, SharedNewsItemRepository,
+    sanitize_search_keyword,
 };
 pub use types::{AggregationStats, NewsArticle, SearchNewsQuery};
 pub use use_cases::NewsUseCases;

@@ -16,6 +16,14 @@ pub struct NewsSearchCriteria {
     pub limit: u64,
 }
 
+/// 検索語をリテラルとして扱うため、LIKE の制御文字を除く。
+pub fn sanitize_search_keyword(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !matches!(character, '%' | '_' | '\\'))
+        .collect()
+}
+
 #[derive(Debug, Error)]
 pub enum NewsItemRepositoryError {
     #[error(transparent)]
