@@ -43,7 +43,6 @@ impl JQuantsClient {
             .fetch_all_pages::<MarginInterestResponse>(
                 "/markets/margin-interest",
                 &[("date", &date_str)],
-                self.current_rate_limit(),
             )
             .await?;
 
@@ -57,11 +56,7 @@ impl JQuantsClient {
     ) -> Result<Vec<MarginAlertRecord>, DataProviderError> {
         let date_str = date.format("%Y-%m-%d").to_string();
         let raw = self
-            .fetch_all_pages::<MarginAlertResponse>(
-                "/markets/margin-alert",
-                &[("date", &date_str)],
-                self.current_rate_limit(),
-            )
+            .fetch_all_pages::<MarginAlertResponse>("/markets/margin-alert", &[("date", &date_str)])
             .await?;
 
         raw.into_iter().map(margin_alert_from_api).collect()

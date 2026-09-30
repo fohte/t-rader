@@ -27,9 +27,13 @@ pub enum DataProviderError {
     #[error("rate limited after {retries} retries")]
     RateLimited { retries: u32 },
 
-    /// クライアント側のレート制限ウィンドウが満杯
-    #[error("rate limit window full (max {max_requests} requests)")]
-    RateLimitWindowFull { max_requests: usize },
+    /// 共有レートリミットの取得に失敗
+    #[error("rate limit error: {0}")]
+    RateLimit(String),
+
+    /// 共有レートリミットの取得待ちが上限を超過
+    #[error("rate limit wait exceeded after {max_wait:?}")]
+    RateLimitWaitExceeded { max_wait: std::time::Duration },
 
     /// レスポンスのパースに失敗
     #[error("failed to parse response: {0}")]
@@ -43,9 +47,9 @@ impl From<DataProviderError> for DailyBarSourceError {
             DataProviderError::RateLimited { retries } => {
                 Self::RateLimited(format!("rate limited after {retries} retries"))
             }
-            DataProviderError::RateLimitWindowFull { max_requests } => Self::RateLimited(format!(
-                "rate limit window full (max {max_requests} requests)"
-            )),
+            DataProviderError::RateLimitWaitExceeded { max_wait } => {
+                Self::RateLimited(format!("rate limit wait exceeded after {max_wait:?}"))
+            }
             error => Self::Failed(error.to_string()),
         }
     }
@@ -114,9 +118,11 @@ mod tests {
         DataProviderError::RateLimited { retries: 3 },
         DailyBarSourceError::RateLimited("rate limited after 3 retries".to_string()),
     )]
-    #[case::rate_limit_window_full(
-        DataProviderError::RateLimitWindowFull { max_requests: 5 },
-        DailyBarSourceError::RateLimited("rate limit window full (max 5 requests)".to_string()),
+    #[case::rate_limit_wait_exceeded(
+        DataProviderError::RateLimitWaitExceeded {
+            max_wait: std::time::Duration::from_secs(30),
+        },
+        DailyBarSourceError::RateLimited("rate limit wait exceeded after 30s".to_string()),
     )]
     #[case::api(
         DataProviderError::Api { status: 503, message: "source unavailable".to_string() },
