@@ -1,79 +1,62 @@
 //! 自戦略の採点済み予測を Brier score と確率刻みごとの的中率で集計する読み取り専用 tool。
 
+use core_application::prediction::{PredictionRepositoryError, PredictionUseCaseError};
 use core_application::strategy_scope::StrategyScope;
+use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-use crate::services::predictions::probability_steps;
-use gateway_postgres::entities::{prediction, prediction_grade};
-
+use super::StrategyServer;
 use super::dto::{PredictionProbabilityBucketDto, ReadPredictionStatsResult};
-use super::{StrategyServer, db_error, decimal_to_f64};
-
-/// 確率刻みの比較用許容誤差。Decimal → f64 変換の丸め差を吸収する。
-const PROBABILITY_EPSILON: f64 = 1e-9;
 
 impl StrategyServer {
     pub(crate) async fn read_prediction_stats_inner(
         &self,
         scope: impl Into<StrategyScope>,
     ) -> Result<ReadPredictionStatsResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        let rows = prediction::Entity::find()
-            .filter(prediction::Column::StrategyId.eq(session_strategy_id))
-            .find_also_related(prediction_grade::Entity)
-            .all(&self.db)
+        let stats = self
+            .use_cases
+            .predictions
+            .stats(scope.into())
             .await
-            .map_err(db_error)?;
-
-        let graded: Vec<(f64, bool)> = rows
-            .into_iter()
-            .filter_map(|(p, grade)| grade.map(|g| (decimal_to_f64(p.probability), g.correct)))
-            .collect();
-
-        let graded_count = graded.len();
-        let brier_score = if graded_count == 0 {
-            None
-        } else {
-            let sum: f64 = graded
-                .iter()
-                .map(|(p, correct)| {
-                    let outcome = if *correct { 1.0 } else { 0.0 };
-                    (p - outcome).powi(2)
-                })
-                .sum();
-            Some(sum / graded_count as f64)
-        };
-
-        let buckets = probability_steps()
-            .map(decimal_to_f64)
-            .into_iter()
-            .map(|step| {
-                let in_bucket: Vec<bool> = graded
-                    .iter()
-                    .filter(|(p, _)| (p - step).abs() < PROBABILITY_EPSILON)
-                    .map(|(_, correct)| *correct)
-                    .collect();
-                let count = in_bucket.len();
-                let hit_rate = if count == 0 {
-                    None
-                } else {
-                    Some(in_bucket.iter().filter(|c| **c).count() as f64 / count as f64)
-                };
-                PredictionProbabilityBucketDto {
-                    probability: step,
-                    count: count as u32,
-                    hit_rate,
-                }
-            })
-            .collect();
+            .map_err(prediction_stats_error_to_mcp)?;
 
         Ok(ReadPredictionStatsResult {
-            graded_count: graded_count as u32,
-            brier_score,
-            buckets,
+            graded_count: stats.graded_count,
+            brier_score: stats.brier_score,
+            buckets: stats
+                .buckets
+                .into_iter()
+                .map(|bucket| PredictionProbabilityBucketDto {
+                    probability: bucket.probability,
+                    count: bucket.count,
+                    hit_rate: bucket.hit_rate,
+                })
+                .collect(),
         })
     }
+}
+
+fn prediction_stats_error_to_mcp(error: PredictionUseCaseError) -> McpError {
+    tracing::error!(error = %error, "strategy mcp prediction stats failed");
+    let message = match error {
+        PredictionUseCaseError::Validation(message) => {
+            format!("prediction stats validation failed: {message}")
+        }
+        PredictionUseCaseError::NoteNotFound(note_id) => format!("note {note_id} not found"),
+        PredictionUseCaseError::Forbidden(note_id) => {
+            format!("note {note_id} belongs to another strategy")
+        }
+        PredictionUseCaseError::Repository(PredictionRepositoryError::Database(error))
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            format!("database error: {error}")
+        }
+        PredictionUseCaseError::Repository(PredictionRepositoryError::InvalidTransaction)
+        | PredictionUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            "prediction transaction has an unexpected type".into()
+        }
+    };
+    super::internal_error(message)
 }
 
 #[cfg(test)]

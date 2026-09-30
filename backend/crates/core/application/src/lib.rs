@@ -16,6 +16,7 @@ pub mod news_aggregator;
 pub mod note;
 pub mod note_kind;
 pub mod persistence;
+pub mod prediction;
 pub mod shareholding_structure_source;
 pub mod short_selling_source;
 pub mod strategy;

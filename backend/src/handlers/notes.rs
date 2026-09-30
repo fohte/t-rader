@@ -29,16 +29,6 @@ pub struct ListNotesQuery {
     pub kind: Option<String>,
 }
 
-pub(crate) async fn find_note_or_404(
-    db: &impl sea_orm::ConnectionTrait,
-    id: Uuid,
-) -> Result<note::Model, AppError> {
-    note::Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {id} not found")))
-}
-
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct GetNoteQuery {

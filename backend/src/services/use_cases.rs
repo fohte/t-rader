@@ -8,6 +8,7 @@ use core_application::custom_indicator::{
 };
 use core_application::note::{NoteUseCases, SharedNoteRepository};
 use core_application::note_kind::{NoteKindUseCases, SharedNoteKindRepository};
+use core_application::prediction::{PredictionUseCases, SharedPredictionRepository};
 use core_application::strategy::{
     SharedStrategyRepository, SharedStrategySummaryQuery, StrategyUseCases,
 };
@@ -18,8 +19,9 @@ use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresAnnotationRepository, PostgresChangeHistory, PostgresCommentRepository,
     PostgresCustomIndicatorRepository, PostgresNoteKindRepository, PostgresNoteRepository,
-    PostgresStrategyExistence, PostgresStrategyRepository, PostgresStrategySummaryQuery,
-    PostgresStrategyTaskRepository, PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresPredictionRepository, PostgresStrategyExistence, PostgresStrategyRepository,
+    PostgresStrategySummaryQuery, PostgresStrategyTaskRepository, PostgresTradeRepository,
+    PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
@@ -27,6 +29,7 @@ pub struct UseCases {
     pub annotations: AnnotationUseCases,
     pub comments: CommentUseCases,
     pub notes: NoteUseCases,
+    pub predictions: PredictionUseCases,
     pub strategies: StrategyUseCases,
     pub trades: TradeUseCases,
     pub strategy_tasks: StrategyTaskUseCases,
@@ -87,6 +90,9 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         strategy_existence.clone(),
         change_history.clone(),
     );
+    let prediction_repository: SharedPredictionRepository =
+        Arc::new(PostgresPredictionRepository::new(db.clone()));
+    let predictions = PredictionUseCases::new(unit_of_work.clone(), prediction_repository);
     let custom_indicators = CustomIndicatorUseCases::new(
         unit_of_work.clone(),
         custom_indicator_repository,
@@ -100,6 +106,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         annotations,
         comments,
         notes,
+        predictions,
         strategies,
         trades,
         strategy_tasks,
