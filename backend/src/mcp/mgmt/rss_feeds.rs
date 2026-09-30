@@ -85,8 +85,8 @@ fn map_rss_feed_error(err: RssFeedUseCaseError) -> McpError {
         error @ RssFeedUseCaseError::Repository(RssFeedRepositoryError::DuplicateSource(_)) => {
             invalid_params(error.to_string())
         }
-        RssFeedUseCaseError::NotFound(id) => {
-            McpError::resource_not_found(RssFeedUseCaseError::NotFound(id).to_string(), None)
+        error @ RssFeedUseCaseError::NotFound(_) => {
+            McpError::resource_not_found(error.to_string(), None)
         }
         RssFeedUseCaseError::Repository(error) => {
             tracing::error!(error = %error, "mgmt mcp rss feed operation failed");

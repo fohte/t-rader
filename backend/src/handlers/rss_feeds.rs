@@ -24,9 +24,7 @@ fn map_err(err: RssFeedUseCaseError) -> AppError {
         error @ RssFeedUseCaseError::Repository(RssFeedRepositoryError::DuplicateSource(_)) => {
             AppError::Conflict(error.to_string())
         }
-        RssFeedUseCaseError::NotFound(id) => {
-            AppError::NotFound(RssFeedUseCaseError::NotFound(id).to_string())
-        }
+        error @ RssFeedUseCaseError::NotFound(_) => AppError::NotFound(error.to_string()),
         RssFeedUseCaseError::Repository(RssFeedRepositoryError::Persistence(error)) => error.into(),
         RssFeedUseCaseError::UnitOfWork(
             core_application::unit_of_work::UnitOfWorkError::Begin(error)
