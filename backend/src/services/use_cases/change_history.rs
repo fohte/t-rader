@@ -6,7 +6,7 @@ use gateway_postgres::PostgresChangeHistoryQuery;
 use super::UseCases;
 
 impl UseCases {
-    pub fn change_history(&self) -> ChangeHistoryUseCases {
+    pub fn change_history_reads(&self) -> ChangeHistoryUseCases {
         ChangeHistoryUseCases::new(Arc::new(PostgresChangeHistoryQuery::new(self.db.clone())))
     }
 }
