@@ -4,35 +4,37 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "stock")]
+#[sea_orm(table_name = "stock_group")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: String,
+    pub id: Uuid,
+    #[sea_orm(unique_key = "idx_stock_group_axis_id_key")]
+    pub axis_id: Uuid,
+    #[sea_orm(column_type = "Text", unique_key = "idx_stock_group_axis_id_key")]
+    pub key: String,
+    #[sea_orm(column_type = "Text")]
     pub name: String,
-    pub market: Option<String>,
-    pub sector_id: Option<String>,
-    pub created_at: DateTimeWithTimeZone,
-    pub updated_at: DateTimeWithTimeZone,
-    pub product_category: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub description: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::sector::Entity",
-        from = "Column::SectorId",
-        to = "super::sector::Column::Id",
+        belongs_to = "super::group_axis::Entity",
+        from = "Column::AxisId",
+        to = "super::group_axis::Column::Id",
         on_update = "NoAction",
-        on_delete = "SetNull"
+        on_delete = "Restrict"
     )]
-    Sector,
+    GroupAxis,
     #[sea_orm(has_many = "super::stock_group_member::Entity")]
     StockGroupMember,
 }
 
-impl Related<super::sector::Entity> for Entity {
+impl Related<super::group_axis::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Sector.def()
+        Relation::GroupAxis.def()
     }
 }
 
@@ -42,12 +44,12 @@ impl Related<super::stock_group_member::Entity> for Entity {
     }
 }
 
-impl Related<super::stock_group::Entity> for Entity {
+impl Related<super::stock::Entity> for Entity {
     fn to() -> RelationDef {
-        super::stock_group_member::Relation::StockGroup.def()
+        super::stock_group_member::Relation::Stock.def()
     }
     fn via() -> Option<RelationDef> {
-        Some(super::stock_group_member::Relation::Stock.def().rev())
+        Some(super::stock_group_member::Relation::StockGroup.def().rev())
     }
 }
 
