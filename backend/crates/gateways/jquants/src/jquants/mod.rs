@@ -3,10 +3,10 @@ mod earnings_schedule;
 mod edinet_holdings;
 mod equities_master;
 mod fin_summary;
+mod http;
 mod margin;
 #[cfg(any(test, feature = "test-support"))]
 pub mod mock;
-mod rate_limiter;
 mod response;
 mod short_selling;
 #[cfg(test)]
@@ -17,7 +17,7 @@ use chrono::{NaiveDate, TimeZone, Utc};
 use reqwest::Url;
 use rust_decimal::Decimal;
 
-use rate_limiter::RateLimiter;
+use http::JQuantsHttpClient;
 
 use crate::{DataProviderError, JQuantsPlan};
 use core_application::daily_bar_source::DateRange;
@@ -38,52 +38,34 @@ const DAILY_BARS_START_DATE: NaiveDate = match NaiveDate::from_ymd_opt(2008, 5, 
 /// API サーバーのバグで同じ pagination_key が返り続けた場合の安全策
 const MAX_PAGES: u32 = 100;
 
-/// `/fins/summary` (財務情報) 固有のレート制限 (契約プランと別枠、公式ページ記載の値)。
-/// 大幅に超過すると 5 分程度アクセスが完全に遮断されるため、契約プラン上限より低い方を使う。
-const FIN_SUMMARY_RATE_LIMIT_PER_MINUTE: usize = 60;
-
-/// API 側の制限調整や複数インスタンス稼働に備え、契約プランの公称レートリミットの
-/// 半分を実効上限とする安全係数。
-const RATE_LIMIT_SAFETY_FACTOR: usize = 2;
-
-/// `limit` に `RATE_LIMIT_SAFETY_FACTOR` を適用し、下限 1 でフロアする。
-fn apply_safety_margin(limit: usize) -> usize {
-    (limit / RATE_LIMIT_SAFETY_FACTOR).max(1)
-}
-
-/// 429 を受けてから、このクライアントの全呼び出しの送信を止める時間。
-const RATE_LIMIT_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 /// 429 の cooldown 待ちを何回まで繰り返すか。これを超えてなお 429 が続く場合はエラーを返す。
 const MAX_RATE_LIMIT_RETRIES: u32 = 3;
 
 /// J-Quants API V2 クライアント
 ///
 /// API Key 認証方式で J-Quants API V2 にアクセスする。
-/// アプリケーションレベルのレートリミッターを内蔵する。5xx には指数バックオフで
-/// リトライし、429 を受けた場合は全呼び出しの送信を `RATE_LIMIT_COOLDOWN` の間止めて
-/// 待つ (cooldown)。レートリミッターの上限は契約プランに安全マージンを適用する。
+/// Redis 共有のレートリミッターを通して送信する。5xx は指数バックオフでリトライし、
+/// 429 は `Retry-After` または 5 分の cooldown を全 client で共有する。
 ///
 /// Debug は意図的に derive しない (api_key の漏洩防止)
 pub struct JQuantsClient {
-    http: reqwest::Client,
+    http: JQuantsHttpClient,
     base_url: String,
     api_key: String,
-    rate_limiter: RateLimiter,
     plan: JQuantsPlan,
 }
 
 impl JQuantsClient {
-    pub fn new(api_key: String, plan: JQuantsPlan) -> Result<Self, DataProviderError> {
-        let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| DataProviderError::Network(e.to_string()))?;
-
+    pub fn new(
+        redis_url: &str,
+        api_key: String,
+        plan: JQuantsPlan,
+        max_wait: std::time::Duration,
+    ) -> Result<Self, DataProviderError> {
         Ok(Self {
-            http,
+            http: JQuantsHttpClient::new(redis_url, plan, max_wait)?,
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key,
-            rate_limiter: RateLimiter::new(RATE_LIMIT_COOLDOWN),
             plan,
         })
     }
@@ -95,17 +77,39 @@ impl JQuantsClient {
         api_key: &str,
         plan: JQuantsPlan,
     ) -> Result<Self, DataProviderError> {
-        let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .map_err(|e| DataProviderError::Network(e.to_string()))?;
-
         Ok(Self {
-            http,
+            http: JQuantsHttpClient::without_rate_limiter(
+                plan,
+                std::time::Duration::ZERO,
+                std::time::Duration::from_secs(10),
+            )?,
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
-            // 429 cooldown を短縮し、window 枠超過では待たずに失敗させる
-            rate_limiter: RateLimiter::new_fail_fast(std::time::Duration::from_millis(50)),
+            plan,
+        })
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_base_url_and_max_wait(
+        base_url: &str,
+        api_key: &str,
+        plan: JQuantsPlan,
+        max_wait: std::time::Duration,
+    ) -> Result<Self, DataProviderError> {
+        let redis_url = std::env::var("REDIS_URL").map_err(|error| {
+            DataProviderError::RateLimit(format!("REDIS_URL is not available: {error}"))
+        })?;
+
+        Ok(Self {
+            http: JQuantsHttpClient::with_key_prefix(
+                &redis_url,
+                http::test_key_prefix(),
+                plan,
+                max_wait,
+                std::time::Duration::from_secs(10),
+            )?,
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
             plan,
         })
     }
@@ -141,34 +145,21 @@ impl JQuantsClient {
         }
     }
 
-    /// レートリミッターの現在の上限 (1 分あたりのリクエスト数)
-    ///
-    /// 契約プランの公称値に `RATE_LIMIT_SAFETY_FACTOR` による安全マージンを適用した値を返す。
-    fn current_rate_limit(&self) -> usize {
-        apply_safety_margin(self.plan.rate_limit_per_minute())
-    }
-
     /// 指数バックオフ付き GET リクエスト
     ///
     /// レートリミッターで送信間隔を制御した上で、429 と 5xx に対してリトライする。
-    /// それ以外のエラーは即座に返す。`max_requests` はウィンドウ内の許容リクエスト数
-    /// (通常は `current_rate_limit()`。エンドポイント固有の上限がある場合はそれとの min)。
+    /// それ以外のエラーは即座に返す。
     ///
     /// 429 はレートリミッターの cooldown 待ち (`RateLimiter::acquire` 内) に任せるため
-    /// 指数バックオフは行わず、`MAX_RATE_LIMIT_RETRIES` 回まで cooldown 明けを待って
-    /// 再試行する。5xx は従来通り `MAX_RETRIES` 回まで指数バックオフでリトライする。
-    async fn get_with_retry(
-        &self,
-        url: &Url,
-        max_requests: usize,
-    ) -> Result<reqwest::Response, DataProviderError> {
+    /// 指数バックオフは行わず、`MAX_RATE_LIMIT_RETRIES` 回まで再試行する。ただし、cooldown が
+    /// `max_wait` を超える場合は `RateLimitWaitExceeded` を返す。5xx は従来通り `MAX_RETRIES` 回まで
+    /// 指数バックオフでリトライする。
+    async fn get_with_retry(&self, url: &Url) -> Result<reqwest::Response, DataProviderError> {
         let url_str = url.as_str();
         let mut retry_attempt = 0u32;
         let mut rate_limit_attempt = 0u32;
 
         loop {
-            self.rate_limiter.acquire(max_requests).await?;
-
             if retry_attempt > 0 {
                 let backoff = std::time::Duration::from_millis(
                     INITIAL_BACKOFF_MS * 2u64.pow(retry_attempt - 1),
@@ -182,13 +173,7 @@ impl JQuantsClient {
                 tokio::time::sleep(backoff).await;
             }
 
-            let response = self
-                .http
-                .get(url.clone())
-                .header("x-api-key", &self.api_key)
-                .send()
-                .await
-                .map_err(|e| DataProviderError::Network(e.to_string()))?;
+            let response = self.http.send(url, &self.api_key).await?;
 
             let status = response.status().as_u16();
 
@@ -201,8 +186,6 @@ impl JQuantsClient {
                         url = url_str,
                         "レートリミット超過 (429)、送信を停止して待機します"
                     );
-                    self.rate_limiter.note_rate_limited().await;
-
                     if rate_limit_attempt > MAX_RATE_LIMIT_RETRIES {
                         return Err(DataProviderError::RateLimited {
                             retries: MAX_RATE_LIMIT_RETRIES,
@@ -261,7 +244,6 @@ impl JQuantsClient {
         &self,
         path: &str,
         params: &[(&str, &str)],
-        max_requests: usize,
     ) -> Result<Vec<R::Item>, DataProviderError>
     where
         R: serde::de::DeserializeOwned + Paginated,
@@ -279,7 +261,7 @@ impl JQuantsClient {
 
             tracing::debug!(%url, "J-Quants API からページを取得中");
 
-            let response = self.get_with_retry(&url, max_requests).await?;
+            let response = self.get_with_retry(&url).await?;
             let body: R = response
                 .json()
                 .await
@@ -314,7 +296,7 @@ impl JQuantsClient {
     ) -> Result<Vec<serde_json::Value>, DataProviderError> {
         let date_str = date.format("%Y%m%d").to_string();
         let params = [("date", date_str.as_str())];
-        self.fetch_all_pages::<EdinetDocumentsResponse>(path, &params, self.current_rate_limit())
+        self.fetch_all_pages::<EdinetDocumentsResponse>(path, &params)
             .await
     }
 
@@ -325,12 +307,8 @@ impl JQuantsClient {
     ) -> Result<Vec<response::ValuationRecord>, DataProviderError> {
         let date_str = date.format("%Y-%m-%d").to_string();
         let params = [("date", date_str.as_str())];
-        self.fetch_all_pages::<ValuationResponse>(
-            "/equities/valuation",
-            &params,
-            self.current_rate_limit(),
-        )
-        .await
+        self.fetch_all_pages::<ValuationResponse>("/equities/valuation", &params)
+            .await
     }
 
     /// `/fins/summary` を `date` (開示日) 指定で取得する。全上場銘柄のその日の開示分が
@@ -342,11 +320,7 @@ impl JQuantsClient {
     ) -> Result<Vec<serde_json::Value>, DataProviderError> {
         let date_str = date.format("%Y-%m-%d").to_string();
         let params = [("date", date_str.as_str())];
-        let max_requests = self
-            .current_rate_limit()
-            .min(apply_safety_margin(FIN_SUMMARY_RATE_LIMIT_PER_MINUTE));
-
-        self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params, max_requests)
+        self.fetch_all_pages::<FinSummaryResponse>("/fins/summary", &params)
             .await
     }
 
@@ -359,12 +333,8 @@ impl JQuantsClient {
     ) -> Result<Vec<response::EarningsDateRecord>, DataProviderError> {
         let date_str = date.format("%Y-%m-%d").to_string();
         let params = [("date", date_str.as_str())];
-        self.fetch_all_pages::<EarningsDateResponse>(
-            "/fins/earnings-date",
-            &params,
-            self.current_rate_limit(),
-        )
-        .await
+        self.fetch_all_pages::<EarningsDateResponse>("/fins/earnings-date", &params)
+            .await
     }
 }
 
@@ -377,7 +347,7 @@ impl JQuantsClient {
 
         tracing::debug!(%url, instrument_id, "J-Quants API から銘柄情報を取得中");
 
-        let response = self.get_with_retry(&url, self.current_rate_limit()).await?;
+        let response = self.get_with_retry(&url).await?;
         let body: EquitiesMasterResponse = response
             .json()
             .await
