@@ -2,27 +2,29 @@
 
 ## Columns
 
-| Name            | Type                     | Default           | Nullable | Children | Parents                               | Comment |
-| --------------- | ------------------------ | ----------------- | -------- | -------- | ------------------------------------- | ------- |
-| trigger_id      | uuid                     | gen_random_uuid() | false    |          |                                       |         |
-| strategy_id     | uuid                     |                   | true     |          | [public.strategy](public.strategy.md) |         |
-| kind            | text                     |                   | false    |          |                                       |         |
-| schedule        | text                     |                   | true     |          |                                       |         |
-| hook_slug       | text                     |                   | true     |          |                                       |         |
-| event_match     | jsonb                    |                   | true     |          |                                       |         |
-| prompt_template | text                     |                   | false    |          |                                       |         |
-| enabled         | boolean                  | true              | false    |          |                                       |         |
-| last_fired_at   | timestamp with time zone |                   | true     |          |                                       |         |
-| created_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |         |
-| updated_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |         |
+| Name            | Type                     | Default           | Nullable | Children | Parents                                       | Comment |
+| --------------- | ------------------------ | ----------------- | -------- | -------- | --------------------------------------------- | ------- |
+| trigger_id      | uuid                     | gen_random_uuid() | false    |          |                                               |         |
+| strategy_id     | uuid                     |                   | true     |          | [public.strategy](public.strategy.md)         |         |
+| kind            | text                     |                   | false    |          |                                               |         |
+| schedule        | text                     |                   | true     |          |                                               |         |
+| hook_slug       | text                     |                   | true     |          |                                               |         |
+| event_match     | jsonb                    |                   | true     |          |                                               |         |
+| prompt_template | text                     |                   | false    |          |                                               |         |
+| enabled         | boolean                  | true              | false    |          |                                               |         |
+| last_fired_at   | timestamp with time zone |                   | true     |          |                                               |         |
+| created_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |         |
+| updated_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |         |
+| purpose         | text                     |                   | true     |          | [public.agent_config](public.agent_config.md) |         |
 
 ## Constraints
 
-| Name                     | Type        | Definition                                                                                                                                                         |
-| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| trigger_kind_shape_check | CHECK       | CHECK ((((kind = 'cron'::text) AND (schedule IS NOT NULL) AND (hook_slug IS NULL)) OR ((kind = 'hook'::text) AND (hook_slug IS NOT NULL) AND (schedule IS NULL)))) |
-| trigger_strategy_id_fkey | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE                                                                                                |
-| trigger_pkey             | PRIMARY KEY | PRIMARY KEY (trigger_id)                                                                                                                                           |
+| Name                            | Type        | Definition                                                                                                                                                         |
+| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| trigger_kind_shape_check        | CHECK       | CHECK ((((kind = 'cron'::text) AND (schedule IS NOT NULL) AND (hook_slug IS NULL)) OR ((kind = 'hook'::text) AND (hook_slug IS NOT NULL) AND (schedule IS NULL)))) |
+| trigger_strategy_id_fkey        | FOREIGN KEY | FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE                                                                                                |
+| trigger_pkey                    | PRIMARY KEY | PRIMARY KEY (trigger_id)                                                                                                                                           |
+| fk_trigger_purpose_agent_config | FOREIGN KEY | FOREIGN KEY (purpose) REFERENCES agent_config(purpose) ON DELETE SET NULL                                                                                          |
 
 ## Indexes
 
@@ -39,6 +41,7 @@
 erDiagram
 
 "public.trigger" }o--o| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
+"public.trigger" }o--o| "public.agent_config" : "FOREIGN KEY (purpose) REFERENCES agent_config(purpose) ON DELETE SET NULL"
 
 "public.trigger" {
   uuid trigger_id
@@ -52,12 +55,22 @@ erDiagram
   timestamp_with_time_zone last_fired_at
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text purpose FK
 }
 "public.strategy" {
   uuid id
   varchar name
   text description
   integer sort_order
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+}
+"public.agent_config" {
+  uuid id
+  text purpose
+  text agents_md
+  jsonb skills
+  text agent_graph
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
 }

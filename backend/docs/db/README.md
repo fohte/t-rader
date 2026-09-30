@@ -18,7 +18,7 @@
 | [public.change_history](public.change_history.md)                                           | 9       |         | BASE TABLE |
 | [public.trade](public.trade.md)                                                             | 12      |         | BASE TABLE |
 | [public.strategy_task](public.strategy_task.md)                                             | 14      |         | BASE TABLE |
-| [public.trigger](public.trigger.md)                                                         | 11      |         | BASE TABLE |
+| [public.trigger](public.trigger.md)                                                         | 12      |         | BASE TABLE |
 | [public.custom_indicator](public.custom_indicator.md)                                       | 10      |         | BASE TABLE |
 | [public.news_item](public.news_item.md)                                                     | 7       |         | BASE TABLE |
 | [public.rss_feed](public.rss_feed.md)                                                       | 7       |         | BASE TABLE |
@@ -183,6 +183,7 @@ erDiagram
 "public.trade" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.strategy_task" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.trigger" }o--o| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
+"public.trigger" }o--o| "public.agent_config" : "FOREIGN KEY (purpose) REFERENCES agent_config(purpose) ON DELETE SET NULL"
 "public.custom_indicator" }o--o| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.strategy_investable_amount" }o--|| "public.strategy" : "FOREIGN KEY (strategy_id) REFERENCES strategy(id) ON DELETE CASCADE"
 "public.strategy_task_step" }o--|| "public.strategy_task" : "FOREIGN KEY (task_id) REFERENCES strategy_task(task_id) ON DELETE CASCADE"
@@ -347,6 +348,7 @@ erDiagram
   timestamp_with_time_zone last_fired_at
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text purpose FK
 }
 "public.custom_indicator" {
   uuid indicator_id

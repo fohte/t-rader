@@ -114,6 +114,7 @@ erDiagram
   timestamp_with_time_zone last_fired_at
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+  text purpose FK
 }
 "public.custom_indicator" {
   uuid indicator_id

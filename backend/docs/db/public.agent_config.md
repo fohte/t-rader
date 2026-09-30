@@ -2,15 +2,15 @@
 
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ----------- | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| id          | uuid                     | gen_random_uuid() | false    |          |         |         |
-| purpose     | text                     |                   | false    |          |         |         |
-| agents_md   | text                     | ''::text          | false    |          |         |         |
-| skills      | jsonb                    | '{}'::jsonb       | false    |          |         |         |
-| agent_graph | text                     | ''::text          | false    |          |         |         |
-| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
-| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name        | Type                     | Default           | Nullable | Children                            | Parents | Comment |
+| ----------- | ------------------------ | ----------------- | -------- | ----------------------------------- | ------- | ------- |
+| id          | uuid                     | gen_random_uuid() | false    |                                     |         |         |
+| purpose     | text                     |                   | false    | [public.trigger](public.trigger.md) |         |         |
+| agents_md   | text                     | ''::text          | false    |                                     |         |         |
+| skills      | jsonb                    | '{}'::jsonb       | false    |                                     |         |         |
+| agent_graph | text                     | ''::text          | false    |                                     |         |         |
+| created_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |         |         |
+| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                     |         |         |
 
 ## Constraints
 
@@ -31,6 +31,7 @@
 ```mermaid
 erDiagram
 
+"public.trigger" }o--o| "public.agent_config" : "FOREIGN KEY (purpose) REFERENCES agent_config(purpose) ON DELETE SET NULL"
 
 "public.agent_config" {
   uuid id
@@ -40,6 +41,20 @@ erDiagram
   text agent_graph
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.trigger" {
+  uuid trigger_id
+  uuid strategy_id FK
+  text kind
+  text schedule
+  text hook_slug
+  jsonb event_match
+  text prompt_template
+  boolean enabled
+  timestamp_with_time_zone last_fired_at
+  timestamp_with_time_zone created_at
+  timestamp_with_time_zone updated_at
+  text purpose FK
 }
 ```
 
