@@ -54,7 +54,7 @@ pub async fn list_rss_feeds(
 ) -> Result<Json<Vec<RssFeedResponse>>, AppError> {
     let rows = state
         .use_cases
-        .rss_feeds
+        .rss_feeds()
         .list(query.enabled_only.unwrap_or(false))
         .await
         .map_err(map_err)?;
@@ -78,7 +78,7 @@ pub async fn get_rss_feed(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<RssFeedResponse>, AppError> {
-    let feed = state.use_cases.rss_feeds.get(id).await.map_err(map_err)?;
+    let feed = state.use_cases.rss_feeds().get(id).await.map_err(map_err)?;
     Ok(Json(feed.into()))
 }
 
@@ -103,7 +103,7 @@ pub async fn create_rss_feed(
 ) -> Result<(StatusCode, Json<RssFeedResponse>), AppError> {
     let created = state
         .use_cases
-        .rss_feeds
+        .rss_feeds()
         .create(CreateRssFeedCommand {
             source: payload.source,
             display_name: payload.display_name,
@@ -138,7 +138,7 @@ pub async fn update_rss_feed(
 ) -> Result<Json<RssFeedResponse>, AppError> {
     let updated = state
         .use_cases
-        .rss_feeds
+        .rss_feeds()
         .update(
             id,
             UpdateRssFeedPatch {
@@ -171,7 +171,7 @@ pub async fn delete_rss_feed(
 ) -> Result<StatusCode, AppError> {
     state
         .use_cases
-        .rss_feeds
+        .rss_feeds()
         .delete(id)
         .await
         .map_err(map_err)?;

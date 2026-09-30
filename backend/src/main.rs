@@ -223,7 +223,7 @@ async fn main() -> Result<(), AppError> {
         })?);
     let use_cases = backend::services::use_cases::build_use_cases(db.clone());
     let _news_poll = backend::services::news::spawn_poll(
-        use_cases.news.clone(),
+        use_cases.news(),
         news_aggregator,
         std::time::Duration::from_secs(3600),
     );
@@ -363,7 +363,7 @@ async fn main() -> Result<(), AppError> {
     let db = DatabaseHandle::from(db);
     let use_cases = backend::services::use_cases::build_use_cases(db.clone());
     let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
-        use_cases.predictions.clone(),
+        use_cases.predictions(),
         backend::services::prediction_grading::DEFAULT_INTERVAL,
     );
     tracing::info!(

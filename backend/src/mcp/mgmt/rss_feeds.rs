@@ -19,7 +19,7 @@ impl MgmtServer {
     ) -> Result<ListRssFeedsResult, McpError> {
         let rows = self
             .use_cases
-            .rss_feeds
+            .rss_feeds()
             .list(params.enabled_only.unwrap_or(false))
             .await
             .map_err(map_rss_feed_error)?;
@@ -34,7 +34,7 @@ impl MgmtServer {
     ) -> Result<RssFeedSummary, McpError> {
         let created = self
             .use_cases
-            .rss_feeds
+            .rss_feeds()
             .create(CreateRssFeedCommand {
                 source: params.source,
                 display_name: params.display_name,
@@ -52,7 +52,7 @@ impl MgmtServer {
     ) -> Result<RssFeedSummary, McpError> {
         let updated = self
             .use_cases
-            .rss_feeds
+            .rss_feeds()
             .update(
                 params.id,
                 UpdateRssFeedPatch {
@@ -71,7 +71,7 @@ impl MgmtServer {
         params: DeleteRssFeedParams,
     ) -> Result<DeleteRssFeedResult, McpError> {
         self.use_cases
-            .rss_feeds
+            .rss_feeds()
             .delete(params.id)
             .await
             .map_err(map_rss_feed_error)?;

@@ -17,7 +17,7 @@ impl StrategyServer {
         let scope = scope.into();
         let rows = self
             .use_cases
-            .news
+            .news()
             .search_news(
                 scope,
                 SearchNewsQuery {
