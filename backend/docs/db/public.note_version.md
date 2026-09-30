@@ -21,12 +21,12 @@
 
 ## Constraints
 
-| Name                               | Type        | Definition                                                                         |
-| ---------------------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| note_version_created_by_kind_check | CHECK       | CHECK ((created_by_kind = ANY (ARRAY['human'::text, 'llm'::text])))                |
-| note_version_status_check          | CHECK       | CHECK ((status = ANY (ARRAY['approved'::text, 'unread'::text, 'rejected'::text]))) |
-| note_version_note_id_fkey          | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                        |
-| note_version_pkey                  | PRIMARY KEY | PRIMARY KEY (id)                                                                   |
+| Name                               | Type        | Definition                                                                                             |
+| ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------ |
+| note_version_created_by_kind_check | CHECK       | CHECK ((created_by_kind = ANY (ARRAY['human'::text, 'llm'::text])))                                    |
+| note_version_status_check          | CHECK       | CHECK ((status = ANY (ARRAY['approved'::text, 'unread'::text, 'rejected'::text, 'superseded'::text]))) |
+| note_version_note_id_fkey          | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                                            |
+| note_version_pkey                  | PRIMARY KEY | PRIMARY KEY (id)                                                                                       |
 
 ## Indexes
 

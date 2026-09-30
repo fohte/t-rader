@@ -49,6 +49,9 @@
 | [public.large_volume_shareholding_documents](public.large_volume_shareholding_documents.md) | 7       |         | BASE TABLE |
 | [public.major_shareholder_documents](public.major_shareholder_documents.md)                 | 7       |         | BASE TABLE |
 | [public.cross_shareholding_documents](public.cross_shareholding_documents.md)               | 7       |         | BASE TABLE |
+| [public.group_axis](public.group_axis.md)                                                   | 5       |         | BASE TABLE |
+| [public.stock_group](public.stock_group.md)                                                 | 5       |         | BASE TABLE |
+| [public.stock_group_member](public.stock_group_member.md)                                   | 3       |         | BASE TABLE |
 
 ## Stored procedures and functions
 
@@ -200,6 +203,9 @@ erDiagram
 "public.note_link" }o--|| "public.note" : "FOREIGN KEY (to_note_id) REFERENCES note(id) ON DELETE CASCADE"
 "public.note_link" }o--|| "public.note_version" : "FOREIGN KEY (from_version_id) REFERENCES note_version(id) ON DELETE CASCADE"
 "public.note_link" }o--o| "public.note_version" : "FOREIGN KEY (to_version_id) REFERENCES note_version(id) ON DELETE SET NULL"
+"public.stock_group" }o--|| "public.group_axis" : "FOREIGN KEY (axis_id) REFERENCES group_axis(id) ON DELETE RESTRICT"
+"public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
+"public.stock_group_member" }o--|| "public.stock_group" : "FOREIGN KEY (group_id) REFERENCES stock_group(id) ON DELETE CASCADE"
 
 "public.instruments" {
   varchar id
@@ -665,6 +671,25 @@ erDiagram
   jsonb details
   timestamp_with_time_zone created_at
   timestamp_with_time_zone updated_at
+}
+"public.group_axis" {
+  uuid id
+  text key
+  text name
+  text description
+  text sync_source
+}
+"public.stock_group" {
+  uuid id
+  uuid axis_id FK
+  text key
+  text name
+  text description
+}
+"public.stock_group_member" {
+  varchar stock_id FK
+  uuid group_id FK
+  timestamp_with_time_zone created_at
 }
 ```
 
