@@ -1,6 +1,5 @@
 use thiserror::Error;
 
-use crate::indicator_observation_source::IndicatorObservationSourceError;
 use crate::persistence::PersistenceError;
 
 #[derive(Debug, Error)]
@@ -15,6 +14,4 @@ pub enum IndicatorObservationUseCaseError {
     Validation(String),
     #[error(transparent)]
     Repository(#[from] IndicatorObservationRepositoryError),
-    #[error(transparent)]
-    Source(#[from] IndicatorObservationSourceError),
 }

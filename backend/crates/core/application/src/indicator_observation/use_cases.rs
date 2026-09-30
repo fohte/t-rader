@@ -114,26 +114,31 @@ impl IndicatorObservationUseCases {
         &self,
         source: &dyn IndicatorObservationSource,
         definition: &SeriesDefinition,
-    ) -> Result<usize, IndicatorObservationUseCaseError> {
+    ) -> Result<usize, String> {
         let metadata = IndicatorObservationMetadata {
             indicator_id: definition.indicator_id.to_string(),
             name: definition.name.to_string(),
             kind: definition.kind.to_string(),
         };
-        self.repository.ensure_indicator(metadata.clone()).await?;
+        self.repository
+            .ensure_indicator(metadata.clone())
+            .await
+            .map_err(|error| error.to_string())?;
 
         let latest = self
             .repository
             .find_latest_date(&metadata.indicator_id)
-            .await?;
+            .await
+            .map_err(|error| error.to_string())?;
         let observation_start = latest.map(|date| date - Duration::days(LOOKBACK_DAYS));
         let observations: Vec<IndicatorObservation> = source
             .fetch_observations(definition.series_id, observation_start)
-            .await?;
+            .await
+            .map_err(|error| error.to_string())?;
 
         self.repository
             .upsert_observations(&metadata.indicator_id, observations)
             .await
-            .map_err(Into::into)
+            .map_err(|error| error.to_string())
     }
 }

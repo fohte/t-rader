@@ -50,10 +50,6 @@ fn indicator_observation_error(error: IndicatorObservationUseCaseError) -> McpEr
             tracing::error!(error = %error, "strategy mcp indicator observation read failed");
             internal_error(format!("database error: {error}"))
         }
-        IndicatorObservationUseCaseError::Source(error) => {
-            tracing::error!(error = %error, "strategy mcp indicator observation read failed");
-            internal_error(format!("indicator source error: {error}"))
-        }
     }
 }
 
