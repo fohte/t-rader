@@ -21,6 +21,7 @@ use gateway_ibkr::IbkrClient;
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
 use gateway_postgres::DatabaseHandle;
 use migration::{Migrator, MigratorTrait};
+use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
 
 fn parse_jquants_plan(value: Option<String>) -> Result<JQuantsPlan, AppError> {
@@ -135,10 +136,18 @@ async fn main() -> Result<(), AppError> {
             let exchange = std::env::var("IBKR_EXCHANGE")
                 .ok()
                 .filter(|s| !s.is_empty());
+            let rate_limiter = RateLimiter::new(&redis_url, "t-rader:ratelimit:").map_err(|e| {
+                AppError::Config(format!("failed to initialize IBKR rate limiter: {e}"))
+            })?;
             let client = Arc::new(
-                IbkrClient::new(base_url, session_token, exchange).map_err(|e| {
-                    AppError::Config(format!("failed to initialize IBKR client: {e}"))
-                })?,
+                IbkrClient::new(
+                    base_url,
+                    session_token,
+                    exchange,
+                    rate_limiter,
+                    std::time::Duration::from_secs(30),
+                )
+                .map_err(|e| AppError::Config(format!("failed to initialize IBKR client: {e}")))?,
             );
             tracing::info!("IBKR 日足データ取得元を初期化しました");
             let source: SharedDailyBarSource = client;

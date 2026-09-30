@@ -1,4 +1,5 @@
 mod error;
+mod http;
 #[cfg(test)]
 pub(crate) mod mock;
 mod response;
@@ -7,14 +8,17 @@ mod tests;
 
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
+use rate_limit::RateLimiter;
 use reqwest::Url;
 use rust_decimal::Decimal;
+use std::time::Duration;
 
 use core_application::daily_bar_source::{DailyBarSource, DailyBarSourceError, DateRange};
 use core_domain::bar::{Bar, Timeframe};
 use core_domain::business_day::latest_business_day;
 use core_domain::instrument::{Instrument, Market};
 pub use error::IbkrError;
+use http::IbkrHttpClient;
 use response::{ErrorResponse, HistoryResponse, StocksResponse};
 
 /// Client Portal Gateway のデフォルト URL
@@ -40,7 +44,7 @@ const INITIAL_BACKOFF_MS: u64 = 500;
 ///
 /// Debug は意図的に derive しない (session_token の漏洩防止)
 pub struct IbkrClient {
-    http: reqwest::Client,
+    http: IbkrHttpClient,
     base_url: String,
     session_token: Option<String>,
     exchange: String,
@@ -51,13 +55,10 @@ impl IbkrClient {
         base_url: Option<String>,
         session_token: Option<String>,
         exchange: Option<String>,
+        rate_limiter: RateLimiter,
+        max_wait: Duration,
     ) -> Result<Self, IbkrError> {
-        let http = reqwest::Client::builder()
-            // CP Gateway は自己署名証明書を使うことが多いため、運用上は信頼できる接続経路 (cluster 内) で
-            // のみ利用する前提とする。証明書検証を緩める設定はここでは入れない。
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| IbkrError::Network(e.to_string()))?;
+        let http = IbkrHttpClient::new(rate_limiter, max_wait)?;
 
         let mut base_url = base_url
             .filter(|s| !s.trim().is_empty())
@@ -85,10 +86,7 @@ impl IbkrClient {
     /// テスト用: 任意の base URL を指定して構築する
     #[cfg(test)]
     pub fn with_base_url(base_url: &str) -> Result<Self, IbkrError> {
-        let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .map_err(|e| IbkrError::Network(e.to_string()))?;
+        let http = IbkrHttpClient::without_rate_limiter(Duration::ZERO, Duration::from_secs(10))?;
 
         Ok(Self {
             http,
@@ -98,7 +96,7 @@ impl IbkrClient {
         })
     }
 
-    /// 指数バックオフ付き GET。429 と 5xx に対してのみリトライする。
+    /// 5xx 応答だけ指数バックオフで再試行する。
     async fn get_with_retry(&self, url: &Url) -> Result<reqwest::Response, IbkrError> {
         let mut last_error: Option<IbkrError> = None;
         let url_str = url.as_str();
@@ -116,22 +114,14 @@ impl IbkrClient {
                 tokio::time::sleep(backoff).await;
             }
 
-            let mut req = self.http.get(url.clone());
-            if let Some(token) = &self.session_token {
-                req = req.bearer_auth(token);
-            }
-
-            let response = req
-                .send()
-                .await
-                .map_err(|e| IbkrError::Network(e.to_string()))?;
+            let response = self.http.send(url, self.session_token.as_deref()).await?;
 
             let status = response.status().as_u16();
             match status {
                 200..=299 => return Ok(response),
                 429 => {
                     tracing::warn!(attempt, url = url_str, "IBKR レートリミット超過 (429)");
-                    last_error = Some(IbkrError::RateLimited { retries: attempt });
+                    return Err(IbkrError::RateLimited { retries: attempt });
                 }
                 500..=599 => {
                     let message = Self::extract_error_message(response).await;
