@@ -63,15 +63,44 @@ pub async fn receive_agent_task_notification(
 #[cfg(test)]
 mod tests {
     use crate::testing::create_test_server_with_state;
+    use core_application::strategy_task::STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER;
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
     use serde_json::json;
 
     use super::*;
+
+    async fn reconciliation_jobs(
+        db: &gateway_postgres::DatabaseHandle,
+    ) -> Vec<(String, String, String)> {
+        let statement = Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(
+                "SELECT tasks.identifier, jobs.payload::text AS payload, jobs.key \
+                 FROM graphile_worker._private_jobs AS jobs \
+                 JOIN graphile_worker._private_tasks AS tasks ON tasks.id = jobs.task_id \
+                 WHERE jobs.key = '{STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER}'"
+            ),
+        );
+        db.query_all_raw(statement)
+            .await
+            .expect("read reconciliation jobs")
+            .into_iter()
+            .map(|row| {
+                (
+                    row.try_get::<String>("", "identifier")
+                        .expect("job identifier"),
+                    row.try_get::<String>("", "payload").expect("job payload"),
+                    row.try_get::<String>("", "key").expect("job key"),
+                )
+            })
+            .collect()
+    }
 
     #[backend_test_macros::database_test]
     async fn valid_token_returns_204_and_enqueues_reconciliation(
         db: gateway_postgres::DatabaseHandle,
     ) {
-        let (state, server, queue) = create_test_server_with_state(db).await;
+        let (state, server) = create_test_server_with_state(db.clone()).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")
@@ -82,14 +111,21 @@ mod tests {
             .json(&json!({"id": "task-1", "status": {"state": "completed"}}))
             .await;
         assert_eq!(
-            (res.status_code(), queue.enqueue_count()),
-            (StatusCode::NO_CONTENT, 1),
+            (res.status_code(), reconciliation_jobs(&db).await),
+            (
+                StatusCode::NO_CONTENT,
+                vec![(
+                    STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string(),
+                    "{}".to_string(),
+                    STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER.to_string(),
+                )],
+            ),
         );
     }
 
     #[backend_test_macros::database_test]
     async fn mismatched_token_returns_401(db: gateway_postgres::DatabaseHandle) {
-        let (_state, server, queue) = create_test_server_with_state(db).await;
+        let (_state, server) = create_test_server_with_state(db.clone()).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")
@@ -97,22 +133,22 @@ mod tests {
             .json(&json!({"id": "task-1"}))
             .await;
         assert_eq!(
-            (res.status_code(), queue.enqueue_count()),
-            (StatusCode::UNAUTHORIZED, 0),
+            (res.status_code(), reconciliation_jobs(&db).await),
+            (StatusCode::UNAUTHORIZED, vec![]),
         );
     }
 
     #[backend_test_macros::database_test]
     async fn missing_token_header_returns_401(db: gateway_postgres::DatabaseHandle) {
-        let (_state, server, queue) = create_test_server_with_state(db).await;
+        let (_state, server) = create_test_server_with_state(db.clone()).await;
 
         let res = server
             .post("/api/agent-tasks/notifications")
             .json(&json!({"id": "task-1"}))
             .await;
         assert_eq!(
-            (res.status_code(), queue.enqueue_count()),
-            (StatusCode::UNAUTHORIZED, 0),
+            (res.status_code(), reconciliation_jobs(&db).await),
+            (StatusCode::UNAUTHORIZED, vec![]),
         );
     }
 }

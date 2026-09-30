@@ -16,6 +16,7 @@ pub use error::{
     GetTaskError, ListTasksError, ReconcileTaskError, ResumeTaskError, SubmitTaskError,
 };
 pub use reconcile_job_queue::{
+    STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
     SharedStrategyTaskReconcileJobQueue, StrategyTaskReconcileJobQueue,
     StrategyTaskReconcileJobQueueError,
 };

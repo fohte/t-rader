@@ -12,33 +12,9 @@ use crate::data_provider::{DailyBarSource, DailyBarSourceError, DateRange};
 use crate::kata_exec::SharedKataExecutor;
 use crate::models::{Bar, Instrument};
 use crate::{AppState, create_router};
-use core_application::strategy_task::{
-    SharedStrategyTaskReconcileJobQueue, StrategyTaskReconcileJobQueue,
-    StrategyTaskReconcileJobQueueError,
-};
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
 use gateway_postgres::entities::{note, note_version, stock, strategy, strategy_task, trigger};
-
-#[derive(Default)]
-pub struct FakeStrategyTaskReconcileJobQueue {
-    enqueue_count: std::sync::atomic::AtomicUsize,
-}
-
-impl FakeStrategyTaskReconcileJobQueue {
-    pub fn enqueue_count(&self) -> usize {
-        self.enqueue_count.load(std::sync::atomic::Ordering::SeqCst)
-    }
-}
-
-#[async_trait::async_trait]
-impl StrategyTaskReconcileJobQueue for FakeStrategyTaskReconcileJobQueue {
-    async fn enqueue_reconciliation(&self) -> Result<(), StrategyTaskReconcileJobQueueError> {
-        self.enqueue_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok(())
-    }
-}
 
 /// テスト全体で共通の webhook トークン。`create_test_server_with_state` でこの値を
 /// 参照できる。
@@ -377,22 +353,19 @@ pub async fn create_test_server_with_db_and_agent_client(
     (db, server)
 }
 
-/// `AppState` 全体と `TestServer` のペアを返す。webhook token / queue への直接アクセスが
-/// 必要なテスト (webhook 受信のような) 向け。
-pub async fn create_test_server_with_state(
-    db: DatabaseHandle,
-) -> (AppState, TestServer, Arc<FakeStrategyTaskReconcileJobQueue>) {
-    let mut state = base_state(db);
-    let queue = Arc::new(FakeStrategyTaskReconcileJobQueue::default());
-    let shared_queue: SharedStrategyTaskReconcileJobQueue = queue.clone();
-    state.use_cases =
-        crate::services::use_cases::build_use_cases_with_strategy_task_reconcile_job_queue(
-            state.db.clone(),
-            shared_queue,
-        );
+/// `AppState` 全体と `TestServer` のペアを返す。webhook token を参照するテスト向け。
+pub async fn create_test_server_with_state(db: DatabaseHandle) -> (AppState, TestServer) {
+    let pool = gateway_postgres::test_support::create_test_pool().await;
+    let _worker = graphile_worker::WorkerOptions::default()
+        .pg_pool(pool)
+        .schema("graphile_worker")
+        .init()
+        .await
+        .expect("initialize Graphile Worker schema");
+    let state = base_state(db);
     let router = create_router(state.clone());
     let server = TestServer::new(router).expect("failed to create test server");
-    (state, server, queue)
+    (state, server)
 }
 
 /// テスト用のモックデータプロバイダー

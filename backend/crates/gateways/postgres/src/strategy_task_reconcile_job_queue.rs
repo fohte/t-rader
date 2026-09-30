@@ -1,4 +1,5 @@
 use core_application::strategy_task::{
+    STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER, STRATEGY_TASK_RECONCILE_QUEUE_NAME,
     StrategyTaskReconcileJobQueue, StrategyTaskReconcileJobQueueError,
 };
 use sea_orm::ConnectionTrait;
@@ -19,14 +20,15 @@ impl PostgresStrategyTaskReconcileJobQueue {
 impl StrategyTaskReconcileJobQueue for PostgresStrategyTaskReconcileJobQueue {
     async fn enqueue_reconciliation(&self) -> Result<(), StrategyTaskReconcileJobQueueError> {
         self.db
-            .execute_unprepared(
+            .execute_unprepared(&format!(
                 "SELECT graphile_worker.add_job(\
-                    'strategy_task_reconcile',\
-                    '{}'::json,\
+                    '{STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER}',\
+                    '{{}}'::json,\
+                    queue_name := '{STRATEGY_TASK_RECONCILE_QUEUE_NAME}',\
                     max_attempts := 3,\
-                    job_key := 'strategy_task_reconcile'\
-                )",
-            )
+                    job_key := '{STRATEGY_TASK_RECONCILE_JOB_IDENTIFIER}'\
+                )"
+            ))
             .await
             .map_err(|error| StrategyTaskReconcileJobQueueError::new(error.to_string()))?;
 

@@ -220,9 +220,13 @@ async fn main() -> Result<(), AppError> {
     };
 
     // t-rader-agent 内部 API client。戦略タスクの投入 / 状態照会を担う。
-    let agent_task_client: SharedAgentTaskClient = match AgentTaskClientConfig::from_env()
-        .map_err(|e| AppError::Config(e.to_string()))?
-    {
+    let agent_task_client_config =
+        AgentTaskClientConfig::from_env().map_err(|e| AppError::Config(e.to_string()))?;
+    let strategy_task_reconcile_enabled = matches!(
+        &agent_task_client_config,
+        AgentTaskClientConfigSource::Configured(_)
+    );
+    let agent_task_client: SharedAgentTaskClient = match agent_task_client_config {
         AgentTaskClientConfigSource::Configured(config) => {
             let client = HttpAgentTaskClient::new(config).map_err(|e| {
                 AppError::Config(format!("failed to initialize agent task client: {e}"))
@@ -384,6 +388,7 @@ async fn main() -> Result<(), AppError> {
         strategy_tasks: use_cases.strategy_tasks(),
         triggers: use_cases.triggers(),
         agent_task_client: agent_task_client.clone(),
+        strategy_task_reconcile_enabled,
     };
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let signal_tx = shutdown_tx.clone();

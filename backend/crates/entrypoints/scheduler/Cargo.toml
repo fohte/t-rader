@@ -18,7 +18,9 @@ async-trait = { workspace = true }
 core-application = { workspace = true, features = ["test-support"] }
 core-domain = { workspace = true }
 rstest = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+uuid = { workspace = true }
 
 [lints]
 workspace = true

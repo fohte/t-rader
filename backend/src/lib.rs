@@ -1,7 +1,5 @@
 pub mod agent_client;
 pub mod cli;
-#[cfg(test)]
-pub(crate) mod concurrent;
 pub mod data_provider;
 pub mod error;
 pub mod extractors;

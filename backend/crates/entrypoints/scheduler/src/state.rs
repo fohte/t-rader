@@ -21,6 +21,7 @@ pub struct SchedulerDependencies {
     pub strategy_tasks: StrategyTaskUseCases,
     pub triggers: TriggerUseCases,
     pub agent_task_client: SharedAgentTaskClient,
+    pub strategy_task_reconcile_enabled: bool,
 }
 
 #[derive(Clone)]

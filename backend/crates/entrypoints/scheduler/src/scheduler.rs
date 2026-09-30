@@ -1,6 +1,7 @@
 use std::future::Future;
 
 use chrono::Weekday;
+use core_application::strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME;
 use graphile_worker::{
     Crontab, CrontabFill, CrontabTimer, CrontabTimerError, TaskHandler, Worker, WorkerOptions,
 };
@@ -34,6 +35,7 @@ impl Scheduler {
         let crontabs = build_crontabs(
             dependencies.fred_source.is_some(),
             dependencies.short_selling_source.is_some() && dependencies.margin_source.is_some(),
+            dependencies.strategy_task_reconcile_enabled,
         )
         .map_err(|error| error.to_string())?;
         let state = SchedulerState { dependencies };
@@ -69,6 +71,7 @@ impl Scheduler {
 fn build_crontabs(
     include_fred: bool,
     include_jquants: bool,
+    include_strategy_task_reconcile: bool,
 ) -> Result<Vec<Crontab>, CrontabTimerError> {
     let mut crontabs = Vec::new();
     if include_fred {
@@ -92,10 +95,16 @@ fn build_crontabs(
         14,
         0,
     )?);
-    crontabs.push(every_minute_cron::<StrategyTaskReconcile>(
-        "strategy_task_reconcile",
+    if include_strategy_task_reconcile {
+        crontabs.push(every_minute_cron::<StrategyTaskReconcile>(
+            "strategy_task_reconcile",
+            Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME),
+        ));
+    }
+    crontabs.push(every_minute_cron::<TriggerEvaluation>(
+        "trigger_evaluation",
+        None,
     ));
-    crontabs.push(every_minute_cron::<TriggerEvaluation>("trigger_evaluation"));
     Ok(crontabs)
 }
 
@@ -141,8 +150,8 @@ fn weekly_cron<T: TaskHandler>(
     ))
 }
 
-fn every_minute_cron<T: TaskHandler>(id: &str) -> Crontab {
-    configure_cron::<T>(CrontabTimer::every_minute(), id, None, None)
+fn every_minute_cron<T: TaskHandler>(id: &str, queue: Option<&str>) -> Crontab {
+    configure_cron::<T>(CrontabTimer::every_minute(), id, None, queue)
 }
 
 #[cfg(test)]
@@ -160,6 +169,7 @@ mod tests {
     };
 
     use super::{JQUANTS_QUEUE, build_crontabs, configure_cron, every_minute_cron};
+    use core_application::strategy_task::STRATEGY_TASK_RECONCILE_QUEUE_NAME;
 
     fn expected_cron<T: TaskHandler>(
         timer: Option<CrontabTimer>,
@@ -205,18 +215,22 @@ mod tests {
             ),
             Some(every_minute_cron::<StrategyTaskReconcile>(
                 "strategy_task_reconcile",
+                Some(STRATEGY_TASK_RECONCILE_QUEUE_NAME),
             )),
-            Some(every_minute_cron::<TriggerEvaluation>("trigger_evaluation")),
+            Some(every_minute_cron::<TriggerEvaluation>(
+                "trigger_evaluation",
+                None,
+            )),
         ]
         .into_iter()
         .collect::<Option<Vec<_>>>();
 
-        assert_eq!(build_crontabs(true, true).ok(), expected);
+        assert_eq!(build_crontabs(true, true, true).ok(), expected);
     }
 
     #[test]
     fn configures_missed_tick_fill_retry_limit_and_jquants_queue() {
-        let actual = build_crontabs(true, true).ok().map(|crontabs| {
+        let actual = build_crontabs(true, true, true).ok().map(|crontabs| {
             crontabs
                 .into_iter()
                 .map(|crontab| {
@@ -267,7 +281,7 @@ mod tests {
                     Some("strategy_task_reconcile".to_string()),
                     None,
                     Some(3),
-                    None,
+                    Some("strategy_task_reconcile".to_string()),
                 ),
                 (Some("trigger_evaluation".to_string()), None, Some(3), None,),
             ]),
@@ -275,22 +289,28 @@ mod tests {
     }
 
     #[rstest]
-    #[case::neither_source(false, false, vec!["prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
-    #[case::fred_only(true, false, vec!["fred_ingest", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
-    #[case::jquants_only(false, true, vec!["short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::neither_source(false, false, true, vec!["prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::fred_only(true, false, true, vec!["fred_ingest", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::jquants_only(false, true, true, vec!["short_ratio_ingest", "short_sale_report_ingest", "margin_ingest", "prediction_grading", "strategy_task_reconcile", "trigger_evaluation"])]
+    #[case::agent_client_disabled(false, false, false, vec!["prediction_grading", "trigger_evaluation"])]
     fn schedules_only_configured_sources(
         #[case] include_fred: bool,
         #[case] include_jquants: bool,
+        #[case] include_strategy_task_reconcile: bool,
         #[case] expected_ids: Vec<&str>,
     ) {
-        let actual_ids = build_crontabs(include_fred, include_jquants)
-            .ok()
-            .map(|crontabs| {
-                crontabs
-                    .into_iter()
-                    .filter_map(|crontab| crontab.options.id)
-                    .collect::<Vec<_>>()
-            });
+        let actual_ids = build_crontabs(
+            include_fred,
+            include_jquants,
+            include_strategy_task_reconcile,
+        )
+        .ok()
+        .map(|crontabs| {
+            crontabs
+                .into_iter()
+                .filter_map(|crontab| crontab.options.id)
+                .collect::<Vec<_>>()
+        });
         let expected_ids = Some(expected_ids.into_iter().map(str::to_string).collect());
 
         assert_eq!(actual_ids, expected_ids);
