@@ -157,7 +157,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn create_strategy_trigger_inserts_cron_trigger(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
-        crate::services::agent_config::create(&db, "synthetic-purpose".to_string())
+        crate::testing::agent_config::create(&db, "synthetic-purpose".to_string())
             .await
             .expect("insert test agent_config");
         let server = build_server(db.clone(), Arc::new(FakeAgentTaskClient::new()));
@@ -307,7 +307,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn update_strategy_trigger_applies_fields(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "s").await;
-        crate::services::agent_config::create(&db, "synthetic-purpose".to_string())
+        crate::testing::agent_config::create(&db, "synthetic-purpose".to_string())
             .await
             .expect("insert test agent_config");
         let trigger_id = insert_test_cron_trigger(
