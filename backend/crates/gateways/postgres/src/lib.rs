@@ -12,7 +12,9 @@ mod annotation;
 mod change_history;
 mod comment;
 mod custom_indicator;
+mod earnings_schedule;
 pub mod entities;
+mod financial_summary;
 mod indicator_observation;
 mod margin;
 mod news;
@@ -33,12 +35,15 @@ mod trade;
 mod transaction;
 mod trigger;
 mod unit_of_work;
+mod valuation;
 
 pub use account_risk_policy::PostgresAccountRiskPolicyRepository;
 pub use annotation::PostgresAnnotationRepository;
 pub use change_history::PostgresChangeHistory;
 pub use comment::PostgresCommentRepository;
 pub use custom_indicator::PostgresCustomIndicatorRepository;
+pub use earnings_schedule::PostgresEarningsScheduleRepository;
+pub use financial_summary::PostgresFinancialSummaryRepository;
 pub use indicator_observation::PostgresIndicatorObservationRepository;
 pub use margin::PostgresMarginRepository;
 pub use news::PostgresNewsItemRepository;
@@ -56,6 +61,7 @@ pub use strategy_task::PostgresStrategyTaskRepository;
 pub use trade::PostgresTradeRepository;
 pub use trigger::PostgresTriggerRepository;
 pub use unit_of_work::PostgresUnitOfWork;
+pub use valuation::PostgresValuationRepository;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

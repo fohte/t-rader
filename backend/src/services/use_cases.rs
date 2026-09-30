@@ -11,6 +11,8 @@ mod account_risk_policy;
 mod annotation;
 mod comment;
 mod custom_indicator;
+mod earnings_schedule;
+mod financial_summary;
 mod indicator_observation;
 mod margin;
 mod news;
@@ -24,6 +26,7 @@ mod strategy;
 mod strategy_task;
 mod trade;
 mod trigger;
+mod valuation;
 
 #[derive(Clone)]
 pub struct UseCases {
