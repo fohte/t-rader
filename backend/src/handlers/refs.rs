@@ -1,4 +1,4 @@
-//! 一級参照型 (stock / indicator / sector / theme) の検索・詳細・リンク解決
+//! 一級参照型 (stock / indicator / group) の検索・詳細・リンク解決
 
 use axum::Json;
 use axum::extract::State;
@@ -10,9 +10,7 @@ use utoipa::IntoParams;
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
-use crate::models::{
-    IndicatorResponse, RefResolution, SectorResponse, StockResponse, ThemeResponse,
-};
+use crate::models::{IndicatorResponse, RefResolution, StockResponse};
 use crate::services::note_refs::ALLOWED_REF_KINDS;
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -130,122 +128,16 @@ pub async fn get_indicator(
     Ok(Json(IndicatorResponse::from(m)))
 }
 
-/// sector 検索
-#[utoipa::path(
-    get,
-    path = "/api/refs/sectors",
-    tag = "refs",
-    params(SearchQuery),
-    responses(
-        (status = 200, body = Vec<SectorResponse>),
-        (status = 500, body = ErrorResponse),
-    )
-)]
-pub async fn list_sectors(
-    State(state): State<AppState>,
-    JsonQuery(params): JsonQuery<SearchQuery>,
-) -> Result<Json<Vec<SectorResponse>>, AppError> {
-    let items = state
-        .use_cases
-        .refs()
-        .list_sectors(params.q.as_deref())
-        .await
-        .map_err(map_ref_error)?
-        .into_iter()
-        .map(SectorResponse::from)
-        .collect();
-    Ok(Json(items))
-}
-
-/// sector 詳細
-#[utoipa::path(
-    get,
-    path = "/api/refs/sectors/{id}",
-    tag = "refs",
-    params(("id" = String, Path, description = "セクター ID")),
-    responses(
-        (status = 200, body = SectorResponse),
-        (status = 404, body = ErrorResponse),
-        (status = 500, body = ErrorResponse),
-    )
-)]
-pub async fn get_sector(
-    State(state): State<AppState>,
-    JsonPath(id): JsonPath<String>,
-) -> Result<Json<SectorResponse>, AppError> {
-    let m = state
-        .use_cases
-        .refs()
-        .get_sector(&id)
-        .await
-        .map_err(map_ref_error)?
-        .ok_or_else(|| AppError::NotFound(format!("sector {id} not found")))?;
-    Ok(Json(SectorResponse::from(m)))
-}
-
-/// theme 検索
-#[utoipa::path(
-    get,
-    path = "/api/refs/themes",
-    tag = "refs",
-    params(SearchQuery),
-    responses(
-        (status = 200, body = Vec<ThemeResponse>),
-        (status = 500, body = ErrorResponse),
-    )
-)]
-pub async fn list_themes(
-    State(state): State<AppState>,
-    JsonQuery(params): JsonQuery<SearchQuery>,
-) -> Result<Json<Vec<ThemeResponse>>, AppError> {
-    let items = state
-        .use_cases
-        .refs()
-        .list_themes(params.q.as_deref())
-        .await
-        .map_err(map_ref_error)?
-        .into_iter()
-        .map(ThemeResponse::from)
-        .collect();
-    Ok(Json(items))
-}
-
-/// theme 詳細
-#[utoipa::path(
-    get,
-    path = "/api/refs/themes/{id}",
-    tag = "refs",
-    params(("id" = String, Path, description = "テーマ ID")),
-    responses(
-        (status = 200, body = ThemeResponse),
-        (status = 404, body = ErrorResponse),
-        (status = 500, body = ErrorResponse),
-    )
-)]
-pub async fn get_theme(
-    State(state): State<AppState>,
-    JsonPath(id): JsonPath<String>,
-) -> Result<Json<ThemeResponse>, AppError> {
-    let m = state
-        .use_cases
-        .refs()
-        .get_theme(&id)
-        .await
-        .map_err(map_ref_error)?
-        .ok_or_else(|| AppError::NotFound(format!("theme {id} not found")))?;
-    Ok(Json(ThemeResponse::from(m)))
-}
-
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ResolveQuery {
-    /// `[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定
+    /// `[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定。group の id は `axis-key/group-key`。
     pub link: String,
 }
 
 /// `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
 ///
-/// `link=stock:7203,indicator:USDJPY` のようにカンマ区切りで複数渡せる。
+/// `link=stock:demo-code,indicator:demo-index,group:demo-axis/demo-group` のようにカンマ区切りで複数渡せる。
 /// id が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の
 /// id と name を返す (レスポンスの id が入力と異なることがある)。
 /// どちらにも一致しないものは name = null、id は入力のまま返す。
@@ -319,9 +211,13 @@ fn map_ref_error(error: RefUseCaseError) -> AppError {
 
 #[cfg(test)]
 mod tests {
+    use sea_orm::ActiveModelTrait;
+    use sea_orm::ActiveValue::Set;
     use serde_json::{Value, json};
+    use uuid::Uuid;
 
     use crate::testing::{create_test_server_with_db, insert_test_stock};
+    use gateway_postgres::entities::{group_axis, stock_group};
 
     fn normalize_stock_timestamps(stocks: &mut Value) {
         for stock in stocks.as_array_mut().expect("stock list") {
@@ -362,5 +258,58 @@ mod tests {
         let response = server.get("/api/refs/stocks/UNKNOWN").await;
 
         response.assert_status(axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn resolve_group_link_returns_its_name(db: gateway_postgres::DatabaseHandle) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let axis_id = Uuid::new_v4();
+        group_axis::ActiveModel {
+            id: Set(axis_id),
+            key: Set("demo-axis".into()),
+            name: Set("Sample Axis".into()),
+            description: Set("Sample axis for tests".into()),
+            sync_source: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert group axis");
+        stock_group::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            axis_id: Set(axis_id),
+            key: Set("demo-group".into()),
+            name: Set("Sample Group".into()),
+            description: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert stock group");
+
+        let response = server
+            .get("/api/refs/resolve?link=group%3Ademo-axis%2Fdemo-group")
+            .await;
+
+        assert_eq!(
+            (response.status_code(), response.json::<Value>()),
+            (
+                axum::http::StatusCode::OK,
+                json!([{
+                    "kind": "group",
+                    "id": "demo-axis/demo-group",
+                    "name": "Sample Group",
+                }]),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn resolve_group_link_rejects_a_missing_axis_key(db: gateway_postgres::DatabaseHandle) {
+        let (_db, server) = create_test_server_with_db(db).await;
+
+        let response = server
+            .get("/api/refs/resolve?link=group%3Ademo-group")
+            .await;
+
+        assert_eq!(response.status_code(), axum::http::StatusCode::BAD_REQUEST,);
     }
 }

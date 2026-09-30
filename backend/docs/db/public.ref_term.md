@@ -12,11 +12,11 @@
 
 ## Constraints
 
-| Name                    | Type        | Definition                                                                                                                                                              |
-| ----------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ref_term_origin_check   | CHECK       | CHECK (((origin)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                                                                  |
-| ref_term_ref_kind_check | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'sector'::character varying, 'theme'::character varying])::text[]))) |
-| ref_term_pkey           | PRIMARY KEY | PRIMARY KEY (ref_kind, ref_id, term)                                                                                                                                    |
+| Name                    | Type        | Definition                                                                                                                                 |
+| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| ref_term_origin_check   | CHECK       | CHECK (((origin)::text = ANY ((ARRAY['human'::character varying, 'llm'::character varying])::text[])))                                     |
+| ref_term_ref_kind_check | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'group'::character varying])::text[]))) |
+| ref_term_pkey           | PRIMARY KEY | PRIMARY KEY (ref_kind, ref_id, term)                                                                                                       |
 
 ## Indexes
 

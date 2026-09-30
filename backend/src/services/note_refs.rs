@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn test_collect_note_refs_accepts_reference_annotation_graph_and_array_literal() {
         let body = concat!(
-            "[[stock:demo-code]] [[indicator:demo-index]] [[sector:demo-sector]] [[theme:demo-theme]] ",
+            "[[stock:demo-code]] [[indicator:demo-index]] [[group:demo-axis/demo-group]] [[sector:demo-sector]] [[theme:demo-theme]] ",
             "[[anno:a-1]]\n\n [[graph:g1]] \n\n[[1, 2], [3, 4]]",
         );
         assert_eq!(
@@ -180,10 +180,24 @@ mod tests {
             Ok(vec![
                 ("stock".to_string(), "demo-code".to_string()),
                 ("indicator".to_string(), "demo-index".to_string()),
-                ("sector".to_string(), "demo-sector".to_string()),
-                ("theme".to_string(), "demo-theme".to_string()),
+                ("group".to_string(), "demo-axis/demo-group".to_string()),
                 ("stock".to_string(), "demo-code".to_string()),
             ]),
+        );
+    }
+
+    #[test]
+    fn test_collect_note_refs_requires_both_group_keys() {
+        let errors = collect_note_refs("[[group:demo-group]]", &[])
+            .expect_err("group links need both the axis key and group key");
+
+        assert_eq!(
+            format_note_token_errors(&errors),
+            concat!(
+                "ノートのトークンに問題があります:\n",
+                "- 本文のトークン \"[[group:demo-group]]\": group ID は axis-key/group-key 形式で指定してください\n",
+                "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
+            ),
         );
     }
 
@@ -240,8 +254,26 @@ mod tests {
                 "- 本文のトークン \"[[graph:1bad]]\": graph ID は英字で始まり、英数字・`_`・`-` のみ使用できます\n",
                 "- 本文のトークン \"[[graph:missing]]\": 対応する graphs[].id がありません\n",
                 "- 本文のトークン \"[[graph:g1]]\": 図トークンは空行区切りブロック内で単独にしてください\n",
-                "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます\n",
-                "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+                "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / group の参照だけを使用できます\n",
+                "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
+            ),
+        );
+    }
+
+    #[test]
+    fn test_collect_note_refs_rejects_removed_kind_in_graph_nodes() {
+        let errors = collect_note_refs(
+            "[[theme:demo-topic]]",
+            &[graph("g1", Some("theme:demo-topic"))],
+        )
+        .expect_err("removed reference kinds are not allowed in graph nodes");
+
+        assert_eq!(
+            format_note_token_errors(&errors),
+            concat!(
+                "ノートのトークンに問題があります:\n",
+                "- graphs[0].nodes[0].ref の値 \"[[theme:demo-topic]]\": 図ノードでは stock / indicator / group の参照だけを使用できます\n",
+                "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
             ),
         );
     }
@@ -317,7 +349,7 @@ mod tests {
         sync_note_refs(
             &db,
             note_id,
-            "body mentions [[stock:demo-code]] and [[theme:demo-theme]]",
+            "body mentions [[stock:demo-code]] and [[group:demo-axis/demo-group]] and [[theme:demo-topic]]",
             &graphs_json,
         )
         .await
@@ -335,8 +367,8 @@ mod tests {
                 .map(|reference| (reference.ref_kind, reference.ref_id))
                 .collect::<Vec<_>>(),
             vec![
+                ("group".to_string(), "demo-axis/demo-group".to_string()),
                 ("stock".to_string(), "demo-code".to_string()),
-                ("theme".to_string(), "demo-theme".to_string()),
             ],
         );
     }

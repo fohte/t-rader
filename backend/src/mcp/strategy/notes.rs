@@ -14,6 +14,7 @@ use core_application::note::{NoteUseCaseError, NoteWriteCommand};
 use core_application::strategy_scope::StrategyScope;
 use core_domain::note_reference::{
     ALLOWED_REF_KINDS, BodyTokenPolicy, collect_note_refs_with_policy, format_note_token_errors,
+    is_valid_group_ref_id,
 };
 use gateway_postgres::entities::{note, note_ref, note_version};
 use rmcp::ErrorData as McpError;
@@ -57,6 +58,11 @@ fn parse_note_ref(value: &str) -> Result<(String, String), McpError> {
     let id = id.trim();
     if id.is_empty() {
         return Err(invalid_params("ref id must not be empty"));
+    }
+    if kind == "group" && !is_valid_group_ref_id(id) {
+        return Err(invalid_params(
+            "group ref id must use axis-key/group-key format",
+        ));
     }
     Ok((kind.to_string(), id.to_string()))
 }
@@ -551,14 +557,14 @@ mod tests {
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
     const INVALID_NOTE_TOKEN_ERROR: &str = concat!(
         "ノートのトークンに問題があります:\n",
         "- 本文のトークン \"[[bogus:one]]\": 未知の prefix `bogus` です\n",
         "- 本文のトークン \"[[bare-demo]]\": kind:id の形式で prefix を指定してください\n",
-        "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます\n",
-        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。",
+        "- graphs[0].nodes[0].ref の値 \"[[foo:bar]]\": 未知の prefix `foo` です; 図ノードでは stock / indicator / group の参照だけを使用できます\n",
+        "許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。",
     );
 
     fn test_node(id: &str) -> GraphNode {
@@ -639,7 +645,7 @@ mod tests {
             .expect("write current note");
 
         let mut pending_graph = sample_graph("g1");
-        pending_graph.nodes[0].r#ref = Some("sector:demo-sector".into());
+        pending_graph.nodes[0].r#ref = Some("group:graph-axis/graph-group".into());
         let pending = server
             .write_note_inner(
                 strategy_id,
@@ -647,7 +653,7 @@ mod tests {
                 WriteNoteParams {
                     note_id: None,
                     title: Some("pending first".into()),
-                    body_md: Some("[[theme:demo-theme]]".into()),
+                    body_md: Some("[[theme:demo-topic]] [[group:body-axis/body-group]]".into()),
                     kind: Some(Some("sample-kind".into())),
                     frontmatter_json: None,
                     change_reason: None,
@@ -857,7 +863,7 @@ mod tests {
         let server = build_server(db.clone());
 
         let mut graph = sample_graph("g1");
-        graph.nodes[0].r#ref = Some("stock:7203".into());
+        graph.nodes[0].r#ref = Some("stock:demo-code".into());
 
         let written = server
             .write_note_inner(
@@ -866,7 +872,9 @@ mod tests {
                 WriteNoteParams {
                     note_id: None,
                     title: Some("note with refs".into()),
-                    body_md: Some("mentions [[theme:weak-jpy]]".into()),
+                    body_md: Some(
+                        "mentions [[theme:demo-topic]] and [[group:demo-axis/demo-group]]".into(),
+                    ),
                     kind: None,
                     frontmatter_json: None,
                     change_reason: None,
@@ -879,8 +887,8 @@ mod tests {
         assert_eq!(
             note_refs_of(&db, written.note_id).await,
             vec![
-                ("stock".to_string(), "7203".to_string()),
-                ("theme".to_string(), "weak-jpy".to_string()),
+                ("group".to_string(), "demo-axis/demo-group".to_string()),
+                ("stock".to_string(), "demo-code".to_string()),
             ],
         );
     }
@@ -897,7 +905,7 @@ mod tests {
                 WriteNoteParams {
                     note_id: None,
                     title: Some("note".into()),
-                    body_md: Some("mentions [[stock:7203]]".into()),
+                    body_md: Some("mentions [[stock:demo-code]]".into()),
                     kind: None,
                     frontmatter_json: None,
                     change_reason: None,
@@ -908,7 +916,7 @@ mod tests {
             .expect("create");
         assert_eq!(
             note_refs_of(&db, created.note_id).await,
-            vec![("stock".to_string(), "7203".to_string())],
+            vec![("stock".to_string(), "demo-code".to_string())],
         );
 
         server
@@ -918,7 +926,10 @@ mod tests {
                 WriteNoteParams {
                     note_id: Some(created.note_id),
                     title: None,
-                    body_md: Some("now mentions [[indicator:USDJPY]]".into()),
+                    body_md: Some(
+                        "now mentions [[indicator:demo-indicator]] and [[theme:demo-topic]] and [[sector:demo-industry]]"
+                            .into(),
+                    ),
                     kind: None,
                     frontmatter_json: None,
                     change_reason: None,
@@ -930,7 +941,7 @@ mod tests {
 
         assert_eq!(
             note_refs_of(&db, created.note_id).await,
-            vec![("indicator".to_string(), "USDJPY".to_string())],
+            vec![("indicator".to_string(), "demo-indicator".to_string())],
         );
     }
 
@@ -1212,7 +1223,12 @@ mod tests {
         let strategy_id = insert_strategy(&db, "a").await;
         let server = build_server(db);
         let mut errors = Vec::new();
-        for reference in ["demo-code", "unknown-kind:demo-id", "stock:"] {
+        for reference in [
+            "demo-code",
+            "unknown-kind:demo-id",
+            "stock:",
+            "group:demo-group",
+        ] {
             let error = server
                 .list_notes_inner(
                     strategy_id,
@@ -1239,6 +1255,10 @@ mod tests {
                 (
                     rmcp::model::ErrorCode::INVALID_PARAMS,
                     "ref id must not be empty".to_string(),
+                ),
+                (
+                    rmcp::model::ErrorCode::INVALID_PARAMS,
+                    "group ref id must use axis-key/group-key format".to_string(),
                 ),
             ],
         );
@@ -1396,7 +1416,7 @@ mod tests {
             .list_notes_inner(
                 fixture.strategy_id,
                 ListNotesParams {
-                    r#ref: Some("theme:demo-theme".into()),
+                    r#ref: Some("group:body-axis/body-group".into()),
                     include_pending: Some(true),
                     ..Default::default()
                 },
@@ -1428,7 +1448,7 @@ mod tests {
             .list_notes_inner(
                 fixture.strategy_id,
                 ListNotesParams {
-                    r#ref: Some("sector:demo-sector".into()),
+                    r#ref: Some("group:graph-axis/graph-group".into()),
                     include_pending: Some(true),
                     ..Default::default()
                 },

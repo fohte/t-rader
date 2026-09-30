@@ -765,46 +765,12 @@ export interface paths {
     }
     /**
      * `[[kind:id]]` の参照解決。リンクテキストから表示名を引く。
-     * @description `link=stock:7203,indicator:USDJPY` のようにカンマ区切りで複数渡せる。
+     * @description `link=stock:demo-code,indicator:demo-index,group:demo-axis/demo-group` のようにカンマ区切りで複数渡せる。
      *     id が master と一致しない場合、`ref_term` の別名が一意に一致すれば正規の
      *     id と name を返す (レスポンスの id が入力と異なることがある)。
      *     どちらにも一致しないものは name = null、id は入力のまま返す。
      */
     get: operations['resolve_refs']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/refs/sectors': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** sector 検索 */
-    get: operations['list_sectors']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/refs/sectors/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** sector 詳細 */
-    get: operations['get_sector']
     put?: never
     post?: never
     delete?: never
@@ -839,40 +805,6 @@ export interface paths {
     }
     /** stock 詳細 */
     get: operations['get_stock']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/refs/themes': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** theme 検索 */
-    get: operations['list_themes']
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  '/api/refs/themes/{id}': {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** theme 詳細 */
-    get: operations['get_theme']
     put?: never
     post?: never
     delete?: never
@@ -1545,7 +1477,7 @@ export interface components {
       label: string
       /** @description grouping 先ノードの id */
       parent?: string | null
-      /** @description 一級参照型トークン (例: "stock:7203" / "theme:weak-jpy") */
+      /** @description 一級参照型トークン (例: "stock:demo-code" / "group:demo-axis/demo-group") */
       ref?: string | null
       /**
        * Format: double
@@ -1779,7 +1711,7 @@ export interface components {
     RefResolution: {
       /** @description 別名で解決できた場合、入力ではなく正規の id */
       id: string
-      /** @description "stock" | "indicator" | "sector" | "theme" */
+      /** @description "stock" | "indicator" | "group" */
       kind: string
       /** @description 一致しなかった場合は None */
       name?: string | null
@@ -1846,10 +1778,6 @@ export interface components {
       side: string
       stock_name: string
       symbol: string
-    }
-    Sector: {
-      id: string
-      name: string
     }
     SkillBody: {
       content: string
@@ -1957,11 +1885,6 @@ export interface components {
       task_id: string
       /** Format: date-time */
       updated_at: string
-    }
-    Theme: {
-      description?: string | null
-      id: string
-      name: string
     }
     Trade: {
       /** Format: date-time */
@@ -5192,7 +5115,7 @@ export interface operations {
   resolve_refs: {
     parameters: {
       query: {
-        /** @description `[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定 */
+        /** @description `[[kind:id]]` 形式のリンクテキスト、またはカンマ区切りで複数指定。group の id は `axis-key/group-key`。 */
         link: string
       }
       header?: never
@@ -5210,74 +5133,6 @@ export interface operations {
         }
       }
       400: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  list_sectors: {
-    parameters: {
-      query?: {
-        /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
-        q?: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Sector'][]
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  get_sector: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description セクター ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Sector']
-        }
-      }
-      404: {
         headers: {
           [name: string]: unknown
         }
@@ -5343,74 +5198,6 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['Stock']
-        }
-      }
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  list_themes: {
-    parameters: {
-      query?: {
-        /** @description 部分一致クエリ。空のときは先頭から最大 50 件返す */
-        q?: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Theme'][]
-        }
-      }
-      500: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['ErrorResponse']
-        }
-      }
-    }
-  }
-  get_theme: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        /** @description テーマ ID */
-        id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['Theme']
         }
       }
       404: {

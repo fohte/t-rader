@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use super::note_graph::GraphDef;
 
-pub const ALLOWED_REF_KINDS: [&str; 4] = ["stock", "indicator", "sector", "theme"];
+pub const ALLOWED_REF_KINDS: [&str; 3] = ["stock", "indicator", "group"];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum NoteTokenValidationError {
@@ -213,6 +213,7 @@ fn range_containing(ranges: &[Range<usize>], position: usize) -> Option<&Range<u
 
 enum TokenClassification<'a> {
     Ref(&'a str, String),
+    RemovedRef,
     Annotation,
     Graph(String),
     Note(NoteLinkToken),
@@ -226,10 +227,22 @@ fn classify_token(inner: &str) -> TokenClassification<'_> {
         );
     };
 
+    if matches!(kind, "sector" | "theme") {
+        if id.trim().is_empty() {
+            return TokenClassification::Invalid("参照 ID を空にできません".to_string());
+        }
+        return TokenClassification::RemovedRef;
+    }
+
     if ALLOWED_REF_KINDS.contains(&kind) {
         let id = id.trim();
         if id.is_empty() {
             return TokenClassification::Invalid("参照 ID を空にできません".to_string());
+        }
+        if kind == "group" && !is_valid_group_ref_id(id) {
+            return TokenClassification::Invalid(
+                "group ID は axis-key/group-key 形式で指定してください".to_string(),
+            );
         }
         return TokenClassification::Ref(kind, id.to_string());
     }
@@ -311,6 +324,13 @@ fn is_valid_token_id(id: &str, alphabetic_start: bool) -> bool {
     valid_first && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+pub fn is_valid_group_ref_id(id: &str) -> bool {
+    let Some((axis_key, group_key)) = id.split_once('/') else {
+        return false;
+    };
+    !axis_key.is_empty() && !group_key.is_empty() && !group_key.contains('/')
+}
+
 pub fn collect_note_refs(
     body: &str,
     graphs: &[GraphDef],
@@ -330,6 +350,7 @@ pub fn collect_note_refs_with_policy(
         let token_text = &body[token.start..token.end];
         match classify_token(token.inner) {
             TokenClassification::Ref(kind, id) => refs.push((kind.to_string(), id)),
+            TokenClassification::RemovedRef => {}
             TokenClassification::Annotation | TokenClassification::Note(_) => {}
             TokenClassification::Graph(id) => {
                 let mut reasons = Vec::new();
@@ -368,15 +389,17 @@ pub fn collect_note_refs_with_policy(
                     refs.push((kind.to_string(), id));
                     continue;
                 }
+                TokenClassification::RemovedRef => {
+                    "図ノードでは stock / indicator / group の参照だけを使用できます".to_string()
+                }
                 TokenClassification::Annotation
                 | TokenClassification::Graph(_)
                 | TokenClassification::Note(_) => {
-                    "図ノードでは stock / indicator / sector / theme の参照だけを使用できます"
-                        .to_string()
+                    "図ノードでは stock / indicator / group の参照だけを使用できます".to_string()
                 }
                 TokenClassification::Invalid(reason) => {
                     format!(
-                        "{reason}; 図ノードでは stock / indicator / sector / theme の参照だけを使用できます"
+                        "{reason}; 図ノードでは stock / indicator / group の参照だけを使用できます"
                     )
                 }
             };
@@ -460,6 +483,6 @@ pub fn format_note_token_errors(errors: &[NoteTokenValidationError]) -> String {
     message.push('\n');
     message.push_str(&details);
     message.push('\n');
-    message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[sector:<id>]]`, `[[theme:<id>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 4 種のみ使用できます。");
+    message.push_str("許可される形式: `[[stock:<id>]]`, `[[indicator:<id>]]`, `[[group:<axis-key>/<group-key>]]`, `[[note:<uuid>]]`, `[[note:<uuid>@current]]`, `[[anno:<id>]]`。`[[graph:<id>]]` は graphs[].id に存在し、空行区切りブロック内で単独にしてください。graphs[].nodes[].ref では参照 3 種のみ使用できます。");
     message
 }

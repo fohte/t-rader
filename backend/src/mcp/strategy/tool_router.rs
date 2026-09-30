@@ -387,10 +387,10 @@ impl StrategyServer {
         self.search_news_inner(scope, params).await.map(Json)
     }
 
-    /// 参照型 (stock/indicator/sector/theme) を id/name/別名の部分一致で横断検索する
+    /// 参照型 (stock/indicator/group) を id/name/別名の部分一致で横断検索する
     #[tool(
         name = "search_refs",
-        description = "Search across all first-class reference types (stock, indicator, sector, theme) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name.",
+        description = "Search across all first-class reference types (stock, indicator, group) by substring match against id, name, or a registered alias (ref_term), ignoring case and full-width/half-width differences. Returns ref_kind/ref_id/name sorted by name.",
         annotations(read_only_hint = true)
     )]
     async fn search_refs(
@@ -405,7 +405,7 @@ impl StrategyServer {
     /// 参照型に別名 (表記揺れ・略称・旧社名等) を追加する
     #[tool(
         name = "add_ref_terms",
-        description = "Add aliases (alternate spellings, abbreviations, former names, etc.) to a first-class reference (stock/indicator/sector/theme). Idempotent: terms already registered for the same (ref_kind, ref_id) are silently skipped and excluded from the returned added list. Blank terms are ignored."
+        description = "Add aliases (alternate spellings, abbreviations, former names, etc.) to a first-class reference (stock/indicator/group). Idempotent: terms already registered for the same (ref_kind, ref_id) are silently skipped and excluded from the returned added list. Blank terms are ignored."
     )]
     async fn add_ref_terms(
         &self,
@@ -419,7 +419,7 @@ impl StrategyServer {
     /// 参照型から別名を削除する
     #[tool(
         name = "remove_ref_terms",
-        description = "Remove aliases from a first-class reference (stock/indicator/sector/theme). Idempotent: terms not currently registered are silently skipped and excluded from the returned removed list."
+        description = "Remove aliases from a first-class reference (stock/indicator/group). Idempotent: terms not currently registered are silently skipped and excluded from the returned removed list."
     )]
     async fn remove_ref_terms(
         &self,

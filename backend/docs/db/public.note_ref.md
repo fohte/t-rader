@@ -10,11 +10,11 @@
 
 ## Constraints
 
-| Name                    | Type        | Definition                                                                                                                                                              |
-| ----------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| note_ref_ref_kind_check | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'sector'::character varying, 'theme'::character varying])::text[]))) |
-| note_ref_note_id_fkey   | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                                                                                                             |
-| note_ref_pkey           | PRIMARY KEY | PRIMARY KEY (note_id, ref_kind, ref_id)                                                                                                                                 |
+| Name                    | Type        | Definition                                                                                                                                 |
+| ----------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| note_ref_ref_kind_check | CHECK       | CHECK (((ref_kind)::text = ANY ((ARRAY['stock'::character varying, 'indicator'::character varying, 'group'::character varying])::text[]))) |
+| note_ref_note_id_fkey   | FOREIGN KEY | FOREIGN KEY (note_id) REFERENCES note(id) ON DELETE CASCADE                                                                                |
+| note_ref_pkey           | PRIMARY KEY | PRIMARY KEY (note_id, ref_kind, ref_id)                                                                                                    |
 
 ## Indexes
 

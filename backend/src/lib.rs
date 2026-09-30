@@ -99,7 +99,7 @@ impl AppState {
         (name = "bars", description = "バーデータ (OHLCV)"),
         (name = "strategies", description = "戦略 (ワークスペース)"),
         (name = "agent_config", description = "目的 (purpose) 別の agent 設定 (AGENTS.md / skills / agent_graph)"),
-        (name = "refs", description = "一級参照型 (stock / indicator / sector / theme)"),
+        (name = "refs", description = "一級参照型 (stock / indicator / group)"),
         (name = "notes", description = "ノート"),
         (name = "note_kinds", description = "ノート種別"),
         (name = "annotations", description = "アノテーション"),
@@ -234,10 +234,6 @@ fn build_openapi_router() -> OpenApiRouter<AppState> {
         .routes(routes!(refs::get_stock))
         .routes(routes!(refs::list_indicators))
         .routes(routes!(refs::get_indicator))
-        .routes(routes!(refs::list_sectors))
-        .routes(routes!(refs::get_sector))
-        .routes(routes!(refs::list_themes))
-        .routes(routes!(refs::get_theme))
         .routes(routes!(refs::resolve_refs))
         // notes
         .routes(routes!(notes::list_notes, notes::create_note))
