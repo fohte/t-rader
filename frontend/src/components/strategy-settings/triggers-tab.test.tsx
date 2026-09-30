@@ -18,6 +18,7 @@ import type { components } from '#lib/api/schema.gen'
 type Trigger = components['schemas']['Trigger']
 
 interface CreateBody {
+  purpose?: string | null
   kind?: 'cron' | 'hook'
   schedule?: string | null
   hook_slug?: string | null
@@ -27,6 +28,7 @@ interface CreateBody {
 }
 
 interface UpdateBody {
+  purpose?: string | null
   schedule?: string | null
   hook_slug?: string | null
   event_match?: Record<string, never> | null
@@ -46,6 +48,7 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
   return {
     trigger_id: overrides.trigger_id ?? crypto.randomUUID(),
     strategy_id: overrides.strategy_id ?? 'strat-1',
+    purpose: overrides.purpose ?? null,
     kind: overrides.kind ?? 'cron',
     schedule: overrides.schedule ?? null,
     hook_slug: overrides.hook_slug ?? null,
@@ -79,6 +82,16 @@ function installMiddleware(initial: Trigger[] = []) {
       const { url } = request
       const method = request.method.toUpperCase()
 
+      if (/\/api\/agent-configs(?:\?|$)/.test(url) && method === 'GET') {
+        return new Response(
+          JSON.stringify([{ purpose: 'synthetic-purpose' }]),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        )
+      }
+
       const triggerListMatch =
         /\/api\/strategies\/([^/]+)\/triggers(?:\?|$)/.exec(url)
       if (triggerListMatch != null) {
@@ -95,6 +108,7 @@ function installMiddleware(initial: Trigger[] = []) {
           store.createCalls.push({ strategyId: sid, body })
           const created = makeTrigger({
             strategy_id: sid,
+            purpose: body.purpose ?? null,
             kind: body.kind ?? 'cron',
             schedule: body.schedule ?? null,
             hook_slug: body.hook_slug ?? null,
@@ -128,6 +142,8 @@ function installMiddleware(initial: Trigger[] = []) {
           store.updateCalls.push({ triggerId: tid, body })
           const updated: Trigger = {
             ...current,
+            purpose:
+              'purpose' in body ? (body.purpose ?? null) : current.purpose,
             schedule:
               'schedule' in body ? (body.schedule ?? null) : current.schedule,
             hook_slug:
@@ -244,6 +260,7 @@ describe('TriggersTab', () => {
     await waitFor(() => {
       expect(promptInput).toHaveValue('morning briefing')
     })
+    expect(screen.getByLabelText('実行目的')).toHaveValue('')
   })
 
   it('cron trigger を作成すると一覧に追加され、API に正しい body が送られる', async () => {
@@ -252,6 +269,10 @@ describe('TriggersTab', () => {
 
     await screen.findByTestId('trigger-list')
     await user.click(screen.getByRole('button', { name: '+ 新しい trigger' }))
+    await user.selectOptions(
+      screen.getByLabelText('実行目的'),
+      'synthetic-purpose',
+    )
 
     await user.type(
       screen.getByLabelText('schedule (cron 式 UTC)'),
@@ -272,6 +293,7 @@ describe('TriggersTab', () => {
       {
         strategyId: 'strat-1',
         body: {
+          purpose: 'synthetic-purpose',
           kind: 'cron',
           schedule: '0 9 * * 1-5',
           hook_slug: null,
@@ -329,6 +351,7 @@ describe('TriggersTab', () => {
       makeTrigger({
         trigger_id: 't-cron',
         kind: 'cron',
+        purpose: 'synthetic-purpose',
         schedule: '0 9 * * 1-5',
         prompt_template: 'old',
       }),
@@ -338,7 +361,9 @@ describe('TriggersTab', () => {
     await waitFor(() => {
       expect(promptInput).toHaveValue('old')
     })
+    expect(screen.getByLabelText('実行目的')).toHaveValue('synthetic-purpose')
 
+    await user.selectOptions(screen.getByLabelText('実行目的'), '')
     await user.clear(promptInput)
     await user.type(promptInput, 'new')
     await user.click(screen.getByRole('button', { name: '保存' }))
@@ -348,7 +373,44 @@ describe('TriggersTab', () => {
         {
           triggerId: 't-cron',
           body: {
+            purpose: null,
             prompt_template: 'new',
+            enabled: true,
+            event_match: null,
+            schedule: '0 9 * * 1-5',
+          },
+        },
+      ])
+    })
+  })
+
+  it('agent config 一覧にない purpose も編集時に保持する', async () => {
+    const user = userEvent.setup()
+    setup([
+      makeTrigger({
+        trigger_id: 't-cron',
+        kind: 'cron',
+        purpose: 'stale-purpose',
+        schedule: '0 9 * * 1-5',
+        prompt_template: 'synthetic prompt',
+      }),
+    ])
+
+    const promptInput = await screen.findByLabelText('prompt_template')
+    await waitFor(() => {
+      expect(promptInput).toHaveValue('synthetic prompt')
+    })
+    expect(screen.getByLabelText('実行目的')).toHaveValue('stale-purpose')
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(activeMiddleware?.store.updateCalls).toEqual([
+        {
+          triggerId: 't-cron',
+          body: {
+            purpose: 'stale-purpose',
+            prompt_template: 'synthetic prompt',
             enabled: true,
             event_match: null,
             schedule: '0 9 * * 1-5',

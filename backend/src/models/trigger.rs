@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub struct TriggerResponse {
     pub trigger_id: Uuid,
     pub strategy_id: Option<Uuid>,
+    pub purpose: Option<String>,
     pub kind: String,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
@@ -34,6 +35,7 @@ impl From<core_application::trigger::Trigger> for TriggerResponse {
         Self {
             trigger_id: trigger.trigger_id,
             strategy_id: trigger.strategy_id,
+            purpose: trigger.purpose,
             kind: trigger.kind.as_str().to_string(),
             schedule: trigger.schedule,
             hook_slug: trigger.hook_slug,
@@ -66,6 +68,9 @@ impl TriggerKind {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateTriggerRequest {
+    /// 省略時または `null` 指定時は default の agent 設定を使用する。
+    #[serde(default)]
+    pub purpose: Option<String>,
     pub kind: TriggerKind,
     /// kind=cron 時に必須 (UTC の 5 フィールド cron 式)
     pub schedule: Option<String>,
@@ -81,6 +86,13 @@ pub struct CreateTriggerRequest {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateTriggerRequest {
+    /// 省略時は変更せず、`null` 指定時は default purpose に戻す。
+    #[serde(
+        default,
+        deserialize_with = "crate::serde_helpers::deserialize_nullable_option"
+    )]
+    #[schema(value_type = Option<String>)]
+    pub purpose: Option<Option<String>>,
     pub schedule: Option<String>,
     pub hook_slug: Option<String>,
     /// 省略時は変更せず、`null` 指定時は条件を解除する。
