@@ -231,7 +231,7 @@ fn repository_error(error: sea_orm::DbErr) -> MarginRepositoryError {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use core_application::margin::{MarginQuery, MarginReadResult, MarginRepository};
+    use core_application::margin::{MarginQuery, MarginRepository};
     use core_domain::margin::{MarginAlertRecord, MarginInterestRecord, PubReason};
     use sea_orm::ActiveModelTrait;
     use sea_orm::ActiveValue::Set;
@@ -344,21 +344,13 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn read_preserves_interest_filters_order_and_alert_correction_selection(
-        db: crate::DatabaseHandle,
-    ) {
+    async fn read_filters_orders_and_limits_margin_interest(db: crate::DatabaseHandle) {
         let day = ymd(2024, 1, 2);
         insert_interest(&db, interest(ymd(2024, 1, 1), "12340", 1, 1)).await;
         insert_interest(&db, interest(day, "12341", 1, 2)).await;
         insert_interest(&db, interest(day, "12340", 2, 3)).await;
         insert_interest(&db, interest(day, "12340", 1, 4)).await;
         insert_interest(&db, interest(day, "99990", 1, 5)).await;
-
-        insert_alert(&db, alert(ymd(2024, 1, 3), day, "12340", 10)).await;
-        insert_alert(&db, alert(ymd(2024, 1, 4), day, "12340", 20)).await;
-        insert_alert(&db, alert(ymd(2024, 1, 4), day, "12341", 30)).await;
-        insert_alert(&db, alert(ymd(2024, 1, 5), ymd(2024, 1, 1), "12340", 40)).await;
-        insert_alert(&db, alert(ymd(2024, 1, 4), day, "99990", 50)).await;
 
         let repository = PostgresMarginRepository::new(db);
         let actual = repository
@@ -369,21 +361,53 @@ mod tests {
                 limit: 3,
             })
             .await
-            .expect("read margin");
+            .expect("read margin")
+            .interest;
 
         assert_eq!(
             actual,
-            MarginReadResult {
-                interest: vec![
-                    interest(day, "12340", 1, 4),
-                    interest(day, "12340", 2, 3),
-                    interest(day, "12341", 1, 2),
-                ],
-                alerts: vec![
-                    alert(ymd(2024, 1, 4), day, "12340", 20),
-                    alert(ymd(2024, 1, 4), day, "12341", 30),
-                ],
-            },
+            vec![
+                interest(day, "12340", 1, 4),
+                interest(day, "12340", 2, 3),
+                interest(day, "12341", 1, 2),
+            ],
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn read_selects_latest_margin_alert_correction_and_limits_results(
+        db: crate::DatabaseHandle,
+    ) {
+        let first_day = ymd(2024, 1, 1);
+        let middle_day = ymd(2024, 1, 2);
+        let last_day = ymd(2024, 1, 3);
+        insert_alert(&db, alert(ymd(2024, 1, 2), first_day, "12340", 10)).await;
+        insert_alert(&db, alert(ymd(2024, 1, 4), last_day, "12340", 45)).await;
+        insert_alert(&db, alert(ymd(2024, 1, 5), last_day, "12340", 50)).await;
+        insert_alert(&db, alert(ymd(2024, 1, 3), middle_day, "12340", 30)).await;
+        insert_alert(&db, alert(ymd(2024, 1, 3), middle_day, "12341", 40)).await;
+        insert_alert(&db, alert(ymd(2024, 1, 3), middle_day, "99990", 60)).await;
+        insert_alert(&db, alert(ymd(2024, 1, 6), ymd(2023, 12, 31), "12340", 70)).await;
+
+        let repository = PostgresMarginRepository::new(db);
+        let actual = repository
+            .read(MarginQuery {
+                symbol: "1234".into(),
+                from: Some(first_day),
+                to: Some(last_day),
+                limit: 3,
+            })
+            .await
+            .expect("read margin")
+            .alerts;
+
+        assert_eq!(
+            actual,
+            vec![
+                alert(ymd(2024, 1, 5), last_day, "12340", 50),
+                alert(ymd(2024, 1, 3), middle_day, "12340", 30),
+                alert(ymd(2024, 1, 3), middle_day, "12341", 40),
+            ],
         );
     }
 }

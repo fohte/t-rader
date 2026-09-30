@@ -152,6 +152,24 @@ mod tests {
         }
     }
 
+    async fn seeded_repository(
+        db: crate::DatabaseHandle,
+    ) -> PostgresIndicatorObservationRepository {
+        let repository = PostgresIndicatorObservationRepository::new(db);
+        repository
+            .ensure_indicator(metadata("テスト指標", "index"))
+            .await
+            .expect("create indicator");
+        repository
+            .upsert_observations(
+                "INDICATOR_TEST",
+                vec![observation(1, 10), observation(3, 30), observation(10, 100)],
+            )
+            .await
+            .expect("insert observations");
+        repository
+    }
+
     #[backend_test_macros::database_test]
     async fn ensures_indicator_without_replacing_existing_metadata(db: crate::DatabaseHandle) {
         let repository = PostgresIndicatorObservationRepository::new(db.clone());
@@ -180,43 +198,52 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn upserts_observations_and_reads_inclusive_date_range(db: crate::DatabaseHandle) {
-        let repository = PostgresIndicatorObservationRepository::new(db);
-        repository
-            .ensure_indicator(metadata("テスト指標", "index"))
-            .await
-            .expect("create indicator");
-        repository
-            .upsert_observations(
-                "INDICATOR_TEST",
-                vec![observation(1, 10), observation(3, 30), observation(10, 100)],
-            )
-            .await
-            .expect("insert observations");
+    async fn upsert_replaces_observation_for_the_same_date(db: crate::DatabaseHandle) {
+        let repository = seeded_repository(db).await;
         let updated = repository
             .upsert_observations("INDICATOR_TEST", vec![observation(3, 35)])
             .await
             .expect("update observation");
-        let latest = repository
-            .find_latest_date("INDICATOR_TEST")
-            .await
-            .expect("find latest date");
         let observations = repository
             .find_observations(IndicatorObservationQuery {
                 indicator_id: "INDICATOR_TEST".to_string(),
                 from: date(3),
+                to: date(3),
+            })
+            .await
+            .expect("read observations");
+
+        assert_eq!((updated, observations), (1, vec![observation(3, 35)]),);
+    }
+
+    #[backend_test_macros::database_test]
+    async fn find_latest_date_returns_newest_observation_date(db: crate::DatabaseHandle) {
+        let repository = seeded_repository(db).await;
+        let latest = repository
+            .find_latest_date("INDICATOR_TEST")
+            .await
+            .expect("find latest date");
+
+        assert_eq!(latest, Some(date(10)));
+    }
+
+    #[backend_test_macros::database_test]
+    async fn find_observations_includes_range_boundaries_in_ascending_order(
+        db: crate::DatabaseHandle,
+    ) {
+        let repository = seeded_repository(db).await;
+        let observations = repository
+            .find_observations(IndicatorObservationQuery {
+                indicator_id: "INDICATOR_TEST".to_string(),
+                from: date(1),
                 to: date(10),
             })
             .await
             .expect("read observations");
 
         assert_eq!(
-            (updated, latest, observations),
-            (
-                1,
-                Some(date(10)),
-                vec![observation(3, 35), observation(10, 100)],
-            ),
+            observations,
+            vec![observation(1, 10), observation(3, 30), observation(10, 100)],
         );
     }
 }

@@ -447,7 +447,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ingest_continues_after_a_failed_day_and_skips_when_range_is_unavailable() {
+    async fn ingest_continues_after_a_failed_day() {
         let repository = Arc::new(FakeMarginRepository::new());
         let source = FakeMarginSource {
             range: Some(DateRange {
@@ -472,28 +472,46 @@ mod tests {
             source.alert_calls.lock().expect("alert calls").clone(),
             stats,
         );
-        let skipped = use_cases(repository)
-            .ingest(&FakeMarginSource::default(), ymd(2024, 1, 3))
+        assert_eq!(
+            calls,
+            (
+                vec![ymd(2024, 1, 1), ymd(2024, 1, 2), ymd(2024, 1, 3)],
+                vec![ymd(2024, 1, 1), ymd(2024, 1, 2), ymd(2024, 1, 3)],
+                (
+                    IngestStats {
+                        days_fetched: 2,
+                        rows_upserted: 0,
+                    },
+                    IngestStats {
+                        days_fetched: 2,
+                        rows_upserted: 0,
+                    },
+                ),
+            ),
+        );
+    }
+
+    #[tokio::test]
+    async fn ingest_skips_when_range_is_unavailable() {
+        let source = FakeMarginSource::default();
+        let stats = use_cases(Arc::new(FakeMarginRepository::new()))
+            .ingest(&source, ymd(2024, 1, 3))
             .await
             .expect("empty range");
 
         assert_eq!(
-            (calls, skipped),
             (
-                (
-                    vec![ymd(2024, 1, 1), ymd(2024, 1, 2), ymd(2024, 1, 3)],
-                    vec![ymd(2024, 1, 1), ymd(2024, 1, 2), ymd(2024, 1, 3)],
-                    (
-                        IngestStats {
-                            days_fetched: 2,
-                            rows_upserted: 0,
-                        },
-                        IngestStats {
-                            days_fetched: 2,
-                            rows_upserted: 0,
-                        },
-                    ),
-                ),
+                source
+                    .interest_calls
+                    .lock()
+                    .expect("interest calls")
+                    .clone(),
+                source.alert_calls.lock().expect("alert calls").clone(),
+                stats,
+            ),
+            (
+                Vec::new(),
+                Vec::new(),
                 (IngestStats::default(), IngestStats::default()),
             ),
         );
