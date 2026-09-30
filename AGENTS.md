@@ -4,7 +4,7 @@
 
 fohte 個人用の日本株投資プラットフォーム。
 
-中心概念は「戦略」(= 永続ワークスペース)。長期投資 / 中期投資 / 集中スイング等を並列に運用し、戦略ごとに LLM がアナリスト役として自律的にノートとアノテーションを産出する。ユーザーは事後レビュー側に立ち、各アーティファクトには status (approved / unread / rejected)、コメントスレッド、変更履歴が紐づく。
+中心概念は「戦略」(= 永続ワークスペース)。長期投資 / 中期投資 / 集中スイング等を並列に運用し、戦略ごとに LLM がアナリスト役として自律的にノートとアノテーションを産出する。ユーザーは事後レビュー側に立ち、各アーティファクトには status、コメントスレッド、変更履歴が紐づく。status は approved / unread / rejected で、ノートバージョンに限り自動で置き換えられた状態 superseded を持つ。
 
 リアルタイム性は重視せず、pull 型で「開いて読む」運用。通知サブシステムは永続的に持たない。
 
@@ -95,6 +95,12 @@ cd agent && pnpm test # 型チェック + unit テスト (DB 統合テストは 
 - スキーマ変更後は `bash backend/scripts/generate-entities.sh` を実行して再生成し、差分をコミットすること
 - CI の `check-entity-sync` ジョブで DB スキーマとエンティティの整合性を自動検証する
 - カスタムコード (将来的な `ActiveModelBehavior` 等) が必要な場合は `*_ext.rs` に分離すること
+
+## DB schema docs
+
+- backend と agent の DB schema docs は `mise run db-doc` で再生成する
+- CI はスキーマ関連の変更がある PR で `backend/docs/db/` と `agent/docs/db/` を再生成し、自動コミットする
+- 生成には開発 DB ではなく、migration を適用した使い捨て DB を使う
 
 ## 環境変数
 

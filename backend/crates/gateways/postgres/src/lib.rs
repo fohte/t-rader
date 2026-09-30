@@ -52,7 +52,7 @@ pub use financial_summary::PostgresFinancialSummaryRepository;
 pub use indicator_observation::PostgresIndicatorObservationRepository;
 pub use margin::PostgresMarginRepository;
 pub use news::PostgresNewsItemRepository;
-pub use note::PostgresNoteRepository;
+pub use note::{PostgresNoteRepository, supersede_pending_versions_before};
 pub use note_kind::PostgresNoteKindRepository;
 pub use prediction::PostgresPredictionRepository;
 pub use refs::PostgresRefRepository;
