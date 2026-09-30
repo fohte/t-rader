@@ -93,6 +93,52 @@ pub struct NoteLinkTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NoteLink {
+    pub from_version_id: Uuid,
+    pub to_note_id: Uuid,
+    pub to_version_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteLinkView {
+    pub note_id: Uuid,
+    pub version_id: Option<Uuid>,
+    pub version_no: Option<i32>,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteLinks {
+    pub outgoing: Vec<NoteLinkView>,
+    pub incoming: Vec<NoteLinkView>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NoteListCursor {
+    pub updated_at: DateTime<FixedOffset>,
+    pub note_id: Uuid,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NoteListQuery {
+    pub strategy_id: Option<Uuid>,
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    pub reference: Option<(String, String)>,
+    pub updated_after: Option<DateTime<FixedOffset>>,
+    pub include_pending: bool,
+    pub cursor: Option<NoteListCursor>,
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteListPage {
+    pub notes: Vec<NoteSnapshot>,
+    pub cursor: Option<NoteListCursor>,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NewNoteLink {
     pub from_version_id: Uuid,
     pub to_note_id: Uuid,

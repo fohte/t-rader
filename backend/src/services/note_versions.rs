@@ -6,7 +6,7 @@ use sea_orm::ActiveModelTrait;
 use sea_orm::ActiveValue::NotSet;
 #[cfg(test)]
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 #[cfg(test)]
 use serde_json::json;
 use std::collections::HashMap;
@@ -214,31 +214,7 @@ pub async fn find_latest_version<C: sea_orm::ConnectionTrait>(
         .await
 }
 
-pub async fn find_current_or_latest_version<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_id: Uuid,
-) -> Result<Option<note_version::Model>, sea_orm::DbErr> {
-    match find_current_version(db, note_id).await? {
-        Some(version) => Ok(Some(version)),
-        None => find_latest_version(db, note_id).await,
-    }
-}
-
-pub async fn find_version_of_note<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_id: Uuid,
-    version_id: Option<Uuid>,
-) -> Result<Option<note_version::Model>, sea_orm::DbErr> {
-    if let Some(version_id) = version_id {
-        note_version::Entity::find_by_id(version_id)
-            .filter(note_version::Column::NoteId.eq(note_id))
-            .one(db)
-            .await
-    } else {
-        find_current_version(db, note_id).await
-    }
-}
-
+#[cfg(test)]
 pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_ids: &[Uuid],
@@ -257,26 +233,6 @@ pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(
         .collect())
 }
 
-pub async fn find_latest_versions<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_ids: &[Uuid],
-) -> Result<HashMap<Uuid, note_version::Model>, sea_orm::DbErr> {
-    if note_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let mut versions = HashMap::new();
-    for version in note_version::Entity::find()
-        .filter(note_version::Column::NoteId.is_in(note_ids.iter().copied()))
-        .order_by_desc(note_version::Column::VersionNo)
-        .all(db)
-        .await?
-    {
-        versions.entry(version.note_id).or_insert(version);
-    }
-    Ok(versions)
-}
-
 pub async fn find_initial_created_by_kind<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_ids: &[Uuid],
@@ -293,21 +249,4 @@ pub async fn find_initial_created_by_kind<C: sea_orm::ConnectionTrait>(
         .into_iter()
         .map(|version| (version.note_id, version.created_by_kind))
         .collect())
-}
-
-pub fn current_note_ids_with_status(status: &str) -> sea_orm::sea_query::SelectStatement {
-    note_version::Entity::find()
-        .select_only()
-        .column(note_version::Column::NoteId)
-        .filter(note_version::Column::IsCurrent.eq(true))
-        .filter(note_version::Column::Status.eq(status))
-        .into_query()
-}
-
-pub fn current_note_ids() -> sea_orm::sea_query::SelectStatement {
-    note_version::Entity::find()
-        .select_only()
-        .column(note_version::Column::NoteId)
-        .filter(note_version::Column::IsCurrent.eq(true))
-        .into_query()
 }

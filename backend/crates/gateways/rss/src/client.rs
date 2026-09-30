@@ -6,35 +6,35 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use reqwest::Url;
 
-const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+use crate::http::RssHttpClient;
+
 /// snippet を本文先頭から切り出す最大長 (バイトではなく文字数)
 const SNIPPET_MAX_CHARS: usize = 280;
 
 /// 公開 RSS 集約 NewsAggregator
 pub struct RssNewsAggregator {
-    http: reqwest::Client,
+    http: RssHttpClient,
 }
 
 impl RssNewsAggregator {
-    pub fn new() -> Result<Self, NewsAggregatorError> {
-        let http = reqwest::Client::builder()
-            .timeout(HTTP_TIMEOUT)
-            .user_agent("t-rader/0.1 (news aggregator)")
-            .build()
-            .map_err(|e| NewsAggregatorError::Initialization(e.to_string()))?;
-        Ok(Self { http })
+    pub fn new(redis_url: &str) -> Result<Self, NewsAggregatorError> {
+        Ok(Self {
+            http: RssHttpClient::new(redis_url)?,
+        })
+    }
+
+    #[cfg(test)]
+    fn without_rate_limiter() -> Result<Self, NewsAggregatorError> {
+        Ok(Self {
+            http: RssHttpClient::without_rate_limiter()?,
+        })
     }
 
     async fn fetch_feed(&self, feed: &NewsFeed) -> Result<Vec<NewsItem>, NewsAggregatorError> {
         // フィードの URL を `Url` 経由で正規化することで、設定ミスを早期に検出する
         let url = Url::parse(&feed.url)
             .map_err(|e| NewsAggregatorError::Parse(format!("invalid feed URL: {e}")))?;
-        let response = self
-            .http
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| NewsAggregatorError::Network(e.to_string()))?;
+        let response = self.http.send(&url).await?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
             return Err(NewsAggregatorError::Api {
@@ -385,7 +385,7 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
     use indoc::indoc;
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -395,6 +395,11 @@ mod tests {
             .respond_with(response)
             .mount(server)
             .await;
+    }
+
+    #[fixture]
+    fn aggregator() -> RssNewsAggregator {
+        RssNewsAggregator::without_rate_limiter().expect("aggregator builds")
     }
 
     fn single_item_feed(title: &str, url: &str) -> String {
@@ -409,8 +414,9 @@ mod tests {
             .expect("valid time")
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn fetch_news_continues_after_a_feed_fails() {
+    async fn fetch_news_continues_after_a_feed_fails(aggregator: RssNewsAggregator) {
         let server = MockServer::start().await;
         mount_response(&server, "/broken", ResponseTemplate::new(503)).await;
         mount_response(
@@ -422,7 +428,6 @@ mod tests {
             )),
         )
         .await;
-        let aggregator = RssNewsAggregator::new().expect("aggregator builds");
         let feeds = vec![
             NewsFeed {
                 source: "Broken feed".into(),
@@ -448,8 +453,49 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn fetch_news_keeps_the_first_item_for_duplicate_urls() {
+    async fn fetch_news_follows_redirects(aggregator: RssNewsAggregator) {
+        let server = MockServer::start().await;
+        mount_response(
+            &server,
+            "/redirect",
+            ResponseTemplate::new(302).insert_header("Location", "/healthy"),
+        )
+        .await;
+        mount_response(
+            &server,
+            "/healthy",
+            ResponseTemplate::new(200).set_body_string(single_item_feed(
+                "Redirected headline",
+                "https://example.invalid/news/1",
+            )),
+        )
+        .await;
+
+        let result = aggregator
+            .fetch_news(&[NewsFeed {
+                source: "Redirected feed".into(),
+                url: format!("{}/redirect", server.uri()),
+            }])
+            .await
+            .expect("feed fetch succeeds");
+
+        assert_eq!(
+            result,
+            vec![NewsItem {
+                source: "Redirected feed".into(),
+                url: "https://example.invalid/news/1".into(),
+                title: "Redirected headline".into(),
+                body_snippet: None,
+                published_at: ymd_hms(2024, 1, 1, 0, 0, 0),
+            }],
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn fetch_news_keeps_the_first_item_for_duplicate_urls(aggregator: RssNewsAggregator) {
         let server = MockServer::start().await;
         let url = "https://example.invalid/news/1";
         mount_response(
@@ -464,7 +510,6 @@ mod tests {
             ResponseTemplate::new(200).set_body_string(single_item_feed("Second headline", url)),
         )
         .await;
-        let aggregator = RssNewsAggregator::new().expect("aggregator builds");
         let feeds = vec![
             NewsFeed {
                 source: "First feed".into(),
@@ -490,12 +535,11 @@ mod tests {
         );
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn fetch_news_returns_empty_when_every_feed_fails() {
+    async fn fetch_news_returns_empty_when_every_feed_fails(aggregator: RssNewsAggregator) {
         let server = MockServer::start().await;
         mount_response(&server, "/broken", ResponseTemplate::new(503)).await;
-        let aggregator = RssNewsAggregator::new().expect("aggregator builds");
-
         let result = aggregator
             .fetch_news(&[NewsFeed {
                 source: "Broken feed".into(),
