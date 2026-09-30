@@ -1,6 +1,6 @@
 use axum::Json;
 use axum::extract::State;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use core_application::change_history::ChangeHistoryUseCaseError;
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -9,7 +9,17 @@ use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::{JsonPath, JsonQuery};
 use crate::models::ChangeHistoryResponse;
-use gateway_postgres::entities::change_history;
+
+fn map_err(error: ChangeHistoryUseCaseError) -> AppError {
+    match error {
+        ChangeHistoryUseCaseError::NotFound(id) => {
+            AppError::NotFound(format!("history {id} not found"))
+        }
+        ChangeHistoryUseCaseError::Query(
+            core_application::change_history::ChangeHistoryQueryError::Database(error),
+        ) => error.into(),
+    }
+}
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -36,18 +46,14 @@ pub async fn list_history(
     State(state): State<AppState>,
     JsonQuery(p): JsonQuery<ListHistoryQuery>,
 ) -> Result<Json<Vec<ChangeHistoryResponse>>, AppError> {
-    let mut q = change_history::Entity::find().order_by_desc(change_history::Column::CreatedAt);
-    if let Some(kind) = p.target_kind.as_deref().filter(|s| !s.is_empty()) {
-        q = q.filter(change_history::Column::TargetKind.eq(kind));
-    }
-    if let Some(tid) = p.target_id {
-        q = q.filter(change_history::Column::TargetId.eq(tid));
-    }
-    let limit = p.limit.unwrap_or(100).clamp(1, 500);
+    let entries = state
+        .use_cases
+        .change_history()
+        .list(p.target_kind.as_deref(), p.target_id, p.limit)
+        .await
+        .map_err(map_err)?;
     Ok(Json(
-        q.limit(limit)
-            .all(&state.db)
-            .await?
+        entries
             .into_iter()
             .map(ChangeHistoryResponse::from)
             .collect(),
@@ -71,9 +77,11 @@ pub async fn get_history(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<Json<ChangeHistoryResponse>, AppError> {
-    let m = change_history::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("history {id} not found")))?;
-    Ok(Json(m.into()))
+    let entry = state
+        .use_cases
+        .change_history()
+        .get(id)
+        .await
+        .map_err(map_err)?;
+    Ok(Json(ChangeHistoryResponse::from(entry)))
 }
