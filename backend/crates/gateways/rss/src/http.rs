@@ -15,6 +15,8 @@ const RATE_LIMIT_FALLBACK_COOLDOWN: Duration = Duration::from_secs(60 * 60);
 const RATE_LIMIT_MAX_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_REDIRECTS: usize = 10;
+// acquire の 60 秒、HTTP の 15 秒、penalty の Redis 操作時間を 1 feed の上限にする。
+const REQUEST_TOTAL_TIMEOUT: Duration = Duration::from_secs(80);
 
 enum RssRateLimiter {
     Shared(RateLimiter),
@@ -78,21 +80,39 @@ impl RssHttpClient {
     pub(super) async fn send(&self, url: &Url) -> Result<Response, NewsAggregatorError> {
         let mut current_url = url.clone();
         let mut redirects_followed = 0;
+        let deadline = tokio::time::Instant::now() + REQUEST_TOTAL_TIMEOUT;
 
         loop {
             let key = host_key(&current_url)?;
             let quota = Quota::new(key.clone(), RATE_LIMIT_LIMIT, RATE_LIMIT_PERIOD);
-            self.rate_limiter
-                .acquire(&quota)
-                .await
-                .map_err(map_rate_limit_error)?;
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(request_timeout_error());
+            }
+            let acquire_started = std::time::Instant::now();
+            let acquire_result =
+                tokio::time::timeout(remaining, self.rate_limiter.acquire(&quota)).await;
+            let acquire_duration = acquire_started.elapsed();
+            if acquire_duration >= Duration::from_millis(100) {
+                tracing::info!(
+                    wait_ms = acquire_duration.as_millis() as u64,
+                    "RSS の共有 rate limit 取得に時間がかかりました"
+                );
+            }
+            match acquire_result {
+                Ok(result) => result.map_err(map_rate_limit_error)?,
+                Err(_) => return Err(request_timeout_error()),
+            }
 
-            let response = self
-                .client
-                .get(current_url.clone())
-                .send()
-                .await
-                .map_err(|error| NewsAggregatorError::Network(error.to_string()))?;
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(request_timeout_error());
+            }
+            let response =
+                tokio::time::timeout(remaining, self.client.get(current_url.clone()).send())
+                    .await
+                    .map_err(|_| request_timeout_error())?
+                    .map_err(|error| NewsAggregatorError::Network(error.to_string()))?;
 
             if matches!(response.status().as_u16(), 429 | 503) {
                 let cooldown = retry_after_duration(
@@ -101,9 +121,13 @@ impl RssHttpClient {
                         .get(RETRY_AFTER)
                         .and_then(|value| value.to_str().ok()),
                 );
-                self.rate_limiter
-                    .penalize(&key, cooldown)
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(request_timeout_error());
+                }
+                tokio::time::timeout(remaining, self.rate_limiter.penalize(&key, cooldown))
                     .await
+                    .map_err(|_| request_timeout_error())?
                     .map_err(map_rate_limit_error)?;
             }
 
@@ -132,6 +156,10 @@ impl RssHttpClient {
             redirects_followed += 1;
         }
     }
+}
+
+fn request_timeout_error() -> NewsAggregatorError {
+    NewsAggregatorError::Network("RSS feed fetch timed out".to_owned())
 }
 
 fn build_http_client() -> Result<reqwest::Client, NewsAggregatorError> {
@@ -183,7 +211,7 @@ mod tests {
     use std::error::Error;
 
     use rstest::rstest;
-    use wiremock::matchers::method;
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
@@ -216,6 +244,66 @@ mod tests {
     #[case::invalid(Some("later"), Duration::from_secs(60 * 60))]
     fn parses_retry_after(#[case] value: Option<&str>, #[case] expected: Duration) {
         assert_eq!(retry_after_duration(value), expected);
+    }
+
+    #[tokio::test]
+    async fn send_rejects_redirects_to_non_http_schemes() -> Result<(), Box<dyn Error>> {
+        let client = RssHttpClient::without_rate_limiter()?;
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/redirect"))
+            .respond_with(
+                ResponseTemplate::new(302).insert_header("Location", "file:///fictional/feed.xml"),
+            )
+            .mount(&server)
+            .await;
+
+        let url = Url::parse(&format!("{}/redirect", server.uri()))?;
+        let result = client.send(&url).await.map(|_| ());
+        let requests = server
+            .received_requests()
+            .await
+            .map(|requests| requests.len());
+
+        assert_eq!(
+            (result, requests),
+            (
+                Err(NewsAggregatorError::Network(
+                    "RSS redirect uses an unsupported URL scheme".to_owned(),
+                )),
+                Some(1),
+            ),
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn send_stops_after_the_redirect_limit() -> Result<(), Box<dyn Error>> {
+        let client = RssHttpClient::without_rate_limiter()?;
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/redirect"))
+            .respond_with(ResponseTemplate::new(302).insert_header("Location", "/redirect"))
+            .mount(&server)
+            .await;
+
+        let url = Url::parse(&format!("{}/redirect", server.uri()))?;
+        let result = client.send(&url).await.map(|_| ());
+        let requests = server
+            .received_requests()
+            .await
+            .map(|requests| requests.len());
+
+        assert_eq!(
+            (result, requests),
+            (
+                Err(NewsAggregatorError::Network(
+                    "RSS feed exceeded the redirect limit".to_owned(),
+                )),
+                Some(MAX_REDIRECTS + 1),
+            ),
+        );
+        Ok(())
     }
 
     #[rstest]
