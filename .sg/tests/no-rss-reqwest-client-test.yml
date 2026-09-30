@@ -1,0 +1,14 @@
+id: no-rss-reqwest-client
+valid:
+  - let client = std::net::TcpStream::connect(address);
+  - use reqwest::{Response as Client};
+invalid:
+  - let client = reqwest::Client::new();
+  - use reqwest::Client;
+  - use reqwest::Client as HttpClient;
+  - use reqwest::{Client};
+  - use reqwest::{Client as HttpClient};
+  - use reqwest::{Response, Client};
+  - use reqwest::{Response, Client as HttpClient};
+  - use reqwest::{Response, StatusCode, Client, Error};
+  - use reqwest::{Client as HttpClient, Response, StatusCode};
