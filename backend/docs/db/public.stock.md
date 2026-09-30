@@ -2,15 +2,15 @@
 
 ## Columns
 
-| Name             | Type                     | Default           | Nullable | Children                                  | Parents                           | Comment |
-| ---------------- | ------------------------ | ----------------- | -------- | ----------------------------------------- | --------------------------------- | ------- |
-| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) |                                   |         |
-| name             | varchar                  |                   | false    |                                           |                                   |         |
-| market           | varchar                  |                   | true     |                                           |                                   |         |
-| sector_id        | varchar                  |                   | true     |                                           | [public.sector](public.sector.md) |         |
-| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                           |                                   |         |
-| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                           |                                   |         |
-| product_category | varchar                  |                   | true     |                                           |                                   |         |
+| Name             | Type                     | Default           | Nullable | Children                                                                                            | Parents                           | Comment |
+| ---------------- | ------------------------ | ----------------- | -------- | --------------------------------------------------------------------------------------------------- | --------------------------------- | ------- |
+| id               | varchar                  |                   | false    | [public.prediction](public.prediction.md) [public.stock_group_member](public.stock_group_member.md) |                                   |         |
+| name             | varchar                  |                   | false    |                                                                                                     |                                   |         |
+| market           | varchar                  |                   | true     |                                                                                                     |                                   |         |
+| sector_id        | varchar                  |                   | true     |                                                                                                     | [public.sector](public.sector.md) |         |
+| created_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |                                   |         |
+| updated_at       | timestamp with time zone | CURRENT_TIMESTAMP | false    |                                                                                                     |                                   |         |
+| product_category | varchar                  |                   | true     |                                                                                                     |                                   |         |
 
 ## Constraints
 
@@ -33,6 +33,7 @@ erDiagram
 
 "public.prediction" }o--|| "public.stock" : "FOREIGN KEY (benchmark_stock_id) REFERENCES stock(id)"
 "public.prediction" }o--|| "public.stock" : "FOREIGN KEY (target_stock_id) REFERENCES stock(id)"
+"public.stock_group_member" }o--|| "public.stock" : "FOREIGN KEY (stock_id) REFERENCES stock(id) ON DELETE CASCADE"
 "public.stock" }o--o| "public.sector" : "FOREIGN KEY (sector_id) REFERENCES sector(id) ON DELETE SET NULL"
 
 "public.stock" {
@@ -54,6 +55,11 @@ erDiagram
   numeric probability
   date base_date
   date due_date
+  timestamp_with_time_zone created_at
+}
+"public.stock_group_member" {
+  varchar stock_id FK
+  uuid group_id FK
   timestamp_with_time_zone created_at
 }
 "public.sector" {

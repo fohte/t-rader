@@ -8,7 +8,9 @@ async-trait = { workspace = true }
 chrono = { workspace = true, features = ["alloc"] }
 core-application = { workspace = true }
 quick-xml = { workspace = true }
+rate-limit = { workspace = true }
 reqwest = { workspace = true, features = ["rustls"] }
+tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
