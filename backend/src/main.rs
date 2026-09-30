@@ -49,6 +49,12 @@ fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>, AppError> 
     )
 }
 
+fn required_redis_url(value: Option<String>) -> Result<String, AppError> {
+    value
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| AppError::Config("REDIS_URL environment variable is not set".to_string()))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
     let cli = Cli::parse();
@@ -104,6 +110,8 @@ async fn main() -> Result<(), AppError> {
         return Ok(());
     }
 
+    let redis_url = required_redis_url(std::env::var("REDIS_URL").ok())?;
+
     let app_db = DatabaseHandle::from(db.clone());
     let use_cases = backend::services::use_cases::build_use_cases(app_db.clone());
 
@@ -113,10 +121,10 @@ async fn main() -> Result<(), AppError> {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "jquants".to_string());
 
-    let (daily_bar_source, jquants_client) = match provider_kind.as_str() {
+    let (daily_bar_source, jquants_client, jquants_ingest_client) = match provider_kind.as_str() {
         "none" => {
             tracing::info!("DATA_PROVIDER=none: 日足データの取得元を無効化して起動します");
-            (None, None)
+            (None, None, None)
         }
         "ibkr" => {
             let base_url = std::env::var("IBKR_BASE_URL")
@@ -135,20 +143,38 @@ async fn main() -> Result<(), AppError> {
             );
             tracing::info!("IBKR 日足データ取得元を初期化しました");
             let source: SharedDailyBarSource = client;
-            (Some(source), None)
+            (Some(source), None, None)
         }
         "jquants" => match jquants_config {
             Some((api_key, plan)) => {
-                let client = Arc::new(JQuantsClient::new(api_key, plan).map_err(|error| {
-                    AppError::Config(format!("failed to initialize J-Quants client: {error}"))
-                })?);
+                let request_client = Arc::new(
+                    JQuantsClient::new(
+                        &redis_url,
+                        api_key.clone(),
+                        plan,
+                        std::time::Duration::from_secs(30),
+                    )
+                    .map_err(|error| {
+                        AppError::Config(format!(
+                            "failed to initialize J-Quants request client: {error}"
+                        ))
+                    })?,
+                );
+                let ingest_client = Arc::new(
+                    JQuantsClient::new(&redis_url, api_key, plan, std::time::Duration::ZERO)
+                        .map_err(|error| {
+                            AppError::Config(format!(
+                                "failed to initialize J-Quants ingest client: {error}"
+                            ))
+                        })?,
+                );
                 tracing::info!("J-Quants 日足データ取得元を初期化しました");
-                let source: SharedDailyBarSource = client.clone();
-                (Some(source), Some(client))
+                let source: SharedDailyBarSource = request_client.clone();
+                (Some(source), Some(request_client), Some(ingest_client))
             }
             _ => {
                 tracing::warn!("JQUANTS_API_KEY が未設定のため、日足データ取得元なしで起動します");
-                (None, None)
+                (None, None, None)
             }
         },
         other => {
@@ -269,7 +295,7 @@ async fn main() -> Result<(), AppError> {
         backend::services::trigger_worker::DEFAULT_INTERVAL,
     );
 
-    if let Some(client) = &jquants_client {
+    if let Some(client) = &jquants_ingest_client {
         let _stock_master_sync_poll = backend::services::stock_master_sync::spawn_poll(
             db.clone(),
             client.clone(),
@@ -435,5 +461,28 @@ mod tests {
         #[case] expected: Result<Option<(String, JQuantsPlan)>, ()>,
     ) {
         assert_eq!(jquants_config(api_key, plan).map_err(|_| ()), expected);
+    }
+
+    #[rstest]
+    #[case::missing(
+        None,
+        Err("configuration error: REDIS_URL environment variable is not set")
+    )]
+    #[case::empty(
+        Some(String::new()),
+        Err("configuration error: REDIS_URL environment variable is not set")
+    )]
+    #[case::configured(
+        Some("redis://localhost/".to_string()),
+        Ok("redis://localhost/"),
+    )]
+    fn test_required_redis_url(
+        #[case] value: Option<String>,
+        #[case] expected: Result<&str, &str>,
+    ) {
+        assert_eq!(
+            required_redis_url(value).map_err(|error| error.to_string()),
+            expected.map(str::to_owned).map_err(str::to_owned),
+        );
     }
 }

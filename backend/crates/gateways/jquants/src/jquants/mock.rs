@@ -673,9 +673,13 @@ impl<'a> MockErrorBuilder<'a> {
     pub async fn rate_limited(self, endpoint_path: &str) {
         Mock::given(method("GET"))
             .and(path(endpoint_path))
-            .respond_with(ResponseTemplate::new(429).set_body_json(json!({
-                "message": "Too Many Requests",
-            })))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("Retry-After", "0")
+                    .set_body_json(json!({
+                        "message": "Too Many Requests",
+                    })),
+            )
             .mount(self.server)
             .await;
     }

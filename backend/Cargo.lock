@@ -1601,6 +1601,7 @@ dependencies = [
  "chrono",
  "core-application",
  "core-domain",
+ "rate-limit",
  "reqwest",
  "rstest",
  "rust_decimal",
