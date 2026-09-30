@@ -38,7 +38,7 @@ impl StrategyServer {
             .map(ToOwned::to_owned);
         let rows = self
             .use_cases
-            .trades
+            .trades()
             .list(TradeQuery {
                 strategy_id: None,
                 symbol,

@@ -1,5 +1,7 @@
 pub mod agent_task_client;
+pub mod annotation;
 pub mod change_history;
+pub mod comment;
 pub mod custom_indicator;
 pub mod daily_bar_source;
 pub mod earnings_schedule_source;
@@ -12,7 +14,9 @@ pub mod margin_source;
 pub mod market_daily_bar_source;
 pub mod news_aggregator;
 pub mod note;
+pub mod note_kind;
 pub mod persistence;
+pub mod prediction;
 pub mod shareholding_structure_source;
 pub mod short_selling_source;
 pub mod strategy;

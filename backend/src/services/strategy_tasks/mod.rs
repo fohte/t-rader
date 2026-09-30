@@ -50,7 +50,8 @@ pub async fn submit_task<C>(
 where
     C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
 {
-    crate::services::use_cases::build_strategy_task_use_cases(db.clone())
+    crate::services::use_cases::build_use_cases(db.clone())
+        .strategy_tasks()
         .submit_task(agent_client.as_ref(), strategy_id, prompt, source, purpose)
         .await
 }
@@ -63,7 +64,8 @@ pub async fn list_tasks<C>(
 where
     C: sea_orm::ConnectionTrait + Clone + Into<gateway_postgres::DatabaseHandle>,
 {
-    crate::services::use_cases::build_strategy_task_use_cases(db.clone())
+    crate::services::use_cases::build_use_cases(db.clone())
+        .strategy_tasks()
         .list(TaskListQuery {
             strategy_id,
             purpose,

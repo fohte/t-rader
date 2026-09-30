@@ -5141,7 +5141,7 @@
             }
           },
           "400": {
-            "description": "prompt が空 (空白のみを含む)",
+            "description": "prompt が空 (空白のみを含む)、または指定された purpose の agent_config が存在しない",
             "content": {
               "application/json": {
                 "schema": {
@@ -5191,7 +5191,7 @@
             }
           },
           "503": {
-            "description": "agent task client が未設定、または agent_config が見つからない",
+            "description": "agent task client が未設定、または既定の agent_config が見つからない",
             "content": {
               "application/json": {
                 "schema": {
@@ -8901,6 +8901,13 @@
           "prompt": {
             "type": "string",
             "minLength": 1
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "タスク投入先の agent_config の purpose キー。省略時は既定の設定を使い、存在しないキーは 400 になる。"
           }
         },
         "additionalProperties": false

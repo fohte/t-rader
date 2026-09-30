@@ -48,6 +48,11 @@ pub trait NoteRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
     ) -> Result<Option<NoteVersion>, NoteRepositoryError>;
+    async fn find_latest_pending_versions_by_kind(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        kind: &str,
+    ) -> Result<Vec<NoteVersion>, NoteRepositoryError>;
     async fn find_version_by_number(
         &self,
         transaction: &UnitOfWorkTransaction,

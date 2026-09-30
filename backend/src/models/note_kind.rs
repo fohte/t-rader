@@ -1,7 +1,7 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use gateway_postgres::entities::note_kind;
+use core_application::note_kind::NoteKind;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = NoteKind)]
@@ -13,8 +13,8 @@ pub struct NoteKindResponse {
     pub sort_order: i32,
 }
 
-impl From<note_kind::Model> for NoteKindResponse {
-    fn from(kind: note_kind::Model) -> Self {
+impl From<NoteKind> for NoteKindResponse {
+    fn from(kind: NoteKind) -> Self {
         Self {
             key: kind.key,
             display_name: kind.display_name,

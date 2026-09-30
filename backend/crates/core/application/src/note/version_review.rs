@@ -22,15 +22,60 @@ impl NoteUseCases {
         let version = self
             .require_version(&transaction, note_id, version_no)
             .await?;
+        let updated = self
+            .approve_pending_version_in_transaction(
+                &transaction,
+                version,
+                Actor::Human,
+                label,
+                Utc::now().fixed_offset(),
+            )
+            .await?;
+        self.unit_of_work.commit(transaction).await?;
+        Ok(updated)
+    }
+
+    pub(crate) async fn approve_pending_versions_for_kind(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        kind: &str,
+        actor: Actor,
+    ) -> Result<(), NoteUseCaseError> {
+        let versions = self
+            .repository
+            .find_latest_pending_versions_by_kind(transaction, kind)
+            .await?;
+        let reviewed_at = Utc::now().fixed_offset();
+        for version in versions {
+            self.approve_pending_version_in_transaction(
+                transaction,
+                version,
+                actor,
+                None,
+                reviewed_at,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn approve_pending_version_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        version: crate::note::types::NoteVersion,
+        actor: Actor,
+        label: Option<String>,
+        reviewed_at: chrono::DateTime<chrono::FixedOffset>,
+    ) -> Result<crate::note::types::NoteVersion, NoteUseCaseError> {
+        let note_id = version.note_id;
         self.ensure_pending_version(&version)?;
         let superseded_version_ids = self
             .repository
-            .supersede_pending_versions_before(&transaction, note_id, version.version_no)
+            .supersede_pending_versions_before(transaction, note_id, version.version_no)
             .await?;
-        let now = Utc::now().fixed_offset();
         let current = self
             .repository
-            .find_current_version(&transaction, note_id)
+            .find_current_version(transaction, note_id)
             .await?;
         let previous_current_id = current.as_ref().map(|current| current.id);
         let updated = if current
@@ -40,33 +85,33 @@ impl NoteUseCases {
             let updated = self
                 .repository
                 .update_version(
-                    &transaction,
+                    transaction,
                     NoteVersionUpdate {
                         id: version.id,
                         is_current: None,
                         status: Some(APPROVED_NOTE_STATUS.into()),
-                        reviewed_at: Some(now),
+                        reviewed_at: Some(reviewed_at),
                     },
                 )
                 .await?;
             self.repository
-                .update_note_timestamp(&transaction, note_id, now)
+                .update_note_timestamp(transaction, note_id, reviewed_at)
                 .await?;
             updated
         } else {
             self.set_current_version(
-                &transaction,
+                transaction,
                 note_id,
                 version,
                 Some(APPROVED_NOTE_STATUS),
-                Some(now),
+                Some(reviewed_at),
                 current,
             )
             .await?
         };
         self.record_history(
-            &transaction,
-            Actor::Human,
+            transaction,
+            actor,
             note_id,
             Op::StatusChange,
             json!({
@@ -80,7 +125,6 @@ impl NoteUseCases {
             label,
         )
         .await?;
-        self.unit_of_work.commit(transaction).await?;
         Ok(updated)
     }
 

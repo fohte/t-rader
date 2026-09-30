@@ -37,10 +37,13 @@ function makeProps(
     input: '',
     status,
     notes: [],
+    purposes: ['example-purpose', 'another-example-purpose'],
+    selectedPurpose: '',
     currentTaskId: null,
     onOpen: NOOP,
     onClose: NOOP,
     onInputChange: NOOP,
+    onPurposeChange: NOOP,
     onSubmit: NOOP,
     ...overrides,
   }
@@ -70,6 +73,17 @@ export const Idle: Story = {
   render: () => (
     <RouterProvider
       router={createFloatingChatRouter(makeProps({ kind: 'idle' }))}
+    />
+  ),
+}
+
+export const SelectedPurpose: Story = {
+  name: 'shows a selected purpose in the chat composer.',
+  render: () => (
+    <RouterProvider
+      router={createFloatingChatRouter(
+        makeProps({ kind: 'idle' }, { selectedPurpose: 'example-purpose' }),
+      )}
     />
   ),
 }
