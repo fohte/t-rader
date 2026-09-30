@@ -44,6 +44,7 @@ impl TradeRepository for FakeTradeRepository {
             .map(|trade| TradeListItem {
                 trade,
                 note_count: 0,
+                note_references: Vec::new(),
             })
             .collect();
         rows.sort_by(|left, right| match query.order {
