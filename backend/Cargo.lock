@@ -3208,6 +3208,7 @@ name = "rate-limit"
 version = "0.1.0"
 dependencies = [
  "redis",
+ "rstest",
  "thiserror",
  "tokio",
  "tracing",
