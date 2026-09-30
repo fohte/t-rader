@@ -12,12 +12,15 @@ mod annotation;
 mod bars;
 mod comment;
 mod custom_indicator;
+mod earnings_schedule;
+mod financial_summary;
 mod indicator_observation;
 mod margin;
 mod news;
 mod note;
 mod note_kind;
 mod prediction;
+mod refs;
 mod rss_feed;
 mod short_ratio;
 mod short_sale_report;
@@ -25,6 +28,7 @@ mod strategy;
 mod strategy_task;
 mod trade;
 mod trigger;
+mod valuation;
 
 #[derive(Clone)]
 pub struct UseCases {

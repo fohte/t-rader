@@ -215,11 +215,13 @@ pub async fn insert_test_cron_trigger(
     enabled: bool,
     last_fired_at: Option<DateTime<Utc>>,
     prompt_template: &str,
+    purpose: Option<&str>,
 ) -> Uuid {
     let id = Uuid::new_v4();
     trigger::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
+        purpose: Set(purpose.map(str::to_string)),
         kind: Set("cron".to_string()),
         schedule: Set(Some(schedule.to_string())),
         hook_slug: Set(None),
@@ -249,6 +251,7 @@ pub async fn insert_test_hook_trigger(
     trigger::ActiveModel {
         trigger_id: Set(id),
         strategy_id: Set(Some(strategy_id)),
+        purpose: Set(None),
         kind: Set("hook".to_string()),
         schedule: Set(None),
         hook_slug: Set(Some(slug.to_string())),

@@ -66,6 +66,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
         true,
         Some(far_past),
         "from cron",
+        None,
     )
     .await;
     let use_cases = build_use_cases(db.clone());
