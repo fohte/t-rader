@@ -8,6 +8,7 @@ use gateway_postgres::{
 };
 
 mod account_risk_policy;
+mod agent_config;
 mod annotation;
 mod comment;
 mod custom_indicator;

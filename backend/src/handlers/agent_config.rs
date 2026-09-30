@@ -1,7 +1,7 @@
 //! `agent_config` (目的 (purpose) をキーとする AGENTS.md / skills / agent_graph) の
 //! CRUD HTTP handler。
 //!
-//! バリデーション・DB 操作は `services::agent_config` に委譲する thin wrapper。
+//! `agent_config` の application use case を呼び出す thin wrapper。
 
 use axum::Json;
 use axum::extract::State;
@@ -14,19 +14,29 @@ use crate::models::{
     AgentConfigItemResponse, AgentConfigResponse, AgentGraphBody, AgentsMdBody,
     CreateAgentConfigRequest, SkillBody, SkillsBody,
 };
-use crate::services::agent_config as svc;
+use core_application::agent_config::{
+    AgentConfigRepositoryError, AgentConfigUseCaseError, AgentConfigUseCases,
+};
+use core_application::unit_of_work::UnitOfWorkError;
 
-fn map_err(err: svc::AgentConfigError) -> AppError {
-    match err {
-        svc::AgentConfigError::InvalidPurpose(_)
-        | svc::AgentConfigError::InvalidSkillName(_)
-        | svc::AgentConfigError::InvalidAgentGraph(_) => AppError::Validation(err.to_string()),
-        svc::AgentConfigError::DuplicatePurpose(_) => AppError::Conflict(err.to_string()),
-        svc::AgentConfigError::NotFound(_) | svc::AgentConfigError::SkillNotFound(_) => {
-            AppError::NotFound(err.to_string())
+fn map_err(error: AgentConfigUseCaseError) -> AppError {
+    match error {
+        AgentConfigUseCaseError::InvalidPurpose(_)
+        | AgentConfigUseCaseError::InvalidSkillName(_)
+        | AgentConfigUseCaseError::InvalidAgentGraph(_) => AppError::Validation(error.to_string()),
+        AgentConfigUseCaseError::DuplicatePurpose(_) => AppError::Conflict(error.to_string()),
+        AgentConfigUseCaseError::NotFound(_) | AgentConfigUseCaseError::SkillNotFound(_) => {
+            AppError::NotFound(error.to_string())
         }
-        svc::AgentConfigError::Database(e) => AppError::Database(e),
+        AgentConfigUseCaseError::Repository(AgentConfigRepositoryError::Database(error))
+        | AgentConfigUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | AgentConfigUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+        error => AppError::Database(sea_orm::DbErr::Custom(error.to_string())),
     }
+}
+
+fn use_cases(state: &AppState) -> AgentConfigUseCases {
+    state.use_cases.agent_configs()
 }
 
 /// 目的別 agent 設定一覧
@@ -42,7 +52,7 @@ fn map_err(err: svc::AgentConfigError) -> AppError {
 pub async fn list_agent_configs(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AgentConfigItemResponse>>, AppError> {
-    let items = svc::list(&state.db).await.map_err(map_err)?;
+    let items = use_cases(&state).list().await.map_err(map_err)?;
     Ok(Json(
         items
             .into_iter()
@@ -70,7 +80,8 @@ pub async fn create_agent_config(
     State(state): State<AppState>,
     JsonBody(payload): JsonBody<CreateAgentConfigRequest>,
 ) -> Result<(StatusCode, Json<AgentConfigItemResponse>), AppError> {
-    let created = svc::create(&state.db, payload.purpose)
+    let created = use_cases(&state)
+        .create(payload.purpose)
         .await
         .map_err(map_err)?;
     Ok((StatusCode::CREATED, Json(created.into())))
@@ -93,9 +104,7 @@ pub async fn get_agent_config(
     State(state): State<AppState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentConfigItemResponse>, AppError> {
-    let model = svc::find_or_404(&state.db, &purpose)
-        .await
-        .map_err(map_err)?;
+    let model = use_cases(&state).get(&purpose).await.map_err(map_err)?;
     Ok(Json(model.into()))
 }
 
@@ -117,12 +126,13 @@ pub async fn get_agent_config_bundle(
     State(state): State<AppState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentConfigResponse>, AppError> {
-    let row = svc::find_or_404(&state.db, &purpose)
-        .await
-        .map_err(map_err)?;
-    let skills = svc::skills_as_btree(&row);
-    let response = svc::build_agent_config_response(row.agents_md, skills, row.agent_graph);
-    Ok(Json(response))
+    let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
+    let skills = row.skills_as_btree();
+    Ok(Json(AgentConfigResponse {
+        agents_md: row.agents_md,
+        skills,
+        agent_graph: row.agent_graph,
+    }))
 }
 
 /// 目的別 agent 設定を削除
@@ -141,7 +151,7 @@ pub async fn delete_agent_config(
     State(state): State<AppState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<StatusCode, AppError> {
-    svc::delete(&state.db, &purpose).await.map_err(map_err)?;
+    use_cases(&state).delete(&purpose).await.map_err(map_err)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -162,9 +172,7 @@ pub async fn get_agents_md(
     State(state): State<AppState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentsMdBody>, AppError> {
-    let row = svc::find_or_404(&state.db, &purpose)
-        .await
-        .map_err(map_err)?;
+    let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
     Ok(Json(AgentsMdBody {
         content: row.agents_md,
     }))
@@ -191,7 +199,8 @@ pub async fn put_agents_md(
     JsonPath(purpose): JsonPath<String>,
     JsonBody(payload): JsonBody<AgentsMdBody>,
 ) -> Result<Json<AgentsMdBody>, AppError> {
-    let content = svc::save_agents_md(&state.db, &purpose, payload.content)
+    let content = use_cases(&state)
+        .save_agents_md(&purpose, payload.content)
         .await
         .map_err(map_err)?;
     Ok(Json(AgentsMdBody { content }))
@@ -214,11 +223,9 @@ pub async fn get_skills(
     State(state): State<AppState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<SkillsBody>, AppError> {
-    let row = svc::find_or_404(&state.db, &purpose)
-        .await
-        .map_err(map_err)?;
+    let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
     Ok(Json(SkillsBody {
-        skills: svc::skills_as_btree(&row),
+        skills: row.skills_as_btree(),
     }))
 }
 
@@ -244,11 +251,12 @@ pub async fn put_skills(
     JsonPath(purpose): JsonPath<String>,
     JsonBody(payload): JsonBody<SkillsBody>,
 ) -> Result<Json<SkillsBody>, AppError> {
-    let updated = svc::put_skills(&state.db, &purpose, payload.skills)
+    let updated = use_cases(&state)
+        .put_skills(&purpose, payload.skills)
         .await
         .map_err(map_err)?;
     Ok(Json(SkillsBody {
-        skills: svc::skills_as_btree(&updated),
+        skills: updated.skills_as_btree(),
     }))
 }
 
@@ -277,7 +285,8 @@ pub async fn put_skill(
     JsonPath((purpose, name)): JsonPath<(String, String)>,
     JsonBody(payload): JsonBody<SkillBody>,
 ) -> Result<Json<SkillBody>, AppError> {
-    svc::put_skill(&state.db, &purpose, &name, payload.content.clone())
+    use_cases(&state)
+        .put_skill(&purpose, &name, payload.content.clone())
         .await
         .map_err(map_err)?;
     Ok(Json(SkillBody {
@@ -305,7 +314,8 @@ pub async fn delete_skill(
     State(state): State<AppState>,
     JsonPath((purpose, name)): JsonPath<(String, String)>,
 ) -> Result<StatusCode, AppError> {
-    svc::delete_skill(&state.db, &purpose, &name)
+    use_cases(&state)
+        .delete_skill(&purpose, &name)
         .await
         .map_err(map_err)?;
     Ok(StatusCode::NO_CONTENT)
@@ -328,9 +338,7 @@ pub async fn get_agent_graph(
     State(state): State<AppState>,
     JsonPath(purpose): JsonPath<String>,
 ) -> Result<Json<AgentGraphBody>, AppError> {
-    let row = svc::find_or_404(&state.db, &purpose)
-        .await
-        .map_err(map_err)?;
+    let row = use_cases(&state).get(&purpose).await.map_err(map_err)?;
     Ok(Json(AgentGraphBody {
         content: row.agent_graph,
     }))
@@ -358,7 +366,8 @@ pub async fn put_agent_graph(
     JsonPath(purpose): JsonPath<String>,
     JsonBody(payload): JsonBody<AgentGraphBody>,
 ) -> Result<Json<AgentGraphBody>, AppError> {
-    let content = svc::save_agent_graph(&state.db, &purpose, &payload.content)
+    let content = use_cases(&state)
+        .save_agent_graph(&purpose, &payload.content)
         .await
         .map_err(map_err)?;
     Ok(Json(AgentGraphBody { content }))
@@ -555,7 +564,7 @@ mod tests {
             phases:
               - key: plan
                 label: 調査計画
-                model: claude-opus-4
+                model: sample-model-plan
                 prompt: 仮説を立てよ
         "};
         let put = server

@@ -41,6 +41,22 @@ pub async fn create_test_server(db: DatabaseHandle) -> TestServer {
     TestServer::new(router).expect("failed to create test server")
 }
 
+pub mod agent_config {
+    use core_application::agent_config::{AgentConfig, AgentConfigUseCaseError};
+
+    use super::DatabaseHandle;
+
+    pub async fn create(
+        db: &DatabaseHandle,
+        purpose: String,
+    ) -> Result<AgentConfig, AgentConfigUseCaseError> {
+        crate::services::use_cases::build_use_cases(db.clone())
+            .agent_configs()
+            .create(purpose)
+            .await
+    }
+}
+
 /// テスト用に `POST /api/strategies` で戦略を 1 件作成し、その ID を返す。
 pub async fn create_strategy(server: &TestServer, name: &str) -> String {
     let created = server

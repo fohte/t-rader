@@ -51,9 +51,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::agent_client::{FakeAgentTaskClient, SharedAgentTaskClient};
-    use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::services::use_cases::build_use_cases;
+    use crate::testing::agent_config;
     use crate::testing::{insert_test_cron_trigger, insert_test_hook_trigger};
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::{strategy, strategy_task};
