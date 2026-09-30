@@ -39,7 +39,7 @@ pub async fn list_strategy_triggers(
     let kind = query.kind.map(application_kind);
     let items = state
         .use_cases
-        .triggers
+        .triggers()
         .list_for_strategy(scope, kind)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -72,7 +72,7 @@ pub async fn create_strategy_trigger(
     let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
     let created = state
         .use_cases
-        .triggers
+        .triggers()
         .create(
             scope,
             CreateTriggerCommand {
@@ -108,7 +108,7 @@ pub async fn get_trigger(
 ) -> Result<Json<TriggerResponse>, AppError> {
     let trigger = state
         .use_cases
-        .triggers
+        .triggers()
         .get(trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -139,7 +139,7 @@ pub async fn update_trigger(
 ) -> Result<Json<TriggerResponse>, AppError> {
     let current = state
         .use_cases
-        .triggers
+        .triggers()
         .get(trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -149,7 +149,7 @@ pub async fn update_trigger(
     let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
     let updated = state
         .use_cases
-        .triggers
+        .triggers()
         .update(
             scope,
             trigger_id,
@@ -185,7 +185,7 @@ pub async fn delete_trigger(
 ) -> Result<StatusCode, AppError> {
     let current = state
         .use_cases
-        .triggers
+        .triggers()
         .get(trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;
@@ -195,7 +195,7 @@ pub async fn delete_trigger(
     let scope = super::strategies::strategy_scope_or_404(&state, strategy_id).await?;
     state
         .use_cases
-        .triggers
+        .triggers()
         .delete(scope, trigger_id)
         .await
         .map_err(map_trigger_use_case_error)?;

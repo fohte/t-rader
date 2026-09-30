@@ -113,11 +113,12 @@ mod tests {
         .await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
+        let triggers = use_cases.triggers();
 
-        let attempts = run_once(&use_cases.triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
 
         let tasks = strategy_task::Entity::find().all(&db).await.unwrap();
-        let fired = use_cases.triggers.get(trigger_id).await.unwrap();
+        let fired = triggers.get(trigger_id).await.unwrap();
         assert_eq!(
             (
                 attempts,
@@ -144,8 +145,9 @@ mod tests {
         insert_test_cron_trigger(&db, strategy_id, "* * * * *", false, Some(past), "x").await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
+        let triggers = use_cases.triggers();
 
-        let attempts = run_once(&use_cases.triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
 
         let tasks = strategy_task::Entity::find()
             .all(&db)
@@ -164,8 +166,9 @@ mod tests {
         insert_test_cron_trigger(&db, strategy_id, "0 9 * * *", true, Some(just_fired), "x").await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
+        let triggers = use_cases.triggers();
 
-        let attempts = run_once(&use_cases.triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
 
         let tasks = strategy_task::Entity::find()
             .all(&db)
@@ -183,8 +186,9 @@ mod tests {
         insert_test_hook_trigger(&db, strategy_id, "sample-hook", "x", None, true).await;
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let use_cases = build_use_cases(db.clone());
+        let triggers = use_cases.triggers();
 
-        let attempts = run_once(&use_cases.triggers, &agent_client, DEFAULT_INTERVAL).await;
+        let attempts = run_once(&triggers, &agent_client, DEFAULT_INTERVAL).await;
 
         let tasks = strategy_task::Entity::find()
             .all(&db)

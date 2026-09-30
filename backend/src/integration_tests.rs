@@ -70,7 +70,7 @@ async fn all_five_submission_routes_converge_on_strategy_task_use_case(
     .await;
     let use_cases = build_use_cases(db.clone());
     let attempts = use_cases
-        .triggers
+        .triggers()
         .run_cron_tick(agent_client.as_ref(), trigger_worker::DEFAULT_INTERVAL)
         .await;
     assert_eq!(attempts, 1);

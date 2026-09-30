@@ -33,6 +33,7 @@ export function FloatingChat(): React.ReactElement {
 
   const [seed, setSeed] = useState<string | null>(null)
   const [input, setInput] = useState('')
+  const [selectedPurpose, setSelectedPurpose] = useState('')
   const [currentTask, setCurrentTask] = useState<CurrentTask | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
@@ -55,6 +56,7 @@ export function FloatingChat(): React.ReactElement {
   }, [open])
 
   const submitMutation = $api.useMutation('post', '/api/strategies/{id}/chat')
+  const { data: agentConfigs = [] } = $api.useQuery('get', '/api/agent-configs')
 
   const taskQuery = $api.useQuery(
     'get',
@@ -132,7 +134,13 @@ export function FloatingChat(): React.ReactElement {
     setSubmitError(null)
     setCurrentTask(null)
     submitMutation.mutate(
-      { params: { path: { id: strategyId } }, body: { prompt } },
+      {
+        params: { path: { id: strategyId } },
+        body: {
+          prompt,
+          ...(selectedPurpose === '' ? {} : { purpose: selectedPurpose }),
+        },
+      },
       {
         onSuccess: (data) => {
           setCurrentTask({
@@ -156,6 +164,8 @@ export function FloatingChat(): React.ReactElement {
       input={input}
       status={status}
       notes={generatedNotes}
+      purposes={agentConfigs.map((config) => config.purpose)}
+      selectedPurpose={selectedPurpose}
       currentTaskId={currentTask?.taskId ?? null}
       onOpen={() => {
         openFloatingChat()
@@ -164,6 +174,7 @@ export function FloatingChat(): React.ReactElement {
         closeFloatingChat()
       }}
       onInputChange={setInput}
+      onPurposeChange={setSelectedPurpose}
       onSubmit={handleSubmit}
     />
   )

@@ -1,14 +1,12 @@
-//! コメント取得の inner method 実装。
+//! コメント操作の inner method 実装。
 //!
-//! 戦略境界の検査は、対象 (note_version / annotation) の所有権検査
-//! ([`super::fetch_note_owned_by`] / [`super::fetch_annotation_owned_by`]) が担う。
+//! 書き込み時の戦略境界はユースケースが検証し、読み取り時は対象の所有権をここで検証する。
 
+use core_application::change_history::Actor;
+use core_application::comment::{CommentUseCaseError, ReplyCommentCommand, ResolveCommentCommand};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use gateway_postgres::entities::{comment, note_version};
@@ -25,6 +23,24 @@ use super::{
 const ALLOWED_COMMENT_TARGET_KIND: [&str; 2] = ["note_version", "annotation"];
 
 fn comment_to_dto(m: comment::Model) -> CommentDto {
+    CommentDto {
+        comment_id: m.id,
+        target_kind: m.target_kind,
+        target_id: m.target_id,
+        parent_id: m.parent_id,
+        body: m.body,
+        author_kind: m.author_kind,
+        author_label: m.author_label,
+        resolved: m.resolved,
+        created_at: m.created_at,
+        anchor_text: m.anchor_text,
+        anchor_side: m.anchor_side,
+        start_line: m.start_line,
+        end_line: m.end_line,
+    }
+}
+
+fn comment_use_case_to_dto(m: core_application::comment::Comment) -> CommentDto {
     CommentDto {
         comment_id: m.id,
         target_kind: m.target_kind,
@@ -112,25 +128,19 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ResolveCommentParams,
     ) -> Result<ResolveCommentResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        let current = comment::Entity::find_by_id(params.comment_id)
-            .one(&self.db)
+        let updated = self
+            .use_cases
+            .comments()
+            .resolve(ResolveCommentCommand {
+                scope: Some(scope.into()),
+                actor: Actor::Llm { label: "analyst" },
+                id: params.comment_id,
+                resolved: params.resolved,
+            })
             .await
-            .map_err(db_error)?
-            .ok_or_else(|| McpError::resource_not_found("comment not found", None))?;
-        ensure_comment_target_owned_by(
-            &self.db,
-            &current.target_kind,
-            current.target_id,
-            session_strategy_id,
-        )
-        .await?;
-
-        let mut active = current.into_active_model();
-        active.resolved = Set(params.resolved);
-        let updated = active.update(&self.db).await.map_err(db_error)?;
+            .map_err(comment_use_case_error)?;
         Ok(ResolveCommentResult {
-            comment: comment_to_dto(updated),
+            comment: comment_use_case_to_dto(updated),
         })
     }
 
@@ -139,51 +149,34 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReplyCommentParams,
     ) -> Result<ReplyCommentResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        if params.body.trim().is_empty() {
-            return Err(invalid_params("body must not be empty"));
-        }
-
-        let parent = comment::Entity::find_by_id(params.parent_id)
-            .one(&self.db)
+        let created = self
+            .use_cases
+            .comments()
+            .reply(ReplyCommentCommand {
+                scope: Some(scope.into()),
+                actor: Actor::Llm { label: "analyst" },
+                parent_id: params.parent_id,
+                body: params.body,
+                author_kind: STRATEGY_AGENT_ACTOR.into(),
+                author_label: "analyst".into(),
+            })
             .await
-            .map_err(db_error)?
-            .ok_or_else(|| McpError::resource_not_found("parent comment not found", None))?;
-        if parent.parent_id.is_some() {
-            return Err(invalid_params(
-                "cannot reply to a reply; parent_id must reference a top-level comment",
-            ));
-        }
-        ensure_comment_target_owned_by(
-            &self.db,
-            &parent.target_kind,
-            parent.target_id,
-            session_strategy_id,
-        )
-        .await?;
-
-        let model = comment::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            target_kind: Set(parent.target_kind),
-            target_id: Set(parent.target_id),
-            parent_id: Set(Some(parent.id)),
-            body: Set(params.body),
-            author_kind: Set(STRATEGY_AGENT_ACTOR.to_string()),
-            author_label: Set("analyst".to_string()),
-            resolved: Set(false),
-            created_at: NotSet,
-            anchor_text: Set(None),
-            anchor_side: Set(None),
-            start_line: Set(None),
-            end_line: Set(None),
-        };
-        let created = comment::Entity::insert(model)
-            .exec_with_returning(&self.db)
-            .await
-            .map_err(db_error)?;
+            .map_err(comment_use_case_error)?;
         Ok(ReplyCommentResult {
-            comment: comment_to_dto(created),
+            comment: comment_use_case_to_dto(created),
         })
+    }
+}
+
+fn comment_use_case_error(error: CommentUseCaseError) -> McpError {
+    match error {
+        CommentUseCaseError::Validation(message) => invalid_params(message),
+        CommentUseCaseError::NotFound(message) => McpError::resource_not_found(message, None),
+        CommentUseCaseError::Forbidden(message) => invalid_params(message),
+        other => {
+            tracing::error!(error = %other, "strategy mcp comment operation failed");
+            internal_error(format!("database error: {other}"))
+        }
     }
 }
 
@@ -193,8 +186,9 @@ mod tests {
         CommentDto, ReadCommentsParams, ReplyCommentParams, ResolveCommentParams,
     };
     use super::super::tests_common::{
-        build_server, current_note_version_id, insert_strategy, normalize_comment, seed_comment,
-        seed_foreign_annotation, seed_foreign_note, ts_sentinel,
+        ChangeHistoryShape, build_server, change_history_for, current_note_version_id,
+        insert_strategy, normalize_comment, seed_comment, seed_foreign_annotation,
+        seed_foreign_note, ts_sentinel,
     };
     use gateway_postgres::entities::comment;
     use sea_orm::ActiveModelTrait;
@@ -529,6 +523,17 @@ mod tests {
             },
         );
 
+        server
+            .resolve_comment_inner(
+                strategy_id,
+                ResolveCommentParams {
+                    comment_id,
+                    resolved: true,
+                },
+            )
+            .await
+            .expect("resolving an already resolved comment is a no-op");
+
         let result = server
             .resolve_comment_inner(
                 strategy_id,
@@ -556,6 +561,33 @@ mod tests {
                 start_line: None,
                 end_line: None,
             },
+        );
+        assert_eq!(
+            change_history_for(&db, comment_id).await,
+            vec![
+                ChangeHistoryShape {
+                    id: uuid::Uuid::nil(),
+                    target_kind: "comment".into(),
+                    target_id: comment_id,
+                    actor_kind: "llm".into(),
+                    actor_label: "analyst".into(),
+                    op: "status_change".into(),
+                    diff_json: serde_json::json!({ "from": false, "to": true }),
+                    summary: None,
+                    created_at: ts_sentinel(),
+                },
+                ChangeHistoryShape {
+                    id: uuid::Uuid::nil(),
+                    target_kind: "comment".into(),
+                    target_id: comment_id,
+                    actor_kind: "llm".into(),
+                    actor_label: "analyst".into(),
+                    op: "status_change".into(),
+                    diff_json: serde_json::json!({ "from": true, "to": false }),
+                    summary: None,
+                    created_at: ts_sentinel(),
+                },
+            ],
         );
     }
 
@@ -638,6 +670,24 @@ mod tests {
                 start_line: None,
                 end_line: None,
             },
+        );
+        assert_eq!(
+            change_history_for(&db, comment_id).await,
+            vec![ChangeHistoryShape {
+                id: uuid::Uuid::nil(),
+                target_kind: "comment".into(),
+                target_id: comment_id,
+                actor_kind: "llm".into(),
+                actor_label: "analyst".into(),
+                op: "create".into(),
+                diff_json: serde_json::json!({
+                    "target_kind": "note_version",
+                    "target_id": note_version_id,
+                    "parent_id": parent_id,
+                }),
+                summary: None,
+                created_at: ts_sentinel(),
+            }],
         );
     }
 

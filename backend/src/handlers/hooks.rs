@@ -54,7 +54,7 @@ pub async fn receive_hook(
 ) -> Result<(StatusCode, Json<HookResponse>), AppError> {
     match state
         .use_cases
-        .triggers
+        .triggers()
         .fire_hook(state.agent_task_client.as_ref(), &hook_slug, payload)
         .await
     {

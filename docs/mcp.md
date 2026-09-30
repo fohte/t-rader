@@ -45,7 +45,7 @@ t-rader-backend (Axum) 内に 2 つの MCP server (`rmcp` ベースの Streamabl
 
 ノートの `kind` は `note_kind.key` を参照する。`requires_approval` が true の種別では、エージェントが追加したバージョンは承認されるまで現行バージョンにならない。人間が追加したバージョンは承認済みの現行バージョンになる。`requires_approval` を true から false にすると、各ノートの最新の未承認バージョンを承認する。現行バージョンより新しいバージョンなら現行バージョンにし、古いバージョンなら既存の現行バージョンを維持する。false から true にしても、すでに現行のバージョンは変わらない。`sort_order` は一覧の表示順に使われる。
 
-`create_note_kind` / `update_note_kind` / `delete_note_kind` は REST (`/api/note-kinds`) と共通の `backend/src/services/note_kinds.rs` を経由し、`change_history` にも actor `llm` / label `mgmt-mcp` で記録される。
+`list_note_kinds` / `create_note_kind` / `update_note_kind` / `delete_note_kind` は REST (`/api/note-kinds`) と共通の application ユースケース (`backend/crates/core/application/src/note_kind/use_cases.rs`) を経由し、`change_history` にも actor `llm` / label `mgmt-mcp` で記録される。
 
 `create_strategy_trigger` / `update_strategy_trigger` / `delete_strategy_trigger` は REST (`POST /api/strategies/{id}/triggers`, `PUT /api/triggers/{trigger_id}`, `DELETE /api/triggers/{trigger_id}`) と共通の `backend/src/services/trigger_crud.rs` を経由する。`change_history.target_kind` の CHECK 制約は `"trigger"` を含まないため、trigger への書き込みは change_history に記録されない (既知の監査ギャップ)。
 

@@ -31,7 +31,7 @@ impl MgmtServer {
             prompt_template: params.prompt_template,
             enabled: params.enabled,
         };
-        match self.use_cases.triggers.create(scope, command).await {
+        match self.use_cases.triggers().create(scope, command).await {
             Ok(created) => Ok(CreateStrategyTriggerResult {
                 ok: true,
                 errors: vec![],
@@ -51,7 +51,7 @@ impl MgmtServer {
     ) -> Result<UpdateStrategyTriggerResult, McpError> {
         let current = self
             .use_cases
-            .triggers
+            .triggers()
             .get(params.trigger_id)
             .await
             .map_err(map_trigger_error)?;
@@ -68,7 +68,7 @@ impl MgmtServer {
         };
         match self
             .use_cases
-            .triggers
+            .triggers()
             .update(scope, params.trigger_id, command)
             .await
         {
@@ -89,7 +89,7 @@ impl MgmtServer {
     ) -> Result<DeleteStrategyTriggerResult, McpError> {
         let current = self
             .use_cases
-            .triggers
+            .triggers()
             .get(params.trigger_id)
             .await
             .map_err(map_trigger_error)?;
@@ -99,7 +99,7 @@ impl MgmtServer {
         let scope = self.strategy_scope(strategy_id).await?;
         match self
             .use_cases
-            .triggers
+            .triggers()
             .delete(scope, params.trigger_id)
             .await
         {
@@ -174,7 +174,7 @@ mod tests {
 
         let stored = server
             .use_cases
-            .triggers
+            .triggers()
             .get(trigger_id)
             .await
             .expect("trigger persisted");
@@ -284,7 +284,7 @@ mod tests {
 
         let stored = server
             .use_cases
-            .triggers
+            .triggers()
             .get(trigger_id)
             .await
             .expect("trigger exists");
@@ -356,7 +356,7 @@ mod tests {
             (true, Vec::<String>::new()),
         );
 
-        assert!(server.use_cases.triggers.get(trigger_id).await.is_err());
+        assert!(server.use_cases.triggers().get(trigger_id).await.is_err());
     }
 
     #[backend_test_macros::database_test]

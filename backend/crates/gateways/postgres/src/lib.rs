@@ -7,11 +7,15 @@ use sea_orm::{
 
 extern crate self as gateway_postgres;
 
+mod annotation;
 mod change_history;
+mod comment;
 mod custom_indicator;
 pub mod entities;
 mod note;
+mod note_kind;
 mod persistence;
+mod prediction;
 pub mod repositories;
 mod strategy;
 mod strategy_existence;
@@ -23,9 +27,13 @@ mod transaction;
 mod trigger;
 mod unit_of_work;
 
+pub use annotation::PostgresAnnotationRepository;
 pub use change_history::PostgresChangeHistory;
+pub use comment::PostgresCommentRepository;
 pub use custom_indicator::PostgresCustomIndicatorRepository;
 pub use note::PostgresNoteRepository;
+pub use note_kind::PostgresNoteKindRepository;
+pub use prediction::PostgresPredictionRepository;
 pub use strategy::PostgresStrategyRepository;
 pub use strategy_existence::PostgresStrategyExistence;
 pub use strategy_scope::PostgresStrategyScopeSource;
