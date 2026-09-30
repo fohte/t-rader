@@ -10,17 +10,11 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrde
 use uuid::Uuid;
 
 use crate::entities::{note, note_kind, note_link, note_ref, note_version};
-use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref;
 
-#[derive(Clone, Copy, Default)]
-pub struct PostgresNoteRepository;
-
-impl PostgresNoteRepository {
-    pub fn new() -> Self {
-        Self
-    }
-}
+mod support;
+pub use support::PostgresNoteRepository;
+use support::{active_value, repository_error, to_note, to_version};
 
 #[async_trait]
 impl NoteRepository for PostgresNoteRepository {
@@ -441,46 +435,6 @@ impl NoteRepository for PostgresNoteRepository {
         .await
         .map_err(repository_error)?;
         Ok(())
-    }
-}
-
-fn active_value(value: Option<Option<String>>) -> sea_orm::ActiveValue<Option<String>> {
-    value.map_or(NotSet, Set)
-}
-
-fn repository_error(error: sea_orm::DbErr) -> NoteRepositoryError {
-    NoteRepositoryError::Database(persistence_error(error))
-}
-
-fn to_note(model: note::Model) -> Note {
-    Note {
-        id: model.id,
-        strategy_id: model.strategy_id,
-        kind: model.kind,
-        trigger: model.trigger,
-        trigger_label: model.trigger_label,
-        created_at: model.created_at,
-        updated_at: model.updated_at,
-        execution_id: model.execution_id,
-    }
-}
-
-fn to_version(model: note_version::Model) -> NoteVersion {
-    NoteVersion {
-        id: model.id,
-        note_id: model.note_id,
-        version_no: model.version_no,
-        title: model.title,
-        body_md: model.body_md,
-        frontmatter_json: model.frontmatter_json,
-        graphs_json: model.graphs_json,
-        status: model.status,
-        is_current: model.is_current,
-        change_reason: model.change_reason,
-        created_by_kind: model.created_by_kind,
-        execution_id: model.execution_id,
-        created_at: model.created_at,
-        reviewed_at: model.reviewed_at,
     }
 }
 
