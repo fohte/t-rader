@@ -52,7 +52,7 @@ mod tests {
         db: &DatabaseHandle,
     ) -> Result<GradingStats, PredictionUseCaseError> {
         let use_cases = crate::services::use_cases::build_use_cases(db.clone());
-        super::run_once(&use_cases.predictions).await
+        super::run_once(&use_cases.predictions()).await
     }
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
