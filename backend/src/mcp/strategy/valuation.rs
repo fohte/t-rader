@@ -3,11 +3,9 @@
 use core_application::strategy_scope::StrategyScope;
 use core_domain::valuation::Valuation;
 use rmcp::ErrorData as McpError;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
 
 use super::dto::{ReadValuationParams, ReadValuationResult, ValuationDto};
-use super::{StrategyServer, internal_error};
+use super::{StrategyServer, decimal_to_f64, valuation_error};
 
 impl StrategyServer {
     pub(crate) async fn read_valuation_inner(
@@ -21,10 +19,7 @@ impl StrategyServer {
             .valuations()
             .find_for_symbol(scope.into(), &params.symbol, params.from, params.to)
             .await
-            .map_err(|error| {
-                tracing::error!(error = %error, "strategy mcp db error");
-                internal_error(format!("database error: {error}"))
-            })?;
+            .map_err(valuation_error)?;
 
         Ok(ReadValuationResult {
             symbol: params.symbol,
@@ -37,21 +32,17 @@ impl From<Valuation> for ValuationDto {
     fn from(row: Valuation) -> Self {
         Self {
             date: row.date,
-            eps: decimal_to_f64(row.eps),
-            fwd_eps: decimal_to_f64(row.fwd_eps),
-            bps: decimal_to_f64(row.bps),
-            roe: decimal_to_f64(row.roe),
-            fwd_roe: decimal_to_f64(row.fwd_roe),
-            per: decimal_to_f64(row.per),
-            fwd_per: decimal_to_f64(row.fwd_per),
-            pbr: decimal_to_f64(row.pbr),
-            mkt_cap: decimal_to_f64(row.mkt_cap),
+            eps: row.eps.map(decimal_to_f64),
+            fwd_eps: row.fwd_eps.map(decimal_to_f64),
+            bps: row.bps.map(decimal_to_f64),
+            roe: row.roe.map(decimal_to_f64),
+            fwd_roe: row.fwd_roe.map(decimal_to_f64),
+            per: row.per.map(decimal_to_f64),
+            fwd_per: row.fwd_per.map(decimal_to_f64),
+            pbr: row.pbr.map(decimal_to_f64),
+            mkt_cap: row.mkt_cap.map(decimal_to_f64),
         }
     }
-}
-
-fn decimal_to_f64(value: Option<Decimal>) -> Option<f64> {
-    value.and_then(|value| value.to_f64())
 }
 
 #[cfg(test)]

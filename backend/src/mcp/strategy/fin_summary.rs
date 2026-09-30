@@ -5,7 +5,7 @@ use core_domain::financial_summary::FinancialSummary;
 use rmcp::ErrorData as McpError;
 
 use super::dto::{FinSummaryDto, ReadFinSummaryParams, ReadFinSummaryResult};
-use super::{StrategyServer, clamp_limit, internal_error};
+use super::{StrategyServer, clamp_limit, financial_summary_error};
 
 impl StrategyServer {
     pub(crate) async fn read_fin_summary_inner(
@@ -19,10 +19,7 @@ impl StrategyServer {
             .financial_summaries()
             .find_for_symbol(scope.into(), &params.symbol, clamp_limit(params.limit))
             .await
-            .map_err(|error| {
-                tracing::error!(error = %error, "strategy mcp db error");
-                internal_error(format!("database error: {error}"))
-            })?;
+            .map_err(financial_summary_error)?;
 
         Ok(ReadFinSummaryResult {
             items: summaries

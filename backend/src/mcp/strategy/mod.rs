@@ -228,6 +228,20 @@ pub(super) fn trade_error(error: core_application::trade::TradeUseCaseError) -> 
     internal_error(format!("database error: {error}"))
 }
 
+pub(super) fn financial_summary_error(
+    error: core_application::financial_summary::FinancialSummaryUseCaseError,
+) -> McpError {
+    tracing::error!(error = %error, "strategy mcp db error");
+    internal_error(format!("database error: {error}"))
+}
+
+pub(super) fn valuation_error(
+    error: core_application::valuation::ValuationUseCaseError,
+) -> McpError {
+    tracing::error!(error = %error, "strategy mcp db error");
+    internal_error(format!("database error: {error}"))
+}
+
 pub(super) fn strategy_use_case_error_to_mcp(
     error: core_application::strategy::StrategyUseCaseError,
 ) -> McpError {
