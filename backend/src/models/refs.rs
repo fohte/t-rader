@@ -1,8 +1,7 @@
 use chrono::{DateTime, FixedOffset};
+use core_application::refs::{IndicatorRef, ResolvedRef, SectorRef, StockRef, ThemeRef};
 use serde::Serialize;
 use utoipa::ToSchema;
-
-use gateway_postgres::entities::{indicator, sector, stock, theme};
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = Stock)]
@@ -18,8 +17,8 @@ pub struct StockResponse {
     pub product_category: Option<String>,
 }
 
-impl From<stock::Model> for StockResponse {
-    fn from(model: stock::Model) -> Self {
+impl From<StockRef> for StockResponse {
+    fn from(model: StockRef) -> Self {
         Self {
             id: model.id,
             name: model.name,
@@ -40,8 +39,8 @@ pub struct IndicatorResponse {
     pub kind: String,
 }
 
-impl From<indicator::Model> for IndicatorResponse {
-    fn from(model: indicator::Model) -> Self {
+impl From<IndicatorRef> for IndicatorResponse {
+    fn from(model: IndicatorRef) -> Self {
         Self {
             id: model.id,
             name: model.name,
@@ -57,8 +56,8 @@ pub struct SectorResponse {
     pub name: String,
 }
 
-impl From<sector::Model> for SectorResponse {
-    fn from(model: sector::Model) -> Self {
+impl From<SectorRef> for SectorResponse {
+    fn from(model: SectorRef) -> Self {
         Self {
             id: model.id,
             name: model.name,
@@ -74,8 +73,8 @@ pub struct ThemeResponse {
     pub description: Option<String>,
 }
 
-impl From<theme::Model> for ThemeResponse {
-    fn from(model: theme::Model) -> Self {
+impl From<ThemeRef> for ThemeResponse {
+    fn from(model: ThemeRef) -> Self {
         Self {
             id: model.id,
             name: model.name,
@@ -93,4 +92,14 @@ pub struct RefResolution {
     pub id: String,
     /// 一致しなかった場合は None
     pub name: Option<String>,
+}
+
+impl From<ResolvedRef> for RefResolution {
+    fn from(reference: ResolvedRef) -> Self {
+        Self {
+            kind: reference.kind,
+            id: reference.id,
+            name: reference.name,
+        }
+    }
 }
