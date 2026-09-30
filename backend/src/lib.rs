@@ -16,7 +16,6 @@ pub(crate) mod serde_helpers;
 pub mod services;
 #[cfg(test)]
 pub mod testing;
-pub(crate) mod text_normalize;
 
 use std::sync::Arc;
 

@@ -398,8 +398,8 @@ impl StrategyServer {
         Parameters(params): Parameters<SearchRefsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<SearchRefsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.search_refs_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.search_refs_inner(params).await.map(Json)
     }
 
     /// 参照型に別名 (表記揺れ・略称・旧社名等) を追加する
@@ -412,8 +412,8 @@ impl StrategyServer {
         Parameters(params): Parameters<AddRefTermsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<AddRefTermsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.add_ref_terms_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.add_ref_terms_inner(params).await.map(Json)
     }
 
     /// 参照型から別名を削除する
@@ -426,8 +426,8 @@ impl StrategyServer {
         Parameters(params): Parameters<RemoveRefTermsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<Json<RemoveRefTermsResult>, McpError> {
-        let scope = self.strategy_scope_from_ctx(&ctx).await?;
-        self.remove_ref_terms_inner(scope, params).await.map(Json)
+        self.strategy_scope_from_ctx(&ctx).await?;
+        self.remove_ref_terms_inner(params).await.map(Json)
     }
 
     /// 銘柄の財務情報 (決算短信の実績・会社予想、業績予想/配当予想の修正) を新しい順に返す

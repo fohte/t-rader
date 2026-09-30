@@ -23,6 +23,7 @@ pub mod note;
 pub mod note_kind;
 pub mod persistence;
 pub mod prediction;
+pub mod refs;
 pub mod rss_feed;
 pub mod shareholding_structure_source;
 pub mod short_ratio;
