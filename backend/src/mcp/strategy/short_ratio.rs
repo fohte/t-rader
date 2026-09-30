@@ -8,18 +8,17 @@
 //! 売買代金) は JPX の空売り集計公表ページに基づく。戦略に属さない市場データのため
 //! `search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には使わない。
 
+use core_application::short_ratio::ShortRatioQuery;
 use core_application::strategy_scope::StrategyScope;
+use core_domain::short_ratio::ShortRatio;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-
-use gateway_postgres::entities::short_ratio;
 
 use super::dto::{ReadSectorShortRatioParams, ReadSectorShortRatioResult, SectorShortRatioDto};
-use super::{StrategyServer, clamp_limit, db_error, decimal_to_f64, invalid_params};
+use super::{StrategyServer, clamp_limit, decimal_to_f64, internal_error, invalid_params};
 
 /// 33 業種名 -> 33 業種コード。
-/// https://jpx-jquants.com/ja/spec/eq-master/sector33code
+/// https://jpx-j-quants.com/ja/spec/eq-master/sector33code
 const SECTOR33_CODES: &[(&str, &str)] = &[
     ("水産・農林業", "0050"),
     ("鉱業", "1050"),
@@ -82,7 +81,7 @@ fn compute_short_ratio(
     Some(decimal_to_f64(short / total))
 }
 
-fn sector_short_ratio_dto(row: short_ratio::Model) -> SectorShortRatioDto {
+fn sector_short_ratio_dto(row: ShortRatio) -> SectorShortRatioDto {
     let short_ratio = compute_short_ratio(
         row.sell_excluding_short_value,
         row.short_with_restriction_value,
@@ -103,26 +102,27 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadSectorShortRatioParams,
     ) -> Result<ReadSectorShortRatioResult, McpError> {
-        let _scope = scope.into();
+        let scope = scope.into();
         let sector33_code = sector33_code_for_name(&params.sector)
             .ok_or_else(|| invalid_params(format!("unknown sector name: {:?}", params.sector)))?;
         let limit = clamp_limit(params.limit);
-
-        let mut query =
-            short_ratio::Entity::find().filter(short_ratio::Column::Sector33Code.eq(sector33_code));
-        if let Some(from) = params.from {
-            query = query.filter(short_ratio::Column::Date.gte(from));
-        }
-        if let Some(to) = params.to {
-            query = query.filter(short_ratio::Column::Date.lte(to));
-        }
-
-        let rows = query
-            .order_by_desc(short_ratio::Column::Date)
-            .limit(limit)
-            .all(&self.db)
+        let rows = self
+            .use_cases
+            .short_ratios
+            .read(
+                scope,
+                ShortRatioQuery {
+                    sector33_code: sector33_code.to_string(),
+                    from: params.from,
+                    to: params.to,
+                    limit,
+                },
+            )
             .await
-            .map_err(db_error)?;
+            .map_err(|error| {
+                tracing::error!(%error, "strategy mcp short ratio query failed");
+                internal_error(format!("database error: {error}"))
+            })?;
 
         Ok(ReadSectorShortRatioResult {
             sector: params.sector,
@@ -133,11 +133,16 @@ impl StrategyServer {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use chrono::NaiveDate;
+    use core_application::short_ratio::{
+        FakeShortRatioRepository, ShortRatioQuery, ShortRatioUseCases,
+    };
+    use core_domain::short_ratio::ShortRatio;
     use rstest::rstest;
     use rust_decimal::Decimal;
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
+    use sea_orm::{DatabaseBackend, MockDatabase};
     use uuid::Uuid;
 
     use super::super::dto::{
@@ -145,21 +150,50 @@ mod tests {
     };
     use super::super::tests_common::build_server;
     use super::{compute_short_ratio, sector33_code_for_name};
-    use gateway_postgres::entities::short_ratio;
 
     fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
     }
 
     fn dec(s: &str) -> Decimal {
-        s.parse().expect("valid decimal")
+        s.parse().unwrap()
+    }
+
+    fn ratio(
+        date: NaiveDate,
+        sector33_code: &str,
+        values: Option<(&str, &str, &str)>,
+    ) -> ShortRatio {
+        let (
+            sell_excluding_short_value,
+            short_with_restriction_value,
+            short_without_restriction_value,
+        ) = values.map_or((None, None, None), |(sell, with_r, without_r)| {
+            (Some(dec(sell)), Some(dec(with_r)), Some(dec(without_r)))
+        });
+        ShortRatio {
+            date,
+            sector33_code: sector33_code.into(),
+            sell_excluding_short_value,
+            short_with_restriction_value,
+            short_without_restriction_value,
+        }
+    }
+
+    fn server(repository: Arc<FakeShortRatioRepository>) -> super::super::StrategyServer {
+        let db = gateway_postgres::DatabaseHandle::from(
+            MockDatabase::new(DatabaseBackend::Postgres).into_connection(),
+        );
+        let mut server = build_server(db);
+        server.use_cases.short_ratios = ShortRatioUseCases::new(repository);
+        server
     }
 
     #[rstest]
     #[case::plain_name("輸送用機器", Some("3700"))]
     #[case::halfwidth_dot_name("石油･石炭製品", Some("3300"))]
     #[case::catch_all("その他", Some("9999"))]
-    #[case::unknown("半導体", None)]
+    #[case::unknown("合成業種", None)]
     fn sector33_code_for_name_cases(#[case] sector: &str, #[case] expected: Option<&str>) {
         assert_eq!(sector33_code_for_name(sector), expected);
     }
@@ -176,118 +210,80 @@ mod tests {
     ) {
         assert_eq!(
             compute_short_ratio(sell_excluding_short, with_restriction, without_restriction),
-            expected
+            expected,
         );
     }
 
-    async fn seed(
-        db: &impl sea_orm::ConnectionTrait,
-        sector33_code: &str,
-        date: NaiveDate,
-        values: Option<(&str, &str, &str)>,
-    ) {
-        let (sell, with_r, without_r) = match values {
-            Some((sell, with_r, without_r)) => {
-                (Some(dec(sell)), Some(dec(with_r)), Some(dec(without_r)))
-            }
-            None => (None, None, None),
-        };
-        short_ratio::ActiveModel {
-            date: Set(date),
-            sector33_code: Set(sector33_code.to_string()),
-            sell_excluding_short_value: Set(sell),
-            short_with_restriction_value: Set(with_r),
-            short_without_restriction_value: Set(without_r),
-        }
-        .insert(db)
-        .await
-        .expect("seed short ratio");
-    }
-
-    #[backend_test_macros::database_test]
-    async fn rejects_unknown_sector_name(db: gateway_postgres::DatabaseHandle) {
-        let err = build_server(db)
+    #[tokio::test]
+    async fn rejects_unknown_sector_name() {
+        let repository = Arc::new(FakeShortRatioRepository::new());
+        let error = server(repository)
             .read_sector_short_ratio_inner(
                 Uuid::new_v4(),
                 ReadSectorShortRatioParams {
-                    sector: "半導体".to_string(),
+                    sector: "合成業種".into(),
                     from: None,
                     to: None,
                     limit: None,
                 },
             )
             .await
-            .expect_err("unknown sector name should be rejected");
-        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+            .expect_err("unknown sector should be rejected");
+
+        assert_eq!(error.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
-    #[backend_test_macros::database_test]
-    async fn returns_matching_sector_newest_first_with_computed_ratio(
-        db: gateway_postgres::DatabaseHandle,
-    ) {
-        seed(&db, "3700", ymd(2026, 1, 5), Some(("700", "200", "100"))).await;
-        seed(&db, "3700", ymd(2026, 1, 6), None).await;
-        seed(&db, "3650", ymd(2026, 1, 6), Some(("100", "50", "50"))).await;
+    #[tokio::test]
+    async fn reads_sector_rows_and_maps_values_to_result() {
+        let repository = Arc::new(FakeShortRatioRepository::new());
+        repository.rows.lock().unwrap().extend([
+            ratio(ymd(2025, 1, 5), "9999", Some(("700", "200", "100"))),
+            ratio(ymd(2025, 1, 6), "9999", None),
+            ratio(ymd(2025, 1, 6), "9050", Some(("100", "50", "50"))),
+        ]);
 
-        let result = build_server(db)
+        let result = server(repository.clone())
             .read_sector_short_ratio_inner(
                 Uuid::new_v4(),
                 ReadSectorShortRatioParams {
-                    sector: "輸送用機器".to_string(),
-                    from: None,
-                    to: None,
-                    limit: None,
+                    sector: "その他".into(),
+                    from: Some(ymd(2025, 1, 5)),
+                    to: Some(ymd(2025, 1, 6)),
+                    limit: Some(5),
                 },
             )
             .await
-            .expect("read_sector_short_ratio");
+            .expect("read short ratio");
 
         assert_eq!(
-            result,
-            ReadSectorShortRatioResult {
-                sector: "輸送用機器".to_string(),
-                items: vec![
-                    SectorShortRatioDto {
-                        date: ymd(2026, 1, 6),
-                        sell_excluding_short_value: None,
-                        short_with_restriction_value: None,
-                        short_without_restriction_value: None,
-                        short_ratio: None,
-                    },
-                    SectorShortRatioDto {
-                        date: ymd(2026, 1, 5),
-                        sell_excluding_short_value: Some(700.0),
-                        short_with_restriction_value: Some(200.0),
-                        short_without_restriction_value: Some(100.0),
-                        short_ratio: Some(0.3),
-                    },
-                ],
-            }
-        );
-    }
-
-    #[backend_test_macros::database_test]
-    async fn filters_by_date_range_and_respects_limit(db: gateway_postgres::DatabaseHandle) {
-        for day in [1u32, 2, 3, 4] {
-            seed(&db, "3700", ymd(2026, 1, day), Some(("100", "10", "10"))).await;
-        }
-
-        let result = build_server(db)
-            .read_sector_short_ratio_inner(
-                Uuid::new_v4(),
-                ReadSectorShortRatioParams {
-                    sector: "輸送用機器".to_string(),
-                    from: Some(ymd(2026, 1, 2)),
-                    to: Some(ymd(2026, 1, 3)),
-                    limit: Some(1),
+            (result, repository.queries.lock().unwrap().clone(),),
+            (
+                ReadSectorShortRatioResult {
+                    sector: "その他".into(),
+                    items: vec![
+                        SectorShortRatioDto {
+                            date: ymd(2025, 1, 6),
+                            sell_excluding_short_value: None,
+                            short_with_restriction_value: None,
+                            short_without_restriction_value: None,
+                            short_ratio: None,
+                        },
+                        SectorShortRatioDto {
+                            date: ymd(2025, 1, 5),
+                            sell_excluding_short_value: Some(700.0),
+                            short_with_restriction_value: Some(200.0),
+                            short_without_restriction_value: Some(100.0),
+                            short_ratio: Some(0.3),
+                        },
+                    ],
                 },
-            )
-            .await
-            .expect("read_sector_short_ratio");
-
-        assert_eq!(
-            result.items.iter().map(|i| i.date).collect::<Vec<_>>(),
-            vec![ymd(2026, 1, 3)],
+                vec![ShortRatioQuery {
+                    sector33_code: "9999".into(),
+                    from: Some(ymd(2025, 1, 5)),
+                    to: Some(ymd(2025, 1, 6)),
+                    limit: 5,
+                }],
+            ),
         );
     }
 }

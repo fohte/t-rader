@@ -6,9 +6,17 @@ use core_application::comment::{CommentUseCases, SharedCommentRepository};
 use core_application::custom_indicator::{
     CustomIndicatorUseCases, SharedCustomIndicatorRepository,
 };
+use core_application::indicator_observation::{
+    IndicatorObservationUseCases, SharedIndicatorObservationRepository,
+};
+use core_application::margin::{MarginUseCases, SharedMarginRepository};
 use core_application::note::{NoteUseCases, SharedNoteRepository};
 use core_application::note_kind::{NoteKindUseCases, SharedNoteKindRepository};
 use core_application::prediction::{PredictionUseCases, SharedPredictionRepository};
+use core_application::short_ratio::{SharedShortRatioRepository, ShortRatioUseCases};
+use core_application::short_sale_report::{
+    SharedShortSaleReportRepository, ShortSaleReportUseCases,
+};
 use core_application::strategy::{
     SharedStrategyRepository, SharedStrategySummaryQuery, StrategyUseCases,
 };
@@ -18,10 +26,11 @@ use core_application::trade::{SharedTradeRepository, TradeUseCases};
 use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresAnnotationRepository, PostgresChangeHistory, PostgresCommentRepository,
-    PostgresCustomIndicatorRepository, PostgresNoteKindRepository, PostgresNoteRepository,
-    PostgresPredictionRepository, PostgresStrategyExistence, PostgresStrategyRepository,
-    PostgresStrategySummaryQuery, PostgresStrategyTaskRepository, PostgresTradeRepository,
-    PostgresUnitOfWork,
+    PostgresCustomIndicatorRepository, PostgresIndicatorObservationRepository,
+    PostgresMarginRepository, PostgresNoteKindRepository, PostgresNoteRepository,
+    PostgresPredictionRepository, PostgresShortRatioRepository, PostgresShortSaleReportRepository,
+    PostgresStrategyExistence, PostgresStrategyRepository, PostgresStrategySummaryQuery,
+    PostgresStrategyTaskRepository, PostgresTradeRepository, PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
@@ -35,6 +44,10 @@ pub struct UseCases {
     pub strategy_tasks: StrategyTaskUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
     pub note_kinds: NoteKindUseCases,
+    pub margins: MarginUseCases,
+    pub short_ratios: ShortRatioUseCases,
+    pub short_sale_reports: ShortSaleReportUseCases,
+    pub indicator_observations: IndicatorObservationUseCases,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
@@ -45,6 +58,14 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let repository: SharedTradeRepository = Arc::new(PostgresTradeRepository::new(db.clone()));
     let custom_indicator_repository: SharedCustomIndicatorRepository =
         Arc::new(PostgresCustomIndicatorRepository::new(db.clone()));
+    let margin_repository: SharedMarginRepository =
+        Arc::new(PostgresMarginRepository::new(db.clone()));
+    let short_ratio_repository: SharedShortRatioRepository =
+        Arc::new(PostgresShortRatioRepository::new(db.clone()));
+    let short_sale_report_repository: SharedShortSaleReportRepository =
+        Arc::new(PostgresShortSaleReportRepository::new(db.clone()));
+    let indicator_observation_repository: SharedIndicatorObservationRepository =
+        Arc::new(PostgresIndicatorObservationRepository::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
     let change_history: SharedChangeHistoryPort = Arc::new(PostgresChangeHistory);
     let annotations = AnnotationUseCases::new(
@@ -99,6 +120,11 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         strategy_existence,
         change_history,
     );
+    let margins = MarginUseCases::new(margin_repository);
+    let short_ratios = ShortRatioUseCases::new(short_ratio_repository);
+    let short_sale_reports = ShortSaleReportUseCases::new(short_sale_report_repository);
+    let indicator_observations =
+        IndicatorObservationUseCases::new(indicator_observation_repository);
 
     let strategy_tasks = build_strategy_task_use_cases(db);
 
@@ -112,6 +138,10 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         strategy_tasks,
         custom_indicators,
         note_kinds,
+        margins,
+        short_ratios,
+        short_sale_reports,
+        indicator_observations,
     }
 }
 

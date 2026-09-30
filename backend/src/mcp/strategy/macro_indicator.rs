@@ -1,18 +1,13 @@
 //! 戦略実行 MCP の `read_macro_indicator` tool。
-//!
-//! マクロ指標の日次観測値 (`indicator_observation`、取り込み元は
-//! `backend/src/services/fred_ingest.rs`) を id + 期間で読む。indicator は戦略に属さない
-//! 市場データのため、`search_refs` / `search_news` 同様 `x-strategy-id` を検索条件には
-//! 使わない。
 
+use core_application::indicator_observation::{
+    IndicatorObservationQuery, IndicatorObservationUseCaseError,
+};
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-
-use gateway_postgres::entities::indicator_observation;
 
 use super::dto::{IndicatorObservationDto, ReadMacroIndicatorParams, ReadMacroIndicatorResult};
-use super::{StrategyServer, db_error, decimal_to_f64, invalid_params};
+use super::{StrategyServer, decimal_to_f64, internal_error, invalid_params};
 
 impl StrategyServer {
     pub(crate) async fn read_macro_indicator_inner(
@@ -20,126 +15,111 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: ReadMacroIndicatorParams,
     ) -> Result<ReadMacroIndicatorResult, McpError> {
-        let _scope = scope.into();
-        let indicator_id = params.indicator_id.trim().to_string();
-        if indicator_id.is_empty() {
-            return Err(invalid_params("indicator_id must not be empty"));
-        }
-        if params.from > params.to {
-            return Err(invalid_params("from must be on or before to"));
-        }
-
-        let rows = indicator_observation::Entity::find()
-            .filter(indicator_observation::Column::IndicatorId.eq(indicator_id.clone()))
-            .filter(indicator_observation::Column::Date.gte(params.from))
-            .filter(indicator_observation::Column::Date.lte(params.to))
-            .order_by_asc(indicator_observation::Column::Date)
-            .all(&self.db)
+        let result = self
+            .use_cases
+            .indicator_observations
+            .read(
+                scope.into(),
+                IndicatorObservationQuery {
+                    indicator_id: params.indicator_id,
+                    from: params.from,
+                    to: params.to,
+                },
+            )
             .await
-            .map_err(db_error)?;
+            .map_err(indicator_observation_error)?;
 
         Ok(ReadMacroIndicatorResult {
-            indicator_id,
-            observations: rows
+            indicator_id: result.indicator_id,
+            observations: result
+                .observations
                 .into_iter()
-                .map(|row| IndicatorObservationDto {
-                    date: row.date,
-                    value: decimal_to_f64(row.value),
+                .map(|observation| IndicatorObservationDto {
+                    date: observation.date,
+                    value: decimal_to_f64(observation.value),
                 })
                 .collect(),
         })
     }
 }
 
+fn indicator_observation_error(error: IndicatorObservationUseCaseError) -> McpError {
+    match error {
+        IndicatorObservationUseCaseError::Validation(message) => invalid_params(message),
+        IndicatorObservationUseCaseError::Repository(error) => {
+            tracing::error!(error = %error, "strategy mcp indicator observation read failed");
+            internal_error(format!("database error: {error}"))
+        }
+        IndicatorObservationUseCaseError::Source(error) => {
+            tracing::error!(error = %error, "strategy mcp indicator observation read failed");
+            internal_error(format!("indicator source error: {error}"))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use sea_orm::ActiveModelTrait;
-    use sea_orm::ActiveValue::Set;
-
+    use core_application::indicator_observation::{
+        IndicatorObservationMetadata, IndicatorObservationRepository,
+    };
+    use core_domain::IndicatorObservation;
+    use rust_decimal::Decimal;
     use uuid::Uuid;
 
-    use super::super::dto::{IndicatorObservationDto, ReadMacroIndicatorParams};
+    use super::super::dto::{
+        IndicatorObservationDto, ReadMacroIndicatorParams, ReadMacroIndicatorResult,
+    };
     use super::super::tests_common::build_server;
-    use gateway_postgres::entities::{indicator, indicator_observation};
+    use gateway_postgres::{DatabaseHandle, PostgresIndicatorObservationRepository};
 
-    fn ymd(y: i32, m: u32, d: u32) -> NaiveDate {
+    fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("valid date")
     }
 
-    async fn seed_indicator(db: &impl sea_orm::ConnectionTrait, id: &str) {
-        indicator::ActiveModel {
-            id: Set(id.to_string()),
-            name: Set(id.to_string()),
-            kind: Set("fx".to_string()),
-        }
-        .insert(db)
-        .await
-        .expect("seed indicator");
-    }
-
-    async fn seed_observation(
-        db: &impl sea_orm::ConnectionTrait,
-        id: &str,
-        date: NaiveDate,
-        value: &str,
-    ) {
-        indicator_observation::ActiveModel {
-            indicator_id: Set(id.to_string()),
-            date: Set(date),
-            value: Set(value.parse().expect("valid decimal")),
-        }
-        .insert(db)
-        .await
-        .expect("seed observation");
-    }
-
-    #[backend_test_macros::database_test]
-    async fn returns_observations_in_date_range_oldest_first(db: gateway_postgres::DatabaseHandle) {
-        seed_indicator(&db, "USDJPY").await;
-        seed_observation(&db, "USDJPY", ymd(2026, 9, 1), "147.50").await;
-        seed_observation(&db, "USDJPY", ymd(2026, 9, 3), "148.20").await;
-        seed_observation(&db, "USDJPY", ymd(2026, 9, 10), "150.00").await;
-
-        let result = build_server(db)
-            .read_macro_indicator_inner(
-                Uuid::new_v4(),
-                ReadMacroIndicatorParams {
-                    indicator_id: "USDJPY".to_string(),
-                    from: ymd(2026, 9, 1),
-                    to: ymd(2026, 9, 5),
-                },
+    async fn seed_observations(db: &DatabaseHandle) {
+        let repository = PostgresIndicatorObservationRepository::new(db.clone());
+        repository
+            .ensure_indicator(IndicatorObservationMetadata {
+                indicator_id: "INDICATOR_TEST".to_string(),
+                name: "テスト指標".to_string(),
+                kind: "index".to_string(),
+            })
+            .await
+            .expect("seed indicator");
+        repository
+            .upsert_observations(
+                "INDICATOR_TEST",
+                vec![
+                    IndicatorObservation {
+                        date: date(2026, 9, 1),
+                        value: Decimal::from(10),
+                    },
+                    IndicatorObservation {
+                        date: date(2026, 9, 3),
+                        value: Decimal::from(30),
+                    },
+                    IndicatorObservation {
+                        date: date(2026, 9, 10),
+                        value: Decimal::from(100),
+                    },
+                ],
             )
             .await
-            .expect("read_macro_indicator");
-
-        assert_eq!(
-            result.observations,
-            vec![
-                IndicatorObservationDto {
-                    date: ymd(2026, 9, 1),
-                    value: 147.50,
-                },
-                IndicatorObservationDto {
-                    date: ymd(2026, 9, 3),
-                    value: 148.20,
-                },
-            ],
-        );
+            .expect("seed observations");
     }
 
     #[backend_test_macros::database_test]
-    async fn returns_empty_when_no_observation_in_range(db: gateway_postgres::DatabaseHandle) {
-        seed_indicator(&db, "VIX").await;
-        seed_observation(&db, "VIX", ymd(2026, 1, 1), "15.0").await;
+    async fn returns_observations_in_date_range_oldest_first(db: DatabaseHandle) {
+        seed_observations(&db).await;
 
         let result = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),
                 ReadMacroIndicatorParams {
-                    indicator_id: "VIX".to_string(),
-                    from: ymd(2026, 9, 1),
-                    to: ymd(2026, 9, 30),
+                    indicator_id: "INDICATOR_TEST".to_string(),
+                    from: date(2026, 9, 1),
+                    to: date(2026, 9, 5),
                 },
             )
             .await
@@ -147,42 +127,78 @@ mod tests {
 
         assert_eq!(
             result,
-            super::ReadMacroIndicatorResult {
-                indicator_id: "VIX".to_string(),
+            ReadMacroIndicatorResult {
+                indicator_id: "INDICATOR_TEST".to_string(),
+                observations: vec![
+                    IndicatorObservationDto {
+                        date: date(2026, 9, 1),
+                        value: 10.0,
+                    },
+                    IndicatorObservationDto {
+                        date: date(2026, 9, 3),
+                        value: 30.0,
+                    },
+                ],
+            },
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn returns_empty_when_no_observation_in_range(db: DatabaseHandle) {
+        seed_observations(&db).await;
+
+        let result = build_server(db)
+            .read_macro_indicator_inner(
+                Uuid::new_v4(),
+                ReadMacroIndicatorParams {
+                    indicator_id: "INDICATOR_TEST".to_string(),
+                    from: date(2026, 1, 1),
+                    to: date(2026, 1, 31),
+                },
+            )
+            .await
+            .expect("read_macro_indicator");
+
+        assert_eq!(
+            result,
+            ReadMacroIndicatorResult {
+                indicator_id: "INDICATOR_TEST".to_string(),
                 observations: vec![],
             },
         );
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_empty_indicator_id(db: gateway_postgres::DatabaseHandle) {
+    async fn rejects_empty_indicator_id(db: DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),
                 ReadMacroIndicatorParams {
                     indicator_id: "   ".to_string(),
-                    from: ymd(2026, 1, 1),
-                    to: ymd(2026, 1, 31),
+                    from: date(2026, 1, 1),
+                    to: date(2026, 1, 31),
                 },
             )
             .await
             .expect_err("empty indicator_id should be rejected");
+
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 
     #[backend_test_macros::database_test]
-    async fn rejects_from_after_to(db: gateway_postgres::DatabaseHandle) {
+    async fn rejects_from_after_to(db: DatabaseHandle) {
         let err = build_server(db)
             .read_macro_indicator_inner(
                 Uuid::new_v4(),
                 ReadMacroIndicatorParams {
-                    indicator_id: "USDJPY".to_string(),
-                    from: ymd(2026, 9, 10),
-                    to: ymd(2026, 9, 1),
+                    indicator_id: "INDICATOR_TEST".to_string(),
+                    from: date(2026, 9, 10),
+                    to: date(2026, 9, 1),
                 },
             )
             .await
             .expect_err("from after to should be rejected");
+
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
     }
 }
