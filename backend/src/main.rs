@@ -14,7 +14,7 @@ use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
-use core_application::indicator_observation_source::IndicatorObservationSource;
+use core_application::indicator_observation_source::SharedIndicatorObservationSource;
 use core_application::news_aggregator::SharedNewsAggregator;
 use gateway_fred::FredClient;
 use gateway_ibkr::IbkrClient;
@@ -231,37 +231,28 @@ async fn main() -> Result<(), AppError> {
     );
     tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
-    match std::env::var("FRED_API_KEY") {
+    let fred_source: Option<SharedIndicatorObservationSource> = match std::env::var("FRED_API_KEY")
+    {
         Ok(api_key) if !api_key.is_empty() => {
             let fred_client = FredClient::new(api_key).map_err(|err| {
                 AppError::Config(format!("failed to initialize FRED client: {err}"))
             })?;
-            let source: Arc<dyn IndicatorObservationSource> = Arc::new(fred_client);
-            let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
-                use_cases.indicator_observations(),
-                source,
-                backend::services::fred_ingest::DEFAULT_INTERVAL,
-            );
-            tracing::info!(
-                interval_secs = backend::services::fred_ingest::DEFAULT_INTERVAL.as_secs(),
-                "FRED macro history ingest poll task started",
-            );
+            let source: SharedIndicatorObservationSource = Arc::new(fred_client);
+            Some(source)
         }
         _ => {
             tracing::warn!(
                 "FRED_API_KEY が未設定のため、FRED マクロ指標履歴の取り込みを起動しません"
             );
+            None
         }
-    }
+    };
 
     // cron trigger を schedule どおりに発火させる worker を起動する。
     // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
     tracing::info!(
         interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
         "starting cron trigger worker",
-    );
-    let use_cases = backend::services::use_cases::build_use_cases(
-        gateway_postgres::DatabaseHandle::from(db.clone()),
     );
     let _trigger_worker = backend::services::trigger_worker::spawn(
         use_cases.triggers(),
@@ -270,77 +261,6 @@ async fn main() -> Result<(), AppError> {
     );
 
     if let Some(client) = &jquants_client {
-        let _stock_master_sync_poll = backend::services::stock_master_sync::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::stock_master_sync::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::stock_master_sync::DEFAULT_INTERVAL.as_secs(),
-            "stock master sync poll task started",
-        );
-
-        let _short_sale_report_ingest_poll =
-            backend::services::short_sale_report_ingest::spawn_poll(
-                use_cases.short_sale_reports(),
-                client.clone(),
-                backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
-            );
-        tracing::info!(
-            interval_secs = backend::services::short_sale_report_ingest::DEFAULT_INTERVAL.as_secs(),
-            "short sale report ingest poll task started",
-        );
-
-        let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
-            use_cases.short_ratios(),
-            client.clone(),
-            backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::short_ratio_ingest::DEFAULT_INTERVAL.as_secs(),
-            "short ratio ingest poll task started",
-        );
-
-        let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
-            use_cases.margins(),
-            client.clone(),
-            backend::services::margin_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::margin_ingest::DEFAULT_INTERVAL.as_secs(),
-            "margin ingest poll task started",
-        );
-
-        let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::fin_summary_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::fin_summary_ingest::DEFAULT_INTERVAL.as_secs(),
-            "fin summary ingest poll task started",
-        );
-
-        let _earnings_date_ingest_poll = backend::services::earnings_date_ingest::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::earnings_date_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::earnings_date_ingest::DEFAULT_INTERVAL.as_secs(),
-            "earnings date ingest poll task started",
-        );
-
-        let _edinet_holdings_poll = backend::services::edinet_holdings::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::edinet_holdings::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::edinet_holdings::DEFAULT_INTERVAL.as_secs(),
-            "EDINET holdings ingest poll task started",
-        );
-
         let _daily_bars_ingest_poll = backend::services::daily_bars_ingest::spawn_poll(
             db.clone(),
             client.clone(),
@@ -350,29 +270,20 @@ async fn main() -> Result<(), AppError> {
             interval_secs = backend::services::daily_bars_ingest::DEFAULT_INTERVAL.as_secs(),
             "daily bars ingest poll task started",
         );
-
-        let _valuation_ingest_poll = backend::services::valuation_ingest::spawn_poll(
-            db.clone(),
-            client.clone(),
-            backend::services::valuation_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::valuation_ingest::DEFAULT_INTERVAL.as_secs(),
-            "valuation ingest poll task started",
-        );
     }
 
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
-    let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
-        use_cases.predictions(),
-        backend::services::prediction_grading::DEFAULT_INTERVAL,
-    );
-    tracing::info!(
-        interval_secs = backend::services::prediction_grading::DEFAULT_INTERVAL.as_secs(),
-        "prediction grading poll task started",
-    );
+    let worker = backend::entrypoints::scheduler::initialize(
+        db.clone(),
+        use_cases.clone(),
+        fred_source,
+        jquants_client.clone(),
+    )
+    .await
+    .map_err(|error| AppError::Config(format!("failed to initialize Graphile Worker: {error}")))?;
+    tracing::info!("Graphile Worker initialized");
     let state = AppState {
         db: app_db,
         use_cases,
@@ -398,14 +309,14 @@ async fn main() -> Result<(), AppError> {
         .await
         .map_err(|e| AppError::Config(format!("failed to bind to {addr}: {e}")))?;
 
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .map_err(|e| AppError::Config(format!("server error: {e}")))?;
-
-    Ok(())
+    tokio::select! {
+        result = worker.run() => result
+            .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}"))),
+        result = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        ) => result.map_err(|error| AppError::Config(format!("server error: {error}"))),
+    }
 }
 
 #[cfg(test)]

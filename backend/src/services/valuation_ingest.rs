@@ -1,21 +1,15 @@
 //! 日次バリュエーション指標を全銘柄分取り込む定期タスク。
 
-use std::collections::HashSet;
-use std::time::Duration;
-
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
-use core_application::valuation_source::{SharedValuationSource, ValuationSource};
+use core_application::valuation_source::ValuationSource;
 use core_domain::valuation::Valuation;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
-use tokio::task::JoinHandle;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, Set};
+use std::collections::HashSet;
 
 use crate::date_utils::latest_business_day;
 use crate::error::AppError;
 use gateway_postgres::entities::{valuation, valuation_ingested_date};
-
-/// poll task のデフォルト実行間隔。
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 /// 初回取得で欠けを補完する営業日数。
 const TARGET_BUSINESS_DAYS: usize = 400;
@@ -184,29 +178,6 @@ pub async fn run_ingest_cycle(
     }
 
     Ok(stats)
-}
-
-/// データソースが設定された場合に poll task を起動する。
-pub fn spawn_poll(
-    db: DatabaseConnection,
-    source: SharedValuationSource,
-    interval: Duration,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match run_ingest_cycle(&db, source.as_ref()).await {
-                Ok(stats) => tracing::debug!(
-                    days_attempted = stats.days_attempted,
-                    rows_upserted = stats.rows_upserted,
-                    "valuation ingest cycle completed",
-                ),
-                Err(error) => tracing::warn!(%error, "valuation ingest cycle failed"),
-            }
-        }
-    })
 }
 
 #[cfg(test)]

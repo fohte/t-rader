@@ -4,20 +4,13 @@ mod cross_shareholdings;
 mod large_volume_shareholdings;
 mod major_shareholders;
 
-use std::time::Duration;
-
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, NaiveDate, Utc};
 use core_application::shareholding_structure_source::{
-    SharedShareholdingStructureSource, ShareholdingStructureSource,
-    ShareholdingStructureSourceError,
+    ShareholdingStructureSource, ShareholdingStructureSourceError,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, QueryOrder};
 use serde::Serialize;
-use tokio::task::JoinHandle;
-
-/// ポーリング実行間隔。日次で更新されるデータに対して 1 日間隔とする。
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 既存データの最新日からこの日数分遡って再取得する。
 const REFETCH_WINDOW_DAYS: i64 = 30;
@@ -178,23 +171,10 @@ fn serialize_details<T: Serialize>(details: T) -> Result<serde_json::Value, sea_
     serde_json::to_value(details).map_err(|error| sea_orm::DbErr::Custom(error.to_string()))
 }
 
-/// poll task を起動する。初回は即実行し、その後 `interval` で繰り返す。
-pub fn spawn_poll(
-    db: DatabaseConnection,
-    source: SharedShareholdingStructureSource,
-    interval: Duration,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            run_all(&db, source.as_ref()).await;
-        }
-    })
-}
-
-async fn run_all(db: &impl sea_orm::ConnectionTrait, source: &dyn ShareholdingStructureSource) {
+pub async fn run_all(
+    db: &impl sea_orm::ConnectionTrait,
+    source: &dyn ShareholdingStructureSource,
+) -> Result<(), String> {
     let results = [
         (
             large_volume_shareholdings::Endpoint::NAME,
@@ -209,15 +189,30 @@ async fn run_all(db: &impl sea_orm::ConnectionTrait, source: &dyn ShareholdingSt
             run_ingest_cycle::<major_shareholders::Endpoint>(db, source).await,
         ),
     ];
+    let mut failures = Vec::new();
     for (name, result) in results {
         match result {
+            Ok(stats) if stats.failed_dates == 0 => {
+                tracing::debug!(endpoint = name, ?stats, "保有構造の取り込みが完了しました");
+            }
             Ok(stats) => {
-                tracing::debug!(endpoint = name, ?stats, "保有構造の取り込みが完了しました")
+                failures.push(format!("{name}: {} dates failed", stats.failed_dates));
+                tracing::warn!(
+                    endpoint = name,
+                    ?stats,
+                    "保有構造の一部日付を取り込めませんでした"
+                );
             }
             Err(error) => {
+                failures.push(format!("{name}: {error}"));
                 tracing::warn!(endpoint = name, %error, "保有構造の取り込みに失敗しました")
             }
         }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
     }
 }
 

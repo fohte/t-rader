@@ -3,22 +3,16 @@
 //! 全上場銘柄を `stock` に upsert し、名前・市場区分・業種・商品区分を最新に保つ。
 //! master に含まれなくなった行 (上場廃止した保有銘柄等) は削除せずそのまま残す。
 
-use std::collections::HashSet;
-use std::time::Duration;
-
 use chrono::Utc;
 use core_domain::equity_master::EquityMasterEntry;
 use sea_orm::ActiveValue::Set;
+use sea_orm::EntityTrait;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait};
-use tokio::task::JoinHandle;
+use std::collections::HashSet;
 
-use crate::data_provider::{EquityMasterSource, SharedEquityMasterSource};
+use crate::data_provider::EquityMasterSource;
 use crate::error::AppError;
 use gateway_postgres::entities::{sector, stock};
-
-/// poll task のデフォルト実行間隔。全銘柄マスタの更新頻度 (日次) に合わせて 1 日とする。
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// poll サイクルの結果統計
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -104,32 +98,6 @@ pub async fn run_sync_cycle(
     let stocks_upserted = upsert_stocks(db, &entries).await?;
 
     Ok(SyncStats { stocks_upserted })
-}
-
-/// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-pub fn spawn_poll(
-    db: DatabaseConnection,
-    source: SharedEquityMasterSource,
-    interval: Duration,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match run_sync_cycle(&db, source.as_ref()).await {
-                Ok(stats) => {
-                    tracing::info!(
-                        stocks_upserted = stats.stocks_upserted,
-                        "stock master sync cycle completed",
-                    );
-                }
-                Err(err) => {
-                    tracing::warn!(%err, "stock master sync cycle failed");
-                }
-            }
-        }
-    })
 }
 
 #[cfg(test)]

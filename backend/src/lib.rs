@@ -3,6 +3,7 @@ pub mod cli;
 pub(crate) mod concurrent;
 pub mod data_provider;
 pub(crate) mod date_utils;
+pub mod entrypoints;
 pub mod error;
 pub mod extractors;
 pub mod handlers;

@@ -6,20 +6,14 @@
 //! からさかのぼって再取得することで取りこぼしに備える。(code, fq_name, pub_date) を
 //! 複合主キーとして公表日ごとの行をすべて残し、上書きしない。
 
-use std::time::Duration;
-
 use chrono::{NaiveDate, Utc};
 use core_domain::earnings_schedule::EarningsSchedule;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Set};
-use tokio::task::JoinHandle;
+use sea_orm::{EntityTrait, QueryOrder, Set};
 
-use crate::data_provider::{DateRange, EarningsScheduleSource, SharedEarningsScheduleSource};
+use crate::data_provider::{DateRange, EarningsScheduleSource};
 use crate::error::AppError;
 use gateway_postgres::entities::jquants_earnings_date;
-
-/// poll task のデフォルト実行間隔。決算発表予定日の更新頻度 (日次) に合わせて 1 日とする。
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 格納済み最新公表日から予定日の変更を取りこぼさないためにさかのぼる日数。
 const LOOKBACK_DAYS: i64 = 30;
@@ -139,33 +133,6 @@ pub async fn run_ingest_cycle(
     }
 
     Ok(stats)
-}
-
-/// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-pub fn spawn_poll(
-    db: DatabaseConnection,
-    source: SharedEarningsScheduleSource,
-    interval: Duration,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match run_ingest_cycle(&db, source.as_ref()).await {
-                Ok(stats) => {
-                    tracing::debug!(
-                        days_attempted = stats.days_attempted,
-                        upserted = stats.upserted,
-                        "earnings date ingest cycle completed",
-                    );
-                }
-                Err(err) => {
-                    tracing::warn!(%err, "earnings date ingest cycle failed");
-                }
-            }
-        }
-    })
 }
 
 #[cfg(test)]

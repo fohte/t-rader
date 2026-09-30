@@ -1,37 +1,11 @@
-//! 期限到来した予測を採点する poll を起動する。
-
-use std::time::Duration;
+//! 期限到来した予測の採点を application use case に委譲する。
 
 use core_application::prediction::{GradingStats, PredictionUseCaseError, PredictionUseCases};
 
-/// poll task のデフォルト実行間隔。日足の確定を待つだけの処理で緊急性が無いため週次とする。
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-
-async fn run_once(
+pub async fn run_once(
     predictions: &PredictionUseCases,
 ) -> Result<GradingStats, PredictionUseCaseError> {
     predictions.grade_due_today().await
-}
-
-/// 採点 poll task を起動する。個々の予測は application use case で採点する。
-pub fn spawn_poll(
-    predictions: PredictionUseCases,
-    interval: Duration,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            // 採点済みの予測は次回対象から除外されるため、起動直後も実行できる。
-            ticker.tick().await;
-            match run_once(&predictions).await {
-                Ok(stats) => {
-                    tracing::debug!(graded = stats.graded, "prediction grading cycle completed");
-                }
-                Err(error) => tracing::warn!(error = %error, "prediction grading cycle failed"),
-            }
-        }
-    })
 }
 #[cfg(test)]
 mod tests {

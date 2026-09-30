@@ -5,22 +5,16 @@
 //! 訂正は既存データへの上書きで反映され差分取得もできないため、格納済み最新日
 //! からさかのぼって再取得することで取りこぼしに備える。
 
-use std::time::Duration;
-
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
+#[cfg(test)]
+use chrono::Utc;
 use core_domain::financial_summary::FinancialSummary;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, EntityTrait, Iterable, QueryOrder, Set, TransactionSession,
-};
-use tokio::task::JoinHandle;
+use sea_orm::{ConnectionTrait, EntityTrait, Iterable, QueryOrder, Set, TransactionSession};
 
-use crate::data_provider::{DateRange, FinancialSummarySource, SharedFinancialSummarySource};
+use crate::data_provider::{DateRange, FinancialSummarySource};
 use crate::error::AppError;
 use gateway_postgres::entities::financial_summary;
-
-/// poll task のデフォルト実行間隔。財務情報の更新頻度 (日次) に合わせて 1 日とする。
-pub const DEFAULT_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// 格納済み最新開示日から訂正を取りこぼさないためにさかのぼる日数。
 const LOOKBACK_DAYS: i64 = 30;
@@ -183,33 +177,6 @@ pub async fn run_ingest_cycle(
     }
 
     Ok(stats)
-}
-
-/// poll task を起動する。1 回目は即実行し、その後 `interval` で繰り返す。
-pub fn spawn_poll(
-    db: DatabaseConnection,
-    source: SharedFinancialSummarySource,
-    interval: Duration,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match run_ingest_cycle(&db, source.as_ref(), Utc::now().date_naive()).await {
-                Ok(stats) => {
-                    tracing::debug!(
-                        days_attempted = stats.days_attempted,
-                        upserted = stats.upserted,
-                        "fin summary ingest cycle completed",
-                    );
-                }
-                Err(err) => {
-                    tracing::warn!(%err, "fin summary ingest cycle failed");
-                }
-            }
-        }
-    })
 }
 
 #[cfg(test)]
