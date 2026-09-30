@@ -53,6 +53,28 @@ pub struct NoteResponse {
 }
 
 impl NoteResponse {
+    pub fn from_snapshot(snapshot: core_application::note::NoteSnapshot) -> Self {
+        Self {
+            id: snapshot.note.id,
+            version_id: snapshot.version.id,
+            version_no: snapshot.version.version_no,
+            is_current: snapshot.version.is_current,
+            strategy_id: snapshot.note.strategy_id,
+            title: snapshot.version.title,
+            body_md: snapshot.version.body_md,
+            frontmatter_json: snapshot.version.frontmatter_json,
+            kind: snapshot.note.kind,
+            status: snapshot.version.status,
+            trigger: snapshot.note.trigger,
+            trigger_label: snapshot.note.trigger_label,
+            created_by_kind: snapshot.created_by_kind,
+            created_at: snapshot.note.created_at,
+            updated_at: snapshot.note.updated_at,
+            graphs_json: snapshot.version.graphs_json,
+            execution_id: snapshot.note.execution_id,
+        }
+    }
+
     pub fn from_version(
         note: note::Model,
         version: note_version::Model,

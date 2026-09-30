@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use core_application::change_history::ChangeHistoryError;
+use core_application::note::NoteRepositoryError;
 use core_application::trade::{
     CreateTradeCommand, PerformanceSummary as TradePerformanceSummary, TradeOrder, TradeQuery,
     TradeRepositoryError, TradeUpdateCommand, TradeUseCaseError,
@@ -229,11 +230,13 @@ pub async fn trades_summary(
     Ok(Json(summary_response(summary)))
 }
 
-fn map_trade_error(error: TradeUseCaseError) -> AppError {
+pub(super) fn map_trade_error(error: TradeUseCaseError) -> AppError {
     match error {
         TradeUseCaseError::Validation(message) => AppError::Validation(message),
         TradeUseCaseError::NotFound(id) => AppError::NotFound(format!("trade {id} not found")),
+        TradeUseCaseError::ResourceNotFound(message) => AppError::NotFound(message),
         TradeUseCaseError::Repository(TradeRepositoryError::Database(error))
+        | TradeUseCaseError::NoteRepository(NoteRepositoryError::Database(error))
         | TradeUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
         | TradeUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
         | TradeUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))

@@ -10,27 +10,16 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
 use chrono::NaiveDate;
+use core_application::trade::{SbiImportRow, TradeMatchQuery};
 use rust_decimal::Decimal;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
-};
-use serde_json::json;
-use uuid::Uuid;
 
 use crate::AppState;
 use crate::error::{AppError, ErrorResponse};
 use crate::extractors::JsonBody;
 use crate::models::{
-    SbiCommitRequest, SbiCommitResponse, SbiCommitRow, SbiPreviewIssue, SbiPreviewResponse,
-    SbiPreviewRow,
+    SbiCommitRequest, SbiCommitResponse, SbiPreviewIssue, SbiPreviewResponse, SbiPreviewRow,
 };
-use crate::services::change_history::{self, Op, TargetKind};
 use crate::services::import::sbi;
-use crate::services::strategies::ensure_strategies_exist;
-use gateway_postgres::entities::{stock, trade};
-
-const ALLOWED_SIDE: [&str; 2] = ["buy", "sell"];
 
 /// SBI 国内株式 CSV プレビュー。
 #[utoipa::path(
@@ -53,6 +42,7 @@ pub async fn sbi_preview(
     body: Bytes,
 ) -> Result<Json<SbiPreviewResponse>, AppError> {
     let parsed = sbi::parse_bytes(&body).map_err(|e| AppError::Validation(e.to_string()))?;
+    let trades = state.use_cases.trades();
 
     let mut rows = Vec::with_capacity(parsed.rows.len());
     let mut csv_seen: HashMap<TradeKey, usize> = HashMap::new();
@@ -63,7 +53,16 @@ pub async fn sbi_preview(
             *count += 1;
             *count
         };
-        let db_count = count_trades(&state.db, r.date, &r.symbol, &r.side, r.qty, r.price).await?;
+        let db_count = trades
+            .count_import_matches(&TradeMatchQuery {
+                date: r.date,
+                symbol: r.symbol.clone(),
+                side: r.side.clone(),
+                qty: r.qty,
+                price: r.price,
+            })
+            .await
+            .map_err(super::trades::map_trade_error)?;
         // CSV 内 N 件目の出現を、DB 既存 N 件と突合する。分割約定など同条件の取引が複数回
         // 起こりうるので、単純な存在チェックだと正当な 2 件目以降が skip 扱いになる。
         let is_duplicate = csv_index <= db_count;
@@ -109,168 +108,34 @@ pub async fn sbi_commit(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<SbiCommitRequest>,
 ) -> Result<Json<SbiCommitResponse>, AppError> {
-    for r in &p.rows {
-        validate_commit_row(r)?;
-    }
-
-    let txn = state.db.begin().await?;
-    ensure_strategies_exist(&txn, p.rows.iter().map(|r| r.strategy_id)).await?;
-    let mut imported = 0usize;
-    let mut skipped = 0usize;
-    // CSV 内出現回数を DB の既存件数と比較して、N 件目までを重複扱いにする。
-    // 分割約定など同条件の取引が正当に複数回起きるので、単純な存在チェックでは不足。
-    let mut csv_counts: HashMap<TradeKey, usize> = HashMap::new();
-    let mut db_counts: HashMap<TradeKey, usize> = HashMap::new();
-
-    for r in &p.rows {
-        let key = trade_key(r.date, &r.symbol, &r.side, r.qty, r.price);
-        let csv_index = {
-            let count = csv_counts.entry(key.clone()).or_insert(0);
-            *count += 1;
-            *count
-        };
-        let db_count = match db_counts.get(&key) {
-            Some(&n) => n,
-            None => {
-                let n = count_trades(&txn, r.date, &r.symbol, &r.side, r.qty, r.price).await?;
-                db_counts.insert(key, n);
-                n
-            }
-        };
-        if csv_index <= db_count {
-            skipped += 1;
-            continue;
-        }
-
-        ensure_stock(&txn, &r.symbol, &r.stock_name).await?;
-
-        let id = Uuid::new_v4();
-        let fee = r.fee.unwrap_or(Decimal::ZERO);
-        trade::Entity::insert(trade::ActiveModel {
-            id: Set(id),
-            strategy_id: Set(r.strategy_id),
-            symbol: Set(r.symbol.clone()),
-            side: Set(r.side.clone()),
-            qty: Set(r.qty),
-            price: Set(r.price),
-            fee: Set(fee),
-            date: Set(r.date),
-            source: Set("csv".into()),
-            note: Set(None),
-            created_at: NotSet,
-            updated_at: NotSet,
-        })
-        .exec(&txn)
-        .await?;
-
-        change_history::record(
-            &txn,
-            TargetKind::Trade,
-            id,
-            Op::Create,
-            json!({
-                "strategy_id": r.strategy_id,
-                "symbol": r.symbol,
-                "side": r.side,
-                "qty": r.qty,
-                "price": r.price,
-                "source": "csv",
-                "origin": "sbi_csv_import",
-            }),
-            None,
+    let result = state
+        .use_cases
+        .trades()
+        .commit_sbi_import(
+            p.rows
+                .into_iter()
+                .map(|row| SbiImportRow {
+                    strategy_id: row.strategy_id,
+                    date: row.date,
+                    symbol: row.symbol,
+                    stock_name: row.stock_name,
+                    side: row.side,
+                    qty: row.qty,
+                    price: row.price,
+                    fee: row.fee,
+                })
+                .collect(),
         )
-        .await?;
-
-        imported += 1;
-    }
-
-    txn.commit().await?;
-
+        .await
+        .map_err(super::trades::map_trade_error)?;
     Ok(Json(SbiCommitResponse {
-        imported_count: imported,
-        skipped_count: skipped,
+        imported_count: result.imported_count,
+        skipped_count: result.skipped_count,
     }))
-}
-
-fn validate_commit_row(r: &SbiCommitRow) -> Result<(), AppError> {
-    if r.symbol.trim().is_empty() {
-        return Err(AppError::Validation("symbol must not be empty".into()));
-    }
-    if !ALLOWED_SIDE.contains(&r.side.as_str()) {
-        return Err(AppError::Validation(format!("invalid side: {}", r.side)));
-    }
-    if r.qty <= Decimal::ZERO {
-        return Err(AppError::Validation("qty must be positive".into()));
-    }
-    if r.price < Decimal::ZERO {
-        return Err(AppError::Validation("price must be non-negative".into()));
-    }
-    if r.fee.is_some_and(|f| f < Decimal::ZERO) {
-        return Err(AppError::Validation("fee must be non-negative".into()));
-    }
-    Ok(())
-}
-
-/// 既存 stock の name は更新しない (CSV の銘柄名は SBI 由来の表記で、マスタ側を上書きしたくない)。
-async fn ensure_stock<C: ConnectionTrait>(
-    conn: &C,
-    symbol: &str,
-    name: &str,
-) -> Result<(), AppError> {
-    if stock::Entity::find_by_id(symbol.to_string())
-        .one(conn)
-        .await?
-        .is_some()
-    {
-        return Ok(());
-    }
-    // 空文字 / 空白のみは銘柄名として無意味なので symbol を fallback とする
-    let trimmed = name.trim();
-    let resolved_name = if trimmed.is_empty() { symbol } else { trimmed }.to_string();
-    let model = stock::ActiveModel {
-        id: Set(symbol.to_string()),
-        name: Set(resolved_name),
-        market: Set(None),
-        sector_id: Set(None),
-        product_category: Set(None),
-        created_at: NotSet,
-        updated_at: NotSet,
-    };
-    // 並列 import で race した場合に備えて unique 違反は無視する
-    if let Err(e) = stock::Entity::insert(model).exec(conn).await {
-        if matches!(
-            e.sql_err(),
-            Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
-        ) {
-            return Ok(());
-        }
-        return Err(AppError::Database(e));
-    }
-    Ok(())
 }
 
 type TradeKey = (NaiveDate, String, String, Decimal, Decimal);
 
 fn trade_key(date: NaiveDate, symbol: &str, side: &str, qty: Decimal, price: Decimal) -> TradeKey {
     (date, symbol.to_string(), side.to_string(), qty, price)
-}
-
-/// 重複検知の単一基準: 同日・同銘柄・同売買・同数量・同単価の既存件数。
-async fn count_trades<C: ConnectionTrait>(
-    conn: &C,
-    date: NaiveDate,
-    symbol: &str,
-    side: &str,
-    qty: Decimal,
-    price: Decimal,
-) -> Result<usize, AppError> {
-    let count = trade::Entity::find()
-        .filter(trade::Column::Date.eq(date))
-        .filter(trade::Column::Symbol.eq(symbol))
-        .filter(trade::Column::Side.eq(side))
-        .filter(trade::Column::Qty.eq(qty))
-        .filter(trade::Column::Price.eq(price))
-        .count(conn)
-        .await?;
-    Ok(count as usize)
 }

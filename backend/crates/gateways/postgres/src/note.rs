@@ -7,6 +7,7 @@ use core_application::unit_of_work::UnitOfWorkTransaction;
 use sea_orm::ActiveValue::{NotSet, Set, Unchanged};
 use sea_orm::sea_query::{Expr, ExprTrait, OnConflict};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::entities::{note, note_kind, note_link, note_ref, note_version};
@@ -29,6 +30,24 @@ impl NoteRepository for PostgresNoteRepository {
             .one(transaction)
             .await
             .map(|row| row.map(to_note))
+            .map_err(repository_error)
+    }
+
+    async fn find_notes_by_ids(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        note_ids: &[Uuid],
+    ) -> Result<Vec<Note>, NoteRepositoryError> {
+        if note_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let transaction =
+            transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
+        note::Entity::find()
+            .filter(note::Column::Id.is_in(note_ids.iter().copied()))
+            .all(transaction)
+            .await
+            .map(|rows| rows.into_iter().map(to_note).collect())
             .map_err(repository_error)
     }
 
@@ -76,6 +95,24 @@ impl NoteRepository for PostgresNoteRepository {
             .one(transaction)
             .await
             .map(|row| row.map(to_version))
+            .map_err(repository_error)
+    }
+
+    async fn find_versions_by_ids(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        version_ids: &[Uuid],
+    ) -> Result<Vec<NoteVersion>, NoteRepositoryError> {
+        if version_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let transaction =
+            transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
+        note_version::Entity::find()
+            .filter(note_version::Column::Id.is_in(version_ids.iter().copied()))
+            .all(transaction)
+            .await
+            .map(|rows| rows.into_iter().map(to_version).collect())
             .map_err(repository_error)
     }
 
@@ -161,6 +198,32 @@ impl NoteRepository for PostgresNoteRepository {
             .await
             .map(|row| row.map(|row| row.created_by_kind))
             .map_err(repository_error)
+    }
+
+    async fn find_initial_created_by_kind_by_note_ids(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        note_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, String>, NoteRepositoryError> {
+        if note_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let transaction =
+            transaction_ref(transaction).ok_or(NoteRepositoryError::InvalidTransaction)?;
+        let versions = note_version::Entity::find()
+            .filter(note_version::Column::NoteId.is_in(note_ids.iter().copied()))
+            .order_by_asc(note_version::Column::NoteId)
+            .order_by_asc(note_version::Column::VersionNo)
+            .all(transaction)
+            .await
+            .map_err(repository_error)?;
+        let mut creators = HashMap::new();
+        for version in versions {
+            creators
+                .entry(version.note_id)
+                .or_insert(version.created_by_kind);
+        }
+        Ok(creators)
     }
 
     async fn insert_note(

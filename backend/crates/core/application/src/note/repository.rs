@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::collections::HashMap;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -27,6 +28,11 @@ pub trait NoteRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
     ) -> Result<Option<Note>, NoteRepositoryError>;
+    async fn find_notes_by_ids(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        note_ids: &[Uuid],
+    ) -> Result<Vec<Note>, NoteRepositoryError>;
     async fn find_note_by_execution_id(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -43,6 +49,11 @@ pub trait NoteRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
     ) -> Result<Option<NoteVersion>, NoteRepositoryError>;
+    async fn find_versions_by_ids(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        version_ids: &[Uuid],
+    ) -> Result<Vec<NoteVersion>, NoteRepositoryError>;
     async fn find_latest_version(
         &self,
         transaction: &UnitOfWorkTransaction,
@@ -64,6 +75,11 @@ pub trait NoteRepository: Send + Sync {
         transaction: &UnitOfWorkTransaction,
         note_id: Uuid,
     ) -> Result<Option<String>, NoteRepositoryError>;
+    async fn find_initial_created_by_kind_by_note_ids(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        note_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, String>, NoteRepositoryError>;
     async fn insert_note(
         &self,
         transaction: &UnitOfWorkTransaction,

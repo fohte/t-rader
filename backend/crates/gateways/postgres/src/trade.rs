@@ -1,15 +1,18 @@
 use async_trait::async_trait;
 use core_application::trade::{
-    NewTrade, Trade, TradeListItem, TradeNoteReference, TradeOrder, TradeQuery, TradeRepository,
-    TradeRepositoryError, TradeUpdate,
+    NewTrade, NewTradeNoteLink, Trade, TradeListItem, TradeMatchQuery, TradeNoteLink,
+    TradeNoteReference, TradeOrder, TradeQuery, TradeRepository, TradeRepositoryError, TradeUpdate,
 };
 use core_application::unit_of_work::UnitOfWorkTransaction;
-use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
+};
 use uuid::Uuid;
 
 use crate::DatabaseHandle;
-use crate::entities::{trade, trade_note};
+use crate::entities::{stock, trade, trade_note};
 use crate::persistence::persistence_error;
 use crate::transaction::transaction_ref as postgres_transaction_ref;
 
@@ -112,6 +115,67 @@ impl TradeRepository for PostgresTradeRepository {
             .collect())
     }
 
+    async fn count_matching_trades(
+        &self,
+        query: &TradeMatchQuery,
+    ) -> Result<usize, TradeRepositoryError> {
+        count_matching_trades(&self.db, query)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn count_matching_trades_in_transaction(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        query: &TradeMatchQuery,
+    ) -> Result<usize, TradeRepositoryError> {
+        count_matching_trades(transaction_ref(transaction)?, query)
+            .await
+            .map_err(repository_error)
+    }
+
+    async fn ensure_stock(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        symbol: &str,
+        name: &str,
+    ) -> Result<(), TradeRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        if stock::Entity::find_by_id(symbol.to_string())
+            .one(transaction)
+            .await
+            .map_err(repository_error)?
+            .is_some()
+        {
+            return Ok(());
+        }
+        let trimmed_name = name.trim();
+        let resolved_name = if trimmed_name.is_empty() {
+            symbol
+        } else {
+            trimmed_name
+        };
+        let model = stock::ActiveModel {
+            id: Set(symbol.to_string()),
+            name: Set(resolved_name.to_string()),
+            market: Set(None),
+            sector_id: Set(None),
+            product_category: Set(None),
+            created_at: NotSet,
+            updated_at: NotSet,
+        };
+        if let Err(error) = stock::Entity::insert(model).exec(transaction).await {
+            if matches!(
+                error.sql_err(),
+                Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+            ) {
+                return Ok(());
+            }
+            return Err(repository_error(error));
+        }
+        Ok(())
+    }
+
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Trade>, TradeRepositoryError> {
         trade::Entity::find_by_id(id)
             .one(&self.db)
@@ -200,6 +264,70 @@ impl TradeRepository for PostgresTradeRepository {
             .map(|result| result.rows_affected > 0)
             .map_err(repository_error)
     }
+
+    async fn list_note_links(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trade_id: Uuid,
+    ) -> Result<Vec<TradeNoteLink>, TradeRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        trade_note::Entity::find()
+            .filter(trade_note::Column::TradeId.eq(trade_id))
+            .order_by_asc(trade_note::Column::CreatedAt)
+            .all(transaction)
+            .await
+            .map(|rows| rows.into_iter().map(to_trade_note_link).collect())
+            .map_err(repository_error)
+    }
+
+    async fn insert_note_link(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        link: NewTradeNoteLink,
+    ) -> Result<TradeNoteLink, TradeRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        trade_note::Entity::insert(trade_note::ActiveModel {
+            trade_id: Set(link.trade_id),
+            note_id: Set(link.note_id),
+            note_version_id: Set(link.note_version_id),
+            created_at: NotSet,
+        })
+        .exec_with_returning(transaction)
+        .await
+        .map(to_trade_note_link)
+        .map_err(repository_error)
+    }
+
+    async fn delete_note_link(
+        &self,
+        transaction: &UnitOfWorkTransaction,
+        trade_id: Uuid,
+        note_id: Uuid,
+    ) -> Result<bool, TradeRepositoryError> {
+        let transaction = transaction_ref(transaction)?;
+        trade_note::Entity::delete_many()
+            .filter(trade_note::Column::TradeId.eq(trade_id))
+            .filter(trade_note::Column::NoteId.eq(note_id))
+            .exec(transaction)
+            .await
+            .map(|result| result.rows_affected > 0)
+            .map_err(repository_error)
+    }
+}
+
+async fn count_matching_trades<C: ConnectionTrait>(
+    connection: &C,
+    query: &TradeMatchQuery,
+) -> Result<usize, sea_orm::DbErr> {
+    let count = trade::Entity::find()
+        .filter(trade::Column::Date.eq(query.date))
+        .filter(trade::Column::Symbol.eq(&query.symbol))
+        .filter(trade::Column::Side.eq(&query.side))
+        .filter(trade::Column::Qty.eq(query.qty))
+        .filter(trade::Column::Price.eq(query.price))
+        .count(connection)
+        .await?;
+    Ok(count as usize)
 }
 
 fn transaction_ref(
@@ -226,5 +354,14 @@ fn to_domain(model: trade::Model) -> Trade {
         note: model.note,
         created_at: model.created_at,
         updated_at: model.updated_at,
+    }
+}
+
+fn to_trade_note_link(model: trade_note::Model) -> TradeNoteLink {
+    TradeNoteLink {
+        trade_id: model.trade_id,
+        note_id: model.note_id,
+        note_version_id: model.note_version_id,
+        created_at: model.created_at,
     }
 }

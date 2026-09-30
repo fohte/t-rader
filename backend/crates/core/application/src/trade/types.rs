@@ -68,6 +68,48 @@ pub struct TradeNoteReference {
     pub note_version_id: Uuid,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TradeNoteLink {
+    pub trade_id: Uuid,
+    pub note_id: Uuid,
+    pub note_version_id: Uuid,
+    pub created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NewTradeNoteLink {
+    pub trade_id: Uuid,
+    pub note_id: Uuid,
+    pub note_version_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TradeMatchQuery {
+    pub date: NaiveDate,
+    pub symbol: String,
+    pub side: String,
+    pub qty: Decimal,
+    pub price: Decimal,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SbiImportRow {
+    pub strategy_id: Uuid,
+    pub date: NaiveDate,
+    pub symbol: String,
+    pub stock_name: String,
+    pub side: String,
+    pub qty: Decimal,
+    pub price: Decimal,
+    pub fee: Option<Decimal>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SbiImportResult {
+    pub imported_count: usize,
+    pub skipped_count: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TradeListItem {
     pub trade: Trade,
