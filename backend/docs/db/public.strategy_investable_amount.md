@@ -1,14 +1,18 @@
 # public.strategy_investable_amount
 
+## Description
+
+戦略ごとに設定した投資可能額の履歴。
+
 ## Columns
 
-| Name         | Type                     | Default           | Nullable | Children | Parents                               | Comment |
-| ------------ | ------------------------ | ----------------- | -------- | -------- | ------------------------------------- | ------- |
-| id           | uuid                     |                   | false    |          |                                       |         |
-| strategy_id  | uuid                     |                   | false    |          | [public.strategy](public.strategy.md) |         |
-| amount_jpy   | numeric                  |                   | false    |          |                                       |         |
-| effective_at | timestamp with time zone |                   | false    |          |                                       |         |
-| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |         |
+| Name         | Type                     | Default           | Nullable | Children | Parents                               | Comment                                    |
+| ------------ | ------------------------ | ----------------- | -------- | -------- | ------------------------------------- | ------------------------------------------ |
+| id           | uuid                     |                   | false    |          |                                       |                                            |
+| strategy_id  | uuid                     |                   | false    |          | [public.strategy](public.strategy.md) | 投資可能額を設定した戦略。                 |
+| amount_jpy   | numeric                  |                   | false    |          |                                       | 投資に回す枠として設定した金額。単位は円。 |
+| effective_at | timestamp with time zone |                   | false    |          |                                       | この金額が有効になる時刻。                 |
+| created_at   | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                       |                                            |
 
 ## Constraints
 

@@ -1,15 +1,19 @@
 # public.mcp_tool_call_count
 
+## Description
+
+タスク実行ごとの MCP ツール呼び出し数を追跡する。
+
 ## Columns
 
-| Name              | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ----------------- | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| id                | uuid                     | gen_random_uuid() | false    |          |         |         |
-| task_execution_id | text                     |                   | false    |          |         |         |
-| tool_name         | text                     |                   | false    |          |         |         |
-| call_count        | integer                  |                   | false    |          |         |         |
-| created_at        | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
-| updated_at        | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name              | Type                     | Default           | Nullable | Children | Parents | Comment                                  |
+| ----------------- | ------------------------ | ----------------- | -------- | -------- | ------- | ---------------------------------------- |
+| id                | uuid                     | gen_random_uuid() | false    |          |         |                                          |
+| task_execution_id | text                     |                   | false    |          |         | 呼び出し数を集計するタスク実行の ID。    |
+| tool_name         | text                     |                   | false    |          |         | 呼び出し数を集計する MCP ツール名。      |
+| call_count        | integer                  |                   | false    |          |         | タスク実行中に記録したツール呼び出し数。 |
+| created_at        | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                          |
+| updated_at        | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                          |
 
 ## Constraints
 

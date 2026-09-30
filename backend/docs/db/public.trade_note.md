@@ -1,13 +1,17 @@
 # public.trade_note
 
+## Description
+
+取引と関連ノートおよび関連付け時のノートバージョンを結び付ける。
+
 ## Columns
 
-| Name            | Type                     | Default           | Nullable | Children | Parents                                       | Comment |
-| --------------- | ------------------------ | ----------------- | -------- | -------- | --------------------------------------------- | ------- |
-| trade_id        | uuid                     |                   | false    |          | [public.trade](public.trade.md)               |         |
-| note_id         | uuid                     |                   | false    |          | [public.note](public.note.md)                 |         |
-| created_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |         |
-| note_version_id | uuid                     |                   | false    |          | [public.note_version](public.note_version.md) |         |
+| Name            | Type                     | Default           | Nullable | Children | Parents                                       | Comment                                      |
+| --------------- | ------------------------ | ----------------- | -------- | -------- | --------------------------------------------- | -------------------------------------------- |
+| trade_id        | uuid                     |                   | false    |          | [public.trade](public.trade.md)               | 関連付ける取引。                             |
+| note_id         | uuid                     |                   | false    |          | [public.note](public.note.md)                 | 取引に関連付けるノート。                     |
+| created_at      | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |                                               |                                              |
+| note_version_id | uuid                     |                   | false    |          | [public.note_version](public.note_version.md) | 取引への関連付けに使用したノートバージョン。 |
 
 ## Constraints
 

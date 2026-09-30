@@ -1,12 +1,16 @@
 # public.account_risk_policy
 
+## Description
+
+口座全体に適用するリスク制限設定を保持する。
+
 ## Columns
 
-| Name        | Type                     | Default           | Nullable | Children | Parents | Comment |
-| ----------- | ------------------------ | ----------------- | -------- | -------- | ------- | ------- |
-| id          | smallint                 | 1                 | false    |          |         |         |
-| risk_policy | jsonb                    | '{}'::jsonb       | false    |          |         |         |
-| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |         |
+| Name        | Type                     | Default           | Nullable | Children | Parents | Comment                                |
+| ----------- | ------------------------ | ----------------- | -------- | -------- | ------- | -------------------------------------- |
+| id          | smallint                 | 1                 | false    |          |         |                                        |
+| risk_policy | jsonb                    | '{}'::jsonb       | false    |          |         | 口座全体のリスク制限を表す JSON 設定。 |
+| updated_at  | timestamp with time zone | CURRENT_TIMESTAMP | false    |          |         |                                        |
 
 ## Constraints
 

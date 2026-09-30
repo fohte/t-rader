@@ -1,20 +1,24 @@
 # public.valuation
 
+## Description
+
+銘柄ごとの株価評価指標を日付別に保持する。
+
 ## Columns
 
-| Name    | Type    | Default | Nullable | Children | Parents | Comment |
-| ------- | ------- | ------- | -------- | -------- | ------- | ------- |
-| code    | varchar |         | false    |          |         |         |
-| date    | date    |         | false    |          |         |         |
-| eps     | numeric |         | true     |          |         |         |
-| fwd_eps | numeric |         | true     |          |         |         |
-| bps     | numeric |         | true     |          |         |         |
-| roe     | numeric |         | true     |          |         |         |
-| fwd_roe | numeric |         | true     |          |         |         |
-| per     | numeric |         | true     |          |         |         |
-| fwd_per | numeric |         | true     |          |         |         |
-| pbr     | numeric |         | true     |          |         |         |
-| mkt_cap | numeric |         | true     |          |         |         |
+| Name    | Type    | Default | Nullable | Children | Parents | Comment               |
+| ------- | ------- | ------- | -------- | -------- | ------- | --------------------- |
+| code    | varchar |         | false    |          |         | 銘柄コード。          |
+| date    | date    |         | false    |          |         | 評価指標の基準日。    |
+| eps     | numeric |         | true     |          |         | 1 株当たり利益。      |
+| fwd_eps | numeric |         | true     |          |         | 予想 1 株当たり利益。 |
+| bps     | numeric |         | true     |          |         | 1 株当たり純資産。    |
+| roe     | numeric |         | true     |          |         | 自己資本利益率。      |
+| fwd_roe | numeric |         | true     |          |         | 予想自己資本利益率。  |
+| per     | numeric |         | true     |          |         | 株価収益率。          |
+| fwd_per | numeric |         | true     |          |         | 予想株価収益率。      |
+| pbr     | numeric |         | true     |          |         | 株価純資産倍率。      |
+| mkt_cap | numeric |         | true     |          |         | 時価総額。            |
 
 ## Constraints
 

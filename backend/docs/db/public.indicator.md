@@ -1,12 +1,16 @@
 # public.indicator
 
+## Description
+
+マクロ指標などの参照先を定義する。
+
 ## Columns
 
-| Name | Type    | Default | Nullable | Children                                                        | Parents | Comment |
-| ---- | ------- | ------- | -------- | --------------------------------------------------------------- | ------- | ------- |
-| id   | varchar |         | false    | [public.indicator_observation](public.indicator_observation.md) |         |         |
-| name | varchar |         | false    |                                                                 |         |         |
-| kind | varchar |         | false    |                                                                 |         |         |
+| Name | Type    | Default | Nullable | Children                                                        | Parents | Comment            |
+| ---- | ------- | ------- | -------- | --------------------------------------------------------------- | ------- | ------------------ |
+| id   | varchar |         | false    | [public.indicator_observation](public.indicator_observation.md) |         |                    |
+| name | varchar |         | false    |                                                                 |         | 指標の表示名。     |
+| kind | varchar |         | false    |                                                                 |         | 指標の分類ラベル。 |
 
 ## Constraints
 
