@@ -9,6 +9,7 @@ output-options:
     - account
     - agent_config
     - custom_indicators
+    - note_kinds
     - rss_feeds
     - strategies
     - triggers

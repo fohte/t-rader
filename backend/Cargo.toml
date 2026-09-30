@@ -85,6 +85,7 @@ gateway-rss = { workspace = true }
 gateway-t-rader-agent = { workspace = true }
 gateway-postgres = { workspace = true }
 entrypoint-scheduler = { workspace = true }
+rate-limit = { workspace = true }
 cron = { workspace = true }
 csv = { workspace = true }
 encoding_rs = { workspace = true }
