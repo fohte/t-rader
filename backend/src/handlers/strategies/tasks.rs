@@ -92,12 +92,12 @@ async fn verify_strategy_scope(
     request_body = StrategyChatRequest,
     responses(
         (status = 202, body = StrategyChatResponse),
-        (status = 400, description = "prompt が空 (空白のみを含む)", body = ErrorResponse),
+        (status = 400, description = "prompt が空 (空白のみを含む)、または指定された purpose の agent_config が存在しない", body = ErrorResponse),
         (status = 404, description = "戦略が存在しない", body = ErrorResponse),
         (status = 415, description = "Content-Type ヘッダが application/json ではない", body = ErrorResponse),
         (status = 422, description = "リクエストボディのパースに失敗", body = ErrorResponse),
         (status = 500, body = ErrorResponse),
-        (status = 503, description = "agent task client が未設定、または agent_config が見つからない", body = ErrorResponse),
+        (status = 503, description = "agent task client が未設定、または既定の agent_config が見つからない", body = ErrorResponse),
     )
 )]
 pub async fn submit_strategy_chat(
@@ -105,18 +105,24 @@ pub async fn submit_strategy_chat(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<StrategyChatRequest>,
 ) -> Result<(StatusCode, Json<StrategyChatResponse>), AppError> {
+    let requested_purpose = payload.purpose;
     let submitted = state
         .use_cases
-        .strategy_tasks
+        .strategy_tasks()
         .submit_task(
             state.agent_task_client.as_ref(),
             id,
             &payload.prompt,
             TaskSource::Frontend,
-            None,
+            requested_purpose.clone(),
         )
         .await
-        .map_err(map_submit_error)?;
+        .map_err(|error| match error {
+            err @ SubmitTaskError::PurposeNotFound(_) if requested_purpose.is_some() => {
+                AppError::Validation(err.to_string())
+            }
+            error => map_submit_error(error),
+        })?;
     Ok((
         StatusCode::ACCEPTED,
         Json(StrategyChatResponse {
@@ -154,7 +160,7 @@ pub async fn get_strategy_task(
     .await?;
     let view = state
         .use_cases
-        .strategy_tasks
+        .strategy_tasks()
         .get_for_strategy(scope, task_id)
         .await
         .map_err(map_get_task_error)?;
@@ -200,7 +206,7 @@ pub async fn list_strategy_tasks(
     .await?;
     let views = state
         .use_cases
-        .strategy_tasks
+        .strategy_tasks()
         .list_for_strategy(scope, None)
         .await
         .map_err(map_list_task_error)?;
@@ -305,6 +311,52 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
+    async fn submit_chat_uses_requested_purpose(db: gateway_postgres::DatabaseHandle) {
+        let fake = Arc::new(FakeAgentTaskClient::new());
+        fake.set_next_task_id("purpose-task").await;
+        let agent_client: SharedAgentTaskClient = fake.clone();
+        let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
+        let strategy_id = insert_test_strategy(&db, "example-strategy").await;
+        agent_config::create(&db, "example-purpose".to_string())
+            .await
+            .expect("insert test agent_config");
+
+        let res = server
+            .post(&format!("/api/strategies/{strategy_id}/chat"))
+            .json(&json!({ "prompt": "inspect the example", "purpose": "example-purpose" }))
+            .await;
+        let status = res.status_code();
+        let mut body: serde_json::Value = res.json();
+        let task_id = Uuid::parse_str(body["task_id"].as_str().expect("task_id")).expect("uuid");
+        body["task_id"] = json!("<uuid>");
+
+        let row = strategy_task::Entity::find_by_id(task_id)
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("row");
+        let submitted_purpose = fake
+            .submitted
+            .lock()
+            .await
+            .first()
+            .map(|submitted| submitted.purpose.clone());
+
+        assert_eq!(
+            (status, body, row.purpose, submitted_purpose),
+            (
+                axum::http::StatusCode::ACCEPTED,
+                json!({
+                    "task_id": "<uuid>",
+                    "a2a_task_id": "purpose-task",
+                }),
+                Some("example-purpose".to_string()),
+                Some(Some("example-purpose".to_string())),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
     async fn submit_chat_unknown_strategy_returns_404(db: gateway_postgres::DatabaseHandle) {
         let server = create_test_server(db).await;
         let res = server
@@ -350,20 +402,36 @@ mod tests {
     }
 
     #[backend_test_macros::database_test]
-    async fn submit_chat_missing_agent_config_returns_503(db: gateway_postgres::DatabaseHandle) {
+    async fn submit_chat_missing_agent_config_uses_requested_purpose_for_status(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
         let agent_client: SharedAgentTaskClient = Arc::new(FakeAgentTaskClient::new());
         let (db, server) = create_test_server_with_db_and_agent_client(db, agent_client).await;
-        let strategy_id = insert_test_strategy(&db, "x").await;
+        let strategy_id = insert_test_strategy(&db, "example-strategy").await;
+        let cases = [
+            (
+                json!({ "prompt": "inspect the example" }),
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "agent_config for purpose 'default' not found",
+            ),
+            (
+                json!({ "prompt": "inspect the example", "purpose": "example-purpose" }),
+                axum::http::StatusCode::BAD_REQUEST,
+                "agent_config for purpose 'example-purpose' not found",
+            ),
+        ];
 
-        let res = server
-            .post(&format!("/api/strategies/{strategy_id}/chat"))
-            .json(&json!({ "prompt": "inspect 7203" }))
-            .await;
-        res.assert_status(axum::http::StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(
-            res.json::<serde_json::Value>(),
-            json!({ "error": "agent_config for purpose 'default' not found" }),
-        );
+        for (body, expected_status, expected_error) in cases {
+            let res = server
+                .post(&format!("/api/strategies/{strategy_id}/chat"))
+                .json(&body)
+                .await;
+
+            assert_eq!(
+                (res.status_code(), res.json::<serde_json::Value>()),
+                (expected_status, json!({ "error": expected_error })),
+            );
+        }
     }
 
     #[backend_test_macros::database_test]

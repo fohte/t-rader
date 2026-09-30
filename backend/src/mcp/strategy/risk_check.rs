@@ -45,7 +45,7 @@ impl StrategyServer {
 
         let account_risk_policy = self
             .use_cases
-            .account_risk_policies
+            .account_risk_policies()
             .find_current()
             .await
             .map_err(account_risk_policy_error_to_mcp)?;
@@ -60,13 +60,13 @@ impl StrategyServer {
 
         let account_summary = self
             .use_cases
-            .trades
+            .trades()
             .summary(None)
             .await
             .map_err(trade_error)?;
         let strategy_summary = self
             .use_cases
-            .trades
+            .trades()
             .summary(Some(strategy_id))
             .await
             .map_err(trade_error)?;
@@ -123,7 +123,7 @@ impl StrategyServer {
 
         let investable_amount_row = self
             .use_cases
-            .strategies
+            .strategies()
             .current_investable_amount(scope)
             .await
             .map_err(strategy_use_case_error_to_mcp)?;
@@ -588,7 +588,7 @@ mod integration_tests {
     async fn set_max_sector_ratio(db: &gateway_postgres::DatabaseHandle, ratio: &str) {
         let use_cases = crate::services::use_cases::build_use_cases(db.clone());
         use_cases
-            .account_risk_policies
+            .account_risk_policies()
             .save(serde_json::json!({ "max_sector_ratio": ratio }))
             .await
             .expect("set max_sector_ratio");
@@ -600,7 +600,7 @@ mod integration_tests {
         amount: i64,
     ) {
         crate::services::use_cases::build_use_cases(db.clone())
-            .strategies
+            .strategies()
             .record_investable_amount(
                 Actor::Human,
                 StrategyScope::from(strategy_id),

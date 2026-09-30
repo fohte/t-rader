@@ -27,7 +27,7 @@ impl MgmtServer {
         let scope = self.strategy_scope(params.strategy_id).await?;
         let row = self
             .use_cases
-            .strategies
+            .strategies()
             .get(scope)
             .await
             .map_err(map_strategy_use_case_error)?;
@@ -62,7 +62,7 @@ impl MgmtServer {
 
         let created = self
             .use_cases
-            .strategies
+            .strategies()
             .create(
                 Actor::Llm { label: "mgmt-mcp" },
                 CreateStrategyCommand {
@@ -99,7 +99,7 @@ impl MgmtServer {
 
         let scope = self.strategy_scope(params.strategy_id).await?;
         self.use_cases
-            .strategies
+            .strategies()
             .update(
                 Actor::Llm { label: "mgmt-mcp" },
                 scope,
@@ -125,7 +125,7 @@ impl MgmtServer {
         let scope = self.strategy_scope(params.strategy_id).await?;
         let current = self
             .use_cases
-            .strategies
+            .strategies()
             .get(scope)
             .await
             .map_err(map_strategy_use_case_error)?;
@@ -139,7 +139,7 @@ impl MgmtServer {
             });
         }
         self.use_cases
-            .strategies
+            .strategies()
             .delete_confirmed(
                 Actor::Llm { label: "mgmt-mcp" },
                 scope,
@@ -390,7 +390,7 @@ mod tests {
         let use_cases = crate::services::use_cases::build_use_cases(db.clone());
 
         use_cases
-            .strategies
+            .strategies()
             .update(
                 Actor::Human,
                 scope,
@@ -402,7 +402,7 @@ mod tests {
             .await
             .expect("rename strategy");
         let delete_result = use_cases
-            .strategies
+            .strategies()
             .delete_confirmed(Actor::Human, scope, "original")
             .await
             .map(|()| "deleted")

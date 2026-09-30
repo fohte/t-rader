@@ -1,16 +1,16 @@
 //! アノテーション操作の inner method 実装。
 //!
-//! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
+//! 書き込み時の戦略境界はユースケースが検証し、読み取り時は戦略 ID で絞り込む。
 
+use core_application::annotation::{AnnotationUseCaseError, CreateAnnotationCommand};
+use core_application::change_history::Actor;
 use core_application::strategy_scope::StrategyScope;
 use rmcp::ErrorData as McpError;
 use rust_decimal::Decimal;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait};
-use std::collections::HashSet;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use gateway_postgres::entities::{annotation, comment};
+use gateway_postgres::entities::annotation;
 
 use super::dto::{
     AnnotationDto, CreateAnnotationParams, CreateAnnotationResult, ReadAnnotationsParams,
@@ -18,7 +18,7 @@ use super::dto::{
 };
 use super::{
     DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR, StrategyServer, clamp_limit, db_error,
-    decimal_to_f64, fetch_note_owned_by, internal_error, invalid_params,
+    decimal_to_f64, internal_error, invalid_params,
 };
 
 fn f64_to_decimal(v: f64) -> Result<Decimal, McpError> {
@@ -51,6 +51,31 @@ fn annotation_to_dto(m: annotation::Model) -> Result<AnnotationDto, McpError> {
     })
 }
 
+fn annotation_use_case_to_dto(
+    m: core_application::annotation::Annotation,
+) -> Result<AnnotationDto, McpError> {
+    let strategy_id = m.strategy_id.ok_or_else(|| {
+        internal_error(format!(
+            "annotation {} has no strategy_id despite session scoping",
+            m.id
+        ))
+    })?;
+    Ok(AnnotationDto {
+        annotation_id: m.id,
+        strategy_id,
+        target_symbol: m.target_symbol,
+        target_kind: m.target_kind,
+        timestamp: m.timestamp,
+        price: m.price.map(decimal_to_f64),
+        text: m.text,
+        status: m.status,
+        linked_note_id: m.linked_note_id,
+        created_by_kind: m.created_by_kind,
+        created_at: m.created_at,
+        updated_at: m.updated_at,
+    })
+}
+
 impl StrategyServer {
     pub(crate) async fn create_annotation_inner(
         &self,
@@ -59,95 +84,30 @@ impl StrategyServer {
         execution_task_id: Option<String>,
         params: CreateAnnotationParams,
     ) -> Result<CreateAnnotationResult, McpError> {
-        let session_strategy_id = scope.into().id();
-        let target_symbol = params.target_symbol.trim().to_string();
-        if target_symbol.is_empty() {
-            return Err(invalid_params("target_symbol must not be empty"));
-        }
-        let target_kind = params.target_kind.trim().to_string();
-        if target_kind.is_empty() {
-            return Err(invalid_params("target_kind must not be empty"));
-        }
-        if params.text.trim().is_empty() {
-            return Err(invalid_params("text must not be empty"));
-        }
-
-        // linked_note_id が指定されている場合、対象 note の strategy_id 一致を検査する
-        if let Some(linked) = params.linked_note_id {
-            fetch_note_owned_by(&self.db, linked, session_strategy_id).await?;
-        }
-
+        let scope = scope.into();
         let price = params.price.map(f64_to_decimal).transpose()?;
-        let id = Uuid::new_v4();
-        let model = annotation::ActiveModel {
-            id: Set(id),
-            strategy_id: Set(Some(session_strategy_id)),
-            target_symbol: Set(target_symbol),
-            target_kind: Set(target_kind),
-            timestamp: Set(params.timestamp),
-            price: Set(price),
-            text: Set(params.text),
-            status: Set(DEFAULT_ANNOTATION_STATUS.to_string()),
-            linked_note_id: Set(params.linked_note_id),
-            created_by_kind: Set(STRATEGY_AGENT_ACTOR.to_string()),
-            created_at: NotSet,
-            updated_at: NotSet,
-            execution_step_id: Set(execution_step_id),
-            execution_task_id: Set(execution_task_id.clone()),
-        };
-
-        let txn = self.db.begin().await.map_err(db_error)?;
-        // resume で同じステップが新しい試行 (execution_task_id) から作り始めたとき、前の試行が
-        // 作った未レビュー (unread) のアノテーションを置き換える。承認/却下済みのものは残す。
-        // 1 ステップで複数件作るのは正当な動作のため、note のような UNIQUE ではなく削除で対応する。
-        if let (Some(step_id), Some(task_id)) = (execution_step_id, execution_task_id.as_deref()) {
-            let stale_ids: Vec<Uuid> = annotation::Entity::find()
-                .select_only()
-                .column(annotation::Column::Id)
-                .filter(annotation::Column::StrategyId.eq(session_strategy_id))
-                .filter(annotation::Column::ExecutionStepId.eq(step_id))
-                .filter(annotation::Column::Status.eq(DEFAULT_ANNOTATION_STATUS))
-                .filter(annotation::Column::ExecutionTaskId.ne(task_id))
-                .into_tuple()
-                .all(&txn)
-                .await
-                .map_err(db_error)?;
-            // comment.target_id は annotation への FK を持たない (所有権検査はアプリ層で行う設計、
-            // super::fetch_annotation_owned_by 参照)。delete でこの行ごと消すと、対応する comment
-            // 行が孤児化して read_comments/resolve_comment/reply_comment のいずれからも
-            // 到達不能になるため、既にコメントが付いた行は削除対象から除外する。
-            if !stale_ids.is_empty() {
-                let commented: HashSet<Uuid> = comment::Entity::find()
-                    .select_only()
-                    .column(comment::Column::TargetId)
-                    .filter(comment::Column::TargetKind.eq("annotation"))
-                    .filter(comment::Column::TargetId.is_in(stale_ids.iter().copied()))
-                    .into_tuple()
-                    .all(&txn)
-                    .await
-                    .map_err(db_error)?
-                    .into_iter()
-                    .collect();
-                let to_delete: Vec<Uuid> = stale_ids
-                    .into_iter()
-                    .filter(|id| !commented.contains(id))
-                    .collect();
-                if !to_delete.is_empty() {
-                    annotation::Entity::delete_many()
-                        .filter(annotation::Column::Id.is_in(to_delete))
-                        .exec(&txn)
-                        .await
-                        .map_err(db_error)?;
-                }
-            }
-        }
-        let created = annotation::Entity::insert(model)
-            .exec_with_returning(&txn)
+        let created = self
+            .use_cases
+            .annotations()
+            .create(CreateAnnotationCommand {
+                scope: Some(scope),
+                actor: Actor::Llm { label: "analyst" },
+                strategy_id: Some(scope.id()),
+                target_symbol: params.target_symbol,
+                target_kind: params.target_kind,
+                timestamp: params.timestamp,
+                price,
+                text: params.text,
+                status: DEFAULT_ANNOTATION_STATUS.into(),
+                linked_note_id: params.linked_note_id,
+                created_by_kind: STRATEGY_AGENT_ACTOR.into(),
+                execution_step_id,
+                execution_task_id,
+            })
             .await
-            .map_err(db_error)?;
-        txn.commit().await.map_err(db_error)?;
+            .map_err(annotation_use_case_error)?;
         Ok(CreateAnnotationResult {
-            annotation: annotation_to_dto(created)?,
+            annotation: annotation_use_case_to_dto(created)?,
         })
     }
 
@@ -182,6 +142,25 @@ impl StrategyServer {
     }
 }
 
+fn annotation_use_case_error(error: AnnotationUseCaseError) -> McpError {
+    match error {
+        AnnotationUseCaseError::Validation(message) => invalid_params(message),
+        AnnotationUseCaseError::NotFound(id) => {
+            McpError::resource_not_found(format!("annotation {id} not found"), None)
+        }
+        AnnotationUseCaseError::LinkedNoteNotFound(_) => {
+            McpError::resource_not_found("note not found", None)
+        }
+        AnnotationUseCaseError::ScopeMismatch => {
+            invalid_params("annotation belongs to a different strategy")
+        }
+        other => {
+            tracing::error!(error = %other, "strategy mcp annotation operation failed");
+            internal_error(format!("database error: {other}"))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, FixedOffset};
@@ -193,8 +172,8 @@ mod tests {
         AnnotationDto, CreateAnnotationParams, ReadAnnotationsParams, ReadAnnotationsResult,
     };
     use super::super::tests_common::{
-        build_server, insert_strategy, normalize_annotation, seed_comment, seed_foreign_note,
-        ts_sentinel,
+        ChangeHistoryShape, build_server, change_history_for, insert_strategy,
+        normalize_annotation, seed_comment, seed_foreign_note, ts_sentinel,
     };
     use super::super::{DEFAULT_ANNOTATION_STATUS, STRATEGY_AGENT_ACTOR};
     use gateway_postgres::entities::annotation;
@@ -203,7 +182,7 @@ mod tests {
     #[backend_test_macros::database_test]
     async fn create_annotation_then_read_annotations(db: gateway_postgres::DatabaseHandle) {
         let strategy_id = insert_strategy(&db, "swing").await;
-        let server = build_server(db);
+        let server = build_server(db.clone());
         let ts: DateTime<FixedOffset> = "2026-06-01T09:00:00+09:00".parse().expect("ts");
 
         let created = server
@@ -222,8 +201,9 @@ mod tests {
             )
             .await
             .expect("create");
+        let annotation_id = created.annotation.annotation_id;
         let expected = AnnotationDto {
-            annotation_id: created.annotation.annotation_id,
+            annotation_id,
             strategy_id,
             target_symbol: "7203".into(),
             target_kind: "custom-tag".into(),
@@ -259,6 +239,23 @@ mod tests {
             ReadAnnotationsResult {
                 annotations: vec![expected],
             },
+        );
+        assert_eq!(
+            change_history_for(&db, annotation_id).await,
+            vec![ChangeHistoryShape {
+                id: Uuid::nil(),
+                target_kind: "annotation".into(),
+                target_id: annotation_id,
+                actor_kind: "llm".into(),
+                actor_label: "analyst".into(),
+                op: "create".into(),
+                diff_json: serde_json::json!({
+                    "strategy_id": strategy_id,
+                    "target_symbol": "7203",
+                }),
+                summary: None,
+                created_at: ts_sentinel(),
+            }],
         );
     }
 

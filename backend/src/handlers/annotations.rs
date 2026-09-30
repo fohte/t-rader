@@ -1,13 +1,15 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use sea_orm::ActiveModelTrait;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{
-    ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, TransactionTrait,
+use core_application::annotation::{
+    AnnotationRepositoryError, AnnotationUseCaseError, ChangeAnnotationStatusCommand,
+    CreateAnnotationCommand, DeleteAnnotationCommand, UpdateAnnotationCommand,
 };
+use core_application::change_history::{Actor, ChangeHistoryError};
+use core_application::strategy_existence::StrategyExistenceError;
+use core_application::unit_of_work::UnitOfWorkError;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
-use serde_json::json;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
@@ -18,13 +20,8 @@ use crate::handlers::strategies::map_submit_error;
 use crate::models::{
     AnnotationResponse, ChangeStatusRequest, CreateAnnotationRequest, UpdateAnnotationRequest,
 };
-use crate::services::change_history::{self, Op, TargetKind};
-use crate::services::strategies::ensure_strategy_exists;
 use crate::services::strategy_tasks::{self, TaskSource};
 use gateway_postgres::entities::annotation;
-
-const ALLOWED_STATUS: [&str; 3] = ["approved", "unread", "rejected"];
-const ALLOWED_CREATED_BY: [&str; 2] = ["human", "llm"];
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -107,62 +104,28 @@ pub async fn create_annotation(
     State(state): State<AppState>,
     JsonBody(p): JsonBody<CreateAnnotationRequest>,
 ) -> Result<(StatusCode, Json<AnnotationResponse>), AppError> {
-    let target_symbol = p.target_symbol.trim().to_string();
-    if target_symbol.is_empty() {
-        return Err(AppError::Validation(
-            "target_symbol must not be empty".into(),
-        ));
-    }
-    let target_kind = p.target_kind.trim().to_string();
-    if target_kind.is_empty() {
-        return Err(AppError::Validation("target_kind must not be empty".into()));
-    }
     let status = p.status.as_deref().unwrap_or("unread").to_string();
-    if !ALLOWED_STATUS.contains(&status.as_str()) {
-        return Err(AppError::Validation(format!("invalid status: {status}")));
-    }
     let created_by = p.created_by_kind.as_deref().unwrap_or("human").to_string();
-    if !ALLOWED_CREATED_BY.contains(&created_by.as_str()) {
-        return Err(AppError::Validation(format!(
-            "invalid created_by_kind: {created_by}"
-        )));
-    }
-
-    let txn = state.db.begin().await?;
-    if let Some(strategy_id) = p.strategy_id {
-        ensure_strategy_exists(&txn, strategy_id).await?;
-    }
-
-    let id = Uuid::new_v4();
-    let model = annotation::ActiveModel {
-        id: Set(id),
-        strategy_id: Set(p.strategy_id),
-        target_symbol: Set(target_symbol.clone()),
-        target_kind: Set(target_kind),
-        timestamp: Set(p.timestamp),
-        price: Set(p.price),
-        text: Set(p.text.clone()),
-        status: Set(status),
-        linked_note_id: Set(p.linked_note_id),
-        created_by_kind: Set(created_by),
-        created_at: NotSet,
-        updated_at: NotSet,
-        execution_step_id: Set(None),
-        execution_task_id: Set(None),
-    };
-    let created = annotation::Entity::insert(model)
-        .exec_with_returning(&txn)
-        .await?;
-    change_history::record(
-        &txn,
-        TargetKind::Annotation,
-        id,
-        Op::Create,
-        json!({ "strategy_id": p.strategy_id, "target_symbol": target_symbol }),
-        None,
-    )
-    .await?;
-    txn.commit().await?;
+    let created = state
+        .use_cases
+        .annotations()
+        .create(CreateAnnotationCommand {
+            scope: None,
+            actor: Actor::Human,
+            strategy_id: p.strategy_id,
+            target_symbol: p.target_symbol,
+            target_kind: p.target_kind,
+            timestamp: p.timestamp,
+            price: p.price,
+            text: p.text,
+            status,
+            linked_note_id: p.linked_note_id,
+            created_by_kind: created_by,
+            execution_step_id: None,
+            execution_task_id: None,
+        })
+        .await
+        .map_err(map_annotation_error)?;
 
     Ok((StatusCode::CREATED, Json(created.into())))
 }
@@ -188,120 +151,23 @@ pub async fn update_annotation(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(p): JsonBody<UpdateAnnotationRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
-    let current = annotation::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
-    let mut active = current.clone().into_active_model();
-    let mut diff = serde_json::Map::new();
-
-    if let Some(v) = p.target_symbol {
-        let trimmed = v.trim().to_string();
-        if trimmed.is_empty() {
-            return Err(AppError::Validation(
-                "target_symbol must not be empty".into(),
-            ));
-        }
-        diff.insert(
-            "target_symbol".into(),
-            json!({ "from": current.target_symbol, "to": trimmed }),
-        );
-        active.target_symbol = Set(trimmed);
-    }
-    if let Some(v) = p.target_kind {
-        let trimmed = v.trim().to_string();
-        if trimmed.is_empty() {
-            return Err(AppError::Validation("target_kind must not be empty".into()));
-        }
-        diff.insert(
-            "target_kind".into(),
-            json!({ "from": current.target_kind, "to": trimmed }),
-        );
-        active.target_kind = Set(trimmed);
-    }
-    if let Some(v) = p.timestamp {
-        diff.insert(
-            "timestamp".into(),
-            json!({ "from": current.timestamp, "to": v }),
-        );
-        active.timestamp = Set(v);
-    }
-    if let Some(v) = p.price {
-        diff.insert("price".into(), json!({ "from": current.price, "to": v }));
-        active.price = Set(Some(v));
-    }
-    if let Some(v) = p.text {
-        diff.insert(
-            "text".into(),
-            json!({ "len_from": current.text.len(), "len_to": v.len() }),
-        );
-        active.text = Set(v);
-    }
-    if let Some(v) = p.linked_note_id {
-        diff.insert(
-            "linked_note_id".into(),
-            json!({ "from": current.linked_note_id, "to": v }),
-        );
-        active.linked_note_id = Set(Some(v));
-    }
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    if !diff.is_empty() {
-        change_history::record(
-            &txn,
-            TargetKind::Annotation,
+    let updated = state
+        .use_cases
+        .annotations()
+        .update(UpdateAnnotationCommand {
+            scope: None,
+            actor: Actor::Human,
             id,
-            Op::Update,
-            serde_json::Value::Object(diff),
-            None,
-        )
-        .await?;
-    }
-    txn.commit().await?;
+            target_symbol: p.target_symbol,
+            target_kind: p.target_kind,
+            timestamp: p.timestamp,
+            price: p.price,
+            text: p.text,
+            linked_note_id: p.linked_note_id,
+        })
+        .await
+        .map_err(map_annotation_error)?;
     Ok(Json(updated.into()))
-}
-
-async fn change_annotation_status_from(
-    state: &AppState,
-    current: annotation::Model,
-    new_status: &str,
-    label: Option<String>,
-) -> Result<annotation::Model, AppError> {
-    if current.status == new_status {
-        return Ok(current);
-    }
-    let id = current.id;
-    let mut active = current.clone().into_active_model();
-    active.status = Set(new_status.to_string());
-    active.updated_at = Set(chrono::Utc::now().fixed_offset());
-    let txn = state.db.begin().await?;
-    let updated = active.update(&txn).await?;
-    change_history::record(
-        &txn,
-        TargetKind::Annotation,
-        id,
-        Op::StatusChange,
-        json!({ "from": current.status, "to": new_status, "label": label }),
-        label,
-    )
-    .await?;
-    txn.commit().await?;
-    Ok(updated)
-}
-
-async fn change_annotation_status(
-    state: &AppState,
-    id: Uuid,
-    new_status: &str,
-    label: Option<String>,
-) -> Result<annotation::Model, AppError> {
-    let current = annotation::Entity::find_by_id(id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("annotation {id} not found")))?;
-    change_annotation_status_from(state, current, new_status, label).await
 }
 
 /// アノテーションを approved に遷移
@@ -325,11 +191,19 @@ pub async fn approve_annotation(
     JsonPath(id): JsonPath<Uuid>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<AnnotationResponse>, AppError> {
-    Ok(Json(
-        change_annotation_status(&state, id, "approved", payload.label)
-            .await?
-            .into(),
-    ))
+    let updated = state
+        .use_cases
+        .annotations()
+        .change_status(ChangeAnnotationStatusCommand {
+            scope: None,
+            actor: Actor::Human,
+            id,
+            status: "approved".into(),
+            label: payload.label,
+        })
+        .await
+        .map_err(map_annotation_error)?;
+    Ok(Json(updated.into()))
 }
 
 /// アノテーションを rejected に遷移
@@ -381,11 +255,19 @@ pub async fn reject_annotation(
         .map_err(map_submit_error)?;
     }
 
-    Ok(Json(
-        change_annotation_status_from(&state, current, "rejected", payload.label)
-            .await?
-            .into(),
-    ))
+    let updated = state
+        .use_cases
+        .annotations()
+        .change_status(ChangeAnnotationStatusCommand {
+            scope: None,
+            actor: Actor::Human,
+            id,
+            status: "rejected".into(),
+            label: payload.label,
+        })
+        .await
+        .map_err(map_annotation_error)?;
+    Ok(Json(updated.into()))
 }
 
 /// アノテーション削除
@@ -405,22 +287,40 @@ pub async fn delete_annotation(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<Uuid>,
 ) -> Result<StatusCode, AppError> {
-    let txn = state.db.begin().await?;
-    let res = annotation::Entity::delete_by_id(id).exec(&txn).await?;
-    if res.rows_affected == 0 {
-        return Err(AppError::NotFound(format!("annotation {id} not found")));
-    }
-    change_history::record(
-        &txn,
-        TargetKind::Annotation,
-        id,
-        Op::Delete,
-        json!({}),
-        None,
-    )
-    .await?;
-    txn.commit().await?;
+    state
+        .use_cases
+        .annotations()
+        .delete(DeleteAnnotationCommand {
+            scope: None,
+            actor: Actor::Human,
+            id,
+        })
+        .await
+        .map_err(map_annotation_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn map_annotation_error(error: AnnotationUseCaseError) -> AppError {
+    match error {
+        AnnotationUseCaseError::Validation(message) => AppError::Validation(message),
+        AnnotationUseCaseError::NotFound(id) => {
+            AppError::NotFound(format!("annotation {id} not found"))
+        }
+        AnnotationUseCaseError::LinkedNoteNotFound(_) => {
+            AppError::Validation("referenced resource does not exist".into())
+        }
+        AnnotationUseCaseError::ScopeMismatch => {
+            AppError::Validation("annotation belongs to a different strategy".into())
+        }
+        AnnotationUseCaseError::Repository(AnnotationRepositoryError::Database(error))
+        | AnnotationUseCaseError::ChangeHistory(ChangeHistoryError::Database(error))
+        | AnnotationUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | AnnotationUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error))
+        | AnnotationUseCaseError::StrategyExistence(StrategyExistenceError::Database(error)) => {
+            error.into()
+        }
+        other => AppError::Database(sea_orm::DbErr::Custom(other.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -432,13 +332,13 @@ mod tests {
     use crate::services::agent_config;
     use crate::services::strategy_tasks::DEFAULT_PURPOSE;
     use crate::testing::{
-        create_test_server_with_db, create_test_server_with_db_and_agent_client,
+        create_test_server_with_db, create_test_server_with_db_and_agent_client, insert_test_note,
         insert_test_strategy,
     };
     use axum_test::TestServer;
     use gateway_postgres::entities::sea_orm_active_enums::StrategyTaskPhase;
     use gateway_postgres::entities::strategy_task;
-    use serde_json::Value;
+    use serde_json::{Value, json};
 
     /// strategy_task 行の動的フィールド (id / 時刻 / a2a_task_id) を捨てた比較用ビュー。
     #[derive(Debug, PartialEq, Eq)]
@@ -510,6 +410,76 @@ mod tests {
                 "execution_step_id": null,
                 "execution_task_id": null,
             }),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn create_and_update_reject_cross_strategy_linked_notes(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "owner").await;
+        let foreign_strategy_id = insert_test_strategy(&db, "foreign").await;
+        let foreign_note_id =
+            insert_test_note(&db, foreign_strategy_id, "foreign note", "body").await;
+        let initial_annotation_res = server
+            .post("/api/annotations")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "target_symbol": "TEST-SYMBOL",
+                "target_kind": "sample_kind",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "text",
+            }))
+            .await;
+        initial_annotation_res.assert_status(StatusCode::CREATED);
+        let annotation_id = Uuid::parse_str(
+            initial_annotation_res.json::<Value>()["id"]
+                .as_str()
+                .expect("id"),
+        )
+        .expect("uuid");
+
+        let create_res = server
+            .post("/api/annotations")
+            .json(&json!({
+                "strategy_id": strategy_id,
+                "target_symbol": "TEST-SYMBOL",
+                "target_kind": "sample_kind",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "text": "text",
+                "linked_note_id": foreign_note_id,
+            }))
+            .await;
+        let create_result = (create_res.status_code(), create_res.json::<Value>());
+
+        let update_res = server
+            .patch(&format!("/api/annotations/{annotation_id}"))
+            .json(&json!({ "linked_note_id": foreign_note_id }))
+            .await;
+        let update_result = (update_res.status_code(), update_res.json::<Value>());
+
+        let saved_annotations = annotation::Entity::find()
+            .all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|saved| (saved.id, saved.linked_note_id))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            (create_result, update_result, saved_annotations),
+            (
+                (
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "linked note belongs to a different strategy" }),
+                ),
+                (
+                    StatusCode::BAD_REQUEST,
+                    json!({ "error": "linked note belongs to a different strategy" }),
+                ),
+                vec![(annotation_id, None)],
+            ),
         );
     }
 
