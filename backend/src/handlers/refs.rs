@@ -2,7 +2,8 @@
 
 use axum::Json;
 use axum::extract::State;
-use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use core_application::refs::{RefRepositoryError, RefUseCaseError};
+use core_application::unit_of_work::UnitOfWorkError;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
@@ -13,18 +14,7 @@ use crate::models::{
     IndicatorResponse, RefResolution, SectorResponse, StockResponse, ThemeResponse,
 };
 use crate::services::note_refs::ALLOWED_REF_KINDS;
-use crate::services::ref_terms;
-use gateway_postgres::entities::{indicator, sector, stock, theme};
-
-/// LIKE のメタ文字 (`%` `_` `\`) を入力から除去する。
-/// SeaORM の `like()` は ESCAPE 句を出さないため、エスケープではなく除去で対処する
-/// (検索 UI のサジェストとして `%` をそのまま検索したいケースは現状想定しない)。
-pub(crate) fn sanitize_like(value: &str) -> String {
-    value
-        .chars()
-        .filter(|c| *c != '%' && *c != '_' && *c != '\\')
-        .collect()
-}
+pub(crate) use core_application::refs::sanitize_like;
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -49,17 +39,15 @@ pub async fn list_stocks(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<StockResponse>>, AppError> {
-    let mut q = stock::Entity::find().order_by_asc(stock::Column::Id);
-    if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
-        let like = format!("%{}%", sanitize_like(text));
-        q = q.filter(
-            Condition::any()
-                .add(stock::Column::Id.like(&like))
-                .add(stock::Column::Name.like(&like)),
-        );
-    }
-    let items = q.limit(50).all(&state.db).await?;
-    let items = items.into_iter().map(StockResponse::from).collect();
+    let items = state
+        .use_cases
+        .refs
+        .list_stocks(params.q.as_deref())
+        .await
+        .map_err(map_ref_error)?
+        .into_iter()
+        .map(StockResponse::from)
+        .collect();
     Ok(Json(items))
 }
 
@@ -79,9 +67,12 @@ pub async fn get_stock(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<StockResponse>, AppError> {
-    let m = stock::Entity::find_by_id(id.clone())
-        .one(&state.db)
-        .await?
+    let m = state
+        .use_cases
+        .refs
+        .get_stock(&id)
+        .await
+        .map_err(map_ref_error)?
         .ok_or_else(|| AppError::NotFound(format!("stock {id} not found")))?;
     Ok(Json(StockResponse::from(m)))
 }
@@ -101,17 +92,15 @@ pub async fn list_indicators(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<IndicatorResponse>>, AppError> {
-    let mut q = indicator::Entity::find().order_by_asc(indicator::Column::Id);
-    if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
-        let like = format!("%{}%", sanitize_like(text));
-        q = q.filter(
-            Condition::any()
-                .add(indicator::Column::Id.like(&like))
-                .add(indicator::Column::Name.like(&like)),
-        );
-    }
-    let items = q.limit(50).all(&state.db).await?;
-    let items = items.into_iter().map(IndicatorResponse::from).collect();
+    let items = state
+        .use_cases
+        .refs
+        .list_indicators(params.q.as_deref())
+        .await
+        .map_err(map_ref_error)?
+        .into_iter()
+        .map(IndicatorResponse::from)
+        .collect();
     Ok(Json(items))
 }
 
@@ -132,9 +121,12 @@ pub async fn get_indicator(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<IndicatorResponse>, AppError> {
-    let m = indicator::Entity::find_by_id(id.clone())
-        .one(&state.db)
-        .await?
+    let m = state
+        .use_cases
+        .refs
+        .get_indicator(&id)
+        .await
+        .map_err(map_ref_error)?
         .ok_or_else(|| AppError::NotFound(format!("indicator {id} not found")))?;
     Ok(Json(IndicatorResponse::from(m)))
 }
@@ -154,17 +146,15 @@ pub async fn list_sectors(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<SectorResponse>>, AppError> {
-    let mut q = sector::Entity::find().order_by_asc(sector::Column::Id);
-    if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
-        let like = format!("%{}%", sanitize_like(text));
-        q = q.filter(
-            Condition::any()
-                .add(sector::Column::Id.like(&like))
-                .add(sector::Column::Name.like(&like)),
-        );
-    }
-    let items = q.limit(50).all(&state.db).await?;
-    let items = items.into_iter().map(SectorResponse::from).collect();
+    let items = state
+        .use_cases
+        .refs
+        .list_sectors(params.q.as_deref())
+        .await
+        .map_err(map_ref_error)?
+        .into_iter()
+        .map(SectorResponse::from)
+        .collect();
     Ok(Json(items))
 }
 
@@ -184,9 +174,12 @@ pub async fn get_sector(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<SectorResponse>, AppError> {
-    let m = sector::Entity::find_by_id(id.clone())
-        .one(&state.db)
-        .await?
+    let m = state
+        .use_cases
+        .refs
+        .get_sector(&id)
+        .await
+        .map_err(map_ref_error)?
         .ok_or_else(|| AppError::NotFound(format!("sector {id} not found")))?;
     Ok(Json(SectorResponse::from(m)))
 }
@@ -206,17 +199,15 @@ pub async fn list_themes(
     State(state): State<AppState>,
     JsonQuery(params): JsonQuery<SearchQuery>,
 ) -> Result<Json<Vec<ThemeResponse>>, AppError> {
-    let mut q = theme::Entity::find().order_by_asc(theme::Column::Id);
-    if let Some(text) = params.q.as_deref().filter(|s| !s.is_empty()) {
-        let like = format!("%{}%", sanitize_like(text));
-        q = q.filter(
-            Condition::any()
-                .add(theme::Column::Id.like(&like))
-                .add(theme::Column::Name.like(&like)),
-        );
-    }
-    let items = q.limit(50).all(&state.db).await?;
-    let items = items.into_iter().map(ThemeResponse::from).collect();
+    let items = state
+        .use_cases
+        .refs
+        .list_themes(params.q.as_deref())
+        .await
+        .map_err(map_ref_error)?
+        .into_iter()
+        .map(ThemeResponse::from)
+        .collect();
     Ok(Json(items))
 }
 
@@ -236,9 +227,12 @@ pub async fn get_theme(
     State(state): State<AppState>,
     JsonPath(id): JsonPath<String>,
 ) -> Result<Json<ThemeResponse>, AppError> {
-    let m = theme::Entity::find_by_id(id.clone())
-        .one(&state.db)
-        .await?
+    let m = state
+        .use_cases
+        .refs
+        .get_theme(&id)
+        .await
+        .map_err(map_ref_error)?
         .ok_or_else(|| AppError::NotFound(format!("theme {id} not found")))?;
     Ok(Json(ThemeResponse::from(m)))
 }
@@ -299,6 +293,27 @@ pub async fn resolve_refs(
         }
     }
 
-    let out = ref_terms::resolve_refs(&state.db, &requested).await?;
+    let out = state
+        .use_cases
+        .refs
+        .resolve(&requested)
+        .await
+        .map_err(map_ref_error)?
+        .into_iter()
+        .map(RefResolution::from)
+        .collect();
     Ok(Json(out))
+}
+
+fn map_ref_error(error: RefUseCaseError) -> AppError {
+    match error {
+        RefUseCaseError::Validation(message) => AppError::Validation(message),
+        RefUseCaseError::Repository(RefRepositoryError::Database(error))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => error.into(),
+        RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => AppError::Database(
+            sea_orm::DbErr::Custom("reference transaction has an unexpected type".into()),
+        ),
+    }
 }

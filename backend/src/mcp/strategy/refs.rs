@@ -6,17 +6,14 @@
 //! いずれかへの部分一致 (大文字小文字・全角半角を区別しない) で検索し、`ref_kind` / `ref_id`
 //! / `name` の組で返す。
 
+use core_application::refs::{RefRepositoryError, RefSearchMatch, RefUseCaseError};
 use core_application::strategy_scope::StrategyScope;
-use indoc::indoc;
+use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
-use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
 
-use crate::handlers::refs::sanitize_like;
-use crate::text_normalize::normalize;
-
-use super::{StrategyServer, clamp_limit, db_error, invalid_params};
+use super::{StrategyServer, clamp_limit, internal_error, invalid_params};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SearchRefsParams {
@@ -26,7 +23,7 @@ pub struct SearchRefsParams {
     pub limit: Option<u32>,
 }
 
-#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq, FromQueryResult)]
+#[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct RefDto {
     /// 参照型 (`stock` / `indicator` / `sector` / `theme`)
     pub ref_kind: String,
@@ -36,54 +33,21 @@ pub struct RefDto {
     pub product_category: Option<String>,
 }
 
+impl From<RefSearchMatch> for RefDto {
+    fn from(reference: RefSearchMatch) -> Self {
+        Self {
+            ref_kind: reference.ref_kind,
+            ref_id: reference.ref_id,
+            name: reference.name,
+            product_category: reference.product_category,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, JsonSchema, PartialEq, Eq)]
 pub struct SearchRefsResult {
     pub refs: Vec<RefDto>,
 }
-
-const SEARCH_REFS_SQL: &str = indoc! {"
-    SELECT 'stock' AS ref_kind, s.id AS ref_id, s.name, s.product_category
-        FROM stock s
-        WHERE normalize(s.id, NFKC) ILIKE $1
-           OR normalize(s.name, NFKC) ILIKE $1
-           OR EXISTS (
-               SELECT 1 FROM ref_term t
-               WHERE t.ref_kind = 'stock' AND t.ref_id = s.id
-                 AND normalize(t.term, NFKC) ILIKE $1
-           )
-    UNION ALL
-    SELECT 'indicator', i.id, i.name, NULL
-        FROM indicator i
-        WHERE normalize(i.id, NFKC) ILIKE $1
-           OR normalize(i.name, NFKC) ILIKE $1
-           OR EXISTS (
-               SELECT 1 FROM ref_term t
-               WHERE t.ref_kind = 'indicator' AND t.ref_id = i.id
-                 AND normalize(t.term, NFKC) ILIKE $1
-           )
-    UNION ALL
-    SELECT 'sector', se.id, se.name, NULL
-        FROM sector se
-        WHERE normalize(se.id, NFKC) ILIKE $1
-           OR normalize(se.name, NFKC) ILIKE $1
-           OR EXISTS (
-               SELECT 1 FROM ref_term t
-               WHERE t.ref_kind = 'sector' AND t.ref_id = se.id
-                 AND normalize(t.term, NFKC) ILIKE $1
-           )
-    UNION ALL
-    SELECT 'theme', th.id, th.name, NULL
-        FROM theme th
-        WHERE normalize(th.id, NFKC) ILIKE $1
-           OR normalize(th.name, NFKC) ILIKE $1
-           OR EXISTS (
-               SELECT 1 FROM ref_term t
-               WHERE t.ref_kind = 'theme' AND t.ref_id = th.id
-                 AND normalize(t.term, NFKC) ILIKE $1
-           )
-    ORDER BY name, ref_kind
-    LIMIT $2
-"};
 
 impl StrategyServer {
     /// 参照型 4 種 (stock / indicator / sector / theme) を横断して id / name / 別名
@@ -94,34 +58,33 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: SearchRefsParams,
     ) -> Result<SearchRefsResult, McpError> {
-        let _scope = scope.into();
-        let query = params.query.trim();
-        if query.is_empty() {
-            return Err(invalid_params("query must not be empty"));
-        }
-        // 列側は SQL 内で normalize(NFKC) してから比較するため、入力側も先に
-        // normalize してから sanitize_like に通す。順序を逆にすると全角の `％` `＿` が
-        // NFKC で `%` `_` に変わり、ワイルドカードとして効いてしまう
-        let pattern = format!("%{}%", sanitize_like(&normalize(query)));
-        let limit = clamp_limit(params.limit) as i64;
-
-        let rows = self
-            .db
-            .query_all_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                SEARCH_REFS_SQL,
-                [pattern.into(), limit.into()],
-            ))
+        let refs = self
+            .use_cases
+            .refs
+            .search_all(scope.into(), &params.query, clamp_limit(params.limit))
             .await
-            .map_err(db_error)?;
-
-        let refs = rows
-            .iter()
-            .map(|row| RefDto::from_query_result(row, ""))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(db_error)?;
+            .map_err(ref_use_case_error)?
+            .into_iter()
+            .map(RefDto::from)
+            .collect();
 
         Ok(SearchRefsResult { refs })
+    }
+}
+
+fn ref_use_case_error(error: RefUseCaseError) -> McpError {
+    tracing::error!(error = %error, "strategy mcp refs failed");
+    match error {
+        RefUseCaseError::Validation(message) => invalid_params(message),
+        RefUseCaseError::Repository(RefRepositoryError::Database(error))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            internal_error(format!("database error: {error}"))
+        }
+        RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            internal_error("reference transaction has an unexpected type")
+        }
     }
 }
 

@@ -8,6 +8,7 @@ use core_application::custom_indicator::{
 };
 use core_application::note::{NoteUseCases, SharedNoteRepository};
 use core_application::prediction::{PredictionUseCases, SharedPredictionRepository};
+use core_application::refs::{RefUseCases, SharedRefRepository};
 use core_application::strategy::{
     SharedStrategyRepository, SharedStrategySummaryQuery, StrategyUseCases,
 };
@@ -18,8 +19,9 @@ use core_application::unit_of_work::SharedUnitOfWork;
 use gateway_postgres::{
     DatabaseHandle, PostgresAnnotationRepository, PostgresChangeHistory, PostgresCommentRepository,
     PostgresCustomIndicatorRepository, PostgresNoteRepository, PostgresPredictionRepository,
-    PostgresStrategyExistence, PostgresStrategyRepository, PostgresStrategySummaryQuery,
-    PostgresStrategyTaskRepository, PostgresTradeRepository, PostgresUnitOfWork,
+    PostgresRefRepository, PostgresStrategyExistence, PostgresStrategyRepository,
+    PostgresStrategySummaryQuery, PostgresStrategyTaskRepository, PostgresTradeRepository,
+    PostgresUnitOfWork,
 };
 
 #[derive(Clone)]
@@ -32,6 +34,7 @@ pub struct UseCases {
     pub trades: TradeUseCases,
     pub strategy_tasks: StrategyTaskUseCases,
     pub custom_indicators: CustomIndicatorUseCases,
+    pub refs: RefUseCases,
 }
 
 pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
@@ -42,6 +45,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
     let repository: SharedTradeRepository = Arc::new(PostgresTradeRepository::new(db.clone()));
     let custom_indicator_repository: SharedCustomIndicatorRepository =
         Arc::new(PostgresCustomIndicatorRepository::new(db.clone()));
+    let ref_repository: SharedRefRepository = Arc::new(PostgresRefRepository::new(db.clone()));
     let strategy_existence: SharedStrategyExistence = Arc::new(PostgresStrategyExistence);
     let change_history: SharedChangeHistoryPort = Arc::new(PostgresChangeHistory);
     let annotations = AnnotationUseCases::new(
@@ -83,11 +87,12 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         Arc::new(PostgresPredictionRepository::new(db.clone()));
     let predictions = PredictionUseCases::new(unit_of_work.clone(), prediction_repository);
     let custom_indicators = CustomIndicatorUseCases::new(
-        unit_of_work,
+        unit_of_work.clone(),
         custom_indicator_repository,
         strategy_existence,
         change_history,
     );
+    let refs = RefUseCases::new(unit_of_work, ref_repository);
 
     let strategy_tasks = build_strategy_task_use_cases(db);
 
@@ -100,6 +105,7 @@ pub fn build_use_cases(db: impl Into<DatabaseHandle>) -> UseCases {
         trades,
         strategy_tasks,
         custom_indicators,
+        refs,
     }
 }
 

@@ -10,20 +10,14 @@
 //! `search_refs` と同様、戦略に属さないマスタデータのため `session_strategy_id` は
 //! 使わない。
 
+use core_application::refs::{RefRepositoryError, RefUseCaseError};
 use core_application::strategy_scope::StrategyScope;
+use core_application::unit_of_work::UnitOfWorkError;
 use rmcp::ErrorData as McpError;
 use schemars::JsonSchema;
-use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::sea_query::OnConflict;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 
-use super::{StrategyServer, db_error, invalid_params};
-use crate::services::note_refs::ALLOWED_REF_KINDS;
-use gateway_postgres::entities::ref_term;
-
-/// 戦略 Agent が追加する別名の固定 origin。
-const AGENT_TERM_ORIGIN: &str = "llm";
+use super::{StrategyServer, internal_error, invalid_params};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct AddRefTermsParams {
@@ -52,19 +46,6 @@ pub struct RemoveRefTermsResult {
     pub removed: Vec<String>,
 }
 
-/// ref_kind / ref_id を trim + 値域チェックする。add/remove 両 tool で共通。
-fn normalize_ref(ref_kind: &str, ref_id: &str) -> Result<(String, String), McpError> {
-    let ref_kind = ref_kind.trim();
-    if !ALLOWED_REF_KINDS.contains(&ref_kind) {
-        return Err(invalid_params(format!("invalid ref_kind: {ref_kind}")));
-    }
-    let ref_id = ref_id.trim();
-    if ref_id.is_empty() {
-        return Err(invalid_params("ref_id must not be empty"));
-    }
-    Ok((ref_kind.to_string(), ref_id.to_string()))
-}
-
 impl StrategyServer {
     /// 別名を追加する。同じ (ref_kind, ref_id, term) が既にあれば idempotent に無視する。
     pub(crate) async fn add_ref_terms_inner(
@@ -72,39 +53,17 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: AddRefTermsParams,
     ) -> Result<AddRefTermsResult, McpError> {
-        let _scope = scope.into();
-        let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
-
-        let mut added = Vec::new();
-        for term in &params.terms {
-            let term = term.trim();
-            if term.is_empty() {
-                continue;
-            }
-            let model = ref_term::ActiveModel {
-                ref_kind: Set(ref_kind.clone()),
-                ref_id: Set(ref_id.clone()),
-                term: Set(term.to_string()),
-                origin: Set(AGENT_TERM_ORIGIN.to_string()),
-                created_at: NotSet,
-            };
-            let result = ref_term::Entity::insert(model)
-                .on_conflict(
-                    OnConflict::columns([
-                        ref_term::Column::RefKind,
-                        ref_term::Column::RefId,
-                        ref_term::Column::Term,
-                    ])
-                    .do_nothing()
-                    .to_owned(),
-                )
-                .exec_without_returning(&self.db)
-                .await
-                .map_err(db_error)?;
-            if result > 0 {
-                added.push(term.to_string());
-            }
-        }
+        let added = self
+            .use_cases
+            .refs
+            .add_terms(
+                scope.into(),
+                &params.ref_kind,
+                &params.ref_id,
+                &params.terms,
+            )
+            .await
+            .map_err(ref_terms_error)?;
 
         Ok(AddRefTermsResult { added })
     }
@@ -115,28 +74,35 @@ impl StrategyServer {
         scope: impl Into<StrategyScope>,
         params: RemoveRefTermsParams,
     ) -> Result<RemoveRefTermsResult, McpError> {
-        let _scope = scope.into();
-        let (ref_kind, ref_id) = normalize_ref(&params.ref_kind, &params.ref_id)?;
-
-        let mut removed = Vec::new();
-        for term in &params.terms {
-            let term = term.trim();
-            if term.is_empty() {
-                continue;
-            }
-            let result = ref_term::Entity::delete_many()
-                .filter(ref_term::Column::RefKind.eq(ref_kind.as_str()))
-                .filter(ref_term::Column::RefId.eq(ref_id.as_str()))
-                .filter(ref_term::Column::Term.eq(term))
-                .exec(&self.db)
-                .await
-                .map_err(db_error)?;
-            if result.rows_affected > 0 {
-                removed.push(term.to_string());
-            }
-        }
+        let removed = self
+            .use_cases
+            .refs
+            .remove_terms(
+                scope.into(),
+                &params.ref_kind,
+                &params.ref_id,
+                &params.terms,
+            )
+            .await
+            .map_err(ref_terms_error)?;
 
         Ok(RemoveRefTermsResult { removed })
+    }
+}
+
+fn ref_terms_error(error: RefUseCaseError) -> McpError {
+    tracing::error!(error = %error, "strategy mcp ref terms failed");
+    match error {
+        RefUseCaseError::Validation(message) => invalid_params(message),
+        RefUseCaseError::Repository(RefRepositoryError::Database(error))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Begin(error))
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::Commit(error)) => {
+            internal_error(format!("database error: {error}"))
+        }
+        RefUseCaseError::Repository(RefRepositoryError::InvalidTransaction)
+        | RefUseCaseError::UnitOfWork(UnitOfWorkError::InvalidTransaction) => {
+            internal_error("reference transaction has an unexpected type")
+        }
     }
 }
 
