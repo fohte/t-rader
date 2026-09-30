@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -16,30 +15,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-
-	"github.com/fohte/t-rader/terraform-provider/internal/traderapi"
 )
-
-type groupAxisRequestObservation struct {
-	Method string
-	Path   string
-	Body   string
-}
-
-type groupAxisDiagnosticObservation struct {
-	Severity string
-	Summary  string
-	Detail   string
-	Path     string
-}
 
 func TestGroupAxisResourceCreate(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	requests := make(chan groupAxisRequestObservation, 1)
-	client := newGroupAxisTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordGroupAxisRequest(t, requests, r) {
+	requests := make(chan apiRequestObservation, 1)
+	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if !recordAPIResourceRequest(t, requests, r) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -60,25 +44,25 @@ func TestGroupAxisResourceCreate(t *testing.T) {
 
 	response := resource.CreateResponse{State: tfsdk.State{Schema: resourceSchema.Schema}}
 	(&groupAxisResource{client: client}).Create(ctx, resource.CreateRequest{Plan: plan}, &response)
-	observedRequest := receiveGroupAxisRequest(requests)
+	observedRequest := receiveAPIResourceRequest(requests)
 	var resultState groupAxisModel
 	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
 
 	got := struct {
-		Request     *groupAxisRequestObservation
+		Request     *apiRequestObservation
 		State       groupAxisModel
-		Diagnostics []groupAxisDiagnosticObservation
+		Diagnostics []apiDiagnosticObservation
 	}{
 		Request:     observedRequest,
 		State:       resultState,
-		Diagnostics: groupAxisDiagnosticsOutput(response.Diagnostics),
+		Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics),
 	}
 	want := struct {
-		Request     *groupAxisRequestObservation
+		Request     *apiRequestObservation
 		State       groupAxisModel
-		Diagnostics []groupAxisDiagnosticObservation
+		Diagnostics []apiDiagnosticObservation
 	}{
-		Request: &groupAxisRequestObservation{
+		Request: &apiRequestObservation{
 			Method: http.MethodPost,
 			Path:   "/api/group-axes",
 			Body:   `{"description":"A synthetic classification axis","key":"sample-axis","name":"Sample Axis"}`,
@@ -100,9 +84,9 @@ func TestGroupAxisResourceRead(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	requests := make(chan groupAxisRequestObservation, 1)
-	client := newGroupAxisTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordGroupAxisRequest(t, requests, r) {
+	requests := make(chan apiRequestObservation, 1)
+	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if !recordAPIResourceRequest(t, requests, r) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -122,21 +106,21 @@ func TestGroupAxisResourceRead(t *testing.T) {
 
 	response := resource.ReadResponse{State: tfsdk.State{Raw: state.Raw, Schema: resourceSchema.Schema}}
 	(&groupAxisResource{client: client}).Read(ctx, resource.ReadRequest{State: state}, &response)
-	observedRequest := receiveGroupAxisRequest(requests)
+	observedRequest := receiveAPIResourceRequest(requests)
 	var resultState groupAxisModel
 	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
 
 	got := struct {
-		Request     *groupAxisRequestObservation
+		Request     *apiRequestObservation
 		State       groupAxisModel
-		Diagnostics []groupAxisDiagnosticObservation
-	}{Request: observedRequest, State: resultState, Diagnostics: groupAxisDiagnosticsOutput(response.Diagnostics)}
+		Diagnostics []apiDiagnosticObservation
+	}{Request: observedRequest, State: resultState, Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
 	want := struct {
-		Request     *groupAxisRequestObservation
+		Request     *apiRequestObservation
 		State       groupAxisModel
-		Diagnostics []groupAxisDiagnosticObservation
+		Diagnostics []apiDiagnosticObservation
 	}{
-		Request: &groupAxisRequestObservation{Method: http.MethodGet, Path: "/api/group-axes/sample-axis"},
+		Request: &apiRequestObservation{Method: http.MethodGet, Path: "/api/group-axes/sample-axis"},
 		State: groupAxisModel{
 			Key:         types.StringValue("sample-axis"),
 			Name:        types.StringValue("Refreshed Axis"),
@@ -154,9 +138,9 @@ func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	requests := make(chan groupAxisRequestObservation, 1)
-	client := newGroupAxisTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordGroupAxisRequest(t, requests, r) {
+	requests := make(chan apiRequestObservation, 1)
+	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if !recordAPIResourceRequest(t, requests, r) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -186,21 +170,21 @@ func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
 
 	response := resource.UpdateResponse{State: tfsdk.State{Raw: plan.Raw, Schema: resourceSchema.Schema}}
 	(&groupAxisResource{client: client}).Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &response)
-	observedRequest := receiveGroupAxisRequest(requests)
+	observedRequest := receiveAPIResourceRequest(requests)
 	var resultState groupAxisModel
 	response.Diagnostics.Append(response.State.Get(ctx, &resultState)...)
 
 	got := struct {
-		Request     *groupAxisRequestObservation
+		Request     *apiRequestObservation
 		State       groupAxisModel
-		Diagnostics []groupAxisDiagnosticObservation
-	}{Request: observedRequest, State: resultState, Diagnostics: groupAxisDiagnosticsOutput(response.Diagnostics)}
+		Diagnostics []apiDiagnosticObservation
+	}{Request: observedRequest, State: resultState, Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
 	want := struct {
-		Request     *groupAxisRequestObservation
+		Request     *apiRequestObservation
 		State       groupAxisModel
-		Diagnostics []groupAxisDiagnosticObservation
+		Diagnostics []apiDiagnosticObservation
 	}{
-		Request: &groupAxisRequestObservation{
+		Request: &apiRequestObservation{
 			Method: http.MethodPatch,
 			Path:   "/api/group-axes/sample-axis",
 			Body:   `{"description":"A synthetic classification axis","name":"Updated Axis","sync_source":null}`,
@@ -221,9 +205,9 @@ func TestGroupAxisResourceUpdateClearsSyncSource(t *testing.T) {
 func TestGroupAxisResourceDeleteReportsConflict(t *testing.T) {
 	t.Parallel()
 
-	requests := make(chan groupAxisRequestObservation, 1)
-	client := newGroupAxisTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if !recordGroupAxisRequest(t, requests, r) {
+	requests := make(chan apiRequestObservation, 1)
+	client := newAPIResourceTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if !recordAPIResourceRequest(t, requests, r) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -244,18 +228,18 @@ func TestGroupAxisResourceDeleteReportsConflict(t *testing.T) {
 
 	response := resource.DeleteResponse{State: state}
 	(&groupAxisResource{client: client}).Delete(context.Background(), resource.DeleteRequest{State: state}, &response)
-	observedRequest := receiveGroupAxisRequest(requests)
+	observedRequest := receiveAPIResourceRequest(requests)
 
 	got := struct {
-		Request     *groupAxisRequestObservation
-		Diagnostics []groupAxisDiagnosticObservation
-	}{Request: observedRequest, Diagnostics: groupAxisDiagnosticsOutput(response.Diagnostics)}
+		Request     *apiRequestObservation
+		Diagnostics []apiDiagnosticObservation
+	}{Request: observedRequest, Diagnostics: apiResourceDiagnosticsOutput(response.Diagnostics)}
 	want := struct {
-		Request     *groupAxisRequestObservation
-		Diagnostics []groupAxisDiagnosticObservation
+		Request     *apiRequestObservation
+		Diagnostics []apiDiagnosticObservation
 	}{
-		Request: &groupAxisRequestObservation{Method: http.MethodDelete, Path: "/api/group-axes/sample-axis"},
-		Diagnostics: []groupAxisDiagnosticObservation{{
+		Request: &apiRequestObservation{Method: http.MethodDelete, Path: "/api/group-axes/sample-axis"},
+		Diagnostics: []apiDiagnosticObservation{{
 			Severity: diag.SeverityError.String(),
 			Summary:  "Error deleting group axis",
 			Detail:   `backend returned HTTP 409: {"error":"group axis sample-axis cannot be deleted while it contains groups"}`,
@@ -306,12 +290,12 @@ func TestGroupAxisResourceKeyChangeRequiresReplacement(t *testing.T) {
 	got := struct {
 		PlanValue       types.String
 		RequiresReplace bool
-		Diagnostics     []groupAxisDiagnosticObservation
-	}{response.PlanValue, response.RequiresReplace, groupAxisDiagnosticsOutput(response.Diagnostics)}
+		Diagnostics     []apiDiagnosticObservation
+	}{response.PlanValue, response.RequiresReplace, apiResourceDiagnosticsOutput(response.Diagnostics)}
 	want := struct {
 		PlanValue       types.String
 		RequiresReplace bool
-		Diagnostics     []groupAxisDiagnosticObservation
+		Diagnostics     []apiDiagnosticObservation
 	}{types.StringValue("replacement-axis"), true, nil}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("plan modifier output mismatch: got=%#v want=%#v", got, want)
@@ -324,7 +308,7 @@ func TestGroupAxisResourceKeyValidator(t *testing.T) {
 	cases := []struct {
 		name  string
 		value types.String
-		want  []groupAxisDiagnosticObservation
+		want  []apiDiagnosticObservation
 	}{
 		{name: "accepts a key without path separators", value: types.StringValue("sample-axis")},
 		{
@@ -349,39 +333,12 @@ func TestGroupAxisResourceKeyValidator(t *testing.T) {
 				Path:        path.Root("key"),
 				ConfigValue: testCase.value,
 			}, &response)
-			got := groupAxisDiagnosticsOutput(response.Diagnostics)
+			got := apiResourceDiagnosticsOutput(response.Diagnostics)
 			if !reflect.DeepEqual(got, testCase.want) {
 				t.Fatalf("validator output mismatch: got=%#v want=%#v", got, testCase.want)
 			}
 		})
 	}
-}
-
-func newGroupAxisTestClient(t *testing.T, handler http.HandlerFunc) *traderapi.Client {
-	t.Helper()
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	client, err := traderapi.New(server.URL, "", "")
-	if err != nil {
-		t.Fatalf("create client: %v", err)
-	}
-	return client
-}
-
-func recordGroupAxisRequest(t *testing.T, requests chan<- groupAxisRequestObservation, request *http.Request) bool {
-	t.Helper()
-	body, err := io.ReadAll(request.Body)
-	if err != nil {
-		t.Errorf("read request body: %v", err)
-		return false
-	}
-	requests <- groupAxisRequestObservation{Method: request.Method, Path: request.URL.Path, Body: string(body)}
-	return true
-}
-
-func receiveGroupAxisRequest(requests <-chan groupAxisRequestObservation) *groupAxisRequestObservation {
-	observed := <-requests
-	return &observed
 }
 
 func writeGroupAxisResponse(t *testing.T, writer io.Writer, body string) {
@@ -398,27 +355,11 @@ func groupAxisResourceSchema(t *testing.T) resource.SchemaResponse {
 	return response
 }
 
-func groupAxisExpectedDiagnostic(diagnosticPath path.Path, summary, detail string) []groupAxisDiagnosticObservation {
-	return []groupAxisDiagnosticObservation{{
+func groupAxisExpectedDiagnostic(diagnosticPath path.Path, summary, detail string) []apiDiagnosticObservation {
+	return []apiDiagnosticObservation{{
 		Severity: diag.SeverityError.String(),
 		Summary:  summary,
 		Detail:   detail,
 		Path:     diagnosticPath.String(),
 	}}
-}
-
-func groupAxisDiagnosticsOutput(diagnostics diag.Diagnostics) []groupAxisDiagnosticObservation {
-	var result []groupAxisDiagnosticObservation
-	for _, diagnostic := range diagnostics {
-		observation := groupAxisDiagnosticObservation{
-			Severity: diagnostic.Severity().String(),
-			Summary:  diagnostic.Summary(),
-			Detail:   diagnostic.Detail(),
-		}
-		if diagnosticWithPath, ok := diagnostic.(diag.DiagnosticWithPath); ok {
-			observation.Path = diagnosticWithPath.Path().String()
-		}
-		result = append(result, observation)
-	}
-	return result
 }
