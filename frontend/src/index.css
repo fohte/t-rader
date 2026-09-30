@@ -29,6 +29,7 @@
   --status-approved: #4ea1a1;
   --status-unread: #ef4444;
   --status-rejected: #71717a;
+  --status-superseded: #a1a1aa;
   /* running は failed の赤と衝突しないよう別色にする */
   --status-task-running: #fbbf24;
 
@@ -90,6 +91,7 @@
   --color-status-approved: var(--status-approved);
   --color-status-unread: var(--status-unread);
   --color-status-rejected: var(--status-rejected);
+  --color-status-superseded: var(--status-superseded);
   --color-status-task-running: var(--status-task-running);
   --spacing-floating-chat-w: var(--floating-chat-max-w);
   --spacing-floating-chat-h: var(--floating-chat-max-h);

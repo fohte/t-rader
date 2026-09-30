@@ -22,3 +22,7 @@ export const Rejected: Story = {
   name: 'shows a rejected status.',
   args: { status: 'rejected' },
 }
+export const Superseded: Story = {
+  name: 'shows a superseded status.',
+  args: { status: 'superseded' },
+}

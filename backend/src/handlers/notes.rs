@@ -409,6 +409,84 @@ mod tests {
         Uuid::parse_str(body["id"].as_str().expect("id")).expect("uuid")
     }
 
+    async fn insert_test_version(
+        db: &gateway_postgres::DatabaseHandle,
+        note_id: Uuid,
+        version_no: i32,
+        status: &str,
+        is_current: bool,
+    ) -> Uuid {
+        let id = Uuid::new_v4();
+        note_version::Entity::insert(note_version::ActiveModel {
+            id: Set(id),
+            note_id: Set(note_id),
+            version_no: Set(version_no),
+            title: Set(format!("version {version_no}")),
+            body_md: Set("body".into()),
+            frontmatter_json: Set(json!({})),
+            graphs_json: Set(json!([])),
+            status: Set(status.into()),
+            is_current: Set(is_current),
+            change_reason: Set(None),
+            created_by_kind: Set("llm".into()),
+            execution_id: Set(None),
+            created_at: NotSet,
+            reviewed_at: Set(None),
+        })
+        .exec_without_returning(db)
+        .await
+        .expect("insert test note version");
+        id
+    }
+
+    async fn create_note_with_approved_initial_version(
+        server: &TestServer,
+        db: &gateway_postgres::DatabaseHandle,
+        strategy_id: Uuid,
+        title: &str,
+    ) -> (Uuid, Uuid) {
+        let note_id = create_test_note_with_creator(server, strategy_id, title, "llm").await;
+        let initial = note_versions::find_current_version(db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
+        note_version::ActiveModel {
+            id: Set(initial.id),
+            status: Set("approved".into()),
+            ..Default::default()
+        }
+        .update(db)
+        .await
+        .expect("approve initial version");
+        (note_id, initial.id)
+    }
+
+    async fn note_version_states(
+        db: &gateway_postgres::DatabaseHandle,
+        note_id: Uuid,
+    ) -> Vec<(i32, String, bool)> {
+        note_version::Entity::find()
+            .filter(note_version::Column::NoteId.eq(note_id))
+            .order_by_asc(note_version::Column::VersionNo)
+            .all(db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.version_no, row.status, row.is_current))
+            .collect()
+    }
+
+    async fn status_change_diff(db: &gateway_postgres::DatabaseHandle, note_id: Uuid) -> Value {
+        change_history::Entity::find()
+            .filter(change_history::Column::TargetId.eq(note_id))
+            .filter(change_history::Column::Op.eq("status_change"))
+            .one(db)
+            .await
+            .unwrap()
+            .unwrap()
+            .diff_json
+    }
+
     /// strategy を持たないノートは execution (戦略タスク実行) に紐づき得ない、という
     /// note_strategy_id_execution_id_check CHECK 制約の回帰テスト。
     #[backend_test_macros::database_test]
@@ -525,6 +603,142 @@ mod tests {
                     }),
                     None,
                 )],
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn approving_a_version_supersedes_older_pending_versions_and_records_their_ids(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let (note_id, initial_id) =
+            create_note_with_approved_initial_version(&server, &db, strategy_id, "review").await;
+        let older_pending_id = insert_test_version(&db, note_id, 2, "unread", false).await;
+        insert_test_version(&db, note_id, 3, "rejected", false).await;
+        let approved_id = insert_test_version(&db, note_id, 4, "unread", false).await;
+
+        let response = server
+            .post(&format!("/api/notes/{note_id}/versions/4/approve"))
+            .json(&json!({}))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                note_version_states(&db, note_id).await,
+                status_change_diff(&db, note_id).await,
+            ),
+            (
+                StatusCode::OK,
+                vec![
+                    (1, "approved".to_string(), false),
+                    (2, "superseded".to_string(), false),
+                    (3, "rejected".to_string(), false),
+                    (4, "approved".to_string(), true),
+                ],
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": approved_id,
+                    "previous_current_version_id": initial_id,
+                    "superseded_version_ids": [older_pending_id],
+                    "label": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn approving_an_older_version_preserves_a_newer_current_version(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let note_id = create_test_note_with_creator(&server, strategy_id, "review", "llm").await;
+        let initial = note_versions::find_current_version(&db, note_id)
+            .await
+            .unwrap()
+            .unwrap();
+        note_version::ActiveModel {
+            id: Set(initial.id),
+            status: Set("approved".into()),
+            is_current: Set(false),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("clear initial current version");
+        let superseded_id = insert_test_version(&db, note_id, 2, "unread", false).await;
+        let approved_id = insert_test_version(&db, note_id, 3, "unread", false).await;
+        let current_id = insert_test_version(&db, note_id, 4, "approved", true).await;
+        insert_test_version(&db, note_id, 5, "unread", false).await;
+
+        let response = server
+            .post(&format!("/api/notes/{note_id}/versions/3/approve"))
+            .json(&json!({}))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                note_version_states(&db, note_id).await,
+                status_change_diff(&db, note_id).await,
+            ),
+            (
+                StatusCode::OK,
+                vec![
+                    (1, "approved".to_string(), false),
+                    (2, "superseded".to_string(), false),
+                    (3, "approved".to_string(), false),
+                    (4, "approved".to_string(), true),
+                    (5, "unread".to_string(), false),
+                ],
+                json!({
+                    "from": "unread",
+                    "to": "approved",
+                    "version_id": approved_id,
+                    "previous_current_version_id": current_id,
+                    "superseded_version_ids": [superseded_id],
+                    "label": null,
+                }),
+            ),
+        );
+    }
+
+    #[backend_test_macros::database_test]
+    async fn approving_a_version_does_not_change_another_notes_pending_versions(
+        db: gateway_postgres::DatabaseHandle,
+    ) {
+        let (db, server) = create_test_server_with_db(db).await;
+        let strategy_id = insert_test_strategy(&db, "s").await;
+        let (reviewed_note, _) =
+            create_note_with_approved_initial_version(&server, &db, strategy_id, "reviewed").await;
+        insert_test_version(&db, reviewed_note, 2, "unread", false).await;
+        insert_test_version(&db, reviewed_note, 3, "unread", false).await;
+        let (untouched_note, _) =
+            create_note_with_approved_initial_version(&server, &db, strategy_id, "untouched").await;
+        insert_test_version(&db, untouched_note, 2, "unread", false).await;
+        insert_test_version(&db, untouched_note, 3, "unread", false).await;
+
+        let response = server
+            .post(&format!("/api/notes/{reviewed_note}/versions/3/approve"))
+            .json(&json!({}))
+            .await;
+
+        assert_eq!(
+            (
+                response.status_code(),
+                note_version_states(&db, untouched_note).await
+            ),
+            (
+                StatusCode::OK,
+                vec![
+                    (1, "approved".to_string(), true),
+                    (2, "unread".to_string(), false),
+                    (3, "unread".to_string(), false),
+                ],
             ),
         );
     }
