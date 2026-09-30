@@ -79,7 +79,7 @@ impl IngestRunLog for PostgresIngestRunLog {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Duration, Utc};
+    use chrono::{Duration, Timelike, Utc};
     use core_application::ingest_run_log::IngestRunLog;
     use sea_orm::ActiveValue::Set;
     use sea_orm::EntityTrait;
@@ -102,6 +102,14 @@ mod tests {
         run.started_at = epoch();
         run.finished_at = run.finished_at.map(|_| epoch());
         run
+    }
+
+    fn truncate_to_postgres_precision(
+        timestamp: chrono::DateTime<chrono::FixedOffset>,
+    ) -> chrono::DateTime<chrono::FixedOffset> {
+        timestamp
+            .with_nanosecond(timestamp.timestamp_subsec_micros() * 1_000)
+            .expect("valid nanosecond")
     }
 
     async fn row(db: &DatabaseHandle, run_id: uuid::Uuid) -> ingest_run::Model {
@@ -210,7 +218,8 @@ mod tests {
         db: DatabaseHandle,
     ) {
         let log = PostgresIngestRunLog::new(db.clone());
-        let cutoff = (Utc::now() - Duration::hours(2)).fixed_offset();
+        let cutoff =
+            truncate_to_postgres_precision((Utc::now() - Duration::hours(2)).fixed_offset());
         let expired_id = log.start("sample_ingest").await.expect("start expired run");
         let recent_id = log.start("sample_ingest").await.expect("start recent run");
         let other_job_id = log
