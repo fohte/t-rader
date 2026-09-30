@@ -358,6 +358,26 @@ pub async fn find_current_versions<C: sea_orm::ConnectionTrait>(
         .collect())
 }
 
+pub async fn find_latest_versions<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    note_ids: &[Uuid],
+) -> Result<HashMap<Uuid, note_version::Model>, sea_orm::DbErr> {
+    if note_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut versions = HashMap::new();
+    for version in note_version::Entity::find()
+        .filter(note_version::Column::NoteId.is_in(note_ids.iter().copied()))
+        .order_by_desc(note_version::Column::VersionNo)
+        .all(db)
+        .await?
+    {
+        versions.entry(version.note_id).or_insert(version);
+    }
+    Ok(versions)
+}
+
 pub async fn find_initial_created_by_kind<C: sea_orm::ConnectionTrait>(
     db: &C,
     note_ids: &[Uuid],
