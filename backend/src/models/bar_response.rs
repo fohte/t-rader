@@ -1,9 +1,8 @@
 use chrono::{DateTime, FixedOffset};
+use core_domain::bar::Bar;
 use rust_decimal::Decimal;
 use serde::Serialize;
 use utoipa::ToSchema;
-
-use gateway_postgres::entities::bars;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[schema(as = Bar)]
@@ -19,12 +18,12 @@ pub struct BarResponse {
     pub volume: i64,
 }
 
-impl From<bars::Model> for BarResponse {
-    fn from(bar: bars::Model) -> Self {
+impl From<Bar> for BarResponse {
+    fn from(bar: Bar) -> Self {
         Self {
             instrument_id: bar.instrument_id,
-            timeframe: bar.timeframe,
-            timestamp: bar.timestamp,
+            timeframe: bar.timeframe.to_string(),
+            timestamp: bar.timestamp.fixed_offset(),
             open: bar.open,
             high: bar.high,
             low: bar.low,
