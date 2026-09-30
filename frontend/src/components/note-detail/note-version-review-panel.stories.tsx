@@ -77,3 +77,10 @@ export const CurrentVersion: Story = {
     version: { ...pendingVersion, status: 'approved', is_current: true },
   },
 }
+
+export const SupersededVersion: Story = {
+  name: 'shows a superseded version without review actions.',
+  args: {
+    version: { ...pendingVersion, status: 'superseded' },
+  },
+}
