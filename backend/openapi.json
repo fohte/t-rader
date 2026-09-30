@@ -7750,7 +7750,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "省略時または `null` 指定時は default の agent 設定を使用する。"
           },
           "schedule": {
             "type": [

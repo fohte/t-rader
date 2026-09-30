@@ -118,7 +118,9 @@ type CreateTriggerRequest struct {
 	HookSlug       nullable.Nullable[string] `json:"hook_slug,omitempty"`
 	Kind           TriggerKind               `json:"kind"`
 	PromptTemplate string                    `json:"prompt_template"`
-	Purpose        nullable.Nullable[string] `json:"purpose,omitempty"`
+
+	// Purpose 省略時または `null` 指定時は default の agent 設定を使用する。
+	Purpose nullable.Nullable[string] `json:"purpose,omitempty"`
 
 	// Schedule kind=cron 時に必須 (UTC の 5 フィールド cron 式)
 	Schedule nullable.Nullable[string] `json:"schedule,omitempty"`

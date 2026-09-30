@@ -68,6 +68,7 @@ impl TriggerKind {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateTriggerRequest {
+    /// 省略時または `null` 指定時は default の agent 設定を使用する。
     #[serde(default)]
     pub purpose: Option<String>,
     pub kind: TriggerKind,

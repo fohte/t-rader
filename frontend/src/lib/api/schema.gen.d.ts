@@ -1493,6 +1493,7 @@ export interface components {
       hook_slug?: string | null
       kind: components['schemas']['TriggerKind']
       prompt_template: string
+      /** @description 省略時または `null` 指定時は default の agent 設定を使用する。 */
       purpose?: string | null
       /** @description kind=cron 時に必須 (UTC の 5 フィールド cron 式) */
       schedule?: string | null
