@@ -83,13 +83,17 @@ mod tests {
     )]
 
     use chrono::{DateTime, FixedOffset, Utc};
-    use core_application::change_history::{ChangeHistoryEntry, ChangeHistoryUseCases};
+    use core_application::change_history::{
+        ChangeHistoryEntry, ChangeHistoryListQuery, ChangeHistoryQuery,
+    };
+    use rstest::{fixture, rstest};
     use sea_orm::{ActiveValue::Set, EntityTrait};
     use serde_json::json;
     use uuid::Uuid;
 
     use crate::DatabaseHandle;
     use crate::entities::change_history;
+    use crate::test_support::create_test_transaction;
 
     use super::PostgresChangeHistoryQuery;
 
@@ -100,136 +104,158 @@ mod tests {
             .fixed_offset()
     }
 
-    async fn insert_history(
-        db: &DatabaseHandle,
-        id: Uuid,
-        target_kind: &str,
-        target_id: Uuid,
-        diff_json: serde_json::Value,
-        summary: Option<&str>,
-        created_at: DateTime<FixedOffset>,
-    ) {
+    async fn insert_history(db: &DatabaseHandle, history: &ChangeHistoryEntry) {
         change_history::Entity::insert(change_history::ActiveModel {
-            id: Set(id),
-            target_kind: Set(target_kind.into()),
-            target_id: Set(target_id),
+            id: Set(history.id),
+            target_kind: Set(history.target_kind.clone()),
+            target_id: Set(history.target_id),
             actor_kind: Set("human".into()),
             actor_label: Set("user".into()),
             op: Set("update".into()),
-            diff_json: Set(diff_json),
-            summary: Set(summary.map(str::to_owned)),
-            created_at: Set(created_at),
+            diff_json: Set(history.diff_json.clone()),
+            summary: Set(history.summary.clone()),
+            created_at: Set(history.created_at),
         })
         .exec(db)
         .await
         .expect("insert test history");
     }
 
-    #[backend_test_macros::database_test]
-    async fn query_reads_history_with_filters_order_limits_and_missing_ids(db: DatabaseHandle) {
-        let target_id = Uuid::from_u128(10);
-        let old_id = Uuid::from_u128(11);
-        let new_id = Uuid::from_u128(12);
-        let unrelated_id = Uuid::from_u128(13);
-        let missing_id = Uuid::from_u128(14);
-        insert_history(
-            &db,
-            old_id,
-            "trade",
-            target_id,
-            json!({ "revision": 1 }),
-            None,
-            timestamp(1),
-        )
-        .await;
-        insert_history(
-            &db,
-            new_id,
-            "trade",
-            target_id,
-            json!({ "revision": 2 }),
-            Some("Updated fixture"),
-            timestamp(2),
-        )
-        .await;
-        insert_history(
-            &db,
-            unrelated_id,
-            "note",
-            Uuid::from_u128(20),
-            json!({ "revision": 3 }),
-            None,
-            timestamp(3),
-        )
-        .await;
+    struct HistoryFixture {
+        target_id: Uuid,
+        old: ChangeHistoryEntry,
+        new: ChangeHistoryEntry,
+        other_kind: ChangeHistoryEntry,
+        other_target: ChangeHistoryEntry,
+        missing_id: Uuid,
+    }
 
-        let use_cases =
-            ChangeHistoryUseCases::new(std::sync::Arc::new(PostgresChangeHistoryQuery::new(db)));
-        let all = use_cases
-            .list(Some(""), None, None)
-            .await
-            .map_err(|error| error.to_string());
-        let filtered = use_cases
-            .list(Some("trade"), Some(target_id), Some(0))
-            .await
-            .map_err(|error| error.to_string());
-        let detail = use_cases
-            .get(new_id)
-            .await
-            .map_err(|error| error.to_string());
-        let missing = use_cases
-            .get(missing_id)
+    #[fixture]
+    fn history_fixture() -> HistoryFixture {
+        let target_id = Uuid::from_u128(10);
+        HistoryFixture {
+            target_id,
+            old: entry(
+                Uuid::from_u128(11),
+                "trade",
+                target_id,
+                json!({ "revision": 1 }),
+                None,
+                timestamp(1),
+            ),
+            new: entry(
+                Uuid::from_u128(12),
+                "trade",
+                target_id,
+                json!({ "revision": 2 }),
+                Some("Updated fixture"),
+                timestamp(2),
+            ),
+            other_kind: entry(
+                Uuid::from_u128(13),
+                "note",
+                target_id,
+                json!({ "revision": 3 }),
+                None,
+                timestamp(3),
+            ),
+            other_target: entry(
+                Uuid::from_u128(14),
+                "trade",
+                Uuid::from_u128(20),
+                json!({ "revision": 4 }),
+                None,
+                timestamp(4),
+            ),
+            missing_id: Uuid::from_u128(15),
+        }
+    }
+
+    async fn seed_history(db: &DatabaseHandle, fixture: &HistoryFixture) {
+        for history in [
+            &fixture.old,
+            &fixture.new,
+            &fixture.other_kind,
+            &fixture.other_target,
+        ] {
+            insert_history(db, history).await;
+        }
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn list_orders_by_created_at_desc(history_fixture: HistoryFixture) {
+        let db = create_test_transaction().await;
+        seed_history(&db, &history_fixture).await;
+        let query = PostgresChangeHistoryQuery::new(db);
+
+        let result = query
+            .list(ChangeHistoryListQuery {
+                target_kind: None,
+                target_id: None,
+                limit: 10,
+            })
             .await
             .map_err(|error| error.to_string());
 
         assert_eq!(
-            (all, filtered, detail, missing),
-            (
-                Ok(vec![
-                    entry(
-                        unrelated_id,
-                        "note",
-                        Uuid::from_u128(20),
-                        json!({ "revision": 3 }),
-                        None,
-                        timestamp(3),
-                    ),
-                    entry(
-                        new_id,
-                        "trade",
-                        target_id,
-                        json!({ "revision": 2 }),
-                        Some("Updated fixture"),
-                        timestamp(2),
-                    ),
-                    entry(
-                        old_id,
-                        "trade",
-                        target_id,
-                        json!({ "revision": 1 }),
-                        None,
-                        timestamp(1),
-                    ),
-                ]),
-                Ok(vec![entry(
-                    new_id,
-                    "trade",
-                    target_id,
-                    json!({ "revision": 2 }),
-                    Some("Updated fixture"),
-                    timestamp(2),
-                )]),
-                Ok(entry(
-                    new_id,
-                    "trade",
-                    target_id,
-                    json!({ "revision": 2 }),
-                    Some("Updated fixture"),
-                    timestamp(2),
-                )),
-                Err(format!("history {missing_id} not found")),
-            ),
+            result,
+            Ok(vec![
+                history_fixture.other_target,
+                history_fixture.other_kind,
+                history_fixture.new,
+                history_fixture.old,
+            ]),
         );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn list_filters_by_target_kind_and_id(history_fixture: HistoryFixture) {
+        let db = create_test_transaction().await;
+        seed_history(&db, &history_fixture).await;
+        let query = PostgresChangeHistoryQuery::new(db);
+
+        let result = query
+            .list(ChangeHistoryListQuery {
+                target_kind: Some("trade".into()),
+                target_id: Some(history_fixture.target_id),
+                limit: 10,
+            })
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(result, Ok(vec![history_fixture.new, history_fixture.old]),);
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn find_by_id_returns_matching_history(history_fixture: HistoryFixture) {
+        let db = create_test_transaction().await;
+        seed_history(&db, &history_fixture).await;
+        let query = PostgresChangeHistoryQuery::new(db);
+
+        let result = query
+            .find_by_id(history_fixture.new.id)
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(result, Ok(Some(history_fixture.new)));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn find_by_id_returns_none_for_missing_history(history_fixture: HistoryFixture) {
+        let db = create_test_transaction().await;
+        seed_history(&db, &history_fixture).await;
+        let query = PostgresChangeHistoryQuery::new(db);
+
+        let result = query
+            .find_by_id(history_fixture.missing_id)
+            .await
+            .map_err(|error| error.to_string());
+
+        assert_eq!(result, Ok(None));
     }
 
     fn entry(

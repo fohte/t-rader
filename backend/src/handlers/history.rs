@@ -85,3 +85,20 @@ pub async fn get_history(
         .map_err(map_err)?;
     Ok(Json(ChangeHistoryResponse::from(entry)))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+
+    use crate::testing::create_test_server;
+
+    #[backend_test_macros::database_test]
+    async fn get_history_returns_404_for_unknown_id(db: gateway_postgres::DatabaseHandle) {
+        let server = create_test_server(db).await;
+        let response = server
+            .get(&format!("/api/history/{}", uuid::Uuid::from_u128(1)))
+            .await;
+
+        assert_eq!(response.status_code(), StatusCode::NOT_FOUND);
+    }
+}
