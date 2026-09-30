@@ -26,11 +26,28 @@ pub enum Relation {
         on_delete = "SetNull"
     )]
     Sector,
+    #[sea_orm(has_many = "super::stock_group_member::Entity")]
+    StockGroupMember,
 }
 
 impl Related<super::sector::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Sector.def()
+    }
+}
+
+impl Related<super::stock_group_member::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::StockGroupMember.def()
+    }
+}
+
+impl Related<super::stock_group::Entity> for Entity {
+    fn to() -> RelationDef {
+        super::stock_group_member::Relation::StockGroup.def()
+    }
+    fn via() -> Option<RelationDef> {
+        Some(super::stock_group_member::Relation::Stock.def().rev())
     }
 }
 

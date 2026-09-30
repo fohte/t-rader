@@ -14,8 +14,11 @@ use backend::error::AppError;
 use backend::kata_exec::{HttpKataExecutor, KataExecutor, KataExecutorConfig, SharedKataExecutor};
 use backend::services::litellm_client::{LiteLlmClient as LlmGatewayClient, SharedLlmClient};
 use clap::Parser;
-use core_application::indicator_observation_source::IndicatorObservationSource;
+use core_application::indicator_observation_source::SharedIndicatorObservationSource;
+use core_application::margin_source::SharedMarginSource;
 use core_application::news_aggregator::SharedNewsAggregator;
+use core_application::short_selling_source::SharedShortSellingSource;
+use entrypoint_scheduler::{Scheduler, SchedulerDependencies};
 use gateway_fred::FredClient;
 use gateway_ibkr::{IbkrClient, RATE_LIMIT_KEY_PREFIX};
 use gateway_jquants::{JQuantsClient, JQuantsPlan};
@@ -23,6 +26,7 @@ use gateway_postgres::DatabaseHandle;
 use migration::{Migrator, MigratorTrait};
 use rate_limit::RateLimiter;
 use sea_orm::{ConnectOptions, Database};
+use tokio::sync::watch;
 
 fn parse_jquants_plan(value: Option<String>) -> Result<JQuantsPlan, AppError> {
     let value = value.filter(|value| !value.is_empty()).ok_or_else(|| {
@@ -48,6 +52,28 @@ fn jquants_config_from_env() -> Result<Option<(String, JQuantsPlan)>, AppError> 
         std::env::var("JQUANTS_API_KEY").ok(),
         std::env::var("JQUANTS_PLAN").ok(),
     )
+}
+
+async fn wait_for_shutdown(mut receiver: watch::Receiver<bool>) {
+    let _ = receiver.wait_for(|shutdown| *shutdown).await;
+}
+
+async fn wait_for_os_shutdown_signal() -> Result<(), std::io::Error> {
+    let ctrl_c = tokio::signal::ctrl_c();
+
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut terminate = signal(SignalKind::terminate())?;
+        tokio::select! {
+            result = ctrl_c => result,
+            _ = terminate.recv() => Ok(()),
+        }
+    }
+
+    #[cfg(not(unix))]
+    ctrl_c.await
 }
 
 fn required_redis_url(value: Option<String>) -> Result<String, AppError> {
@@ -268,37 +294,27 @@ async fn main() -> Result<(), AppError> {
     );
     tracing::info!("news aggregation poll task started (public RSS, interval=1h)");
 
-    match std::env::var("FRED_API_KEY") {
+    let fred_source: Option<SharedIndicatorObservationSource> = match std::env::var("FRED_API_KEY")
+    {
         Ok(api_key) if !api_key.is_empty() => {
             let fred_client = FredClient::new(api_key).map_err(|err| {
                 AppError::Config(format!("failed to initialize FRED client: {err}"))
             })?;
-            let source: Arc<dyn IndicatorObservationSource> = Arc::new(fred_client);
-            let _fred_ingest_poll = backend::services::fred_ingest::spawn_poll(
-                use_cases.indicator_observations(),
-                source,
-                backend::services::fred_ingest::DEFAULT_INTERVAL,
-            );
-            tracing::info!(
-                interval_secs = backend::services::fred_ingest::DEFAULT_INTERVAL.as_secs(),
-                "FRED macro history ingest poll task started",
-            );
+            Some(Arc::new(fred_client))
         }
         _ => {
             tracing::warn!(
                 "FRED_API_KEY が未設定のため、FRED マクロ指標履歴の取り込みを起動しません"
             );
+            None
         }
-    }
+    };
 
     // cron trigger を schedule どおりに発火させる worker を起動する。
     // 戻り値は意図的に捨てる: ランタイム終了で task ごと止まる。
     tracing::info!(
         interval_secs = backend::services::trigger_worker::DEFAULT_INTERVAL.as_secs(),
         "starting cron trigger worker",
-    );
-    let use_cases = backend::services::use_cases::build_use_cases(
-        gateway_postgres::DatabaseHandle::from(db.clone()),
     );
     let _trigger_worker = backend::services::trigger_worker::spawn(
         use_cases.triggers(),
@@ -315,37 +331,6 @@ async fn main() -> Result<(), AppError> {
         tracing::info!(
             interval_secs = backend::services::stock_master_sync::DEFAULT_INTERVAL.as_secs(),
             "stock master sync poll task started",
-        );
-
-        let _short_sale_report_ingest_poll =
-            backend::services::short_sale_report_ingest::spawn_poll(
-                use_cases.short_sale_reports(),
-                client.clone(),
-                backend::services::short_sale_report_ingest::DEFAULT_INTERVAL,
-            );
-        tracing::info!(
-            interval_secs = backend::services::short_sale_report_ingest::DEFAULT_INTERVAL.as_secs(),
-            "short sale report ingest poll task started",
-        );
-
-        let _short_ratio_ingest_poll = backend::services::short_ratio_ingest::spawn_poll(
-            use_cases.short_ratios(),
-            client.clone(),
-            backend::services::short_ratio_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::short_ratio_ingest::DEFAULT_INTERVAL.as_secs(),
-            "short ratio ingest poll task started",
-        );
-
-        let _margin_ingest_poll = backend::services::margin_ingest::spawn_poll(
-            use_cases.margins(),
-            client.clone(),
-            backend::services::margin_ingest::DEFAULT_INTERVAL,
-        );
-        tracing::info!(
-            interval_secs = backend::services::margin_ingest::DEFAULT_INTERVAL.as_secs(),
-            "margin ingest poll task started",
         );
 
         let _fin_summary_ingest_poll = backend::services::fin_summary_ingest::spawn_poll(
@@ -402,14 +387,38 @@ async fn main() -> Result<(), AppError> {
     let llm_gateway_client =
         LlmGatewayClient::from_env().map(|client| Arc::new(client) as SharedLlmClient);
 
-    let _prediction_grading_poll = backend::services::prediction_grading::spawn_poll(
-        use_cases.predictions(),
-        backend::services::prediction_grading::DEFAULT_INTERVAL,
-    );
-    tracing::info!(
-        interval_secs = backend::services::prediction_grading::DEFAULT_INTERVAL.as_secs(),
-        "prediction grading poll task started",
-    );
+    let short_selling_source: Option<SharedShortSellingSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedShortSellingSource);
+    let margin_source: Option<SharedMarginSource> = jquants_ingest_client
+        .as_ref()
+        .map(|client| Arc::clone(client) as SharedMarginSource);
+    let dependencies = SchedulerDependencies {
+        indicator_observations: use_cases.indicator_observations(),
+        fred_source,
+        predictions: use_cases.predictions(),
+        short_ratios: use_cases.short_ratios(),
+        short_sale_reports: use_cases.short_sale_reports(),
+        margins: use_cases.margins(),
+        short_selling_source,
+        margin_source,
+    };
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let signal_tx = shutdown_tx.clone();
+    let _shutdown_listener = tokio::spawn(async move {
+        if let Err(error) = wait_for_os_shutdown_signal().await {
+            tracing::error!(%error, "failed to listen for shutdown signal");
+        }
+        let _ = signal_tx.send(true);
+    });
+    let worker = Scheduler::initialize(
+        db.get_postgres_connection_pool().clone(),
+        dependencies,
+        wait_for_shutdown(shutdown_rx.clone()),
+    )
+    .await
+    .map_err(|error| AppError::Config(format!("failed to initialize Graphile Worker: {error}")))?;
+    tracing::info!("Graphile Worker initialized");
     let state = AppState {
         db: app_db,
         use_cases,
@@ -435,19 +444,46 @@ async fn main() -> Result<(), AppError> {
         .await
         .map_err(|e| AppError::Config(format!("failed to bind to {addr}: {e}")))?;
 
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .map_err(|e| AppError::Config(format!("server error: {e}")))?;
+    let mut worker_run = Box::pin(worker.run());
+    let mut server_run = Box::pin(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(wait_for_shutdown(shutdown_rx))
+        .await
+    });
 
-    Ok(())
+    // Worker が停止したまま API だけを提供しないよう、どちらかの終了時に両方を停止する。
+    tokio::select! {
+        result = &mut worker_run => {
+            let _ = shutdown_tx.send(true);
+            let worker_result = result
+                .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+            let server_result = server_run
+                .await
+                .map_err(|error| AppError::Config(format!("server error: {error}")));
+            worker_result?;
+            server_result
+        }
+        result = &mut server_run => {
+            let _ = shutdown_tx.send(true);
+            let server_result = result
+                .map_err(|error| AppError::Config(format!("server error: {error}")));
+            let worker_result = worker_run
+                .await
+                .map_err(|error| AppError::Config(format!("Graphile Worker failed: {error}")));
+            server_result?;
+            worker_result
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+    use std::time::Duration;
+    use tokio::time::timeout;
 
     use super::*;
 
@@ -472,6 +508,29 @@ mod tests {
         #[case] expected: Result<Option<(String, JQuantsPlan)>, ()>,
     ) {
         assert_eq!(jquants_config(api_key, plan).map_err(|_| ()), expected);
+    }
+    #[tokio::test]
+    async fn shutdown_signal_reaches_worker_and_server_waiters() {
+        let (sender, receiver) = watch::channel(false);
+        let mut worker_waiter = Box::pin(wait_for_shutdown(receiver.clone()));
+        let mut server_waiter = Box::pin(wait_for_shutdown(receiver));
+        let waiters_are_pending = tokio::select! {
+            biased;
+            _ = &mut worker_waiter => false,
+            _ = &mut server_waiter => false,
+            _ = tokio::task::yield_now() => true,
+        };
+        let signal_sent = sender.send(true).is_ok();
+        let waiters_completed = timeout(Duration::from_secs(1), async {
+            tokio::join!(worker_waiter, server_waiter);
+        })
+        .await
+        .is_ok();
+
+        assert_eq!(
+            (waiters_are_pending, signal_sent, waiters_completed),
+            (true, true, true)
+        );
     }
 
     #[rstest]
