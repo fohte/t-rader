@@ -1,6 +1,6 @@
 use axum::Json;
 use axum::extract::State;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -10,20 +10,7 @@ use crate::handlers::strategies::map_submit_error;
 use crate::models::{ChangeStatusRequest, NoteVersionResponse};
 use crate::services::note_versions::INITIAL_NOTE_STATUS;
 use crate::services::strategy_tasks::{self, TaskSource};
-use gateway_postgres::entities::{comment, note, note_version};
-
-async fn find_note_version<C: sea_orm::ConnectionTrait>(
-    db: &C,
-    note_id: Uuid,
-    version_no: i32,
-) -> Result<note_version::Model, AppError> {
-    note_version::Entity::find()
-        .filter(note_version::Column::NoteId.eq(note_id))
-        .filter(note_version::Column::VersionNo.eq(version_no))
-        .one(db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note version {note_id}/{version_no} not found")))
-}
+use gateway_postgres::entities::comment;
 
 /// ノートの全バージョンを古い順に返す。
 #[utoipa::path(
@@ -42,18 +29,12 @@ pub async fn list_note_versions(
     State(state): State<AppState>,
     JsonPath(note_id): JsonPath<Uuid>,
 ) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
-    if note::Entity::find_by_id(note_id)
-        .one(&state.db)
-        .await?
-        .is_none()
-    {
-        return Err(AppError::NotFound(format!("note {note_id} not found")));
-    }
-    let versions = note_version::Entity::find()
-        .filter(note_version::Column::NoteId.eq(note_id))
-        .order_by_asc(note_version::Column::VersionNo)
-        .all(&state.db)
-        .await?;
+    let versions = state
+        .use_cases
+        .note_reads()
+        .list_note_versions(note_id)
+        .await
+        .map_err(crate::handlers::notes::map_note_read_error)?;
     Ok(Json(versions.into_iter().map(Into::into).collect()))
 }
 
@@ -78,8 +59,12 @@ pub async fn get_note_version(
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
     Ok(Json(
-        find_note_version(&state.db, note_id, version_no)
-            .await?
+        state
+            .use_cases
+            .note_reads()
+            .get_note_version(note_id, version_no)
+            .await
+            .map_err(crate::handlers::notes::map_note_read_error)?
             .into(),
     ))
 }
@@ -97,17 +82,16 @@ pub async fn get_note_version(
 pub async fn list_pending_note_versions(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<NoteVersionResponse>>, AppError> {
-    let versions = note_version::Entity::find()
-        .filter(note_version::Column::Status.eq(INITIAL_NOTE_STATUS))
-        .order_by_asc(note_version::Column::CreatedAt)
-        .order_by_asc(note_version::Column::NoteId)
-        .order_by_asc(note_version::Column::VersionNo)
-        .all(&state.db)
-        .await?;
+    let versions = state
+        .use_cases
+        .note_reads()
+        .list_pending_note_versions()
+        .await
+        .map_err(crate::handlers::notes::map_note_read_error)?;
     Ok(Json(versions.into_iter().map(Into::into).collect()))
 }
 
-fn ensure_pending_version(version: &note_version::Model) -> Result<(), AppError> {
+fn ensure_pending_version(version: &core_application::note::NoteVersion) -> Result<(), AppError> {
     if version.status != INITIAL_NOTE_STATUS {
         return Err(AppError::Conflict(format!(
             "note version {}/{} is not pending",
@@ -177,7 +161,12 @@ pub async fn reject_note_version(
     JsonPath((note_id, version_no)): JsonPath<(Uuid, i32)>,
     JsonBody(payload): JsonBody<ChangeStatusRequest>,
 ) -> Result<Json<NoteVersionResponse>, AppError> {
-    let version = find_note_version(&state.db, note_id, version_no).await?;
+    let version = state
+        .use_cases
+        .note_reads()
+        .get_note_version(note_id, version_no)
+        .await
+        .map_err(crate::handlers::notes::map_note_read_error)?;
     ensure_pending_version(&version)?;
 
     let line_comment_count = comment::Entity::find()
@@ -199,18 +188,20 @@ pub async fn reject_note_version(
         ));
     }
 
-    let note_row = note::Entity::find_by_id(note_id)
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("note {note_id} not found")))?;
-    if let Some(strategy_id) = note_row.strategy_id {
+    let snapshot = state
+        .use_cases
+        .note_reads()
+        .get_note(note_id, Some(version.id), false, None)
+        .await
+        .map_err(crate::handlers::notes::map_note_read_error)?;
+    if let Some(strategy_id) = snapshot.note.strategy_id {
         let reason = label
             .as_deref()
             .map(|label| format!("理由: {label}。"))
             .unwrap_or_default();
         let prompt = format!(
             "ノート「{}」(id: {}) の v{} (version_id: {}) がレビューで却下されました。{}付いているコメントを確認し、指摘を反映してください。",
-            version.title, note_id, version_no, version.id, reason
+            snapshot.version.title, note_id, version_no, version.id, reason
         );
         strategy_tasks::submit_task(
             &state.db,

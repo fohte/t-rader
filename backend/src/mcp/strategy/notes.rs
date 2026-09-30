@@ -1,6 +1,6 @@
 //! ノート操作の inner method 実装。
 //!
-//! 戦略境界の検査は [`super::fetch_note_owned_by`] が担う。
+//! 戦略境界の検査はノート読み取りユースケースが担う。
 
 use core_application::change_history::Actor;
 use core_application::note::{NoteUseCaseError, NoteWriteCommand};
@@ -13,6 +13,8 @@ use super::{
 };
 
 mod read;
+
+pub(crate) use read::note_read_error_to_mcp;
 
 fn note_use_case_to_mcp(error: NoteUseCaseError) -> McpError {
     match error {

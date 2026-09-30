@@ -3,10 +3,8 @@
 use rmcp::ErrorData as McpError;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
-use crate::services::note_versions::{
-    current_note_ids, find_current_versions, find_initial_created_by_kind,
-};
-use gateway_postgres::entities::{annotation, note};
+use core_application::note::NoteListQuery;
+use gateway_postgres::entities::annotation;
 
 use super::MgmtServer;
 use super::dto::{
@@ -20,45 +18,29 @@ impl MgmtServer {
         params: ListRecentParams,
     ) -> Result<ListRecentNotesResult, McpError> {
         let limit = clamp_limit(params.limit);
-        let rows = note::Entity::find()
-            .filter(note::Column::StrategyId.eq(params.strategy_id))
-            .filter(note::Column::Id.in_subquery(current_note_ids()))
-            .order_by_desc(note::Column::UpdatedAt)
-            .limit(limit)
-            .all(&self.db)
+        let page = self
+            .use_cases
+            .note_reads()
+            .list_notes(
+                None,
+                NoteListQuery {
+                    strategy_id: Some(params.strategy_id),
+                    limit: Some(limit),
+                    ..NoteListQuery::default()
+                },
+            )
             .await
-            .map_err(db_error)?;
-        let versions =
-            find_current_versions(&self.db, &rows.iter().map(|row| row.id).collect::<Vec<_>>())
-                .await
-                .map_err(db_error)?;
-        let creators = find_initial_created_by_kind(
-            &self.db,
-            &rows.iter().map(|row| row.id).collect::<Vec<_>>(),
-        )
-        .await
-        .map_err(db_error)?;
-        let notes = rows
+            .map_err(crate::mcp::strategy::notes::note_read_error_to_mcp)?;
+        let notes = page
+            .notes
             .into_iter()
-            .map(|row| {
-                let version = versions.get(&row.id).ok_or_else(|| {
-                    db_error(sea_orm::DbErr::Custom(format!(
-                        "note {} has no current version",
-                        row.id
-                    )))
-                })?;
-                let created_by_kind = creators.get(&row.id).cloned().ok_or_else(|| {
-                    db_error(sea_orm::DbErr::Custom(format!(
-                        "note {} has no initial version",
-                        row.id
-                    )))
-                })?;
+            .map(|snapshot| {
                 Ok(NoteMeta {
-                    note_id: row.id,
-                    title: version.title.clone(),
-                    status: version.status.clone(),
-                    created_by_kind,
-                    updated_at: row.updated_at,
+                    note_id: snapshot.note.id,
+                    title: snapshot.version.title,
+                    status: snapshot.version.status,
+                    created_by_kind: snapshot.created_by_kind,
+                    updated_at: snapshot.note.updated_at,
                 })
             })
             .collect::<Result<Vec<_>, McpError>>()?;

@@ -50,7 +50,7 @@ use crate::services::litellm_client::{LiteLlmError, SharedLlmClient};
 use crate::services::use_cases::UseCases;
 use gateway_postgres::DatabaseHandle;
 use gateway_postgres::PostgresStrategyScopeSource;
-use gateway_postgres::entities::{annotation, note};
+use gateway_postgres::entities::annotation;
 
 const DEFAULT_LIST_LIMIT: u64 = 50;
 const MAX_LIST_LIMIT: u64 = 200;
@@ -369,24 +369,6 @@ fn execution_task_id_from_execution_id(execution_id: &str) -> Option<&str> {
 fn execution_task_id_from_ctx(ctx: &RequestContext<RoleServer>) -> Option<String> {
     let execution_id = execution_id_from_ctx(ctx)?;
     execution_task_id_from_execution_id(&execution_id).map(str::to_string)
-}
-
-pub(super) async fn fetch_note_owned_by(
-    db: &impl sea_orm::ConnectionTrait,
-    note_id: Uuid,
-    expected: Uuid,
-) -> Result<note::Model, McpError> {
-    let row = note::Entity::find_by_id(note_id)
-        .one(db)
-        .await
-        .map_err(db_error)?
-        .ok_or_else(|| McpError::resource_not_found("note not found", None))?;
-    if row.strategy_id != Some(expected) {
-        return Err(invalid_params(format!(
-            "forbidden: note {note_id} belongs to another strategy"
-        )));
-    }
-    Ok(row)
 }
 
 pub(super) async fn fetch_annotation_owned_by(
